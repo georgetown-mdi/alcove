@@ -595,6 +595,27 @@ test("create rejects a session key that is not 32 bytes", async () => {
   );
 });
 
+test("create requires binary frames of the inner connection before its first await", async () => {
+  const [raw] = createMessagePipe();
+  let required = 0;
+  const inner: MessageConnection = {
+    send: (data) => raw.send(data),
+    receive: (timeoutMs) => raw.receive(timeoutMs),
+    close: () => raw.close(),
+    requireBinaryFrames: () => {
+      required += 1;
+    },
+  };
+  const created = EncryptedMessageConnection.create(
+    inner,
+    SESSION_KEY,
+    "initiator",
+  );
+  expect(required).toBe(1);
+  await created;
+  expect(required).toBe(1);
+});
+
 // --- Sticky terminal state ----------------------------------------------------
 
 test("after any failure, subsequent send and receive reject with the same sticky error", async () => {

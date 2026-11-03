@@ -1,3 +1,4 @@
+import { availableMemoryBytes, collectGarbage } from "./availableMemory";
 import { decFatal } from "./crypto";
 import { exceedsJsonStructureBound } from "./jsonStructureBound";
 
@@ -15,6 +16,12 @@ export const MAX_JSON_ARRAY_ELEMENTS = 16_777_216;
 /** @internal */
 export const MAX_JSON_NESTING_DEPTH = 4096;
 
+// The heap a parsed JSON value is charged, in bytes: the whole document's
+// values together may not need more than the memory available when it is
+// parsed. Same reference as above.
+/** @internal */
+export const JSON_RETAINED_BYTES_PER_NODE = 40;
+
 /**
  * Thrown by {@link parseBoundedJson} when the input's structure exceeds a bound,
  * distinct from the `SyntaxError`/`TypeError` of a malformed or invalid-UTF-8
@@ -27,23 +34,37 @@ export class JsonStructureBoundError extends Error {
   }
 }
 
+function exceededBound(
+  input: Uint8Array | string,
+): ReturnType<typeof exceedsJsonStructureBound> {
+  return exceedsJsonStructureBound(
+    input,
+    MAX_JSON_OBJECT_KEYS,
+    MAX_JSON_ARRAY_ELEMENTS,
+    MAX_JSON_NESTING_DEPTH,
+    Math.floor(availableMemoryBytes() / JSON_RETAINED_BYTES_PER_NODE),
+  );
+}
+
 /**
  * The sole entry point for parsing untrusted JSON (a partner wire frame, a
  * transport-controlled file, an invitation token), enforced by an ESLint rule.
  * Bytes decode UTF-8-fatal; a string is scanned and parsed as is. Throws
- * {@link JsonStructureBoundError} on an out-of-bound structure, or the native
- * error on malformed or invalid-UTF-8 input.
+ * {@link JsonStructureBoundError} on an out-of-bound structure, or a document
+ * whose values need more memory than is available, or the native error on
+ * malformed or invalid-UTF-8 input.
  */
 export function parseBoundedJson(input: Uint8Array | string): unknown {
+  const exceeded = exceededBound(input);
+  // Uncollected garbage counts as used memory, so a document over the node
+  // budget alone is checked once more after a collection where the runtime
+  // allows one.
   if (
-    exceedsJsonStructureBound(
-      input,
-      MAX_JSON_OBJECT_KEYS,
-      MAX_JSON_ARRAY_ELEMENTS,
-      MAX_JSON_NESTING_DEPTH,
-    )
-  ) {
+    exceeded !== false &&
+    (exceeded !== "nodes" ||
+      !collectGarbage() ||
+      exceededBound(input) !== false)
+  )
     throw new JsonStructureBoundError();
-  }
   return JSON.parse(typeof input === "string" ? input : decFatal.decode(input));
 }

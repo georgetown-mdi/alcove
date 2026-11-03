@@ -13,8 +13,11 @@ import {
 } from "../../src/connection/fileSyncMessageLoop";
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
 import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
+import { EncryptedMessageConnection } from "../../src/connection/encryptedMessageConnection";
+import { fromEventConnection } from "../../src/connection/messageConnection";
 import {
   serializeFileSyncMessage,
+  MESSAGE_TYPE_BINARY,
   MESSAGE_TYPE_OBJECT,
 } from "../../src/connection/fileSyncFraming";
 import {
@@ -29,6 +32,7 @@ import { abortMarkerName } from "../../src/connection/abortMarker";
 import { ABORT_TOKEN_BYTES } from "../../src/auth";
 import { cancellableDelay } from "../../src/connection/fileSyncConstants";
 import {
+  ConnectionError,
   UsageError,
   BilateralModeMismatchError,
   PeerAbortError,
@@ -1297,6 +1301,84 @@ describe("FileSyncMessageLoop resetSessionState", () => {
     // consecutiveEnoentCount is NOT a per-session-reset field (start() clears it),
     // so resetSessionState leaves it untouched.
     expect(i.consecutiveEnoentCount).toBe(4);
+  });
+});
+
+describe("FileSyncMessageLoop requireBinaryFrames", () => {
+  // A JSON message whose payload is not JSON at all: refusing it with a
+  // security failure rather than the parse's "not valid JSON" shows the payload
+  // was never parsed.
+  const plantUnparsableJsonMessage = (files: Map<string, Buffer>): string => {
+    const body = serializeFileSyncMessage(
+      MESSAGE_TYPE_OBJECT,
+      0,
+      Buffer.from("[[[,"),
+    );
+    const name = `${DIR}/${PEER}-${body.length}.json`;
+    files.set(name, body);
+    return name;
+  };
+
+  test("a JSON message is refused unparsed as a terminal security failure, and kept", async () => {
+    const f = makeLoop();
+    const name = plantUnparsableJsonMessage(f.files);
+    f.loop.requireBinaryFrames();
+
+    await f.pollOnce();
+
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].event).toBe("error");
+    const err = f.emitted[0].arg as ConnectionError;
+    expect(err).toBeInstanceOf(ConnectionError);
+    expect(err.kind).toBe("security");
+    expect(err.message).toMatch(/unencrypted message on an encrypted channel/);
+    expect(f.emitted[0].pollerActiveAtEmit).toBe(false);
+    expect(f.files.has(name)).toBe(true);
+  });
+
+  test("a binary message is still delivered", async () => {
+    const f = makeLoop();
+    const body = serializeFileSyncMessage(
+      MESSAGE_TYPE_BINARY,
+      0,
+      Buffer.from([1, 2, 3]),
+    );
+    f.files.set(`${DIR}/${PEER}-${body.length}.json`, body);
+    f.loop.requireBinaryFrames();
+
+    await f.pollOnce();
+
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+    expect([...(f.emitted[0].arg as Uint8Array)]).toEqual([1, 2, 3]);
+  });
+
+  test("the encryption layer over a file-sync connection requires binary frames of its message loop", async () => {
+    const { client } = makeMockClient();
+    const conn = new FileSyncConnection(client, { verbose: -1 });
+    const loop = (conn as unknown as { messageLoop: FileSyncMessageLoop })
+      .messageLoop;
+    const required = vi.spyOn(loop, "requireBinaryFrames");
+
+    await EncryptedMessageConnection.create(
+      fromEventConnection(conn),
+      new Uint8Array(32),
+      "initiator",
+    );
+
+    expect(required).toHaveBeenCalledTimes(1);
+  });
+
+  test("a session reset lifts the requirement, so a JSON message is parsed again", async () => {
+    const f = makeLoop();
+    plantUnparsableJsonMessage(f.files);
+    f.loop.requireBinaryFrames();
+    f.loop.resetSessionState();
+
+    await f.pollOnce();
+
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].arg).toBeInstanceOf(UsageError);
+    expect((f.emitted[0].arg as Error).message).toMatch(/not valid JSON/);
   });
 });
 

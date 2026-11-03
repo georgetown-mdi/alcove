@@ -393,12 +393,13 @@ Finally, at the stable `data` event (`checkDeliveredFrameBound`): a fully delive
 A parsed object/array is not byte-measured here (the reassembly bounds above govern it before delivery, and core's count/structure bounds after); only binary frames are, which is exactly the raw set frame this is sized for.
 
 The bounds above are *per frame*.
-A delivered frame is then queued in core's `QueuedMessageConnection`, whose capacity is a message *count* (`DEFAULT_CAPACITY` = 1024), so the aggregate retained across queued-but-unconsumed frames is in principle the per-frame envelope times that depth.
-The queue is **a count bound** rather than a byte one: the lockstep protocol drains one frame before sending the next, so the queue sits at depth ~1 in practice, and a peer that floods frames out of turn trips the count capacity (a `protocol` failure) rather than accumulating.
-So the theoretical per-frame x depth aggregate requires both proportional wire bytes per frame *and* the consumer to stall, and is the count capacity's concern rather than this control's.
-A byte-aware queue bound (or a smaller web-transport capacity) would close the theoretical multiplier but buys little against a practical depth of ~1.
-Unlike the per-frame scan, whose constants are WebRTC-specific, it would land on `QueuedMessageConnection`, which every transport shares, so it is a decision about all of them rather than this one, better made when a transport actually needs it.
-The per-frame rules and the wire cap are therefore what state the byte envelope; the queue stays bounded by count.
+A delivered frame is then queued in core's `QueuedMessageConnection`, which every transport shares and which bounds what it holds two ways.
+Its capacity is a message *count* (`DEFAULT_CAPACITY` = 1024): the lockstep protocol drains one frame before sending the next, so the queue sits at depth ~1 in practice, and a peer that floods frames out of turn trips the count capacity (a `protocol` failure).
+The binary frames it holds with no receive pending are also bounded by memory.
+The first frame queued is admitted, since it is already read; the memory available when it was queued (`availableMemoryBytes`, [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds), "The whole-document value budget") then bounds it together with every frame queued behind it until the queue drains, and a frame past that bound fails the connection as a `protocol` failure.
+A parsed object counts no bytes there: it was held to the memory available when it was parsed.
+A frame handed to a parked receive is not queued.
+The per-frame rules and the wire cap state the byte envelope of one frame; the queue's count and memory bounds limit what the frames queued behind it add.
 
 The wrap reaches past the public `DataConnection` API into PeerJS internals, so it rests on two dependency assumptions a `peerjs`/`peerjs-js-binarypack` upgrade could silently break.
 The first is the reassembly/unpack shape on the binary/chunked connection class (the one `peer.connect` and an incoming connection use by default): `_handleChunk` reassembling slices keyed by `__peerData` into `_chunkedData` and deleting the entry on completion, and `_handleDataMessage` as the sole point each frame is unpacked (an unchunked frame directly, the reassembled buffer via the completion recursion), which the wrap replaces with its own unpack and a copy of the close/chunk/`data` dispatch that follows it.

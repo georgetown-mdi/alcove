@@ -201,6 +201,11 @@ export class EncryptedMessageConnection implements MessageConnection {
       );
     }
 
+    // This layer refuses any frame that is not binary, so the transport may
+    // refuse one before parsing it. Called before the first await, so no frame
+    // the transport reads during key derivation is parsed.
+    inner.requireBinaryFrames?.();
+
     // No buffering dance is needed here: an encrypted frame that arrives during
     // this async key derivation sits in the inner connection's FIFO until the
     // first receive() pulls it, so nothing is dropped.

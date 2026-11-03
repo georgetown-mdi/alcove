@@ -497,6 +497,11 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.messageLoop.useEnvelopeVersion(version);
   }
 
+  /** Implements `Connection.requireBinaryFrames`. */
+  requireBinaryFrames(): void {
+    this.messageLoop.requireBinaryFrames();
+  }
+
   /** Implements `Connection.markLastSentUnread`. */
   markLastSentUnread(): void {
     this.unreadSentFile = this.lastSentFile;

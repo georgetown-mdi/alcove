@@ -16,15 +16,23 @@ const OPEN_BRACE = 0x7b; // {
 const CLOSE_BRACE = 0x7d; // }
 const OPEN_BRACKET = 0x5b; // [
 const CLOSE_BRACKET = 0x5d; // ]
+// JSON's four whitespace characters, skipped when finding the first character
+// of an array's first element.
+const SPACE = 0x20;
+const TAB = 0x09;
+const LINE_FEED = 0x0a;
+const CARRIAGE_RETURN = 0x0d;
 
 /**
  * Scans a JSON document -- its UTF-8 bytes, or the UTF-16 code units of an
- * already-decoded string -- and returns `true` if it has a structure that
- * must be rejected BEFORE `JSON.parse` runs:
+ * already-decoded string -- and returns which bound it exceeds, `"nodes"`
+ * for the last below and `"structure"` for any other, or `false` for none,
+ * for a body that must be rejected BEFORE `JSON.parse` runs:
  *
  * - any single object with more than `maxObjectKeys` members,
- * - any single array with more than `maxArrayElements` elements, or
- * - structural nesting (objects and arrays) deeper than `maxDepth`.
+ * - any single array with more than `maxArrayElements` elements,
+ * - structural nesting (objects and arrays) deeper than `maxDepth`, or
+ * - more than `maxNodes` values in the whole document.
  *
  * Each is a structural pathology a partner-controlled frame can reach
  * within the frame-size cap, one `JSON.parse` cannot be allowed to meet:
@@ -44,6 +52,13 @@ const CLOSE_BRACKET = 0x5d; // ]
  * the engine limit). On well-formed JSON every colon and every element-comma
  * falls directly inside the innermost open container and is charged to it.
  *
+ * Values are counted as the parse would create them: the document itself,
+ * each object member's value (one per colon), and each array element (one
+ * per element-separating comma, plus the first, found as the first
+ * non-whitespace character after `[` that is not `]`). Object keys are not
+ * counted. On well-formed JSON the count is exact, and on malformed JSON it
+ * is exact over the well-formed prefix a parse builds before it fails.
+ *
  * Two approximations are intentional and safe. The colon count over-counts
  * an object that repeats a key (the parse keeps one member per name), which
  * only rejects sooner, and no legitimate message repeats keys. On malformed
@@ -61,7 +76,8 @@ export function exceedsJsonStructureBound(
   maxObjectKeys: number,
   maxArrayElements: number,
   maxDepth: number,
-): boolean {
+  maxNodes: number,
+): false | "structure" | "nodes" {
   // One entry per open container. An OBJECT frame holds its running key count,
   // always `>= 0`. An ARRAY frame holds a running tally that starts at the
   // sentinel `-1` (empty) and drops by one per element-separating comma, so it
@@ -79,6 +95,11 @@ export function exceedsJsonStructureBound(
   const length = input.length;
   let inString = false;
   let escaped = false;
+  let nodes = 0;
+  // Set after a `[` until the next non-whitespace character, which starts the
+  // array's first element unless it is `]`. Set at the start so the document's
+  // own value is counted as a first element is.
+  let firstElementPending = true;
   for (let i = 0; i < length; i++) {
     const b = str !== null ? str.charCodeAt(i) : bytes![i];
     if (inString) {
@@ -87,14 +108,21 @@ export function exceedsJsonStructureBound(
       else if (b === QUOTE) inString = false;
       continue;
     }
+    if (firstElementPending) {
+      if (b === SPACE || b === TAB || b === LINE_FEED || b === CARRIAGE_RETURN)
+        continue;
+      firstElementPending = false;
+      if (b !== CLOSE_BRACKET && ++nodes > maxNodes) return "nodes";
+    }
     switch (b) {
       case QUOTE:
         inString = true;
         break;
       case OPEN_BRACE:
       case OPEN_BRACKET:
-        if (counts.length >= maxDepth) return true;
+        if (counts.length >= maxDepth) return "structure";
         counts.push(b === OPEN_BRACE ? 0 : -1);
+        firstElementPending = b === OPEN_BRACKET;
         break;
       case CLOSE_BRACE:
       case CLOSE_BRACKET:
@@ -102,8 +130,10 @@ export function exceedsJsonStructureBound(
         break;
       case COLON: {
         const top = counts.length - 1;
-        if (top >= 0 && counts[top] >= 0 && ++counts[top] > maxObjectKeys)
-          return true;
+        if (top >= 0 && counts[top] >= 0) {
+          if (++counts[top] > maxObjectKeys) return "structure";
+          if (++nodes > maxNodes) return "nodes";
+        }
         break;
       }
       case COMMA: {
@@ -111,12 +141,10 @@ export function exceedsJsonStructureBound(
         // A comma at array top-of-stack separates two elements. The frame's
         // tally is negative, so element count = -counts[top] - 1 after this
         // decrement; reject once that passes the budget.
-        if (
-          top >= 0 &&
-          counts[top] < 0 &&
-          -(--counts[top]) - 1 > maxArrayElements
-        )
-          return true;
+        if (top >= 0 && counts[top] < 0) {
+          if (-(--counts[top]) - 1 > maxArrayElements) return "structure";
+          if (++nodes > maxNodes) return "nodes";
+        }
         break;
       }
     }

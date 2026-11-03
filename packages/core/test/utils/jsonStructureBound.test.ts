@@ -7,19 +7,33 @@ import { exceedsJsonStructureBound } from "../../src/utils/jsonStructureBound";
 // the production budgets. `check` runs both representations the scanner
 // accepts -- UTF-8 bytes and string -- and asserts they agree, so every
 // case below covers both paths.
-function check(
+function verdict(
   json: string,
-  { keys = 1_000, elements = 1_000, depth = 1_000 } = {},
-): boolean {
+  { keys = 1_000, elements = 1_000, depth = 1_000, nodes = 1_000_000 } = {},
+): false | "structure" | "nodes" {
   const fromBytes = exceedsJsonStructureBound(
     new TextEncoder().encode(json),
     keys,
     elements,
     depth,
+    nodes,
   );
-  const fromString = exceedsJsonStructureBound(json, keys, elements, depth);
+  const fromString = exceedsJsonStructureBound(
+    json,
+    keys,
+    elements,
+    depth,
+    nodes,
+  );
   expect(fromString).toBe(fromBytes);
   return fromBytes;
+}
+
+function check(
+  json: string,
+  bounds: Parameters<typeof verdict>[1] = {},
+): boolean {
+  return verdict(json, bounds) !== false;
 }
 
 // --- Per-object key bound -----------------------------------------------------
@@ -157,4 +171,61 @@ test("a malformed body does not throw and returns a boolean", () => {
 test("a top-level non-object value is accepted", () => {
   expect(check("12345")).toBe(false);
   expect(check('"a string with : colons"')).toBe(false);
+});
+
+// --- Whole-document value budget ----------------------------------------------
+
+// The values JSON.parse creates for `json`: the document, every array element
+// and every object member's value.
+function parsedValueCount(json: string): number {
+  const count = (value: unknown): number =>
+    1 +
+    (Array.isArray(value)
+      ? value.reduce((sum: number, element) => sum + count(element), 0)
+      : value !== null && typeof value === "object"
+        ? Object.values(value).reduce(
+            (sum: number, member) => sum + count(member),
+            0,
+          )
+        : 0);
+  return count(JSON.parse(json));
+}
+
+test.each([
+  "0",
+  "[]",
+  "{}",
+  "[[],[],[]]",
+  "[{},{},{}]",
+  '{"a":[1,{"b":null}],"c":"x"}',
+  ' [ 1 ,\n\t[ ] , [ 2 ] ,\r{ "k" : [ ] } ] ',
+  '["[1,2]", "{\\"a\\":[3]}", "\\\\"]',
+])(
+  "the value count of %j is exact: at it accepted, one under refused",
+  (json) => {
+    const values = parsedValueCount(json);
+    expect(verdict(json, { nodes: values })).toBe(false);
+    expect(verdict(json, { nodes: values - 1 })).toBe("nodes");
+  },
+);
+
+test("object keys are not counted as values", () => {
+  expect(verdict('{"a":1,"b":2}', { nodes: 3 })).toBe(false);
+});
+
+test("the value budget spans the document, across containers no single bound refuses", () => {
+  const body = `[${Array.from({ length: 50 }, () => "[[],[]]").join(",")}]`;
+  expect(verdict(body, { elements: 100, nodes: 150 })).toBe("nodes");
+  expect(verdict(body, { elements: 100, nodes: 151 })).toBe(false);
+});
+
+test("the values a malformed body's well-formed prefix holds are counted", () => {
+  expect(verdict("[[],[],[]", { nodes: 3 })).toBe("nodes");
+});
+
+test("a per-container bound is reported apart from the value budget", () => {
+  expect(verdict("[1,2,3]", { elements: 2, nodes: 2 })).toBe("nodes");
+  expect(verdict("[1,2,3]", { elements: 1, nodes: 100 })).toBe("structure");
+  expect(verdict('{"a":1,"b":2}', { keys: 1 })).toBe("structure");
+  expect(verdict("[[1]]", { depth: 1 })).toBe("structure");
 });

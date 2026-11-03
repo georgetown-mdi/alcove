@@ -110,7 +110,7 @@ With decode and config load both bounding their own side, that safety check is n
 The bound fires far below the overflow and far above any real config (the deepest schema path is under a dozen levels, and `params` legitimately holds shallow scalars).
 
 A further bound sits *upstream* of the entire Zod/`camelizeKeys` family above, at the JSON-decode layer, and is enforced as a single chokepoint.
-Every parse of untrusted JSON in the core routes through `parseBoundedJson` (`packages/core/src/utils/boundedJson.ts`), which checks the body's structure against a per-object key ceiling, a per-array element ceiling, and a nesting-depth ceiling (`MAX_JSON_OBJECT_KEYS` = 65536, `MAX_JSON_ARRAY_ELEMENTS` = 16777216, `MAX_JSON_NESTING_DEPTH` = 4096) *before* handing it to `JSON.parse`.
+Every parse of untrusted JSON in the core routes through `parseBoundedJson` (`packages/core/src/utils/boundedJson.ts`), which checks the body's structure against a per-object key ceiling, a per-array element ceiling, and a nesting-depth ceiling (`MAX_JSON_OBJECT_KEYS` = 65536, `MAX_JSON_ARRAY_ELEMENTS` = 16777216, `MAX_JSON_NESTING_DEPTH` = 4096), and the body's value count against the memory available (the whole-document value budget, below), *before* handing it to `JSON.parse`.
 A lint rule forbids a raw `JSON.parse` elsewhere in the package, so a new parse site cannot silently reopen the hole.
 Unlike the rest of the family this is not a CPU-burn or `RangeError` guard.
 A single object made wide enough, or a single array made long enough, drives `JSON.parse` into a process-terminating internal limit of the JSON engine - a per-object property ceiling, or the array backing-store length limit - that is *not* a thrown exception, so a `try`/`catch` around the parse cannot intercept it (the engine's per-object and array-length limits are V8 behavior that was unverified as of 2026-09-29, and the ceilings named here are chosen to sit well inside them).
@@ -120,17 +120,31 @@ It counts each object's members (by colon) and each array's elements (by separat
 On the byte path an over-budget body is refused without even allocating the decoded string.
 
 This chokepoint covers both threat-model adversaries, not only the counterparty.
-The post-handshake `TYPE_JSON` frame is decoded through it after AEAD decryption (the *counterparty*'s reach); but the file-sync transport's own reads - the peer-hello control file and every message body - are JSON-parsed off the raw inbound file *before* decryption, so they are shaped by the hostile *server admin*, and the invitation token is parsed from attacker-influenced bytes a victim opens.
+The post-handshake `TYPE_JSON` frame is decoded through it after AEAD decryption (the *counterparty*'s reach); but the file-sync transport's own reads - the peer-hello control file and every message body before the encryption layer takes over the connection - are JSON-parsed off the raw inbound file *before* decryption, so they are shaped by the hostile *server admin*, and the invitation token is parsed from attacker-influenced bytes a victim opens.
+Once the encryption layer takes over, the transport parses no message body: it refuses a JSON message unread ([FILE_SYNC.md, File taxonomy](FILE_SYNC.md#file-taxonomy), "JSON messages on an encrypted channel").
 All route through the same chokepoint, so a wide-object or long-array body from any source is refused rather than crashing the process.
 Each caller maps the refusal to its own terminal error - a `ConnectionError("security")` on the wire, a `UsageError` on a transport file, a rejected invitation - with no attacker bytes.
 
-The unit is per *container*, not per byte or per total count, because that is what fits the data *at this layer*: a decoded-byte or total-count budget here would have to sit below the largest legitimate message and so would reject it, yet no single legitimate container is pathological.
+The ceilings' unit is per *container*, not per byte or per total count, because that is what fits the data *at this layer*: a fixed decoded-byte or total-count budget here would have to sit below the largest legitimate message and so would reject it, yet no single legitimate container is pathological.
 (The `camelizeKeys` total-node budget above *can* be a running total precisely because it sees only the small parsed-config family - linkage terms and the like - never these large set frames, which are parsed by other schemas the pre-pass does not touch.)
 The widest legitimate object is the `transform.params` record at `MAX_PARAMS_ENTRIES` = 256; the longest legitimate array is an association-index, payload-row, or mapped-pair list, one entry per matched record; a list that can pass this cap is sent in parts, each a message of its own held to it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
 So `MAX_JSON_OBJECT_KEYS` sits far above any real object and far below the per-object engine limit, and `MAX_JSON_ARRAY_ELEMENTS` sits above any real array and well below the array-length limit - each fires only on a pathological container and never pre-empts a schema-layer rejection or a legitimate large message.
 The depth ceiling sits far above any real nesting (the parsed-config ceiling is `camelizeKeys`' `MAX_NESTING_DEPTH` = 256) and exists chiefly to bound the scan's own per-container stack against a degenerate all-`{`/`[` body, which would otherwise exhaust memory in the pre-pass.
 This bound composes with rather than overlaps the post-parse `camelizeKeys` bounds.
 It caps any single container's width before the walker ever sees it, while the walker's own `MAX_NODE_COUNT` budget (above) caps the total it then rewrites - a width the per-container ceiling does not bound (a body within every per-container limit can still hold far more nodes in aggregate than the walker should rewrite).
+
+**The whole-document value budget.**
+Beside the per-container ceilings, `parseBoundedJson` bounds the whole body by memory rather than by a fixed figure.
+The scan counts every value the parse would create - the document itself, each array element, and each object member's value, keys not counted - and the body is refused when that count times `JSON_RETAINED_BYTES_PER_NODE` = 40 bytes, the heap charged to each value, exceeds the memory available as it is parsed.
+The count is exact on well-formed JSON, and on malformed JSON over the well-formed prefix a parse builds before it fails.
+The memory available is read at each parse (`availableMemoryBytes`, `packages/core/src/utils/availableMemory.ts`):
+- on Node, the least of the V8 heap's headroom (`heap_size_limit` less `used_heap_size`) and, under a container memory limit below the host's memory (`process.constrainedMemory()`), that limit less the resident set;
+- in a Chromium tab, the JavaScript heap's headroom (`performance.memory`);
+- where the runtime reports neither, `UNREPORTED_AVAILABLE_MEMORY_BYTES` = 2^32 bytes.
+
+Garbage not yet collected counts as used, so where the runtime exposes a collector (the command-line application runs Node with `--expose-gc`) a body over this budget alone is scanned once more after a full collection before it is refused.
+A refusal is the same `JsonStructureBoundError` the per-container ceilings raise, and each caller maps it as above.
+Because the budget follows the memory available rather than a fixed count, it is not set below the largest legitimate message: a message is refused only when its values, at that charge, exceed the memory the process has left.
 
 The severity is defense-in-depth, not a live vulnerability: the counterparty is authenticated and can already abort the exchange trivially, and most of these sites already report a clean refusal rather than an ungraceful throw - a `receiveParsed` / `parseOrProtocolError` wrap reports a `ConnectionError("protocol")` from whatever `schema.parse` throws, and the linkage-terms parse-error catch aborts the same way.
 The stack-overflow `RangeError` is what `parse` throws, so the wrap catches it directly; the string-length `RangeError` is not, since the `ZodError` message builds lazily - the wrap sees only the unread `ZodError`, and that `RangeError`, if the issue list is that large, fires only where the cause's message is first read.

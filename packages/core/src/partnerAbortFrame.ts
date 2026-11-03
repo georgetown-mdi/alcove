@@ -136,6 +136,7 @@ const FORWARDED_CONNECTION_MEMBERS = {
   inboundPsiSetElementCeiling: true,
   outboundFrameOverheadBytes: true,
   useEnvelopeVersion: true,
+  requireBinaryFrames: true,
   markLastSentUnread: true,
 } as const satisfies Record<keyof MessageConnection, true>;
 
