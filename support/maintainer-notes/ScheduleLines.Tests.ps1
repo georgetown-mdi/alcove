@@ -314,6 +314,7 @@ Describe 'A pasted folder escaped as the hand-off''s note says' {
         $intended = @($Arguments | ForEach-Object { $_.Replace($script:Placeholder, $folder) })
 
         Remove-TestTask
+        Set-Culture -CultureInfo 'en-US'
         try {
             $run = Invoke-PastedLine -Shell $Shell -Line $Line.Replace($script:Placeholder, $escaped)
             $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
@@ -332,6 +333,7 @@ Describe 'A pasted folder escaped as the hand-off''s note says' {
         } finally {
             Stop-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
             Remove-TestTask
+            Set-Culture -CultureInfo $script:CultureBefore
         }
     }
 }
