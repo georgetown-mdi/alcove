@@ -18,6 +18,7 @@ import {
   Party,
   RELAY_KEY,
   connect,
+  connectInMemory,
   eventually,
   forwardingParties,
   helloFrame,
@@ -59,6 +60,31 @@ function sendInFragments(party: Party, message: Buffer): void {
 // A byte rate no loopback test reaches, for a test moving more than one
 // burst whose subject is not the rate.
 const UNLIMITED_RATE = Number.MAX_SAFE_INTEGER;
+
+/**
+ * Two parties with forwarding open, the acceptor opened in memory and paused,
+ * so the relay's send buffer toward it fills past the bound at once rather
+ * than after the loopback kernel buffers have taken megabytes.
+ */
+async function toStalledAcceptor(
+  server: RunningRelay["server"],
+  url: string,
+): Promise<{ inviter: Party; acceptor: Party }> {
+  const inviter = await connect(url);
+  const { party: acceptor } = await connectInMemory(server, url, {
+    recordServerWrites: false,
+  });
+  inviter.send(await helloFrame({ role: "inviter" }));
+  acceptor.send(await helloFrame({ role: "acceptor" }));
+  await inviter.receivedCount(1);
+  await acceptor.receivedCount(1);
+  inviter.send(START);
+  acceptor.send(START);
+  await inviter.receivedCount(2);
+  await acceptor.receivedCount(2);
+  acceptor.socket.pause();
+  return { inviter, acceptor };
+}
 
 describe("pairing", () => {
   it("pairs an inviter and an acceptor and forwards binary both ways once both start", async () => {
@@ -546,7 +572,7 @@ describe("sockets awaiting a hello", () => {
 describe("backpressure", () => {
   it("stops reading the source above the send-buffer bound and resumes below the lower one", async () => {
     const events: string[] = [];
-    const { url } = await relay({
+    const { url, server } = await relay({
       testing: {
         sendBufferHighBytes: 64 * 1024,
         sendBufferLowBytes: 16 * 1024,
@@ -557,10 +583,9 @@ describe("backpressure", () => {
         },
       },
     });
-    const { inviter, acceptor } = await forwardingParties(url);
-    acceptor.socket.pause();
-    const messages = Array.from({ length: 1024 }, (_, index) =>
-      Buffer.alloc(16_000, index % 251),
+    const { inviter, acceptor } = await toStalledAcceptor(server, url);
+    const messages = Array.from({ length: 64 }, (_, index) =>
+      Buffer.alloc(16_000, index),
     );
     for (const message of messages) inviter.send(message);
     await eventually(() => events.includes("held inviter backpressure"));
@@ -615,17 +640,16 @@ describe("close", () => {
   });
 
   it("forwards a close behind messages a slow reader has not yet read", async () => {
-    const { url } = await relay({
+    const { url, server } = await relay({
       testing: {
         sendBufferHighBytes: 64 * 1024,
         sendBufferLowBytes: 16 * 1024,
         bytesPerSecond: UNLIMITED_RATE,
       },
     });
-    const { inviter, acceptor } = await forwardingParties(url);
-    acceptor.socket.pause();
-    const messages = Array.from({ length: 512 }, (_, index) =>
-      Buffer.alloc(16_000, index % 251),
+    const { inviter, acceptor } = await toStalledAcceptor(server, url);
+    const messages = Array.from({ length: 64 }, (_, index) =>
+      Buffer.alloc(16_000, index),
     );
     for (const message of messages) inviter.send(message);
     inviter.socket.close(1000);

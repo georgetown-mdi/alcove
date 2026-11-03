@@ -10,6 +10,7 @@ import { queuedBytes } from "@alcove/websocket-relay/forwarding";
 
 import {
   SFTP_RELAY_BROWSER_BOUND_BYTES,
+  SFTP_RELAY_BROWSER_QUEUE_CEILING_BYTES,
   SFTP_RELAY_PATH,
 } from "../src/protocol.ts";
 import { attachSftpRelay } from "../src/relay.ts";
@@ -24,6 +25,14 @@ import type { AddressInfo, Socket } from "node:net";
 
 const ORIGIN = "https://app.example.org";
 const gc = (globalThis as { gc?: () => void }).gc;
+
+// Twice the most the relay reads before it holds the target and the paused
+// target's read-ahead is full: the queue's ceiling, and the 64 KiB mark and
+// the one 64 KiB read that crossed it. Past that the flood only fills
+// loopback kernel buffers, a one-byte write each, whose size would set the
+// test's run time.
+const FLOOD_BYTES =
+  2 * (SFTP_RELAY_BROWSER_QUEUE_CEILING_BYTES + 2 * 64 * 1024);
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -54,8 +63,9 @@ async function retainedTowardStalledBrowser(): Promise<number> {
   const target = createTcpServer((socket) => {
     socket.setNoDelay(true);
     const one = Buffer.from([0x61]);
+    let written = 0;
     const pump = (): void => {
-      while (socket.write(one));
+      while (written < FLOOD_BYTES && socket.write(one)) written += 1;
     };
     socket.on("drain", pump);
     targetSockets.push(socket);
