@@ -5,8 +5,8 @@
 // word list reads as JSON would: an index list or run lengths as an array of
 // numbers, owner lists as an array of arrays, an omitted grouping as `null`, a
 // mapped-element list as `{theirIndex, iteration}` entries whose one position
-// is a bare number, the returned list as `{theirIndex, iteration}` entries,
-// and the single-pass resolved table as its two halves. The words are written
+// is a bare number, the returned list as `{theirIndex}` entries, and the
+// single-pass resolved table as its two halves. The words are written
 // here with DataView rather than by the module under test, and a value a word
 // cannot hold is written as `setUint32` truncates it.
 
@@ -93,7 +93,6 @@ export function wordListBody(
   } else if (layout === RETURNED_ELEMENT_LAYOUT) {
     for (const entry of entries)
       listWords.push(asEntry(entry).theirIndex as number);
-    for (const entry of entries) listWords.push(asEntry(entry).iteration);
   } else if (layout === OWNER_LISTS_LAYOUT) {
     for (const entry of entries)
       listWords.push((entry as Array<number>).length);
@@ -206,16 +205,11 @@ function readWordListBody(
   }
   if (layout === RESOLVED_TABLE_LAYOUT)
     return { value: [column(0), column(1)], layout };
-  if (layout === RETURNED_ELEMENT_LAYOUT) {
-    const rounds = column(1);
+  if (layout === RETURNED_ELEMENT_LAYOUT)
     return {
-      value: column(0).map((theirIndex, i) => ({
-        theirIndex,
-        iteration: rounds[i],
-      })),
+      value: column(0).map((theirIndex) => ({ theirIndex })),
       layout,
     };
-  }
   return { value: column(0), layout };
 }
 

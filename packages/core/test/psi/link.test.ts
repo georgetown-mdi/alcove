@@ -733,8 +733,8 @@ test("each mapped-element list round-trips, a list of positions and an empty lis
   const back = await receiveWordList(b, "", "list", bound, [
     RETURNED_ELEMENT_LAYOUT,
   ]);
+  expect(back.columns).toHaveLength(1);
   expect([...back.columns[0]]).toEqual([7, 2]);
-  expect([...back.columns[1]]).toEqual([0, 1]);
 });
 
 test("one mapped-element list is not read as the other", async () => {

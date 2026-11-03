@@ -153,15 +153,6 @@ export function utf8Length(text: string): number {
   return bytes;
 }
 
-/** A plain JSON array as a {@link MatchedListSource}, one entry per element. */
-export function arraySource(list: ReadonlyArray<unknown>): MatchedListSource {
-  return {
-    entries: list.length,
-    entryBytes: (index) => utf8Length(JSON.stringify(list[index])) + 1,
-    body: (start, end) => list.slice(start, end),
-  };
-}
-
 function isWordListSource(
   source: MatchedListSource | WordListSource,
 ): source is WordListSource {
@@ -453,50 +444,4 @@ export async function receiveMatchedListParts<T>(
     }
     return parsePart(value);
   });
-}
-
-/**
- * `parsePart` as the part parse {@link receiveMatchedListParts} takes, for a
- * list whose parts are plain JSON arrays.
- */
-export function arrayPart<T>(
-  parsePart: (value: unknown) => Array<T>,
-): (value: unknown) => { readonly part: Array<T>; readonly entries: number } {
-  return (value) => {
-    const part = parsePart(value);
-    return { part, entries: part.length };
-  };
-}
-
-/**
- * Receives a list sent as a plain JSON array by {@link sendMatchedList} over
- * {@link arraySource}: {@link receiveMatchedListParts}, each part validated by
- * `parsePart`, the parts joined in order.
- */
-export async function receiveMatchedArray<T>(
-  conn: MessageConnection,
-  participantId: string,
-  what: string,
-  bound: MatchedListBound,
-  parsePart: (value: unknown) => Array<T>,
-): Promise<Array<T>> {
-  return joinMatchedArrayParts(
-    await receiveMatchedListParts(
-      conn,
-      participantId,
-      what,
-      bound,
-      arrayPart(parsePart),
-    ),
-  );
-}
-
-/** Joins a plain JSON array's parsed parts, in order. */
-export function joinMatchedArrayParts<T>(
-  parts: ReadonlyArray<Array<T>>,
-): Array<T> {
-  if (parts.length === 1) return parts[0];
-  const joined: Array<T> = [];
-  for (const part of parts) for (const entry of part) joined.push(entry);
-  return joined;
 }

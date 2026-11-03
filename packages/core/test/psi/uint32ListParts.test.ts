@@ -96,7 +96,7 @@ describe("the body's words", () => {
       }),
     ).toStrictEqual([5, 3, 1, 0, 2, 2, 1, 0, 3, 4, 5]);
     expect(
-      sentWords(RETURNED_ELEMENT_LAYOUT, {
+      sentWords(RESOLVED_TABLE_LAYOUT, {
         entries: 2,
         column: (column, index) =>
           [
@@ -104,7 +104,7 @@ describe("the body's words", () => {
             [0, 1],
           ][column][index],
       }),
-    ).toStrictEqual([6, 2, 7, 8, 0, 1]);
+    ).toStrictEqual([7, 2, 7, 8, 0, 1]);
     expect(
       sentWords(OMITTED_GROUPING_LAYOUT, { entries: 0, column: () => 0 }),
     ).toStrictEqual([2, 0]);
@@ -127,7 +127,8 @@ describe("the body's words", () => {
 
   test("an entry's bytes are its columns' words and, for a ragged layout, its count and values", () => {
     expect(wordListEntryBytes(INDEX_LIST_LAYOUT)).toBe(4);
-    expect(wordListEntryBytes(RETURNED_ELEMENT_LAYOUT)).toBe(8);
+    expect(wordListEntryBytes(RETURNED_ELEMENT_LAYOUT)).toBe(4);
+    expect(wordListEntryBytes(RESOLVED_TABLE_LAYOUT)).toBe(8);
     expect(wordListEntryBytes(OWNER_LISTS_LAYOUT, 3)).toBe(16);
     expect(wordListEntryBytes(MAPPED_ELEMENT_LAYOUT, 1)).toBe(12);
   });

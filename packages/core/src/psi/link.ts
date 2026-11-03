@@ -138,18 +138,17 @@ export function mappedElementSource(
 }
 
 // The second pass's entry, one per accepted pair: one row of the answering
-// party, then the round. The positions of the first pass are resolved to rows
-// there, so this half of the exchange never holds a list
-// (docs/spec/PROTOCOL.md, Deriving one table from the exchanged association
-// maps).
+// party. The positions of the first pass are resolved to rows there, and the
+// receiver takes each pair's round from its own list, so the entry is the row
+// alone (docs/spec/PROTOCOL.md, Deriving one table from the exchanged
+// association maps).
 /** @internal exported for the mapped-element wire-message tests. */
 export function returnedElementSource(
   list: ReadonlyArray<IndexIterationPair>,
 ): WordListSource {
   return wordListSource(RETURNED_ELEMENT_LAYOUT, {
     entries: list.length,
-    column: (column, index) =>
-      column === 0 ? list[index].theirIndex : list[index].iteration,
+    column: (_column, index) => list[index].theirIndex,
   });
 }
 

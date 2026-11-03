@@ -61,10 +61,10 @@ export const MAPPED_ELEMENT_LAYOUT: WordListLayout = {
   ragged: true,
 };
 
-/** The returned mapped-element list: a row, then a round, per entry. */
+/** The returned mapped-element list: one row per entry. */
 export const RETURNED_ELEMENT_LAYOUT: WordListLayout = {
   tag: 6,
-  columns: 2,
+  columns: 1,
   ragged: false,
 };
 

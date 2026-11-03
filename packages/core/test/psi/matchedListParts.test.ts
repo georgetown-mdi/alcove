@@ -7,17 +7,15 @@ import {
 import { MESSAGE_HEADER_BYTES } from "../../src/connection/fileSyncFraming";
 import { PeerAbortError, ConnectionError } from "../../src/errors";
 import {
-  arrayPart,
-  arraySource,
-  joinMatchedArrayParts,
   MATCHED_LIST_PART_HEADER_BYTES,
   matchedListPartByteBound,
   matchedListParts,
   receiveListParts,
-  receiveMatchedArray,
   receiveMatchedListParts,
   sendMatchedList,
   utf8Length,
+  type MatchedListBound,
+  type MatchedListSource,
 } from "../../src/psi/matchedListParts";
 import {
   INDEX_LIST_LAYOUT,
@@ -45,6 +43,40 @@ const asArray = (value: unknown): Array<unknown> => {
   if (!Array.isArray(value)) throw new Error("not an array");
   return value;
 };
+
+// A JSON array sent in parts the way the payload rows are: the JSON part path
+// the payload takes, driven with a plain array so a test reads its entries
+// directly.
+function arraySource(list: ReadonlyArray<unknown>): MatchedListSource {
+  return {
+    entries: list.length,
+    entryBytes: (index) => utf8Length(JSON.stringify(list[index])) + 1,
+    body: (start, end) => list.slice(start, end),
+  };
+}
+
+const arrayPart =
+  (parsePart: (value: unknown) => Array<unknown>) => (value: unknown) => {
+    const part = parsePart(value);
+    return { part, entries: part.length };
+  };
+
+async function receiveMatchedArray(
+  conn: MessageConnection,
+  participantId: string,
+  what: string,
+  bound: MatchedListBound,
+  parsePart: (value: unknown) => Array<unknown>,
+): Promise<Array<unknown>> {
+  const parts = await receiveMatchedListParts(
+    conn,
+    participantId,
+    what,
+    bound,
+    arrayPart(parsePart),
+  );
+  return parts.flat();
+}
 
 // A pipe whose sending end states a file-sync message-file bound leaving
 // `bodyBytes` bytes for each part's body.
@@ -154,7 +186,7 @@ describe("sending", () => {
     );
     await sending;
     expect(received.length).toBeGreaterThan(1);
-    expect(joinMatchedArrayParts(received)).toEqual(entries);
+    expect(received.flat()).toEqual(entries);
   });
 });
 

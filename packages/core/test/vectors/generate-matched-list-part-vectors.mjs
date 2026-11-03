@@ -1,5 +1,6 @@
 // Regenerates matched-list-part-vectors.json: the wire layout of the parts a
-// cascade sends a mapped-element list in. From the repo root:
+// matched-record list is sent in, for a mapped-element list and for each
+// other word-list layout. From the repo root:
 //
 //   node packages/core/test/vectors/generate-matched-list-part-vectors.mjs > \
 //     packages/core/test/vectors/matched-list-part-vectors.json
@@ -9,7 +10,8 @@
 // count, each a big-endian uint32, then the list's entry count, a big-endian
 // uint64 -- followed by a body of little-endian uint32 words: the layout tag
 // (5 for a mapped-element list), the part's entry count n, each entry's round,
-// each entry's position count, then every entry's positions in turn
+// each entry's position count, then every entry's positions in turn; the
+// other layouts follow the same rule with their own columns
 // (docs/spec/PROTOCOL.md, "The part body"). The parts are written here with
 // Buffer rather than by the module under test, and
 // packages/core/test/psi/matchedListPartVectors.test.ts replays the file
@@ -88,6 +90,117 @@ const lists = [
     entries,
     partPayloadBytes: payloadBytes,
     partsHex: parts(entries, payloadBytes).map((part) => part.toString("hex")),
+  };
+});
+
+// Every other layout, each list given as its fixed columns (one array of n
+// values per column) and, for a layout with a list per entry, each entry's
+// values. Cut as above, an entry taking 4 bytes per column word and, with a
+// list per entry, 4 for its count and 4 per value.
+const LAYOUTS = {
+  1: { columns: 1, ragged: false },
+  2: { columns: 0, ragged: false },
+  3: { columns: 1, ragged: false },
+  4: { columns: 0, ragged: true },
+  6: { columns: 1, ragged: false },
+  7: { columns: 2, ragged: false },
+};
+
+function layoutParts(tag, columns, lists, entries, payloadBytes) {
+  const { ragged } = LAYOUTS[tag];
+  const entryBytesOf = (index) =>
+    4 * columns.length + (ragged ? 4 + 4 * lists[index].length : 0);
+  const room = payloadBytes - BODY_PREFIX_BYTES;
+  const starts = [0];
+  let used = 0;
+  for (let index = 0; index < entries; index++) {
+    const bytes = entryBytesOf(index);
+    if (used > 0 && used + bytes > room) {
+      starts.push(index);
+      used = 0;
+    }
+    used += bytes;
+  }
+  return starts.map((start, index) => {
+    const end = index + 1 < starts.length ? starts[index + 1] : entries;
+    const words = [
+      tag,
+      end - start,
+      ...columns.flatMap((column) => column.slice(start, end)),
+    ];
+    if (ragged) {
+      const slice = lists.slice(start, end);
+      words.push(...slice.map((values) => values.length), ...slice.flat());
+    }
+    const header = Buffer.alloc(HEADER_BYTES);
+    header.writeUInt32BE(index, 0);
+    header.writeUInt32BE(starts.length, 4);
+    header.writeBigUInt64BE(BigInt(entries), 8);
+    const body = Buffer.alloc(4 * words.length);
+    words.forEach((word, k) => body.writeUInt32LE(word, 4 * k));
+    return Buffer.concat([header, body]);
+  });
+}
+
+const layouts = [
+  {
+    name: "a round's index list in two parts",
+    tag: 1,
+    columns: [[3, 0, 9, 4, 1]],
+    partPayloadBytes: 20,
+  },
+  {
+    name: "an omitted grouping is one part of no entries",
+    tag: 2,
+    columns: [],
+    entries: 0,
+    partPayloadBytes: 64,
+  },
+  {
+    name: "a grouping's run lengths",
+    tag: 3,
+    columns: [[1, 2, 1, 3]],
+    partPayloadBytes: 64,
+  },
+  {
+    name: "a grouping's owner lists in three parts",
+    tag: 4,
+    columns: [],
+    lists: [[0], [0, 1], [2]],
+    partPayloadBytes: 24,
+  },
+  {
+    name: "the returned list, one row per entry",
+    tag: 6,
+    columns: [[7, 2, 5]],
+    partPayloadBytes: 64,
+  },
+  {
+    name: "single-pass message 3 in two parts, sender rows then receiver rows",
+    tag: 7,
+    columns: [
+      [0, 2, 5],
+      [1, 1, 3],
+    ],
+    partPayloadBytes: 24,
+  },
+].map((vector) => {
+  const lists = vector.lists ?? [];
+  const entries = vector.entries ?? vector.columns[0]?.length ?? lists.length;
+  return {
+    name: vector.name,
+    tag: vector.tag,
+    entries,
+    columns: vector.columns,
+    lists,
+    partPayloadBytes: vector.partPayloadBytes,
+    partsHex: layoutParts(
+      vector.tag,
+      vector.columns,
+      lists,
+      entries,
+      vector.partPayloadBytes,
+    ).map((part) => part.toString("hex")),
   };
 });
 
@@ -183,6 +296,9 @@ const vectors = {
     "a big-endian uint64 -- followed by a body of little-endian uint32 " +
     "words: the layout tag 5, the part's entry count n, n rounds, n position " +
     "counts, then the positions, the body at most partPayloadBytes long. " +
+    "`layouts` covers every other layout by its tag: the fixed columns, each " +
+    "n words in turn, then for a layout with a list per entry n count words " +
+    "and the values. " +
     "`refusals` are part sequences a receiver refuses, from their headers " +
     "or from a body whose words are not the ones its counts state, before " +
     "the body is read into arrays, with the refusal's whole fixed tail, " +
@@ -191,6 +307,7 @@ const vectors = {
     "generate-matched-list-part-vectors.mjs in this directory.",
   headerBytes: HEADER_BYTES,
   lists,
+  layouts,
   refusals,
 };
 

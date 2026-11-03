@@ -1,5 +1,5 @@
 {
-  "description": "Known-answer vectors for the parts a cascade sends a mapped-element list in. Each part is a 16-byte header -- the part's index and the list's part count as big-endian uint32, then the list's entry count as a big-endian uint64 -- followed by a body of little-endian uint32 words: the layout tag 5, the part's entry count n, n rounds, n position counts, then the positions, the body at most partPayloadBytes long. `refusals` are part sequences a receiver refuses, from their headers or from a body whose words are not the ones its counts state, before the body is read into arrays, with the refusal's whole fixed tail, which holds no body bytes. Replayed by packages/core/test/psi/matchedListPartVectors.test.ts; regenerate with generate-matched-list-part-vectors.mjs in this directory.",
+  "description": "Known-answer vectors for the parts a cascade sends a mapped-element list in. Each part is a 16-byte header -- the part's index and the list's part count as big-endian uint32, then the list's entry count as a big-endian uint64 -- followed by a body of little-endian uint32 words: the layout tag 5, the part's entry count n, n rounds, n position counts, then the positions, the body at most partPayloadBytes long. `layouts` covers every other layout by its tag: the fixed columns, each n words in turn, then for a layout with a list per entry n count words and the values. `refusals` are part sequences a receiver refuses, from their headers or from a body whose words are not the ones its counts state, before the body is read into arrays, with the refusal's whole fixed tail, which holds no body bytes. Replayed by packages/core/test/psi/matchedListPartVectors.test.ts; regenerate with generate-matched-list-part-vectors.mjs in this directory.",
   "headerBytes": 16,
   "lists": [
     {
@@ -63,6 +63,79 @@
         "00000001000000040000000000000007050000000200000000000000010000000200000001000000020000000300000021000000",
         "000000020000000400000000000000070500000002000000000000000100000001000000020000002c0000000500000006000000",
         "000000030000000400000000000000070500000001000000000000000100000042000000"
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "name": "a round's index list in two parts",
+      "tag": 1,
+      "entries": 5,
+      "columns": [[3, 0, 9, 4, 1]],
+      "lists": [],
+      "partPayloadBytes": 20,
+      "partsHex": [
+        "000000000000000200000000000000050100000003000000030000000000000009000000",
+        "0000000100000002000000000000000501000000020000000400000001000000"
+      ]
+    },
+    {
+      "name": "an omitted grouping is one part of no entries",
+      "tag": 2,
+      "entries": 0,
+      "columns": [],
+      "lists": [],
+      "partPayloadBytes": 64,
+      "partsHex": ["000000000000000100000000000000000200000000000000"]
+    },
+    {
+      "name": "a grouping's run lengths",
+      "tag": 3,
+      "entries": 4,
+      "columns": [[1, 2, 1, 3]],
+      "lists": [],
+      "partPayloadBytes": 64,
+      "partsHex": [
+        "00000000000000010000000000000004030000000400000001000000020000000100000003000000"
+      ]
+    },
+    {
+      "name": "a grouping's owner lists in three parts",
+      "tag": 4,
+      "entries": 3,
+      "columns": [],
+      "lists": [[0], [0, 1], [2]],
+      "partPayloadBytes": 24,
+      "partsHex": [
+        "0000000000000003000000000000000304000000010000000100000000000000",
+        "000000010000000300000000000000030400000001000000020000000000000001000000",
+        "0000000200000003000000000000000304000000010000000100000002000000"
+      ]
+    },
+    {
+      "name": "the returned list, one row per entry",
+      "tag": 6,
+      "entries": 3,
+      "columns": [[7, 2, 5]],
+      "lists": [],
+      "partPayloadBytes": 64,
+      "partsHex": [
+        "000000000000000100000000000000030600000003000000070000000200000005000000"
+      ]
+    },
+    {
+      "name": "single-pass message 3 in two parts, sender rows then receiver rows",
+      "tag": 7,
+      "entries": 3,
+      "columns": [
+        [0, 2, 5],
+        [1, 1, 3]
+      ],
+      "lists": [],
+      "partPayloadBytes": 24,
+      "partsHex": [
+        "00000000000000020000000000000003070000000200000000000000020000000100000001000000",
+        "0000000100000002000000000000000307000000010000000500000003000000"
       ]
     }
   ],
