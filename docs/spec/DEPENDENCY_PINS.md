@@ -47,13 +47,16 @@ so the lockfile fixes the version installed; an exact version in a manifest
 would change nothing that is installed.
 
 What protects their internals is how an upgrade arrives. Alcove's code uses
-those internals, so each upgrade comes in a Dependabot pull request of its
-stack's reviewed group, held out of the routine `non-critical` batch, and is
-checked against its checklist below before it merges -- never an
-`npm audit fix` that slips in unreviewed. The CLI
-suites (`.github/workflows/cli_build_and_test.yaml`) run on every pull request
-that changes `package-lock.json`, as each upgrade does, driving the real `ssh2`
-stack against a real SFTP server and two real werift peers.
+those internals, so each upgrade normally comes in a Dependabot pull request
+of its stack's reviewed group, held out of the routine `non-critical` batch,
+and is checked against its checklist below before it merges. Any upgrade
+changes `package-lock.json` in a pull request, and the CLI suites
+(`.github/workflows/cli_build_and_test.yaml`) run on every pull request,
+driving the real `ssh2` stack against a real SFTP server and two real werift
+peers. No check confirms that a pull request moving one of these packages in
+the lockfile is its stack's Dependabot pull request: an `npm update` or
+`npm audit fix` elsewhere moves it within its range, and review and those
+suites are what stand in its way.
 
 An upgrade that breaks an assumption and cannot be fixed in the same pull
 request is held back with a range cap (`>=1.17.0 <1.18.0`) or a Dependabot
