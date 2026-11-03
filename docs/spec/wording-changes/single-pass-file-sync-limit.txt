@@ -20,7 +20,7 @@
 - - -> **The limits over file-sync.**
 - - -> `sftp` and `filedrop` have no value-slot budget: neither `linkViaSinglePassPSI` nor `prepareForExchange` applies `MAX_SINGLE_PASS_CELLS` there.
 - - -> A connection says it is file-sync by stating `outboundFileSyncFrameBound`.
-- - -> Both parties need a build with this rule: a party holding the budget refuses the exchange the other admits.
+- - -> Both parties need a build with this rule: a party holding the budget refuses the exchange the other admits, and on a quick exchange it refuses without telling its partner, which then waits out its whole inactivity timeout, one hour by default.
 - - -> What limits a run is:
 - - -> **One message file.**
 - - -> The request and the reply are each one frame, held to `MAX_FRAME_SIZE_BYTES` (536,870,888 bytes) as the file they are written in, unchanged by the derived cap, which only tightens it.
