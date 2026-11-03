@@ -100,7 +100,7 @@ export async function getManagedLocalState(
     "readonly",
     (store) => store.get(id) as IDBRequest<unknown>,
   );
-  return parseManagedLocalState(raw);
+  return parseManagedLocalState(raw, id);
 }
 
 /**
@@ -211,7 +211,7 @@ async function readModifyWriteLocalState(
       let failure: unknown;
       read.onsuccess = () => {
         try {
-          const next = transform(parseManagedLocalState(read.result));
+          const next = transform(parseManagedLocalState(read.result, id));
           if (next === null) store.delete(id);
           else store.put(storableManagedLocalState(next), id);
         } catch (error) {

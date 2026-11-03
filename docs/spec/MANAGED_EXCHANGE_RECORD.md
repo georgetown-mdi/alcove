@@ -2183,10 +2183,11 @@ and a version this build does not read is discarded rather than refused.
   state among them, is still refused as above.
 - **Any other `version`.** The entry is discarded. Every read treats it as
   absent -- no backup marker, no import marker, no terms proposal -- and a
-  warning in the browser's developer console names the cause: a newer version
-  of the app saved it, or this version does not read its format version. It is never shown as unreadable,
-  its record loads and runs, and the next write to it replaces it at
-  version 1. A rotation deletes it as it deletes any entry.
+  warning in the browser's developer console names the exchange and the cause:
+  a newer version of the app saved it, or this version of the app does not read
+  its format version. It is never shown as unreadable, its record loads and
+  runs, and the next write to it replaces it at version 1. A rotation deletes it
+  as it deletes any entry.
 
 Absent is a state each member already has. No backup marker reads "backup
 needed"; no import marker tiers a handshake failure as unexplained rather than

@@ -208,7 +208,9 @@ function discardedEntryCause(raw: unknown): string | undefined {
 /**
  * Parse and validate a value read from the sibling store as a
  * {@link ManagedLocalState}, or `undefined` where nothing is stored or the
- * entry is discarded for its version, whose cause is logged as a warning.
+ * entry is discarded for its version, whose cause is logged as a warning
+ * naming the entry's `key`, the record id it is stored under, where the caller
+ * has it.
  * Throws on an unknown key or a malformed instant rather than silently
  * accepting -- the reader-rejects-unknown rule -- except inside the terms
  * proposal, which is dropped instead ({@link managedLocalStateSchema}).
@@ -217,12 +219,15 @@ function discardedEntryCause(raw: unknown): string | undefined {
  */
 export function parseManagedLocalState(
   raw: unknown,
+  key?: IDBValidKey,
 ): ManagedLocalState | undefined {
   if (raw === undefined) return undefined;
   const cause = discardedEntryCause(raw);
   if (cause === undefined) return managedLocalStateSchema.parse(raw);
+  const exchange =
+    key === undefined ? "a saved exchange" : `saved exchange ${String(key)}`;
   log.warn(
-    `ignored a saved exchange's backup and import markers and pending ` +
+    `ignored ${exchange}'s backup and import markers and pending ` +
       `terms change: ${cause}`,
   );
   return undefined;
@@ -270,7 +275,7 @@ export function parseManagedLocalStateEntries(
 ): Map<string, ManagedLocalState> {
   const states = new Map<string, ManagedLocalState>();
   for (let index = 0; index < keys.length; index += 1) {
-    const state = parseManagedLocalState(values[index]);
+    const state = parseManagedLocalState(values[index], keys[index]);
     if (state !== undefined) states.set(String(keys[index]), state);
   }
   return states;
@@ -292,7 +297,7 @@ export function partitionReadableManagedLocalState(
   for (let index = 0; index < keys.length; index += 1) {
     let state: ManagedLocalState | undefined;
     try {
-      state = parseManagedLocalState(values[index]);
+      state = parseManagedLocalState(values[index], keys[index]);
     } catch {
       unreadableIds.push(String(keys[index]));
       continue;

@@ -526,7 +526,7 @@ function siblingCustodyByKey(
   for (let index = 0; index < keys.length; index += 1) {
     const key = String(keys[index]);
     try {
-      const state = parseManagedLocalState(values[index]);
+      const state = parseManagedLocalState(values[index], key);
       custodyByKey.set(key, {
         siblingReadable: true,
         backedUp: state?.backup !== undefined,
@@ -871,7 +871,7 @@ function markBackupOnLocalStore(
   raw: unknown,
   marker: ManagedBackupMarker,
 ): void {
-  const current = parseManagedLocalState(raw);
+  const current = parseManagedLocalState(raw, id);
   if (
     current?.backup !== undefined &&
     Date.parse(current.backup.backedUpAt) > Date.parse(marker.backedUpAt)
@@ -1695,7 +1695,7 @@ async function reconcileImportedSecret(
             outcome = { kind: "held", label };
             const readHeldLocal = local.get(held.id);
             readHeldLocal.onsuccess = () => {
-              if (siblingEntryUnreadable(readHeldLocal.result))
+              if (siblingEntryUnreadable(readHeldLocal.result, held.id))
                 outcome = { kind: "held", label, stateUnreadable: true };
             };
             return;
@@ -1773,9 +1773,12 @@ function decideBackupTarget(
 
 /** A stored sibling entry as parsed, or `undefined` where there is none, it is
  * discarded for its version, or it does not parse. */
-function parsedSiblingEntry(raw: unknown): ManagedLocalState | undefined {
+function parsedSiblingEntry(
+  raw: unknown,
+  id: string,
+): ManagedLocalState | undefined {
   try {
-    return parseManagedLocalState(raw);
+    return parseManagedLocalState(raw, id);
   } catch {
     return undefined;
   }
@@ -1783,9 +1786,9 @@ function parsedSiblingEntry(raw: unknown): ManagedLocalState | undefined {
 
 /** Whether a stored sibling entry is one the schema rejects. An entry
  * discarded for its version is read as absent, not as unreadable. */
-function siblingEntryUnreadable(raw: unknown): boolean {
+function siblingEntryUnreadable(raw: unknown, id: string): boolean {
   try {
-    parseManagedLocalState(raw);
+    parseManagedLocalState(raw, id);
     return false;
   } catch {
     return true;
@@ -1891,6 +1894,7 @@ async function replaceStoredCopy(
           );
           const termsProposal = parsedSiblingEntry(
             readLocal.result,
+            stored.id,
           )?.termsProposal;
           records.put(replaced);
           local.put(

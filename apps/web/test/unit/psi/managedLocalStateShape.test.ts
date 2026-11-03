@@ -106,6 +106,20 @@ describe("an entry a newer build wrote", () => {
     expect(read.states.size).toBe(0);
     expect(read.unreadableIds).toEqual([]);
   });
+
+  test("is named by its key in the warning from a key-holding read", () => {
+    parseManagedLocalStateEntries(["exchange-a"], [newer]);
+    expect(warned()).toContain("exchange-a");
+
+    warn.mockClear();
+    partitionReadableManagedLocalState(["exchange-b"], [newer]);
+    expect(warned()).toContain("exchange-b");
+    expect(warned()).toContain("a newer version of this app saved it");
+
+    warn.mockClear();
+    parseManagedLocalState(newer, "exchange-c");
+    expect(warned()).toContain("exchange-c");
+  });
 });
 
 describe("an entry at a version that does not order after the current one", () => {
