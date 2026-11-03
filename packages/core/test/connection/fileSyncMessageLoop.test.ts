@@ -55,7 +55,7 @@ import {
   type MockClientOptions,
 } from "../utils/support";
 import {
-  JSON_RETAINED_BYTES_PER_NODE,
+  JSON_RETAINED_BYTES,
   MAX_JSON_NESTING_DEPTH,
 } from "../../src/utils/boundedJson";
 
@@ -1406,7 +1406,10 @@ describe("FileSyncMessageLoop memory shortfall on a JSON message", () => {
   test("a JSON message over the memory available is refused as this machine's shortfall, and kept", async () => {
     const f = makeLoop();
     plantDeleteMessage(f.files, [[], [], []]);
-    memoryOverride.bytes = 3 * JSON_RETAINED_BYTES_PER_NODE;
+    // The outer array, its three elements, and three empty arrays.
+    const needed =
+      JSON_RETAINED_BYTES.array * 4 + JSON_RETAINED_BYTES.element * 3;
+    memoryOverride.bytes = needed - 1;
 
     try {
       await f.pollOnce();
@@ -1418,7 +1421,7 @@ describe("FileSyncMessageLoop memory shortfall on a JSON message", () => {
     const err = f.emitted[0].arg as UsageError;
     expect(err).toBeInstanceOf(UsageError);
     expect(err.message).toMatch(
-      /^this machine does not have enough free memory to read message file .+: it needs about 160 bytes and 120 are available\. Free memory on this machine, or raise the container's memory limit, and run the exchange again\.$/,
+      /^this machine does not have enough free memory to read message file .+: it needs about 216 bytes and 215 are available\. Free memory on this machine, or raise the container's memory limit, and run the exchange again\.$/,
     );
     expect(f.emitted[0].pollerActiveAtEmit).toBe(false);
     expect(f.files.size).toBe(1);

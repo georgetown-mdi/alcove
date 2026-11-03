@@ -2,15 +2,18 @@ import { expect, test } from "vitest";
 
 import { scanJsonStructure } from "../../src/utils/jsonStructureBound";
 
+import type { JsonValueCounts } from "../../src/utils/jsonStructureBound";
+
 // Each test isolates one bound by overriding it and leaving the others
 // generous. The scan is bound-agnostic, so small values (4) generalize to
 // the production budgets. `scan` runs both representations the scanner
-// accepts -- UTF-8 bytes and string -- and asserts they agree, so every
-// case below covers both paths.
+// accepts -- UTF-8 bytes and string -- and asserts they agree (on an ASCII
+// body every count, else whether a bound is exceeded), so every case below
+// covers both paths.
 function scan(
   json: string,
   { keys = 1_000, elements = 1_000, depth = 1_000 } = {},
-): "structure" | number {
+): "structure" | JsonValueCounts {
   const fromBytes = scanJsonStructure(
     new TextEncoder().encode(json),
     keys,
@@ -18,7 +21,8 @@ function scan(
     depth,
   );
   const fromString = scanJsonStructure(json, keys, elements, depth);
-  expect(fromString).toBe(fromBytes);
+  if (/^[\x00-\x7f]*$/.test(json)) expect(fromString).toEqual(fromBytes);
+  else expect(fromString === "structure").toBe(fromBytes === "structure");
   return fromBytes;
 }
 
@@ -163,22 +167,53 @@ test("a top-level non-object value is accepted", () => {
   expect(check('"a string with : colons"')).toBe(false);
 });
 
-// --- Value count --------------------------------------------------------------
+// --- Values by kind -----------------------------------------------------------
 
-// The values JSON.parse creates for `json`: the document, every array element
-// and every object member's value.
-function parsedValueCount(json: string): number {
-  const count = (value: unknown): number =>
-    1 +
-    (Array.isArray(value)
-      ? value.reduce((sum: number, element) => sum + count(element), 0)
-      : value !== null && typeof value === "object"
-        ? Object.values(value).reduce(
-            (sum: number, member) => sum + count(member),
-            0,
-          )
-        : 0);
-  return count(JSON.parse(json));
+const NONE: JsonValueCounts = {
+  objects: 0,
+  arrays: 0,
+  elements: 0,
+  repeatedMembers: 0,
+  integerKeyMembers: 0,
+  newMembers: 0,
+  strings: 0,
+  oneByteStringUnits: 0,
+  twoByteStringUnits: 0,
+  numbers: 0,
+};
+
+function counts(json: string): JsonValueCounts {
+  const result = scan(json);
+  if (result === "structure") throw new Error("unexpected structure bound");
+  return result;
+}
+
+// The containers, elements, members and strings JSON.parse creates for a
+// body whose objects repeat no earlier object's keys.
+function parsedKinds(json: string): Partial<JsonValueCounts> {
+  const kinds = {
+    objects: 0,
+    arrays: 0,
+    elements: 0,
+    newMembers: 0,
+    strings: 0,
+  };
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      kinds.arrays++;
+      kinds.elements += value.length;
+      value.forEach(walk);
+    } else if (value !== null && typeof value === "object") {
+      kinds.objects++;
+      for (const member of Object.values(value)) {
+        kinds.newMembers++;
+        kinds.strings++;
+        walk(member);
+      }
+    } else if (typeof value === "string") kinds.strings++;
+  };
+  walk(JSON.parse(json));
+  return kinds;
 }
 
 test.each([
@@ -190,29 +225,124 @@ test.each([
   '{"a":[1,{"b":null}],"c":"x"}',
   ' [ 1 ,\n\t[ ] , [ 2 ] ,\r{ "k" : [ ] } ] ',
   '["[1,2]", "{\\"a\\":[3]}", "\\\\"]',
-])("the value count of %j is exact", (json) => {
-  expect(scan(json)).toBe(parsedValueCount(json));
+])(
+  "the containers, elements, members and strings of %j are counted exactly",
+  (json) => {
+    expect(counts(json)).toMatchObject(parsedKinds(json));
+  },
+);
+
+test("a string's characters are counted from its raw form", () => {
+  expect(counts('["abc","de"]')).toMatchObject({
+    strings: 2,
+    oneByteStringUnits: 5,
+    twoByteStringUnits: 0,
+  });
+  // An escape is counted at its raw length, at least what it decodes to.
+  expect(counts('["a\\nb"]')).toMatchObject({ oneByteStringUnits: 4 });
 });
 
-test("object keys are not counted as values", () => {
-  expect(scan('{"a":1,"b":2}')).toBe(3);
+test("a string holding a character past Latin-1 or a \\u escape is counted as two-byte", () => {
+  expect(counts('["\\u0041bc"]')).toMatchObject({
+    oneByteStringUnits: 0,
+    twoByteStringUnits: 8,
+  });
+  expect(scanJsonStructure('["éa","Āa"]', 10, 10, 10)).toMatchObject({
+    oneByteStringUnits: 2,
+    twoByteStringUnits: 2,
+  });
+  expect(
+    scanJsonStructure(new TextEncoder().encode('["éa","Āa"]'), 10, 10, 10),
+  ).toMatchObject({ oneByteStringUnits: 3, twoByteStringUnits: 3 });
 });
 
-test("a repeated key counts once per occurrence", () => {
-  expect(scan('{"a":1,"a":2}')).toBe(3);
+test("numbers other than an integer of at most nine digits are counted", () => {
+  expect(counts("[0,7,123456789,true,false,null]").numbers).toBe(0);
+  expect(counts("[1234567890,1.5,2e3,4E1,-1,-0]").numbers).toBe(6);
+  expect(counts('{"a":12,"b":1.25}').numbers).toBe(1);
 });
 
-test("the count spans the document, across containers", () => {
-  const body = `[${Array.from({ length: 50 }, () => "[[],[]]").join(",")}]`;
-  expect(scan(body, { elements: 100 })).toBe(151);
+test("an object repeating the keys of the previous object at its depth counts them as repeated", () => {
+  expect(counts('[{"a":1,"b":2},{"a":3,"b":4}]')).toMatchObject({
+    newMembers: 2,
+    repeatedMembers: 2,
+    strings: 2,
+  });
+  // The previous object at the depth may sit under a different parent.
+  expect(counts('[[{"a":1}],[{"a":2}]]')).toMatchObject({
+    newMembers: 1,
+    repeatedMembers: 1,
+  });
 });
 
-test("the values a malformed body's well-formed prefix holds are counted", () => {
-  expect(scan("[[],[],[]")).toBe(4);
+test("a key repeats only while every key before it does", () => {
+  expect(counts('[{"a":1,"b":2},{"b":3,"a":4}]')).toMatchObject({
+    newMembers: 4,
+    repeatedMembers: 0,
+  });
+  expect(counts('[{"a":1,"b":2,"c":3},{"a":1,"x":2,"c":3}]')).toMatchObject({
+    newMembers: 5,
+    repeatedMembers: 1,
+  });
+  // A longer object repeats the shorter one's keys and adds new ones.
+  expect(counts('[{"a":1},{"a":1,"b":2}]')).toMatchObject({
+    newMembers: 2,
+    repeatedMembers: 1,
+  });
 });
 
-test("a per-container bound is reported in place of a count", () => {
-  expect(scan("[1,2,3]", { elements: 2 })).toBe(4);
+test("alternating key sets never count as repeated", () => {
+  const body = `[${Array.from({ length: 6 }, (_, i) =>
+    i % 2 ? '{"a":0,"b":0}' : '{"c":0,"d":0}',
+  ).join(",")}]`;
+  expect(counts(body)).toMatchObject({ newMembers: 12, repeatedMembers: 0 });
+});
+
+test("objects at different depths do not repeat each other", () => {
+  expect(counts('{"a":{"a":1}}')).toMatchObject({
+    newMembers: 2,
+    repeatedMembers: 0,
+  });
+});
+
+test("the scan records at most two widest objects' keys, and a key it cannot record is new", () => {
+  const nested = '{"a":0,"b":{"c":0,"d":{"e":0,"f":0}}}';
+  const body = `[${nested},${nested}]`;
+  expect(counts(body)).toMatchObject({ newMembers: 6, repeatedMembers: 6 });
+  // A key ceiling of 2 lets four keys be recorded, all held by the first
+  // copy's records when the second opens.
+  expect(scan(body, { keys: 2 })).toMatchObject({
+    newMembers: 12,
+    repeatedMembers: 0,
+  });
+});
+
+test("a key repeats only on the same raw spelling", () => {
+  expect(counts('[{"a":1},{"\\u0061":1}]')).toMatchObject({
+    repeatedMembers: 0,
+  });
+});
+
+test("a key of digits, or holding an escape, counts as an integer key, repeated or not", () => {
+  expect(counts('[{"1":0,"23":0},{"1":0,"23":0}]')).toMatchObject({
+    integerKeyMembers: 4,
+    newMembers: 0,
+    repeatedMembers: 0,
+    strings: 4,
+  });
+  expect(counts('{"\\u0031":0,"1a":0,"":0}')).toMatchObject({
+    integerKeyMembers: 1,
+    newMembers: 2,
+  });
+});
+
+test("the counts of a malformed body cover its well-formed prefix", () => {
+  expect(counts("[[],[],[]")).toEqual({ ...NONE, arrays: 4, elements: 3 });
+  expect(counts("}{][:,")).toMatchObject({ objects: 0, arrays: 0 });
+});
+
+test("a per-container bound is reported in place of the counts", () => {
+  expect(scan("[1,2,3]", { elements: 2 })).toMatchObject({ elements: 3 });
   expect(scan("[1,2,3]", { elements: 1 })).toBe("structure");
   expect(scan('{"a":1,"b":2}', { keys: 1 })).toBe("structure");
   expect(scan("[[1]]", { depth: 1 })).toBe("structure");

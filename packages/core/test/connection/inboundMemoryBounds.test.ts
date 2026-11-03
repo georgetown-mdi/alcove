@@ -4,7 +4,7 @@ import { EncryptedMessageConnection } from "../../src/connection/encryptedMessag
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import { ConnectionError } from "../../src/errors";
 import {
-  JSON_RETAINED_BYTES_PER_NODE,
+  jsonRetainedBytes,
   MAX_JSON_NESTING_DEPTH,
 } from "../../src/utils/boundedJson";
 
@@ -46,26 +46,26 @@ async function rejectionOf(
   return err as ConnectionError;
 }
 
-// Ten values: the array, its three empty arrays, the object, and its five
-// members' values.
-const TEN_VALUES = [[], [], [], { a: 1, b: 2, c: 3, d: 4, e: 5 }];
+// A message of arrays, an object, and numbers, and the bytes it is charged.
+const MESSAGE = [[], [], [], { a: 1, b: 2, c: 3, d: 4, e: 5 }];
+const NEEDED = jsonRetainedBytes(JSON.stringify(MESSAGE));
 
 test("a decrypted JSON message within the memory budget is delivered", async () => {
-  memory.availableBytes = 10 * JSON_RETAINED_BYTES_PER_NODE;
+  memory.availableBytes = NEEDED;
   const [initiator, responder] = await encryptedPair();
-  await initiator.send(TEN_VALUES);
-  expect(await responder.receive()).toEqual(TEN_VALUES);
+  await initiator.send(MESSAGE);
+  expect(await responder.receive()).toEqual(MESSAGE);
 });
 
 test("a decrypted JSON message past the memory budget is refused as this machine's shortfall, not a security failure", async () => {
-  memory.availableBytes = 9 * JSON_RETAINED_BYTES_PER_NODE;
+  memory.availableBytes = NEEDED - 1;
   const [initiator, responder] = await encryptedPair();
-  await initiator.send(TEN_VALUES);
+  await initiator.send(MESSAGE);
   const err = await rejectionOf(responder.receive());
   expect(err.kind).toBe("usage");
   expect(err.message).toBe(
     "this machine does not have enough free memory to read the partner's " +
-      "message: it needs about 400 bytes and 360 are available. Free memory " +
+      "message: it needs about 957 bytes and 956 are available. Free memory " +
       "on this machine, or raise the container's memory limit, and run the " +
       "exchange again.",
   );

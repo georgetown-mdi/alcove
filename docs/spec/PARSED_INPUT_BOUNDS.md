@@ -110,7 +110,7 @@ With decode and config load both bounding their own side, that safety check is n
 The bound fires far below the overflow and far above any real config (the deepest schema path is under a dozen levels, and `params` legitimately holds shallow scalars).
 
 A further bound sits *upstream* of the entire Zod/`camelizeKeys` family above, at the JSON-decode layer, and is enforced as a single chokepoint.
-Every parse of untrusted JSON in the core routes through `parseBoundedJson` (`packages/core/src/utils/boundedJson.ts`), which checks the body's structure against a per-object key ceiling, a per-array element ceiling, and a nesting-depth ceiling (`MAX_JSON_OBJECT_KEYS` = 65536, `MAX_JSON_ARRAY_ELEMENTS` = 16777216, `MAX_JSON_NESTING_DEPTH` = 4096), and the body's value count against the memory available (the whole-document value budget, below), *before* handing it to `JSON.parse`.
+Every parse of untrusted JSON in the core routes through `parseBoundedJson` (`packages/core/src/utils/boundedJson.ts`), which checks the body's structure against a per-object key ceiling, a per-array element ceiling, and a nesting-depth ceiling (`MAX_JSON_OBJECT_KEYS` = 65536, `MAX_JSON_ARRAY_ELEMENTS` = 16777216, `MAX_JSON_NESTING_DEPTH` = 4096), and the memory the body's values need against the memory available (the whole-document value budget, below), *before* handing it to `JSON.parse`.
 A lint rule forbids a raw `JSON.parse` elsewhere in the package, so a new parse site cannot silently reopen the hole.
 Unlike the rest of the family this is not a CPU-burn or `RangeError` guard.
 A single object made wide enough, or a single array made long enough, drives `JSON.parse` into a process-terminating internal limit of the JSON engine - a per-object property ceiling, or the array backing-store length limit - that is *not* a thrown exception, so a `try`/`catch` around the parse cannot intercept it (the engine's per-object and array-length limits are V8 behavior that was unverified as of 2026-09-29, and the ceilings named here are chosen to sit well inside them).
@@ -135,9 +135,15 @@ It caps any single container's width before the walker ever sees it, while the w
 
 **The whole-document value budget.**
 Beside the per-container ceilings, `parseBoundedJson` bounds the whole body by memory rather than by a fixed figure.
-The scan counts every value the parse would create - the document itself, each array element, and each object member's value, keys not counted - and the body is refused when that count times `JSON_RETAINED_BYTES_PER_NODE` = 40 bytes, the heap charged to each value, exceeds the memory available as it is parsed.
-The charge is measured: on Node 26.13.0, parsing a body of two million empty arrays under `--expose-gc` retained 40 bytes of V8 heap per value, and a body of two million short strings 8 to 32.
-The count is exact on well-formed JSON that repeats no object key (a repeated key counts once per occurrence, though the parse keeps one member), and on malformed JSON over the well-formed prefix a parse builds before it fails.
+The scan counts the values the parse would create by kind, and the body is refused when their charges (`JSON_RETAINED_BYTES`) together exceed the memory available as it is parsed:
+- an object 88 bytes, an array 48, and an array element 8;
+- a string 24, plus 1 byte a character, or 2 for a string holding a character past Latin-1 or a `\u` escape, its characters counted from the raw input;
+- a number other than an integer of at most nine digits 16;
+- an object member 72, with no charge for its key string, when its key and every key before it repeat those of the previous object closed at the same depth; 279 when its key is all digits or holds an escape, repeated or not; and otherwise 104, plus its key string.
+
+For that comparison the scan holds the keys of at most two objects of `MAX_JSON_OBJECT_KEYS` members at once, so its own memory stays bounded, and a key it cannot hold is charged as not repeated.
+Each charge is the most its kind was measured to retain on Node 26.13.0 under `--expose-gc`, across objects of distinct, shared, alternating and integer-like keys from one member to 65536 and repeated after the engine stops sharing their layout, packed and nested arrays, short and long one-byte and two-byte strings, and small integers and doubles.
+The counts are exact on well-formed JSON that repeats no key within an object (a repeated key counts once per occurrence, though the parse keeps one member), and on malformed JSON cover the well-formed prefix a parse builds before it fails.
 The memory available is read at each parse (`availableMemoryBytes`, `packages/core/src/utils/availableMemory.ts`):
 - on Node, the least of the V8 heap's headroom (`heap_size_limit` less `used_heap_size`) and, under a container memory limit below the host's memory (`process.constrainedMemory()`), that limit less the resident set;
 - in a Chromium tab, the JavaScript heap's headroom (`performance.memory`).
@@ -146,7 +152,7 @@ Where the runtime reports neither (a browser other than Chromium) there is no re
 Garbage not yet collected counts as used, so on Node a body over this budget is checked once more after a full collection before it is refused, whether or not Node was started with `--expose-gc`: where it was not, the collector is obtained at run time (`v8.setFlagsFromString("--expose-gc")`, then `gc` from a new `vm` context).
 A refusal is a `JsonMemoryBudgetError`, apart from the per-container ceilings' `JsonStructureBoundError`, because the shortfall is this machine's and not the body's: it states the bytes needed and the bytes available.
 A caller reading a partner's message - the decrypted frame, the file-sync message body, the peer hello - reports it as this machine lacking the memory to read that message, with both figures and the remedy (free memory, or raise the container's memory limit), as a `usage` failure rather than a security or malformed-payload one.
-Because the budget follows the memory available rather than a fixed count, it is not set below the largest legitimate message: a message is refused only when its values, at that charge, exceed the memory the process has left.
+Because the budget follows the memory available rather than a fixed count, it is not set below the largest legitimate message: a message is refused only when its values, at those charges, exceed the memory the process has left.
 
 The severity is defense-in-depth, not a live vulnerability: the counterparty is authenticated and can already abort the exchange trivially, and most of these sites already report a clean refusal rather than an ungraceful throw - a `receiveParsed` / `parseOrProtocolError` wrap reports a `ConnectionError("protocol")` from whatever `schema.parse` throws, and the linkage-terms parse-error catch aborts the same way.
 The stack-overflow `RangeError` is what `parse` throws, so the wrap catches it directly; the string-length `RangeError` is not, since the `ZodError` message builds lazily - the wrap sees only the unread `ZodError`, and that `RangeError`, if the issue list is that large, fires only where the cause's message is first read.

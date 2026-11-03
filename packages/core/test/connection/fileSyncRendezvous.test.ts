@@ -463,7 +463,7 @@ describe("readControlFileWithGate", () => {
     expect(thrown).toBeInstanceOf(UsageError);
     expect((thrown as Error).message).toBe(
       `this machine does not have enough free memory to read the partner's ` +
-        `control file at ${helloPath}: it needs about 120 bytes and 0 are ` +
+        `control file at ${helloPath}: it needs about 373 bytes and 0 are ` +
         "available. Free memory on this machine, or raise the container's " +
         "memory limit, and run the exchange again.",
     );
