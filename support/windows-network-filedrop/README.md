@@ -51,9 +51,8 @@ line, or if the launcher will not run here.
 ## What you need
 
 - **Docker Desktop or Podman, running.** With Docker Desktop, the whale icon
-  should be still, not animating. The PowerShell scripts use Podman when
-  Docker is not installed or not running. The Command Prompt script needs
-  Docker.
+  should be still, not animating. The scripts use Podman when Docker is not
+  installed or not running.
 - **The file-drop folder path.** Click once in the File Explorer address bar and
   it turns into text you can copy.
 - **The username and password the file server accepts for that folder.** Often

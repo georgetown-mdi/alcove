@@ -3,7 +3,8 @@
     Runs this folder's Pester suites and reports the run as check-run
     annotations. -Suite Resolution, the default, runs
     Setup-AlcoveFileDrop.Tests.ps1, Start-Alcove.Tests.ps1,
-    AcceptSheet.Tests.ps1, DockerLines.Tests.ps1, and
+    AcceptSheet.Tests.ps1, DockerLines.Tests.ps1,
+    cmd_Setup-AlcoveFileDrop.Tests.ps1, and
     windows-vm-pass\VmPass.Tests.ps1; -Suite
     ConstrainedLanguage runs ConstrainedLanguage.Tests.ps1, alone, because it
     sets a machine-wide policy no other suite may run under; -Suite
@@ -200,7 +201,7 @@ $failedJob = $false
 # lost would otherwise leave the job green having run whatever remained.
 $suiteFiles = @{
     Resolution          = @('Setup-AlcoveFileDrop.Tests.ps1', 'Start-Alcove.Tests.ps1', 'AcceptSheet.Tests.ps1', 'DockerLines.Tests.ps1',
-        'windows-vm-pass\VmPass.Tests.ps1')
+        'cmd_Setup-AlcoveFileDrop.Tests.ps1', 'windows-vm-pass\VmPass.Tests.ps1')
     ConstrainedLanguage = @('ConstrainedLanguage.Tests.ps1')
     ScheduleLines       = @('ScheduleLines.Tests.ps1')
 }

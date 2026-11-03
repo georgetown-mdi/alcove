@@ -444,7 +444,7 @@ refusal and its volume replace-or-refuse sequence are the setup script's copies
 too, reached through the same dot-source: the launcher's own copies of all three
 were deleted rather than kept in step.
 
-**The engine.** Both PowerShell scripts run docker when it answers and podman
+**The engine.** All three scripts run docker when it answers and podman
 otherwise, since some operators have no Docker access and use Podman.
 
 - Each chooses in a function of its own -- `Find-ContainerEngine` in the
@@ -462,7 +462,8 @@ otherwise, since some operators have no Docker access and use Podman.
   order and the screen when neither answers; the setup suite drives its choice
   and a whole run through a stub podman behind a docker that does not answer.
   No pass has run either script against a real Podman.
-- The Command Prompt script runs docker alone; its notes say why.
+- The Command Prompt script chooses as the setup script does; its notes say
+  how, and what its suite covers.
 
 What that sharing costs the launcher, and what to look at first on a real
 Windows pass: it now prints the setup script's fuller credential preamble and

@@ -21,7 +21,9 @@ name: Windows Path Resolution
 #            generator's output, so a change to them reaches this job. The
 #            docker lines README.md, docs/CONSOLE.md, and the console's
 #            shared-folder notice print run the same way, from a file a
-#            repository script test keeps equal to them. And a smoke of the VM
+#            repository script test keeps equal to them. The Command Prompt
+#            setup script run end to end against docker and podman stand-ins,
+#            for the engine it chooses. And a smoke of the VM
 #            pass driver: console input into set /p, and its Read-Host
 #            stand-in driving the launcher against a stub engine.
 #            It ASSERTS: a failed test fails the job. Runs on every pull request
@@ -69,7 +71,10 @@ on:
     paths:
       - "support/windows-network-filedrop/Setup-AlcoveFileDrop.ps1"
       - "support/windows-network-filedrop/Start-Alcove.ps1"
+      - "support/windows-network-filedrop/cmd_Setup-AlcoveFileDrop.cmd"
+      - "support/windows-network-filedrop/cmd_alcove-credcheck.sh"
       - "support/maintainer-notes/Setup-AlcoveFileDrop.Tests.ps1"
+      - "support/maintainer-notes/cmd_Setup-AlcoveFileDrop.Tests.ps1"
       - "support/maintainer-notes/Start-Alcove.Tests.ps1"
       - "support/maintainer-notes/ConstrainedLanguage.Tests.ps1"
       - "support/maintainer-notes/AcceptSheet.Tests.ps1"

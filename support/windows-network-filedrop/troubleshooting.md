@@ -84,8 +84,7 @@ whose PowerShell commands the same policy blocks.
 
 ## Docker or Podman is not answering
 
-The PowerShell scripts use Docker, or Podman when Docker is not installed or
-not running. The Command Prompt script uses Docker only.
+The scripts use Docker, or Podman when Docker is not installed or not running.
 
 - **Docker Desktop**: start it and wait for the whale icon to stop animating.
   "Access is denied" means your account is not in the local `docker-users`
