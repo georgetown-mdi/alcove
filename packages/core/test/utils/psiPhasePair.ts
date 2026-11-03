@@ -75,6 +75,7 @@ function recordingSets(engine: PsiEngine, sets: Array<EngineSet>): PsiEngine {
 function recording(
   conn: MessageConnection,
   sent: Array<unknown>,
+  fileSyncFrameBound: number | undefined,
 ): MessageConnection {
   return {
     send: (data) => {
@@ -83,6 +84,9 @@ function recording(
     },
     receive: (timeoutMs?: number) => conn.receive(timeoutMs),
     close: () => conn.close(),
+    ...(fileSyncFrameBound === undefined
+      ? {}
+      : { outboundFileSyncFrameBound: () => fileSyncFrameBound }),
   };
 }
 
@@ -97,7 +101,8 @@ export type EngineFor = (
  * Runs `receiver` and `sender` against each other through runPsiPhase over
  * `terms`, both parties' agreed terms. A party that fails closes its end,
  * so the other is not left waiting. `engineFor` builds each party's engine,
- * by default in process over `psiLibrary`.
+ * by default in process over `psiLibrary`. Given `fileSyncFrameBound`, each
+ * party's connection states it as its file-sync frame bound.
  */
 export async function runPsiPhasePair(
   psiLibrary: PSILibrary,
@@ -106,6 +111,7 @@ export async function runPsiPhasePair(
   sender: PreparedExchange,
   engineFor: EngineFor = (role, id, mode) =>
     new InProcessPsiEngine(psiLibrary, role, id, mode),
+  fileSyncFrameBound?: number,
 ): Promise<{ receiver: PhaseOutcome; sender: PhaseOutcome }> {
   const [receiverEnd, senderEnd] = createMessagePipe();
   const countOnly = terms.algorithm === "psi-c";
@@ -125,7 +131,7 @@ export async function runPsiPhasePair(
     const sent: Array<unknown> = [];
     const stages: Array<string> = [];
     const sets: Array<EngineSet> = [];
-    const conn = recording(end, sent);
+    const conn = recording(end, sent, fileSyncFrameBound);
     const result = await runPsiPhase({
       conn,
       psiLibrary,

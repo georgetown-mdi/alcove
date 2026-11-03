@@ -6,6 +6,7 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import { PSIParticipant } from "../../src/psi/participant";
 import { linkViaPSI, linkViaSinglePassPSI } from "../../src/psi/link";
 import { createMessagePipe } from "../../src/connection/messageConnection";
+import { PSI_ELEMENT_BYTES } from "../../src/connection/psiElementScan";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import type {
   InProcessPsiEngineOptions,
@@ -283,7 +284,9 @@ describe("an engine failure keeps the engine's own status message", () => {
   const undecodableRequest = (): Uint8Array => {
     const request = new psiLibrary.request();
     request.setRevealIntersection(true);
-    request.setEncryptedElementsList([new Uint8Array([9, 9, 9])]);
+    request.setEncryptedElementsList([
+      new Uint8Array(PSI_ELEMENT_BYTES).fill(9),
+    ]);
     return request.serializeBinary();
   };
   const backends: Array<[string, PSILibrary | undefined]> = [

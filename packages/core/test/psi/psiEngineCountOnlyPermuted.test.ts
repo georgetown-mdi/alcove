@@ -33,7 +33,7 @@ import {
 } from "../../src/psi/shardedPsiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "../utils/fixedKeyPsiLibrary";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
-import { withEmptyUnknownField } from "../utils/paddedPsiRequest";
+import { withUnknownField } from "../utils/paddedPsiRequest";
 
 // The count-only-permuted engine mode at the PsiEngine boundary
 // (docs/spec/PROTOCOL.md, PSI-C: the sender's permutation, the index table,
@@ -1055,7 +1055,7 @@ describe("the count-only-permuted engine refuses", () => {
       try {
         await sender.createPermutedSetup(roundSet(SENDER, 0));
         draw.mockClear();
-        const padded = withEmptyUnknownField(
+        const padded = withUnknownField(
           await receiver.createClientRequest(roundSet(RECEIVER.slice(1), 0)),
         );
         const refused = Promise.resolve().then(() =>

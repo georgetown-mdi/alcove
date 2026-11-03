@@ -17,10 +17,19 @@
 //
 // Counts every length-delimited field at the target depth, an upper bound on
 // what `deserializeBinary` actually materializes, so it never under-counts.
+// Given an element length, it also refuses a field there of any other length,
+// so a frame holds at most one element per `elementBytes + 2` of its bytes.
 // An unparseable frame throws and the caller rejects it -- fail closed, since
 // a conforming peer serializes the same wire format the scan accepts. The
 // frame may be handed over in pieces cut at any byte (a set received in
 // parts), and the count and the refusals are the same however it is cut.
+
+/**
+ * Bytes of one encrypted PSI element: a compressed P-256 point. Every element a
+ * conforming request, response or setup holds has this length, on both
+ * backends.
+ */
+export const PSI_ELEMENT_BYTES = 33;
 
 /**
  * The three partner-supplied PSI message kinds decoded at the participant
@@ -51,6 +60,7 @@ export class PsiElementScan {
   private readonly targetDepth: number;
   private readonly ceiling: number;
   private readonly totalBytes: number;
+  private readonly elementBytes: number | undefined;
   private count = 0;
   private offset = 0;
   // End offsets of the length-delimited fields the scan descended into,
@@ -66,11 +76,19 @@ export class PsiElementScan {
    * @param totalBytes - The frame's whole length, known before its first
    *   piece (a set's parts declare it), so a field declared past the frame's
    *   end is refused at its header.
+   * @param elementBytes - The one length an element may have, or undefined
+   *   for any length. An element of another length is refused at its header.
    */
-  constructor(kind: PsiMessageKind, ceiling: number, totalBytes: number) {
+  constructor(
+    kind: PsiMessageKind,
+    ceiling: number,
+    totalBytes: number,
+    elementBytes?: number,
+  ) {
     this.targetDepth = ELEMENT_DEPTH[kind];
     this.ceiling = ceiling;
     this.totalBytes = totalBytes;
+    this.elementBytes = elementBytes;
   }
 
   /**
@@ -146,6 +164,13 @@ export class PsiElementScan {
       if (end > boundary)
         throw new Error("PSI element scan: field length past end");
       if (this.ends.length === this.targetDepth) {
+        if (
+          this.elementBytes !== undefined &&
+          this.varint !== this.elementBytes
+        )
+          throw new Error(
+            `PSI element scan: an element of ${this.varint} bytes, not ${this.elementBytes}`,
+          );
         this.count += 1;
         this.skipTo = end;
       } else {
@@ -178,15 +203,22 @@ export class PsiElementScan {
  * from the protobuf wire format without materializing the elements. Stops counting
  * once the total exceeds `ceiling` (returns a value > ceiling then), so an
  * adversarially over-declared frame costs O(ceiling), not O(frame). Throws on a
- * malformed frame. See the module header for the safety argument.
+ * malformed frame, and on an element whose length is not `elementBytes` where
+ * that is given. See the module header for the safety argument.
  * @internal
  */
 export function countDeclaredPsiElements(
   bytes: Uint8Array,
   kind: PsiMessageKind,
   ceiling: number,
+  elementBytes?: number,
 ): number {
-  const scan = new PsiElementScan(kind, ceiling, bytes.byteLength);
+  const scan = new PsiElementScan(
+    kind,
+    ceiling,
+    bytes.byteLength,
+    elementBytes,
+  );
   scan.add(bytes);
   return scan.end();
 }

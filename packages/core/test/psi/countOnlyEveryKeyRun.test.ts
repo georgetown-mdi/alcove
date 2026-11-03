@@ -31,7 +31,7 @@ import {
 } from "../../src/psi/psiWorkerEngine";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
-import { withEmptyUnknownField } from "../utils/paddedPsiRequest";
+import { withUnknownField } from "../utils/paddedPsiRequest";
 import {
   FIXTURE_COUNT,
   RECEIVER,
@@ -79,7 +79,7 @@ function tapped(engine: PsiEngine, tap: Tap): PsiEngine {
 }
 
 // A receiver running modified software: each request it builds holds one
-// record fewer than it should, and an empty unknown field stands in for it,
+// record fewer than it should, and an unknown field stands in for it,
 // so a wire scan still counts the declared records.
 function padding(engine: PsiEngine): PsiEngine {
   return new Proxy(engine, {
@@ -89,9 +89,7 @@ function padding(engine: PsiEngine): PsiEngine {
       if (property !== "createClientRequest")
         return (member as (...a: Array<unknown>) => unknown).bind(target);
       return async (values: ReadonlyArray<string>) =>
-        withEmptyUnknownField(
-          await target.createClientRequest(values.slice(1)),
-        );
+        withUnknownField(await target.createClientRequest(values.slice(1)));
     },
   });
 }
@@ -591,7 +589,7 @@ describe("a frame not of the declared shape is refused as a protocol error", () 
     ["native", false],
     ["worker-backed", true],
   ] as const)(
-    "a request padded with an empty unknown field is refused for its parsed count before pi is drawn or any response part is sent, on the %s engine",
+    "a request padded with an unknown field is refused for its parsed count before pi is drawn or any response part is sent, on the %s engine",
     async ([name, inWorker]) => {
       const library = name === "native" ? native : wasm;
       if (library === undefined) return;

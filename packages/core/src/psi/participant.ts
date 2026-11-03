@@ -8,6 +8,7 @@ import {
 } from "../connection/frameSize";
 import {
   countDeclaredPsiElements,
+  PSI_ELEMENT_BYTES,
   PsiElementScan,
   type PsiMessageKind,
 } from "../connection/psiElementScan";
@@ -381,7 +382,9 @@ export class PSIParticipant {
   // from authenticated session state), the absolute
   // {@link MAX_PSI_DECODE_ELEMENTS}, which binds a cascade frame whose
   // partner over-declares its record count, and, for a setup or a request,
-  // which hold the partner's own set, this party's receive ceiling. The scan
+  // which hold the partner's own set, this party's receive ceiling. An element
+  // that is not PSI_ELEMENT_BYTES long is refused as malformed, so a frame's
+  // decode is held to the rate of an honest frame's. The scan
   // stops as soon as the count exceeds the ceiling, so an over-declared frame
   // costs O(ceiling), not O(frame); a malformed frame is a clean protocol
   // abort too. See
@@ -397,7 +400,7 @@ export class PSIParticipant {
   ): number {
     const ceiling = this.inboundElementCeiling(kind, authenticatedBound);
     return this.assertScanWithinCeiling(kind, ceiling, () =>
-      countDeclaredPsiElements(bytes, kind, ceiling),
+      countDeclaredPsiElements(bytes, kind, ceiling, PSI_ELEMENT_BYTES),
     );
   }
 
@@ -562,6 +565,7 @@ export class PSIParticipant {
           "serverSetup",
           ceiling,
           setBytes,
+          PSI_ELEMENT_BYTES,
         ));
         this.assertScanWithinCeiling("serverSetup", ceiling, () =>
           setupScan.add(piece),

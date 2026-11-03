@@ -1,3 +1,4 @@
+import { PSI_ELEMENT_BYTES } from "../connection/psiElementScan";
 import { PSI_ENCODED_ELEMENT_BYTES } from "../connection/webrtcOutboundBound";
 import {
   InternalConsistencyError,
@@ -219,7 +220,7 @@ export function decodeIndexTable(
 // A response element's protobuf field header: field 1, length-delimited, and
 // the length of a compressed curve point.
 const RESPONSE_ELEMENT_TAG = 0x0a;
-const ELEMENT_BYTES = PSI_ENCODED_ELEMENT_BYTES - 2;
+const ELEMENT_BYTES = PSI_ELEMENT_BYTES;
 const LITTLE_ENDIAN = new Uint8Array(Uint32Array.of(1).buffer)[0] === 1;
 
 /**
