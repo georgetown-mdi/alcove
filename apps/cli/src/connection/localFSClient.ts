@@ -169,6 +169,42 @@ async function openNoFollow(filePath: string, flag: keyof typeof OPEN_FLAGS) {
 }
 
 /**
+ * Most bytes one `read` or `writev` call is offered. Node reports a call's byte
+ * count as a signed 32-bit integer, so a call moving 2 GiB or more reports a
+ * wrapped count (a negative one on Linux) or fails outright; 1 GiB keeps every
+ * call well under that.
+ * @internal
+ */
+export const MAX_BYTES_PER_IO_CALL = 2 ** 30;
+
+/**
+ * The leading part of a chunk list, at most `limit` bytes long: whole chunks
+ * while they fit, then a view (never a copy) of the one crossing the limit.
+ */
+function chunksWithin(
+  chunks: readonly Uint8Array[],
+  limit: number,
+): Uint8Array[] {
+  const within: Uint8Array[] = [];
+  let room = limit;
+  for (const chunk of chunks) {
+    if (room === 0) break;
+    if (chunk.byteLength <= room) {
+      within.push(chunk);
+      room -= chunk.byteLength;
+    } else {
+      within.push(chunk.subarray(0, room));
+      room = 0;
+    }
+  }
+  return within;
+}
+
+function totalBytes(chunks: readonly Uint8Array[]): number {
+  return chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+}
+
+/**
  * What is left of a `writev` chunk list after `bytesWritten` of its bytes have
  * landed: whole chunks the write consumed are dropped, and the one straddling
  * the boundary is advanced past its written prefix (a view, never a copy). Every
@@ -214,6 +250,25 @@ async function drainStream(src: NodeJS.ReadableStream): Promise<Buffer> {
  */
 export class LocalFSClient implements FileTransportClient {
   private reconnectAttempts = 0;
+  private readonly maxBytesPerIoCall: number;
+
+  /**
+   * @param options.maxBytesPerIoCall Most bytes one read or write call is
+   *   offered; defaults to {@link MAX_BYTES_PER_IO_CALL}, which it may only
+   *   lower. A test lowers it to drive the per-call split with small files.
+   */
+  constructor(options: { maxBytesPerIoCall?: number } = {}) {
+    const limit = options.maxBytesPerIoCall ?? MAX_BYTES_PER_IO_CALL;
+    if (
+      !(Number.isSafeInteger(limit) && limit > 0) ||
+      limit > MAX_BYTES_PER_IO_CALL
+    )
+      throw new InternalConsistencyError(
+        `LocalFSClient: maxBytesPerIoCall must be an integer from 1 to ` +
+          `${MAX_BYTES_PER_IO_CALL}, got ${String(limit)}`,
+      );
+    this.maxBytesPerIoCall = limit;
+  }
 
   /**
    * Connection re-establishment attempts over this client's life: the number of
@@ -447,7 +502,7 @@ export class LocalFSClient implements FileTransportClient {
         const { bytesRead } = await handle.read(
           buffer,
           offset,
-          size - offset,
+          Math.min(size - offset, this.maxBytesPerIoCall),
           offset,
         );
         if (bytesRead === 0) break;
@@ -466,9 +521,12 @@ export class LocalFSClient implements FileTransportClient {
     }
   }
 
+  /**
+   * Writes `src` to `dest` in calls of at most `maxBytesPerIoCall` bytes each.
+   * `options.encoding` is not applied: every source is raw bytes.
+   */
   async put(src: PutSource, dest: string, options?: PutOptions): Promise<void> {
     const flag = options?.flags ?? "w";
-    const encoding = options?.encoding as BufferEncoding | null | undefined;
     // Drain a plain stream source to a Buffer BEFORE opening dest. The open
     // below is O_CREAT|O_TRUNC, so opening first and then pulling from the
     // stream would truncate dest up front and, if the source threw partway,
@@ -482,33 +540,37 @@ export class LocalFSClient implements FileTransportClient {
     // lets the numeric O_NOFOLLOW mask apply on every write branch.
     const handle = await openNoFollow(dest, flag);
     try {
-      if (Array.isArray(payload)) {
-        // A [header, payload] chunk list: write the parts back-to-back with
-        // writev so the 10-byte header is prepended without concatenating
-        // the payload into a fresh buffer (the payload is never copied,
-        // mirroring the send-path peak-shaving). The resulting on-disk
-        // bytes are the parts joined, byte-identical to their
-        // concatenation. encoding does not apply to a raw chunk list and is
-        // not passed.
-        //
-        // A SHORT write is not a failure and does not reject: the kernel may
-        // take fewer bytes than offered, and what it did not take would
-        // otherwise land as a truncated frame -- so re-offer what remains
-        // until nothing is, the way get() loops its reads. No position is
-        // passed on any pass, so each write continues at the handle's own
-        // position and an `a` (append) flag keeps its meaning.
-        let remaining = payload;
-        while (remaining.length > 0) {
-          const { bytesWritten } = await handle.writev(remaining);
-          if (bytesWritten === 0)
-            throw new Error(
-              `LocalFSClient.put: the write of ${dest} stopped making ` +
-                "progress with bytes still unwritten",
-            );
-          remaining = chunksAfter(remaining, bytesWritten);
-        }
-      } else {
-        await handle.writeFile(payload, { encoding });
+      // A [header, payload] chunk list is written back-to-back with writev,
+      // so the header is prepended without copying the payload; the on-disk
+      // bytes equal the parts' concatenation. A Buffer is a one-chunk list,
+      // and an empty one no list, so it writes an empty file.
+      //
+      // A SHORT write is not a failure and does not reject: the kernel may
+      // take fewer bytes than offered, and what it did not take would
+      // otherwise land as a truncated frame -- so re-offer what remains
+      // until nothing is, the way get() loops its reads. No position is
+      // passed on any pass, so each write continues at the handle's own
+      // position and an `a` (append) flag keeps its meaning.
+      let remaining: Uint8Array[] = Buffer.isBuffer(payload)
+        ? payload.byteLength > 0
+          ? [payload]
+          : []
+        : payload;
+      while (remaining.length > 0) {
+        const offered = chunksWithin(remaining, this.maxBytesPerIoCall);
+        const offeredBytes = totalBytes(offered);
+        const { bytesWritten } = await handle.writev(offered);
+        if (bytesWritten === 0)
+          throw new Error(
+            `LocalFSClient.put: the write of ${dest} stopped making ` +
+              "progress with bytes still unwritten",
+          );
+        if (!(bytesWritten > 0 && bytesWritten <= offeredBytes))
+          throw new Error(
+            `LocalFSClient.put: the write of ${dest} reported ` +
+              `${bytesWritten} bytes written of the ${offeredBytes} offered`,
+          );
+        remaining = chunksAfter(remaining, bytesWritten);
       }
     } catch (err) {
       // Preserve the write failure: close best-effort so a close error on the
