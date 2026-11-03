@@ -992,7 +992,7 @@ async function filledReceiveFromRun(options: { save: boolean }): Promise<{
 test("handler with --save records the filled receive list in the saved terms, and an unattended run names it at every log level and on the event stream", async () => {
   const { recorderPassed, savedTerms, configFile, stderr, takenEvents } =
     await filledReceiveFromRun({ save: true });
-  const notice = `this unattended run took the payload columns your partner declares it sends you, without asking: "program". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
+  const notice = `this run took the payload columns your partner declares it sends you, without asking: "program". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
   expect(recorderPassed).toBe(true);
   expect(savedTerms?.["payload"]).toEqual({ receive: [{ name: "program" }] });
   expect(stderr.split("\n").filter((line) => line.includes("program"))).toEqual(
@@ -1015,7 +1015,7 @@ test("handler without --save writes no receive list, and an unattended run says 
     save: false,
   });
   const notice =
-    'this unattended run took the payload columns your partner declares it sends you, without asking: "program". They were not written to any configuration.';
+    'this run took the payload columns your partner declares it sends you, without asking: "program". They were not written to any configuration.';
   expect(savedTerms).toBeUndefined();
   expect(stderr.split("\n").filter((line) => line.includes("program"))).toEqual(
     [notice],
@@ -1111,7 +1111,7 @@ test("handler without --save at a terminal asks before taking the partner's colu
   expect(stderr).toContain("declare payload columns it sends you");
   expect(stderr).toContain("program");
   expect(stderr).not.toContain("alcove.yaml");
-  expect(stderr).not.toContain("unattended");
+  expect(stderr).not.toContain("without asking");
   expect(outcome.status).toBe("fulfilled");
   expect(written).toEqual([]);
 });
@@ -1152,7 +1152,7 @@ test("handler without --save and no terminal takes the partner's columns without
   expect(written).toEqual([]);
 });
 
-test("handler with --consent-to-terms at a terminal does not ask, takes the partner's columns, and the notice names the flag", async () => {
+test("handler with --consent-to-terms at a terminal does not ask, takes the partner's columns, and writes the notice", async () => {
   vi.mocked(establishHostKeyTrust).mockClear();
   const { asked, stderr, outcome, written } = await oneOffRunConfirming(
     answeringTtyStream("n"),
@@ -1161,11 +1161,10 @@ test("handler with --consent-to-terms at a terminal does not ask, takes the part
   );
   expect(asked).toBe(false);
   expect(stderr).not.toContain("[y/N]");
-  expect(stderr).not.toContain("unattended");
   expect(
     stderr.split("\n").filter((line) => line.includes('"program"')),
   ).toEqual([
-    '--consent-to-terms was given, so this run took the payload columns your partner declares it sends you, without asking: "program". They were not written to any configuration.',
+    'this run took the payload columns your partner declares it sends you, without asking: "program". They were not written to any configuration.',
   ]);
   expect(outcome.status).toBe("fulfilled");
   expect(written).toEqual([]);
@@ -1179,7 +1178,7 @@ test("handler with --save and --consent-to-terms at a terminal records the colum
     true,
   );
   expect(asked).toBe(false);
-  expect(stderr).toContain("--consent-to-terms was given, so this run took");
+  expect(stderr).toContain("this run took the payload columns");
   expect(stderr).toContain(" as linkage_terms.payload.receive");
   expect(outcome.status).toBe("fulfilled");
   expect(written).toContain("alcove.yaml");

@@ -258,7 +258,7 @@ describe("the unattended fill notice", () => {
         "/srv/alcove.yaml",
       ),
     ).toBe(
-      "this unattended run took the payload columns your partner declares " +
+      "this run took the payload columns your partner declares " +
         'it sends you, without asking: "back\\\\slash", "bell\\x07", ' +
         '"zip\\u202e". They were written to /srv/alcove.yaml as ' +
         "linkage_terms.payload.receive, and later exchanges refuse a " +
@@ -268,29 +268,18 @@ describe("the unattended fill notice", () => {
 
   test("says the columns were written nowhere when there is no configuration", () => {
     expect(payloadReceiveTakenNotice(["notes"], undefined)).toBe(
-      "this unattended run took the payload columns your partner declares " +
+      "this run took the payload columns your partner declares " +
         'it sends you, without asking: "notes". They were not written to ' +
         "any configuration.",
     );
   });
 
-  test("names --consent-to-terms and not an unattended run when the run was given the flag", () => {
-    expect(payloadReceiveTakenNotice(["notes"], undefined, true)).toBe(
-      "--consent-to-terms was given, so this run took the payload columns " +
-        'your partner declares it sends you, without asking: "notes". They ' +
-        "were not written to any configuration.",
-    );
-    expect(payloadReceiveTakenNotice(["notes"], "alcove.yaml", true)).toContain(
-      "They were written to alcove.yaml as linkage_terms.payload.receive",
-    );
-  });
-
-  test("keeps the consent notice within the warning cap when many long names are cut", () => {
+  test("keeps the notice within the warning cap when many long names are cut", () => {
     const columns = Array.from(
       { length: 200 },
       (_, index) => `column_${String(index)}_${"x".repeat(200)}`,
     );
-    const notice = payloadReceiveTakenNotice(columns, "/srv/alcove.yaml", true);
+    const notice = payloadReceiveTakenNotice(columns, "/srv/alcove.yaml");
     expect(notice.length).toBeLessThanOrEqual(
       WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     );
@@ -299,7 +288,7 @@ describe("the unattended fill notice", () => {
 
   test("shows a double quote inside a column name escaped, so the name stays one quoted column", () => {
     expect(payloadReceiveTakenNotice(['x", "injected'], undefined)).toBe(
-      "this unattended run took the payload columns your partner declares " +
+      "this run took the payload columns your partner declares " +
         'it sends you, without asking: "x\\", \\"injected". They were not ' +
         "written to any configuration.",
     );
@@ -312,7 +301,7 @@ describe("the unattended fill notice", () => {
         undefined,
       ),
     ).toBe(
-      "this unattended run took the payload columns your partner declares " +
+      "this run took the payload columns your partner declares " +
         'it sends you, without asking: "[redacted private key]", "after". ' +
         "They were not written to any configuration.",
     );
@@ -362,23 +351,6 @@ describe("the unattended fill notice", () => {
       [0, 0, 0],
     ]);
   });
-
-  test("writes and emits the consent notice, not the unattended one, when given consentedInAdvance", () => {
-    const written: string[] = [];
-    const { emitter, emitted } = recordingEmitter();
-    reportPayloadReceiveFill({
-      columns: ["notes"],
-      recordedIn: undefined,
-      unattendedWriter: (line) => written.push(line),
-      eventStream: emitter,
-      log: { info: () => undefined },
-      consentedInAdvance: true,
-    });
-    const notice = payloadReceiveTakenNotice(["notes"], undefined, true);
-    expect(written).toEqual([notice]);
-    expect(emitted.map((event) => event["message"])).toEqual([notice]);
-    expect(notice).not.toContain("unattended");
-  });
 });
 
 /** An emitter recording each event this module can build, and nothing else. */
@@ -426,7 +398,7 @@ function takenEvent(
 }
 
 const TAKEN_HEADING =
-  "this unattended run took the payload columns your partner declares it sends you, without asking: ";
+  "this run took the payload columns your partner declares it sends you, without asking: ";
 
 /**
  * The stderr line the unattended fill writes, sized as the line alone sizes

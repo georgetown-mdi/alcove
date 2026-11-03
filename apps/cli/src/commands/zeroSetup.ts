@@ -211,7 +211,7 @@ export function builder(cmd: Argv): Argv {
           "declare it sends you, so the run does not stop to ask at a " +
           "terminal. The run takes them, writes one line naming them, and " +
           "continues; review what your partner is expected to send before " +
-          "using it. It does not affect SSH host-key trust: an unpinned " +
+          "using this option. It does not affect SSH host-key trust: an unpinned " +
           "server's key is still confirmed at a terminal first.",
       }),
     "quick exchange",
@@ -562,13 +562,11 @@ export function finalizeBootstrap(params: {
    */
   filledPayloadReceive?: string[];
   /**
-   * Set on an unattended run: the command's unfiltered writer
-   * (`ConfiguredLogging.writePlainLine`), passed to
+   * Set on a run that takes the columns without asking: the command's
+   * unfiltered writer (`ConfiguredLogging.writePlainLine`), passed to
    * {@link reportPayloadReceiveFill}.
    */
   unattendedFillNoticeWriter?: (line: string) => void;
-  /** The run was given `--consent-to-terms`, which the fill notice states. */
-  consentedInAdvance?: boolean;
   eventStream?: EventStreamEmitter;
 }): void {
   const {
@@ -580,7 +578,6 @@ export function finalizeBootstrap(params: {
     log,
     filledPayloadReceive,
     unattendedFillNoticeWriter,
-    consentedInAdvance,
     eventStream,
   } = params;
   const savedConfigWarning = { log };
@@ -592,7 +589,6 @@ export function finalizeBootstrap(params: {
         unattendedWriter: unattendedFillNoticeWriter,
         eventStream,
         log,
-        consentedInAdvance,
       });
   };
 
@@ -991,7 +987,6 @@ export async function handler(argv: Arguments): Promise<void> {
               unattendedWriter,
               eventStream: eventStreamEmitter,
               log,
-              consentedInAdvance: consentToTerms,
             });
         },
         // Without --save there is no configuration, so a yes records nothing.
@@ -1040,7 +1035,6 @@ export async function handler(argv: Arguments): Promise<void> {
                 log,
                 filledPayloadReceive,
                 unattendedFillNoticeWriter: unattendedWriter,
-                consentedInAdvance: consentToTerms,
                 eventStream: eventStreamEmitter,
               });
               return { persisted: true };
@@ -1068,7 +1062,6 @@ export async function handler(argv: Arguments): Promise<void> {
                   unattendedWriter,
                   eventStream: eventStreamEmitter,
                   log,
-                  consentedInAdvance: consentToTerms,
                 });
               reportPersistenceLoss(notice, eventStreamEmitter);
               return { persisted: false };

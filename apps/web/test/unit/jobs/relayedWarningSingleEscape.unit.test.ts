@@ -160,7 +160,7 @@ const FILL_LINE = asciiJsonLine({
   type: "warning",
   source: "payloadReceiveTaken",
   message:
-    "this unattended run took the payload columns your partner declares it " +
+    "this run took the payload columns your partner declares it " +
     `sends you, without asking: "${sanitizeForDisplay(PARTNER_VALUE)}". ` +
     "They were not written to any configuration.",
   columns: [PARTNER_VALUE],

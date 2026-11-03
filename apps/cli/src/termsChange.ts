@@ -382,17 +382,7 @@ export function payloadReceiveFillConfirmation(params: {
 }
 
 const PAYLOAD_RECEIVE_TAKEN_HEADING =
-  "this unattended run took the payload columns your partner declares it sends you, without asking: ";
-
-const PAYLOAD_RECEIVE_CONSENTED_HEADING =
-  "--consent-to-terms was given, so this run took the payload columns your partner declares it sends you, without asking: ";
-
-/** The notice's opening, which names why the run took the columns unasked. */
-function payloadReceiveTakenHeading(consentedInAdvance: boolean): string {
-  return consentedInAdvance
-    ? PAYLOAD_RECEIVE_CONSENTED_HEADING
-    : PAYLOAD_RECEIVE_TAKEN_HEADING;
-}
+  "this run took the payload columns your partner declares it sends you, without asking: ";
 
 /** One copy of the notice, and how many columns its list names. */
 interface PayloadReceiveTakenList {
@@ -414,12 +404,10 @@ function payloadReceiveTakenTail(shownConfig: Displayable | undefined): string {
 function composePayloadReceiveTaken(
   columns: readonly string[],
   tail: string,
-  consentedInAdvance: boolean,
 ): PayloadReceiveTakenList {
-  const heading = payloadReceiveTakenHeading(consentedInAdvance);
   const budget =
     WARNING_MESSAGE_MAX_DISPLAY_LENGTH -
-    heading.length -
+    PAYLOAD_RECEIVE_TAKEN_HEADING.length -
     tail.length -
     DISPLAY_TRUNCATION_MARKER.length;
   let taken = "";
@@ -437,16 +425,15 @@ function composePayloadReceiveTaken(
   // Every part is fixed copy or a value already rendered for display, and
   // quoting a name adds only printable ASCII to it.
   return {
-    text: `${heading}${taken}${tail}` as Displayable,
+    text: `${PAYLOAD_RECEIVE_TAKEN_HEADING}${taken}${tail}` as Displayable,
     shownColumns,
   };
 }
 
 /**
- * The line an unattended run writes when it takes the payload columns its
- * partner declares, in place of {@link payloadReceiveFillConfirmation}'s
- * question, or that a run given `--consent-to-terms` writes
- * (`consentedInAdvance`) whether or not it has a terminal: each column taken, and the configuration `recordedIn` it was
+ * The line a run writes when it takes the payload columns its partner declares
+ * without asking, in place of {@link payloadReceiveFillConfirmation}'s
+ * question: each column taken, and the configuration `recordedIn` it was
  * written to as `payload.receive`, or that it was written to none. The
  * column names are the partner's: each is redacted and escaped on its own, so
  * a dangling private-key marker in one name cannot consume the names after
@@ -458,7 +445,6 @@ function composePayloadReceiveTaken(
 export function payloadReceiveTakenNotice(
   columns: readonly string[],
   recordedIn: string | undefined,
-  consentedInAdvance = false,
 ): Displayable {
   return composePayloadReceiveTaken(
     columns,
@@ -467,14 +453,13 @@ export function payloadReceiveTakenNotice(
         ? undefined
         : redactAndRenderOperatorSuppliedText(operatorSuppliedText(recordedIn)),
     ),
-    consentedInAdvance,
   ).text;
 }
 
 /**
  * Report that this run filled `payload.receive` with `columns`, recorded in
- * the configuration `recordedIn` or in none. An unattended run that took at
- * least one column writes {@link payloadReceiveTakenNotice} through
+ * the configuration `recordedIn` or in none. A run that took at least one
+ * column without asking writes {@link payloadReceiveTakenNotice} through
  * `unattendedWriter`, the command's unfiltered writer
  * (`ConfiguredLogging.writePlainLine`), so the line shows at every
  * `--log-level`, and emits the notice on `eventStream` as a
@@ -489,15 +474,10 @@ export function reportPayloadReceiveFill(params: {
   unattendedWriter: ((line: string) => void) | undefined;
   eventStream: EventStreamEmitter | undefined;
   log: { info: (message: string) => void };
-  /** The run was given `--consent-to-terms`, which the notice states. */
-  consentedInAdvance?: boolean;
 }): void {
   const { columns, recordedIn, unattendedWriter, eventStream, log } = params;
-  const consentedInAdvance = params.consentedInAdvance === true;
   if (unattendedWriter !== undefined && columns.length > 0) {
-    unattendedWriter(
-      payloadReceiveTakenNotice(columns, recordedIn, consentedInAdvance),
-    );
+    unattendedWriter(payloadReceiveTakenNotice(columns, recordedIn));
     if (eventStream !== undefined) {
       const event = composePayloadReceiveTaken(
         columns,
@@ -506,7 +486,6 @@ export function reportPayloadReceiveFill(params: {
             ? undefined
             : redactAndSanitizeForDisplay(recordedIn),
         ),
-        consentedInAdvance,
       );
       eventStream.payloadReceiveTaken(
         event.text,

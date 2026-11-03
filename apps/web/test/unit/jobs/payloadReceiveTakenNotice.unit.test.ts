@@ -72,7 +72,7 @@ function cliTakenEvent(
     type: "warning",
     source: "payloadReceiveTaken",
     message:
-      "this unattended run took the payload columns your partner declares it " +
+      "this run took the payload columns your partner declares it " +
       'sends you, without asking: "program", "county". They were written to ' +
       `${STUB_CONFIG_FILE_TOKEN} as linkage_terms.payload.receive, and later ` +
       "exchanges refuse a partner that sends a different list.",
