@@ -10,6 +10,7 @@ import {
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeLastRun,
+  applyManagedExchangeScheduleAdvance,
   composeManagedExchangeFile,
   raisedStandingCondition,
 } from "@psi/managed/managedExchangeRecord";
@@ -18,6 +19,7 @@ import {
   managedRunFailureFromRecord,
   managedRunReinvites,
 } from "@recurring/managedRunLaunchModel";
+import { STORAGE_FAILURE_TITLE } from "@psi/managed/managedFailureCopy";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { composeConfirmationMessage } from "@psi/managed/managedFailureConfirmation";
 import { dateTimeLabel } from "@psi/formatting";
@@ -28,6 +30,7 @@ import { savedExchangeRow } from "@recurring/savedExchangesModel";
 import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
+  ManagedExchangeSchedule,
 } from "@psi/managed/managedExchangeRecord";
 
 // This device could not save a rotated secret, a later run succeeded, and a
@@ -103,7 +106,7 @@ describe("a failed handshake after that success", () => {
     const recorded = managedRunFailureFromRecord(later, undefined, NOW);
     expect(recorded?.kind).toBe("unexplained");
     expect(recorded?.recovery).toBe("confirm");
-    expect(recorded?.title).not.toBe("The last run could not be saved");
+    expect(recorded?.title).not.toBe(STORAGE_FAILURE_TITLE);
 
     const live = classifyManagedRunFailure(
       new ConnectionError("could not verify the partner", "security"),
@@ -149,5 +152,121 @@ describe("a failed handshake after that success", () => {
       kind: "auth",
       response: { kind: "compromise" },
     });
+  });
+});
+
+describe("a failed handshake after a success a second failed save kept from clearing the condition", () => {
+  const SECOND_SAVE_AT = "2026-07-17T09:00:00.000Z";
+  const schedule: ManagedExchangeSchedule = {
+    anchor: "2026-07-07T09:00:00.000Z",
+    intervalDays: 7,
+    windowSeconds: 10_800,
+    nextWindow: AUTH_AT,
+    consecutiveMisses: 0,
+  };
+  const handshake: ManagedExchangeLastRun = {
+    at: AUTH_AT,
+    outcome: "failed",
+    failureKind: "auth",
+  };
+
+  function keptPastSuccess(
+    first: "storage" | "partner-storage",
+  ): ManagedExchangeRecord {
+    const raised = write(
+      { ...record(), schedule },
+      { at: FAILED_SAVE_AT, outcome: "failed", failureKind: first },
+    );
+    const second = write(raised, {
+      at: SECOND_SAVE_AT,
+      outcome: "failed",
+      failureKind: "storage",
+    });
+    return write(second, { at: SUCCEEDED_AT, outcome: "succeeded" });
+  }
+  function byRunWrite(stored: ManagedExchangeRecord): ManagedExchangeRecord {
+    return write(stored, handshake);
+  }
+  function byScheduleAdvance(
+    stored: ManagedExchangeRecord,
+  ): ManagedExchangeRecord {
+    return applyManagedExchangeScheduleAdvance(
+      stored,
+      {
+        schedule: {
+          ...schedule,
+          nextWindow: "2026-08-04T09:00:00.000Z",
+        },
+        fromNextWindow: schedule.nextWindow,
+        fromConsecutiveMisses: schedule.consecutiveMisses,
+        evidenceSharedSecret: stored.sharedSecret,
+        lastRun: handshake,
+        standingCondition: { since: AUTH_AT, kind: "auth" },
+      },
+      NOW,
+    );
+  }
+
+  describe.each([
+    ["a run's entry", byRunWrite],
+    ["a schedule advance", byScheduleAdvance],
+  ] as const)("written by %s", (_site, writeHandshake) => {
+    test.each(["storage", "partner-storage"] as const)(
+      "over a %s condition, raises its own auth condition, reads as unexplained, and fires the notice",
+      (first) => {
+        const kept = keptPastSuccess(first);
+        expect(raisedStandingCondition(kept)?.kind).toBe(first);
+        const later = writeHandshake(kept);
+        expect(raisedStandingCondition(later)).toEqual({
+          since: AUTH_AT,
+          kind: "auth",
+        });
+        expect(readManagedFailure(later, undefined, NOW)).toEqual({
+          tier: "unexplained",
+          standing: false,
+        });
+        const view = managedStandingConditionView(later, undefined, NOW);
+        expect(view?.tier).toBe("unexplained");
+        expect(view?.clearance).toBe("confirmation");
+        expect(
+          betweenVisitNotice({
+            record: later,
+            local: undefined,
+            caughtUpMisses: 0,
+            disposition: "failed",
+            now: NOW,
+          })?.kind,
+        ).toBe("unexplained");
+      },
+    );
+  });
+
+  test("a handshake that failed before the success is still explained by the failed save", () => {
+    const raised = write(record(), {
+      at: FAILED_SAVE_AT,
+      outcome: "failed",
+      failureKind: "storage",
+    });
+    const handshakeFirst = write(raised, {
+      at: SECOND_SAVE_AT,
+      outcome: "failed",
+      failureKind: "auth",
+    });
+    expect(raisedStandingCondition(handshakeFirst)?.kind).toBe("storage");
+    expect(readManagedFailure(handshakeFirst, undefined, NOW)).toEqual({
+      tier: "storage",
+      standing: true,
+    });
+  });
+
+  test("a condition holding the operator's compromise response stays", () => {
+    const answered = applyManagedExchangeCompromiseResponse(
+      keptPastSuccess("storage"),
+      "2026-07-22T09:00:00.000Z",
+    );
+    const later = byRunWrite(answered);
+    expect(raisedStandingCondition(later)).toEqual(
+      raisedStandingCondition(answered),
+    );
   });
 });

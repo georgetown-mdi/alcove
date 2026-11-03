@@ -2249,26 +2249,37 @@ export function standingCompromiseResponse(
 /** Raise a standing condition on a record, unless one already stands or there is
  * none to raise. First raise wins: the standing condition is the one the operator
  * has yet to answer, and answering it is a single act over everything that stood
- * before it. The one exception is an `auth` raise over a standing
- * `partner-storage` condition holding no response: this device's own failed
- * handshake is local evidence, the partner's report is a claim, and the claim
- * must not hide the confirmation the handshake calls for. The input record is not mutated. */
+ * before it, except where an `auth` raise replaces a failed save's condition
+ * ({@link authRaiseReplaces}). The input record is not mutated. */
 function withStandingCondition(
   record: ManagedExchangeRecord,
   condition: ManagedStandingCondition | undefined,
 ): ManagedExchangeRecord {
   if (condition === undefined) return record;
   const standing = raisedStandingCondition(record);
-  if (
-    standing !== undefined &&
-    !(
-      standing.kind === "partner-storage" &&
-      standing.response === undefined &&
-      condition.kind === "auth"
-    )
-  )
+  if (standing !== undefined && !authRaiseReplaces(record, standing, condition))
     return record;
   return { ...record, standingCondition: condition };
+}
+
+/** Whether `condition`, an `auth` raise, replaces the `standing` condition
+ * holding no response: a `partner-storage` one always, since the partner's
+ * report is a claim that must not hide the confirmation this device's own
+ * failed handshake calls for; a `storage` one where a run the record lists
+ * succeeded after it and no later than the handshake, since that success put
+ * both sides on one secret and the failed save no longer explains it. */
+function authRaiseReplaces(
+  record: ManagedExchangeRecord,
+  standing: ManagedStandingCondition,
+  condition: ManagedStandingCondition,
+): boolean {
+  if (condition.kind !== "auth" || standing.response !== undefined)
+    return false;
+  if (standing.kind === "partner-storage") return true;
+  return (
+    standing.kind === "storage" &&
+    runSucceededSince(record, standing.since, Date.parse(condition.since))
+  );
 }
 
 /** Whether a successful run clears the record's standing condition: a failed

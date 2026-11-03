@@ -750,10 +750,14 @@ replaces `lastRun` with an entry that records no failure kind at all. The
 **Raised** by any `lastRun` entry whose `failureKind` is `"auth"`, `"storage"`, or
 `"partner-storage"`, at that entry's own instant. The first raise stands: a later condition leaves the
 standing one as it is, since answering is a single act over everything that stood
-before it, and the earlier evidence is the one still unanswered. The one
+before it, and the earlier evidence is the one still unanswered. One
 exception is an `"auth"` raise over a standing `"partner-storage"` condition,
 which replaces it only while it holds no response: this device's own failed handshake is local evidence, and the
-partner's report is a claim. It is raised at two sites, and needs both:
+partner's report is a claim. The other is an `"auth"` raise over a standing
+`"storage"` condition holding no response, which replaces it where the record
+lists a success after the condition's `since` and no later than the
+handshake: that success put both sides on one secret, so the failed save no
+longer explains the handshake. It is raised at two sites, and needs both:
 
 - the `lastRun` write above, which every runner records through; and
 - the [schedule advance](#catch-up-on-wake), which carries the condition its
@@ -820,9 +824,10 @@ including what an adversary gains by provoking the benign reading, is [Telling a
 desync from an attack](../notes/managed-exchange-design.md#telling-a-desync-from-an-attack).
 A recorded benign cause is not displaced by either rule: it is the run's own
 actionable state, and the condition stands until something clears it.
-A success clears the `"storage"` condition first (above), so a handshake that
-fails closed after a success raises an `"auth"` condition of its own and tiers
-as one.
+A handshake that fails closed after a success raises an `"auth"` condition of
+its own and tiers as one: the success cleared the `"storage"` condition, or,
+where a run listed after the condition kept it standing, the `"auth"` raise
+replaces it (above).
 
 A `"partner-storage"` condition supplies its tier only where the last run
 records no failure or a no-show. A handshake that fails closed after one raises an

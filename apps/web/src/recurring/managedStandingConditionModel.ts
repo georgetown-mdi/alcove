@@ -25,6 +25,7 @@ import {
   PARTNER_SECRET_NOT_SAVED_TITLE,
   REINVITE_IF_RUNS_KEEP_FAILING,
   RUN_SUCCEEDED_SINCE_SAME_SECRET,
+  STORAGE_FAILURE_TITLE,
 } from "@psi/managed/managedFailureCopy";
 import {
   managedStandingConditionTier,
@@ -149,7 +150,7 @@ function storageView(
   const failed = `A run on ${when} changed this exchange's secret and could not save the change`;
   const base = {
     tier: "storage" as const,
-    title: "A run could not save this exchange's new secret",
+    title: STORAGE_FAILURE_TITLE,
     clearance: "acknowledge" as const,
   };
   switch (storageReach(record)) {
@@ -176,7 +177,8 @@ function storageView(
         ...base,
         message:
           `${failed}, so your partner may hold a secret this device does ` +
-          `not. Re-invite your partner to reconnect. ${STANDS_UNTIL}`,
+          "not. Re-invite your partner to reconnect." +
+          (clearedByRun ? "" : ` ${STANDS_UNTIL}`),
       };
   }
 }

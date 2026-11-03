@@ -37,6 +37,7 @@ import {
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
   REINVITE_IF_RUNS_KEEP_FAILING,
   SINGLE_COLUMN_DELIMITER_REMEDY,
+  STORAGE_FAILURE_TITLE,
   TERMS_CHANGE_FAILURE_TITLE,
   TERMS_DIFFERENCE_PROBLEM,
   TERMS_DIFFERENCE_TITLE,
@@ -693,7 +694,7 @@ function relayRegistrationFailure(error: unknown): ManagedRunFailure {
  * run can meet rotates nothing and is treated as {@link NOT_RUNNABLE_FAILURE}. */
 const STORAGE_FAILURE: ManagedRunFailure = {
   kind: "storage",
-  title: "The last run could not be saved",
+  title: STORAGE_FAILURE_TITLE,
   message:
     "The last run connected but could not save its updated secret on this " +
     "device, so you and your partner may now hold different secrets. Re-invite " +

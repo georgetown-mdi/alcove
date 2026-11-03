@@ -263,7 +263,9 @@ describe("a live no-show is read against the evidence standing at launch", () =>
     const id = await runUntilItNoShows();
 
     await expect
-      .element(page.getByText("The last run could not be saved"))
+      .element(
+        page.getByText("A run could not save this exchange's new secret"),
+      )
       .toBeInTheDocument();
     await expect
       .element(page.getByRole("button", { name: "Create a fresh invitation" }))
@@ -306,7 +308,9 @@ describe("a live no-show is read against the evidence standing at launch", () =>
 
     await runButton.click();
     await expect
-      .element(page.getByText("The last run could not be saved"))
+      .element(
+        page.getByText("A run could not save this exchange's new secret"),
+      )
       .toBeInTheDocument();
     await expect.element(runButton).toBeEnabled();
 
@@ -320,7 +324,9 @@ describe("a live no-show is read against the evidence standing at launch", () =>
     await flushPendingUpdates();
 
     await expect
-      .element(page.getByText("The last run could not be saved"))
+      .element(
+        page.getByText("A run could not save this exchange's new secret"),
+      )
       .toBeInTheDocument();
     await expect
       .element(page.getByRole("button", { name: "Create a fresh invitation" }))

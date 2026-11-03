@@ -261,6 +261,11 @@ export const PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY =
   "the new secret this time, you are back in step. If runs keep missing " +
   "your partner or stopping, ask your partner to re-invite you.";
 
+/** The title of the alert for a rotation this device could not save: a run's
+ * own and the standing condition it raised. */
+export const STORAGE_FAILURE_TITLE =
+  "A run could not save this exchange's new secret";
+
 /** The line a failed save's standing condition ends on where the next run can
  * still reach the partner and a later success clears the condition. */
 export const LATER_SUCCESS_CLEARS_ALERT =

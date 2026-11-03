@@ -924,7 +924,8 @@ handshake that fails closed after a save failure your partner reported: this
 device's own failed handshake replaces that report, because the report is the
 other side's claim and not local evidence. A handshake that fails closed after a
 save failure this device recorded, with no successful run between them, is read
-as that save failure, which explains it.
+as that save failure, which explains it. After a successful run, the failed
+handshake replaces the save failure.
 
 Three things clear any standing condition:
 

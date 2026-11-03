@@ -33,6 +33,7 @@ import {
   PARTIAL_ROTATION_FAILURE_TITLE,
   RUN_SUCCEEDED_SINCE_SAME_SECRET,
   SINGLE_COLUMN_DELIMITER_REMEDY,
+  STORAGE_FAILURE_TITLE,
 } from "@psi/managed/managedFailureCopy";
 
 import {
@@ -1507,6 +1508,36 @@ describe("classifyManagedRunFailure: the derived benign tiers take this run's bo
 });
 
 describe("managedRunFailureFromRecord: the next-visit tier (no live launch)", () => {
+  const failedSaveAt = "2026-07-14T09:00:00.000Z";
+  const standingSave = {
+    standingCondition: { since: failedSaveAt, kind: "storage" as const },
+  };
+  test.each([
+    ["a failed save", record({ lastRun: failed("storage") })],
+    [
+      "a failed save the next run can heal",
+      record({ lastRun: { ...failed("storage"), nextRunHeals: true } }),
+    ],
+    [
+      "a failed handshake beside a failed save with no success between",
+      record({
+        ...standingSave,
+        lastRun: { ...failed("auth"), at: "2026-07-14T10:00:00.000Z" },
+      }),
+    ],
+    [
+      "a no-show beside a failed save",
+      record({
+        ...standingSave,
+        lastRun: { at: "2026-07-14T10:00:00.000Z", outcome: "missed" },
+      }),
+    ],
+  ])("%s shows the storage title", (_state, stored) => {
+    const failure = managedRunFailureFromRecord(stored, undefined, NOW);
+    expect(failure?.kind).toBe("storage");
+    expect(failure?.title).toBe(STORAGE_FAILURE_TITLE);
+  });
+
   test("a stored auth failure shows the unexplained tier at the next visit", () => {
     const failure = managedRunFailureFromRecord(
       record({ lastRun: failed("auth") }),

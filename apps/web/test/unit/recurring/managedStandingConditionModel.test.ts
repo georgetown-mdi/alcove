@@ -15,6 +15,8 @@ import {
   routeConfirmationReply,
 } from "@psi/managed/managedFailureConfirmation";
 
+import { STORAGE_FAILURE_TITLE } from "@psi/managed/managedFailureCopy";
+
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
@@ -81,11 +83,35 @@ describe("managedStandingConditionView", () => {
       undefined,
       NOW,
     );
+    expect(view?.title).toBe(STORAGE_FAILURE_TITLE);
     expect(view?.clearance).toBe("acknowledge");
+    expect(view?.message).toMatch(/Re-invite your partner to reconnect\.$/);
+    expect(view?.message).not.toMatch(/do not settle it/);
+    expect(view?.reinvite).toBeUndefined();
+  });
+
+  test("a persist failure a later failed handshake keeps past a success says runs do not settle it", () => {
+    const auth = {
+      at: LATER_AT,
+      outcome: "failed",
+      failureKind: "auth",
+    } as const;
+    const view = managedStandingConditionView(
+      record({
+        lastRun: auth,
+        recentRuns: [
+          auth,
+          { at: RAISED_AT, outcome: "failed", failureKind: "storage" },
+        ],
+        standingCondition: { since: RAISED_AT, kind: "storage" },
+      }),
+      undefined,
+      NOW,
+    );
+    expect(view?.title).toBe(STORAGE_FAILURE_TITLE);
     expect(view?.message).toMatch(
       /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
     );
-    expect(view?.reinvite).toBeUndefined();
   });
 
   describe("this device's failed save", () => {
