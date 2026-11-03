@@ -271,6 +271,8 @@ export function managedInstallFields(
     ...(record.rotationHistory !== undefined
       ? { rotationHistory: record.rotationHistory }
       : {}),
+    ...(record.ownRelay !== undefined ? { ownRelay: record.ownRelay } : {}),
+    ...(record.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
   };
 }
 
@@ -294,10 +296,6 @@ export interface ManagedImportResult {
   /** The grants the source record held that {@link record} does not, in the order
    * they are presented. Empty when there is nothing to take again. */
   missingGrants: Array<ManagedPlatformGrant>;
-  /** On a pair import, the `connection.turn` urls its configuration names
-   * beside a relay registrar, which this browser's own relay settings replace
-   * ({@link readManagedCommandLinePairImport}), as the file states them. */
-  droppedTurnUrls?: Array<string>;
   /** On a pair import, the names of the fields its key file holds that the
    * import did not read ({@link readManagedCommandLinePairImport}). */
   unreadKeyFileFields?: Array<string>;
@@ -593,15 +591,11 @@ export async function importManagedCommandLinePair(
 ): Promise<ManagedImportResult> {
   if (probeImportFile(configurationSource) === "backup")
     throw new ManagedImportBackupNotConfigurationError();
-  const {
-    record: imported,
-    droppedTurnUrls,
-    unreadKeyFileFields,
-  } = readManagedCommandLinePairImport(configurationSource, keySource);
+  const { record: imported, unreadKeyFileFields } =
+    readManagedCommandLinePairImport(configurationSource, keySource);
   const landed = (record: ManagedExchangeRecord): ManagedImportResult => ({
     record,
     missingGrants: [],
-    ...(droppedTurnUrls.length > 0 ? { droppedTurnUrls } : {}),
     ...(unreadKeyFileFields.length > 0 ? { unreadKeyFileFields } : {}),
   });
   const at = deps.now().toISOString();

@@ -8,7 +8,6 @@ import { triggerBlobDownload } from "@components/blobDownload";
 
 import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
 import { getManagedExchange } from "@psi/managed/managedExchangeStore";
-import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import styles from "@styles/app.module.css";
 
@@ -52,15 +51,7 @@ export function ManagedCronExportPanel({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  // One read of the relay settings serves the panel and the download, so the
-  // files name the TURN urls the panel composed with.
-  const { ownRelay, state } = useMemo(() => {
-    const read = readOwnRelaySetting();
-    return {
-      ownRelay: read,
-      state: managedCronExportPanelState(record, () => read),
-    };
-  }, [record]);
+  const state = useMemo(() => managedCronExportPanelState(record), [record]);
   const invitationRegistrarLine =
     state.kind === "exportable"
       ? invitationRegistrarExportLine(state.composed.connection)
@@ -73,7 +64,6 @@ export function ManagedCronExportPanel({
     void exportManagedCronFiles(record.id, {
       readRecord: getManagedExchange,
       download: triggerBlobDownload,
-      readOwn: () => ownRelay,
     })
       .catch(() => setFailed(true))
       .finally(() => setBusy(false));

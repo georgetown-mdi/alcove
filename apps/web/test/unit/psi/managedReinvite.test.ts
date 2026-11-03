@@ -11,22 +11,26 @@ import {
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   NO_STANDING_CONDITION,
+  applyManagedExchangeLocalEdits,
   applyManagedExchangeReinviteRotation,
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
   ManagedSignalingEndpointRefusedError,
-  assertManagedRendezvousPossible,
   beginManagedRendezvous,
 } from "@psi/managed/managedRendezvous";
 import {
   canReinviteFromRecord,
   composeManagedReinvite,
 } from "@psi/managed/managedReinvite";
+import {
+  managedReinviteDefaultRelay,
+  managedReinviteOwnRelay,
+  reinviteManagedExchange,
+} from "@psi/managed/managedReinviteDriver";
 import { NoSignalingAddressError } from "@psi/invitation";
 import { reinviteLocation } from "@psi/invitationLocation";
-import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { writeCoordinationServerSetting } from "@psi/transport/coordinationServerSetting";
 
 import type { InvitationToken, WebRTCEndpoint } from "@alcove/core";
@@ -34,8 +38,8 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type { InvitationLocation } from "@psi/invitation";
 import type Peer from "peerjs";
+import type { ReinviteLocation } from "@psi/managed/managedReinvite";
 
 const TEST_RETIRED = { verifier: "A".repeat(43), at: 0 };
 
@@ -55,11 +59,10 @@ vi.mock("@utils/clientConfig", async (importOriginal) =>
 
 // Fast re-invite from a stored record, tested in Node: the fresh invitation is
 // composed from the record's OWN document (terms + committed send set), mints a
-// fresh secret, and names this browser's coordination server setting, the
-// build's server where none is set, or the record's own where the setting
-// cannot be read, which its rotation stores on the record -- so the partner's
-// accept re-derives its perspective, receiving the same send set, and saves the
-// server this party's re-runs register at, and the operator re-authors nothing.
+// fresh secret, and names the record's own coordination server -- so the
+// partner's accept re-derives its perspective, receiving the same send set, and
+// saves the server this party's re-runs register at, and the operator
+// re-authors nothing.
 // Only the inviter side re-mints.
 
 // `encodeInvitation` re-checks the token's `expires` against the real wall clock, so
@@ -77,14 +80,16 @@ function freshDistinctSecret(): string {
 }
 const FRESH_SECRET = freshDistinctSecret();
 
-const location: InvitationLocation = {
+const location: ReinviteLocation = {
   origin: "https://example.org:3000",
-  signaling: {
-    host: "example.org",
-    port: 3000,
-    path: "/api/",
-    secure: true,
-  },
+  signaling: "saved",
+};
+
+/** The coordination server {@link inviterRecord} holds. */
+const SAVED_SERVER = {
+  host: "saved-signaling.example.org",
+  port: 9999,
+  path: "/signal/",
 };
 
 function inviterRecord(
@@ -151,41 +156,17 @@ describe("composeManagedReinvite", () => {
     ).not.toThrow();
   });
 
-  test("the endpoint names the location's coordination server, not the one the record saved, and the rotation stores it", async () => {
+  test("the endpoint names the record's coordination server, and the rotation keeps it", async () => {
     const record = inviterRecord();
     const reinvite = await composeManagedReinvite(record, location, seams);
     const token = await decodeInvitation(reinvite.encoded);
 
     expect(token.connectionEndpoint).toStrictEqual({
       channel: "webrtc",
-      host: "example.org",
-      port: 3000,
-      path: "/api/",
+      ...SAVED_SERVER,
     });
-    expect(reinvite.rotation.signalingServer).toStrictEqual({
-      host: "example.org",
-      port: 3000,
-      path: "/api/",
-    });
+    expect(reinvite.rotation.signalingServer).toStrictEqual(SAVED_SERVER);
     expect(reinvite.deepLink.startsWith(`${location.origin}/`)).toBe(true);
-  });
-
-  test("a record whose saved server fails validation is repointed, not refused", async () => {
-    const record = inviterRecord({
-      exchangeFile: composeManagedExchangeFile({
-        connection: { channel: "webrtc", host: "a@b", path: "/api/" },
-        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-      }),
-    });
-    const reinvite = await composeManagedReinvite(record, location, seams);
-
-    expect(reinvite.rotation.signalingServer.host).toBe("example.org");
-    const repointed = applyManagedExchangeReinviteRotation(
-      record,
-      reinvite.rotation,
-      TEST_RETIRED,
-    );
-    expect(() => assertManagedRendezvousPossible(repointed)).not.toThrow();
   });
 
   test("a location naming no coordination server mints nothing", async () => {
@@ -210,14 +191,12 @@ describe("composeManagedReinvite", () => {
     const token = await decodeInvitation(reinvite.encoded);
     expect(token.connectionEndpoint).toStrictEqual({
       channel: "webrtc",
-      host: "example.org",
-      port: 3000,
-      path: "/api/",
+      ...SAVED_SERVER,
       relay: ownRelay,
     });
   });
 
-  test("names the record's registrar's exchange id beside this browser's own WebSocket relay only", async () => {
+  test("names the record's registrar's exchange id beside the exchange's own WebSocket relay only", async () => {
     const relayRegistrar = {
       url: "https://registrar.example.org",
       exchangeId: "riverbend-quarterly",
@@ -298,7 +277,7 @@ describe("composeManagedReinvite", () => {
     });
   });
 
-  test("names the build's default relay alone when this browser has no relay", async () => {
+  test("names the build's default relay alone when the exchange has no relay", async () => {
     const reinvite = await composeManagedReinvite(inviterRecord(), location, {
       ...seams,
       defaultRelay: DEFAULT_RELAY,
@@ -424,14 +403,14 @@ describe("composeManagedReinvite", () => {
 
 describe("the coordination server a re-invite names", () => {
   const SETTING_SERVER = "wss://coordination.agency.example/signal/";
-  const SETTING_ENDPOINT = {
-    host: "coordination.agency.example",
-    port: 443,
-    path: "/signal/",
-  };
   const SAVED_ENDPOINT = {
     host: "saved-signaling.example.org",
     port: 9999,
+    path: "/signal/",
+  };
+  const EDITED_ENDPOINT = {
+    host: "coordination.agency.example",
+    port: 443,
     path: "/signal/",
   };
   const relayPlan = { relaysLeftOut: [], websocketRelays: [] };
@@ -454,13 +433,6 @@ describe("the coordination server a re-invite names", () => {
     expect(endpoints).toHaveLength(1);
     return endpoints[0];
   }
-
-  /** The build's own server, as the `@utils/clientConfig` mock names it. */
-  const BUILD_ENDPOINT = {
-    host: "signaling.example.org",
-    port: 443,
-    path: "/api/",
-  };
 
   /** This browser's storage, as the stand-in holds it. */
   let stored: Map<string, string>;
@@ -505,51 +477,35 @@ describe("the coordination server a re-invite names", () => {
     vi.unstubAllGlobals();
   });
 
-  test("a record at server A with the setting naming B: the re-invite names B, the record then holds B, and its runs register where the record says", async () => {
+  test("names the server the record holds whatever this browser's setting names, and the record keeps it", async () => {
     writeCoordinationServerSetting(SETTING_SERVER);
-    const record = inviterRecord();
-    expect(await registeredAt(record)).toStrictEqual({
-      channel: "webrtc",
-      ...SAVED_ENDPOINT,
-    });
-
-    const { named, reinvited } = await reinviteFrom(record);
-    expect(named).toStrictEqual({ channel: "webrtc", ...SETTING_ENDPOINT });
-    expect(reinvited.exchangeFile.connection).toMatchObject({
-      channel: "webrtc",
-      server: SETTING_ENDPOINT,
-    });
-    expect(reinvited.sharedSecret).toBe(FRESH_SECRET);
-    expect(await registeredAt(reinvited)).toStrictEqual({
-      channel: "webrtc",
-      ...SETTING_ENDPOINT,
-    });
-  });
-
-  test("with no setting, the re-invite names the build's server and the record then holds it", async () => {
-    const { named, reinvited } = await reinviteFrom(inviterRecord());
-    expect(named).toStrictEqual({ channel: "webrtc", ...BUILD_ENDPOINT });
-    expect(await registeredAt(reinvited)).toStrictEqual({
-      channel: "webrtc",
-      ...BUILD_ENDPOINT,
-    });
-  });
-
-  test("with a stored setting this page cannot read, the re-invite names the server the record holds, and the record keeps it", async () => {
-    stored.set(
-      "alcove-own-coordination-server",
-      JSON.stringify({ version: 1, url: "ws://coordination.agency.example/" }),
-    );
     const { named, reinvited } = await reinviteFrom(inviterRecord());
     expect(named).toStrictEqual({ channel: "webrtc", ...SAVED_ENDPOINT });
     expect(reinvited.exchangeFile.connection).toMatchObject({
       channel: "webrtc",
       server: SAVED_ENDPOINT,
     });
+    expect(reinvited.sharedSecret).toBe(FRESH_SECRET);
     expect(await registeredAt(reinvited)).toStrictEqual({
       channel: "webrtc",
       ...SAVED_ENDPOINT,
     });
+  });
+
+  test("names the server an edit set, where the record's runs then register", async () => {
+    const edited = runnableManagedExchangeOrRefuse(
+      applyManagedExchangeLocalEdits(
+        inviterRecord(),
+        { signalingServer: EDITED_ENDPOINT },
+        NOW,
+      ),
+    );
+    expect(await registeredAt(edited)).toStrictEqual({
+      channel: "webrtc",
+      ...EDITED_ENDPOINT,
+    });
+    const { named } = await reinviteFrom(edited);
+    expect(named).toStrictEqual({ channel: "webrtc", ...EDITED_ENDPOINT });
   });
 
   test("with storage that refuses the read, the re-invite names the server the record holds", async () => {
@@ -562,8 +518,7 @@ describe("the coordination server a re-invite names", () => {
     expect(named).toStrictEqual({ channel: "webrtc", ...SAVED_ENDPOINT });
   });
 
-  test("with an unreadable setting and a saved server a run refuses, the re-invite refuses and mints nothing", async () => {
-    stored.set("alcove-own-coordination-server", "{");
+  test("with a saved server a run refuses, the re-invite refuses and mints nothing", async () => {
     const encode = vi.fn(encodeInvitation);
     const record = inviterRecord({
       exchangeFile: composeManagedExchangeFile({
@@ -575,14 +530,6 @@ describe("the coordination server a re-invite names", () => {
       composeManagedReinvite(record, reinviteLocation(), { ...seams, encode }),
     ).rejects.toThrow(ManagedSignalingEndpointRefusedError);
     expect(encode).not.toHaveBeenCalled();
-  });
-
-  test("a run with no re-invite registers at the record's server whatever the setting names", async () => {
-    writeCoordinationServerSetting(SETTING_SERVER);
-    expect(await registeredAt(inviterRecord())).toStrictEqual({
-      channel: "webrtc",
-      ...SAVED_ENDPOINT,
-    });
   });
 });
 
@@ -602,7 +549,7 @@ describe("the re-invite rotation's expires provenance", () => {
 });
 
 describe("the re-invite driver's relays", () => {
-  test("reads this browser's own relay under the record's allowed relays, never this browser's stored ones", async () => {
+  test("reads the record's own relay under its allowed relays, never this browser's stored ones", async () => {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
         key === "alcove-relay-restriction"
@@ -617,15 +564,15 @@ describe("the re-invite driver's relays", () => {
           allowedRelays: ["relay.example.org"],
         }),
       });
-      const asked: Array<ReadonlyArray<string> | undefined> = [];
+      const asked: Array<RunnableManagedExchangeRecord> = [];
       await reinviteManagedExchange(record.id, undefined, {
         ...driverDeps(record),
-        ownRelay: (allowedRelays) => {
-          asked.push(allowedRelays);
+        ownRelay: (read) => {
+          asked.push(read);
           return undefined;
         },
       });
-      expect(asked).toEqual([["relay.example.org"]]);
+      expect(asked).toEqual([record]);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -713,3 +660,52 @@ function driverDeps(
     defaultRelay: () => undefined,
   };
 }
+
+describe("the relays a re-invite names by default", () => {
+  const OWN_TURN = "turns:relay.example.org:443?transport=tcp";
+
+  test("are the record's own, less what its allowed relays leave out, whatever this browser's setting names", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "alcove-own-relay"
+          ? JSON.stringify({
+              version: 1,
+              turn: ["turns:browser.example.org:443"],
+              stun: [],
+            })
+          : null,
+    });
+    try {
+      expect(managedReinviteOwnRelay(inviterRecord())).toBeUndefined();
+      expect(
+        managedReinviteOwnRelay(
+          inviterRecord({
+            ownRelay: { turn: [OWN_TURN], stun: ["stun:relay.example.org"] },
+          }),
+        ),
+      ).toEqual({ turn: [OWN_TURN], stun: ["stun:relay.example.org"] });
+      expect(
+        managedReinviteOwnRelay(
+          inviterRecord({
+            exchangeFile: composeManagedExchangeFile({
+              connection: { channel: "webrtc", host: "signaling.example.org" },
+              linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+              allowedRelays: ["elsewhere.example.org"],
+            }),
+            ownRelay: { turn: [OWN_TURN], stun: [] },
+          }),
+        ),
+      ).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("name the build's switched-off relay only where the record turns it on", () => {
+    const offered = () => ({ kind: "opt-in", relay: DEFAULT_RELAY }) as const;
+    expect(managedReinviteDefaultRelay({}, offered)).toBeUndefined();
+    expect(
+      managedReinviteDefaultRelay({ defaultRelayOn: true }, offered),
+    ).toEqual(DEFAULT_RELAY);
+  });
+});

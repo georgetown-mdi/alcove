@@ -14,14 +14,7 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import { composeManagedCronExportConfig } from "@psi/managed/managedCronExport";
 
-import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
-
 // The web half of the set in `@alcove/core/testing`; its module header states the design.
-
-const readOwn = (): OwnRelayRead => ({
-  kind: "set",
-  relay: { turn: [COMMAND_LINE_EXPORT_OWN_TURN_URL], stun: [] },
-});
 
 describe("the command-line export relay set", () => {
   test.each(
@@ -38,10 +31,11 @@ describe("the command-line export relay set", () => {
       side: one.side,
       sharedSecret: generateSharedSecret(),
       relayRegistrar: COMMAND_LINE_EXPORT_RELAY_REGISTRAR,
+      ownRelay: { turn: [COMMAND_LINE_EXPORT_OWN_TURN_URL], stun: [] },
     });
     expect(
       parseSensitiveYaml(
-        composeManagedCronExportConfig(record, readOwn).config.text,
+        composeManagedCronExportConfig(record).config.text,
         "exported alcove.yaml",
       ),
     ).toEqual(parseSensitiveYaml(one.document, "the set's document"));

@@ -1,9 +1,6 @@
 import { isConsoleBuild } from "@utils/clientConfig";
 
-import {
-  inviterSignalingAddress,
-  reinviteSignalingAddress,
-} from "./transport/signalingAddress";
+import { inviterSignalingAddress } from "./transport/signalingAddress";
 
 import type { InvitationLocation } from "@psi/invitation";
 import type { ReinviteLocation } from "@psi/managed/managedReinvite";
@@ -30,15 +27,14 @@ export function invitationLocation(): InvitationLocation {
 
 /**
  * This page's origin and the coordination server a re-invite from a saved
- * exchange names ({@link reinviteSignalingAddress}), which differs from
- * {@link invitationLocation} only where this browser's setting cannot be
- * read. A console build names none, as there. Browser only.
+ * exchange names: the one the exchange holds. A console build names none, as
+ * {@link invitationLocation} does. Browser only.
  */
 export function reinviteLocation(): ReinviteLocation {
   if (typeof window === "undefined")
     throw new Error("reinviteLocation must be called in the browser");
   return {
     origin: window.location.origin,
-    signaling: isConsoleBuild() ? undefined : reinviteSignalingAddress(),
+    signaling: isConsoleBuild() ? undefined : "saved",
   };
 }

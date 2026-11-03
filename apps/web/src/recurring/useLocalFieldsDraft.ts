@@ -151,7 +151,7 @@ export interface LocalFieldsDraft {
  *
  * `runsListRelay` is whether the exchange's runs list a relay for its allowed
  * relays to keep or leave out, which the surface decides: a browser run reads
- * this browser's relay settings, a command-line run its configuration.
+ * the exchange's own relays, a command-line run its configuration.
  */
 export function useLocalFieldsDraft(
   record: LocalFieldsSource,

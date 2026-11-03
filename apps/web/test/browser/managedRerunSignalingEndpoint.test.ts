@@ -32,9 +32,9 @@ import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 // driver to the dial: the dial goes to the signaling server the record saved
 // from the invitation it accepted, never to this page's own server, and a
 // saved address that fails the invitation endpoint's validation stops the run
-// before anything is dialled, naming the exchange. An inviting party's
-// re-invite from such a record, while this browser cannot read its own
-// coordination server setting, stops with the setting as its remedy.
+// before anything is dialled, naming the exchange. An inviting party's run
+// from such a record stops with the exchange's own server setting as its
+// remedy.
 
 const LABEL = "Riverbend quarterly";
 
@@ -90,10 +90,6 @@ async function folderWithInput(
 
 const FOLDER_NAMES: Array<string> = [];
 
-/** The localStorage key this browser's coordination server setting is kept
- * under. */
-const COORDINATION_SERVER_SETTING_KEY = "alcove-own-coordination-server";
-
 /** A saved host the invitation endpoint's validation refuses. */
 const REFUSED_HOST = "partner.example@attacker.example";
 
@@ -125,7 +121,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await flushPendingUpdates();
   app.unmount();
-  window.localStorage.removeItem(COORDINATION_SERVER_SETTING_KEY);
   await clearManagedExchanges();
   const root = await navigator.storage.getDirectory();
   for (const name of FOLDER_NAMES.splice(0))
@@ -207,11 +202,10 @@ describe("an accepting party's re-run", () => {
   });
 });
 
-describe("an inviting party's re-invite while this browser cannot read its coordination server", () => {
-  test("from a record whose saved address a run refuses, stops and says to set or clear the setting in relay settings first", async () => {
+describe("an inviting party's run from a record whose saved address a run refuses", () => {
+  test("stops, says where to change the server, and offers no fresh invitation", async () => {
     expectConsole("error", /ManagedSignalingEndpointRefusedError/);
-    window.localStorage.setItem(COORDINATION_SERVER_SETTING_KEY, "{not json");
-    const exchange = await acceptorExchange("reinvite-refused-endpoint", {
+    const exchange = await acceptorExchange("inviter-refused-endpoint", {
       side: "inviter",
       exchangeFile: composeManagedExchangeFile({
         connection: { ...savedLocator, host: REFUSED_HOST },
@@ -221,29 +215,18 @@ describe("an inviting party's re-invite while this browser cannot read its coord
     const created = await createManagedExchange(exchange);
 
     await pressRun(created.id);
-    await expect
-      .element(
-        page.getByRole("alert").filter({
-          hasText: "The saved coordination server address cannot be used",
-        }),
-      )
-      .toBeInTheDocument();
-
-    await page
-      .getByRole("button", { name: "Create a fresh invitation" })
-      .click();
-
-    const failure = page.getByRole("alert").filter({
-      hasText: "Could not create a fresh invitation",
+    const alert = page.getByRole("alert").filter({
+      hasText: "The saved coordination server address cannot be used",
     });
-    await expect.element(failure).toBeInTheDocument();
-    expect(failure.element().textContent).toBe(
-      "Could not create a fresh invitation" +
-        "Relay settings cannot read your coordination server, and the " +
-        "coordination server address this exchange saved cannot be used. " +
-        "Set your coordination server again or clear it in relay settings " +
-        "first, then try again.",
+    await expect.element(alert).toBeInTheDocument();
+    expect(alert.element().textContent).toContain(
+      "Running it again stops the same way. Change the coordination server " +
+        "under Connection settings on this exchange's page.",
     );
+    expect(dials.endpoints).toHaveLength(0);
+    expect(
+      page.getByRole("button", { name: "Create a fresh invitation" }).query(),
+    ).toBeNull();
     expect((await getManagedExchange(created.id))?.sharedSecret).toBe(
       exchange.sharedSecret,
     );

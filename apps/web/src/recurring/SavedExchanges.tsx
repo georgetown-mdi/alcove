@@ -842,8 +842,7 @@ const KEY_FILE_CHOOSER_NOTE =
  * straight to the exchange ({@link managedImportGrantNotice}): the folder is
  * what they have to choose again, and the notice is only read where it is
  * shown. A pair import stops the same way to say the exchange now runs
- * here, to name the settings it keeps without a control, and to name the
- * relay urls this browser's relay settings stand in for
+ * here and to name the settings it keeps without a control
  * ({@link pairImportedNotice}). An import with nothing to say goes
  * straight through. */
 function ImportExchangeFile() {
@@ -1001,7 +1000,7 @@ function useImportFile({
         // Best-effort persistence on the imported record's origin, the same request
         // a create makes; a denied grant does not fail the import.
         void requestPersistentStorage();
-        const { record, missingGrants, droppedTurnUrls, unreadKeyFileFields } =
+        const { record, missingGrants, unreadKeyFileFields } =
           keySource === undefined
             ? await importFile(source, backupAnswer)
             : await importManagedCommandLinePair(
@@ -1014,7 +1013,6 @@ function useImportFile({
           keySource === undefined
             ? managedImportGrantNotice(missingGrants)
             : pairImportedNotice(record, {
-                turnUrls: droppedTurnUrls,
                 keyFileFields: unreadKeyFileFields,
               });
         if (notice !== undefined) {

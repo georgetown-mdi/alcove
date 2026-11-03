@@ -52,7 +52,6 @@ import type {
 import type { HandlePermissionState } from "./managedInputHandle";
 import type { ManagedBackupMarkOutcome } from "./managedExchangeStore";
 import type { ManagedCronExport } from "./managedCronExport";
-import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
 /** The UTC instant of `at` to the second, as `<YYYY-MM-DD>T<HHMMSS>Z`. */
 function backupFileStamp(at: Date): string {
@@ -341,9 +340,6 @@ export interface ManagedCronExportDeps {
   readRecord: (id: string) => Promise<ManagedExchangeRecord | undefined>;
   /** Trigger a client-side download of one composed file. */
   download: (fileName: string, content: string, mimeType: string) => void;
-  /** This browser's relay settings as the panel's own composition read them,
-   * so the files downloaded name the TURN urls the panel showed. */
-  readOwn: () => OwnRelayRead;
 }
 
 /**
@@ -372,7 +368,6 @@ export async function exportManagedCronFiles(
     throw new Error(`no managed exchange with id ${id}`);
   const composed = composeManagedCronExport(
     runnableManagedExchangeOrRefuse(stored),
-    deps.readOwn,
   );
   for (const file of [composed.config, composed.key])
     deps.download(file.fileName, file.text, file.mimeType);

@@ -94,9 +94,8 @@ describe("readiness result", () => {
     [{ signaling: "offline" as const }, "offline"],
     [
       { signaling: "inviterAddressRefused" as const },
-      "Re-invite your partner to name this browser's current coordination " +
-        "server. If relay settings cannot read your coordination server, set " +
-        "it again or clear it there first.",
+      "Change the coordination server under Connection settings on this " +
+        "exchange's page.",
     ],
     [
       { signaling: "acceptorAddressRefused" as const },

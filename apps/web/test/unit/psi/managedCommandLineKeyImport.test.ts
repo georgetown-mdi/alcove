@@ -54,7 +54,6 @@ import type {
 } from "@psi/managed/managedExchangeStore";
 import type { FormatMigrations } from "@alcove/core";
 import type { ManagedPairImportDeps } from "@psi/managed/managedExchangeImport";
-import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 // The key leg of the command-line import: an alcove.yaml read with the
 // .alcove.key beside it installs a runnable record, the key file is validated
@@ -84,10 +83,7 @@ function newExchange(
 }
 
 /** The two files the app's own command-line export writes for a record. */
-function exportedPair(
-  overrides: Partial<NewManagedExchange> = {},
-  readOwn?: () => OwnRelayRead,
-): {
+function exportedPair(overrides: Partial<NewManagedExchange> = {}): {
   record: RunnableManagedExchangeRecord;
   configuration: string;
   key: string;
@@ -95,7 +91,7 @@ function exportedPair(
   const record = runnableManagedExchangeOrRefuse(
     buildManagedExchangeRecord(newExchange(overrides)),
   );
-  const exported = composeManagedCronExport(record, readOwn);
+  const exported = composeManagedCronExport(record);
   return {
     record,
     configuration: exported.config.text,
@@ -967,10 +963,7 @@ describe("the relay key registration across the command-line files", () => {
   };
   const PENDING_SINCE = "2026-09-29T12:00:00.000Z";
   const OWN_TURN = "turns:relay.example.org:443?transport=tcp";
-  const ownRelay = (): OwnRelayRead => ({
-    kind: "set",
-    relay: { turn: [OWN_TURN], stun: [] },
-  });
+  const ownRelay = { turn: [OWN_TURN], stun: [] };
 
   test.each([
     ["no pending registration", {}],
@@ -981,10 +974,11 @@ describe("the relay key registration across the command-line files", () => {
   ])(
     "an exported pair with %s reads back with its registrar and marker",
     (_case, pending) => {
-      const { record, configuration, key } = exportedPair(
-        { relayRegistrar: REGISTRAR, ...pending },
+      const { record, configuration, key } = exportedPair({
+        relayRegistrar: REGISTRAR,
         ownRelay,
-      );
+        ...pending,
+      });
       const imported = readManagedCommandLinePair(configuration, key);
       expect(imported.relayRegistrar).toEqual(REGISTRAR);
       expect(imported.relayRegistrationPendingSince).toBe(
@@ -997,20 +991,19 @@ describe("the relay key registration across the command-line files", () => {
         formatVersion: 1,
         ...record.exchangeFile,
       });
-      expect(composeManagedCronExport(imported, ownRelay).config.text).toBe(
+      expect(imported.ownRelay).toEqual(ownRelay);
+      expect(composeManagedCronExport(imported).config.text).toBe(
         configuration,
       );
     },
   );
 
   test("a fresh install of an imported pair keeps its registrar and marker", async () => {
-    const { configuration, key } = exportedPair(
-      {
-        relayRegistrar: REGISTRAR,
-        relayRegistrationPendingSince: PENDING_SINCE,
-      },
+    const { configuration, key } = exportedPair({
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: PENDING_SINCE,
       ownRelay,
-    );
+    });
     const deps = recordingDeps();
     deps.install = (record) =>
       Promise.resolve(buildManagedExchangeRecord(managedInstallFields(record)));
@@ -1021,29 +1014,14 @@ describe("the relay key registration across the command-line files", () => {
     );
     expect(installed.relayRegistrar).toEqual(REGISTRAR);
     expect(installed.relayRegistrationPendingSince).toBe(PENDING_SINCE);
+    expect(installed.ownRelay).toEqual(ownRelay);
   });
 
-  test("a pair import returns the TURN urls its configuration names beside the registrar", async () => {
-    const { configuration, key } = exportedPair(
-      { relayRegistrar: REGISTRAR },
-      ownRelay,
+  test("a pair naming no registrar reads back with no own relay", () => {
+    const { configuration, key } = exportedPair({ ownRelay });
+    expect(readManagedCommandLinePair(configuration, key)).not.toHaveProperty(
+      "ownRelay",
     );
-    const result = await importManagedCommandLinePair(
-      configuration,
-      key,
-      recordingDeps(),
-    );
-    expect(result.droppedTurnUrls).toEqual([OWN_TURN]);
-  });
-
-  test("a pair import naming no registrar returns no dropped TURN url", async () => {
-    const { configuration, key } = exportedPair();
-    const result = await importManagedCommandLinePair(
-      configuration,
-      key,
-      recordingDeps(),
-    );
-    expect(result).not.toHaveProperty("droppedTurnUrls");
   });
 
   test("a pair import whose key file misspells expires is refused naming the fields, never a value, and stores nothing", async () => {
@@ -1189,10 +1167,10 @@ describe("the relay key registration across the command-line files", () => {
   });
 
   test("the configuration alone naming a registrar is refused, naming both ways past it", () => {
-    const { configuration } = exportedPair(
-      { relayRegistrar: REGISTRAR },
+    const { configuration } = exportedPair({
+      relayRegistrar: REGISTRAR,
       ownRelay,
-    );
+    });
     const error = thrownBy(() =>
       readManagedCommandLineConfiguration(configuration),
     );
@@ -1206,11 +1184,34 @@ describe("the relay key registration across the command-line files", () => {
     );
   });
 
-  test("a TURN entry stating a credential beside the registrar is refused, naming turn", () => {
-    const { configuration, key } = exportedPair(
-      { relayRegistrar: REGISTRAR },
+  test("more TURN urls beside the registrar than an exchange keeps are refused, naming the bound", () => {
+    const { configuration, key } = exportedPair({
+      relayRegistrar: REGISTRAR,
       ownRelay,
+    });
+    const nine = Array.from(
+      { length: 9 },
+      (_, index) => `    - url: turn:relay${index}.example.org:3478\n`,
+    ).join("");
+    const edited = configuration.replace(
+      `  turn:\n    - url: ${OWN_TURN}\n`,
+      `  turn:\n${nine}`,
     );
+    expect(edited).not.toBe(configuration);
+    const error = thrownBy(() => readManagedCommandLinePair(edited, key));
+    expect(error).toBeInstanceOf(ManagedConfigurationRefusedError);
+    expect((error as Error).message).toBe(
+      "This app keeps at most 8 connection.turn urls beside a relay " +
+        "registrar, each at most 1024 characters long. Shorten the list in " +
+        "this configuration, then import it again.",
+    );
+  });
+
+  test("a TURN entry stating a credential beside the registrar is refused, naming turn", () => {
+    const { configuration, key } = exportedPair({
+      relayRegistrar: REGISTRAR,
+      ownRelay,
+    });
     const credential = "turn-credential-not-in-any-message";
     const edited = configuration.replace(
       `  turn:\n    - url: ${OWN_TURN}\n`,

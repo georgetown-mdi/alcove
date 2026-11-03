@@ -16,6 +16,7 @@ import { downloadBlob, triggerBlobDownload } from "@components/blobDownload";
 
 import {
   MAX_RECENT_RUNS,
+  managedOwnRelayRead,
   runnableManagedExchange,
 } from "@psi/managed/managedExchangeRecord";
 import {
@@ -29,7 +30,6 @@ import { EXCHANGE_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
 import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
-import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 import { runListsRelay } from "@psi/transport/runRelayPlan";
 import { useHashTarget } from "@components/useHashTarget";
 
@@ -119,6 +119,7 @@ import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { KeepRunningSection } from "./KeepRunningSection";
 import { LocalDocumentFields } from "./LocalDocumentFields";
 import { MANAGED_SCHEDULE_SECTION_ID } from "./managedSectionIds";
+import { ManagedConnectionSettings } from "./ManagedConnectionSettings";
 import { ManagedRelayRegistration } from "./ManagedRelayRegistration";
 import { ManagedTermsUpdate } from "./ManagedTermsUpdate";
 import { useInputFileModifiedAt } from "./useInputFileModifiedAt";
@@ -305,7 +306,7 @@ export function ManagedExchangeDetail({
       )
     : undefined;
   const relayRegistrationShown = useMemo(
-    () => relayRegistrationOffered(record, readOwnRelaySetting()),
+    () => relayRegistrationOffered(record),
     [record],
   );
   return (
@@ -333,6 +334,14 @@ export function ManagedExchangeDetail({
       {runnableManagedExchange(record) && (
         <ManagedTermsUpdate record={record} onChanged={onTermsChanged} />
       )}
+      {runnableManagedExchange(record) &&
+        !isConsoleBuild() &&
+        record.exchangeFile.connection.channel === "webrtc" && (
+          <ManagedConnectionSettings
+            record={record}
+            onSave={onSaveLocalFields}
+          />
+        )}
       {runnableManagedExchange(record) && relayRegistrationShown && (
         <ManagedRelayRegistration
           record={record}
@@ -472,10 +481,7 @@ function ConfigurationView({
             </Alert>
           )}
           <p className={styles.small}>
-            The new invitation names the coordination server set in relay
-            settings, or this site&apos;s where none is set, or the one this
-            exchange already uses where relay settings cannot read yours, and
-            this exchange uses that server from then on.
+            The new invitation names this exchange&apos;s coordination server.
           </p>
           <Button
             variant="default"
@@ -558,6 +564,10 @@ function LocalFieldsEditor({
     record,
     runListsRelay(
       connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+      {
+        readOwn: () => managedOwnRelayRead(record),
+        switchedOn: () => record.defaultRelayOn === true,
+      },
     ),
   );
   const {

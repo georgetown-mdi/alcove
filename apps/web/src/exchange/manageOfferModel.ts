@@ -37,6 +37,7 @@ import type {
   NewManagedExchange,
 } from "@psi/managed/managedExchangeRecord";
 import type { AlertContent } from "@components/csvIntake";
+import type { OwnRelay } from "@psi/transport/ownRelaySetting";
 
 /** The deposit's progress, driven by the host that owns the store write. */
 export type ManageOfferStatus = "idle" | "depositing" | "deposited" | "error";
@@ -177,6 +178,12 @@ export interface ManagedDepositInputs {
    * the list committed on the review of the invitation this browser accepted
    * or created; `undefined` where none was set. */
   allowedRelays: ReadonlyArray<string> | undefined;
+  /** The own relays the exchange's own run listed, which the record keeps as
+   * its own; absent where it listed none. */
+  ownRelay?: OwnRelay;
+  /** Whether the exchange's own run used the relay server the build offers
+   * switched off, which the record keeps. */
+  defaultRelayOn?: boolean;
   /** The next shared secret the completed run's terms exchange derived, stored
    * as the record's live secret. */
   rotatedSecret: string;
@@ -218,6 +225,8 @@ export function buildManagedDeposit(
     ),
     side: inputs.documentParts.side,
     sharedSecret: inputs.rotatedSecret,
+    ...(inputs.ownRelay !== undefined ? { ownRelay: inputs.ownRelay } : {}),
+    ...(inputs.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
     ...(tokenMaxAgeDays !== undefined ? { tokenMaxAgeDays } : {}),
     ...(stamp.expires !== null ? { expires: stamp.expires } : {}),
   };

@@ -114,9 +114,11 @@ are the standing definition of the managed exchange.
 | `rotationHistory` | array or absent | The [history verifiers](PROTOCOL.md#the-rotation-history) of the secrets this record retired, newest first, at most 64 (`ROTATION_HISTORY_MAX_ENTRIES`): each entry holds `verifier`, 32 bytes as 43 base64url characters, and the retired secret's own `expires` where it had one, the entry shape of the key file's `rotationHistory` ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-previous-secret-and-the-rotation-history)). A run's rotation write and a re-invite each put the entry of the secret they replace at the head, in the strict-durability transaction that stores the new secret, under the run+rotate lock; the verifier is derived before that transaction opens, and the write's check that the stored secret is the one it replaces makes it that secret's. The same write keeps the 64 newest entries and then removes, from the oldest end only, the entries whose `expires` has passed, so an expired entry newer than one still in force keeps its place and each position still counts the rotations since its secret was retired, as the handshake reads it. The entry the write just put at the head is no exception: a retired secret already past its own `expires` leaves with the expired entries behind it, so a re-invite of a lapsed exchange can leave no history. Every run passes the list to the handshake, which checks a peer's history proof against it; over WebRTC two copies on different secrets derive different peer ids and never meet, so in this app the list chiefly orders two copies of one exchange at an import ([Replacing a saved copy](#replacing-a-saved-copy)). Absent while the record has retired no secret, and in a [configuration-only record](#the-configuration-only-record). The export artifact's `key` block and the command-line key file this app writes hold it under the same name, and a pair import reads it from the key file ([What the exports write](#what-the-exports-write)). **`schemaVersion` does not move for it**: a build that predates the field reads past it and drops it at its next write, which loses information and misstates nothing. The list the next rotation starts again is still a run of the newest retirements, so no position overstates a count, and a copy with no history orders nothing at an import and matches no proof, as before the field. |
 | `previousSharedSecret` | string (base64url, 43 chars / 32 bytes), or absent | The [previous secret](PROTOCOL.md#the-previous-secret): the secret a run's key exchange used, kept beside the rotated one by a run that stored as the initiator, the acceptor over WebRTC, so a run cut before the partner saved the rotated secret heals at the next one ([PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation), "While the acceptor holds a previous secret"). Written by the run's rotation write, in the strict-durability transaction that stores the rotated secret, under the run+rotate lock; that write stores none on a responder run. Removed at the partner's first frame after the terms exchange, by a strict-durability write under the same lock that leaves a record whose secret has moved since unchanged (`dropManagedExchangePreviousSecret`, `apps/web/src/psi/managed/managedExchangeStore.ts`), and by a re-invite's rotation write. A failed removal ends the run and leaves it in place. A run whose key exchange used it keeps it again beside the next secret and adds no history entry for the current secret it replaces, which no partner held. Neither export writes it, and no import reads one onto the record ([What the exports write](#what-the-exports-write)). Absent in a [configuration-only record](#the-configuration-only-record). **`schemaVersion` does not move for it**: a build that predates the field reads past it and drops it at its next write, which loses the heal and misstates nothing, since a re-invite still recovers the cut run. |
 | `previousExpires` | string (ISO 8601, UTC `Z`) or absent | The `expires` `previousSharedSecret` had while it was the current secret, held only beside it; a previous secret whose `expires` has passed is not offered, and the run waits under the current secret alone. Written and removed with `previousSharedSecret`. `schemaVersion` does not move for it, for the same reason. |
-| `relayRegistrar` | object or absent | The relay registrar this browser enrolled the exchange at: `url`, the registrar's `https://` address, and `exchangeId`, the id it holds the exchange's relay key under, validated as the command line's [`connection.relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar) is. It holds no credential: the relay-owner token is asked for at enrollment and written nowhere. Written by an enrollment once the registrar has confirmed it holds the relay key derived from the record's current secret; by a pair import whose configuration names a registrar; and by a backup restore holding one. A pair import or restore writes it whether or not that registrar confirmed the current key, and the key file's or backup's `relayRegistrationPendingSince` beside it records a registration it has not confirmed. Removed when the operator stops registering. A run registers there only when it relays through this browser's own relay ([PROTOCOL.md](PROTOCOL.md#registering-the-rotated-relay-key)). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact holds it in its `local` block, and the command-line export writes it as `connection.relay_registrar` ([What the exports write](#what-the-exports-write)). |
+| `relayRegistrar` | object or absent | The relay registrar this browser enrolled the exchange at: `url`, the registrar's `https://` address, and `exchangeId`, the id it holds the exchange's relay key under, validated as the command line's [`connection.relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar) is. It holds no credential: the relay-owner token is asked for at enrollment and written nowhere. Written by an enrollment once the registrar has confirmed it holds the relay key derived from the record's current secret; by a pair import whose configuration names a registrar; and by a backup restore holding one. A pair import or restore writes it whether or not that registrar confirmed the current key, and the key file's or backup's `relayRegistrationPendingSince` beside it records a registration it has not confirmed. Removed when the operator stops registering. A run registers there only when it relays through the exchange's own relay, `ownRelay` ([PROTOCOL.md](PROTOCOL.md#registering-the-rotated-relay-key)). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact holds it in its `local` block, and the command-line export writes it as `connection.relay_registrar` ([What the exports write](#what-the-exports-write)). |
 | `relayRegistrationPendingSince` | string (ISO 8601, UTC `Z`) or absent | The instant the secret the record holds was rotated to, while the relay registrar has not confirmed that it holds the relay key derived from it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact's `key` block and the command-line key file this app writes hold it under the same name ([What the exports write](#what-the-exports-write)). |
 | `relayRegistrationPendingReason` | `"reinvite"` or absent | Why no run can confirm the registration `relayRegistrationPendingSince` records, held only beside it and `relayRegistrar`, so a record or backup holding it without either is refused whole: `"reinvite"` when a re-invite replaced the secret and the registrar did not confirm the fresh secret's key, so the key it holds is derived from a secret the record no longer holds. Absent beside the marker, a registration signed under the current key can confirm it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). The export artifact holds it in its `local` block; it has no key-file form, so the command-line export refuses a record holding it ([What the exports write](#what-the-exports-write)). |
+| `ownRelay` | object or absent | The exchange's own relays: `turn` and `stun`, each a list of at most 8 urls (`MAX_RELAY_URLS`), and `websocket`, a WebSocket relay url, validated as the browser's own relay setting is and naming at least one url. It holds no credential: each run mints its TURN credential from the shared secret. The exchange's runs list it beside the relay the invitation named, its re-invites name it, and its relay key registration and command-line export read its TURN urls; the browser's own relay setting is not read for any of them. The operator edits it under Connection settings on the exchange's page. A record saved from a run in this browser takes the browser's own relay setting as the save finds it; a pair import takes the `connection.turn` urls the configuration names beside its registrar in place of the stored TURN urls, and keeps the stored STUN and WebSocket relay urls; a backup restore takes the backup's. Absent in a [configuration-only record](#the-configuration-only-record). **`schemaVersion` does not move for it**, as it did not for `relayRegistrar`: a record stored without it has no own relay. The export artifact holds it in its `local` block. |
+| `defaultRelayOn` | `true` or absent | Present where the exchange uses the relay server a build offers switched off ([PROTOCOL.md](PROTOCOL.md#enrolling-at-a-default-relay)): its runs list that relay and its re-invites name it. Absent, they leave it off, whatever the browser's own switch says. The operator sets it under Connection settings on the exchange's page. A record saved from a run in this browser takes the browser's switch as the save finds it; a backup restore takes the backup's; a pair import keeps the stored value, since a configuration has no field for it. Absent in a configuration-only record. `schemaVersion` does not move for it: a record stored without it has the switch off. The export artifact holds it in its `local` block. |
 | `standingCondition` | object | The unanswered **standing condition**: evidence that this device's secret may no longer be the partnership's, raised by a run and not answered since. It holds one of two forms, neither with free text: a raised condition, `since` (ISO 8601 UTC, the instant of the run that raised it) and `kind` (`"auth"` \| `"storage"` \| `"partner-storage"`), the three `failureKind`s whose remedy is out-of-band rather than an act on this device; or `{"kind": "none"}` while none stands. A raised condition additionally holds the operator's `response` where one has been given -- `kind` (`"compromise"`) and `at` (ISO 8601 UTC, the instant they answered) -- nested inside the condition it answers rather than beside it, so the acts that clear the condition clear the response with it (see [The standing condition](#the-standing-condition)). The field is **required**, so a reader never has to tell a record holding none from one written without the field: a record stored under `alcove-managed-exchange/v1`, which has no such field, is rejected whole and re-established by re-invite, as is one under `alcove-managed-exchange/v2`, whose condition cannot hold a response (see [Versioning](#versioning-a-stored-record-is-migrated-on-read)). It stands BESIDE `lastRun` rather than inside it because `lastRun` holds one run: the next run's stamp replaces it, so a no-show or a later success would otherwise carry the evidence off with the entry that held it and the operator would never again be asked for the confirmation the design requires (see [A standing condition outlives the run that raised it](../MANAGED_EXCHANGE.md#a-standing-condition-outlives-the-run-that-raised-it)). What raises and clears it is [The standing condition](#the-standing-condition). |
 
 Everything in this table except `sharedSecret` is non-secret but not
@@ -453,7 +455,9 @@ inviter's from the invitation it created or last re-invited with. Every
 re-run reaches that address and no other -- not the page's location, not its
 own deployment's setting, not the browser's own coordination server setting
 -- so two parties on different deployments keep reaching each other, and a
-change to that setting alone moves no saved exchange. The acceptor dials the
+change to that setting alone moves no saved exchange. The operator changes
+the address under Connection settings on the exchange's page, held to the
+validation below; the partner's record keeps its own copy. The acceptor dials the
 address and the inviter registers there. Before any
 connection, including a relay registration, the saved address goes through the
 validation a fresh invitation's endpoint gets: the invitation endpoint schema,
@@ -464,20 +468,12 @@ the same record refuses identically at every later run, so a scheduled window
 does not retry it. The other connection field a re-run reads is an acceptor's
 `invitation_relay`.
 
-An inviter's re-invite names the browser's own coordination server setting
-where it is set and readable, and the deployment's address where it is unset,
-as a new invitation does (see
-[WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address)).
-Where the stored setting is unreadable, it names the address the record
-saved, after the validation a re-run applies, so an unreadable setting moves
-no saved exchange; a saved address failing that validation refuses the
-re-invite before anything is minted.
-The write that stores the fresh secret replaces the document's `server` with
-that endpoint's `host`, `port` and `path`, so the inviter's later runs
-register where the partner's accept of the re-invite dials. A re-invite is
-therefore how an inviter moves a saved exchange to another server, and, where
-the setting is readable or unset, it recovers an inviter's record whose saved
-address is refused.
+An inviter's re-invite names the address the record saved, after the
+validation a re-run applies; a saved address failing that validation refuses
+the re-invite before anything is minted. The write that stores the fresh
+secret writes that endpoint's `host`, `port` and `path` as the document's
+`server`, so the inviter's later runs register where the partner's accept of
+the re-invite dials.
 
 #### Versioning: a stored record is migrated on read
 
@@ -1664,7 +1660,7 @@ the next run ([PROTOCOL.md](PROTOCOL.md#the-previous-secret)).
 
 ### The pending relay registration
 
-A run that relays through this browser's own relay registers the relay key
+A run that relays through the exchange's own relay registers the relay key
 derived from the rotated secret at the registrar the record names
 ([PROTOCOL.md](PROTOCOL.md#registering-the-rotated-relay-key)). The
 `relayRegistrationPendingSince` field records a registration the registrar has
@@ -1700,7 +1696,7 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   rotated since unchanged; by an enrollment; and by stopping registration. No
   other write removes it: a rotation write sets or keeps it, on a record
   naming a registrar or none.
-- **Read** by the next run that relays through this browser's own relay,
+- **Read** by the next run that relays through the exchange's own relay,
   inside the lock, after the input guard and before any contact with the
   partner. With no reason, it registers the current key again, signed under
   the relay key of `previousSharedSecret` while the record holds one, the key
@@ -1760,13 +1756,11 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-pending-relay-registration)). The
   command line registers only for a relay its own `turn` entries name with a
   credential minted from the shared secret, and refuses a `relay_registrar`
-  without one, so the export writes this browser's own TURN urls from its
-  relay settings as those entries, a url each. It writes no STUN url. With no
-  own TURN url set, the export is refused, naming the two ways past it: set
-  the relay's TURN url in the relay settings, or stop registering. A relay
-  setting this build cannot read is refused apart, naming setting it again.
-  The panel's preview and its download compose from one read of the relay
-  settings, so the files name the urls the panel showed.
+  without one, so the export writes the exchange's own TURN urls
+  (`ownRelay`) as those entries, a url each. It writes no STUN url. With no
+  own TURN url, the export is refused, naming the two ways past it: add the
+  relay's TURN url under Connection settings on the exchange's page, or stop
+  registering.
 - **The invitation's relay does not change it.** A command-line run lists
   the relay the invitation named beside its own and still registers at its
   own registrar ([PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)),
@@ -1793,15 +1787,12 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   current key and removes the reason, so the export that follows holds no
   marker.
 - **The pair import** reads `connection.relay_registrar` into the record's
-  `relayRegistrar`, and drops the `turn` entries beside it where each has its
-  credential minted: a run here relays through this browser's own relay
-  settings, which the export writes back in their place. A `turn` entry
-  stating a credential is refused, as it is without a registrar. The key
+  `relayRegistrar`, and the urls of the `turn` entries beside it, where each
+  has its credential minted, into the record's `ownRelay`, which the export
+  writes back. A `turn` entry stating a credential is refused, as it is
+  without a registrar, and so are more urls than `ownRelay` holds. The key
   file's marker becomes `relayRegistrationPendingSince`, and a fresh install
-  keeps both. The import warns rather than refuses: its notice names the
-  dropped urls where this browser's own TURN urls differ, and, where this
-  browser names no TURN url, says the registrar registers nothing until the
-  Relay server page names one.
+  keeps all three.
 - **An `alcove.yaml` chosen alone naming a registrar is refused**: a
   configuration-only record registers nothing and holds no registrar. The
   refusal names choosing the key file too, or removing
@@ -1879,8 +1870,8 @@ same discipline the mint layer applies to a validated spec). `key` is the
 `rotationHistory` when the record has one).
 And `local` holds the record fields the two CLI artifacts do not (`label`,
 `side`, `schedule`, `lastRun`, `standingCondition`, `tokenMaxAgeDays`,
-`relayRegistrar`, `relayRegistrationPendingReason`, and the two held-grant
-markers above; the relay fields: [What the exports
+`relayRegistrar`, `relayRegistrationPendingReason`, `ownRelay`,
+`defaultRelayOn`, and the two held-grant markers above; the relay fields: [What the exports
 write](#what-the-exports-write)). The [standing
 condition](#the-standing-condition) travels, the operator's `response` to it
 included, because an export that dropped either would be a fourth way to clear
@@ -1899,7 +1890,8 @@ either imports with the answer or is refused entire. The artifact's own
 - **What an older reader does with an optional `local` key.** The
   `artifactVersion` literal does not move for any of the optional keys in
   `local` -- `standingCondition`, `relayRegistrar`,
-  `relayRegistrationPendingReason`, and the held-grant marker
+  `relayRegistrationPendingReason`, `ownRelay`, `defaultRelayOn`, and the
+  held-grant marker
   `heldOutputFolder`, each written only where there is something to write, and
   the read-only `heldInputFile` --
   so the format does not version for them. That does not make an artifact

@@ -46,7 +46,7 @@ import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchange
 export const RELAY_REGISTRATION_TITLE = "Relay registration";
 
 const RELAY_REGISTRATION_TEXT =
-  "If the relay in this browser's relay settings runs the Alcove relay " +
+  "If this exchange's TURN relay runs the Alcove relay " +
   "registrar, enroll this exchange there once. Each run that relays through " +
   "that relay then registers the relay key derived from the exchange's new " +
   "shared secret, so the relay accepts only the current key.";
@@ -60,7 +60,7 @@ const STOPPED_TEXT =
   "Runs of this exchange no longer register a relay key. The registrar " +
   "keeps the key it holds until its registration lapses.";
 
-/** What stopping registration means for the next run through this browser's
+/** What stopping registration means for the next run through the exchange's
  * relay, in the words of the relay settings' notice. */
 export const STOPPED_OWN_RELAY_TEXT =
   "The shared secret changes after every run that completes its handshake, " +

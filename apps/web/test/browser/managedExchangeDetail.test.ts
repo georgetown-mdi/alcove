@@ -42,6 +42,14 @@ import { ManagedExchangeDetail } from "@recurring/ManagedExchangeDetail";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 
 import {
+  DEFAULT_RELAY_SWITCH_HELP,
+  ManagedConnectionSettings,
+  SERVER_FIELD_DESCRIPTION,
+} from "@recurring/ManagedConnectionSettings";
+import { DEFAULT_RELAY_SWITCH_LABEL } from "@psi/transport/defaultRelaySwitch";
+import { TURN_FIELD_DESCRIPTION } from "@exchange/RelaySettingsScreen";
+
+import {
   ALLOWED_RELAYS_FIELD_DESCRIPTION,
   ALLOWED_RELAYS_UNSET_SUMMARY,
   CREATED_INVITATION_ALLOWED_RELAYS_SCOPE,
@@ -206,11 +214,7 @@ describe("managed exchange detail configuration", () => {
     await expect
       .element(
         page.getByText(
-          "The new invitation names the coordination server set in relay " +
-            "settings, or this site's where none is set, or the one this " +
-            "exchange already uses where relay settings cannot read yours, " +
-            "and this exchange " +
-            "uses that server from then on.",
+          "The new invitation names this exchange's coordination server.",
           { exact: true },
         ),
       )
@@ -1718,16 +1722,14 @@ describe("managed exchange detail document settings", () => {
   const doneButton = () => page.getByRole("button", { name: "Done" });
   const saveButton = () => page.getByRole("button", { name: "Save settings" });
 
-  describe("where this browser's own relay lists one", () => {
-    beforeEach(() => {
-      writeOwnRelaySetting({ turn: ["turn:own.example.org"], stun: [] });
-    });
-    afterEach(() => {
-      writeOwnRelaySetting({ turn: [], stun: [] });
+  describe("where the exchange's own relay lists one", () => {
+    const listedRecord = () => ({
+      ...relaysRecord(),
+      ownRelay: { turn: ["turn:own.example.org"], stun: [] },
     });
 
     test("a record with no allowed relays shows them as one line, with no remove action", async () => {
-      renderDetail(relaysRecord(), () => Promise.resolve());
+      renderDetail(listedRecord(), () => Promise.resolve());
 
       await expect
         .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
@@ -1740,7 +1742,7 @@ describe("managed exchange detail document settings", () => {
 
     test("their action opens the field, with the short description and the guide, and an entered list saves", async () => {
       const { saved, onSave } = recordingSaves();
-      renderDetail(relaysRecord(), onSave);
+      renderDetail(listedRecord(), onSave);
 
       await setButton().click();
       await expect.element(allowedField()).toHaveFocus();
@@ -1767,12 +1769,12 @@ describe("managed exchange detail document settings", () => {
     });
 
     test("Remove after the runs stop listing a relay keeps the line, with focus on its action", async () => {
-      renderDetail(relaysRecord(), () => Promise.resolve());
+      renderDetail(listedRecord(), () => Promise.resolve());
 
       await setButton().click();
       await allowedField().fill("relay.example.org");
       await doneButton().click();
-      writeOwnRelaySetting({ turn: [], stun: [] });
+      renderDetail(relaysRecord(), () => Promise.resolve());
       await removeButton().click();
 
       await expect.element(setButton()).toHaveFocus();
@@ -1784,7 +1786,7 @@ describe("managed exchange detail document settings", () => {
 
     test("a refused entry is named by its line and blocks the save", async () => {
       const { saved, onSave } = recordingSaves();
-      renderDetail(relaysRecord(), onSave);
+      renderDetail(listedRecord(), onSave);
 
       await setButton().click();
       await allowedField().fill(
@@ -1800,7 +1802,7 @@ describe("managed exchange detail document settings", () => {
     });
 
     test("the field passes the accessibility rules, opened", async () => {
-      renderDetail(relaysRecord(), () => Promise.resolve());
+      renderDetail(listedRecord(), () => Promise.resolve());
 
       await setButton().click();
       await expect.element(allowedField()).toBeInTheDocument();
@@ -1810,6 +1812,129 @@ describe("managed exchange detail document settings", () => {
         .closest("div");
       expect(settings).not.toBeNull();
       if (settings !== null) expectNoAccessibilityViolations(settings);
+    });
+  });
+
+  describe("the connection settings", () => {
+    const scheme = () => (window.location.protocol === "https:" ? "wss" : "ws");
+    const serverField = () =>
+      page.getByRole("textbox", { name: "Coordination server" });
+    const turnField = () =>
+      page.getByRole("textbox", { name: "TURN server urls" });
+    const stunField = () =>
+      page.getByRole("textbox", { name: "STUN server urls" });
+    const saveConnection = () =>
+      page.getByRole("button", { name: "Save connection settings" });
+
+    test("show the saved server and the exchange's own relays, and a save sends what was entered", async () => {
+      const { saved, onSave } = recordingSaves();
+      renderDetail(
+        {
+          ...relaysRecord(),
+          ownRelay: { turn: ["turn:own.example.org"], stun: [] },
+        },
+        onSave,
+      );
+
+      await expect
+        .element(page.getByRole("heading", { name: "Connection settings" }))
+        .toBeInTheDocument();
+      await expect
+        .element(serverField())
+        .toHaveValue(`${scheme()}://signaling.example.org:3000/api/`);
+      await expect
+        .element(serverField())
+        .toHaveAccessibleDescription(SERVER_FIELD_DESCRIPTION);
+      await expect.element(turnField()).toHaveValue("turn:own.example.org");
+      await expect
+        .element(turnField())
+        .toHaveAccessibleDescription(TURN_FIELD_DESCRIPTION);
+
+      await serverField().fill(
+        `${scheme()}://coordination.agency.example/signal/`,
+      );
+      await stunField().fill("stun:stun.example.org:3478");
+      await saveConnection().click();
+
+      await vi.waitFor(() => {
+        expect(saved).toHaveLength(1);
+      });
+      expect(saved[0]).toEqual({
+        signalingServer: {
+          host: "coordination.agency.example",
+          port: scheme() === "wss" ? 443 : 80,
+          path: "/signal/",
+        },
+        ownRelay: {
+          turn: ["turn:own.example.org"],
+          stun: ["stun:stun.example.org:3478"],
+        },
+        defaultRelayOn: false,
+      });
+      await expect
+        .element(page.getByText("Connection settings saved."))
+        .toBeInTheDocument();
+    });
+
+    test("a refused address is named on its field and nothing is saved", async () => {
+      const { saved, onSave } = recordingSaves();
+      renderDetail(relaysRecord(), onSave);
+
+      await serverField().fill("https://app.example.org/");
+      await turnField().fill("turn:");
+      await saveConnection().click();
+
+      await expect
+        .element(page.getByRole("alert").filter({ hasText: "web page" }))
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByRole("alert").filter({ hasText: "Line 1:" }))
+        .toBeInTheDocument();
+      expect(saved).toHaveLength(0);
+    });
+
+    test("pass the accessibility rules", async () => {
+      renderDetail(relaysRecord(), () => Promise.resolve());
+
+      await expect.element(serverField()).toBeInTheDocument();
+      const section = page
+        .getByRole("heading", { name: "Connection settings" })
+        .element()
+        .closest("div");
+      expect(section).not.toBeNull();
+      if (section !== null) expectNoAccessibilityViolations(section);
+    });
+
+    test("offer the switch where the build offers its relay switched off, and save its state", async () => {
+      const { saved, onSave } = recordingSaves();
+      app.render(
+        createElement(ManagedConnectionSettings, {
+          record: relaysRecord(),
+          onSave,
+          build: () => ({
+            kind: "opt-in" as const,
+            relay: {
+              turnUrl: "turn:site-relay.example.org:3478",
+              registrarUrl: "https://registrar.example.org",
+            },
+          }),
+        }),
+      );
+
+      const relaySwitch = page.getByRole("switch", {
+        name: DEFAULT_RELAY_SWITCH_LABEL,
+      });
+      await expect.element(relaySwitch).not.toBeChecked();
+      await expect
+        .element(relaySwitch)
+        .toHaveAccessibleDescription(DEFAULT_RELAY_SWITCH_HELP);
+      await userEvent.click(relaySwitch);
+      await saveConnection().click();
+
+      await vi.waitFor(() => {
+        expect(saved).toHaveLength(1);
+      });
+      expect(saved[0].defaultRelayOn).toBe(true);
     });
   });
 
@@ -2170,7 +2295,7 @@ describe("managed exchange detail recent runs, partner schedule, and relay secti
     expect(at("Run history")).toBeLessThan(at("Local settings"));
   });
 
-  test("the relay registration section is hidden while this browser sets no relay", async () => {
+  test("the relay registration section is hidden while the exchange sets no relay", async () => {
     renderDetail(record("inviter"));
 
     await expect
@@ -2181,12 +2306,28 @@ describe("managed exchange detail recent runs, partner schedule, and relay secti
     ).toBeNull();
   });
 
-  test("the relay registration section is shown once this browser sets a TURN relay", async () => {
+  test("the relay registration section is shown once the exchange sets a TURN relay, and not for this browser's", async () => {
     writeOwnRelaySetting({
       turn: ["turns:relay.example.org:443?transport=tcp"],
       stun: [],
     });
     renderDetail(record("inviter"));
+    await expect
+      .element(page.getByRole("heading", { name: "Run history" }))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("heading", { name: RELAY_REGISTRATION_TITLE }).query(),
+    ).toBeNull();
+    writeOwnRelaySetting({ turn: [], stun: [] });
+
+    renderDetail(
+      record("inviter", {
+        ownRelay: {
+          turn: ["turns:relay.example.org:443?transport=tcp"],
+          stun: [],
+        },
+      }),
+    );
 
     await expect
       .element(page.getByRole("heading", { name: RELAY_REGISTRATION_TITLE }))

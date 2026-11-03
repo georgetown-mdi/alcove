@@ -777,48 +777,41 @@ describe("scheduleView's copy for the partner", () => {
 describe("relayRegistrationOffered", () => {
   const stored = record("inviter");
 
-  test("is withheld with no relay set in this browser and nothing enrolled", () => {
-    expect(relayRegistrationOffered(stored, { kind: "none" })).toBe(false);
-    expect(relayRegistrationOffered(stored, { kind: "unreadable" })).toBe(
-      false,
-    );
+  test("is withheld where the exchange has no relay of its own and nothing enrolled", () => {
+    expect(relayRegistrationOffered(stored)).toBe(false);
   });
 
-  test("is withheld where this browser's relay names only STUN", () => {
+  test("is withheld where the exchange's own relay names only STUN", () => {
     expect(
-      relayRegistrationOffered(stored, {
-        kind: "set",
-        relay: { turn: [], stun: ["stun:stun.example.org:3478"] },
+      relayRegistrationOffered({
+        ...stored,
+        ownRelay: { turn: [], stun: ["stun:stun.example.org:3478"] },
       }),
     ).toBe(false);
   });
 
-  test("is offered where this browser's relay names a TURN url", () => {
+  test("is offered where the exchange's own relay names a TURN url", () => {
     expect(
-      relayRegistrationOffered(stored, {
-        kind: "set",
-        relay: { turn: ["turn:relay.example.org:3478"], stun: [] },
+      relayRegistrationOffered({
+        ...stored,
+        ownRelay: { turn: ["turn:relay.example.org:3478"], stun: [] },
       }),
     ).toBe(true);
   });
 
   test("stays offered for an enrolled or pending exchange with no relay set", () => {
     expect(
-      relayRegistrationOffered(
-        {
-          relayRegistrar: {
-            url: "https://relay.example.org:8443",
-            exchangeId: "riverbend-q3",
-          },
+      relayRegistrationOffered({
+        relayRegistrar: {
+          url: "https://relay.example.org:8443",
+          exchangeId: "riverbend-q3",
         },
-        { kind: "none" },
-      ),
+      }),
     ).toBe(true);
     expect(
-      relayRegistrationOffered(
-        { relayRegistrationPendingSince: "2026-07-01T09:00:00.000Z" },
-        { kind: "none" },
-      ),
+      relayRegistrationOffered({
+        relayRegistrationPendingSince: "2026-07-01T09:00:00.000Z",
+      }),
     ).toBe(true);
   });
 });

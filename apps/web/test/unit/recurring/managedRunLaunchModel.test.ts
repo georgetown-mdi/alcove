@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest";
 import { z } from "zod";
 
 import {
+  MANAGED_DEFAULT_RELAY_OFF_REMEDY,
   TERMS_CHANGE_DECLINED_FAILURE,
   TERMS_CHANGE_FAILURE,
   TERMS_CHANGE_TAKEN_ON_FAILURE,
@@ -51,7 +52,6 @@ import {
   recordRelaysLeftOut,
   withPeerRelaysLeftOut,
 } from "@psi/transport/iceGathering";
-import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
@@ -222,7 +222,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(unlabelled.message).toMatch(/^This saved exchange cannot run:/);
   });
 
-  test("an inviter's refused saved signaling address offers the re-invite, which names this browser's server", () => {
+  test("an inviter's refused saved signaling address names where to change it, and offers no re-invite", () => {
     const reason = "is not a complete host, port, and path";
     const failure = classifyAgainstOneRecord(
       new ManagedSignalingEndpointRefusedError(
@@ -242,11 +242,10 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
         'The saved exchange "Riverbend quarterly" cannot run: the coordination ' +
         `server address it saved ${reason}. The run stopped before ` +
         "connecting, so your partner was not contacted and nothing left " +
-        "this device. Running it again stops the same way; re-invite your " +
-        "partner to name this browser's current coordination server. If relay " +
-        "settings cannot read your coordination server, set it again or " +
-        "clear it there first.",
-      recovery: "reinvite",
+        "this device. Running it again stops the same way. Change the " +
+        "coordination server under Connection settings on this exchange's " +
+        "page.",
+      recovery: "none",
     });
     expect(managedRunRetryable(failure)).toBe(false);
   });
@@ -1366,7 +1365,7 @@ describe("classifyManagedRunFailure: the recorded tiers from the record's bookke
     expect(failure.kind).toBe("transport");
     expect(failure.recovery).toBe("retry");
     expect(failure.message).not.toMatch(/attack|tamper|desync/i);
-    expect(failure.message).not.toContain(DEFAULT_RELAY_OFF_REMEDY);
+    expect(failure.message).not.toContain(MANAGED_DEFAULT_RELAY_OFF_REMEDY);
   });
 
   test("a connection that did not open with this site's relay switched off names the switch in the state's own copy, not the report", () => {
@@ -1386,8 +1385,12 @@ describe("classifyManagedRunFailure: the recorded tiers from the record's bookke
       false,
     );
     expect(failure.kind).toBe("transport");
-    expect(failure.message.endsWith(` ${DEFAULT_RELAY_OFF_REMEDY}`)).toBe(true);
-    expect(failure.message.split(DEFAULT_RELAY_OFF_REMEDY)).toHaveLength(2);
+    expect(
+      failure.message.endsWith(` ${MANAGED_DEFAULT_RELAY_OFF_REMEDY}`),
+    ).toBe(true);
+    expect(
+      failure.message.split(MANAGED_DEFAULT_RELAY_OFF_REMEDY),
+    ).toHaveLength(2);
     expect(failure.reportedCause).toBe("Negotiation of connection failed.");
   });
 });
@@ -1736,15 +1739,11 @@ describe("managedReinviteRecoveryCopy", () => {
     expect(copy.body.join(" ")).toMatch(/recurring exchanges/i);
   });
 
-  test("the inviter is told the fresh invitation names the coordination server the exchange then uses", () => {
+  test("the inviter is told the fresh invitation names this exchange's coordination server", () => {
     const body = prose("inviter");
     expect(body).toContain(
       "This keeps your agreed terms and replaces the secret. The fresh " +
-        "invitation names the coordination server set in relay settings, or " +
-        "this site's where none is set, or the one this exchange already " +
-        "uses where relay settings cannot read yours, and this exchange " +
-        "uses that server " +
-        "from then on.",
+        "invitation names this exchange's coordination server.",
     );
     expect(body).not.toMatch(/only replaces/i);
   });

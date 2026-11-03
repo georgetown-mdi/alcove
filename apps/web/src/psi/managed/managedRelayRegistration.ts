@@ -25,8 +25,6 @@ import {
   sanitizeForDisplay,
 } from "@alcove/core";
 
-import { readOwnRelaySetting } from "../transport/ownRelaySetting";
-
 import {
   clearManagedExchangeRelayRegistrationPending,
   getManagedExchange,
@@ -46,7 +44,6 @@ import type {
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
-import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
 const log = getLogger("managedRelayRegistration");
 
@@ -64,21 +61,17 @@ export const MANAGED_RELAY_REENROLLMENT_STEP =
 
 /**
  * The registrar a run of `record` registers at: the one the record was
- * enrolled at, when the run relays through this browser's own relay -- this
- * browser's relay setting names at least one TURN url, each minted from the
- * shared secret. `undefined` otherwise. Whatever relay the invitation names
- * is listed beside it and decides nothing here.
+ * enrolled at, when the run relays through the exchange's own relay -- its
+ * own relays name at least one TURN url, each minted from the shared secret.
+ * `undefined` otherwise. Whatever relay the invitation names is listed beside
+ * it and decides nothing here.
  */
 export function managedRelayRegistrarForRun(
-  record: Pick<ManagedExchangeRecord, "relayRegistrar">,
-  readOwn: () => OwnRelayRead = readOwnRelaySetting,
+  record: Pick<ManagedExchangeRecord, "relayRegistrar" | "ownRelay">,
 ): RelayRegistrar | undefined {
   const registrar = record.relayRegistrar;
   if (registrar === undefined) return undefined;
-  const own = readOwn();
-  return own.kind === "set" && own.relay.turn.length > 0
-    ? registrar
-    : undefined;
+  return (record.ownRelay?.turn.length ?? 0) > 0 ? registrar : undefined;
 }
 
 function failureDetail(outcome: RelayRegistrationFailure): string {

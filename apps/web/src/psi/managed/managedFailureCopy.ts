@@ -61,6 +61,12 @@ export interface RepeatedMissCoordination {
 export const RAN_ELSEWHERE_IMPORT_REMEDY =
   "If you ran this exchange elsewhere, import it again here to make it runnable.";
 
+/** What an inviter does about a saved coordination server address that
+ * cannot be used. */
+export const CHANGE_SAVED_SERVER_REMEDY =
+  "Change the coordination server under Connection settings on this " +
+  "exchange's page.";
+
 /** The title over the coordination state. It names the state, not a fault: which
  * side was absent is exactly what the record cannot know. */
 export const REPEATED_MISS_TITLE = "Runs are not happening on schedule";
