@@ -14,7 +14,10 @@ import {
   UsageError,
 } from "@alcove/core";
 
-import { LocalFSClient } from "../../../src/connection/localFSClient";
+import {
+  LocalFSClient,
+  MAX_BYTES_PER_IO_CALL,
+} from "../../../src/connection/localFSClient";
 import { exitCodeForError, InputNotFoundError } from "../../../src/util/exit";
 import {
   MAX_DIRECTORY_ENTRIES,
@@ -642,6 +645,220 @@ test("chunk-list put throws the writev error even when close also fails", async 
     closeSpy.mockRestore();
     await handle.close().catch(() => {});
   }
+});
+
+test("put of an empty Buffer truncates dest to an empty file", async () => {
+  const dest = path.join(dir, "empty.bin");
+  await fs.writeFile(dest, "old");
+  await client.put(Buffer.alloc(0), dest);
+  expect((await fs.readFile(dest)).byteLength).toBe(0);
+});
+
+// --- per-call byte bound -----------------------------------------------------
+
+function sumBytes(buffers: readonly NodeJS.ArrayBufferView[]): number {
+  return buffers.reduce((total, chunk) => total + chunk.byteLength, 0);
+}
+
+describe("per-call byte bound", () => {
+  test("the bound is 1 GiB, under the 2 GiB a signed 32-bit count reaches", () => {
+    expect(MAX_BYTES_PER_IO_CALL).toBe(2 ** 30);
+  });
+
+  test("the constructor refuses a bound that is not an integer from 1 to the default", () => {
+    for (const maxBytesPerIoCall of [
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      MAX_BYTES_PER_IO_CALL + 1,
+    ]) {
+      expect(() => new LocalFSClient({ maxBytesPerIoCall })).toThrow(
+        InternalConsistencyError,
+      );
+    }
+    expect(
+      () => new LocalFSClient({ maxBytesPerIoCall: MAX_BYTES_PER_IO_CALL }),
+    ).not.toThrow();
+  });
+
+  test("a frame past 2 GiB is offered to writev in calls of at most 1 GiB", async () => {
+    // 2,147,487,754 bytes as views of one 16 MiB buffer, so the test holds
+    // 16 MiB; the stubbed writev reports each offer taken and writes nothing.
+    const frameBytes = 2 ** 31 + 4106;
+    const header = Buffer.alloc(10);
+    const block = Buffer.alloc(16 * 2 ** 20);
+    const chunks: Uint8Array[] = [header];
+    for (let i = 0; i < 2 ** 31 / block.byteLength; i += 1) chunks.push(block);
+    chunks.push(block.subarray(0, 4096));
+    expect(sumBytes(chunks)).toBe(frameBytes);
+
+    const dest = path.join(dir, "past-2gib.bin");
+    const handle = await fs.open(dest, "w");
+    const offeredBytes: number[] = [];
+    const writevSpy = vi
+      .spyOn(handle, "writev")
+      .mockImplementation(
+        async (buffers: readonly NodeJS.ArrayBufferView[]) => {
+          offeredBytes.push(sumBytes(buffers));
+          return {
+            bytesWritten: sumBytes(buffers),
+            buffers: buffers as Uint8Array[],
+          };
+        },
+      );
+    const openSpy = vi.spyOn(fs, "open").mockResolvedValue(handle);
+    try {
+      await client.put(chunks, dest);
+    } finally {
+      openSpy.mockRestore();
+      writevSpy.mockRestore();
+      await handle.close().catch(() => {});
+    }
+    expect(offeredBytes).toEqual([2 ** 30, 2 ** 30, 4106]);
+  });
+
+  test("a chunk list is written in bounded calls and lands whole", async () => {
+    const bounded = new LocalFSClient({ maxBytesPerIoCall: 4 });
+    const dest = path.join(dir, "bounded-chunks.bin");
+    const handle = await fs.open(dest, "w");
+    const realWritev = handle.writev.bind(handle);
+    const offeredBytes: number[] = [];
+    const writevSpy = vi
+      .spyOn(handle, "writev")
+      .mockImplementation(
+        async (buffers: readonly NodeJS.ArrayBufferView[]) => {
+          offeredBytes.push(sumBytes(buffers));
+          return realWritev(buffers as Uint8Array[]);
+        },
+      );
+    const openSpy = vi.spyOn(fs, "open").mockResolvedValue(handle);
+    const header = Buffer.from([1, 2, 3]);
+    const payload = new Uint8Array([4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    try {
+      await bounded.put([header, payload], dest);
+    } finally {
+      openSpy.mockRestore();
+      writevSpy.mockRestore();
+      await handle.close().catch(() => {});
+    }
+    expect(offeredBytes).toEqual([4, 4, 4, 1]);
+    expect(await fs.readFile(dest)).toEqual(Buffer.concat([header, payload]));
+  });
+
+  test("a Buffer is written in bounded calls, appending under flags: 'a'", async () => {
+    const bounded = new LocalFSClient({ maxBytesPerIoCall: 4 });
+    const dest = path.join(dir, "bounded-append.bin");
+    await fs.writeFile(dest, Buffer.from([0]));
+    const handle = await fs.open(dest, "a");
+    const realWritev = handle.writev.bind(handle);
+    const offeredBytes: number[] = [];
+    const writevSpy = vi
+      .spyOn(handle, "writev")
+      .mockImplementation(
+        async (buffers: readonly NodeJS.ArrayBufferView[]) => {
+          offeredBytes.push(sumBytes(buffers));
+          return realWritev(buffers as Uint8Array[]);
+        },
+      );
+    const openSpy = vi.spyOn(fs, "open").mockResolvedValue(handle);
+    const data = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    try {
+      await bounded.put(data, dest, { flags: "a" });
+    } finally {
+      openSpy.mockRestore();
+      writevSpy.mockRestore();
+      await handle.close().catch(() => {});
+    }
+    expect(offeredBytes).toEqual([4, 4, 1]);
+    expect(await fs.readFile(dest)).toEqual(
+      Buffer.concat([Buffer.from([0]), data]),
+    );
+  });
+
+  test("a read is split into calls of at most the bound and returns the whole file", async () => {
+    const bounded = new LocalFSClient({ maxBytesPerIoCall: 4 });
+    const filePath = path.join(dir, "bounded-read.bin");
+    const contents = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    await fs.writeFile(filePath, contents);
+    const handle = await fs.open(filePath, "r");
+    const realRead = handle.read.bind(handle);
+    const requestedBytes: number[] = [];
+    const readSpy = vi.spyOn(handle, "read").mockImplementation(((
+      buffer: Buffer,
+      offset: number,
+      length: number,
+      position: number,
+    ) => {
+      requestedBytes.push(length);
+      return realRead(buffer, offset, length, position);
+    }) as typeof handle.read);
+    const openSpy = vi.spyOn(fs, "open").mockResolvedValue(handle);
+    let buf: Buffer;
+    try {
+      buf = await bounded.get(filePath, { maxBytes: 1024 });
+    } finally {
+      openSpy.mockRestore();
+      readSpy.mockRestore();
+      await handle.close().catch(() => {});
+    }
+    expect(buf).toEqual(contents);
+    expect(requestedBytes).toEqual([4, 4, 2]);
+  });
+
+  test("a negative bytesWritten fails the write instead of rewriting the frame", async () => {
+    // The count Linux reports for a 2,147,487,754-byte writev, cast to int32.
+    // A second call is the rewrite loop, so the stub refuses it.
+    const dest = path.join(dir, "negative-count.bin");
+    const handle = await fs.open(dest, "w");
+    let calls = 0;
+    const writevSpy = vi
+      .spyOn(handle, "writev")
+      .mockImplementation(
+        async (buffers: readonly NodeJS.ArrayBufferView[]) => {
+          calls += 1;
+          if (calls > 1) throw new Error("the frame was offered again");
+          return {
+            bytesWritten: -2147479542,
+            buffers: buffers as Uint8Array[],
+          };
+        },
+      );
+    const openSpy = vi.spyOn(fs, "open").mockResolvedValue(handle);
+    try {
+      await expect(
+        client.put([Buffer.from([1, 2]), new Uint8Array([3, 4, 5])], dest),
+      ).rejects.toThrow("reported -2147479542 bytes written of the 5 offered");
+    } finally {
+      openSpy.mockRestore();
+      writevSpy.mockRestore();
+      await handle.close().catch(() => {});
+    }
+    expect(calls).toBe(1);
+  });
+
+  test("a bytesWritten above what was offered fails the write", async () => {
+    const dest = path.join(dir, "overcount.bin");
+    const handle = await fs.open(dest, "w");
+    const writevSpy = vi
+      .spyOn(handle, "writev")
+      .mockImplementation(
+        async (buffers: readonly NodeJS.ArrayBufferView[]) => ({
+          bytesWritten: sumBytes(buffers) + 1,
+          buffers: buffers as Uint8Array[],
+        }),
+      );
+    const openSpy = vi.spyOn(fs, "open").mockResolvedValue(handle);
+    try {
+      await expect(client.put(Buffer.from([1, 2, 3]), dest)).rejects.toThrow(
+        "reported 4 bytes written of the 3 offered",
+      );
+    } finally {
+      openSpy.mockRestore();
+      writevSpy.mockRestore();
+      await handle.close().catch(() => {});
+    }
+  });
 });
 
 // --- delete ------------------------------------------------------------------
