@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -122,40 +122,27 @@ describe("the release-line script run against a repository", () => {
 });
 
 describe("the release-line job's install-free run", () => {
-  const SPECIFIER =
-    /(?:\bimport|\bexport)\s*(?:[^'"`;()]*?\bfrom\s*)?["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']/g;
-
-  const bareSpecifiers = (entry) => {
-    const bare = [];
-    const seen = new Set();
-    const visit = (file) => {
-      if (seen.has(file)) return;
-      seen.add(file);
-      const source = readFileSync(file, "utf8");
-      for (const match of source.matchAll(SPECIFIER)) {
-        const specifier = match[1] ?? match[2] ?? match[3];
-        if (specifier.startsWith("node:")) continue;
-        if (specifier.startsWith("./") || specifier.startsWith("../")) {
-          visit(resolve(dirname(file), specifier));
-        } else {
-          bare.push(`${file}: ${specifier}`);
-        }
-      }
-    };
-    visit(entry);
-    return { bare, visited: [...seen] };
-  };
-
-  it("imports only node: modules and relative files, transitively", () => {
-    const { bare, visited } = bareSpecifiers(SCRIPT);
-    expect(visited.map((file) => file.slice(repoRoot.length + 1))).toEqual(
-      expect.arrayContaining([
-        "scripts/check-release-version.mjs",
-        "scripts/lib/releaseManifest.mjs",
-        "scripts/release-line.mjs",
-      ]),
-    );
-    expect(bare).toEqual([]);
+  it("loads from a copy of scripts/ with no node_modules above it", () => {
+    const copy = mkdtempSync(join(tmpdir(), "release-line-bare-"));
+    try {
+      cpSync(here, join(copy, "scripts"), {
+        recursive: true,
+        filter: (source) => !source.split(sep).includes("node_modules"),
+      });
+      const result = spawnSync(
+        process.execPath,
+        [join(copy, "scripts", "release-line.mjs")],
+        {
+          cwd: copy,
+          encoding: "utf8",
+          env: { ...process.env, ALCOVE_TAG: "v1.0.0" },
+        },
+      );
+      expect(result.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
+      expect(result.stderr).not.toContain("ERR_PACKAGE_PATH_NOT_EXPORTED");
+    } finally {
+      rmSync(copy, { recursive: true, force: true });
+    }
   });
 });
 
