@@ -1656,10 +1656,8 @@ function UnfiledDisclosureNotice({
             not named here. The accounting below is short at least one entry.
           </p>
           <p>
-            Reload this page to use the current version, which names the run. If
-            a run is under way, reloading ends it. If reloading shows this
-            again, the app was rolled back, and the run is named once the newer
-            version is back.
+            Reload this page to see which run (a run under way ends). If this
+            shows again, the run is named once the newer version is back.
           </p>
         </Alert>
       )}
@@ -1952,9 +1950,9 @@ function StalePageAccountingNotice({
         <p>
           Runs started from this page file no record here either: this version
           cannot add to what a newer one wrote. Reload this page to use the
-          current version, which reads these records and files again. If a run
-          is under way, reloading ends it. If reloading shows this again, the
-          app was rolled back, and these records wait for the newer version.
+          current version, which reads these records and files again (a run
+          under way ends). If this shows again, these records are read once the
+          newer version is back.
         </p>
       </Alert>
       {stored !== undefined && (

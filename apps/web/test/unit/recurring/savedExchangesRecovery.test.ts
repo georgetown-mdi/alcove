@@ -211,19 +211,19 @@ describe("a record a newer version saved", () => {
     });
   });
 
-  test("its note and cause keep the reload and name a rollback", () => {
+  test("its note and cause keep the reload and the wait for the newer version", () => {
     expect(LATER_VERSION_RECORD_NOTE).toBe(
-      "Reload this page to use the current version, which reads it. If " +
-        "reloading shows this again, the app was rolled back, and this " +
-        "exchange waits for the newer version.",
+      "Reload this page to open it. If it still shows, it opens once the " +
+        "newer version is back.",
     );
     expect(LATER_VERSION_RECORDS_CAUSE).toBe(
-      "One or more stored records were saved by a newer version of this app " +
-        "than this page is running. Nothing is wrong with them. Reload this " +
-        "page to use the current version, which reads them. If a run is " +
-        "under way, reloading ends it. If reloading shows this again, the " +
-        "app was rolled back, and those exchanges wait for the newer version.",
+      "One or more exchanges were saved by a newer version of this app. " +
+        "Nothing is wrong with them. Reload this page to read them (a run " +
+        "under way ends). If they still show, they open once the newer " +
+        "version is back.",
     );
+    expect(LATER_VERSION_RECORD_NOTE).not.toContain("rolled back");
+    expect(LATER_VERSION_RECORDS_CAUSE).not.toContain("rolled back");
   });
 
   test("is stated as a newer version's, never as damaged", () => {

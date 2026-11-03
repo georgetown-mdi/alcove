@@ -1300,8 +1300,8 @@ its row as it does on the usual list. A damaged one does not open, and offers
 its remove. The one a newer version wrote neither opens nor offers a remove.
 Scheduled runs of the others go on.
 
-If a reload shows the same message, the deployment was rolled back past the
-format change, and the page says so. Take the stored-records download if it is
+If a reload shows the same message, the page says the exchange opens once the
+newer version is back. Take the stored-records download if it is
 offered, and do not leave the exchange running, since every run discloses and
 files nothing. Removing the exchange is then the only way out this build
 offers, and the downloaded records stay intact. A saved exchange a newer version

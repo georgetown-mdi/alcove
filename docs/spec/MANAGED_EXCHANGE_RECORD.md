@@ -504,8 +504,7 @@ invalidate it:
   page is behind the build that wrote it, not that the record is damaged. The
   read-failed surface names the record as a newer version's and states the
   reload, and offers no remove for it. It also states the case where a reload
-  shows the same record: the deployment was rolled back, and the record waits
-  for the build that wrote it.
+  shows the same record: the record opens once the newer version is back.
 - **The table.** It has no step yet, since every earlier literal is a
   development one.
 

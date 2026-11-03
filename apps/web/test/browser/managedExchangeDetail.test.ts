@@ -3582,8 +3582,8 @@ describe("why an accounting or its note could not be read", () => {
     await expect
       .element(
         page.getByText(
-          "If reloading shows this again, the app was rolled back, and the " +
-            "run is named once the newer version is back.",
+          "Reload this page to see which run (a run under way ends). If this " +
+            "shows again, the run is named once the newer version is back.",
           { exact: false },
         ),
       )
@@ -3671,13 +3671,13 @@ describe("an accounting a newer version of the app filed", () => {
       .element(page.getByText("Reload this page", { exact: false }))
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("reloading ends it", { exact: false }))
+      .element(page.getByText("a run under way ends", { exact: false }))
       .toBeInTheDocument();
     await expect
       .element(
         page.getByText(
-          "If reloading shows this again, the app was rolled back, and these " +
-            "records wait for the newer version.",
+          "If this shows again, these records are read once the newer " +
+            "version is back.",
           { exact: false },
         ),
       )
