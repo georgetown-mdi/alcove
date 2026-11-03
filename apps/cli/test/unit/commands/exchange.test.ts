@@ -1750,7 +1750,7 @@ test("handler: an unattended fill writes one line naming each column and the con
   const log = await logOfFillingRun(streamOf(""), ["program", "bell\u0007"]);
   const lines = log.split("\n").filter((line) => line.includes("program"));
   expect(lines).toEqual([
-    `this unattended run took the payload columns your partner declares it sends you, without asking: "program", "bell\\x07". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`,
+    `this run took the payload columns your partner declares it sends you, without asking: "program", "bell\\x07". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`,
   ]);
 });
 
@@ -1773,9 +1773,9 @@ test("handler: an unattended fill emits the line it writes as one payloadReceive
   ]);
 });
 
-test("handler: an attended fill writes no unattended notice", async () => {
+test("handler: an attended fill writes no notice of columns taken without asking", async () => {
   const log = await logOfFillingRun(ttyStream(), ["program"]);
-  expect(log).not.toContain("unattended");
+  expect(log).not.toContain("without asking");
 });
 
 test("handler: the configuration a fill wrote re-derives the run's agreed-terms hash", async () => {

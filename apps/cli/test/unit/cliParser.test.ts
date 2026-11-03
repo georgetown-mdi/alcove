@@ -223,6 +223,13 @@ test("top-level help puts every quick-exchange option in a named group", async (
     expect(stdout).toContain(`\n${heading}\n`);
 });
 
+test("--consent-to-terms is a quick-exchange option, and `exchange` does not take it", async () => {
+  const top = await parse(["--help"]);
+  expect(top.stdout).toContain("--consent-to-terms");
+  const exchange = await parse(["exchange", "--help"]);
+  expect(exchange.stdout).not.toContain("--consent-to-terms");
+});
+
 test.each(COMMAND_NAMES)(
   "`%s --help` describes the command beneath its usage line",
   async (command) => {

@@ -285,7 +285,8 @@ export function termsChangeHandler(params: {
 /**
  * The `onPayloadReceiveFill` an attended run passes to core, or `undefined`
  * for an unattended one, which takes the partner's declared columns without
- * asking. Shows the columns against the empty receive set the configuration
+ * asking. A quick exchange given `--consent-to-terms` passes `interactive:
+ * false`. Shows the columns against the empty receive set the configuration
  * lists, the way {@link displayTermsChange} shows a change, and asks whether
  * to take them. A yes accepts, and a run with a `configPath` records them
  * there as `payload.receive` through its fill -- a zero-setup `--save` run
@@ -381,7 +382,7 @@ export function payloadReceiveFillConfirmation(params: {
 }
 
 const PAYLOAD_RECEIVE_TAKEN_HEADING =
-  "this unattended run took the payload columns your partner declares it sends you, without asking: ";
+  "this run took the payload columns your partner declares it sends you, without asking: ";
 
 /** One copy of the notice, and how many columns its list names. */
 interface PayloadReceiveTakenList {
@@ -430,8 +431,8 @@ function composePayloadReceiveTaken(
 }
 
 /**
- * The line an unattended run writes when it takes the payload columns its
- * partner declares, in place of {@link payloadReceiveFillConfirmation}'s
+ * The line a run writes when it takes the payload columns its partner declares
+ * without asking, in place of {@link payloadReceiveFillConfirmation}'s
  * question: each column taken, and the configuration `recordedIn` it was
  * written to as `payload.receive`, or that it was written to none. The
  * column names are the partner's: each is redacted and escaped on its own, so
@@ -457,8 +458,8 @@ export function payloadReceiveTakenNotice(
 
 /**
  * Report that this run filled `payload.receive` with `columns`, recorded in
- * the configuration `recordedIn` or in none. An unattended run that took at
- * least one column writes {@link payloadReceiveTakenNotice} through
+ * the configuration `recordedIn` or in none. A run that took at least one
+ * column without asking writes {@link payloadReceiveTakenNotice} through
  * `unattendedWriter`, the command's unfiltered writer
  * (`ConfiguredLogging.writePlainLine`), so the line shows at every
  * `--log-level`, and emits the notice on `eventStream` as a
