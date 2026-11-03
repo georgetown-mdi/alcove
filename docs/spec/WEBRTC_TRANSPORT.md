@@ -67,7 +67,8 @@ The client opens
 <ws|wss>://<host>:<port><path>/peerjs?key=<key>&id=<id>&token=<token>&version=1.5.5
 ```
 
-`version` is the PeerJS client version the broker validates against (1.5.5).
+`version` is the PeerJS client version the client reports (1.5.5). The broker
+does not read it ([Compatibility of the broker socket](#compatibility-of-the-broker-socket)).
 `token` is a fresh per-registration random value; it is what distinguishes a
 genuine id collision (two parties, two tokens, answered with `ID-TAKEN`) from a
 reconnect of the same client (same id and token, which the broker adopts
@@ -209,6 +210,32 @@ misconfiguration (both parties set the same `role`), and an `ERROR` whose
 payload names an invalid key is the wrong `server.key`.
 
 A browser run removes the rendezvous peer ids from a coordination server's error only in its message and stack: a field the server adds to an ERROR frame, or a frame whose `__proto__` key replaces the error's prototype, brings an id the server put there into the run's error report, and an ERROR frame whose message or name cannot be turned into text and that has no stack fails the registration with a `TypeError` in place of the server's refusal; only a coordination server can do either, and it already holds the ids.
+
+### Compatibility of the broker socket
+
+The project's broker keeps the wire of every supported release, the rule of
+[RELEASES.md](../RELEASES.md#compatibility-policy), Project-run services. That wire
+is the one above, and it is neither negotiated nor read by version:
+
+- **No version is read.** The broker takes `id`, `token` and `key` from the query
+  and no other member (`_onSocketConnection` in
+  `packages/peerjs-broker/src/contrib/services/webSocketServer/index.ts`), so a
+  registration that names another `version`, or none, is answered `OPEN` like any
+  other (`apps/web/test/unit/signalingServer.test.ts`).
+- **The messages are PeerJS's.** The broker sends `OPEN`, `ID-TAKEN` and `ERROR`,
+  reads `HEARTBEAT` without forwarding it, routes `OFFER`, `ANSWER`, `CANDIDATE`,
+  `LEAVE` and `EXPIRE`, and sends `LEAVE` and `EXPIRE` itself when a destination
+  cannot be reached or a frame cannot be queued
+  (`MessageType` in `packages/peerjs-broker/src/contrib/enums.ts`). A broker that
+  changed one, or the query above, would break the browser party, which runs the
+  PeerJS client unchanged.
+- **The bounds are part of the wire kept.** The handshake parameter lengths and the
+  inbound frame size ([SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md)) are
+  not tightened below what a supported release sends.
+- **The peer ids are opaque to it.** The labels that derive them
+  (`alcove-webrtc-peerid-v2:*`, [PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation))
+  are the clients'; the broker holds an id as an opaque string, checking its
+  length and whether another token holds it.
 
 ### The browser party's own signaling address
 

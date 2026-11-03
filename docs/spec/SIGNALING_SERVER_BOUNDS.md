@@ -9,6 +9,8 @@ It is the implementation-level complement to the coordination-server paragraph o
 It does not cover the JSON-decode chokepoint the broker reuses (see [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md)) or the WebRTC data channel the two parties exchange over once the broker has introduced them (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)), or the signaling envelopes themselves (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md)).
 Intended readers are whoever deploys or assesses the broker, security auditors, and implementors.
 
+On the project's broker, a bound here is part of the wire it keeps for each supported release, and is not tightened below what one sends ([Compatibility of the broker socket](WEBRTC_TRANSPORT.md#compatibility-of-the-broker-socket)).
+
 ## Signaling-server inbound frame bound
 
 The decode-layer bound in [Application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds) lives in `@alcove/core` and covers the AEAD application channel and the file-sync transport - a self-limited adversary (the authenticated counterparty, or a hostile server admin).

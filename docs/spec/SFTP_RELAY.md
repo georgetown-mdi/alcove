@@ -120,6 +120,10 @@ An unknown, repeated, valueless or missing flag, or a value of the wrong form, i
 A bind the operating system refuses exits 69.
 The image (`packages/sftp-relay/Dockerfile`) runs the runner with `--host 0.0.0.0 --port 8080`, as the unprivileged `node` account, from one bundled file.
 
+## Compatibility
+
+The project does not run an SFTP relay: the operator of an SFTP server does ([What it is](#what-it-is)), and no browser SFTP client uses it yet. The rule of [RELEASES.md, Project-run services](../RELEASES.md#compatibility-policy) binds a relay the project runs, so it would bind this one if the project ran it. The relay reads no version and has none to read: its contract with a browser is the path, the `Origin` check, binary messages only and the per-message cap, and the SSH it forwards negotiates its own version and algorithms between the browser and the SFTP server.
+
 ## Tests
 
 - **Against the SFTP test server.** `apps/cli/test/integration/sftpRelay.test.ts` writes and reads a file over SFTP through the relay, and drives each `Origin` case, the fixed target, backpressure each way, each row of the close table but the connect timeout, the 1009 close, the close wait of a TCP end, the connection cap, and the pings. It measures what each direction holds for bytes read and not yet written, after each read and every 5 milliseconds, against the bound above, under messages of 64 KiB and under a flood of 1-byte messages, and checks that a flood leaves one write in flight. It checks that small and large messages reach the target byte for byte and in order ahead of a browser close and of a text message. It runs in the CLI integration suite, on each SFTP backend.

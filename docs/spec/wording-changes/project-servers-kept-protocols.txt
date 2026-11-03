@@ -1,0 +1,38 @@
+- - -> **Compatibility.**
+- - -> **Compatibility.**
+- - -> The project's TURN relay is coturn, which speaks TURN as coturn does; its one Alcove-specific input is the credential above, and the relay reads no version of it.
+- - -> The version of the relay key and of the exchange id is the `v2` of their labels alone, which no message states.
+- - -> The project's relay keeps the credential of every supported release (the rule of [RELEASES.md, Project-run services](../RELEASES.md#compatibility-policy)) by holding the relay key that release derives.
+- - -> Two builds that derive different keys hold different keys at a relay, and the key exchange's version negotiation does not reach them, since a relay comes before it.
+- - -> The project's registrar keeps the requests of every supported release, the rule of [RELEASES.md, Project-run services](../RELEASES.md#compatibility-policy).
+- - -> Nothing in a request names a version: the path is `/exchanges/<exchange-id>`, the body holds exactly `key` and `maxAgeDays` (`registrar.py`, the body reader), and the proof's version is its `v2` label alone, which the registrar checks under the one proof key it derives.
+- - -> The two credentials, the tokenless enrollment, the status codes and the answer's members are the wire a supported release depends on.
+- - -> Compatibility
+- - -> Compatibility
+- - -> The project does not run an SFTP relay: the operator of an SFTP server does ([What it is](#what-it-is)), and no browser SFTP client uses it yet.
+- - -> The rule of [RELEASES.md, Project-run services](../RELEASES.md#compatibility-policy) binds a relay the project runs, so it would bind this one if the project ran it.
+- - -> The relay reads no version and has none to read: its contract with a browser is the path, the `Origin` check, binary messages only and the per-message cap, and the SSH it forwards negotiates its own version and algorithms between the browser and the SFTP server.
+- - -> On the project's broker, a bound here is part of the wire it keeps for each supported release, and is not tightened below what one sends ([Compatibility of the broker socket](WEBRTC_TRANSPORT.md#compatibility-of-the-broker-socket)).
+- `version` is the PeerJS client version the broker validates against (1.5.5). -> `version` is the PeerJS client version the client reports (1.5.5).
+- - -> The broker does not read it ([Compatibility of the broker socket](#compatibility-of-the-broker-socket)).
+- - -> Compatibility of the broker socket
+- - -> The project's broker keeps the wire of every supported release, the rule of [RELEASES.md](../RELEASES.md#compatibility-policy), Project-run services.
+- - -> That wire is the one above, and it is neither negotiated nor read by version:
+- - -> **No version is read.**
+- - -> The broker takes `id`, `token` and `key` from the query and no other member (`_onSocketConnection` in `packages/peerjs-broker/src/contrib/services/webSocketServer/index.ts`), so a registration that names another `version`, or none, is answered `OPEN` like any other (`apps/web/test/unit/signalingServer.test.ts`).
+- - -> **The messages are PeerJS's.**
+- - -> The broker sends `OPEN`, `ID-TAKEN` and `ERROR`, reads `HEARTBEAT` without forwarding it, routes `OFFER`, `ANSWER`, `CANDIDATE`, `LEAVE` and `EXPIRE`, and sends `LEAVE` and `EXPIRE` itself when a destination cannot be reached or a frame cannot be queued (`MessageType` in `packages/peerjs-broker/src/contrib/enums.ts`).
+- - -> A broker that changed one, or the query above, would break the browser party, which runs the PeerJS client unchanged.
+- - -> **The bounds are part of the wire kept.**
+- - -> The handshake parameter lengths and the inbound frame size ([SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md)) are not tightened below what a supported release sends.
+- - -> **The peer ids are opaque to it.**
+- - -> The labels that derive them (`alcove-webrtc-peerid-v2:*`, [PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation)) are the clients'; the broker holds an id as an opaque string, checking its length and whether another token holds it.
+- - -> The project's WebSocket relay keeps the wire of every supported release, the rule of [RELEASES.md, Project-run services](../RELEASES.md#compatibility-policy).
+- - -> It is neither negotiated nor read by version:
+- - -> **No frame names a version.**
+- - -> The path is `/relay`, and a hello holds exactly the keys shown in [Frames](#frames) (`hasExactKeys` in `packages/websocket-relay/src/protocol.ts`), so a hello with a version member is refused as malformed (4001) today.
+- - -> **The proof's version is its label.**
+- - -> `alcove-relay-websocket-v2:*` appears only inside the proof ([The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof)), which the relay checks under the one proof key it derives.
+- - -> Two builds that hold different labels derive different proof keys from one relay key, and the relay refuses the hello made under the label it does not check (4004).
+- - -> **What is kept.**
+- - -> The frames, the close codes and the codes a client redials on, the bounds ([Quotas](#quotas)) and the proof's expiry window are the wire a supported release depends on, and none is changed in a way that refuses what a supported release sends.
