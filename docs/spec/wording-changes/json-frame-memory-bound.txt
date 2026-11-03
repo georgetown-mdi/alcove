@@ -2,6 +2,7 @@
 - - -> Once the application-layer encryption takes over the connection (`EncryptedMessageConnection.create` calls `requireBinaryFrames` before its first await), the encryption layer refuses any frame that is not `type 1`.
 - - -> So the reader refuses a `type 0` message there before its payload is parsed, as a terminal `security` failure -- the class the encryption layer gives a frame that is not binary.
 - - -> It consumes the refused file as it does any message it receives: deleted in delete mode, acknowledged and kept in retain mode.
+- - -> If that delete or acknowledgement fails, the run ends with that failure instead.
 - - -> The one `type 0` message a partner sends there is the cleartext key-exchange abort after a failed message 3 ([PROTOCOL.md](PROTOCOL.md#p-256-authenticated-key-exchange), "A failure of message 3"), and consuming it lets that partner's `close()` finish without waiting out the terminal-frame drain.
 - - -> A new session on the same connection (`resetSessionState`) lifts the requirement.
 - - -> A `type 0` message once the encryption layer requires binary frames is terminal too, as a `security` `ConnectionError` ([Message body format](#file-taxonomy), "JSON messages on an encrypted channel").

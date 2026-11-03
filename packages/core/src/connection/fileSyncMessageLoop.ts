@@ -1295,7 +1295,8 @@ export class FileSyncMessageLoop {
           } else {
             // Parse before deleting. A corrupt fully-synced message is terminal
             // (I5b), so parsing first leaves the offending file on disk for
-            // inspection instead of destroying it; a valid message is then
+            // inspection instead of destroying it; a valid message, or a type 0
+            // message refused once encryption has taken over, is then
             // consumed by deleting it (the delete-mode go-ahead signal to the
             // sender) before emit, the same ordering relative to emit as before.
             const validatedMessage = parseMessage();
