@@ -405,6 +405,24 @@ describe("signaling socket guards", () => {
     ws.close();
   });
 
+  test.each([
+    ["a different version", "version=0.0.1"],
+    ["no version", ""],
+  ])(
+    "a registration naming %s answers OPEN: the broker does not read it",
+    async (_name, versionParam) => {
+      const sig = await startSignaling();
+      const url = signalingUrl(sig.port, "peer-version").replace(
+        "&version=1.5.5",
+        versionParam === "" ? "" : `&${versionParam}`,
+      );
+      const ws = new WebSocket(url);
+      await waitForFrame(ws, "OPEN");
+      expect(sig.realm.getClientById("peer-version")).toBeDefined();
+      ws.close();
+    },
+  );
+
   test("a registered client is confirmed only after it sends a frame", async () => {
     const sig = await startSignaling();
     const ws = new WebSocket(signalingUrl(sig.port, "peer-live"));

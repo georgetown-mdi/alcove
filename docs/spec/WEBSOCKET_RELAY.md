@@ -190,6 +190,14 @@ Measured 2026-11-01 through probes outside the repository: Node's `ws` client (`
   The queued-message bound counts four reads and the 16,384-byte cap, 278,528 bytes, for a message still arriving, to cover that range. A frame that fits one read, as every client's does, completes within it and keeps nothing once the relay has copied it.
 - **The limit.** With the limit at one frame, a message in two fragments closed its sender with 1008 and the partner with 4000, and forwarded nothing; a message in one frame was forwarded intact (`packages/websocket-relay/test/relay.test.ts`).
 
+## Compatibility
+
+The project's WebSocket relay keeps the wire of every supported release, the rule of [RELEASES.md, Project-run services](../RELEASES.md#compatibility-policy). It is neither negotiated nor read by version:
+
+- **No frame names a version.** The path is `/relay`, and a hello holds exactly the keys shown in [Frames](#frames) (`hasExactKeys` in `packages/websocket-relay/src/protocol.ts`), so a hello with a version member is refused as malformed (4001) today.
+- **The proof's version is its label.** `alcove-relay-websocket-v2:*` appears only inside the proof ([The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof)), which the relay checks under the one proof key it derives. Two builds that hold different labels derive different relay keys and do not pair ([Pairing and the start](#pairing-and-the-start)).
+- **What is kept.** The frames, the close codes and the codes a client redials on, the bounds ([Quotas](#quotas)) and the proof's expiry window are the wire a supported release depends on, and none is changed in a way that refuses what a supported release sends.
+
 ## The web application's client
 
 The web application's relay transport (`apps/web/src/psi/transport/websocketRelayConnection.ts`) is one party's side of this wire.
