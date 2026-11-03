@@ -902,6 +902,7 @@ Describe 'The setup flow, driven against a stub engine' {
         $run.Output | Should -Match 'few hundred megabytes' -Because $shape
         $run.Output | Should -Match 'Could not fetch the Alcove image' -Because $shape
         $run.Output | Should -Match 'proxy refused the connection' -Because $shape
+        $run.Output | Should -Match 'Start-Alcove\.ps1 can get\s+the image from Docker Hub instead' -Because $shape
         $run.Output | Should -Not -Match 'credentials for the file server' -Because $shape
         @([regex]::Matches($run.Calls, 'pull --quiet')).Count | Should -Be 1 -Because $run.Calls
     }
