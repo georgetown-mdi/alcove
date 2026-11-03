@@ -25,8 +25,7 @@ import { renderExchangeDisclosure } from "../../src/exchangeDisclosure";
 import { displayInvitation } from "../../src/invitationDisplay";
 import { singlePassDisclosureNotice } from "../../src/onlineBootstrap";
 
-const HEADING =
-  "What these terms disclose, which your partner is also shown before accepting:";
+const HEADING = "What these terms disclose:";
 const STRATEGY_LINE_PREFIX = "  linkage strategy (enforced): ";
 const KEYS_LINE = "  linkage keys (enforced):";
 

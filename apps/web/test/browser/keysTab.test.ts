@@ -41,8 +41,8 @@ import {
 
 import {
   LINKAGE_STRATEGY_OPTION_COPY,
-  SINGLE_PASS_DISCLOSURE_BODY,
   SINGLE_PASS_DISCLOSURE_TITLE,
+  SINGLE_PASS_TERMS_STATEMENT,
 } from "@psi/linkageStrategyChoice";
 import {
   USE_BUILT_IN_RULES_LABEL,
@@ -1311,7 +1311,7 @@ describe("KeysTab: the notes beside the strategy choice", () => {
       SINGLE_PASS_DISCLOSURE_TITLE,
     );
     expect(document.body.textContent).not.toContain(
-      SINGLE_PASS_DISCLOSURE_BODY,
+      SINGLE_PASS_TERMS_STATEMENT,
     );
   });
 

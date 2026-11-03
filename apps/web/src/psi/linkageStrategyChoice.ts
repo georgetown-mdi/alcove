@@ -4,10 +4,9 @@
  * ({@link ../exchange/KeysTab}) and the console's Direct-exchange confirm screen
  * ({@link ../exchange/DirectConfirmSection}).
  *
- * The disclosure note is the consent-critical half of the choice -- the
- * browser's wording of the CLI's own `singlePassDisclosureNotice`, which the
- * partner reads again on the terms panel -- so both surfaces must state it in
- * the same words.
+ * The disclosure note is the consent-critical half of the choice -- its body
+ * is {@link SINGLE_PASS_TERMS_STATEMENT}, the words the partner reads again on
+ * the terms panel -- so both surfaces must state it in the same words.
  */
 
 import type { LinkageStrategy } from "@alcove/core";
@@ -40,7 +39,8 @@ export const SINGLE_PASS_DISCLOSURE_TITLE =
 
 /**
  * What the terms panel states under the linkage strategy for terms that run
- * single-pass, and the inviter's review restates for the same terms.
+ * single-pass, the inviter's review restates for the same terms, and the
+ * authoring alert shows when single-pass is selected.
  */
 export const SINGLE_PASS_TERMS_STATEMENT =
   "This exchange matches in a single pass. That means one of you sends the " +
@@ -49,12 +49,3 @@ export const SINGLE_PASS_TERMS_STATEMENT =
   "sends is decided when the exchange runs, so it may be you. Both parties " +
   "must agree to single-pass. The matched result is the same either way; " +
   "what differs is how much your partner can observe while it runs.";
-
-/** The disclosure note itself: what single-pass costs, in the browser's voice
- * for the tradeoff the CLI prints at selection and the partner sees at consent. */
-export const SINGLE_PASS_DISCLOSURE_BODY =
-  "Every key is matched against every record, so the receiving side observes " +
-  "matches on weaker keys that the cascade would have filtered out. The " +
-  "linked output file is identical either way; the difference is what a " +
-  "partner can observe while matching runs. Choose it only when both of you " +
-  "accept that.";

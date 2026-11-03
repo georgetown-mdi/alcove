@@ -19,8 +19,8 @@ import {
 } from "@alcove/core";
 
 import {
-  SINGLE_PASS_DISCLOSURE_BODY,
   SINGLE_PASS_DISCLOSURE_TITLE,
+  SINGLE_PASS_TERMS_STATEMENT,
 } from "@psi/linkageStrategyChoice";
 import { DEDUPLICATE_CONTROL_LABEL } from "@psi/deduplicateChoice";
 
@@ -390,6 +390,13 @@ function trustAffirmation() {
   return page.getByRole("checkbox", {
     name: /I trust the server my partner and I agreed on/,
   });
+}
+
+/** The single-pass disclosure alert on the confirm step. */
+function singlePassAlert() {
+  return page
+    .getByRole("alert")
+    .filter({ hasText: SINGLE_PASS_DISCLOSURE_TITLE });
 }
 
 /** This party's own side of the matching cardinality, on the same step. */
@@ -1056,7 +1063,12 @@ describe("direct exchange confirm and run", () => {
     await expect
       .element(page.getByText(SINGLE_PASS_DISCLOSURE_TITLE))
       .toBeInTheDocument();
-    expect(app.container.textContent).toContain(SINGLE_PASS_DISCLOSURE_BODY);
+    expect(singlePassAlert().element().textContent).not.toContain(
+      SINGLE_PASS_TERMS_STATEMENT,
+    );
+    expect(
+      app.container.textContent.split(SINGLE_PASS_TERMS_STATEMENT).length,
+    ).toBe(2);
     // The preview is the terms the run uses, so the terms panel exposes the
     // strategy too rather than showing the cascade the run does not use.
     expect(app.container.textContent).toContain(
@@ -1077,6 +1089,34 @@ describe("direct exchange confirm and run", () => {
     );
     const intent = JSON.parse(post?.body ?? "{}") as Record<string, unknown>;
     expect(intent.linkageStrategy).toBe("single-pass");
+  });
+
+  test("single-pass keeps the statement in its alert where the file's refusal replaces the preview", async () => {
+    stubJobApi({
+      sftp: CONFIGURED_SFTP,
+      profile: {
+        ...CLIENTS_PROFILE,
+        columns: ["notes", "comment"],
+        columnSamples: [
+          { column: "notes", values: ["a", "b"] },
+          { column: "comment", values: ["c", "d"] },
+        ],
+      },
+    });
+    app.render(createElement(DirectExchangeScreen));
+    await reachConfirm();
+
+    await page.getByRole("radio", { name: "Single-pass" }).click();
+    await expect.element(singlePassAlert()).toBeInTheDocument();
+    expect(singlePassAlert().element().textContent).toContain(
+      SINGLE_PASS_TERMS_STATEMENT,
+    );
+    expect(
+      app.container.textContent.split(SINGLE_PASS_TERMS_STATEMENT).length,
+    ).toBe(2);
+    await expect
+      .element(page.getByRole("button", { name: "Run the exchange" }))
+      .toBeDisabled();
   });
 
   test("this party's deduplicate reshapes the preview and rides the run", async () => {

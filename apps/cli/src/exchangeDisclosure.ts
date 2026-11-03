@@ -380,8 +380,7 @@ function logLinkageKeyLines(
 }
 
 /** The heading of {@link renderInvitationTermsDisclosure}. */
-const INVITATION_TERMS_DISCLOSURE_HEADING =
-  "What these terms disclose, which your partner is also shown before accepting:";
+const INVITATION_TERMS_DISCLOSURE_HEADING = "What these terms disclose:";
 
 /**
  * Print what an invitation minted from a configuration file's terms discloses,
