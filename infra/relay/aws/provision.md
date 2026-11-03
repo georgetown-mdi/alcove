@@ -13,12 +13,10 @@ The podman/Quadlet path has been driven only on a stand-in Fedora host.
 ## The instance
 
 A stock Amazon Linux 2023 AMI, arm64, at the smallest size that carries the
-traffic. The relay measurement ran coturn on a `t4g.micro` colocated with two
-other services; alone, `t4g.nano` is the size to start from and `t4g.micro` the
-one to move to if allocations are dropped under load. A standing relay is paid
-for while it idles -- roughly ten dollars a month at these sizes with an address
-held -- and that idle cost, not the per-exchange cent, is the figure this shape
-turns on (see [the deployment record](../../../docs/notes/webrtc-relay-deployment.md)).
+traffic, moved up one size if allocations are dropped under load. A standing
+relay is paid for while it idles -- roughly ten dollars a month at the smallest
+sizes with an address held -- and that idle cost, not the per-exchange cent, is
+the figure this shape turns on (see [the deployment record](../../../docs/notes/webrtc-relay-deployment.md)).
 
 Nothing about the reference is AL2023-specific except `dnf` in `install.sh`. The
 AMI is stock: no image is baked, and the instance is reproduced by relaunching it

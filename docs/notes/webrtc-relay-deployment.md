@@ -144,7 +144,7 @@ box carrying seven exchanges.
 
 | shape | provisioned | to first frame | cost per exchange | cycles | orphans after the last cycle | the interrupted cycle |
 | --- | --- | --- | --- | --- | --- | --- |
-| ephemeral, per exchange | one t4g.micro, two elastic addresses, a second network interface, one security group, one TURN secret, one certificate, two DNS records | 94 s, over a 94 to 129 s range | about $0.002 per cycle | 6 | zero of every type | left nothing: zero of every type after its teardown |
+| ephemeral, per exchange | one services instance, two elastic addresses, a second network interface, one security group, one TURN secret, one certificate, two DNS records | 94 s, over a 94 to 129 s range | about $0.002 per cycle | 6 | zero of every type | left nothing: zero of every type after its teardown |
 | shared, per-exchange credentials | the same box, stood up once; per exchange only a freshly minted time-limited TURN credential | 8.6 s, plus 12 s of amortised bring-up | about $0.0001 | 7 exchanges on one box | no services instance and no addresses after teardown | one exchange interrupted mid-channel; the box carried the next one unchanged |
 
 **Cost is computed, not measured.** Cost Explorer returned $0 with no
@@ -152,8 +152,8 @@ per-service grouping for the run's day and marked the figure estimated, which is
 its published lag rather than the run's spend, and the account's month-to-date
 read $0 in the closing inventory. Every figure above is arithmetic over
 published on-demand rates this credential could not confirm through the pricing
-API. Behind them: a t4g.micro services box at $0.0084/hour, a t4g.nano
-restricted box at $0.0042/hour, a public address at $0.005/hour whether attached
+API. Behind them: a services box at $0.0084/hour, a restricted box at
+$0.0042/hour, a public address at $0.005/hour whether attached
 or not, and a gp3 volume at $0.08/GiB-month. The ephemeral figure assumes the
 measured cycle length of about five and a half minutes end to end, first API
 call to post-teardown sweep, and counts the services instance, its two elastic
@@ -162,7 +162,7 @@ bring-up divided across the seven exchanges it carried plus each exchange's own
 8.6 s.
 
 The per-exchange arithmetic flatters the shared shape: a shared box is paid for
-while it idles. At the same rates a t4g.micro holding one elastic address
+while it idles. At the same rates a services box holding one elastic address
 continuously is about $9.80 a month whether it carries one exchange or a
 thousand, and that, not the per-exchange cent, is the figure a deployment
 decision turns on.
@@ -387,8 +387,8 @@ certificate, a reboot, repeated crashes, sustained memory pressure, a
 connection idle for ten minutes, a browser acceptor, a network admitting TCP to
 443 only, or a scheduled liveness probe.
 
-Two operational facts came with the 2026-10-03 run. The relay instance is a
-t4g.nano, which carried coturn, the broker and nginx with no
+Two operational facts came with the 2026-10-03 run. The relay instance, at
+the smallest size, carried coturn, the broker and nginx with no
 headroom. A full-workspace `npm ci` on it OOM-killed coturn (restarted by systemd in about
 8 s), so any install there must be scoped to the broker workspace or built
 elsewhere.
