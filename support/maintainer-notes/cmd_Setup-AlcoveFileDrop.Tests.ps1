@@ -5,7 +5,9 @@
 
 .DESCRIPTION
     Each run is a new cmd process whose PATH holds one folder of stand-ins
-    and the system folders, so the runner's own docker is never reached. The
+    and a folder of copied where.exe and findstr.exe, and no system folder,
+    where the runner's own docker is; a case whose PATH still reaches an
+    engine it means to be absent throws, naming the file. The
     stand-ins are one compiled recorder copied to docker.exe, podman.exe, or
     both. It appends the name it runs as and its arguments to
     ALCOVE_STUB_LOG; exits 1 to every call when ALCOVE_STANDIN_STOPPED_<NAME>
@@ -57,6 +59,30 @@ public static class AlcoveCmdEngineStandIn {
     $script:Recorder = Join-Path $script:Root 'recorder.exe'
     Add-Type -TypeDefinition $recorderSource -OutputAssembly $script:Recorder -OutputType ConsoleApplication
 
+    # The runner's own docker is in a system folder, so no system folder goes
+    # on a run's PATH: these copies are the system programs the runs reach.
+    $script:Tools = Join-Path $script:Root 'tools'
+    New-Item -ItemType Directory -Path $script:Tools | Out-Null
+    foreach ($tool in @('where.exe', 'findstr.exe')) {
+        Copy-Item -LiteralPath (Join-Path $env:SystemRoot "System32\$tool") -Destination $script:Tools
+    }
+
+    function Assert-EngineAbsent {
+        <#  Throw when an engine a case means to be absent is on its PATH. #>
+        param([string[]] $Folders, [string[]] $Absent)
+        $extensions = @($env:PATHEXT -split ';' | Where-Object { $_ })
+        foreach ($engine in $Absent) {
+            foreach ($folder in $Folders) {
+                foreach ($extension in $extensions) {
+                    $candidate = Join-Path $folder "$engine$extension"
+                    if (Test-Path -LiteralPath $candidate) {
+                        throw "the case means $engine to be absent, and its PATH reaches $candidate"
+                    }
+                }
+            }
+        }
+    }
+
     function Set-ProcessVariable {
         param([Parameter(Mandatory = $true)][string] $Name, $Value)
         [Environment]::SetEnvironmentVariable($Name, $Value, 'Process')
@@ -84,12 +110,14 @@ public static class AlcoveCmdEngineStandIn {
         $outFile = Join-Path $folder 'stdout.txt'
         $errFile = Join-Path $folder 'stderr.txt'
         Set-Content -LiteralPath $inFile -Value @('hunter2') -Encoding Ascii
+        $pathFolders = @($folder, $script:Tools)
+        Assert-EngineAbsent -Folders $pathFolders -Absent @(@('docker', 'podman') | Where-Object { $Installed -notcontains $_ })
 
         $names = @('PATH', 'ALCOVE_STUB_LOG', 'ALCOVE_STANDIN_STOPPED_DOCKER', 'ALCOVE_STANDIN_STOPPED_PODMAN')
         $saved = @{}
         foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
         try {
-            Set-ProcessVariable -Name 'PATH' -Value (@($folder, (Join-Path $env:SystemRoot 'System32'), $env:SystemRoot) -join ';')
+            Set-ProcessVariable -Name 'PATH' -Value ($pathFolders -join ';')
             Set-ProcessVariable -Name 'ALCOVE_STUB_LOG' -Value $log
             foreach ($engine in @('docker', 'podman')) {
                 $value = $null
