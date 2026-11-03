@@ -256,4 +256,19 @@ describe("the negotiated envelope version reaches the message loop", () => {
       [NEGOTIATED],
     ]);
   });
+
+  test("the encrypted wrapper accepts a version when its transport has no handler for it", async () => {
+    const [a] = createMessagePipe();
+    const plain: MessageConnection = {
+      send: (data) => a.send(data),
+      receive: (timeoutMs) => a.receive(timeoutMs),
+      close: () => a.close(),
+    };
+    const encrypted = await EncryptedMessageConnection.create(
+      plain,
+      new Uint8Array(32),
+      "initiator",
+    );
+    expect(() => encrypted.useEnvelopeVersion(NEGOTIATED)).not.toThrow();
+  });
 });
