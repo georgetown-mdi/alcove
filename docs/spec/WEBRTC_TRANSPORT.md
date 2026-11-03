@@ -222,8 +222,10 @@ is the one above, and it is neither negotiated nor read by version:
   `packages/peerjs-broker/src/contrib/services/webSocketServer/index.ts`), so a
   registration that names another `version`, or none, is answered `OPEN` like any
   other (`apps/web/test/unit/signalingServer.test.ts`).
-- **The messages are PeerJS's.** The broker sends `OPEN`, `ID-TAKEN` and `ERROR`
-  and routes `HEARTBEAT`, `OFFER`, `ANSWER`, `CANDIDATE`, `LEAVE` and `EXPIRE`
+- **The messages are PeerJS's.** The broker sends `OPEN`, `ID-TAKEN` and `ERROR`,
+  reads `HEARTBEAT` without forwarding it, routes `OFFER`, `ANSWER`, `CANDIDATE`,
+  `LEAVE` and `EXPIRE`, and sends `LEAVE` and `EXPIRE` itself when a destination
+  cannot be reached or a frame cannot be queued
   (`MessageType` in `packages/peerjs-broker/src/contrib/enums.ts`). A broker that
   changed one, or the query above, would break the browser party, which runs the
   PeerJS client unchanged.

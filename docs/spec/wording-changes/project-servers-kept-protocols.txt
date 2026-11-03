@@ -6,7 +6,7 @@
 - - -> Two builds that derive different keys hold different keys at a relay, and the key exchange's version negotiation does not reach them, since a relay comes before it.
 - - -> The project's registrar keeps the requests of every supported release, the rule of [RELEASES.md, Project-run services](../RELEASES.md#compatibility-policy).
 - - -> Nothing in a request names a version: the path is `/exchanges/<exchange-id>`, the body holds exactly `key` and `maxAgeDays` (`registrar.py`, the body reader), and the proof's version is its `v2` label alone, which the registrar checks under the one proof key it derives.
-- - -> The three credentials, the status codes and the answer's members are the wire a supported release depends on.
+- - -> The two credentials, the tokenless enrollment, the status codes and the answer's members are the wire a supported release depends on.
 - - -> Compatibility
 - - -> Compatibility
 - - -> The project does not run an SFTP relay: the operator of an SFTP server does ([What it is](#what-it-is)), and no browser SFTP client uses it yet.
@@ -21,7 +21,7 @@
 - - -> **No version is read.**
 - - -> The broker takes `id`, `token` and `key` from the query and no other member (`_onSocketConnection` in `packages/peerjs-broker/src/contrib/services/webSocketServer/index.ts`), so a registration that names another `version`, or none, is answered `OPEN` like any other (`apps/web/test/unit/signalingServer.test.ts`).
 - - -> **The messages are PeerJS's.**
-- - -> The broker sends `OPEN`, `ID-TAKEN` and `ERROR` and routes `HEARTBEAT`, `OFFER`, `ANSWER`, `CANDIDATE`, `LEAVE` and `EXPIRE` (`MessageType` in `packages/peerjs-broker/src/contrib/enums.ts`).
+- - -> The broker sends `OPEN`, `ID-TAKEN` and `ERROR`, reads `HEARTBEAT` without forwarding it, routes `OFFER`, `ANSWER`, `CANDIDATE`, `LEAVE` and `EXPIRE`, and sends `LEAVE` and `EXPIRE` itself when a destination cannot be reached or a frame cannot be queued (`MessageType` in `packages/peerjs-broker/src/contrib/enums.ts`).
 - - -> A broker that changed one, or the query above, would break the browser party, which runs the PeerJS client unchanged.
 - - -> **The bounds are part of the wire kept.**
 - - -> The handshake parameter lengths and the inbound frame size ([SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md)) are not tightened below what a supported release sends.
@@ -33,6 +33,6 @@
 - - -> The path is `/relay`, and a hello holds exactly the keys shown in [Frames](#frames) (`hasExactKeys` in `packages/websocket-relay/src/protocol.ts`), so a hello with a version member is refused as malformed (4001) today.
 - - -> **The proof's version is its label.**
 - - -> `alcove-relay-websocket-v2:*` appears only inside the proof ([The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof)), which the relay checks under the one proof key it derives.
-- - -> Two builds that hold different labels derive different relay keys and do not pair ([Pairing and the start](#pairing-and-the-start)).
+- - -> Two builds that hold different labels derive different proof keys from one relay key, and the relay refuses the hello made under the label it does not check (4004).
 - - -> **What is kept.**
 - - -> The frames, the close codes and the codes a client redials on, the bounds ([Quotas](#quotas)) and the proof's expiry window are the wire a supported release depends on, and none is changed in a way that refuses what a supported release sends.
