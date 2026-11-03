@@ -26,6 +26,12 @@
     that does not write it within 60 s fails with the task's stored action,
     the processes it left running, and the folder's files.
 
+    One line is pasted once more, under en-US, with a folder whose name holds
+    a $ and a backtick, escaped as the PowerShell sentence of
+    PASTED_TEXT_ESCAPING_NOTE (apps/web/src/recurring/scheduledRunCommand.ts)
+    says. The folder the task changes to and the mount docker receives must
+    each be that folder as named; a failure names both paths.
+
     It then checks the two schtasks behaviors that are why the generator
     writes no schtasks line (windows-network-filedrop.md gives them). Under
     the Eastern time zone, which has daylight saving, it registers a daily and
@@ -74,6 +80,7 @@ BeforeDiscovery {
         @($entries | Where-Object { $_.Trigger -notmatch '^interval=(1|7) ' })[0]
     ) | ForEach-Object { @{ Trigger = $_.Trigger; Line = $_.Line } }
     $zoneCases = @(@{ ZoneLines = @($zoneLines) })
+    $escapedCases = @(@{ Shell = $entries[0].Shell; Line = $entries[0].Line; Arguments = @($entries[0].Arguments) })
     $constrainedCases = for ($index = 0; $index -lt $entries.Count; $index++) {
         @{ Number = $index + 1; Shell = $entries[$index].Shell; Trigger = $entries[$index].Trigger; Line = $entries[$index].Line }
     }
@@ -173,12 +180,12 @@ public static class AlcoveScheduledDockerRecorder {
     }
 
     function Wait-ForRecorded {
-        param([int] $TimeoutSeconds = 60)
+        param([int] $TimeoutSeconds = 60, [string] $Path = $script:Recorded)
         $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-        while ((Get-Date) -lt $deadline -and -not (Test-Path -LiteralPath $script:Recorded)) {
+        while ((Get-Date) -lt $deadline -and -not (Test-Path -LiteralPath $Path)) {
             Start-Sleep -Milliseconds 500
         }
-        return (Test-Path -LiteralPath $script:Recorded)
+        return (Test-Path -LiteralPath $Path)
     }
 
     function Get-TaskRunDiagnostics {
@@ -186,6 +193,7 @@ public static class AlcoveScheduledDockerRecorder {
             its actions, the cmd processes the Task Scheduler service started
             and their descendants, any docker or WerFault process, and the
             folder's files. #>
+        param([string] $Folder = $script:Folder)
         $parts = New-Object System.Collections.ArrayList
         $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
         foreach ($action in @($task.Actions)) {
@@ -209,7 +217,7 @@ public static class AlcoveScheduledDockerRecorder {
             }
         }
         if ($shown.Count -eq 0) { [void] $parts.Add('process none from the Task Scheduler service') }
-        [void] $parts.Add("folder holds [$((@(Get-ChildItem -LiteralPath $script:Folder -Name)) -join ', ')]")
+        [void] $parts.Add("folder holds [$((@(Get-ChildItem -LiteralPath $Folder -Name)) -join ', ')]")
         return ($parts -join ' || ')
     }
 }
@@ -277,6 +285,53 @@ Describe 'The Task Scheduler lines, pasted and run' {
             Stop-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
             Remove-TestTask
             Set-Culture -CultureInfo $script:CultureBefore
+        }
+    }
+}
+
+Describe 'A pasted folder escaped as the hand-off''s note says' {
+    BeforeAll {
+        # Unescaped, PowerShell would expand $HOME and read `t as a tab. Made
+        # through .NET, so that no cmdlet's -Path reads the backtick as a
+        # wildcard escape.
+        $script:EscapedFolder = $env:SystemDrive + '\alcove $HOME `t ' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+        [void] [IO.Directory]::CreateDirectory($script:EscapedFolder)
+        [IO.File]::Copy((Join-Path $script:Folder 'docker.exe'), [IO.Path]::Combine($script:EscapedFolder, 'docker.exe'))
+        $script:EscapedRecorded = [IO.Path]::Combine($script:EscapedFolder, 'docker-argv.txt')
+    }
+
+    AfterAll {
+        Remove-TestTask
+        Remove-Item -LiteralPath $script:EscapedFolder -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'a folder holding a $ and a backtick, each given a backtick, reaches the task and docker intact' -ForEach $escapedCases {
+        $folder = $script:EscapedFolder
+        # The PowerShell sentence of PASTED_TEXT_ESCAPING_NOTE in
+        # apps/web/src/recurring/scheduledRunCommand.ts: a ` before each $, `,
+        # and typographic double quote.
+        $escaped = $folder -replace '([$`\u201C\u201D\u201E])', '`$1'
+        $intended = @($Arguments | ForEach-Object { $_.Replace($script:Placeholder, $folder) })
+
+        Remove-TestTask
+        try {
+            $run = Invoke-PastedLine -Shell $Shell -Line $Line.Replace($script:Placeholder, $escaped)
+            $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+            $task | Should -Not -BeNullOrEmpty -Because "the line with the folder pasted as [$escaped] registered no task (exit $($run.Exit): $($run.Output))"
+
+            $stored = [string] @($task.Actions)[0].Arguments
+            $storedFolder = if ($stored -match '^/c cd /d "([^"]*)"') { $Matches[1] } else { "no cd /d folder in [$stored]" }
+            $storedFolder | Should -Be $folder -Because "the folder pasted as [$escaped] is the folder the task changes to"
+
+            Start-ScheduledTask -TaskName $script:TaskName
+            $ran = Wait-ForRecorded -Path $script:EscapedRecorded
+            $diagnostics = if ($ran) { '' } else { Get-TaskRunDiagnostics -Folder $folder }
+            $ran | Should -BeTrue -Because "the task did not run docker in [$folder] within 60 s (last result $((Get-ScheduledTaskInfo -TaskName $script:TaskName).LastTaskResult)): $diagnostics"
+            $received = @(Get-Content -LiteralPath $script:EscapedRecorded | ForEach-Object { $_.Substring(1, $_.Length - 2) })
+            ($received -join ' | ') | Should -Be ($intended -join ' | ') -Because "docker mounts the folder [$folder], pasted as [$escaped]"
+        } finally {
+            Stop-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+            Remove-TestTask
         }
     }
 }
