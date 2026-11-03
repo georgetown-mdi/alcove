@@ -21,8 +21,8 @@
 // inbound frame-size check, whose 512 MiB limit no test sends past, and the
 // close latch call.
 export const scoreFloors = {
-  "packages/core/src/auth.ts": 73,
-  "packages/core/src/connection/abortMarker.ts": 91,
+  "packages/core/src/auth.ts": 84,
+  "packages/core/src/connection/abortMarker.ts": 94,
   "packages/core/src/connection/encryptedMessageConnection.ts": 91,
 };
 
@@ -47,8 +47,7 @@ export default {
   timeoutMS: 120000,
   timeoutFactor: 3,
   // The dry run is the whole suite under perTest coverage, which measures
-  // about five minutes in CI, Stryker's default cap for it. The cap is three
-  // times that, the factor timeoutFactor applies per mutant.
+  // about ten and a half minutes in CI, twice Stryker's default cap for it.
   dryRunTimeoutMinutes: 15,
   reporters: ["clear-text", "progress", "html", "json"],
   // No `thresholds.break`: Stryker's thresholds are whole-run, and the gate

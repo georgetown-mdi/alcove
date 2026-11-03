@@ -39,10 +39,7 @@ import {
 // the bytes rather than treating the string as a source path.
 /** @internal */
 export const abortMarkerBody = (token: Uint8Array<ArrayBuffer>): Buffer =>
-  Buffer.from(
-    JSON.stringify({ version: 1, token: toBase64Url(token) }),
-    "utf-8",
-  );
+  Buffer.from(JSON.stringify({ version: 1, token: toBase64Url(token) }));
 
 // The marker name `<writerId>-abort-<byteCount>.json` for the body
 // abortMarkerBody builds from `token`.

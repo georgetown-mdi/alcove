@@ -120,6 +120,29 @@ test("both pre-handshake refusals mark themselves as having emitted a recovery h
   }
 });
 
+test("both pre-handshake refusals end on the step they mark themselves as stating", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW_MS);
+  // Written out rather than imported: a comparison against the imported
+  // constant passes whatever text the constant has.
+  const remedy =
+    "Ask your partner for a new invitation, or create one with 'alcove " +
+    "invite' and have your partner accept it.";
+  for (const authentication of [
+    { sharedSecret: "" },
+    authenticationExpiringAt(0),
+  ]) {
+    let thrown: unknown;
+    try {
+      assertSharedSecretReadyForHandshake(authentication);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message.endsWith(`. ${remedy}`)).toBe(true);
+  }
+});
+
 // --- authenticateConnection over an in-memory connection pair ----------------
 
 function authenticateOverPipe(
