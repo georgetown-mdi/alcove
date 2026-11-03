@@ -306,9 +306,8 @@ export function Ledger({
   footer,
 }: {
   title?: string;
-  /** A standing state marker under the title -- "Terms locked when the
-   * invitation was created" once the invitation is minted and the ledger
-   * stops being editable. */
+  /** A standing state marker under the title -- "Terms finalized" once the
+   * invitation is minted and the ledger stops being editable. */
   tag?: string;
   /** A quiet standing notice shown while the loaded file is the synthetic
    * sample (pristine or edited). `onClear` renders its Clear action; the

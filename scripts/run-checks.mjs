@@ -319,6 +319,13 @@ export const CHECKS = [
       "Every red or runtime-color Alert in apps/web/src sets a role a screen reader announces (alert, status, or alertRoleFor of its own color), except the documented sites whose text a separate live region announces.",
   },
   {
+    script: "check:guide-labels",
+    group: INDEPENDENT,
+    expiresOn: "2027-03-31",
+    description:
+      "Every bold UI label in the guides under docs/guides/ matches a string in the web app, the console, the CLI, or core, except the bold text listed as not a label.",
+  },
+  {
     script: "check:zero-setup-keys",
     group: INDEPENDENT,
     expiresOn: "2027-03-31",

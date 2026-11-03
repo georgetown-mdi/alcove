@@ -68,7 +68,7 @@ Screen: Step 2 of 3 - Matching & sharing
 
 Alcove fills in each column's type and use from its name. It sends nothing by default, your ID column included.
 
-**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes common ID names, such as `id`, `Client ID`, `MRN`, and `case_number` ([inference table](../EXCHANGE_REFERENCE.md#input-metadata)), and starts the first one as **Unique record identifier - not sent**, taking a record number such as `case_number` only when the file has no other ID column. To send your ID for matched records, choose **Unique record identifier - sent to your partner**. A column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
+<!--@include: ./_id-column.md#app-->
 
 Change any other column's use only as you agreed ([What each of you sends](./agree-on-terms.md#what-each-of-you-sends)).
 
@@ -124,7 +124,7 @@ Screen: Step 3 of 3 - Review & create
 Check each line under **Exchange proposal**, then choose **Create the invitation**.
 
 > [!WARNING]
-> Creating the invitation seals the terms. To change any term afterwards, create a new invitation.
+> After you create the invitation, you cannot change its terms. To change them, create a new invitation.
 
 ### 5. Send the invitation
 

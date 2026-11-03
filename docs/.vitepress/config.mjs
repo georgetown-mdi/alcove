@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 import { slugify } from "../../scripts/lib/headingSlug.mjs";
 import {
+  GUIDE_INCLUDES,
   GUIDE_SECTIONS,
   GUIDES_DIR,
   guideMarkdown,
@@ -38,7 +39,7 @@ export const ROOT_PAGES = [
 const srcExclude = readdirSync(repoRoot, { withFileTypes: true })
   .filter((entry) => entry.name !== "docs" && !ROOT_PAGES.includes(entry.name))
   .map((entry) => (entry.isDirectory() ? `${entry.name}/**` : entry.name))
-  .concat(["**/node_modules/**", "docs/.vitepress/**"]);
+  .concat(["**/node_modules/**", "docs/.vitepress/**", GUIDE_INCLUDES]);
 
 // The guides are served at the site root, the overview beside the
 // documentation index, and each directory's README at the directory's own

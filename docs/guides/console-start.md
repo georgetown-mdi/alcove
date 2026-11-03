@@ -157,7 +157,7 @@ The console does not start a WebRTC exchange while either file is there.
 ### 4. Create a new invitation from the real file
 
 Whoever invites creates it; the other accepts it as before.
-The practice invitation's terms are sealed to the sample file.
+You cannot change the practice invitation to use the real file.
 
 ## Stop or restart the console
 

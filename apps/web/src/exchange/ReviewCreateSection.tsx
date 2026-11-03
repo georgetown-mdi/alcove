@@ -663,8 +663,8 @@ export function ReviewCreateSection({
       )}
       <h2>Exchange proposal</h2>
       <p className={`${styles.small} ${styles.sub}`}>
-        Check every term before you create the invitation. Creating it seals the
-        terms.
+        Check every term before you create the invitation. After you create it,
+        you cannot change its terms.
       </p>
       {/* The one fact the restatement below cannot show: a declared default the
         run will not substitute is a term that is treated as widening the match and
