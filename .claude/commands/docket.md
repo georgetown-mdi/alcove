@@ -1,6 +1,6 @@
 ---
 name: docket
-description: Present the decision docket to the owner -- every open decision on its list that is not a potential follow-up, the session's parked ones and the ripest in the Decision column, at least as many as the session filed there -- one decision per message, and record each ruling and act on it when given.
+description: Present the decision docket to the owner -- every open decision on its list that is not a potential follow-up, the session's parked ones and the ripest in the Decision column, at least as many as the session filed there -- one decision per message, and record each ruling, acting on a blocker's when given.
 ---
 
 The owner's instruction this command stands for:
@@ -11,8 +11,10 @@ The owner's instruction this command stands for:
 > executing decisions until I say so.
 
 The owner revised its last sentence on 2026-10-29: "When I make a decision mid
-orchestration, I'm doing so so that it can be acted on." A ruling is therefore
-acted on when given, and only its board writes wait.
+orchestration, I'm doing so so that it can be acted on." On 2026-11-02 he named
+two kinds: a blocker, which work in flight needs in order to proceed, is acted
+on when ruled; an end-of-run decision is written to the board in the
+follow-ups pass. With the owner AFK, blockers are held too.
 
 The bare command is that whole instruction, so the owner never types it out. A
 note after the command -- a merge report, a handoff result path -- is acted on
@@ -135,9 +137,10 @@ record -- `scratch/docket-<date -I>/rulings.md` and the continuation
 brief -- then present the next item. A
 question the owner asks is not a ruling: answer it, say the decision is still
 open, and end the turn; record a ruling only when the owner's words pick an
-option. A ruling is acted on when given, from that record, as the ruleset says
-of a mid-day docket (`.claude/orchestration/ruleset.md`, Session lifecycle);
-only its board writes wait. When no item is left, say so in one line.
+option. A blocker's ruling is acted on when given, from that record, as the
+ruleset says of a mid-day docket (`.claude/orchestration/ruleset.md`, Session
+lifecycle); an end-of-run ruling starts no work. When no item is left, say so
+in one line.
 
 The rulings' board consequences -- status moves, each ruling recorded in its
 item's body, epic and order placement -- go to the boards in one pass with the

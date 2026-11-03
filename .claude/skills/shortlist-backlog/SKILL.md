@@ -108,8 +108,10 @@ network access for the board reads and PR searches (gh).
 
 ## Afterward
 
-Relay the delivered list to the owner, who confirms and closes each item on
-it. Take every action line in this session: write the handoff brief or file
+Keep the delivered list in the continuation brief for the follow-ups pass's
+final action items, where the owner confirms and closes each item on it: a
+close blocks no branch, and mid-work the owner is asked only what does
+(`.claude/orchestration/ruleset.md`, Decisions, briefs and reporting). Take every action line in this session: write the handoff brief or file
 the Decision item, as `.claude/orchestration/ruleset.md`, Decisions, briefs
 and reporting, sets out, then record it on the candidate item with
 `.claude/scripts/edit-issue.mjs` -- a dated line, added to the body read in
