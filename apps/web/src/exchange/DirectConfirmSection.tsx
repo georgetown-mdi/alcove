@@ -268,7 +268,8 @@ export function DirectConfirmSection({
             // even if Mantine's default role changes.
             role="alert"
           >
-            {SINGLE_PASS_TERMS_STATEMENT}
+            {/* The terms preview below states it whenever it shows. */}
+            {unlinkable !== undefined && SINGLE_PASS_TERMS_STATEMENT}
           </Alert>
         )}
       </Stack>
