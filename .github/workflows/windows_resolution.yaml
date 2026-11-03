@@ -33,7 +33,10 @@ name: Windows Path Resolution
 #            the same pull requests as test.
 #   schedule The web app's Task Scheduler lines, each pasted into the shell the
 #            panel names under the en-US and en-GB cultures, the task it
-#            registers read back and run against a docker stand-in; two lines
+#            registers read back and run against a docker stand-in; one line
+#            pasted with a folder holding a $ and a backtick, escaped as the
+#            panels' note on pasted text says, and checked to reach docker
+#            intact; two lines
 #            registered under a time zone with daylight saving; then each line
 #            run once more in a session the machine-wide policy has put in
 #            ConstrainedLanguage, and the trigger it registers checked.

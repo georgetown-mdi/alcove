@@ -369,6 +369,9 @@ panel names, once under en-US and once under en-GB. It asserts:
 - the task run, against a docker stand-in in the folder, handing docker each
   intended argument whole: a `;`, `|` or `tab` delimiter, an identity holding
   a space, `&`, `'` or `$`, and the folder's mount;
+- a folder whose name holds a `$` and a backtick, each given a backtick as
+  the panels' note on pasted text tells a PowerShell user to, pasted into one
+  line: the task changes to that folder and docker mounts it, both as named;
 - the two reasons no line is a `schtasks` line: under en-GB `schtasks` reads
   `/SD 03/04/2026` as 3 April, and it stores a single quote in `/TR` as a
   double quote;
