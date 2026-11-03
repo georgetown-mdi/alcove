@@ -503,6 +503,7 @@ async function runExchangeStage(params: {
       sessionKey: signing !== null ? run.sessionKeyForReceipt : undefined,
       // Set by authenticateRun on the authenticated path only.
       rotation: run.rotation,
+      unkeyedProtocolVersion: build.fileSync?.selectedVersions?.protocol,
       // Record the adopted pin into the configuration this exchange was
       // given, at the moment of adoption and before anything is disclosed, so
       // a run that pins and then fails mid-round does not re-pin blind on the
@@ -731,6 +732,9 @@ async function openRunTransport(params: {
   build: PreparedTransport;
   run: RunLifecycle;
   connection: ProtocolConnectionConfig;
+  // A run with no key exchange selects its protocol and envelope versions
+  // from the two file-sync rendezvous hellos.
+  selectVersionsAtRendezvous: boolean;
   interrupted: AbortController;
   log: ReturnType<typeof getLogger>;
   emit: (fn: (e: EventStreamEmitter) => void) => void;
@@ -740,6 +744,7 @@ async function openRunTransport(params: {
     build,
     run,
     connection,
+    selectVersionsAtRendezvous,
     interrupted,
     log,
     emit,
@@ -959,7 +964,9 @@ async function openRunTransport(params: {
     }
 
     log.info("synchronizing");
-    await fileSyncConn.synchronize();
+    await fileSyncConn.synchronize({
+      selectVersions: selectVersionsAtRendezvous,
+    });
 
     // If a signal fired during the synchronize() round-trip, doCleanup
     // already ran (closing the connection and removing our hello/lock
@@ -2547,6 +2554,7 @@ export async function runProtocol(
       build,
       run,
       connection,
+      selectVersionsAtRendezvous: auth === null,
       interrupted,
       log,
       emit,

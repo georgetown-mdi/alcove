@@ -199,6 +199,21 @@ describe("reading a hello", () => {
     expect(readHello(wire(text))).toBeUndefined();
   });
 
+  test("a hello of exactly 1024 bytes is read and one of 1025 is refused", () => {
+    const helloOfBytes = (bytes: number) => {
+      const head = '{"kex":[3],"protocol":[1],"envelope":[1],"x":"';
+      const text = `${head}${"a".repeat(bytes - head.length - 2)}"}`;
+      expect(enc.encode(text).length).toBe(bytes);
+      return wire(text);
+    };
+    expect(readHello(helloOfBytes(1024))?.versions).toEqual({
+      kex: [3],
+      protocol: [1],
+      envelope: [1],
+    });
+    expect(readHello(helloOfBytes(1025))).toBeUndefined();
+  });
+
   test("the prologue is each hello behind its two-byte length, initiator first", () => {
     const prologue = helloPrologue(Uint8Array.of(7, 8), Uint8Array.of(9));
     expect([...prologue]).toEqual([0, 2, 7, 8, 0, 1, 9]);

@@ -1369,11 +1369,17 @@ export interface RunExchangeOptions {
    * exchange, which awaits `rotation.store` at this side's point in the store
    * order ({@link TermsRotation}). Passed on every authenticated run and on no
    * other. Its inputs hold the protocol version the key exchange negotiated,
-   * which the terms exchange states and checks; a run without it uses this
-   * build's own (docs/spec/PROTOCOL.md, "Protocol-version reconcile at the
-   * terms exchange").
+   * which the terms exchange states and checks; a run without it uses
+   * {@link unkeyedProtocolVersion} (docs/spec/PROTOCOL.md, "Protocol-version
+   * reconcile at the terms exchange").
    */
   rotation?: TermsRotation;
+  /**
+   * On a run with no key exchange, the protocol version the file-sync
+   * rendezvous hellos selected (`FileSyncConnection.selectedVersions`); this
+   * build's own where unset. Ignored when {@link rotation} is passed.
+   */
+  unkeyedProtocolVersion?: number;
   verbosity?: number;
 }
 
@@ -1627,6 +1633,7 @@ export async function runExchange(
     },
     localReceiveCeiling,
     options.rotation,
+    options.unkeyedProtocolVersion,
   );
   // The initiator that stored drops its previous secret on the responder's
   // first frame past the terms exchange that is not an abort.

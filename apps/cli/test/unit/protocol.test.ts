@@ -3037,6 +3037,112 @@ test("a file-sync run hands its connection the guidance on raising the inactivit
   expect(guidance?.inactivityTimeoutGuidance).toContain("--inactivity-timeout");
 });
 
+// --- Version selection at the file-sync rendezvous ---------------------------
+
+// Two parties over one folder, with synchronize() recording the options it is
+// given and the connections' selectedVersions reading as `reported` (the real
+// reading, a given pair, or none). The runExchange options each party was handed are
+// returned beside the recorded synchronize options.
+async function runPairRecordingVersionWiring(
+  auth: (keyFilePath: string) => Parameters<typeof runProtocol>[0]["auth"],
+  reported: { protocol: number; envelope: number } | "real" | "absent",
+): Promise<{
+  synchronizeOptions: Array<unknown>;
+  exchangeOptions: Array<{ unkeyedProtocolVersion?: number }>;
+}> {
+  const synchronizeOptions: Array<unknown> = [];
+  const realSynchronize = FileSyncConnection.prototype.synchronize;
+  const synchronizeSpy = vi
+    .spyOn(FileSyncConnection.prototype, "synchronize")
+    .mockImplementation(function (
+      this: FileSyncConnection,
+      options?: Parameters<FileSyncConnection["synchronize"]>[0],
+    ) {
+      synchronizeOptions.push(options);
+      return realSynchronize.call(this, options);
+    });
+  const versionsSpy =
+    reported === "real"
+      ? undefined
+      : vi
+          .spyOn(FileSyncConnection.prototype, "selectedVersions", "get")
+          .mockReturnValue(reported === "absent" ? undefined : reported);
+  try {
+    const party = (name: string) =>
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: auth(path.join(tmpDir, `${name}.key`)),
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: name,
+      });
+    await Promise.all([party("test-a"), party("test-b")]);
+  } finally {
+    synchronizeSpy.mockRestore();
+    versionsSpy?.mockRestore();
+  }
+  return {
+    synchronizeOptions,
+    exchangeOptions: vi
+      .mocked(runExchange)
+      .mock.calls.map((call) => call[3] as { unkeyedProtocolVersion?: number }),
+  };
+}
+
+test("a run with no key exchange asks the file-sync connection to select versions at the rendezvous", async () => {
+  const { synchronizeOptions } = await runPairRecordingVersionWiring(
+    () => null,
+    "real",
+  );
+  expect(synchronizeOptions).toHaveLength(2);
+  for (const options of synchronizeOptions)
+    expect(options).toEqual({ selectVersions: true });
+});
+
+test("a keyed run does not ask the file-sync connection to select versions", async () => {
+  const { synchronizeOptions, exchangeOptions } =
+    await runPairRecordingVersionWiring((keyFilePath) => {
+      saveKeyFile(keyFilePath, { sharedSecret: TOKEN_A });
+      return { sharedSecret: TOKEN_A, keyFilePath };
+    }, "real");
+  expect(synchronizeOptions).toHaveLength(2);
+  for (const options of synchronizeOptions)
+    expect(options).toEqual({ selectVersions: false });
+  for (const options of exchangeOptions)
+    expect(options.unkeyedProtocolVersion).toBeUndefined();
+}, 20_000);
+
+test("an unkeyed run uses the protocol version the connection reports as selected", async () => {
+  const { exchangeOptions } = await runPairRecordingVersionWiring(() => null, {
+    protocol: 7,
+    envelope: 1,
+  });
+  expect(exchangeOptions.map((o) => o.unkeyedProtocolVersion)).toEqual([7, 7]);
+});
+
+test("an unkeyed run uses the version the real rendezvous selected", async () => {
+  const { exchangeOptions } = await runPairRecordingVersionWiring(
+    () => null,
+    "real",
+  );
+  expect(exchangeOptions.map((o) => o.unkeyedProtocolVersion)).toEqual([1, 1]);
+});
+
+test("an unkeyed run whose connection reports no selected versions leaves the protocol version unset", async () => {
+  const { exchangeOptions } = await runPairRecordingVersionWiring(
+    () => null,
+    "absent",
+  );
+  expect(exchangeOptions).toHaveLength(2);
+  for (const options of exchangeOptions)
+    expect(options.unkeyedProtocolVersion).toBeUndefined();
+});
+
 test("the both-swept advice is absent from a flagged retain-mode run", async () => {
   // Retain mode keeps the transcript -- cleanup() deletes nothing -- so the
   // folder this run leaves behind still holds the rendezvous files, and the

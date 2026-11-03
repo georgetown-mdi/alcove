@@ -1120,7 +1120,8 @@ async function responderNextSecret(
  * Each side states a protocol version and refuses a partner frame stating
  * another: with `rotation`, the one the key exchange's hellos selected
  * (`rotation.inputs.negotiatedProtocolVersion`); without it, a run with no key
- * exchange, {@link PROTOCOL_VERSION}.
+ * exchange, `unkeyedProtocolVersion`, the version the file-sync rendezvous
+ * hellos selected, or {@link PROTOCOL_VERSION} where nothing selected one.
  */
 export async function exchangeTerms(
   conn: MessageConnection,
@@ -1134,10 +1135,11 @@ export async function exchangeTerms(
   termsChange?: TermsChangeOptions,
   localReceiveCeiling: number = MAX_PSI_DECODE_ELEMENTS,
   rotation?: TermsRotation,
+  unkeyedProtocolVersion?: number,
 ): Promise<TermsExchangeResult> {
   const protocolVersion =
     rotation === undefined
-      ? PROTOCOL_VERSION
+      ? (unkeyedProtocolVersion ?? PROTOCOL_VERSION)
       : rotation.inputs.negotiatedProtocolVersion;
   const abortSlot: ResponderAbortSlot = {
     linkageTerms: localTerms,

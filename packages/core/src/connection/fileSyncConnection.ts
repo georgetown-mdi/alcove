@@ -48,7 +48,22 @@ import {
   composeDirsDisplay,
   FileSyncRendezvous,
   type RendezvousScope,
+  type RendezvousSelectedVersions,
 } from "./fileSyncRendezvous";
+import type { HelloVersions } from "./controlEnvelope";
+import {
+  OFFERED_ENVELOPE_VERSIONS,
+  OFFERED_PROTOCOL_VERSIONS,
+} from "../versionHello";
+
+/** The options of {@link FileSyncConnection.synchronize}. */
+export interface SynchronizeOptions {
+  /** Offer and select protocol and envelope versions at the rendezvous: set
+   * by a run with no key exchange, and by no other. */
+  selectVersions?: boolean;
+  /** @internal */
+  offeredVersions?: HelloVersions;
+}
 
 /**
  * Canonicalize a `filedrop` connection path to its on-disk form: backslashes
@@ -212,7 +227,7 @@ interface Options {
   // CLI-only and never persisted (--sweep-exchange-files): absent from
   // FileSyncOptions and its schema, so it reaches here only through the
   // constructor. See
-  // docs/spec/FILE_SYNC.md#bilateral-configuration-detect-and-fail-never-negotiate.
+  // docs/spec/FILE_SYNC.md#bilateral-configuration-detect-and-fail.
   sweepExchangeFiles: boolean;
   // Lets the sweep clear a directory that shows a retain signal; the CLI
   // refuses it without sweepExchangeFiles.
@@ -412,6 +427,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // The rendezvous synchronize() started, which close() lets settle before
   // cleanup() so a write it has in flight lands tracked.
   private rendezvousInFlight: Promise<void> | undefined;
+  private versionsSelected: RendezvousSelectedVersions | undefined;
   // A sent frame the peer will not read, which close() does not drain.
   private unreadSentFile: string | undefined;
   // Grammar-failing names present at synchronize() entry, which the poll loop
@@ -1126,6 +1142,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.path = undefined;
     this.outbound = undefined;
     this.config = undefined;
+    this.versionsSelected = undefined;
     // Here, not in resetSessionState(), which resets only per-session send
     // state.
     this.abortMarker.clear();
@@ -1138,11 +1155,40 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
    * `-ack.json` markers (lockless mode), assigning `peerId` and `handshakeRole`.
    * A failure rejects this call and is not emitted on `error`, which is
    * reserved for the poll loop (see {@link start}).
+   *
+   * A run with no key exchange passes `selectVersions`: the hellos then offer
+   * this build's protocol and envelope versions, the two parties select from
+   * them ({@link selectedVersions}), and every message frame after this
+   * party's first uses the selected envelope version.
    */
-  async synchronize() {
+  async synchronize(options: SynchronizeOptions = {}) {
     const scope = this.validateSynchronizeEntry();
-    this.rendezvousInFlight = this.rendezvous.run(scope);
+    this.versionsSelected = undefined;
+    const offered = options.selectVersions
+      ? (options.offeredVersions ?? {
+          protocol: OFFERED_PROTOCOL_VERSIONS,
+          envelope: OFFERED_ENVELOPE_VERSIONS,
+        })
+      : undefined;
+    this.rendezvousInFlight = this.rendezvous.run(scope, offered).then(() => {
+      if (offered === undefined) return;
+      const selected = this.rendezvous.selectedVersions;
+      if (selected === undefined)
+        throw new InternalConsistencyError(
+          "the rendezvous completed without selecting versions",
+        );
+      this.messageLoop.useEnvelopeVersion(selected.envelope);
+      this.versionsSelected = selected;
+    });
     return this.rendezvousInFlight;
+  }
+
+  /**
+   * The protocol and envelope versions the rendezvous selected, on a
+   * connection synchronized with `selectVersions`; otherwise `undefined`.
+   */
+  get selectedVersions(): RendezvousSelectedVersions | undefined {
+    return this.versionsSelected;
   }
 
   // The entry guards for synchronize(); returns the directory scope the

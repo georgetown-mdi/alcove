@@ -36,8 +36,8 @@ import {
   type HandshakeShares,
 } from "./rotationHistory.js";
 import {
-  ENVELOPE_VERSION,
-  PROTOCOL_VERSION,
+  OFFERED_ENVELOPE_VERSIONS,
+  OFFERED_PROTOCOL_VERSIONS,
   encodeHello,
   helloPrologue,
   helloWire,
@@ -124,8 +124,8 @@ export function supportedVersions(
 ): SupportedVersions {
   return {
     kex: offeredKexSuites(KEX_SUITES, options.approvedKexSuitesOnly ?? false),
-    protocol: [PROTOCOL_VERSION],
-    envelope: [ENVELOPE_VERSION],
+    protocol: [...OFFERED_PROTOCOL_VERSIONS],
+    envelope: [...OFFERED_ENVELOPE_VERSIONS],
   };
 }
 

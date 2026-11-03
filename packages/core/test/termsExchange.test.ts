@@ -371,6 +371,38 @@ test("an omitted disclosesPayload reads back as undefined", async () => {
   expect(b.partnerDisclosesPayload).toBeUndefined();
 });
 
+test("a run with no key exchange states the version its rendezvous selected", async () => {
+  const [connA, connB] = makeConnections();
+  const recordedA = recordingConnection(connA);
+  const recordedB = recordingConnection(connB);
+  const selected = PROTOCOL_VERSION + 1;
+  const run = (
+    conn: MessageConnection,
+    role: "initiator" | "responder",
+    terms: LinkageTerms,
+  ) =>
+    exchangeTerms(
+      conn,
+      role,
+      terms,
+      100,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      MAX_PSI_DECODE_ELEMENTS,
+      undefined,
+      selected,
+    );
+  await Promise.all([
+    run(recordedA.conn, "initiator", termsA),
+    run(recordedB.conn, "responder", termsB),
+  ]);
+  expect(recordedA.sent[0].protocolVersion).toBe(selected);
+  expect(recordedB.sent[0].protocolVersion).toBe(selected);
+});
+
 test("responder fails fast when message 1 advertises a different protocol version", async () => {
   // Fail-closed reconcile: a partner on a different PROTOCOL_VERSION is an
   // incompatible build, so the responder aborts with the actionable "run the

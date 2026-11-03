@@ -23,6 +23,14 @@ export const PROTOCOL_VERSION = 1;
 /** @internal exported for the envelope-version tests. */
 export const ENVELOPE_VERSION = 1;
 
+/** The protocol versions this build offers: in the key-exchange hello, and in
+ * the file-sync rendezvous hello of a run with no key exchange. */
+export const OFFERED_PROTOCOL_VERSIONS: readonly number[] = [PROTOCOL_VERSION];
+
+/** The envelope versions this build offers, where
+ * {@link OFFERED_PROTOCOL_VERSIONS} offers its protocol versions. */
+export const OFFERED_ENVELOPE_VERSIONS: readonly number[] = [ENVELOPE_VERSION];
+
 /** The layers a hello states versions for, in the order the spec lists them. */
 export const VERSION_LAYERS = ["kex", "protocol", "envelope"] as const;
 
@@ -44,7 +52,9 @@ const HELLO_MAX_WIRE_LENGTH = Math.ceil(HELLO_MAX_BYTES / 3) * 4;
 const HELLO_MAX_VERSIONS_PER_LAYER = 32;
 const MAX_VERSION = 0x7fffffff;
 
-const versionList = z
+/** One layer's offered versions as a hello states them; the file-sync
+ * rendezvous hello applies the same rule to its lists. */
+export const versionList = z
   .array(z.number().int().min(1).max(MAX_VERSION))
   .min(1)
   .max(HELLO_MAX_VERSIONS_PER_LAYER);
@@ -148,15 +158,30 @@ export function selectVersions(
 ): VersionSelection {
   const negotiated: Partial<Record<VersionLayer, number>> = {};
   for (const layer of VERSION_LAYERS) {
-    const common = local[layer].filter((v) => partner[layer].includes(v));
-    if (common.length === 0)
-      return {
-        ok: false,
-        olderVersion: olderSide(local[layer], partner[layer]),
-      };
-    negotiated[layer] = Math.max(...common);
+    const selection = selectLayerVersion(local[layer], partner[layer]);
+    if (!selection.ok) return selection;
+    negotiated[layer] = selection.version;
   }
   return { ok: true, negotiated: negotiated as NegotiatedVersions };
+}
+
+/** The outcome of {@link selectLayerVersion}. */
+export type LayerVersionSelection =
+  { ok: true; version: number } | { ok: false; olderVersion: OlderVersionSide };
+
+/**
+ * The selection rule of {@link selectVersions} for one layer: the highest
+ * version both lists hold, or with none in common, which side's list lies
+ * wholly below the other's.
+ */
+export function selectLayerVersion(
+  local: readonly number[],
+  partner: readonly number[],
+): LayerVersionSelection {
+  const common = local.filter((v) => partner.includes(v));
+  if (common.length === 0)
+    return { ok: false, olderVersion: olderSide(local, partner) };
+  return { ok: true, version: Math.max(...common) };
 }
 
 function olderSide(
