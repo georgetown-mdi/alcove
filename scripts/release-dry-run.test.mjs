@@ -109,12 +109,19 @@ describe("the release workflow's dry run", () => {
   }
 
   // The production deploy of the hosted app follows the published images, so
-  // a tag the publish job refuses deploys nothing.
+  // a tag the publish job refuses deploys nothing; release-line.test.mjs holds
+  // the newest-line half of its condition.
   for (const job of HOSTED_APP_JOBS) {
     it(`runs the ${job} job on a tag push only`, () => {
-      expect(document.jobs[job]?.if).toBe(TAG_PUSH_ONLY);
+      expect(document.jobs[job]?.if).toBe(
+        "${{ github.event_name == 'push' && needs.release-line.outputs.newest == 'true' }}",
+      );
     });
   }
+
+  it("decides the release line on a tag push only", () => {
+    expect(document.jobs["release-line"]?.if).toBe(TAG_PUSH_ONLY);
+  });
 
   it("deploys the hosted app only after the publish job succeeds and the manifest is signed", () => {
     const deploy = document.jobs[HOSTED_APP_DEPLOY_JOB];

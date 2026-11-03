@@ -15,8 +15,8 @@
 //     expression, another name) leaves it a holder, so its `run` steps fail it;
 //     a job other than that one whose `environment` mentions it fails.
 //   - Every tracked source the hosted static build reads matches a push filter of
-//     pages_deploy.yaml; release.yaml's production redeploy runs on every
-//     release tag, with no filter. The graph is the module ids
+//     pages_deploy.yaml; release.yaml's production redeploy has no path
+//     filter. The graph is the module ids
 //     rolldown resolves in the page
 //     and worker bundles of a real `npm run build -w apps/web`, recorded by
 //     RECORDER_MODULE under RECORD_ENV. It must reach every REQUIRED_GRAPH_ROOTS

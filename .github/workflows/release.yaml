@@ -54,9 +54,43 @@ jobs:
       - name: Backend-agnostic integration tests (CLI)
         run: npm run test:integration:backend-agnostic -w apps/cli
 
+  # Whether the pushed tag is on the newest release line, decided from the
+  # repository's release tags by scripts/release-line.mjs. Three things read
+  # this one answer: the pages job's production deploy, the `latest` and
+  # `latest-fips` image tags, and the GitHub Release's Latest marker; a tag on
+  # an older line leaves each where it is. Every other job runs the same for
+  # either answer.
+  release-line:
+    name: Decide whether the tag is on the newest release line
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      newest: ${{ steps.decide.outputs.newest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # No npm ci: scripts/release-line.test.mjs loads the script from a copy with
+      # no node_modules.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Compare the tag with the repository's release tags
+        id: decide
+        env:
+          ALCOVE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          newest="$(node scripts/release-line.mjs)"
+          echo "newest=${newest}" >>"$GITHUB_OUTPUT"
+
   publish:
     name: Publish Docker image
-    needs: test
+    needs: [test, release-line]
     if: ${{ github.event_name == 'push' }}
     # Runs on Ubuntu 24.04; the dry-run job proves 26.04 before this moves.
     runs-on: ubuntu-24.04
@@ -316,19 +350,25 @@ jobs:
           docker run --rm --entrypoint node \
             alcove:fips-release-candidate /app/fips-probe/image-engagement.mjs
 
+      # `latest` only for a tag on the newest release line. The flavor turns off
+      # the action's own `latest` for a semver tag, so the release-line job's
+      # answer is the only thing that adds it.
       - name: Extract image metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/georgetown-mdi/alcove
+          flavor: |
+            latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ needs.release-line.outputs.newest == 'true' }}
 
-      # The variant's three tags: the default image's three with `-fips`
-      # appended, so an operator with a FIPS obligation pulls the same version,
-      # major.minor or floating reference under a suffix that names the posture.
+      # The variant's tags: the default image's with `-fips` appended, so an
+      # operator with a FIPS obligation pulls the same version, major.minor or
+      # floating reference under a suffix that names the posture, and
+      # `latest-fips` on the newest release line only, as `latest` is.
       # Derived here rather than through a second metadata-action flavor, so what
       # the tags are is read off this file rather than off an action's rule for
       # which of them a suffix reaches. The `on.push.tags` filter above admits
@@ -337,6 +377,7 @@ jobs:
         id: fips_meta
         env:
           ALCOVE_TAG: ${{ github.ref_name }}
+          ALCOVE_NEWEST_LINE: ${{ needs.release-line.outputs.newest }}
         run: |
           set -euo pipefail
           version="${ALCOVE_TAG#v}"
@@ -344,7 +385,9 @@ jobs:
             echo "tags<<ALCOVE_FIPS_TAGS"
             echo "ghcr.io/georgetown-mdi/alcove:${version}-fips"
             echo "ghcr.io/georgetown-mdi/alcove:${version%.*}-fips"
-            echo "ghcr.io/georgetown-mdi/alcove:latest-fips"
+            if [ "${ALCOVE_NEWEST_LINE}" = "true" ]; then
+              echo "ghcr.io/georgetown-mdi/alcove:latest-fips"
+            fi
             echo "ALCOVE_FIPS_TAGS"
           } >>"$GITHUB_OUTPUT"
 
@@ -369,10 +412,10 @@ jobs:
 
       # Each image is pushed, signed, verified and attested as a unit before the
       # next one is built, so a failure in the variant's build cannot leave the
-      # default image published -- under `latest`, which this push moves -- and
-      # unsigned, which is the state docs/RELEASES.md's verification commands
-      # report as a release that cannot be trusted. `npm run check:release-signing`
-      # is what holds that ordering.
+      # default image published -- under `latest`, which this push moves on the
+      # newest release line -- and unsigned, which is the state
+      # docs/RELEASES.md's verification commands report as a release that cannot
+      # be trusted. `npm run check:release-signing` is what holds that ordering.
       - name: Build and push
         id: build
         uses: docker/build-push-action@v7
@@ -476,7 +519,7 @@ jobs:
   # everything it publishes is a file from this checkout with one line rewritten.
   launchers:
     name: Publish the stamped launchers
-    needs: publish
+    needs: [publish, release-line]
     if: ${{ github.event_name == 'push' }}
     # Held on Ubuntu 24.04 with the publish job: it needs that job's image
     # digest, so it moves when that job does.
@@ -539,15 +582,21 @@ jobs:
 
       # A draft rather than a published release: the maintainer's own checklist
       # step still writes the notes and attaches the SBOM (docs/RELEASES.md).
+      # A tag on an older release line is created with --latest=false.
       - name: Attach the launchers to the release
         env:
           GH_TOKEN: ${{ github.token }}
           ALCOVE_TAG: ${{ github.ref_name }}
+          ALCOVE_NEWEST_LINE: ${{ needs.release-line.outputs.newest }}
         run: |
           set -euo pipefail
+          latest_flag=()
+          if [ "${ALCOVE_NEWEST_LINE}" != "true" ]; then
+            latest_flag=(--latest=false)
+          fi
           if ! gh release view "$ALCOVE_TAG" >/dev/null 2>&1; then
             gh release create "$ALCOVE_TAG" --draft --verify-tag \
-              --title "Alcove $ALCOVE_TAG" --notes ''
+              "${latest_flag[@]}" --title "Alcove $ALCOVE_TAG" --notes ''
           fi
           gh release upload "$ALCOVE_TAG" launcher-assets/* --clobber
 
@@ -559,7 +608,7 @@ jobs:
   # rebuilding or moving the ghcr.io tags.
   dockerhub:
     name: Copy and sign both images on Docker Hub
-    needs: publish
+    needs: [publish, release-line]
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-24.04
     # The publish credentials live in the Release environment, which only a
@@ -599,12 +648,14 @@ jobs:
           username: ${{ secrets.DOCKERHUB_PUBLISH_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PUBLISH_TOKEN }}
 
-      # Each image's version tag on ghcr.io and all three of its tags on Docker
-      # Hub are read back after the copy, and any that names a digest other than
-      # the one the publish job signed fails the release.
+      # Each image's version tag on ghcr.io and each of its tags on Docker Hub
+      # are read back after the copy, and any that names a digest other than
+      # the one the publish job signed fails the release. The floating `latest`
+      # tags are copied on the newest release line only, as on ghcr.io.
       - name: Copy both images by digest and compare the digests read back
         env:
           ALCOVE_TAG: ${{ github.ref_name }}
+          ALCOVE_NEWEST_LINE: ${{ needs.release-line.outputs.newest }}
           DEFAULT_DIGEST: ${{ needs.publish.outputs.digest }}
           FIPS_DIGEST: ${{ needs.publish.outputs.fips_digest }}
         run: |
@@ -624,7 +675,10 @@ jobs:
               echo "::error::the publish job's digest output for the ${version}${suffix} image is empty or not sha256: followed by 64 lowercase hex characters" >&2
               exit 1
             fi
-            tags=("${version}${suffix}" "${version%.*}${suffix}" "latest${suffix}")
+            tags=("${version}${suffix}" "${version%.*}${suffix}")
+            if [ "${ALCOVE_NEWEST_LINE}" = "true" ]; then
+              tags+=("latest${suffix}")
+            fi
             tag_args=()
             references=("${GHCR_REPOSITORY}:${tags[0]}")
             for tag in "${tags[@]}"; do
@@ -874,15 +928,22 @@ jobs:
   # apps/cli/package.json, a failed test, scan or signature -- deploys nothing,
   # and the image a deployed site's commands name is already published. It
   # needs the manifest's signature too, so production never serves a release
-  # build that has no signed manifest.
+  # build that has no signed manifest. A tag on an older release line, such as
+  # a hotfix of the previous major, skips it, so production keeps the newest
+  # release's build.
   #
   # The only job here given the Cloudflare credentials. It checks out nothing
   # and runs no repository code: it downloads the sites the gate built and
   # tested, and uploads them.
   pages:
     name: Deploy the hosted app to Cloudflare Pages
-    needs: [web, publish, hosted-manifest-sign, hosted-manifest-publish]
-    if: ${{ github.event_name == 'push' }}
+    needs:
+      - web
+      - publish
+      - hosted-manifest-sign
+      - hosted-manifest-publish
+      - release-line
+    if: ${{ github.event_name == 'push' && needs.release-line.outputs.newest == 'true' }}
     # Held on Ubuntu 24.04 with pages_deploy.yaml's upload job.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
