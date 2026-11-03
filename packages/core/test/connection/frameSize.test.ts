@@ -7,6 +7,8 @@ import {
   MAX_PSI_DECODE_ELEMENTS,
   MAX_RECORD_COUNT,
   psiElementBounds,
+  singlePassReplyByteCap,
+  singlePassIrreducibleReplyBytes,
 } from "../../src/connection/frameSize";
 import {
   psiSetByteBound,
@@ -28,6 +30,23 @@ import { recordCountField } from "../../src/protocolSetup";
 // count (a declared width multiplies it), so a future raise of
 // MAX_EFFECTIVE_KEY_COUNT or MAX_RECORD_COUNT that would cost the product
 // precision fails here instead of silently corrupting the gate.
+
+test("the irreducible reply is one index word per key and row of the sender", () => {
+  expect(singlePassIrreducibleReplyBytes(25, 150_001)).toBe(15_000_100);
+  // A count the fan-out factor divides may be that many fewer rows.
+  expect(singlePassIrreducibleReplyBytes(25, 150_000)).toBe(750_000);
+  expect(singlePassIrreducibleReplyBytes(25, 0)).toBe(0);
+});
+
+test("the worked exchange derives its reply cap", () => {
+  expect(
+    singlePassReplyByteCap(
+      25,
+      { effectiveKeyCount: 70, recordCount: 150_000 },
+      { effectiveKeyCount: 70, recordCount: 5_000 },
+    ),
+  ).toBe(491_000_256);
+});
 
 test("effectiveKeyCount * recordCount stays an exact integer at the schema maxima", () => {
   const productAtMaxima = MAX_EFFECTIVE_KEY_COUNT * MAX_RECORD_COUNT;

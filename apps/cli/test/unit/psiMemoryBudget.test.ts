@@ -14,6 +14,7 @@ import {
 import {
   assessPsiMemory,
   checkPartnerRoundMemory,
+  checkSinglePassPartnerMemory,
   checkPsiMemoryBudget,
   PSI_HEAP_CEILING_BYTES,
   PSI_HEAP_CEILING_MIB,
@@ -417,4 +418,52 @@ worker.once("message", (limit) => {
       expect(limits.worker).toBeGreaterThanOrEqual(30_000 * 2 ** 20);
     },
   );
+});
+
+describe("the single-pass partner size at the terms exchange", () => {
+  const run = (
+    irreducibleReplyBytes: number,
+    availableBytes: number,
+    allowShortfall = false,
+  ) => {
+    const lines: Array<string> = [];
+    const shortfall: Array<string> = [];
+    checkSinglePassPartnerMemory({
+      size: {
+        partnerValueSlots: 10_500_000,
+        localValueSlots: 350_000,
+        partnerRecordCount: 150_000,
+        irreducibleReplyBytes,
+      },
+      allowShortfall,
+      availableBytes,
+      log: { warn: (message) => lines.push(message) },
+      onShortfallWarning: (message) => shortfall.push(message),
+    });
+    return { lines, shortfall };
+  };
+
+  it("states the partner's value slots and the worst case on a run that fits", () => {
+    const { lines, shortfall } = run(15_000_000, 15_000_000);
+    expect(shortfall).toEqual([]);
+    expect(lines).toEqual([
+      "your partner declared 10,500,000 value slots, so it can test up to " +
+        "that many values against yours; at worst this run needs about " +
+        "10.85 GB of memory and 3 minute(s), at rates measured on one machine.",
+    ]);
+  });
+
+  it("refuses a reply whose index table alone cannot fit what is available", () => {
+    expect(() => run(15_000_001, 15_000_000)).toThrow(RoundCapacityError);
+    expect(() => run(15_000_001, 15_000_000)).toThrow(
+      /at least 0\.0\d GB of memory, and this machine has 0\.0\d GB available now.*--allow-memory-shortfall/,
+    );
+  });
+
+  it("runs past that refusal under --allow-memory-shortfall, and still states the worst case", () => {
+    const { lines, shortfall } = run(15_000_001, 15_000_000, true);
+    expect(shortfall).toHaveLength(1);
+    expect(shortfall[0]).toMatch(/^running with --allow-memory-shortfall: /);
+    expect(lines).toHaveLength(1);
+  });
 });

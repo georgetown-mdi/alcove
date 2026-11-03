@@ -62,6 +62,7 @@ import {
   sendAbort,
 } from "./protocolSetup.js";
 import type { TermsChange, TermsRotation } from "./protocolSetup.js";
+import type { ConnectionConfig } from "./config/connection.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
 import { withholdsSenderAssociationTable } from "./psi/link.js";
 import type { LinkageCardinality } from "./psi/link.js";
@@ -74,6 +75,8 @@ import {
   psiElementBounds,
   SINGLE_PASS_LOCAL_REMEDY,
   singlePassDatasetExceedsCap,
+  singlePassIrreducibleReplyBytes,
+  valueSlots,
 } from "./connection/frameSize.js";
 import {
   preparePayload,
@@ -651,6 +654,10 @@ export function undeclaredColumnsForOwnResult(
  *                ({@link resolveExchangeInputs}): `direct` for a run on an
  *                input file with no invitation or configuration, else the
  *                `declaredOnly` default.
+ * @param channel The channel the run will use, which picks the single-pass
+ *                pre-flight: `sftp` and `filedrop` have no size limit, and
+ *                anything else, absence included, is held to
+ *                `MAX_SINGLE_PASS_CELLS`.
  */
 export function prepareForExchange(
   exchangeDataSpec: ExchangeDataSpec,
@@ -659,6 +666,7 @@ export function prepareForExchange(
   columnNames: Array<string>,
   sanitizedColumnPositions: ReadonlyArray<number> = [],
   inferenceMode: MetadataInferenceMode = "declaredOnly",
+  channel?: ConnectionConfig["channel"],
 ): PreparedExchange {
   const log = getLogger("exchange");
 
@@ -803,6 +811,7 @@ export function prepareForExchange(
   // Applies to either role: the ceiling is symmetric (a receiver holds both
   // encrypted sets resident, bounded exactly as the sender's), so this
   // party's own count predicts an abort regardless of which side it plays.
+  // File-sync has no such ceiling, so a run on it is not checked.
   //
   // Ordered behind the fan-out refusal above, so a fan-out a strategy cannot
   // match is refused for that rather than for size. An OperatorConfigError
@@ -837,6 +846,8 @@ export function prepareForExchange(
     rawRows.length * localFanOutFactor(dataset.declaresFanOut);
 
   if (
+    channel !== "sftp" &&
+    channel !== "filedrop" &&
     runsSinglePassLink(linkageTerms) &&
     singlePassDatasetExceedsCap(effectiveKeyCount, declaredRecordCount)
   ) {
@@ -1189,6 +1200,17 @@ export interface RunExchangeOptions {
     partnerRoundValues: number,
   ) => void | Promise<void>;
   /**
+   * Called on a single-pass exchange over file-sync at the terms exchange, before
+   * either party masks anything, with what the counts say about this run. Its
+   * values are not bounded by a budget there, so the command-line application
+   * refuses a run that cannot fit and states the rest. A
+   * {@link RoundCapacityError} also sends the partner
+   * {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON}.
+   */
+  checkSinglePassPartnerSize?: (
+    size: SinglePassPartnerSize,
+  ) => void | Promise<void>;
+  /**
    * Zero-setup `--save` intent for this party. `undefined` (the default) keeps
    * this exchange out of the bootstrap flow entirely: no `save` field is put on
    * the wire and {@link ExchangeResult.bootstrap} is `undefined`, so the
@@ -1392,17 +1414,33 @@ export function partnerRoundValues(
 // propagates; any other failure propagates unchanged.
 async function assertPartnerRoundWithinCapacity(
   conn: MessageConnection,
-  roundValues: number,
-  check: RunExchangeOptions["checkPartnerRoundCapacity"],
+  check: () => void | Promise<void>,
 ): Promise<void> {
-  if (check === undefined) return;
   try {
-    await check(roundValues);
+    await check();
   } catch (err) {
     if (err instanceof RoundCapacityError)
       await sendAbort(conn, [PARTNER_SET_OVER_CAPACITY_ABORT_REASON]);
     throw err;
   }
+}
+
+/**
+ * What the agreed counts say about a single-pass run over file-sync, for
+ * {@link RunExchangeOptions.checkSinglePassPartnerSize}.
+ */
+export interface SinglePassPartnerSize {
+  /** The partner's declared value slots, the most values it can test. */
+  partnerValueSlots: number;
+  /** This party's declared value slots. */
+  localValueSlots: number;
+  /** The record count the partner declared. */
+  partnerRecordCount: number;
+  /**
+   * The memory the partner's reply takes whatever its values are, in bytes
+   * ({@link singlePassIrreducibleReplyBytes}), or 0 where this party sends it.
+   */
+  irreducibleReplyBytes: number;
 }
 
 /**
@@ -1868,7 +1906,7 @@ export async function runExchange(
 
   // A cascade or count-only round exchanges one key's sets at a time, sent in
   // parts, each held to the receive ceilings; the single-pass dataset ceiling
-  // bounds the rest. This party's first round, and in a count-only exchange
+  // bounds the rest over WebRTC, and over file-sync the check after this one. This party's first round, and in a count-only exchange
   // every round, is held to the partner's stated ceiling before this party
   // builds a set. A count-only exchange is held here to the protocol's maximum
   // too, since its round sizes depend on the resolved role, which the
@@ -1876,10 +1914,10 @@ export async function runExchange(
   // round is left to that check and to the round's own refusal.
   const roundsSentInParts = !runsSinglePassLink(linkageTerms);
   if (roundsSentInParts) {
-    await assertPartnerRoundWithinCapacity(
-      conn,
-      partnerRoundValues(partnerRecordCount, linkageTerms),
-      options.checkPartnerRoundCapacity,
+    await assertPartnerRoundWithinCapacity(conn, () =>
+      options.checkPartnerRoundCapacity?.(
+        partnerRoundValues(partnerRecordCount, linkageTerms),
+      ),
     );
     if (countOnly || partnerReceiveCeiling < MAX_PSI_DECODE_ELEMENTS)
       await assertFirstRoundWithinPartnerCeiling(
@@ -1889,6 +1927,20 @@ export async function runExchange(
         partnerReceiveCeiling,
         options.onPsiProgress,
       );
+  } else if (conn.outboundFileSyncFrameBound?.() !== undefined) {
+    await assertPartnerRoundWithinCapacity(conn, () =>
+      options.checkSinglePassPartnerSize?.({
+        partnerValueSlots: valueSlots(partnerSize),
+        localValueSlots: valueSlots(localSize),
+        partnerRecordCount,
+        irreducibleReplyBytes: isReceiver
+          ? singlePassIrreducibleReplyBytes(
+              linkageRounds(linkageTerms.linkageKeys).length,
+              partnerRecordCount,
+            )
+          : 0,
+      }),
+    );
   }
 
   const {

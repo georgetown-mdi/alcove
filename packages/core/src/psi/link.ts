@@ -80,7 +80,10 @@ import {
   markStatesItsOwnNextStep,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
-import { receiveAfterTerms } from "../partnerAbortFrame";
+import {
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+  receiveAfterTerms,
+} from "../partnerAbortFrame";
 import {
   arrayPart,
   arraySource,
@@ -98,7 +101,12 @@ import {
   type PaceableSteps,
 } from "../utils/eventLoop";
 import { MAX_MAP_SHARD_ENTRIES } from "./shardedMap";
-import { receiveCountReport, sendCountReport } from "../protocolSetup";
+import {
+  receiveCountReport,
+  sendAbort,
+  sendCountReport,
+} from "../protocolSetup";
+import { fileSyncMessageFileBytes } from "../connection/fileSyncOutboundBound";
 import {
   runCountOnlyRounds,
   type CountOnlyDeclaredCounts,
@@ -1801,13 +1809,21 @@ export async function linkViaCountOnlyPSI(
   return receiveCountReport(conn, maxCount);
 }
 
-// Actionable guidance for an exchange that exceeds the single-pass ceiling.
-// By design this does not recommend cascade: linkage_strategy is a
+const declaredSinglePassSize = (
+  who: string,
+  party: SinglePassPartySize,
+): string =>
+  `${who} declared ${party.effectiveKeyCount} effective linkage key(s) ` +
+  `across ${party.recordCount} record(s), which is ${valueSlots(party)} ` +
+  "value slot(s)";
+
+// Actionable guidance for an exchange that exceeds the WebRTC single-pass
+// ceiling. By design this does not recommend cascade: linkage_strategy is a
 // mandatory-consistency agreed term that cannot change unilaterally
 // mid-exchange, so pointing at it here would mislead (docs/spec/PROTOCOL.md,
 // the single-pass dataset ceiling).
 //
-// The ceiling is a PER-PARTY budget on the value slot count
+// That ceiling is a PER-PARTY budget on the value slot count
 // effectiveKeyCount * recordCount, so the guidance is oriented to the party
 // it is shown to: it states the products the gate weighed, names which
 // side's declared size reached the budget, and offers each side's remedies
@@ -1832,16 +1848,12 @@ function singlePassOverCapMessage(
   localFansOut: boolean,
   partner: SinglePassPartySize,
 ): string {
-  const declared = (who: string, party: SinglePassPartySize): string =>
-    `${who} declared ${party.effectiveKeyCount} effective linkage key(s) ` +
-    `across ${party.recordCount} record(s), which is ${valueSlots(party)} ` +
-    "value slot(s)";
   const cause =
     breach === "local"
-      ? declared("you", local)
+      ? declaredSinglePassSize("you", local)
       : breach === "partner"
-        ? declared("your partner", partner)
-        : `${declared("you", local)}, and ${declared("your partner", partner)}`;
+        ? declaredSinglePassSize("your partner", partner)
+        : `${declaredSinglePassSize("you", local)}, and ${declaredSinglePassSize("your partner", partner)}`;
 
   const remedies: string[] = [];
   if (breach !== "partner")
@@ -1871,6 +1883,38 @@ function singlePassOverCapMessage(
     `single-pass linkage: ${cause}, above the single-pass limit of ` +
     `${MAX_SINGLE_PASS_CELLS} value slot(s) per party. ` +
     remedies.join(" ")
+  );
+}
+
+// Over file-sync a frame's real size is known only after masking, and the
+// counts bound it from above without deciding it: a run can fit where its counts
+// would not. So a frame too large for one message file is refused here, ahead of
+// the write, and the partner parked on it is told. The reply includes the
+// receiver's re-encrypted request, so its remedy is addressed to both parties.
+async function refuseSinglePassFrameOverFileBound(
+  conn: MessageConnection,
+  id: string,
+  frame: "reply" | "request",
+  frameBytes: number,
+): Promise<void> {
+  const fileBound = conn.outboundFileSyncFrameBound?.();
+  if (fileBound === undefined) return;
+  const fileBytes = fileSyncMessageFileBytes(
+    frameBytes,
+    conn.outboundFrameOverheadBytes?.() ?? 0,
+  );
+  if (fileBytes <= fileBound) return;
+  await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
+  const remedy =
+    frame === "reply"
+      ? "To shrink it, either party can reduce its record count or split its " +
+        "dataset into smaller batches, or the two parties can agree on new " +
+        "terms with fewer linkage keys."
+      : SINGLE_PASS_LOCAL_REMEDY;
+  throw new UsageError(
+    `${id}: the single-pass ${frame} came to ${fileBytes} byte(s), above the ` +
+      `${fileBound} byte(s) one exchange file can hold, so the exchange stopped ` +
+      `and your partner was told. ${remedy}`,
   );
 }
 
@@ -2189,23 +2233,27 @@ export async function linkViaSinglePassPSI(
   // exchanging any single-pass frame, so an over-cap exchange aborts on
   // both sides in lockstep -- neither sends nor waits, so neither hangs to
   // the inactivity timeout. The verdict is on the per-party budget, so the
-  // two parties' breach labels mirror each other (a "partner" breach here
-  // is a "local" one over there) while the abort decision is the same on
-  // both; the guidance shown is oriented to this party and does not
-  // recommend cascade. The prepareForExchange pre-flight is the coarse
-  // one-party shadow of this; this is the precise two-party check.
-  const ceilingBreach = singlePassCeilingBreach(localSize, partnerSize);
-  if (ceilingBreach !== undefined) {
-    throw new UsageError(
-      singlePassOverCapMessage(
-        participant.id,
-        numLinkageKeys,
-        ceilingBreach,
-        localSize,
-        localFansOut,
-        partnerSize,
-      ),
-    );
+  // two parties' breach labels mirror each other (a "partner" breach here is a
+  // "local" one over there) while the abort decision is the same on both. The
+  // guidance shown is oriented to this party and does not recommend cascade.
+  // The prepareForExchange pre-flight is the coarse one-party shadow of this;
+  // this is the precise two-party check. File-sync has no such budget: its
+  // limits are the frame bound and the set maximum, which a frame's real size
+  // meets after masking (refuseSinglePassFrameOverFileBound).
+  if (conn.outboundFileSyncFrameBound?.() === undefined) {
+    const ceilingBreach = singlePassCeilingBreach(localSize, partnerSize);
+    if (ceilingBreach !== undefined) {
+      throw new UsageError(
+        singlePassOverCapMessage(
+          participant.id,
+          numLinkageKeys,
+          ceilingBreach,
+          localSize,
+          localFansOut,
+          partnerSize,
+        ),
+      );
+    }
   }
 
   if (participant.config.role === "starter") {
@@ -2264,6 +2312,13 @@ export async function linkViaSinglePassPSI(
         ),
       );
     }
+
+    await refuseSinglePassFrameOverFileBound(
+      conn,
+      participant.id,
+      "reply",
+      reply.byteLength,
+    );
 
     log.debug(`${participant.id}: sending combined single-pass reply`);
     await conn.send(reply);
@@ -2324,9 +2379,10 @@ export async function linkViaSinglePassPSI(
       // party's rows times the record count the partner declared on the terms
       // exchange, the most pairs an honest run of these two datasets can hold
       // (docs/spec/PROTOCOL.md, The both-sided table's bound under
-      // single-pass). Both factors are authenticated session state, and the
-      // over-ceiling gate above already bounded each by
-      // MAX_SINGLE_PASS_CELLS, which is what keeps the product exact.
+      // single-pass). Both factors are authenticated session state. Over
+      // WebRTC the over-ceiling gate above bounded each by
+      // MAX_SINGLE_PASS_CELLS; over file-sync a set maximum bounds any honest
+      // run's rows, and rounding above 2^53 only widens this bound.
       assertPartnerPairTable(
         participant.id,
         localHalf,
@@ -2364,7 +2420,14 @@ export async function linkViaSinglePassPSI(
   let replyFrame: Uint8Array;
   try {
     stage(SINGLE_PASS_STAGE_IDS.encryptingOwnData);
-    await conn.send(await participant.createClientRequest(distinctValues));
+    const request = await participant.createClientRequest(distinctValues);
+    await refuseSinglePassFrameOverFileBound(
+      conn,
+      participant.id,
+      "request",
+      request.byteLength,
+    );
+    await conn.send(request);
     replyFrame = await receivePsiBinaryFrame(
       conn,
       participant.id,

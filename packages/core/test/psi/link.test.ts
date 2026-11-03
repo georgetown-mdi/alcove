@@ -57,7 +57,9 @@ import {
   UsageError,
   ConnectionError,
   statesItsOwnNextStep,
+  PeerAbortError,
 } from "../../src/errors";
+import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../../src/partnerAbortFrame";
 import { sortAssociationTable } from "../../src/testing";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
@@ -1383,6 +1385,101 @@ test("a run whose own declared size is over the ceiling keeps the local diagnosi
   await expect(run).rejects.not.toThrow(/your partner declared/);
   await expect(run).rejects.not.toThrow(/cascade/);
   void peer;
+});
+
+// --- Single-pass over file-sync: no budget, and frames held to one message file ---
+
+// A pipe end stating what a file-sync connection states. The pipe itself states
+// nothing, as a WebRTC connection does.
+function asFileSync(conn: MessageConnection, fileBound = MAX_FRAME_SIZE_BYTES) {
+  return Object.assign(conn, { outboundFileSyncFrameBound: () => fileBound });
+}
+
+test("a file-sync receiver past the WebRTC budget passes the gate and sends its request", async () => {
+  const [conn, peer] = createMessagePipe();
+  const run = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    makeParticipant(psiLibrary, "joiner"),
+    asFileSync(conn),
+    [["a", "b"]],
+    fanOutFreeBounds(1, MAX_SINGLE_PASS_CELLS + 1),
+    false,
+    -1,
+  );
+  const settled = run.catch((error: unknown) => error);
+  expect(await peer.receive()).toBeInstanceOf(Uint8Array);
+  await peer.close();
+  await conn.close();
+  await settled;
+});
+
+test("a file-sync request too large for one file stops there, naming its size, and tells the partner", async () => {
+  const [conn, peer] = createMessagePipe();
+  const run = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    makeParticipant(psiLibrary, "joiner"),
+    asFileSync(conn, 64),
+    [["a", "b"]],
+    fanOutFreeBounds(1, 2),
+    false,
+    -1,
+  );
+  await expect(run).rejects.toThrow(UsageError);
+  await expect(run).rejects.toThrow(
+    /the single-pass request came to \d+ byte\(s\), above the 64 byte\(s\) one exchange file can hold/,
+  );
+  await expect(run).rejects.toThrow(SINGLE_PASS_LOCAL_REMEDY);
+  await expect(run).rejects.not.toThrow(new RegExp(`${MAX_SINGLE_PASS_CELLS}`));
+  expect(await peer.receive()).toEqual({
+    decision: "abort",
+    abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON],
+  });
+});
+
+test("a file-sync reply too large for one file stops before it is written, and the partner reads an abort in its place", async () => {
+  const [senderConn, receiverConn] = createMessagePipe();
+  const sender = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    makeParticipant(psiLibrary, "starter"),
+    asFileSync(senderConn, 400),
+    [["a", "b", "c", "d", "e", "f", "g", "h"]],
+    fanOutFreeBounds(1, 2),
+    false,
+    -1,
+  );
+  const receiver = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    makeParticipant(psiLibrary, "joiner"),
+    receiverConn,
+    [["a", "b"]],
+    fanOutFreeBounds(1, 8),
+    false,
+    -1,
+  );
+  await expect(sender).rejects.toThrow(
+    /the single-pass reply came to \d+ byte\(s\), above the 400 byte\(s\)/,
+  );
+  await expect(sender).rejects.toThrow(
+    /To shrink it, either party can reduce its record count or split its dataset into smaller batches/,
+  );
+  await expect(sender).rejects.not.toThrow(SINGLE_PASS_LOCAL_REMEDY);
+  await expect(receiver).rejects.toBeInstanceOf(PeerAbortError);
+});
+
+test("a pipe stating no file-sync bound keeps the WebRTC budget at the same counts", async () => {
+  const [conn] = createMessagePipe();
+  const run = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    makeParticipant(psiLibrary, "joiner"),
+    conn,
+    [["a", "b"]],
+    fanOutFreeBounds(1, MAX_SINGLE_PASS_CELLS + 1),
+    false,
+    -1,
+  );
+  await expect(run).rejects.toThrow(
+    new RegExp(`single-pass limit of ${MAX_SINGLE_PASS_CELLS} value slot`),
+  );
 });
 
 test("an exchange over the ceiling on both sides names both declarations", async () => {

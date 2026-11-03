@@ -45,6 +45,7 @@ import {
   isPartnerNextSecretStoreFailure,
   isTrustBoundaryFailure,
   releasableTermsRotation,
+  sendLocalFaultAbort,
 } from "@alcove/core";
 import type {
   Authentication,
@@ -107,7 +108,11 @@ import {
   terminalPsiStatusLine,
   type PsiProgressDisplay,
 } from "./psiProgressDisplay";
-import { checkPartnerRoundMemory, readMemory } from "./psiMemoryBudget";
+import {
+  checkPartnerRoundMemory,
+  checkSinglePassPartnerMemory,
+  readMemory,
+} from "./psiMemoryBudget";
 import {
   createPsiEngine,
   offerExitAtOnceWhilePsiWorkersStop,
@@ -640,7 +645,20 @@ async function runExchangeStage(params: {
           },
         });
       },
+      checkSinglePassPartnerSize: (size) => {
+        checkSinglePassPartnerMemory({
+          size,
+          allowShortfall: allowMemoryShortfall,
+          availableBytes: process.availableMemory(),
+          log,
+          onShortfallWarning: (message) => {
+            log.warn(message);
+            emit((e) => e.warning("memoryShortfall", message));
+          },
+        });
+      },
       onProtocolConfirmed: (partnerTerms, resolvedRole, runShape) => {
+        run.termsAgreed = true;
         // identity is partner-controlled free text with no consistency
         // check (a mutually-distrusting party sets it), so escape it
         // before it reaches the operator's terminal/logs. A partner that
@@ -1662,6 +1680,15 @@ async function authenticateRun(params: {
 }
 
 /**
+ * How long a run ending on a fault waits to write the abort frame. Closing then
+ * waits further, in delete mode, up to the terminal-frame drain timeout for the
+ * partner to read the frame, and deletes it after: a partner whose synced
+ * folder does not deliver it in that time never sees it unless the run keeps
+ * its files (`--retain-files`).
+ */
+const LOCAL_FAULT_ABORT_WAIT_MS = 10_000;
+
+/**
  * How far one run got: the flags its stages set as they advance, which the
  * cleanup and the error path both read to decide what to close, what to warn
  * about, and how to classify a failure. Held in one object so a stage that
@@ -1703,6 +1730,11 @@ interface RunLifecycle {
    * released once the save has run or the exchange has ended without it.
    */
   rotation: ReleasableTermsRotation | undefined;
+  /**
+   * Set once the terms exchange agreed, so a partner is parked on a frame that
+   * an abort frame can stand in for.
+   */
+  termsAgreed: boolean;
   /**
    * Set once the two-party exchange returned, so a failure in the local
    * output stage that follows writes no cross-party abort marker.
@@ -2298,6 +2330,7 @@ export async function runProtocol(
     secure: undefined,
     sessionKeyForReceipt: undefined,
     authStarted: false,
+    termsAgreed: false,
     handshakeRole: undefined,
     partnerMayHoldNextSecret: false,
     rotationStoreBegan: false,
@@ -2958,6 +2991,22 @@ export async function runProtocol(
       await build.fileSync.writeAbortMarker().catch(() => {
         /* best-effort; teardown proceeds regardless of write outcome */
       });
+    }
+
+    // A run with no session key has no marker to write, so a partner parked past
+    // the terms exchange is told by the fixed-reason abort frame instead, which
+    // it already reads in place of the frame it awaits. Unauthenticated there,
+    // and a folder administrator can stop the run anyway.
+    if (
+      build.fileSync !== undefined &&
+      build.fileSync.abortArmed !== true &&
+      build.transport !== undefined &&
+      run.termsAgreed &&
+      !run.exchangeComplete &&
+      run.signalReceived === undefined &&
+      !errIsPeerAbort(err)
+    ) {
+      await sendLocalFaultAbort(build.transport, LOCAL_FAULT_ABORT_WAIT_MS);
     }
 
     if (run.signalReceived !== undefined) {

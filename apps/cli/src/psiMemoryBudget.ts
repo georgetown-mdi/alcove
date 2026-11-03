@@ -5,6 +5,7 @@ import {
   RoundCapacityError,
   UsageError,
   formatCount,
+  type SinglePassPartnerSize,
 } from "@alcove/core";
 
 import { readRuntimeEnv, type RuntimeEnvSnapshot } from "./util/runtimeEnv";
@@ -30,6 +31,17 @@ export const PSI_ROUND_BYTES_PER_ELEMENT = 1_176;
  * (209 MB).
  */
 export const PSI_ROUND_FIXED_BYTES = 271_000_000;
+
+/**
+ * The peak memory a single-pass party reached per value slot of the two
+ * parties, in bytes, in the runs that fill the declared width
+ * (docs/spec/PROTOCOL.md, What the file-sync limits were measured at): at most
+ * 9.78 GB over 10,850,000 slots, rounded up.
+ */
+export const SINGLE_PASS_WORST_BYTES_PER_SLOT = 1_000;
+
+/** That run's seconds per million value slots: 135 s over 10,850,000, rounded up. */
+export const SINGLE_PASS_WORST_SECONDS_PER_MILLION_SLOTS = 13;
 
 /**
  * The set size a side the heap ceiling is sized for: the protocol's per-set
@@ -246,6 +258,55 @@ export function checkPsiMemoryBudget(params: {
     throw new UsageError(psiMemoryShortfallMessage(assessment));
   params.onShortfallWarning(psiMemoryShortfallOverrideWarning(assessment));
   return assessment;
+}
+
+/**
+ * What a single-pass run over file-sync does with the partner's declared size at
+ * the terms exchange. As the receiver, a reply whose index table alone cannot fit
+ * in the memory available now is a {@link RoundCapacityError}, since that run
+ * cannot finish, or, with `allowShortfall`, a warning and the run continues. Every
+ * run states the partner's value slots and its worst-case memory and time.
+ */
+export function checkSinglePassPartnerMemory(params: {
+  size: SinglePassPartnerSize;
+  allowShortfall: boolean;
+  availableBytes: number;
+  log: { warn: (message: string) => void };
+  onShortfallWarning: (message: string) => void;
+}): void {
+  const { size, availableBytes, log } = params;
+  if (size.irreducibleReplyBytes > availableBytes) {
+    const sentence =
+      `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +
+      `a reply over that many needs at least ` +
+      `${gigabytes(size.irreducibleReplyBytes)} of memory, and this machine has ` +
+      `${gigabytes(availableBytes)} available now`;
+    if (!params.allowShortfall)
+      throw new RoundCapacityError(
+        `${sentence}, so the exchange stopped before any value was masked and ` +
+          `told your partner. Run the exchange on a host with more memory, or ` +
+          `ask your partner to split their input into smaller files and run one ` +
+          `exchange for each. Pass --allow-memory-shortfall to run anyway; the ` +
+          `exchange may then run out of memory partway through, which fails it ` +
+          `for both parties.`,
+        "terms-exchange",
+      );
+    params.onShortfallWarning(
+      `running with --allow-memory-shortfall: ${sentence}. The exchange may run ` +
+        `out of memory partway through, which fails it for both parties.`,
+    );
+  }
+  const slots = size.partnerValueSlots + size.localValueSlots;
+  const minutes = Math.ceil(
+    ((slots / 1_000_000) * SINGLE_PASS_WORST_SECONDS_PER_MILLION_SLOTS) / 60,
+  );
+  log.warn(
+    `your partner declared ${formatCount(size.partnerValueSlots)} value slots, ` +
+      `so it can test up to that many values against yours; at worst this run ` +
+      `needs about ${gigabytes(slots * SINGLE_PASS_WORST_BYTES_PER_SLOT)} of ` +
+      `memory and ${formatCount(minutes)} minute(s), at rates measured on one ` +
+      `machine.`,
+  );
 }
 
 function partnerShortfallSentence(assessment: PsiMemoryAssessment): string {
