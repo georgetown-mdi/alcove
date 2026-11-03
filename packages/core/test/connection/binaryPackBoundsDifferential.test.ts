@@ -18,9 +18,9 @@ import type { Packable, Unpackable } from "peerjs-js-binarypack";
 // emits, assembled around real-packed parts), and what each frame decodes to is read
 // off the value the real `unpack` returns rather than from a second walk of the wire.
 //
-// `peerjs-js-binarypack` is an exact-pinned devDependency of THIS package
+// `peerjs-js-binarypack` is a dependency of THIS package
 // (packages/core/package.json), so the guard holds whether or not an app keeps the
-// dependency: the scan lives here, and so does the pin backing it
+// dependency: the scan lives here, and so does the declaration backing it
 // (docs/spec/DEPENDENCY_PINS.md).
 //
 // What this suite holds is the scan's reading of the wire against the real

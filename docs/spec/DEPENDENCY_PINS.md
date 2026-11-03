@@ -5,8 +5,8 @@ title: "Pinned Dependency Internals and Upgrade Checklists"
 # Pinned dependency internals
 
 Two dependency stacks and the CLI's WebRTC peer are reached past their public
-APIs, so their internals are critical and their versions are exact-pinned; a
-further dependency, the PSI crypto addon, is a vendored local fork. This document records the internal
+APIs, so their internals are critical and each of their upgrades is reviewed on
+its own; a further dependency, the PSI crypto addon, is a vendored local fork. This document records the internal
 assumptions each rests on, the checklist to re-verify them before a bump merges,
 and the install-time policies that stand beside them: npm's install-script
 verdicts, the GitHub Action pin mirror, and the residuals npm's resolver leaves
@@ -23,10 +23,10 @@ covers, separated by ` / ` (the spaces keep a scoped name's own slash intact).
 them is not held out of the batched dependency groups in
 `.github/dependabot.yml`, so a package that earns a checklist here cannot ride a
 routine batch where the checklist is skimmed rather than worked through. It
-fails on those same names a second way: each must be declared at one exact
-version by every workspace manifest declaring it, so a checklist cannot outlive
-the pin its assumptions rest on, nor cover only one of two versions this workspace
-installs. A new section follows the same heading form; the check's header states
+fails on those same names two more ways: some workspace manifest must declare
+each, so a checklist cannot outlive its dependency, and every manifest declaring
+one must use the same spec, so no manifest admits a version the others do not. A new
+section follows the same heading form; the check's header states
 what else it reads, and
 [its design note](../notes/repo-check-scripts.md#dependabot-checklist-pin-coverage)
 what it does not cover.
@@ -38,28 +38,49 @@ image" below is a docker-ecosystem pin, which the update config holds out of
 Dependabot entirely. Renaming one of those to `Upgrading ...` fails the check
 with a message asking for an npm exclude entry that would be false.
 
-## Why these are exact-pinned
+## How these packages are versioned
+
+The registry packages below take version ranges in their manifests
+(`^1.17.0`), not exact versions. Every workspace manifest is private, and the
+Dockerfiles and CI install with `npm ci` from the committed `package-lock.json`,
+so the lockfile fixes the version installed; an exact version in a manifest
+would change nothing that is installed.
+
+What protects their internals is how an upgrade arrives. Alcove's code uses
+those internals, so each upgrade normally comes in a Dependabot pull request
+of its stack's reviewed group, held out of the routine `non-critical` batch,
+and is checked against its checklist below before it merges. Any upgrade
+changes `package-lock.json` in a pull request, and the CLI suites
+(`.github/workflows/cli_build_and_test.yaml`) run on every pull request,
+driving the real `ssh2` stack against a real SFTP server and two real werift
+peers. No check confirms that a pull request moving one of these packages in
+the lockfile is its stack's Dependabot pull request: an `npm update` or
+`npm audit fix` elsewhere moves it within its range, and review and those
+suites are what stand in its way.
+
+An upgrade that breaks an assumption and cannot be fixed in the same pull
+request is held back with a range cap (`>=1.17.0 <1.18.0`) or a Dependabot
+`ignore` entry for that version, not an exact pin.
 
 - **SFTP stack (`ssh2` / `ssh2-sftp-client`).** The CLI's SFTP adapter
   (`apps/cli/src/connection/ssh2SftpAdapter.ts`) drives `ssh2` internals past the
-  public `ssh2-sftp-client` API, so both packages are exact-pinned in
-  `apps/cli/package.json`. Every bump -- including a security patch -- is then a
-  deliberate edit rather than an `npm audit fix` that slips in unreviewed.
+  public `ssh2-sftp-client` API. Both are declared in `apps/cli/package.json`
+  and pulled out of the routine Dependabot batch into the reviewed
+  `cryptographic` group (`.github/dependabot.yml`).
 - **WebRTC stack (`peerjs` / `peerjs-js-binarypack`).** The web data-channel
   inbound bound reaches into PeerJS reassembly/unpack internals
-  (`apps/web/src/psi/transport/boundedReassembly.ts`) and parses the
-  `peerjs-js-binarypack` wire format directly
-  (`packages/core/src/connection/binaryPackBounds.ts`). Both are exact-pinned in
-  `apps/web/package.json` --
-  `peerjs-js-binarypack` declared directly, not left a floating transitive,
-  precisely because the bound parses its wire format -- and pulled out of the
-  routine Dependabot batch into a reviewed `webrtc-stack` group
-  (`.github/dependabot.yml`). `packages/core` declares it too, as a dependency
-  at that same exact version, because core's PeerJS framing
-  (`packages/core/src/connection/peerjsWire.ts`) unpacks the wire with it, and
-  because the marker scan that parses the wire format lives there and its
-  differential test drives the real encoder as its oracle -- so the guard over
-  the shared bound holds whether or not an app keeps the dependency.
+  (`apps/web/src/psi/transport/boundedReassembly.ts`). Both are declared in
+  `apps/web/package.json` and pulled out of the routine Dependabot batch into a
+  reviewed `webrtc-stack` group (`.github/dependabot.yml`).
+  `peerjs-js-binarypack` is reviewed with `peerjs` because both sides of an
+  exchange decode its wire format, not because Alcove uses its internals: Alcove
+  calls only its public `pack` and `unpack`, and the bound's marker scan
+  (`packages/core/src/connection/binaryPackBounds.ts`) reads the wire format
+  itself. `packages/core` declares it too, with the same range, because core's
+  PeerJS framing (`packages/core/src/connection/peerjsWire.ts`) unpacks the wire
+  with it, and because the marker scan's differential test drives the real
+  encoder as its oracle -- so the guard over the shared bound holds whether or
+  not an app keeps the dependency.
   The CLI's WebRTC transport uses that framing; the web transport decodes
   through PeerJS itself, plus its own bounded reassembly
   (`apps/web/src/psi/transport/boundedReassembly.ts`).
@@ -75,7 +96,7 @@ with a message asking for an npm exclude entry that would be false.
   (`docs/notes/cli-webrtc-stack.md`), so the transport depends on behaviours
   werift's published API does not state -- and its flushing close reaches past
   that API into the SCTP association's send queues, because nothing public
-  reports what the peer has actually received. Exact-pinned in
+  reports what the peer has actually received. Declared in
   `apps/cli/package.json`, and pulled out of the routine Dependabot batch into
   the same reviewed `webrtc-stack` group (`.github/dependabot.yml`) as the
   browser half it exchanges with, because the two ends speak one data channel
@@ -535,21 +556,31 @@ resolution, which this tree has dozens of.
 
 ### The project site's vite override
 
-The root `package.json` holds `"overrides": { "vitepress": { "vite": "6.4.4" } }`.
+The root `package.json` holds `"overrides": { "vitepress": { "vite": "^6.4.5" } }`.
 VitePress 1.6.4, the newest non-prerelease, declares `vite` `^5.4.14`, and every
 vite 5 release depends on an esbuild below 0.25, which GHSA-67mh-4wv8-2f99 covers
 (a website can send requests to esbuild's development server and read the
 response). Without the override, `npm audit --package-lock-only` reports
-esbuild 0.21.5, vite 5.4.21 and vitepress 1.6.4 with no fix available. vite 6.4.4
-is the lowest release outside that advisory's range and outside five later
-advisories that cover `vite` 6.4.3 and earlier (GHSA-9jrq-w75r-8gcw,
-GHSA-rq7h-c2jc-7f22, GHSA-r825-w8mm-5pxw, GHSA-587h-7wmj-h5pm and
-GHSA-698v-4r3x-3vcv). It depends on esbuild `^0.25.0`, which resolves to
+esbuild 0.21.5, vite 5.4.21 and vitepress 1.6.4 with no fix available.
+
+The override forces vitepress's `vite` onto the vite 6 line from 6.4.5, the
+first release outside every advisory against vite 6 published by 2026-11-03:
+the eight covering 6.4.3 and earlier, and GHSA-8g5g-mxqh-grgj, which covers
+6.4.4 alone. It is a
+range, so a later 6.x fix lands by `npm update vite --package-lock-only`, which
+moves the nested copy and leaves the rest of the lockfile alone, with no
+`package.json` edit. vite 6 depends on esbuild `^0.25.0`, which resolves to
 0.25.12.
 
-Measured 2026-10-26 on npm 11.20.0 with the override in force:
+Each of those advisories concerns a running development server, none the build
+or its output. The site deploys as a static build (`npm run site:build` in
+`.github/workflows/site_deploy.yaml`), so only a contributor running
+`npm run site:dev` locally starts that server.
 
-- `npm audit --package-lock-only` answers `found 0 vulnerabilities`.
+Measured 2026-11-03 on npm 11.20.0 with the override in force:
+
+- `npm audit --package-lock-only` reports no `vite`, `esbuild`, `vitepress` or
+  `@vitejs/plugin-vue` entry.
 - `npm run site:build` completes, with VitePress's dead-link check running.
 - The lockfile change is confined to the entries under
   `node_modules/vitepress/node_modules`, applied by the route
@@ -557,11 +588,11 @@ Measured 2026-10-26 on npm 11.20.0 with the override in force:
   `vite`, `esbuild` and `@esbuild/*` entries, then `npm install --package-lock-only`.
 - `esbuild@0.25.12` declares an install script, and the `allowScripts` map denies
   it as it denied 0.21.5; the site build above runs with that script blocked.
-- `npm run site:dev` serves the site on the overridden copy.
+- `npm run site:dev` serves the site on the overridden copy, on loopback only.
 
 The edge is recorded in `OUT_OF_RANGE_BY_DESIGN`, and the nested form is one the
 `allowScripts` check reads. Remove the override when a non-prerelease VitePress
-declares a `vite` range outside the advisory.
+declares a `vite` range outside the advisories.
 
 ### The development tree's brace-expansion copy
 

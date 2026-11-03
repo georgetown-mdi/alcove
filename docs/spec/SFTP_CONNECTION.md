@@ -266,7 +266,7 @@ Both sides of the bound are driven in `apps/cli/test/unit/connection/sftpPeerIde
 A peer that accepts and then closes having sent **nothing** takes its own message naming the likely cause -- a firewall or IP allowlist ahead of the server -- and has no excerpt, there being none; a peer that accepts and merely stalls is not given that message, since a slow server is indistinguishable from it here.
 
 The console repurposes it as *probe-to-fill*, the browser analogue of first-use for an SFTP connection authored in-app.
-The console's Node server cannot probe SSH in-process -- core has no SSH implementation and the `ssh2` stack is exact-pinned to `apps/cli` only, which the web app must not import.
+The console's Node server cannot probe SSH in-process -- core has no SSH implementation and the `ssh2` stack is a dependency of `apps/cli` only, which the web app must not import.
 So it spawns this command (the image already spawns the CLI for every SFTP op) and re-validates every field at the trust boundary: the fingerprint against the same regex, the `key_type` against a length (<= 64) and charset bound (server-controlled bytes, encoded as a JSON string).
 It discards the child's stderr entirely (it can hold server-controlled bytes) and drives a watchdog (SIGTERM at ~15 s, SIGKILL after a grace) so the endpoint's latency is bounded above the child's 10 s `readyTimeout`.
 The reconciled outcome is a typed result -- `ok` / `unreachable` (exit 69) / `timeout` (watchdog kill) / `error` -- reported over `POST /api/jobs/sftp/probe` (the SSRF-bounded, single-flight, stateless endpoint specified in [SERVER_JOB_API.md](SERVER_JOB_API.md#probing-the-server-host-key)).

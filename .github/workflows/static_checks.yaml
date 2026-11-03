@@ -147,8 +147,8 @@ jobs:
       # advisory that crosses onto a production edge blocks here by itself, where
       # a written exception would keep suppressing after its reason expired.
       #
-      # This scope holds the exact-pinned SFTP and WebRTC stacks, so a red gate
-      # over one of them is resolved by the deliberate, security-reviewed bump
+      # This scope holds the SFTP and WebRTC stacks, so a red gate over one of
+      # them is resolved by the deliberate, security-reviewed bump
       # docs/spec/DEPENDENCY_PINS.md specifies -- never by `npm audit fix`, which
       # the Dependency Policy forbids there precisely because it lands unreviewed.
       # Development-tree findings are outside this scope by construction and are

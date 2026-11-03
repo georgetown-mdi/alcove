@@ -1,6 +1,5 @@
 // This adapter drives ssh2's raw SFTPWrapper internals past the public
-// ssh2-sftp-client API, so ssh2 and ssh2-sftp-client are exact-pinned in
-// package.json. On any upgrade of either, re-verify the internal assumptions
+// ssh2-sftp-client API. On any upgrade of ssh2 or ssh2-sftp-client, re-verify the internal assumptions
 // per the "Upgrading the SFTP Stack" checklist in docs/spec/DEPENDENCY_PINS.md
 // before it merges -- a "compatible" bump can silently break an assumption no
 // normal-path test exercises.

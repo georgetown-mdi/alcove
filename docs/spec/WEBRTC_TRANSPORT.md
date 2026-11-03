@@ -1116,7 +1116,7 @@ own ICE agent.
 - [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md) - the AEAD envelope.
 - [COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown) - the
   delivery contract every channel owes.
-- [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md) - why `peerjs` and `werift` are
-  exact-pinned, the behavioural assumptions they rest on, and how to re-verify them.
+- [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md) - how `peerjs` and `werift` are
+  versioned and upgraded, the behavioural assumptions they rest on, and how to re-verify them.
 - [cli-webrtc-stack.md](../notes/cli-webrtc-stack.md) - the library decision and
   the alternatives weighed.

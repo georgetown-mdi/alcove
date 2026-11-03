@@ -10,8 +10,8 @@ freeze their npm tree to the committed lockfile, pin their base image by digest,
 and install one reviewed set of OS packages each. This document records what
 each pins, what holds the pin, what those installs bring into the image, and the
 four properties of a built image that are measured by running it rather than by
-reading its instructions. Why the npm dependencies themselves are exact-pinned,
-and the per-stack upgrade checklists, are in
+reading its instructions. How the npm dependencies whose internals Alcove uses
+are versioned and upgraded, and the per-stack upgrade checklists, are in
 [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md).
 
 ## The Docker image's dependency freeze

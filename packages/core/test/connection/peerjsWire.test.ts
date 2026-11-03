@@ -17,7 +17,7 @@ import {
 // --- wire fixtures ----------------------------------------------------------
 //
 // These hex strings were captured from the installed `peerjs` 1.5.5 and
-// `peerjs-js-binarypack` 2.1.0 -- the exact pins the web app holds -- by
+// `peerjs-js-binarypack` 2.1.0 -- the versions the web app installs -- by
 // packing the shapes PeerJS itself puts on the wire. They are the cross-
 // implementation vectors for the framing: a bump that changes the encoding, the
 // chunk envelope's keys, or the close sentinel fails here rather than at a

@@ -25,12 +25,13 @@ transport holds.
 
 ## The decision
 
-- **Library: werift, exact-pinned, as the published package.** Version 0.24.4
+- **Library: werift, as the published package.** Version 0.24.4
   was current when the decision was taken. Installs run with
   `--ignore-scripts`; nothing in werift's tree needs an install script, and the
-  tree contains no native or compiled content at all. The exact pin and its
-  internal assumptions sit with the other reached-past-their-API stacks in
-  [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#why-these-are-exact-pinned),
+  tree contains no native or compiled content at all. How its upgrades are held
+  and reviewed, and its internal assumptions, sit with the other
+  reached-past-their-API stacks in
+  [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#how-these-packages-are-versioned),
   which holds the per-bump re-verification checklist.
 - **Architecture: drive werift's native API directly.** No PeerJS runs in Node.
   The CLI speaks the PeerJS broker's WebSocket protocol through a hand-written
@@ -156,8 +157,8 @@ regardless of platform cost.
 ## What the spike established
 
 The spike ran the real libraries end to end against the repository's own
-vendored PeerServer, with a stock browser `peerjs@1.5.5` peer -- the exact pin
-the web app holds -- driven headless in Chromium, and werift in Node on the
+vendored PeerServer, with a stock browser `peerjs@1.5.5` peer -- the version
+the web app installs -- driven headless in Chromium, and werift in Node on the
 other side. Every third-party package involved was installed with
 `--ignore-scripts`, and every milestone ran against that tree.
 
@@ -290,12 +291,12 @@ path.
 
 ## Supply chain and the vendoring fallback
 
-The posture: depend on the published package at an exact pin, keep vendoring
-prepared, and do not vendor speculatively. Vendoring is a practiced fallback
-here rather than a novel one -- the project already maintains
-`@openmined/psi.js` as a fully vendored fork -- but werift starts one step
-earlier on that road: psi.js needed local patches from day one, while werift
-has no known defect that a pin does not cover.
+The posture: depend on the published package, take each upgrade in its own
+reviewed pull request, keep vendoring prepared, and do not vendor speculatively.
+Vendoring is a practiced fallback here rather than a novel one -- the project
+already maintains `@openmined/psi.js` as a fully vendored fork -- but werift
+starts one step earlier on that road: psi.js needed local patches from day one,
+while werift has no known defect that needs a local patch.
 
 What a werift-only install has: 43 packages, 26 MB on disk, no
 `preinstall`/`install`/`postinstall` script anywhere in the tree, and no `.node`,
@@ -351,4 +352,4 @@ certificate handling drags in, not by media.
   -- the web app's inbound reassembly bound, which rests on PeerJS's BinaryPack
   chunking.
 - [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack)
-  -- why the PeerJS stack is exact-pinned and what an upgrade must re-verify.
+  -- how the PeerJS stack is upgraded and what an upgrade must re-verify.
