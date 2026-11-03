@@ -500,6 +500,9 @@ call :info "https://github.com/georgetown-mdi/alcove/blob/main/support/windows-n
 call :info ""
 call :info "The checks run in the same image as the exchange itself, so nothing"
 call :info "will run until Docker can fetch it."
+call :info ""
+call :info "If your network blocks this download, Start-Alcove.ps1 can get"
+call :info "the image from Docker Hub instead."
 goto fail_generic
 
 :is_local

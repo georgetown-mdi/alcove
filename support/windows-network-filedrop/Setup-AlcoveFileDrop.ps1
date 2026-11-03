@@ -892,6 +892,9 @@ if ($imagePresent.ExitCode -ne 0) {
         Write-Info ''
         Write-Info 'The checks run in the same image as the exchange itself, so'
         Write-Info "nothing will run until $engineLabel can fetch it."
+        Write-Info ''
+        Write-Info 'If your network blocks this download, Start-Alcove.ps1 can get'
+        Write-Info 'the image from Docker Hub instead.'
         exit 1
     }
 }

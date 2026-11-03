@@ -202,8 +202,9 @@ one of the two, set `ALCOVE_IMAGE_REGISTRY` to `docker.io` or `ghcr.io` before
 starting the launcher, and it downloads from that registry alone.
 
 The setup scripts download from `ghcr.io` only, so a Docker Hub download does
-not get them past this. It does work for the `docker run` commands on this
-page: write `docker.io/gumdi/alcove:latest` where they have
+not get them past this. If your network blocks this download,
+`Start-Alcove.ps1` can get the image from Docker Hub instead. A Docker Hub
+download does work for the `docker run` commands on this page: write `docker.io/gumdi/alcove:latest` where they have
 `ghcr.io/georgetown-mdi/alcove:latest`. To confirm it is the released image,
 verify it on Docker Hub as described in
 [Verifying a Release](../../docs/RELEASES.md#verifying-a-release).
