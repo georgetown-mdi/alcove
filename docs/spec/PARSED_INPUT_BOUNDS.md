@@ -136,14 +136,16 @@ It caps any single container's width before the walker ever sees it, while the w
 **The whole-document value budget.**
 Beside the per-container ceilings, `parseBoundedJson` bounds the whole body by memory rather than by a fixed figure.
 The scan counts every value the parse would create - the document itself, each array element, and each object member's value, keys not counted - and the body is refused when that count times `JSON_RETAINED_BYTES_PER_NODE` = 40 bytes, the heap charged to each value, exceeds the memory available as it is parsed.
-The count is exact on well-formed JSON, and on malformed JSON over the well-formed prefix a parse builds before it fails.
+The charge is measured: on Node 26.13.0, parsing a body of two million empty arrays under `--expose-gc` retained 40 bytes of V8 heap per value, and a body of two million short strings 8 to 32.
+The count is exact on well-formed JSON that repeats no object key (a repeated key counts once per occurrence, though the parse keeps one member), and on malformed JSON over the well-formed prefix a parse builds before it fails.
 The memory available is read at each parse (`availableMemoryBytes`, `packages/core/src/utils/availableMemory.ts`):
 - on Node, the least of the V8 heap's headroom (`heap_size_limit` less `used_heap_size`) and, under a container memory limit below the host's memory (`process.constrainedMemory()`), that limit less the resident set;
-- in a Chromium tab, the JavaScript heap's headroom (`performance.memory`);
-- where the runtime reports neither, `UNREPORTED_AVAILABLE_MEMORY_BYTES` = 2^32 bytes.
+- in a Chromium tab, the JavaScript heap's headroom (`performance.memory`).
 
-Garbage not yet collected counts as used, so where the runtime exposes a collector (the command-line application runs Node with `--expose-gc`) a body over this budget alone is scanned once more after a full collection before it is refused.
-A refusal is the same `JsonStructureBoundError` the per-container ceilings raise, and each caller maps it as above.
+Where the runtime reports neither (a browser other than Chromium) there is no reading, so the budget does not apply and the per-frame size bound governs alone ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#inbound-frame-size-bound)).
+Garbage not yet collected counts as used, so on Node a body over this budget is checked once more after a full collection before it is refused, whether or not Node was started with `--expose-gc`: where it was not, the collector is obtained at run time (`v8.setFlagsFromString("--expose-gc")`, then `gc` from a new `vm` context).
+A refusal is a `JsonMemoryBudgetError`, apart from the per-container ceilings' `JsonStructureBoundError`, because the shortfall is this machine's and not the body's: it states the bytes needed and the bytes available.
+A caller reading a partner's message - the decrypted frame, the file-sync message body, the peer hello - reports it as this machine lacking the memory to read that message, with both figures and the remedy (free memory, or raise the container's memory limit), as a `usage` failure rather than a security or malformed-payload one.
 Because the budget follows the memory available rather than a fixed count, it is not set below the largest legitimate message: a message is refused only when its values, at that charge, exceed the memory the process has left.
 
 The severity is defense-in-depth, not a live vulnerability: the counterparty is authenticated and can already abort the exchange trivially, and most of these sites already report a clean refusal rather than an ungraceful throw - a `receiveParsed` / `parseOrProtocolError` wrap reports a `ConnectionError("protocol")` from whatever `schema.parse` throws, and the linkage-terms parse-error catch aborts the same way.

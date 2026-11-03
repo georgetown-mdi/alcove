@@ -32,6 +32,13 @@ The local-filesystem adapter `fstat`s the open handle and reads exactly that man
 Each reader passes as its per-read cap the byte count the file's name states, which the refusals above hold within the static cap, so a file that grows after listing is refused at that count rather than buffered up to the static cap.
 A binary length check on the AEAD decorator's inbound envelope caps it at the same single value -- a byte-length check on the raw envelope -- but that is documented defense-in-depth only, not the primary control: by the time the decorator runs, the inner transport has already read the frame, so the dominant allocation has already happened.
 
+**Read-ahead.**
+The cap bounds one message file; the poll loop also bounds what it reads ahead of the consumer.
+It reads the next message file only while that file and the message files it has read that the consumer has not yet received (the `QueuedMessageConnection` queue, whose count the loop reads through `setInboundQueueReader`) come to no more than the cap in force.
+With none unreceived it reads the file, so no file within the cap is held back for good.
+A file left unread is neither consumed nor acknowledged, so the partner's next send waits on it, within that send's own inactivity budget, until the consumer receives what is queued: frames a partner sends back to back, such as the parts of a PSI set, wait on disk rather than in memory, and none is refused.
+A partner that stops sending is still caught by the receive deadline, since a receive waits only on an empty queue, and an empty queue holds no file back.
+
 The bound is a fixed constant rather than a configurable option: a configurable bound risks an operator raising it high enough to reintroduce the DoS.
 
 ### Single-pass per-exchange cap
@@ -393,13 +400,10 @@ Finally, at the stable `data` event (`checkDeliveredFrameBound`): a fully delive
 A parsed object/array is not byte-measured here (the reassembly bounds above govern it before delivery, and core's count/structure bounds after); only binary frames are, which is exactly the raw set frame this is sized for.
 
 The bounds above are *per frame*.
-A delivered frame is then queued in core's `QueuedMessageConnection`, which every transport shares and which bounds what it holds two ways.
-Its capacity is a message *count* (`DEFAULT_CAPACITY` = 1024): the lockstep protocol drains one frame before sending the next, so the queue sits at depth ~1 in practice, and a peer that floods frames out of turn trips the count capacity (a `protocol` failure).
-The binary frames it holds with no receive pending are also bounded by memory.
-The first frame queued is admitted, since it is already read; the memory available when it was queued (`availableMemoryBytes`, [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds), "The whole-document value budget") then bounds it together with every frame queued behind it until the queue drains, and a frame past that bound fails the connection as a `protocol` failure.
-A parsed object counts no bytes there: it was held to the memory available when it was parsed.
-A frame handed to a parked receive is not queued.
-The per-frame rules and the wire cap state the byte envelope of one frame; the queue's count and memory bounds limit what the frames queued behind it add.
+A delivered frame is then queued in core's `QueuedMessageConnection`, whose capacity is a message *count* (`DEFAULT_CAPACITY` = 1024), so the aggregate retained across queued-but-unconsumed frames is in principle the per-frame envelope times that depth.
+The queue is **a count bound** rather than a byte one: a peer that floods frames out of turn trips the count capacity (a `protocol` failure) rather than accumulating without end.
+The file-sync poll loop holds what it reads ahead of the consumer to its inbound cap ([Inbound frame-size bound](#inbound-frame-size-bound), "Read-ahead"), but a data channel pushes its frames, so on this transport the frames a sender sends back to back, such as the parts of a PSI set, queue while the consumer is busy, up to that count.
+The per-frame rules and the wire cap are therefore what state the byte envelope; the queue stays bounded by count.
 
 The wrap reaches past the public `DataConnection` API into PeerJS internals, so it rests on two dependency assumptions a `peerjs`/`peerjs-js-binarypack` upgrade could silently break.
 The first is the reassembly/unpack shape on the binary/chunked connection class (the one `peer.connect` and an incoming connection use by default): `_handleChunk` reassembling slices keyed by `__peerData` into `_chunkedData` and deleting the entry on completion, and `_handleDataMessage` as the sole point each frame is unpacked (an unchunked frame directly, the reassembled buffer via the completion recursion), which the wrap replaces with its own unpack and a copy of the close/chunk/`data` dispatch that follows it.

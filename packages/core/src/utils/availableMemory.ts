@@ -1,14 +1,7 @@
-// The memory this process can still take, read where it is about to hold
-// untrusted input: the JSON node budget (boundedJson.ts) and the inbound
-// read-ahead (messageConnection.ts). Read from globals rather than imports so
-// the module bundles for the browser unchanged. See
+// The heap this process can still take, read where it is about to parse
+// untrusted JSON (boundedJson.ts). Read from globals rather than imports so the
+// module bundles for the browser unchanged. See
 // docs/spec/PARSED_INPUT_BOUNDS.md, Application-layer parsed-input bounds.
-
-/**
- * The bytes assumed available where the runtime reports no figure (a browser
- * other than Chromium): the order of a 64-bit browser tab's heap ceiling.
- */
-export const UNREPORTED_AVAILABLE_MEMORY_BYTES = 2 ** 32;
 
 interface HeapStatistics {
   heap_size_limit: number;
@@ -45,8 +38,7 @@ function readContainerLimitBytes(): number | null {
   return containerLimitBytes;
 }
 
-// Both reads are system calls that can fail. A failed read is no reading,
-// since a caller (the inbound queue's deliver) must not throw.
+// Both reads are system calls that can fail; a failed read is no reading.
 function readContainerHeadroomBytes(): number | undefined {
   try {
     const limit = readContainerLimitBytes();
@@ -58,13 +50,13 @@ function readContainerHeadroomBytes(): number | undefined {
 }
 
 /**
- * The bytes this process can still allocate now: on Node the least of the V8
- * heap's headroom and, in a container, the container limit less the resident
- * set; in a Chromium tab the JavaScript heap's headroom; elsewhere
- * {@link UNREPORTED_AVAILABLE_MEMORY_BYTES}. Garbage not yet collected counts
- * as used.
+ * The bytes this process can still allocate on its JavaScript heap now: on
+ * Node the least of the V8 heap's headroom and, in a container, the container
+ * limit less the resident set; in a Chromium tab the heap's headroom; and
+ * `undefined` where the runtime reports neither (a browser other than
+ * Chromium). Garbage not yet collected counts as used.
  */
-export function availableMemoryBytes(): number {
+export function availableMemoryBytes(): number | undefined {
   const readings: number[] = [];
   const v8 = runtime.process?.getBuiltinModule?.("node:v8") as
     { getHeapStatistics(): HeapStatistics } | undefined;
@@ -77,19 +69,47 @@ export function availableMemoryBytes(): number {
   const tabHeap = runtime.performance?.memory;
   if (tabHeap !== undefined)
     readings.push(tabHeap.jsHeapSizeLimit - tabHeap.usedJSHeapSize);
-  if (readings.length === 0) return UNREPORTED_AVAILABLE_MEMORY_BYTES;
+  if (readings.length === 0) return undefined;
   return Math.max(0, Math.min(...readings));
 }
 
+interface V8Flags {
+  setFlagsFromString(flags: string): void;
+}
+
+interface VmContexts {
+  runInNewContext(code: string): unknown;
+}
+
+// The collector found on the first call, or `null` where none can be had.
+let collector: (() => void) | null | undefined;
+
+// Node exposes `gc` only to a process started with `--expose-gc`; the flag
+// set at run time exposes it to a context created after, which hands it back.
+function obtainCollector(): (() => void) | null {
+  if (typeof runtime.gc === "function") return runtime.gc;
+  const proc = runtime.process;
+  const v8 = proc?.getBuiltinModule?.("node:v8") as V8Flags | undefined;
+  const vm = proc?.getBuiltinModule?.("node:vm") as VmContexts | undefined;
+  if (v8 === undefined || vm === undefined) return null;
+  try {
+    v8.setFlagsFromString("--expose-gc");
+    const gc = vm.runInNewContext("gc");
+    return typeof gc === "function" ? (gc as () => void) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Runs a full garbage collection where the runtime exposes one (Node started
- * with `--expose-gc`, as the command-line application is), so a following
+ * Runs a full garbage collection where the runtime allows one (Node, whether
+ * or not it was started with `--expose-gc`), so a following
  * {@link availableMemoryBytes} does not count garbage as used. Returns whether
  * it ran.
  */
 export function collectGarbage(): boolean {
-  const gc = runtime.gc;
-  if (typeof gc !== "function") return false;
-  gc();
+  if (collector === undefined) collector = obtainCollector();
+  if (collector === null) return false;
+  collector();
   return true;
 }

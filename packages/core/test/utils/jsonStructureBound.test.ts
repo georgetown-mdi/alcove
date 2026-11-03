@@ -1,39 +1,29 @@
 import { expect, test } from "vitest";
 
-import { exceedsJsonStructureBound } from "../../src/utils/jsonStructureBound";
+import { scanJsonStructure } from "../../src/utils/jsonStructureBound";
 
 // Each test isolates one bound by overriding it and leaving the others
 // generous. The scan is bound-agnostic, so small values (4) generalize to
-// the production budgets. `check` runs both representations the scanner
+// the production budgets. `scan` runs both representations the scanner
 // accepts -- UTF-8 bytes and string -- and asserts they agree, so every
 // case below covers both paths.
-function verdict(
+function scan(
   json: string,
-  { keys = 1_000, elements = 1_000, depth = 1_000, nodes = 1_000_000 } = {},
-): false | "structure" | "nodes" {
-  const fromBytes = exceedsJsonStructureBound(
+  { keys = 1_000, elements = 1_000, depth = 1_000 } = {},
+): "structure" | number {
+  const fromBytes = scanJsonStructure(
     new TextEncoder().encode(json),
     keys,
     elements,
     depth,
-    nodes,
   );
-  const fromString = exceedsJsonStructureBound(
-    json,
-    keys,
-    elements,
-    depth,
-    nodes,
-  );
+  const fromString = scanJsonStructure(json, keys, elements, depth);
   expect(fromString).toBe(fromBytes);
   return fromBytes;
 }
 
-function check(
-  json: string,
-  bounds: Parameters<typeof verdict>[1] = {},
-): boolean {
-  return verdict(json, bounds) !== false;
+function check(json: string, bounds: Parameters<typeof scan>[1] = {}): boolean {
+  return scan(json, bounds) === "structure";
 }
 
 // --- Per-object key bound -----------------------------------------------------
@@ -173,7 +163,7 @@ test("a top-level non-object value is accepted", () => {
   expect(check('"a string with : colons"')).toBe(false);
 });
 
-// --- Whole-document value budget ----------------------------------------------
+// --- Value count --------------------------------------------------------------
 
 // The values JSON.parse creates for `json`: the document, every array element
 // and every object member's value.
@@ -200,32 +190,30 @@ test.each([
   '{"a":[1,{"b":null}],"c":"x"}',
   ' [ 1 ,\n\t[ ] , [ 2 ] ,\r{ "k" : [ ] } ] ',
   '["[1,2]", "{\\"a\\":[3]}", "\\\\"]',
-])(
-  "the value count of %j is exact: at it accepted, one under refused",
-  (json) => {
-    const values = parsedValueCount(json);
-    expect(verdict(json, { nodes: values })).toBe(false);
-    expect(verdict(json, { nodes: values - 1 })).toBe("nodes");
-  },
-);
-
-test("object keys are not counted as values", () => {
-  expect(verdict('{"a":1,"b":2}', { nodes: 3 })).toBe(false);
+])("the value count of %j is exact", (json) => {
+  expect(scan(json)).toBe(parsedValueCount(json));
 });
 
-test("the value budget spans the document, across containers no single bound refuses", () => {
+test("object keys are not counted as values", () => {
+  expect(scan('{"a":1,"b":2}')).toBe(3);
+});
+
+test("a repeated key counts once per occurrence", () => {
+  expect(scan('{"a":1,"a":2}')).toBe(3);
+});
+
+test("the count spans the document, across containers", () => {
   const body = `[${Array.from({ length: 50 }, () => "[[],[]]").join(",")}]`;
-  expect(verdict(body, { elements: 100, nodes: 150 })).toBe("nodes");
-  expect(verdict(body, { elements: 100, nodes: 151 })).toBe(false);
+  expect(scan(body, { elements: 100 })).toBe(151);
 });
 
 test("the values a malformed body's well-formed prefix holds are counted", () => {
-  expect(verdict("[[],[],[]", { nodes: 3 })).toBe("nodes");
+  expect(scan("[[],[],[]")).toBe(4);
 });
 
-test("a per-container bound is reported apart from the value budget", () => {
-  expect(verdict("[1,2,3]", { elements: 2, nodes: 2 })).toBe("nodes");
-  expect(verdict("[1,2,3]", { elements: 1, nodes: 100 })).toBe("structure");
-  expect(verdict('{"a":1,"b":2}', { keys: 1 })).toBe("structure");
-  expect(verdict("[[1]]", { depth: 1 })).toBe("structure");
+test("a per-container bound is reported in place of a count", () => {
+  expect(scan("[1,2,3]", { elements: 2 })).toBe(4);
+  expect(scan("[1,2,3]", { elements: 1 })).toBe("structure");
+  expect(scan('{"a":1,"b":2}', { keys: 1 })).toBe("structure");
+  expect(scan("[[1]]", { depth: 1 })).toBe("structure");
 });

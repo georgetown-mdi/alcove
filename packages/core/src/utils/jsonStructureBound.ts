@@ -25,14 +25,13 @@ const CARRIAGE_RETURN = 0x0d;
 
 /**
  * Scans a JSON document -- its UTF-8 bytes, or the UTF-16 code units of an
- * already-decoded string -- and returns which bound it exceeds, `"nodes"`
- * for the last below and `"structure"` for any other, or `false` for none,
- * for a body that must be rejected BEFORE `JSON.parse` runs:
+ * already-decoded string -- and returns `"structure"` if it has a structure
+ * that must be rejected BEFORE `JSON.parse` runs, or else the number of
+ * values a parse of it creates:
  *
  * - any single object with more than `maxObjectKeys` members,
- * - any single array with more than `maxArrayElements` elements,
- * - structural nesting (objects and arrays) deeper than `maxDepth`, or
- * - more than `maxNodes` values in the whole document.
+ * - any single array with more than `maxArrayElements` elements, or
+ * - structural nesting (objects and arrays) deeper than `maxDepth`.
  *
  * Each is a structural pathology a partner-controlled frame can reach
  * within the frame-size cap, one `JSON.parse` cannot be allowed to meet:
@@ -56,8 +55,9 @@ const CARRIAGE_RETURN = 0x0d;
  * each object member's value (one per colon), and each array element (one
  * per element-separating comma, plus the first, found as the first
  * non-whitespace character after `[` that is not `]`). Object keys are not
- * counted. On well-formed JSON the count is exact, and on malformed JSON it
- * is exact over the well-formed prefix a parse builds before it fails.
+ * counted. On well-formed JSON that repeats no key the count is exact, and on
+ * malformed JSON it is exact over the well-formed prefix a parse builds before
+ * it fails.
  *
  * Two approximations are intentional and safe. The colon count over-counts
  * an object that repeats a key (the parse keeps one member per name), which
@@ -71,13 +71,12 @@ const CARRIAGE_RETURN = 0x0d;
  * too-long array through. The scan is a single O(n) pass with early exit,
  * ahead of the parse's own pass.
  */
-export function exceedsJsonStructureBound(
+export function scanJsonStructure(
   input: Uint8Array | string,
   maxObjectKeys: number,
   maxArrayElements: number,
   maxDepth: number,
-  maxNodes: number,
-): false | "structure" | "nodes" {
+): "structure" | number {
   // One entry per open container. An OBJECT frame holds its running key count,
   // always `>= 0`. An ARRAY frame holds a running tally that starts at the
   // sentinel `-1` (empty) and drops by one per element-separating comma, so it
@@ -95,7 +94,7 @@ export function exceedsJsonStructureBound(
   const length = input.length;
   let inString = false;
   let escaped = false;
-  let nodes = 0;
+  let values = 0;
   // Set after a `[` until the next non-whitespace character, which starts the
   // array's first element unless it is `]`. Set at the start so the document's
   // own value is counted as a first element is.
@@ -112,7 +111,7 @@ export function exceedsJsonStructureBound(
       if (b === SPACE || b === TAB || b === LINE_FEED || b === CARRIAGE_RETURN)
         continue;
       firstElementPending = false;
-      if (b !== CLOSE_BRACKET && ++nodes > maxNodes) return "nodes";
+      if (b !== CLOSE_BRACKET) values++;
     }
     switch (b) {
       case QUOTE:
@@ -132,7 +131,7 @@ export function exceedsJsonStructureBound(
         const top = counts.length - 1;
         if (top >= 0 && counts[top] >= 0) {
           if (++counts[top] > maxObjectKeys) return "structure";
-          if (++nodes > maxNodes) return "nodes";
+          values++;
         }
         break;
       }
@@ -143,11 +142,11 @@ export function exceedsJsonStructureBound(
         // decrement; reject once that passes the budget.
         if (top >= 0 && counts[top] < 0) {
           if (-(--counts[top]) - 1 > maxArrayElements) return "structure";
-          if (++nodes > maxNodes) return "nodes";
+          values++;
         }
         break;
       }
     }
   }
-  return false;
+  return values;
 }

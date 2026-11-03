@@ -58,6 +58,22 @@ import {
   FrameSizeExceededError,
 } from "../../src/errors";
 
+// The memory the JSON budget reads: the runtime's own unless a case sets a
+// figure, with no collection to retry after.
+const memoryOverride = vi.hoisted(() => ({ bytes: null as number | null }));
+
+vi.mock("../../src/utils/availableMemory", async (importOriginal) => {
+  const real =
+    await importOriginal<typeof import("../../src/utils/availableMemory")>();
+  return {
+    ...real,
+    availableMemoryBytes: () =>
+      memoryOverride.bytes ?? real.availableMemoryBytes(),
+    collectGarbage: () =>
+      memoryOverride.bytes === null ? real.collectGarbage() : false,
+  };
+});
+
 // A FileTransportClient stub whose only meaningful method is get(); every other
 // method rejects, so a test that reaches one is a bug in the gate under test.
 function stubClient(getImpl: FileTransportClient["get"]): FileTransportClient {
@@ -421,6 +437,37 @@ describe("readControlFileWithGate", () => {
       ),
     });
     expect(calls).toBe(1);
+  });
+
+  test("refuses a hello this machine lacks the memory to parse as its own shortfall, not a malformed hello", async () => {
+    const client = stubClient(async () => lockBody);
+    memoryOverride.bytes = 0;
+    let thrown: unknown;
+    try {
+      thrown = await readControlFileWithGate(
+        client,
+        helloPath,
+        listedSize,
+        future(),
+        1,
+        HelloEnvelopeSchema,
+        "presentAtEntry",
+        signal(),
+      ).then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+    } finally {
+      memoryOverride.bytes = null;
+    }
+    expect(thrown).toBeInstanceOf(UsageError);
+    expect((thrown as Error).message).toBe(
+      `this machine does not have enough free memory to read the partner's ` +
+        `control file at ${helloPath}: it needs about 120 bytes and 0 are ` +
+        "available. Free memory on this machine, or raise the container's " +
+        "memory limit, and run the exchange again.",
+    );
+    expect((thrown as Error).message).not.toMatch(/malformed/);
   });
 
   test("reads a hello listed at HELLO_MAX_BYTES with the read capped at that size", async () => {

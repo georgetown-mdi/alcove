@@ -502,6 +502,11 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.messageLoop.requireBinaryFrames();
   }
 
+  /** Implements `Connection.setInboundQueueReader`. */
+  setInboundQueueReader(queuedMessages: () => number): void {
+    this.messageLoop.setInboundQueueReader(queuedMessages);
+  }
+
   /** Implements `Connection.markLastSentUnread`. */
   markLastSentUnread(): void {
     this.unreadSentFile = this.lastSentFile;

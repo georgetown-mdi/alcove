@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { getHeapStatistics } from "node:v8";
 import { totalmem } from "node:os";
 
@@ -60,17 +61,63 @@ test("a tab heap reading lower than the others is the one reported", async () =>
   }
 });
 
-test("a runtime that reports nothing is assumed to have the fixed figure", async () => {
-  const { availableMemoryBytes, UNREPORTED_AVAILABLE_MEMORY_BYTES } =
-    await freshModule();
+test("a runtime that reports neither reading gives none", async () => {
+  const { availableMemoryBytes } = await freshModule();
   vi.stubGlobal("process", {});
   const available = availableMemoryBytes();
   vi.unstubAllGlobals();
-  expect(available).toBe(UNREPORTED_AVAILABLE_MEMORY_BYTES);
+  expect(available).toBeUndefined();
 });
 
-test("collectGarbage says whether the runtime exposes a collector it ran", async () => {
+test("on Node collectGarbage runs a collection", async () => {
   const { collectGarbage } = await freshModule();
-  const exposed = typeof (globalThis as { gc?: unknown }).gc === "function";
-  expect(collectGarbage()).toBe(exposed);
+  expect(collectGarbage()).toBe(true);
+});
+
+// This suite's Node may expose `gc`, and a global it set cannot be removed,
+// so the run-time route runs in a Node started without the flag.
+function inBareNode(script: string): string {
+  return execFileSync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "--eval", script],
+    { encoding: "utf8", timeout: 20_000 },
+  ).trim();
+}
+
+const MODULE_URL = new URL(
+  "../../src/utils/availableMemory.ts",
+  import.meta.url,
+).href;
+
+test("on a Node started without --expose-gc, collectGarbage obtains a collector that frees garbage", () => {
+  const out = inBareNode(`
+    import { getHeapStatistics } from "node:v8";
+    const { collectGarbage } = await import(${JSON.stringify(MODULE_URL)});
+    let garbage = Array.from({ length: 1_000_000 }, (_, i) => ({ i }));
+    garbage = null;
+    const before = getHeapStatistics().used_heap_size;
+    const ran = collectGarbage();
+    const after = getHeapStatistics().used_heap_size;
+    console.log(JSON.stringify({ exposed: typeof globalThis.gc, ran, freed: before - after }));
+  `);
+  const { exposed, ran, freed } = JSON.parse(out) as {
+    exposed: string;
+    ran: boolean;
+    freed: number;
+  };
+  expect(exposed).toBe("undefined");
+  expect(ran).toBe(true);
+  expect(freed).toBeGreaterThan(10 * 2 ** 20);
+});
+
+test("a runtime that can provide no collector runs none", () => {
+  const out = inBareNode(`
+    const { collectGarbage } = await import(${JSON.stringify(MODULE_URL)});
+    const real = globalThis.process;
+    Object.defineProperty(globalThis, "process", { value: {}, configurable: true });
+    const ran = collectGarbage();
+    Object.defineProperty(globalThis, "process", { value: real, configurable: true });
+    console.log(String(ran));
+  `);
+  expect(out).toBe("false");
 });

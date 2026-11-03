@@ -1,6 +1,5 @@
 import type { Connection } from "../types";
 import { ConnectionError, asConnectionError } from "../errors";
-import { availableMemoryBytes } from "../utils/availableMemory";
 
 /**
  * Pull-based transport abstraction. A consumer drives the conversation by
@@ -155,6 +154,12 @@ export interface TransportControls {
    * way.
    */
   finish: (error: ConnectionError) => void;
+  /**
+   * How many delivered messages wait in the queue for a
+   * {@link MessageConnection.receive}. A transport that reads inbound frames
+   * on its own schedule holds off reading while they hold too much.
+   */
+  queuedMessages: () => number;
 }
 
 /** The transport-specific operations the queue drives. */
@@ -267,15 +272,6 @@ interface SendGuard {
 // peer, not as a tuning setting.
 const DEFAULT_CAPACITY = 1024;
 
-// The bytes an inbound frame holds as far as the read-ahead bound counts them:
-// a binary frame's length. A parsed JSON value is bounded when it is parsed,
-// against the memory available then (utils/boundedJson.ts), so it counts 0.
-function frameBytes(message: unknown): number {
-  return ArrayBuffer.isView(message) || message instanceof ArrayBuffer
-    ? message.byteLength
-    : 0;
-}
-
 // Maximum time a parked receive() will wait for the next inbound message
 // before the connection is failed as a silent-peer transport drop.
 // fromEventConnection arms it for a caller that names no timeout, so every
@@ -330,10 +326,6 @@ type TerminalState =
  */
 export class QueuedMessageConnection implements MessageConnection {
   private readonly queue: Array<unknown> = [];
-  // The binary bytes the queue holds, and the memory available when its
-  // first frame was queued, which bounds them (see deliver()).
-  private queuedBytes = 0;
-  private readAheadBudgetBytes = 0;
   private readonly waiters: Array<Waiter> = [];
   private readonly capacity: number;
   private readonly inactivityTimeoutMs: number | undefined;
@@ -388,6 +380,7 @@ export class QueuedMessageConnection implements MessageConnection {
       deliver: (message) => this.deliver(message),
       fail: (error) => this.fail(error),
       finish: (error) => this.finish(error),
+      queuedMessages: () => this.queue.length,
     });
     this.hooks.start?.();
   }
@@ -575,24 +568,6 @@ export class QueuedMessageConnection implements MessageConnection {
       );
       return;
     }
-    // The first frame queued is already in memory and is admitted; the
-    // memory available then bounds it together with every frame queued
-    // behind it until the queue drains.
-    const bytes = frameBytes(message);
-    if (this.queue.length === 0) {
-      this.readAheadBudgetBytes = availableMemoryBytes();
-    } else if (this.queuedBytes + bytes > this.readAheadBudgetBytes) {
-      this.fail(
-        new ConnectionError(
-          `inbound buffer overflow: the unconsumed messages need more than ` +
-            `the ${this.readAheadBudgetBytes} bytes of memory available; the ` +
-            "peer is sending out of turn",
-          "protocol",
-        ),
-      );
-      return;
-    }
-    this.queuedBytes += bytes;
     this.queue.push(message);
   }
 
@@ -655,7 +630,6 @@ export class QueuedMessageConnection implements MessageConnection {
     // a transport control latched behind a queued frame.
     if (this.queue.length > 0) {
       const message = this.queue.shift();
-      this.queuedBytes -= frameBytes(message);
       // The just-drained frame was the last one a half-close was waiting on:
       // promote the deferred error to `failed`. Teardown already ran at finish()
       // time, so this is a pure state transition.
@@ -810,6 +784,7 @@ export function fromEventConnection(
         controls.fail(asConnectionError(err, "transport"));
       conn.on("data", onData);
       conn.on("error", onError);
+      conn.setInboundQueueReader?.(controls.queuedMessages);
       return {
         send: (data) => conn.send(data),
         close: () => {

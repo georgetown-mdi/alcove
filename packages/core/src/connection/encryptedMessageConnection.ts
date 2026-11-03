@@ -10,6 +10,8 @@ import { type MessageConnection } from "./messageConnection";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import {
   parseBoundedJson,
+  partnerMessageMemoryShortfall,
+  JsonMemoryBudgetError,
   JsonStructureBoundError,
 } from "../utils/boundedJson";
 import type { HandshakeRole } from "../types";
@@ -580,6 +582,15 @@ export class EncryptedMessageConnection implements MessageConnection {
         // so a malformed frame is rejected here instead of delivered mangled.
         return parseBoundedJson(plain.subarray(1));
       } catch (err) {
+        // This machine's own shortfall, so not a security failure: `usage`,
+        // since the operator's step (freeing memory) is what clears it.
+        if (err instanceof JsonMemoryBudgetError)
+          throw this.fail(
+            new ConnectionError(
+              partnerMessageMemoryShortfall("the partner's message", err),
+              "usage",
+            ),
+          );
         // Both failure shapes are fixed-text security errors carrying no
         // attacker bytes; only the operator-facing text differs.
         throw this.fail(
