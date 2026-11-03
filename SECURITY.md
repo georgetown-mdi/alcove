@@ -10,7 +10,7 @@ This document describes how to report vulnerabilities in Alcove and what reporte
 
 ## Supported Versions
 
-Alcove maintains security patches for the current major release and the previous major release. Older releases do not receive patches.
+Alcove maintains security patches for the current major release and the previous major release. Older releases do not receive patches. A 0.x release is not a previous major: once 1.0 ships, 0.x releases receive no patches, and a deployment on 0.x upgrades to 1.0 to get a fix.
 
 | Version        | Supported |
 | -------------- | --------- |
