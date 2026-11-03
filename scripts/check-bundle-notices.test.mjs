@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { rollup } from "rollup";
@@ -47,7 +53,7 @@ const chunkOf = async (entry, plugins) => {
 };
 
 beforeAll(() => {
-  root = mkdtempSync(join(tmpdir(), "bundle-notices-"));
+  root = realpathSync(mkdtempSync(join(tmpdir(), "bundle-notices-")));
   pkg("node_modules/licensed", "licensed", { LICENSE: MIT_TEXT });
   pkg("node_modules/@scope/pkg", "@scope/pkg", { "LICENSE-ISC": ISC_TEXT });
   pkg("node_modules/bare", "bare", {});
