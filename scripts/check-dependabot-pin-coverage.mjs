@@ -2,7 +2,7 @@
 // Dependabot checklist-pin coverage check:
 // `npm run check:dependabot-pin-coverage`, run by static_checks.yaml on every
 // PR. A package with an upgrade checklist must not ride a batched Dependabot
-// pull request, where the checklist is skimmed, nor drift off its exact pin.
+// pull request, where the checklist is skimmed, nor be declared two ways.
 //
 // Reads the packages each "Upgrading ... (a / b)" heading of
 // docs/spec/DEPENDENCY_PINS.md names, the npm groups of .github/dependabot.yml,
@@ -10,9 +10,8 @@
 //
 //   1. a named package is not in the `exclude-patterns` of every npm group, in
 //      any update block, whose `patterns` match it without naming it;
-//   2. no manifest declares it, or one declares it at other than an exact
-//      version (bare major.minor.patch, optional prerelease or build suffix);
-//   3. its declarations name more than one version;
+//   2. no manifest declares it;
+//   3. the manifests declaring it do not all use the same spec;
 //   4. a package literally named in one group's `patterns` is not excluded by
 //      every other group of the same update block that would match it;
 //
@@ -43,11 +42,6 @@ const DEPENDENCY_FIELDS = [
   "optionalDependencies",
   "peerDependencies",
 ];
-const NUMBER = "(?:0|[1-9]\\d*)";
-const DOTTED_TAIL = "(?:[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)";
-const EXACT_VERSION = new RegExp(
-  `^${NUMBER}\\.${NUMBER}\\.${NUMBER}(?:-${DOTTED_TAIL})?(?:\\+${DOTTED_TAIL})?$`,
-);
 const UPGRADE_HEADING = /^#{2,6}\s+(Upgrading\b.*?)\s*$/;
 const HEADING_NAME_LIST = /\(([^()]*)\)$/;
 const NAME_SEPARATOR = /\s+\/\s+/;
@@ -243,36 +237,28 @@ export function packageDeclarations(packages, manifests) {
 }
 
 /**
- * Every checklist-holding package this workspace declares at something other
- * than an exact version, and every one it declares nowhere at all, as message
- * strings. Empty means each checklist covers a package pinned to one version.
+ * Every checklist-holding package no manifest in this workspace declares, as
+ * message strings. Empty means each checklist covers a package installed here.
  */
-export function exactnessViolations(packages, declarations) {
-  const undeclared = packages
+export function undeclaredViolations(packages, declarations) {
+  return packages
     .filter((name) => !declarations.some((entry) => entry.name === name))
     .map(
       (name) =>
-        `${PINS_DOC} carries an "Upgrading ..." checklist for ${name}, but no manifest in this workspace declares it, so no version of it is pinned here for the checklist's assumptions to rest on. Either the dependency is gone and the checklist goes with it, or its heading misspells the package name.`,
+        `${PINS_DOC} carries an "Upgrading ..." checklist for ${name}, but no manifest in this workspace declares it, so nothing here installs the internals the checklist's assumptions rest on. Either the dependency is gone and the checklist goes with it, or its heading misspells the package name.`,
     );
-  const inexact = declarations
-    .filter(({ specifier }) => !EXACT_VERSION.test(specifier))
-    .map(
-      ({ path, field, name, specifier }) =>
-        `${path} (${field}) declares ${name} as ${JSON.stringify(specifier)}, which is not a bare major.minor.patch version. ${PINS_DOC} carries an "Upgrading ..." checklist for ${name}, whose assumptions were read off one version's internals; a specifier admitting another lets that one install without the checklist being worked through. Pin the exact version, or retire the checklist if those internals are no longer critical.`,
-    );
-  return [...undeclared, ...inexact];
 }
 
 /**
- * Every checklist-holding package this workspace declares at more than one
- * version, as message strings naming each declaration and its specifier. Empty
- * means each checklist covers one version wherever the package is declared.
+ * Every checklist-holding package this workspace declares with more than one
+ * spec, as message strings naming each declaration and its spec. Empty means
+ * each checklist package is declared the same way wherever it appears.
  */
-export function versionAgreementViolations(packages, declarations) {
+export function specAgreementViolations(packages, declarations) {
   return packages.flatMap((name) => {
     const declared = declarations.filter((entry) => entry.name === name);
-    const versions = new Set(declared.map(({ specifier }) => specifier));
-    if (versions.size < 2) return [];
+    const specs = new Set(declared.map(({ specifier }) => specifier));
+    if (specs.size < 2) return [];
     const listing = declared
       .map(
         ({ path, field, specifier }) =>
@@ -280,7 +266,7 @@ export function versionAgreementViolations(packages, declarations) {
       )
       .join(", ");
     return [
-      `This workspace declares ${name} at ${versions.size} different versions: ${listing}. ${PINS_DOC} carries an "Upgrading ..." checklist for ${name}, whose assumptions were read off one version's internals; a manifest naming another installs internals the checklist was never worked through against. Declare one version everywhere, or retire the checklist if those internals are no longer critical.`,
+      `This workspace declares ${name} with ${specs.size} different specs: ${listing}. ${PINS_DOC} carries an "Upgrading ..." checklist for ${name}, and an upgrade is worked through against it once; a manifest admitting a version the others do not can install or move to one the checklist was never worked through against. Declare the same spec everywhere, or retire the checklist if those internals are no longer critical.`,
     ];
   });
 }
@@ -355,12 +341,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     packages,
     paths.map((path) => ({ path, manifest: readJson(path) })),
   );
-  const inexact = exactnessViolations(packages, declarations);
-  if (inexact.length > 0) {
-    for (const violation of inexact) console.error(violation);
+  const undeclared = undeclaredViolations(packages, declarations);
+  if (undeclared.length > 0) {
+    for (const violation of undeclared) console.error(violation);
     process.exit(1);
   }
-  const disagreeing = versionAgreementViolations(packages, declarations);
+  const disagreeing = specAgreementViolations(packages, declarations);
   if (disagreeing.length > 0) {
     for (const violation of disagreeing) console.error(violation);
     process.exit(1);
@@ -372,6 +358,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     ),
   );
   console.log(
-    `Dependabot checklist-pin coverage check passed: ${count(packages.length, "package")} named by ${count(sections.length, "upgrade checklist")} in ${PINS_DOC}, checked against ${count(groups.length, "npm group")} in ${CONFIG_FILE} and each pinned to one version by ${count(declarations.length, "declaration")} across ${count(paths.length, "manifest")}. ${count(groupNamed.size, "package")} named outright in a group's patterns ${groupNamed.size === 1 ? "is" : "are"} held out of every other group in its update block that would otherwise batch it.`,
+    `Dependabot checklist-pin coverage check passed: ${count(packages.length, "package")} named by ${count(sections.length, "upgrade checklist")} in ${PINS_DOC}, checked against ${count(groups.length, "npm group")} in ${CONFIG_FILE} and each declared with one spec by ${count(declarations.length, "declaration")} across ${count(paths.length, "manifest")}. ${count(groupNamed.size, "package")} named outright in a group's patterns ${groupNamed.size === 1 ? "is" : "are"} held out of every other group in its update block that would otherwise batch it.`,
   );
 }

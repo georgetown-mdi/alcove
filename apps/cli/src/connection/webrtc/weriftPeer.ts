@@ -311,9 +311,9 @@ export interface WebRtcPeerSession {
  * `sentQueue` holds chunks transmitted but not yet acknowledged. Both empty is
  * the only observable point at which tearing the connection down cannot lose
  * data; the channel's own `bufferedAmount` is not a refinement of that and
- * loses data if used instead. This reaches past werift's public API, which is
- * why werift is exact-pinned -- the measurement behind it and its
- * re-verification: docs/spec/DEPENDENCY_PINS.md.
+ * loses data if used instead. This reaches past werift's public API, so each
+ * werift upgrade is re-verified against it -- the measurement behind it and
+ * the checklist: docs/spec/DEPENDENCY_PINS.md.
  */
 interface SctpDrainInternals {
   sctp: { sctp: { outboundQueue: Array<unknown>; sentQueue: Array<unknown> } };

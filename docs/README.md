@@ -94,7 +94,7 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 - [CLI_EVENTS.md](spec/CLI_EVENTS.md) - the opt-in `--event-stream` output: framing, event types, error categories, and sanitization
 - [CLI_DOCTOR.md](spec/CLI_DOCTOR.md) - the `alcove doctor --json` document: fields, schema version, status values, checks, and exit codes
 - [SERVER_JOB_API.md](spec/SERVER_JOB_API.md) - the console's job API: request schema, SFTP connection, lifecycle, working-folder layout, event relay, and startup rules
-- [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md) - the exact-pinned SFTP and WebRTC stack, the upgrade checklists, and the install-script policy
+- [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md) - the SFTP and WebRTC stack internals, the upgrade checklists, and the install-script policy
 - [CONTAINER_IMAGES.md](spec/CONTAINER_IMAGES.md) - the standard and FIPS images: dependency pinning, the FIPS provider's CMVP certificate coverage, and the writable and setuid inventories
 
 ### Design notes ([`docs/notes/`](notes/README.md))

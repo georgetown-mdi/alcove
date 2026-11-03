@@ -13,7 +13,7 @@ import type { Packable } from "peerjs-js-binarypack";
 // every size the library itself survives, and the sizes past its ceiling are
 // held by the round-trip suite beside this one.
 //
-// `peerjs-js-binarypack` is an exact-pinned devDependency of THIS package
+// `peerjs-js-binarypack` is a dependency of THIS package
 // (packages/core/package.json), so a bump that moves the encoding fails here
 // rather than at a partner's browser (docs/spec/DEPENDENCY_PINS.md).
 

@@ -80,9 +80,9 @@ not: measured on this repository, an import of it from
 into the published `dist/testing.esm.js` (119,902 bytes to 130,260, with no
 import of the package left in the output). That is the same constraint operating
 silently instead of loudly, and it is worse in one respect -- the repository
-exact-pins that packer because the wire encoding it produces is a compatibility
-surface, and vendoring a second copy of it into a published bundle puts that pin
-one build away from meaning nothing. A helper needing a dependency core does not
+reviews each upgrade of that packer on its own because the wire encoding it
+produces is a compatibility surface, and vendoring a second copy of it into a
+published bundle leaves a copy that no upgrade review reaches. A helper needing a dependency core does not
 declare therefore takes the testkit whether or not the build would tolerate
 inlining it.
 

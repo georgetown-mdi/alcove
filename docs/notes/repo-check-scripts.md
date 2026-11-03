@@ -105,9 +105,10 @@ and a bump inside a batched Dependabot pull request beside a dozen routine ones 
 `.github/dependabot.yml` holds those packages out of the batch, and the two files drift apart silently:
 a checklist added reaches no config, and an exclude entry dropped reads exactly like one never needed.
 
-Every checklist also assumes the package is pinned to the one version its assumptions were read off.
-A caret slipping into a manifest installs a later version with no pull request to hold the checklist against.
-So does a second manifest naming a different exact version: both pin and both look deliberate, but the checklist was worked through against only one of the two installed.
+Every checklist also assumes some manifest declares the package, and that every manifest declaring it admits the same versions.
+A checklist whose package no manifest declares guards nothing, and usually means the dependency is gone or the heading misspells it.
+A second manifest declaring a different spec lets two versions be installed or bumped apart, and the checklist is worked through against only one of them.
+Which version is installed is fixed by the lockfile, not the spec, so the spec may be a range.
 
 ### Reading choices
 
@@ -115,8 +116,8 @@ So does a second manifest naming a different exact version: both pin and both lo
   A group declaring no `patterns` matches every package (`non-critical`), so it always needs one.
 - The cross-group rule is bounded by the update block, because groups compete for a bump only inside the block raising the pull request.
 - A heading naming no package, or a token that is not an npm package name, fails rather than being passed over: a section no name can be read out of is a checklist nothing can be held against.
-- Exact means a bare `major.minor.patch` with an optional prerelease or build suffix.
-  A `file:` tarball, git commit, or `npm:` alias fails too: whether such a route pins is a judgment per dependency, and a checklist for one wants the rule widened by an explicit decision.
+- Specs are compared as written, not as the version sets they admit: `^2.1.0` and `2.1.0` disagree even though both admit the installed version, and two spellings of one range disagree too.
+  Reading ranges as sets would need npm's semver rules here, for no case this workspace has.
 - The workspace set is expanded from the `workspaces` globs rather than asked of npm;
   the test holds that expansion to the set npm recorded in `package-lock.json`, so a glob read differently fails there instead of silently shrinking the sweep.
 
@@ -126,8 +127,8 @@ So does a second manifest naming a different exact version: both pin and both lo
   A package in no group still gets its own pull request, which satisfies the exclusion rule; only the silent direction, riding a batch, is checked.
 - How Dependabot itself resolves the config.
   The lists are read as text, so what is asserted is the exclude entry the config writes by hand, not a prediction of which pull request a bump lands in.
-- What is installed. No rule reads `package-lock.json` or `node_modules`; a lockfile disagreeing with an exact declaration is `npm ci`'s to catch.
-- Whether the pinned version is the one the checklist was read off. A bump's own review establishes that.
+- What is installed. No rule reads `package-lock.json` or `node_modules`; a lockfile outside a declared range is `npm ci`'s and `check-locked-dep-ranges.mjs`'s to catch.
+- Whether the installed version is the one the checklist was last worked through against. A bump's own review establishes that.
 - The docker and github-actions update blocks, whose lists hold different rationales;
   [`check-dependabot-ignore-shape.mjs`](../../scripts/check-dependabot-ignore-shape.mjs) owns the github-actions ignore list.
 - Whether a package that ought to have a checklist has one. The read runs from the document outward, never back.
