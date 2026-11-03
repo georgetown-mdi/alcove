@@ -1,0 +1,1 @@
+- It also states the case where a reload shows the same record: the deployment was rolled back, and the record waits for the build that wrote it. -> It also states the case where a reload shows the same record: the record opens once the newer version is back.

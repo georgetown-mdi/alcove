@@ -49,9 +49,8 @@ export const LATER_VERSION_RECORD_LABEL =
 
 /** The note a row shows under {@link LATER_VERSION_RECORD_LABEL}. */
 export const LATER_VERSION_RECORD_NOTE =
-  "Reload this page to use the current version, which reads it. If reloading " +
-  "shows this again, the app was rolled back, and this exchange waits for " +
-  "the newer version.";
+  "Reload this page to open it. If it still shows, it opens once the newer " +
+  "version is back.";
 
 /** The read-failed surface's opening sentence, before the causes. */
 export const SAVED_EXCHANGES_FAILED_LEAD =
@@ -67,11 +66,9 @@ export const UNREADABLE_RECORDS_CAUSE =
 /** The cause the read-failed surface states for a record a newer version of
  * the app saved. */
 export const LATER_VERSION_RECORDS_CAUSE =
-  "One or more stored records were saved by a newer version of this app than " +
-  "this page is running. Nothing is wrong with them. Reload this page to use " +
-  "the current version, which reads them. If a run is under way, reloading " +
-  "ends it. If reloading shows this again, the app was rolled back, and " +
-  "those exchanges wait for the newer version.";
+  "One or more exchanges were saved by a newer version of this app. Nothing " +
+  "is wrong with them. Reload this page to read them (a run under way ends). " +
+  "If they still show, they open once the newer version is back.";
 
 /** One row in the read-failed recovery listing: the stored key the delete acts on,
  * a display label (the operator's label, "(unnamed exchange)" when empty, or
