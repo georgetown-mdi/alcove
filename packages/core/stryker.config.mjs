@@ -17,13 +17,11 @@
 // finding the leg exists to report. Chasing the number itself is not the goal:
 // most survivors these floors sit above are error-message text and private
 // bookkeeping flags with no external observer, which a test can only pin by
-// asserting the text. The exceptions in encryptedMessageConnection.ts are the
-// inbound frame-size check, whose 512 MiB limit no test sends past, and the
-// close latch call.
+// asserting the text.
 export const scoreFloors = {
   "packages/core/src/auth.ts": 84,
   "packages/core/src/connection/abortMarker.ts": 94,
-  "packages/core/src/connection/encryptedMessageConnection.ts": 91,
+  "packages/core/src/connection/encryptedMessageConnection.ts": 94,
 };
 
 export default {
