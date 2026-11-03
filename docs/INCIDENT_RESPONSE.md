@@ -71,7 +71,7 @@ Patches cover the current major release and the previous major ([SECURITY.md#sup
   ```
 
 - A flaw that exists only on `staging` and in no tag needs a fix, not an advisory: no released artifact contains it. Tell the reporter that is the verdict and that the fix ships with the next release.
-- While the released line is `0.x`, there is no previous major to patch. The current release is the only supported version, and the previous-major row starts binding at 1.0. An empty row is not a claim that older releases are covered.
+- While the released line is `0.x`, there is no previous major to patch. The current release is the only supported version. 0.x does not become the previous major when 1.0 ships: it receives no patches, and the previous-major row first binds at 2.0. An empty row is not a claim that older releases are covered.
 - Write down the affected range and the fixing version as soon as they are known. Both go into the advisory verbatim, and into the reporter's next update.
 
 ## 4. Fix privately, then release
