@@ -150,6 +150,12 @@ export async function runPsiPhase(p: {
       roundsSentInParts
         ? { local: localReceiveCeiling, partner: partnerReceiveCeiling }
         : undefined,
+      // A single-pass message over file-sync is held by its file's bytes
+      // rather than by the set maximum (docs/spec/PROTOCOL.md, The limits
+      // over file-sync).
+      !roundsSentInParts && conn.outboundFileSyncFrameBound?.() !== undefined
+        ? "element-length"
+        : "set-maximum",
     );
     // A crypto step does not start once the connection has ended, since its
     // result has nowhere to go, and one in flight stops at its next chunk

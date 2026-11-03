@@ -4,6 +4,7 @@ import PSI from "@openmined/psi.js";
 
 import {
   countDeclaredPsiElements,
+  PSI_ELEMENT_BYTES,
   PsiElementScan,
 } from "../../src/connection/psiElementScan";
 import type { PsiMessageKind } from "../../src/connection/psiElementScan";
@@ -151,8 +152,14 @@ function scannedInPieces(
   kind: PsiMessageKind,
   ceiling: number,
   size: number,
+  elementBytes?: number,
 ): number | string {
-  const scan = new PsiElementScan(kind, ceiling, bytes.byteLength);
+  const scan = new PsiElementScan(
+    kind,
+    ceiling,
+    bytes.byteLength,
+    elementBytes,
+  );
   try {
     for (let start = 0; start < bytes.byteLength; start += size)
       if (scan.add(bytes.subarray(start, start + size)) > ceiling) break;
@@ -203,6 +210,29 @@ test("a frame scanned in pieces cut anywhere counts and refuses as the whole fra
         expect(scannedInPieces(bytes, kind, ceiling, size)).toStrictEqual(
           scannedWhole(bytes, kind, ceiling),
         );
+});
+
+// --- An element length ----------------------------------------------------------
+
+test("with an element length, every element of that length is counted and any other is refused, whole or in pieces", () => {
+  const exact = PSI_ELEMENT_BYTES;
+  for (const { kind, build } of cases) {
+    const honest = build(9, exact);
+    expect(countDeclaredPsiElements(honest, kind, BIG, exact)).toBe(9);
+    for (const size of [1, 2, 34, 35, 36, honest.byteLength])
+      expect(scannedInPieces(honest, kind, BIG, size, exact)).toBe(9);
+    for (const length of [0, 2, exact - 1, exact + 1]) {
+      const odd = build(3, length);
+      expect(() => countDeclaredPsiElements(odd, kind, BIG, exact)).toThrow(
+        `an element of ${length} bytes, not ${exact}`,
+      );
+      for (const size of [1, 3, odd.byteLength || 1])
+        expect(scannedInPieces(odd, kind, BIG, size, exact)).toBe(
+          `PSI element scan: an element of ${length} bytes, not ${exact}`,
+        );
+      expect(countDeclaredPsiElements(odd, kind, BIG)).toBe(3);
+    }
+  }
 });
 
 test("a frame scanned in pieces past its stated length, or ending short of it, throws", () => {

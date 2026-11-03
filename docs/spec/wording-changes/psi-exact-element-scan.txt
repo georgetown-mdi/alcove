@@ -1,0 +1,17 @@
+- `MAX_PSI_DECODE_ELEMENTS`, as for every set. -> A single-pass setup, request or response is not held to `MAX_PSI_DECODE_ELEMENTS`.
+- - -> Instead each of its elements must be 33 bytes long, or the receiver refuses it before decoding it (below, "On single-pass over file-sync the element length bounds the decode").
+- - -> So its decode takes at most about 7.6 times its bytes, as an honest one of the same size does, and the message file bounds its element count: at most 15,339,168, `MAX_FRAME_SIZE_BYTES` over 35 bytes an element.
+- The ceiling is the smaller of the authenticated `keyCount * recordCount` bound for the relevant party -- the sender's set for a setup, the receiver's for a request, via `psiElementBounds` in `frameSize.ts`; for a response, which re-encrypts this party's own request, that request's element count -- and the absolute `MAX_PSI_DECODE_ELEMENTS` = 16,777,216, the protocol's per-set maximum ([A PSI set is sent in parts](#a-psi-set-is-sent-in-parts)). -> The ceiling is the smaller of the authenticated `keyCount * recordCount` bound for the relevant party -- the sender's set for a setup, the receiver's for a request, via `psiElementBounds` in `frameSize.ts`; for a response, which re-encrypts this party's own request, that request's element count -- and the absolute `MAX_PSI_DECODE_ELEMENTS` = 16,777,216, the protocol's per-set maximum ([A PSI set is sent in parts](#a-psi-set-is-sent-in-parts)), except on single-pass over file-sync (next paragraph).
+- - -> **On single-pass over file-sync the element length bounds the decode.**
+- - -> There the ceiling is the authenticated bound alone, without `MAX_PSI_DECODE_ELEMENTS`, and the scan refuses any element that is not 33 bytes long (`PSI_ELEMENT_BYTES`; the `element-length` decode bound in `participant.ts`).
+- - -> Every element of a conforming setup, request or response is 33 bytes, a compressed curve point, on both backends (`packages/core/test/psi/psiDecodeBound.test.ts`).
+- - -> So no honest frame is refused.
+- - -> Each element then takes at least 35 bytes of the frame, so the frame's size bounds what its decode holds, at the rate of an honest frame.
+- - -> At `MAX_FRAME_SIZE_BYTES` that is about 4.1 GB, the same as an honest frame of that size.
+- - -> Under the set maximum alone, 2^24 empty elements take 3.3 GiB from a 33.5 MB frame.
+- - -> Measured 2026-11-03 in the development container (Linux arm64, Node 26.13.0, WebAssembly library): a request of 2,000,000 elements of one length, decoded with `deserializeBinary` in its own process under `--expose-gc`, with the heap and array buffers read before and after.
+- - -> Element length | Retained an element | Times the frame's bytes
+- - -> 0 bytes | 211.8 bytes | 105.9
+- - -> 1 byte | 235.8 bytes | 78.6
+- - -> 33 bytes | 267.1 bytes | 7.63
+- - -> On single-pass over file-sync only the first applies, and the scan refuses any element that is not 33 bytes long instead ([PROTOCOL.md, The limits over file-sync](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).

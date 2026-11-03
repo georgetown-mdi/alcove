@@ -8,6 +8,7 @@ import {
 } from "../connection/frameSize";
 import {
   countDeclaredPsiElements,
+  PSI_ELEMENT_BYTES,
   PsiElementScan,
   type PsiMessageKind,
 } from "../connection/psiElementScan";
@@ -234,6 +235,19 @@ const PROTOCOL_SET_CEILINGS: PsiSetCeilings = {
   partner: MAX_PSI_DECODE_ELEMENTS,
 };
 
+/**
+ * What bounds the memory a partner's PSI set takes to decode
+ * (docs/spec/PROTOCOL.md, "Declared PSI element counts are bounded by a
+ * wire-format scan before deserialization"):
+ *
+ * - `set-maximum`: the set's element count, held to
+ *   {@link MAX_PSI_DECODE_ELEMENTS} and this party's receive ceiling.
+ * - `element-length`: the set's bytes. Every element must be
+ *   {@link PSI_ELEMENT_BYTES} long, and neither the set maximum nor the
+ *   receive ceiling applies. Single-pass over file-sync.
+ */
+export type PsiDecodeBound = "set-maximum" | "element-length";
+
 interface SentRequest {
   readonly bytes: number;
   readonly elements: number;
@@ -247,6 +261,7 @@ export class PSIParticipant {
   private engine: PsiEngine;
   private onProgress?: PsiProgressReporter;
   private setCeilings: PsiSetCeilings;
+  private decodeBound: PsiDecodeBound;
   // The request this party sent that no response has answered yet, which
   // bounds that response (docs/spec/TRANSPORT_BOUNDS.md, PSI set parts).
   private sentRequest: SentRequest | undefined;
@@ -282,14 +297,17 @@ export class PSIParticipant {
     // all, so a caller that shows nothing pays nothing.
     onProgress?: PsiProgressReporter,
     // The two parties' receive ceilings. Omitted, both are the protocol's
-    // per-set maximum, which every set is held to whatever is given.
+    // per-set maximum, which every set is held to whatever is given unless
+    // `decodeBound` is "element-length".
     setCeilings: PsiSetCeilings = PROTOCOL_SET_CEILINGS,
+    decodeBound: PsiDecodeBound = "set-maximum",
   ) {
     this.id = id;
     this.config = config;
     this.elementBounds = elementBounds;
     this.onProgress = onProgress;
     this.setCeilings = setCeilings;
+    this.decodeBound = decodeBound;
 
     if (this.config.verbose === undefined) {
       this.config.verbose = DEFAULT_VERBOSITY;
@@ -381,7 +399,9 @@ export class PSIParticipant {
   // from authenticated session state), the absolute
   // {@link MAX_PSI_DECODE_ELEMENTS}, which binds a cascade frame whose
   // partner over-declares its record count, and, for a setup or a request,
-  // which hold the partner's own set, this party's receive ceiling. The scan
+  // which hold the partner's own set, this party's receive ceiling. Under the
+  // "element-length" decode bound the ceiling is the authenticated bound
+  // alone, and every element must be PSI_ELEMENT_BYTES long instead. The scan
   // stops as soon as the count exceeds the ceiling, so an over-declared frame
   // costs O(ceiling), not O(frame); a malformed frame is a clean protocol
   // abort too. See
@@ -397,7 +417,7 @@ export class PSIParticipant {
   ): number {
     const ceiling = this.inboundElementCeiling(kind, authenticatedBound);
     return this.assertScanWithinCeiling(kind, ceiling, () =>
-      countDeclaredPsiElements(bytes, kind, ceiling),
+      countDeclaredPsiElements(bytes, kind, ceiling, this.elementBytes()),
     );
   }
 
@@ -405,11 +425,18 @@ export class PSIParticipant {
     kind: PsiMessageKind,
     authenticatedBound: number,
   ): number {
+    if (this.decodeBound === "element-length") return authenticatedBound;
     return Math.min(
       authenticatedBound,
       MAX_PSI_DECODE_ELEMENTS,
       kind === "response" ? MAX_PSI_DECODE_ELEMENTS : this.setCeilings.local,
     );
+  }
+
+  private elementBytes(): number | undefined {
+    return this.decodeBound === "element-length"
+      ? PSI_ELEMENT_BYTES
+      : undefined;
   }
 
   // The refusals of a frame `scan` cannot read or finds declaring more than
@@ -562,6 +589,7 @@ export class PSIParticipant {
           "serverSetup",
           ceiling,
           setBytes,
+          this.elementBytes(),
         ));
         this.assertScanWithinCeiling("serverSetup", ceiling, () =>
           setupScan.add(piece),

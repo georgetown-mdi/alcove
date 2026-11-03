@@ -11,8 +11,9 @@ export const MAX_FRAME_SIZE_BYTES = 536_870_888;
 /**
  * The most encrypted elements one PSI set may contain. A sender refuses its own
  * set over it before sending any part; a receiver checks an inbound set's declared
- * length and element scan against it before deserialization. Fixed, not configurable
- * (docs/spec/PROTOCOL.md, A PSI set is sent in parts).
+ * length and element scan against it before deserialization, except a single-pass
+ * set over file-sync, whose element length bounds it instead. Fixed, not
+ * configurable (docs/spec/PROTOCOL.md, A PSI set is sent in parts).
  */
 export const MAX_PSI_DECODE_ELEMENTS = 2 ** 24;
 
@@ -29,9 +30,9 @@ export const BROWSER_PSI_SET_MAX_ELEMENTS = 8_388_608;
  * The single-pass dataset ceiling over WebRTC, a per-party budget on value slots
  * (`effectiveKeyCount * recordCount`, not rows), so the derived reply stays under
  * `MAX_WEBRTC_FRAME_BYTES`. File-sync has no such budget: it has
- * {@link MAX_FRAME_SIZE_BYTES}, {@link MAX_PSI_DECODE_ELEMENTS} and the check at
- * the terms exchange. Fixed, not configurable: a configurable maximum reopens the
- * memory-exhaustion denial of service. Raise it
+ * {@link MAX_FRAME_SIZE_BYTES}, the exact element length its PSI messages are
+ * scanned for, and the check at the terms exchange. Fixed, not configurable: a
+ * configurable maximum reopens the memory-exhaustion denial of service. Raise it
  * only by re-deriving it from a fresh measurement (docs/spec/PROTOCOL.md, The
  * single-pass dataset ceiling: receiver memory and masking compute).
  */
