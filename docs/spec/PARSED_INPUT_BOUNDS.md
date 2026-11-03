@@ -120,7 +120,8 @@ It counts each object's members (by colon) and each array's elements (by separat
 On the byte path an over-budget body is refused without even allocating the decoded string.
 
 This chokepoint covers both threat-model adversaries, not only the counterparty.
-The post-handshake `TYPE_JSON` frame is decoded through it after AEAD decryption (the *counterparty*'s reach); but the file-sync transport's own reads - the peer-hello control file and every message body - are JSON-parsed off the raw inbound file *before* decryption, so they are shaped by the hostile *server admin*, and the invitation token is parsed from attacker-influenced bytes a victim opens.
+The post-handshake `TYPE_JSON` frame is decoded through it after AEAD decryption (the *counterparty*'s reach); but the file-sync transport's own reads - the peer-hello control file and every message body before the encryption layer takes over the connection - are JSON-parsed off the raw inbound file *before* decryption, so they are shaped by the hostile *server admin*, and the invitation token is parsed from attacker-influenced bytes a victim opens.
+Once the encryption layer takes over, the transport parses no message body: it refuses a JSON message unread ([FILE_SYNC.md, File taxonomy](FILE_SYNC.md#file-taxonomy), "JSON messages on an encrypted channel").
 All route through the same chokepoint, so a wide-object or long-array body from any source is refused rather than crashing the process.
 Each caller maps the refusal to its own terminal error - a `ConnectionError("security")` on the wire, a `UsageError` on a transport file, a rejected invitation - with no attacker bytes.
 
@@ -131,6 +132,29 @@ So `MAX_JSON_OBJECT_KEYS` sits far above any real object and far below the per-o
 The depth ceiling sits far above any real nesting (the parsed-config ceiling is `camelizeKeys`' `MAX_NESTING_DEPTH` = 256) and exists chiefly to bound the scan's own per-container stack against a degenerate all-`{`/`[` body, which would otherwise exhaust memory in the pre-pass.
 This bound composes with rather than overlaps the post-parse `camelizeKeys` bounds.
 It caps any single container's width before the walker ever sees it, while the walker's own `MAX_NODE_COUNT` budget (above) caps the total it then rewrites - a width the per-container ceiling does not bound (a body within every per-container limit can still hold far more nodes in aggregate than the walker should rewrite).
+
+**Per-message byte caps.**
+The structural ceilings bound a body's shape, not the memory its parse holds, which grows with the body's length.
+So each message the table below lists is held to a byte cap sized to the largest legitimate message of its type, and a longer one is refused before it reaches `parseBoundedJson`.
+These caps sit at the parse sites rather than in the chokepoint, because only the site knows which message it reads.
+Each cap's worst case is static: the last column is the most a body at the cap was measured to hold once parsed, on Node 26.13.0 under `--expose-gc`, across the object, array, string and number shapes the structural ceilings admit.
+
+| Message | Cap, checked before the parse | Basis | Most held at the cap |
+| --- | --- | --- | --- |
+| File-sync rendezvous hello and control file (`fileSyncRendezvous.ts`) | 1,024 bytes (`HELLO_MAX_BYTES`), on the listed size and on the read | The envelope is under 100 bytes | 41 KB |
+| File-sync abort marker (`abortMarker.ts`) | 1,024 bytes (`ABORT_MARKER_MAX_BYTES`), on the listed size and on the read | The envelope is about 80 bytes | 41 KB |
+| JSON message on a file-sync run with a key exchange (`fileSyncMessageLoop.ts`, set by `apps/cli/src/run/prepare.ts`) | 4,096 bytes of payload (`KEX_MESSAGE_MAX_BYTES`) | The run's only JSON messages are the key exchange's; the largest, message 2 carrying a hello at the hello's limit, is 1,683 bytes, and the rest is room for further key shares in message 1 | 163 KB |
+| Version hello within a key-exchange message (`versionHello.ts`) | 1,368 characters, 1,024 decoded bytes | The prologue length-prefixes a hello in two bytes; a hello this build writes is under 100 bytes | 41 KB |
+| Invitation and terms update (`invitation.ts`, `termsUpdate.ts`) | 65,536 characters (`MAX_ENCODED_INVITATION_LENGTH`, `MAX_ENCODED_TERMS_UPDATE_LENGTH`), at most 49,147 decoded bytes | The encoder refuses to write a longer one | 2.0 MB |
+| Coordination-server signaling frame, CLI and web (`brokerClient.ts`, `signalingBounds.ts`) | 262,144 bytes (`MAX_SIGNALING_FRAME_BYTES`) | A frame is an SDP or one ICE candidate, kilobytes with every interface's candidates inlined | 10.5 MB |
+| WebSocket relay control frame, CLI and web (`websocketRelayConnection.ts`) | 17 characters | The length of `{"type":"paired"}`, the longer of the two control frames the relay sends | under 1 KB |
+| A party's hello or start, at the WebSocket relay (`packages/websocket-relay`) | 16,384 bytes (`RELAY_MAX_MESSAGE_BYTES`, the socket's maximum message) | The largest chunk a party sends | 656 KB |
+| A client's frame, at the coordination server (`packages/peerjs-broker`) | 262,144 bytes (`MAX_SIGNALING_PAYLOAD_BYTES`, the socket's maximum message) | As the signaling frame | 10.5 MB |
+| Published coordination-server document (`signalingDiscovery.ts`) | 4,096 bytes (`MAX_SIGNALING_DISCOVERY_BYTES`) | The document names one server address of at most 2,048 characters | 163 KB |
+| Relay registrar answer (`relayRegistrarClient.ts`) | 4,096 bytes | The registrar's requests are capped at 1,024 bytes, and an answer holds less | 163 KB |
+| Server provisioning answer (`serverProvision.ts`) | 32,768 bytes (`MAX_PROVISION_RESPONSE_BYTES`) | The widest answer the schema admits, every character escaped, is 26,632 bytes | 1.3 MB |
+
+A file-sync message over its cap is a terminal `UsageError` that leaves the file in place, and a relay control frame over its cap ends the relay connection as a `protocol` failure.
 
 The severity is defense-in-depth, not a live vulnerability: the counterparty is authenticated and can already abort the exchange trivially, and most of these sites already report a clean refusal rather than an ungraceful throw - a `receiveParsed` / `parseOrProtocolError` wrap reports a `ConnectionError("protocol")` from whatever `schema.parse` throws, and the linkage-terms parse-error catch aborts the same way.
 The stack-overflow `RangeError` is what `parse` throws, so the wrap catches it directly; the string-length `RangeError` is not, since the `ZodError` message builds lazily - the wrap sees only the unread `ZodError`, and that `RangeError`, if the issue list is that large, fires only where the cause's message is first read.

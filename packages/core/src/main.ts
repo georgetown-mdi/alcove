@@ -949,9 +949,10 @@ export {
   offerablePrevious,
 } from "./auth";
 export type { AuthResult, HandshakeSecretKind, RotationState } from "./auth";
-// The versions a build offers in its key-exchange hello, and the refusal both
-// parties report when the two offers share none in some layer.
-export { supportedVersions } from "./kex";
+// The versions a build offers in its key-exchange hello, the most bytes a
+// key-exchange message holds, and the refusal both parties report when the two
+// offers share none in some layer.
+export { KEX_MESSAGE_MAX_BYTES, supportedVersions } from "./kex";
 export { NO_COMMON_VERSION_MESSAGE } from "./versionHello";
 export type {
   NegotiatedVersions,

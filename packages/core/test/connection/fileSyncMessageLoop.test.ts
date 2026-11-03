@@ -13,8 +13,11 @@ import {
 } from "../../src/connection/fileSyncMessageLoop";
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
 import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
+import { EncryptedMessageConnection } from "../../src/connection/encryptedMessageConnection";
+import { fromEventConnection } from "../../src/connection/messageConnection";
 import {
   serializeFileSyncMessage,
+  MESSAGE_TYPE_BINARY,
   MESSAGE_TYPE_OBJECT,
 } from "../../src/connection/fileSyncFraming";
 import {
@@ -29,6 +32,7 @@ import { abortMarkerName } from "../../src/connection/abortMarker";
 import { ABORT_TOKEN_BYTES } from "../../src/auth";
 import { cancellableDelay } from "../../src/connection/fileSyncConstants";
 import {
+  ConnectionError,
   UsageError,
   BilateralModeMismatchError,
   PeerAbortError,
@@ -1297,6 +1301,254 @@ describe("FileSyncMessageLoop resetSessionState", () => {
     // consecutiveEnoentCount is NOT a per-session-reset field (start() clears it),
     // so resetSessionState leaves it untouched.
     expect(i.consecutiveEnoentCount).toBe(4);
+  });
+});
+
+describe("FileSyncMessageLoop requireBinaryFrames", () => {
+  // A JSON message whose payload is not JSON at all: refusing it with a
+  // security failure rather than the parse's "not valid JSON" shows the payload
+  // was never parsed.
+  const plantUnparsableJsonMessage = (files: Map<string, Buffer>): string => {
+    const body = serializeFileSyncMessage(
+      MESSAGE_TYPE_OBJECT,
+      0,
+      Buffer.from("[[[,"),
+    );
+    const name = `${DIR}/${PEER}-${body.length}.json`;
+    files.set(name, body);
+    return name;
+  };
+
+  test("a JSON message is refused unparsed as a terminal security failure, and consumed", async () => {
+    const f = makeLoop();
+    const name = plantUnparsableJsonMessage(f.files);
+    f.loop.requireBinaryFrames();
+
+    await f.pollOnce();
+
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].event).toBe("error");
+    const err = f.emitted[0].arg as ConnectionError;
+    expect(err).toBeInstanceOf(ConnectionError);
+    expect(err.kind).toBe("security");
+    expect(err.message).toMatch(/unencrypted message on an encrypted channel/);
+    expect(f.emitted[0].pollerActiveAtEmit).toBe(false);
+    expect(f.files.has(name)).toBe(false);
+  });
+
+  test("a binary message is still delivered", async () => {
+    const f = makeLoop();
+    const body = serializeFileSyncMessage(
+      MESSAGE_TYPE_BINARY,
+      0,
+      Buffer.from([1, 2, 3]),
+    );
+    f.files.set(`${DIR}/${PEER}-${body.length}.json`, body);
+    f.loop.requireBinaryFrames();
+
+    await f.pollOnce();
+
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+    expect([...(f.emitted[0].arg as Uint8Array)]).toEqual([1, 2, 3]);
+  });
+
+  test("the encryption layer over a file-sync connection requires binary frames of its message loop", async () => {
+    const { client } = makeMockClient();
+    const conn = new FileSyncConnection(client, { verbose: -1 });
+    const loop = (conn as unknown as { messageLoop: FileSyncMessageLoop })
+      .messageLoop;
+    const required = vi.spyOn(loop, "requireBinaryFrames");
+
+    await EncryptedMessageConnection.create(
+      fromEventConnection(conn),
+      new Uint8Array(32),
+      "initiator",
+    );
+
+    expect(required).toHaveBeenCalledTimes(1);
+  });
+
+  test("a session reset lifts the requirement, so a JSON message is parsed again", async () => {
+    const f = makeLoop();
+    plantUnparsableJsonMessage(f.files);
+    f.loop.requireBinaryFrames();
+    f.loop.resetSessionState();
+
+    await f.pollOnce();
+
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].arg).toBeInstanceOf(UsageError);
+    expect((f.emitted[0].arg as Error).message).toMatch(/not valid JSON/);
+  });
+});
+
+describe("FileSyncMessageLoop maxJsonMessageBytes", () => {
+  const CAP = 16;
+  const plant = (
+    files: Map<string, Buffer>,
+    type: number,
+    payload: string,
+  ): string => {
+    const body = serializeFileSyncMessage(type, 0, Buffer.from(payload));
+    const name = `${DIR}/${PEER}-${body.length}.json`;
+    files.set(name, body);
+    return name;
+  };
+  test("a JSON message at the cap is parsed and delivered", async () => {
+    const value = '{"a":"12345678"}';
+    expect(Buffer.byteLength(value)).toBe(CAP);
+    const f = makeLoop({ maxJsonMessageBytes: CAP });
+    plant(f.files, MESSAGE_TYPE_OBJECT, value);
+
+    await f.pollOnce();
+
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+    expect(f.emitted[0].arg).toEqual({ a: "12345678" });
+  });
+
+  test("a JSON message one byte over the cap is refused unparsed as a terminal failure, and kept", async () => {
+    const value = ' {"a":"12345678"}';
+    expect(Buffer.byteLength(value)).toBe(CAP + 1);
+    const f = makeLoop({ maxJsonMessageBytes: CAP });
+    const name = plant(f.files, MESSAGE_TYPE_OBJECT, value);
+
+    await f.pollOnce();
+
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].arg).toBeInstanceOf(UsageError);
+    expect((f.emitted[0].arg as Error).message).toMatch(
+      `holds a JSON message of ${CAP + 1} bytes, over the ${CAP}-byte ` +
+        "limit for a key-exchange message, so it was refused without being " +
+        "parsed",
+    );
+    expect(f.emitted[0].pollerActiveAtEmit).toBe(false);
+    expect(f.files.has(name)).toBe(true);
+  });
+
+  test("a binary message over the cap is still delivered", async () => {
+    const f = makeLoop({ maxJsonMessageBytes: CAP });
+    plant(f.files, MESSAGE_TYPE_BINARY, "x".repeat(CAP + 1));
+
+    await f.pollOnce();
+
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+  });
+});
+
+describe("FileSyncMessageLoop read-ahead", () => {
+  const plantBinary = (files: Map<string, Buffer>, payloadBytes: number) => {
+    const body = serializeFileSyncMessage(
+      MESSAGE_TYPE_BINARY,
+      0,
+      Buffer.alloc(payloadBytes),
+    );
+    const name = `${DIR}/${PEER}-${body.length}.json`;
+    files.set(name, body);
+    return { name, fileBytes: body.length };
+  };
+
+  // A loop whose consumer has received nothing, so every delivery stays queued
+  // until `received` says otherwise.
+  function readAheadLoop(boundBytes: number) {
+    const f = makeLoop();
+    const consumer = { received: 0 };
+    f.loop.setInboundQueueReader(
+      () =>
+        f.emitted.filter((e) => e.event === "data").length - consumer.received,
+    );
+    f.loop.setInboundFrameCap(boundBytes);
+    return { ...f, consumer };
+  }
+
+  test("a message is read while the queued messages and it fit the frame bound together", async () => {
+    const first = 40;
+    const f = readAheadLoop(2 * (first + 10));
+    plantBinary(f.files, first);
+    await f.pollOnce();
+    plantBinary(f.files, first);
+    await f.pollOnce();
+    expect(f.emitted.map((e) => e.event)).toEqual(["data", "data"]);
+  });
+
+  test("a message that would hold more than the frame bound unreceived is left unread until the queue drains", async () => {
+    const f = readAheadLoop(2 * 50 - 1);
+    plantBinary(f.files, 40);
+    await f.pollOnce();
+    const second = plantBinary(f.files, 40);
+    await f.pollOnce();
+    await f.pollOnce();
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+    expect(f.files.has(second.name)).toBe(true);
+
+    f.consumer.received = 1;
+    await f.pollOnce();
+    expect(f.emitted.map((e) => e.event)).toEqual(["data", "data"]);
+    expect(f.files.has(second.name)).toBe(false);
+  });
+
+  test("with nothing queued a message at the frame bound is read", async () => {
+    const f = readAheadLoop(50);
+    plantBinary(f.files, 40);
+    await f.pollOnce();
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+  });
+
+  test("a message handed straight to a waiting receive holds nothing back", async () => {
+    const f = readAheadLoop(2 * 50 - 1);
+    plantBinary(f.files, 40);
+    await f.pollOnce();
+    f.consumer.received = 1;
+    plantBinary(f.files, 40);
+    await f.pollOnce();
+    f.consumer.received = 2;
+    plantBinary(f.files, 40);
+    await f.pollOnce();
+    expect(f.emitted.map((e) => e.event)).toEqual(["data", "data", "data"]);
+  });
+
+  test("in retain mode a held message is neither read nor acked", async () => {
+    const f = makeLoop({ retainFiles: true, timestampInFilename: true });
+    const consumer = { received: 0 };
+    f.loop.setInboundQueueReader(
+      () =>
+        f.emitted.filter((e) => e.event === "data").length - consumer.received,
+    );
+    const body = (seq: number) =>
+      serializeFileSyncMessage(MESSAGE_TYPE_BINARY, seq, Buffer.alloc(40));
+    f.loop.setInboundFrameCap(2 * body(0).length - 1);
+    const plant = (seq: number) => {
+      const name = messageFilename({
+        id: PEER,
+        timestampInFilename: true,
+        byteCount: body(seq).length,
+        seq,
+        ts: Date.now(),
+      });
+      f.files.set(`${DIR}/${name}`, body(seq));
+      return name;
+    };
+    plant(0);
+    await f.pollOnce();
+    const second = plant(1);
+    await f.pollOnce();
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+    const secondAck = `${DIR}/${ackMarkerName(SELF, second.slice(0, -".json".length))}`;
+    expect(f.files.has(secondAck)).toBe(false);
+
+    consumer.received = 1;
+    await f.pollOnce();
+    expect(f.emitted.map((e) => e.event)).toEqual(["data", "data"]);
+    expect(f.files.has(secondAck)).toBe(true);
+  });
+
+  test("a loop no consumer reads for reads every message", async () => {
+    const f = makeLoop();
+    f.loop.setInboundFrameCap(50);
+    plantBinary(f.files, 40);
+    await f.pollOnce();
+    plantBinary(f.files, 40);
+    await f.pollOnce();
+    expect(f.emitted.map((e) => e.event)).toEqual(["data", "data"]);
   });
 });
 

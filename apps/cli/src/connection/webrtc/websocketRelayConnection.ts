@@ -204,6 +204,12 @@ export async function webSocketRelayHello(
 
 const START_FRAME = JSON.stringify({ type: "start" });
 
+// The longest control frame the relay sends, `{"type":"paired"}`: a longer text
+// frame is refused before it is parsed.
+const MAX_RELAY_CONTROL_FRAME_LENGTH = JSON.stringify({
+  type: "paired",
+}).length;
+
 /** A refusal of an expired proof, holding the relay's clock. */
 class ProofExpiredRefusal extends ConnectionError {
   constructor(
@@ -376,6 +382,7 @@ function relayDropError(code: number): ConnectionError {
 
 /** The relay control frame a text message holds, or undefined for any other. */
 function controlFrameType(text: string): "paired" | "start" | undefined {
+  if (text.length > MAX_RELAY_CONTROL_FRAME_LENGTH) return undefined;
   let value: unknown;
   try {
     value = parseBoundedJson(text);

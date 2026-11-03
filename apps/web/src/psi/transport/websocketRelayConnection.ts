@@ -173,6 +173,12 @@ function helloFrame(exchangeId: string, proof: WebSocketRelayProof): string {
 
 const START_FRAME = JSON.stringify({ type: "start" });
 
+// The longest control frame the relay sends, `{"type":"paired"}`: a longer text
+// frame is refused before it is parsed.
+const MAX_RELAY_CONTROL_FRAME_LENGTH = JSON.stringify({
+  type: "paired",
+}).length;
+
 /** `bytes` as a view `WebSocket.send` takes: itself when it is backed by an
  * `ArrayBuffer`, as core's encoder makes it, else a copy. */
 function ownedBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
@@ -254,6 +260,10 @@ function relayProtocolError(detail: string): ConnectionError {
 }
 
 function readRelayControlFrame(text: string): RelayControlFrame {
+  if (text.length > MAX_RELAY_CONTROL_FRAME_LENGTH)
+    throw relayProtocolError(
+      `sent a control message longer than the ${MAX_RELAY_CONTROL_FRAME_LENGTH} characters a control message may be`,
+    );
   let value: unknown;
   try {
     value = parseBoundedJson(text);

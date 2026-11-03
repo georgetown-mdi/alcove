@@ -3,6 +3,7 @@ import {
   fromEventConnection,
   DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   INACTIVITY_TIMEOUT_KEY,
+  KEX_MESSAGE_MAX_BYTES,
   getLogger,
   InternalConsistencyError,
   assertSharedSecretReadyForHandshake,
@@ -784,6 +785,7 @@ export async function prepareTransport(
       }),
       inactivityTimeoutGuidance: INACTIVITY_TIMEOUT_GUIDANCE,
       renameRefusedGuidance: RENAME_REFUSED_GUIDANCE,
+      ...(auth && { maxJsonMessageBytes: KEX_MESSAGE_MAX_BYTES }),
     });
     build.fileSync = fileSyncConn;
 

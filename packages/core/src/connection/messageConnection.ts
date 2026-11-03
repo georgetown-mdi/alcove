@@ -108,6 +108,14 @@ export interface MessageConnection {
    */
   useEnvelopeVersion?(version: number): void;
   /**
+   * Optional: from this call on, the transport refuses a partner frame that
+   * is not binary before parsing it, as a `security` failure. The encryption
+   * layer calls it on taking over the connection, since it refuses such a
+   * frame itself. A transport that parses no frame before handing it up omits
+   * it. See docs/spec/FILE_SYNC.md ("Message body format").
+   */
+  requireBinaryFrames?(): void;
+  /**
    * Optional: marks the last frame sent as one the peer will not read, such
    * as a reply to a peer that stopped as it sent the frame replied to, so
    * {@link close} does not wait for the peer to consume it. A transport whose
@@ -146,6 +154,12 @@ export interface TransportControls {
    * way.
    */
   finish: (error: ConnectionError) => void;
+  /**
+   * How many delivered messages wait in the queue for a
+   * {@link MessageConnection.receive}. A transport that reads inbound frames
+   * on its own schedule holds off reading while they hold too much.
+   */
+  queuedMessages: () => number;
 }
 
 /** The transport-specific operations the queue drives. */
@@ -218,6 +232,12 @@ interface TransportHooks {
    * hold none omits it.
    */
   useEnvelopeVersion?: (version: number) => void;
+  /**
+   * Optional: refuse partner frames that are not binary from now on (see
+   * {@link MessageConnection.requireBinaryFrames}); a transport that parses no
+   * frame omits it.
+   */
+  requireBinaryFrames?: () => void;
   /**
    * Optional: mark the last frame sent as unread (see
    * {@link MessageConnection.markLastSentUnread}); a transport whose close
@@ -360,6 +380,7 @@ export class QueuedMessageConnection implements MessageConnection {
       deliver: (message) => this.deliver(message),
       fail: (error) => this.fail(error),
       finish: (error) => this.finish(error),
+      queuedMessages: () => this.queue.length,
     });
     this.hooks.start?.();
   }
@@ -710,6 +731,10 @@ export class QueuedMessageConnection implements MessageConnection {
     this.hooks.useEnvelopeVersion?.(version);
   }
 
+  requireBinaryFrames(): void {
+    this.hooks.requireBinaryFrames?.();
+  }
+
   markLastSentUnread(): void {
     this.hooks.markLastSentUnread?.();
   }
@@ -759,6 +784,7 @@ export function fromEventConnection(
         controls.fail(asConnectionError(err, "transport"));
       conn.on("data", onData);
       conn.on("error", onError);
+      conn.setInboundQueueReader?.(controls.queuedMessages);
       return {
         send: (data) => conn.send(data),
         close: () => {
@@ -779,6 +805,7 @@ export function fromEventConnection(
         inboundPollIntervalMs: conn.inboundPollIntervalMs?.bind(conn),
         outboundFileSyncFrameBound: conn.outboundFileSyncFrameBound?.bind(conn),
         useEnvelopeVersion: conn.useEnvelopeVersion?.bind(conn),
+        requireBinaryFrames: conn.requireBinaryFrames?.bind(conn),
         markLastSentUnread: conn.markLastSentUnread?.bind(conn),
       };
     },

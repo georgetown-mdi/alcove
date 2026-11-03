@@ -65,6 +65,14 @@ export type Connection = {
   // The envelope version the key exchange negotiated, for each frame after a
   // party's first. Omitted by a transport whose frames hold none (WebRTC).
   useEnvelopeVersion?: (version: number) => void;
+  // From this call on, refuses a partner frame that is not binary before
+  // parsing it. Omitted by a transport that parses no frame (WebRTC).
+  requireBinaryFrames?: () => void;
+  // Takes a reader of how many delivered frames wait unreceived in the
+  // consumer's queue, so a transport that reads frames on its own schedule
+  // holds off reading the next. Omitted by a transport whose frames are pushed
+  // to it (WebRTC).
+  setInboundQueueReader?: (queuedMessages: () => number) => void;
   // Marks the last frame sent as one the peer will not read, so a clean close
   // does not wait for the peer to consume it. Omitted by a transport whose
   // close does not wait on the peer (WebRTC).

@@ -22,6 +22,7 @@ import {
 import { parseBoundedJson } from "../utils/boundedJson";
 import type { getLoggerForVerbosity } from "../utils/logger";
 import {
+  ConnectionError,
   InternalConsistencyError,
   UsageError,
   chainDetailCauses,
@@ -74,6 +75,16 @@ import { INACTIVITY_TIMEOUT_KEY } from "../config/connection";
 const CLEAN_DIRECTORY_RESTART_REMEDY =
   "Re-run the exchange in a clean directory; both parties must start the new " +
   "exchange fresh.";
+
+// A JSON message on a channel the encryption layer has taken over: a
+// `security` failure, as the encryption layer reports any frame that is not
+// binary, and terminal, since re-reading the file cannot change it.
+class UnencryptedMessageRefusedError extends ConnectionError {
+  constructor(message: string) {
+    super(message, "security");
+    this.name = "UnencryptedMessageRefusedError";
+  }
+}
 
 const messageFileLabel = (name: string, peerId: string, path: string) =>
   `message file ${redactPrivateKeyMaterial(name)} from ` +
@@ -309,6 +320,7 @@ export interface MessageLoopOptions {
   inactivityTimeoutGuidance?: string;
   writeWithoutRenaming?: boolean;
   renameRefusedGuidance?: string;
+  maxJsonMessageBytes?: number;
 }
 
 const INACTIVITY_LIMIT_CLAUSE = ` (the limit ${INACTIVITY_TIMEOUT_KEY} sets)`;
@@ -401,6 +413,17 @@ export class FileSyncMessageLoop {
   // partner's first message has been delivered; see envelopeVersionForFrame.
   private negotiatedEnvelopeVersion: number | undefined;
   private partnerFirstFrameDelivered = false;
+
+  // Set once the encryption layer takes over (requireBinaryFrames): a JSON
+  // message is then refused before its payload is parsed.
+  private binaryFramesRequired = false;
+
+  // The consumer's count of delivered messages it has not received
+  // (setInboundQueueReader), and the file size of each message delivered,
+  // oldest first: the queue holds the newest that many, since a receive
+  // takes a delivery directly only while the queue is empty.
+  private queuedMessages: (() => number) | undefined;
+  private deliveredFileBytes: number[] = [];
 
   private poller: NodeJS.Timeout | undefined;
   private pollerActive = false;
@@ -1047,6 +1070,15 @@ export class FileSyncMessageLoop {
             actual: messageFile.size,
             declared: declaredSize,
           });
+        } else if (this.readAheadFull(declaredSize, frameCap)) {
+          // Left unread, so unconsumed and unacked: the partner's next send
+          // waits on it until the consumer receives what is queued.
+          deps
+            .log()
+            .trace(
+              `[${deps.role()}] ${redactAndSanitizeForDisplay(messageFile.name)} ` +
+                "waits until the messages already read are received",
+            );
         } else {
           const inPath = joinFileSyncPath(path, messageFile.name);
           deps
@@ -1101,6 +1133,7 @@ export class FileSyncMessageLoop {
             seq: number;
             type: number;
             data: unknown;
+            refusal?: UnencryptedMessageRefusedError;
           } => {
             let envelope: DeserializedMessage;
             try {
@@ -1144,6 +1177,30 @@ export class FileSyncMessageLoop {
                 type: envelope.type,
                 data: envelope.payload,
               };
+            // Returned rather than thrown: the file is consumed as any
+            // received message is, so a partner waiting for it to be read
+            // (the cleartext key-exchange abort) does not wait out its drain.
+            if (this.binaryFramesRequired)
+              return {
+                seq: envelope.seq,
+                type: envelope.type,
+                data: undefined,
+                refusal: new UnencryptedMessageRefusedError(
+                  `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
+                    `from ${redactPrivateKeyMaterial(peerId)} is an ` +
+                    `unencrypted message on an encrypted channel, so it was ` +
+                    `refused without being parsed`,
+                ),
+              };
+            const jsonCap = deps.options().maxJsonMessageBytes;
+            if (jsonCap !== undefined && envelope.payload.length > jsonCap)
+              throw new UsageError(
+                `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
+                  `from ${redactPrivateKeyMaterial(peerId)} holds a JSON ` +
+                  `message of ${envelope.payload.length} bytes, over the ` +
+                  `${jsonCap}-byte limit for a key-exchange message, so it ` +
+                  `was refused without being parsed`,
+              );
             let value: unknown;
             try {
               // parseBoundedJson takes the raw payload bytes and structurally
@@ -1182,9 +1239,12 @@ export class FileSyncMessageLoop {
             // immediately rather than silently acking or delivering a
             // mismatched message.
             if (validatedMessage.seq !== msgNNN)
-              throw new UsageError(
-                `message body seq=${validatedMessage.seq} does not match ` +
-                  `filename NNN=${msgNNN}: possible corruption or protocol bug`,
+              throw (
+                validatedMessage.refusal ??
+                new UsageError(
+                  `message body seq=${validatedMessage.seq} does not match ` +
+                    `filename NNN=${msgNNN}: possible corruption or protocol bug`,
+                )
               );
 
             deps
@@ -1223,9 +1283,10 @@ export class FileSyncMessageLoop {
                 );
             }
 
+            if (validatedMessage.refusal) throw validatedMessage.refusal;
             // `data` is already the value to deliver: the parsed object for a
             // JSON control message, or the raw frame bytes for a binary frame.
-            deps.emit("data", validatedMessage.data);
+            this.deliver(validatedMessage.data, declaredSize);
             this.partnerFirstFrameDelivered = true;
             // Advance only after the application has seen the payload: if emit
             // throws, recvSeq stays at msgNNN so the (never-deleted) message file
@@ -1234,7 +1295,8 @@ export class FileSyncMessageLoop {
           } else {
             // Parse before deleting. A corrupt fully-synced message is terminal
             // (I5b), so parsing first leaves the offending file on disk for
-            // inspection instead of destroying it; a valid message is then
+            // inspection instead of destroying it; a valid message, or a type 0
+            // message refused once encryption has taken over, is then
             // consumed by deleting it (the delete-mode go-ahead signal to the
             // sender) before emit, the same ordering relative to emit as before.
             const validatedMessage = parseMessage();
@@ -1296,9 +1358,10 @@ export class FileSyncMessageLoop {
               }
             }
 
+            if (validatedMessage.refusal) throw validatedMessage.refusal;
             // `data` is already the value to deliver: the parsed object for a
             // JSON control message, or the raw frame bytes for a binary frame.
-            deps.emit("data", validatedMessage.data);
+            this.deliver(validatedMessage.data, declaredSize);
             this.partnerFirstFrameDelivered = true;
           }
         }
@@ -1357,7 +1420,11 @@ export class FileSyncMessageLoop {
         // the poller stops before emitting rather than reschedule and re-read
         // the same file. Any other error -- a transport hiccup -- reschedules
         // instead, so the never-deleted retain message is reprocessed (I8).
-        if (err instanceof UsageError || err instanceof ProtocolRefusalError)
+        if (
+          err instanceof UsageError ||
+          err instanceof ProtocolRefusalError ||
+          err instanceof UnencryptedMessageRefusedError
+        )
           this.pollerActive = false;
         deps.emit(
           "error",
@@ -1415,6 +1482,38 @@ export class FileSyncMessageLoop {
     this.inboundFrameCap = undefined;
     this.negotiatedEnvelopeVersion = undefined;
     this.partnerFirstFrameDelivered = false;
+    this.binaryFramesRequired = false;
+    this.deliveredFileBytes = [];
+  }
+
+  // Hands the consumer a message read from a file of `fileBytes` bytes.
+  private deliver(data: unknown, fileBytes: number): void {
+    this.deps.emit("data", data);
+    if (this.queuedMessages !== undefined)
+      this.deliveredFileBytes.push(fileBytes);
+  }
+
+  // Whether reading a message file of `fileBytes` bytes now would hold more
+  // than `boundBytes` in messages the consumer has not received: the files
+  // already read and queued, together with this one, may not exceed it. With
+  // none queued the file is read, so no file within the bound waits for good.
+  private readAheadFull(fileBytes: number, boundBytes: number): boolean {
+    if (this.queuedMessages === undefined) return false;
+    const queued = this.queuedMessages();
+    this.deliveredFileBytes.splice(
+      0,
+      Math.max(0, this.deliveredFileBytes.length - queued),
+    );
+    if (this.deliveredFileBytes.length === 0) return false;
+    let heldBytes = fileBytes;
+    for (const bytes of this.deliveredFileBytes) heldBytes += bytes;
+    return heldBytes > boundBytes;
+  }
+
+  // The consumer's count of messages it has not yet received, which bounds
+  // what poll() reads ahead of it (readAheadFull).
+  setInboundQueueReader(queuedMessages: () => number): void {
+    this.queuedMessages = queuedMessages;
   }
 
   // The negotiated envelope version for frames after each party's first. Only
@@ -1426,6 +1525,12 @@ export class FileSyncMessageLoop {
           "build writes",
       );
     this.negotiatedEnvelopeVersion = version;
+  }
+
+  // From this call on, a partner JSON message is refused before its payload is
+  // parsed; see MessageConnection.requireBinaryFrames.
+  requireBinaryFrames(): void {
+    this.binaryFramesRequired = true;
   }
 
   // Owns the per-exchange inbound frame cap and its clamp; the connection's
