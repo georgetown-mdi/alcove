@@ -53,7 +53,7 @@ On a host the size of the relay's, a full-workspace `npm ci` OOM-killed coturn, 
    nice -n 10 ionice -c 3 npm ci --no-audit --no-fund --workspace packages/peerjs-broker
    ```
 
-4. Install Cosign v3.0.6, the version the repository's workflows run through `sigstore/cosign-installer@v4.1.2`, from its release binary for the host's architecture: `cosign-linux-arm64` on the project's t4g instance, `cosign-linux-amd64` on an x86-64 host (`uname -m` prints `aarch64` or `x86_64`).
+4. Install Cosign v3.0.6, the version the repository's workflows run through `sigstore/cosign-installer@v4.1.2`, from its release binary for the host's architecture: `cosign-linux-arm64` on an arm64 host, `cosign-linux-amd64` on an x86-64 host (`uname -m` prints `aarch64` or `x86_64`).
    The repository states no checksum for that binary, so check it against the `cosign_checksums.txt` the same Cosign release publishes:
 
    ```sh
@@ -89,7 +89,7 @@ On a host the size of the relay's, a full-workspace `npm ci` OOM-killed coturn, 
    Refuse the build if it prints anything: a `>` line names a file the manifest does not list, a `<` line a listed file the archive does not hold.
 
    The identity names the publishing workflow on `main`, and `--certificate-github-workflow-sha` refuses a correctly signed build of any other commit.
-   Measured on the relay host (Amazon Linux 2023, t4g.nano) on 2026-10-12, Cosign v3.0.6 verified a signed archive with no token or cloud credential in its environment, refused a bundle for another identity, another commit and an altered archive, and peaked at about 66 MB of memory.
+   Measured on the relay host (Amazon Linux 2023, arm64) on 2026-10-12, Cosign v3.0.6 verified a signed archive with no token or cloud credential in its environment, refused a bundle for another identity, another commit and an altered archive, and peaked at about 66 MB of memory.
    The prerelease holds the latest commit on `main` only.
    For any other commit, build core on another machine at that commit (`npm run build -w packages/core`), pack it with `node scripts/pack-broker-core.mjs packages/core/dist <out-dir>`, and copy the files `<out-dir>` holds into the clone's `packages/core/dist/`, checking the manifest on arrival.
 6. Leave the tree owned by root and readable by all, so the broker's account cannot rewrite the code it runs: `chown -R root:root /opt/alcove-broker && chmod -R u=rwX,go=rX /opt/alcove-broker`.
