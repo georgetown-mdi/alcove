@@ -21,7 +21,7 @@ A plain `z.array(element).max(N)` closes neither: Zod v4 validates every element
 
 Two strategies bound the complete set of partner-parsed collections, chosen per field by whether a legitimate value is large:
 
-- A collection legitimately in the millions - the PSI association-table indices, the payload rows / row indices, a partner's original-index list - has a single-issue validator (`packages/core/src/utils/singleIssueArray.ts`): it validates the element type in one `every` pass that emits at most one issue regardless of count.
+- A collection legitimately in the millions - the payload rows and row indices - has a single-issue validator (`packages/core/src/utils/singleIssueArray.ts`): it validates the element type in one `every` pass that emits at most one issue regardless of count.
   So an arbitrarily large *valid* message still parses while a hostile one fails as a clean, bounded rejection.
   A count cap is unusable here - any bound low enough to forestall the `RangeError` would reject a real result.
 - A collection whose legitimate count is small - the linkage fields and keys, each constraint's `exclude` denylist, a transform step list, a key's elements, the payload `send`/`receive` column lists, the abort-reason list - has a count gate (`packages/core/src/utils/boundedArray.ts`).
@@ -127,7 +127,7 @@ Each caller maps the refusal to its own terminal error - a `ConnectionError("sec
 
 The unit is per *container*, not per byte or per total count, because that is what fits the data *at this layer*: a decoded-byte or total-count budget here would have to sit below the largest legitimate message and so would reject it, yet no single legitimate container is pathological.
 (The `camelizeKeys` total-node budget above *can* be a running total precisely because it sees only the small parsed-config family - linkage terms and the like - never these large set frames, which are parsed by other schemas the pre-pass does not touch.)
-The widest legitimate object is the `transform.params` record at `MAX_PARAMS_ENTRIES` = 256; the longest legitimate array is an association-index, payload-row, or mapped-pair list, one entry per matched record; a list that can pass this cap is sent in parts, each a message of its own held to it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+The widest legitimate object is the `transform.params` record at `MAX_PARAMS_ENTRIES` = 256; the longest legitimate array is a payload's row list, one entry per matched record; a payload that can pass this cap is sent in parts, each a message of its own held to it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
 So `MAX_JSON_OBJECT_KEYS` sits far above any real object and far below the per-object engine limit, and `MAX_JSON_ARRAY_ELEMENTS` sits above any real array and well below the array-length limit - each fires only on a pathological container and never pre-empts a schema-layer rejection or a legitimate large message.
 The depth ceiling sits far above any real nesting (the parsed-config ceiling is `camelizeKeys`' `MAX_NESTING_DEPTH` = 256) and exists chiefly to bound the scan's own per-container stack against a degenerate all-`{`/`[` body, which would otherwise exhaust memory in the pre-pass.
 This bound composes with rather than overlaps the post-parse `camelizeKeys` bounds.

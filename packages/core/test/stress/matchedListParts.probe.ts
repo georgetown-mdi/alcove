@@ -17,14 +17,22 @@ import {
 } from "../../src/connection/messageConnection";
 import { exchangePayloads } from "../../src/payloadExchange";
 import {
-  associationAndIterationArray,
   exchangeMappedElements,
-  mappedElementArray,
   mappedElementEntryBytes,
+  mappedElementSource,
+  returnedElementSource,
 } from "../../src/psi/link";
+import {
+  MAPPED_ELEMENT_LAYOUT,
+  RETURNED_ELEMENT_LAYOUT,
+  receiveWordList,
+  wordListEntryBytes,
+  type WordListLayout,
+} from "../../src/psi/uint32ListParts";
 import { makeRendezvousPair } from "../utils/fileSyncConnectionFixture";
 
 import type { FileSyncConnection } from "../../src/connection/fileSyncConnection";
+import type { WordListSource } from "../../src/psi/matchedListParts";
 
 export const PROBE_CASES = ["mappedElements", "payload"] as const;
 export type ProbeCase = (typeof PROBE_CASES)[number];
@@ -109,60 +117,43 @@ async function mappedElements(pair: Pair, entries: number): Promise<void> {
     theirIndex: i,
     iteration: i & 1,
   }));
-  const bound = { entries, entryBytes: mappedElementEntryBytes(entries, 1, 2) };
+  const exchange = (
+    sendFirst: boolean,
+    conn: MessageConnection,
+    source: WordListSource,
+    layout: WordListLayout,
+    entryBytes: number,
+  ) =>
+    exchangeMappedElements(
+      sendFirst ? "a" : "b",
+      conn,
+      quiet,
+      sendFirst,
+      source,
+      () =>
+        receiveWordList(conn, "", "list", { entries, entryBytes }, [layout]),
+    );
+  const mapped = mappedElementSource(list);
+  const mappedBytes = mappedElementEntryBytes(1);
   const [atA, atB] = await Promise.all([
-    exchangeMappedElements(
-      "a",
-      pair.a,
-      quiet,
-      true,
-      list,
-      "list",
-      bound,
-      mappedElementArray,
-    ),
-    exchangeMappedElements(
-      "b",
-      pair.b,
-      quiet,
-      false,
-      list,
-      "list",
-      bound,
-      mappedElementArray,
-    ),
+    exchange(true, pair.a, mapped, MAPPED_ELEMENT_LAYOUT, mappedBytes),
+    exchange(false, pair.b, mapped, MAPPED_ELEMENT_LAYOUT, mappedBytes),
   ]);
   for (const received of [atA, atB]) {
-    check(received.length === entries, "a mapped-element list came back short");
     check(
-      received[entries - 1].theirIndex === entries - 1,
-      "the last entry moved",
+      received.entries === entries,
+      "a mapped-element list came back short",
     );
+    check(received.values[entries - 1] === entries - 1, "the last entry moved");
   }
+  const returned = returnedElementSource(list);
+  const returnedBytes = wordListEntryBytes(RETURNED_ELEMENT_LAYOUT);
   const [backAtA, backAtB] = await Promise.all([
-    exchangeMappedElements(
-      "a",
-      pair.a,
-      quiet,
-      true,
-      list,
-      "returned list",
-      bound,
-      associationAndIterationArray,
-    ),
-    exchangeMappedElements(
-      "b",
-      pair.b,
-      quiet,
-      false,
-      list,
-      "returned list",
-      bound,
-      associationAndIterationArray,
-    ),
+    exchange(true, pair.a, returned, RETURNED_ELEMENT_LAYOUT, returnedBytes),
+    exchange(false, pair.b, returned, RETURNED_ELEMENT_LAYOUT, returnedBytes),
   ]);
   for (const received of [backAtA, backAtB])
-    check(received.length === entries, "a returned list came back short");
+    check(received.entries === entries, "a returned list came back short");
 }
 
 async function payload(pair: Pair, entries: number): Promise<void> {

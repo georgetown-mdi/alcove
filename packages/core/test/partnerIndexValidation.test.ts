@@ -209,23 +209,6 @@ test("single-pass sender refuses a resolved table naming a partner row beyond th
   expectProtocolRefusal(err, /partner half has an index outside \[0, 3\)/);
 });
 
-test("single-pass sender refuses a resolved table whose halves disagree in length", async () => {
-  const err = await singlePassWithDeviation(
-    onIndexTable((table) => [table[0], table[1].slice(1)]),
-  );
-  expectProtocolRefusal(err, /partner half has 1 entry, expected 2/);
-});
-
-test("single-pass sender refuses a resolved table with a fractional index", async () => {
-  const err = await singlePassWithDeviation(
-    onIndexTable((table) => [table[0].map(() => 1.5), table[1]]),
-  );
-  expectProtocolRefusal(
-    err,
-    /local half has an entry that is not a whole number/,
-  );
-});
-
 test("single-pass sender refuses a resolved table with a negative index", async () => {
   const err = await singlePassWithDeviation(
     onIndexTable((table) => [table[0], [-1, ...table[1].slice(1)]]),
@@ -250,7 +233,10 @@ test("single-pass sender refuses a resolved table longer than its own row count"
       [0, 1, 2, 0],
     ]),
   );
-  expectProtocolRefusal(err, /local half has 4 entries, more than the 3/);
+  expectProtocolRefusal(
+    err,
+    /inbound resolved association table declares 4 entries, over the 3 this party admits/,
+  );
 });
 
 test("single-pass sender refuses a resolved table whose local half descends", async () => {
@@ -380,7 +366,7 @@ test("single-pass sender bounds the table by the many side's row count", async (
   );
   expectProtocolRefusal(
     asOneSide.outcome,
-    /partner half has 4 entries, more than the 3/,
+    /declares 4 entries, over the 3 this party admits/,
   );
   // Where the SENDER is the "many" side, its own half is the one that keeps
   // distinctness, so its own row count is what caps the table.
@@ -393,7 +379,7 @@ test("single-pass sender bounds the table by the many side's row count", async (
   );
   expectProtocolRefusal(
     asManySide.outcome,
-    /local half has 4 entries, more than the 3/,
+    /declares 4 entries, over the 3 this party admits/,
   );
 });
 
@@ -428,20 +414,6 @@ test("cascade starter refuses a round table whose halves disagree in length", as
   expectProtocolRefusal(
     err,
     /round's association table, partner half has 3 entries, expected 2/,
-  );
-});
-
-test("cascade starter refuses a round table with a fractional index", async () => {
-  // The wire schema admits any finite number; an index that is not a whole number
-  // addresses nothing. Below a one-digit bound no fraction fits the bytes a
-  // part of whole numbers takes, so the part is refused before its body is
-  // parsed.
-  const err = await cascadeWithDeviation(
-    onIndexTable((table) => [table[0], table[1].map(() => 1.5)]),
-  );
-  expectProtocolRefusal(
-    err,
-    /round association table, local half part 0 is over the 22 bytes this party admits/,
   );
 });
 
@@ -499,16 +471,6 @@ test("cascade joiner refuses an original-index list naming an element beyond its
   );
 });
 
-test("cascade joiner refuses an original-index list with a fractional entry", async () => {
-  // Refused on the part's bytes before its body is parsed, as on the
-  // association table.
-  const err = await cascadeWithJoinerDeviation((list) => list.map(() => 1.5));
-  expectProtocolRefusal(
-    err,
-    /round original-index list part 0 is over the 22 bytes this party admits/,
-  );
-});
-
 test("cascade joiner refuses an original-index list with a negative entry", async () => {
   const err = await cascadeWithJoinerDeviation((list) => [
     -1,
@@ -551,15 +513,6 @@ test("cascade refuses a mapped-element entry naming a position outside the round
     err,
     /names a position outside that round's candidate set/,
   );
-});
-
-test("cascade refuses a mapped-element entry naming a fractional key round", async () => {
-  const err = await cascadeWithDeviation(
-    onMappedElementList(1, (list) =>
-      list.map((e) => ({ ...e, iteration: 0.5 })),
-    ),
-  );
-  expectProtocolRefusal(err, /names a key round this exchange did not run/);
 });
 
 test("cascade refuses a mapped-element entry naming a negative candidate position", async () => {
@@ -641,48 +594,6 @@ test("cascade refuses a returned mapped-element list of the wrong length", async
   expectProtocolRefusal(
     err,
     /returned mapped-element list has 1 entry, expected 2/,
-  );
-});
-
-// A partner row is three digits at this size, as long as the fractional 1.5, so
-// the part's byte bound admits it and the whole-number check is what refuses.
-async function cascadeWithManyRows(deviate: Deviation): Promise<unknown> {
-  const padding = Array.from({ length: 98 }, (_, i) => `Pad${i}`);
-  const run = await runCascade({
-    library: psiLibrary,
-    starterKeys: [["Alice", "Bob", "Carol", ...padding]],
-    joinerKeys: [["Zed", "Bob", "Carol", ...padding.map((p) => `J${p}`)]],
-    keyWidths: [1],
-    elementBounds: psiElementBounds(
-      { effectiveKeyCount: 1, recordCount: 101 },
-      { effectiveKeyCount: 1, recordCount: 101 },
-    ),
-    deviate: { party: "starter", deviation: deviate },
-  });
-  return run.starter instanceof Error ? run.starter : undefined;
-}
-
-test("cascade refuses a returned mapped-element list with a fractional partner row", async () => {
-  const err = await cascadeWithManyRows(
-    onMappedElementList(2, (list) =>
-      list.map((e) => ({ ...e, theirIndex: 1.5 })),
-    ),
-  );
-  expectProtocolRefusal(
-    err,
-    /returned mapped-element list has an entry that is not a whole number/,
-  );
-});
-
-test("cascade refuses a returned mapped-element list part longer than its byte bound", async () => {
-  const err = await cascadeWithDeviation(
-    onMappedElementList(2, (list) =>
-      list.map((e) => ({ ...e, theirIndex: 1.5 })),
-    ),
-  );
-  expectProtocolRefusal(
-    err,
-    /returned mapped-element list part 0 is over the 80 bytes this party admits for it/,
   );
 });
 
@@ -1158,30 +1069,26 @@ test("the round refuses a run longer than the key's candidate count", async () =
   expectProtocolRefusal(err, /longer than the candidate count one record may/);
 });
 
-test("the round refuses a fractional run length", async () => {
-  const err = await widenedRound(
-    "starter",
-    onRoundTable((table) => [table[0], table[1], [1.5]]),
-  );
-  expectProtocolRefusal(err, /not a positive whole number/);
-});
-
-// Two records' runs of at most 3 positions are 2 * 2 bytes of entries, so a
-// third run is past the grouping's byte bound before the reader sees it.
+// Two records' runs are 2 * 4 bytes of entries, so a third run is past the
+// grouping's byte bound before the reader sees it.
 test("the round refuses runs naming more records than the partner counted", async () => {
   const err = await widenedRound(
     "starter",
     onRoundTable((table) => [table[0], table[1], [1, 1, 1]]),
   );
-  expectProtocolRefusal(err, /part 0 is over the 22 bytes this party admits/);
+  expectProtocolRefusal(err, /part 0 is over the 32 bytes this party admits/);
   let readError: unknown;
   try {
-    readPartnerRoundGrouping([1, 1, 1], [0, 1, 2], {
-      participantId: "party",
-      maxPositionsPerRecord: 20,
-      partnerRecordCount: 2,
-      ownerLists: false,
-    });
+    readPartnerRoundGrouping(
+      { form: "run-lengths", runLengths: [1, 1, 1] },
+      [0, 1, 2],
+      {
+        participantId: "party",
+        maxPositionsPerRecord: 20,
+        partnerRecordCount: 2,
+        ownerLists: false,
+      },
+    );
   } catch (error) {
     readError = error;
   }
@@ -1319,7 +1226,11 @@ const HIGH_ORDINAL_POSITIONS = [0, 1, 2];
 
 function readHighOrdinalGrouping(): unknown {
   return readPartnerRoundGrouping(
-    [[0], [1], [5_000_000]],
+    {
+      form: "owner-lists",
+      ownerCounts: [1, 1, 1],
+      owners: [0, 1, 5_000_000],
+    },
     HIGH_ORDINAL_POSITIONS,
     {
       participantId: "party",

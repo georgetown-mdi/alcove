@@ -54,12 +54,19 @@ export function positionRowRange(
  * deduplicate, and an owner list per matched position where it does
  * (docs/spec/PROTOCOL.md, The per-round grouping the two frames hold).
  *
- * The schema that reads it off the wire bounds the structure alone
- * (`roundGroupingElement`, participant.ts); which form a party is required
- * to have sent follows the resolved cardinality both parties hold, so it is
- * decided here.
+ * The wire states the form (`receiveRoundGrouping`, roundTableParts.ts);
+ * which form a party is required to have sent follows the resolved
+ * cardinality both parties hold, so it is decided here. An owner list `t` is
+ * `owners[from .. from + ownerCounts[t])`, `from` the sum of the counts
+ * before it.
  */
-export type RoundGroupingField = ReadonlyArray<number | ReadonlyArray<number>>;
+export type RoundGroupingField =
+  | { readonly form: "run-lengths"; readonly runLengths: ArrayLike<number> }
+  | {
+      readonly form: "owner-lists";
+      readonly ownerCounts: ArrayLike<number>;
+      readonly owners: ArrayLike<number>;
+    };
 
 /**
  * One party's partition of a round's matched positions into the records
@@ -245,17 +252,18 @@ function readRunLengths(
   bounds: RoundGroupingBounds,
 ): RoundOwnership {
   const { participantId } = bounds;
+  if (field.form !== "run-lengths")
+    throw partnerProtocolError(
+      participantId,
+      "the round's grouping states an owner list where its side of the " +
+        "resolved cardinality takes run lengths",
+    );
+  const { runLengths } = field;
   const ordinals = new Int32Array(positions.length);
   const starts = new Int32Array(positions.length + 1);
   let filled = 0;
-  for (let run = 0; run < field.length; ++run) {
-    const length = field[run];
-    if (typeof length !== "number")
-      throw partnerProtocolError(
-        participantId,
-        "the round's grouping states an owner list where its side of the " +
-          "resolved cardinality takes run lengths",
-      );
+  for (let run = 0; run < runLengths.length; ++run) {
+    const length = runLengths[run];
     if (!Number.isInteger(length) || length < 1)
       throw partnerProtocolError(
         participantId,
@@ -292,7 +300,7 @@ function readRunLengths(
     );
   for (let t = 0; t <= positions.length; ++t) starts[t] = t;
   return {
-    recordCount: field.length,
+    recordCount: runLengths.length,
     positions,
     ordinals,
     starts,
@@ -300,7 +308,7 @@ function readRunLengths(
       positions,
       ordinals,
       starts,
-      field.length,
+      runLengths.length,
     ),
   };
 }
@@ -311,30 +319,40 @@ function readOwnerLists(
   bounds: RoundGroupingBounds,
 ): RoundOwnership {
   const { participantId } = bounds;
-  if (field.length !== positions.length)
+  if (field.form !== "owner-lists")
     throw partnerProtocolError(
       participantId,
-      `the round's grouping holds ${field.length} owner list(s), not the ` +
-        `${positions.length} matched position(s) the frame names`,
+      "the round's grouping states run lengths where its side of the " +
+        "resolved cardinality takes an owner list per position",
+    );
+  const { ownerCounts, owners } = field;
+  if (ownerCounts.length !== positions.length)
+    throw partnerProtocolError(
+      participantId,
+      `the round's grouping holds ${ownerCounts.length} owner list(s), not ` +
+        `the ${positions.length} matched position(s) the frame names`,
+    );
+  let ownerTotal = 0;
+  for (let t = 0; t < ownerCounts.length; ++t) ownerTotal += ownerCounts[t];
+  if (ownerTotal !== owners.length)
+    throw partnerProtocolError(
+      participantId,
+      "the round's grouping states owner counts that do not add up to the " +
+        "owners it holds",
     );
   const starts = new Int32Array(positions.length + 1);
-  const flattened: Array<number> = [];
   let highest = -1;
-  for (let t = 0; t < field.length; ++t) {
-    const owners = field[t];
-    if (typeof owners === "number")
-      throw partnerProtocolError(
-        participantId,
-        "the round's grouping states run lengths where its side of the " +
-          "resolved cardinality takes an owner list per position",
-      );
-    if (owners.length === 0)
+  let at = 0;
+  for (let t = 0; t < ownerCounts.length; ++t) {
+    const count = ownerCounts[t];
+    if (count === 0)
       throw partnerProtocolError(
         participantId,
         "the round's grouping leaves a matched position with no owner",
       );
     let previous = -1;
-    for (const ordinal of owners) {
+    for (const end = at + count; at < end; ++at) {
+      const ordinal = owners[at];
       if (!Number.isInteger(ordinal) || ordinal <= previous)
         throw partnerProtocolError(
           participantId,
@@ -343,9 +361,8 @@ function readOwnerLists(
         );
       previous = ordinal;
       if (ordinal > highest) highest = ordinal;
-      flattened.push(ordinal);
     }
-    starts[t + 1] = flattened.length;
+    starts[t + 1] = at;
   }
   // The ordinals run 0 through k - 1 with each appearing at least once, so k
   // can never exceed the entry count the frame holds. Applied here it is the
@@ -354,7 +371,7 @@ function readOwnerLists(
   // authenticated but reaches MAX_RECORD_COUNT, so one entry naming a high
   // ordinal would otherwise size an allocation the frame never paid for.
   const recordCount = highest + 1;
-  if (recordCount > flattened.length)
+  if (recordCount > owners.length)
     throw partnerProtocolError(
       participantId,
       "the round's grouping skips an ordinal, so it names a rank no record " +
@@ -367,7 +384,7 @@ function readOwnerLists(
         `${bounds.partnerRecordCount} record(s) the partner counted`,
     );
   const occurrences = new Int32Array(recordCount);
-  for (const ordinal of flattened) ++occurrences[ordinal];
+  for (let k = 0; k < owners.length; ++k) ++occurrences[owners[k]];
   for (let ordinal = 0; ordinal < recordCount; ++ordinal) {
     if (occurrences[ordinal] === 0)
       throw partnerProtocolError(
@@ -383,7 +400,7 @@ function readOwnerLists(
           `(${bounds.maxPositionsPerRecord})`,
       );
   }
-  const ordinals = Int32Array.from(flattened);
+  const ordinals = Int32Array.from(owners);
   return {
     recordCount,
     positions,
@@ -517,17 +534,19 @@ function groupingField(
 ): RoundGroupingField | undefined {
   if (!ownsSeveralPositions(ownership)) return undefined;
   if (ownerLists) {
-    const owners: Array<Array<number>> = [];
-    for (let t = 0; t < ownership.positions.length; ++t)
-      owners.push([
-        ...ownership.ordinals.subarray(
-          ownership.starts[t],
-          ownership.starts[t + 1],
-        ),
-      ]);
-    return owners;
+    const ownerCounts = new Int32Array(ownership.positions.length);
+    for (let t = 0; t < ownerCounts.length; ++t)
+      ownerCounts[t] = ownership.starts[t + 1] - ownership.starts[t];
+    return {
+      form: "owner-lists",
+      ownerCounts,
+      owners: ownership.ordinals.subarray(
+        ownership.starts[0],
+        ownership.starts[ownerCounts.length],
+      ),
+    };
   }
-  const runs = new Int32Array(ownership.recordCount);
-  for (const ordinal of ownership.ordinals) ++runs[ordinal];
-  return Array.from(runs);
+  const runLengths = new Int32Array(ownership.recordCount);
+  for (const ordinal of ownership.ordinals) ++runLengths[ordinal];
+  return { form: "run-lengths", runLengths };
 }

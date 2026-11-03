@@ -4,7 +4,6 @@ import PSI from "@openmined/psi.js";
 
 import type { PSIParticipant } from "../../src/psi/participant";
 import {
-  associationAndIterationArray,
   attributableRoundMatches,
   candidatePositionCount,
   groupDuplicatesAndRemoveUndefineds,
@@ -15,7 +14,6 @@ import {
 } from "../../src/psi/link";
 import {
   createMessagePipe,
-  receiveParsed,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
@@ -38,6 +36,7 @@ import {
   receiveHandPlayedRoundTable,
   sendHandPlayedOriginalIndexList,
 } from "../utils/matchedListPartFrames";
+import { RETURNED_ELEMENT_LAYOUT } from "../../src/psi/uint32ListParts";
 import { mirrorCardinality } from "../utils/candidateSetBounds";
 import {
   makeParticipant,
@@ -468,7 +467,7 @@ async function runNonConformingStarter(
   await conn.send(partFrame(report(inOwnRowOrder(joinerPositions, ownRows))));
   const joinerList = readPartFrame(await conn.receive())!
     .body as Array<MappedElement>;
-  await conn.send(partFrame(joinerList));
+  await conn.send(partFrame(joinerList, {}, RETURNED_ELEMENT_LAYOUT));
   await conn.receive();
 }
 
@@ -1045,18 +1044,6 @@ test("a deduplicating sender's reply stays within the cap its declared size deri
 // compare the list against its own mutated self and let the merge this check
 // exists to refuse pass silently.
 
-test("the pipe hands the partner the sent mapped elements themselves", async () => {
-  // The assumption the deviation below rests on, as a check rather than a
-  // claim: the in-memory pipe passes the array by reference and the wire schema
-  // validates it where it lies rather than rebuilding it, so a partner writing
-  // over a received entry writes over the sender's.
-  const [sender, receiver] = createMessagePipe();
-  const sent = [{ theirIndex: 3, iteration: 0 }];
-  await sender.send(sent);
-  const received = await receiveParsed(receiver, associationAndIterationArray);
-  expect(received[0]).toBe(sent[0]);
-});
-
 for (const manySide of ["starter", "joiner"] as const) {
   const [starterKeys, joinerKeys] =
     manySide === "starter" ? [manyKeys, oneKeys] : [oneKeys, manyKeys];
@@ -1152,7 +1139,7 @@ async function runManyKeysAgainstNonConformingStarter(
     const joinerList = readPartFrame(await starterConn.receive())!
       .body as Array<MappedElement>;
     for (const entry of joinerList) roundsSent.push(entry.iteration);
-    await starterConn.send(partFrame(joinerList));
+    await starterConn.send(partFrame(joinerList, {}, RETURNED_ELEMENT_LAYOUT));
     await starterConn.receive();
   })().catch(() => undefined);
 

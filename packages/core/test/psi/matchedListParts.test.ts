@@ -13,12 +13,24 @@ import {
   MATCHED_LIST_PART_HEADER_BYTES,
   matchedListPartByteBound,
   matchedListParts,
+  receiveListParts,
   receiveMatchedArray,
   receiveMatchedListParts,
   sendMatchedList,
   utf8Length,
 } from "../../src/psi/matchedListParts";
-import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
+import {
+  INDEX_LIST_LAYOUT,
+  joinWordListParts,
+  readWordListBody,
+  wordListEntryBytes,
+  wordListSource,
+} from "../../src/psi/uint32ListParts";
+import {
+  jsonPartFrame,
+  partFrame,
+  readPartFrame,
+} from "../utils/matchedListPartFrames";
 
 // The parts a matched-record list is sent in, and every part sequence a
 // receiver refuses, each at the part that draws the refusal
@@ -163,22 +175,22 @@ describe("what a receiver refuses from a part's header", () => {
     ],
     [
       "a part count of zero",
-      [partFrame([1], { count: 0, entries: 1 })],
+      [jsonPartFrame([1], { count: 0, entries: 1 })],
       "declares 0 parts for a list of 1 entry",
     ],
     [
       "more parts than entries",
-      [partFrame([1], { count: 2, entries: 1 })],
+      [jsonPartFrame([1], { count: 2, entries: 1 })],
       "declares 2 parts for a list of 1 entry",
     ],
     [
       "a later part declaring another count",
-      [first, partFrame([1], { index: 1, count: 4, entries: 40 })],
+      [first, jsonPartFrame([1], { index: 1, count: 4, entries: 40 })],
       "part 1 declares a different list than part 0",
     ],
     [
       "a later part declaring other entries",
-      [first, partFrame([1], { index: 1, count: 3, entries: 41 })],
+      [first, jsonPartFrame([1], { index: 1, count: 3, entries: 41 })],
       "part 1 declares a different list than part 0",
     ],
     [
@@ -223,7 +235,7 @@ describe("what a receiver refuses from a part's header", () => {
 describe("each part is parsed as it arrives", () => {
   test("a part whose body is refused ends the receive before the next part is read", async () => {
     const [sender, receiver] = createMessagePipe();
-    const unparseable = partFrame([1], { count: 3, entries: 3 });
+    const unparseable = jsonPartFrame([1], { count: 3, entries: 3 });
     unparseable[MATCHED_LIST_PART_HEADER_BYTES] = 0x7b;
     await sender.send(unparseable);
     const outcome = await receiveMatchedArray(
@@ -241,7 +253,7 @@ describe("each part is parsed as it arrives", () => {
 
   test("a part running past the declared entries ends the receive at that part", async () => {
     const [sender, receiver] = createMessagePipe();
-    await sender.send(partFrame([1, 2, 3], { count: 2, entries: 2 }));
+    await sender.send(jsonPartFrame([1, 2, 3], { count: 2, entries: 2 }));
     const outcome = await receiveMatchedArray(
       receiver,
       "client",
@@ -280,69 +292,71 @@ describe("each part is parsed as it arrives", () => {
 });
 
 describe("a part's byte bound", () => {
-  const source = arraySource(entries);
-  const entryBytes = Math.max(
-    ...entries.map((_, index) => source.entryBytes(index)),
-  );
-  const bound = { entries: entries.length, entryBytes };
+  const indices = entries.map((entry) => entry.theirIndex);
+  const source = wordListSource(INDEX_LIST_LAYOUT, {
+    entries: indices.length,
+    column: (_column, index) => indices[index],
+  });
+  const entryBytes = wordListEntryBytes(INDEX_LIST_LAYOUT);
+  const bound = { entries: indices.length, entryBytes };
 
   async function receivedUnder(frames: Array<unknown>) {
-    const parsePart = vi.fn(asArray);
+    let parsed = 0;
     const conn = await deliver(frames);
-    const outcome = await receiveMatchedArray(
+    const outcome = await receiveListParts(
       conn,
       "client",
       "list",
       bound,
-      parsePart,
-    ).catch((error: unknown) => error);
-    return { outcome, parsed: parsePart.mock.calls.length };
+      (body, part) => {
+        parsed++;
+        const list = readWordListBody(body, [INDEX_LIST_LAYOUT], part);
+        return { part: list, entries: list.entries };
+      },
+    ).then(
+      (parts) => Array.from(joinWordListParts(parts).columns[0]),
+      (error: unknown) => error,
+    );
+    return { outcome, parsed };
   }
 
   test("is the most bytes a part of that many entries can take", () => {
     expect(matchedListPartByteBound(0, entryBytes)).toBe(
-      MATCHED_LIST_PART_HEADER_BYTES + 2,
+      MATCHED_LIST_PART_HEADER_BYTES + 8,
     );
     expect(matchedListPartByteBound(3, entryBytes)).toBe(
-      MATCHED_LIST_PART_HEADER_BYTES + 2 + 3 * entryBytes,
+      MATCHED_LIST_PART_HEADER_BYTES + 8 + 3 * entryBytes,
     );
   });
 
   test("admits every part of a list sent within it", async () => {
-    const parts = [...matchedListParts(source, 200)];
+    const parts = [...matchedListParts(source, 64)];
     expect(parts.length).toBeGreaterThan(1);
     const { outcome } = await receivedUnder(parts);
-    expect(outcome).toEqual(entries);
+    expect(outcome).toEqual(indices);
   });
 
   test.each([
     [
       "a first part longer than the list's entries can be",
-      () => [
-        partFrame(
-          [{ theirIndex: 0, iteration: 0, padding: "x".repeat(4096) }],
-          {
-            entries: 1,
-          },
-        ),
-      ],
+      () => [partFrame([0, 1], { entries: 1 })],
       0,
-      MATCHED_LIST_PART_HEADER_BYTES + 2 + entryBytes,
+      MATCHED_LIST_PART_HEADER_BYTES + 8 + entryBytes,
     ],
     [
       "a later part longer than the entries still to come can be",
       () => {
         const [first] = [...matchedListParts(source, 1 << 20, 16)];
-        const rest = entries
-          .slice(16)
-          .map((entry) => ({ ...entry, padding: "x".repeat(entryBytes) }));
-        return [first, partFrame(rest, { index: 1, count: 3, entries: 40 })];
+        return [
+          first,
+          partFrame(indices.slice(15), { index: 1, count: 3, entries: 40 }),
+        ];
       },
       1,
-      MATCHED_LIST_PART_HEADER_BYTES + 2 + 24 * entryBytes,
+      MATCHED_LIST_PART_HEADER_BYTES + 8 + 24 * entryBytes,
     ],
   ] as Array<[string, () => Array<Uint8Array>, number, number]>)(
-    "refuses %s before parsing it",
+    "refuses %s before reading it",
     async (_name, frames, index, maxPartBytes) => {
       const sent = frames();
       const { outcome, parsed } = await receivedUnder(sent);
@@ -378,7 +392,7 @@ describe("what a receiver refuses parsing a part's body", () => {
       "a body that is not JSON",
       [
         (() => {
-          const frame = partFrame([1]);
+          const frame = jsonPartFrame([1]);
           frame[MATCHED_LIST_PART_HEADER_BYTES] = 0x7b;
           return frame;
         })(),
@@ -388,19 +402,19 @@ describe("what a receiver refuses parsing a part's body", () => {
     [
       "a part holding no entries in a list that is not empty",
       [
-        partFrame([], { index: 0, count: 2, entries: 2 }),
-        partFrame([1, 2], { index: 1, count: 2, entries: 2 }),
+        jsonPartFrame([], { index: 0, count: 2, entries: 2 }),
+        jsonPartFrame([1, 2], { index: 1, count: 2, entries: 2 }),
       ],
       "part 0 holds no entries",
     ],
     [
       "a part running past the declared entries",
-      [partFrame([1, 2, 3], { entries: 2 })],
+      [jsonPartFrame([1, 2, 3], { entries: 2 })],
       "part 0 runs past the list's declared entries",
     ],
     [
       "parts ending short of the declared entries",
-      [partFrame([1], { entries: 2 })],
+      [jsonPartFrame([1], { entries: 2 })],
       "ends short of the list's declared entries",
     ],
   ] as Array<[string, Array<unknown>, string]>)(
@@ -415,7 +429,7 @@ describe("what a receiver refuses parsing a part's body", () => {
   );
 
   test("a body's parse error names no partner byte", async () => {
-    const frame = partFrame(["secret-value"]);
+    const frame = jsonPartFrame(["secret-value"]);
     frame[frame.length - 1] = 0x2c;
     const outcome = await joined([frame]);
     expect(outcome).toBeInstanceOf(ConnectionError);
@@ -424,7 +438,7 @@ describe("what a receiver refuses parsing a part's body", () => {
   });
 
   test("each part is validated by the caller's parse", async () => {
-    const conn = await deliver([partFrame([1, "two"])]);
+    const conn = await deliver([jsonPartFrame([1, "two"])]);
     await expect(
       receiveMatchedListParts(
         conn,

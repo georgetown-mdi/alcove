@@ -11,7 +11,6 @@ import {
   PsiElementScan,
   type PsiMessageKind,
 } from "../connection/psiElementScan";
-import { singleIssueArray } from "../utils/singleIssueArray";
 import {
   assertPartnerIndexCount,
   assertPartnerIndices,
@@ -72,31 +71,6 @@ const ASSOCIATION_TABLE_LOCAL_HALF = "round association table, local half";
 const ASSOCIATION_TABLE_GROUPING = "round association table grouping";
 const ORIGINAL_INDEX_LIST = "round original-index list";
 const ORIGINAL_INDEX_LIST_GROUPING = "round original-index list grouping";
-
-// Single-pass's resolved association table, one frame.
-// CONFIRMED-EXPOSED to Zod's issue-accumulation stack overflow: a partner can
-// send a tuple whose inner index array holds hundreds of thousands of invalid
-// (non-number) elements, and Zod overflows its call stack spreading one issue
-// per element up through the inner-array and tuple frames (RangeError reproduced
-// at ~130k on Zod 4.5.4). The strict parse already caught that harmlessly; the
-// single-issue validators below turn it into a clean, bounded rejection instead.
-// A count `.max()` is not an option: the association table is the PSI
-// intersection, legitimately in the millions (MAX_FRAME_SIZE_BYTES bounds it),
-// so any overflow-forestalling count bound would reject a real result. Each
-// validator mirrors `z.number()` exactly via Number.isFinite (which, like
-// z.number(), accepts every finite number and rejects NaN/Infinity and
-// non-numbers). See utils/singleIssueArray.ts.
-/** @internal */
-export const associationTableMessage = z.tuple([
-  singleIssueArray<number>(
-    Number.isFinite,
-    "must be an array of finite numbers",
-  ),
-  singleIssueArray<number>(
-    Number.isFinite,
-    "must be an array of finite numbers",
-  ),
-]);
 
 /**
  * The per-round grouping exchange {@link PSIParticipant.identifyIntersection}
@@ -943,14 +917,12 @@ export class PSIParticipant {
         this.id,
         ASSOCIATION_TABLE_PARTNER_HALF,
         permutation.length,
-        this.elementBounds.request,
       );
       const localIndices = await receiveRoundIndexList(
         conn,
         this.id,
         ASSOCIATION_TABLE_LOCAL_HALF,
         partnerIndices.length,
-        permutation.length,
       );
       const partnerGrouping = grouping
         ? await receiveRoundGrouping(
@@ -1054,7 +1026,6 @@ export class PSIParticipant {
           this.id,
           ORIGINAL_INDEX_LIST,
           localIndices.length,
-          this.elementBounds.setup,
         );
         if (grouping)
           partnerGrouping = await receiveRoundGrouping(

@@ -5,22 +5,30 @@ import { expect, test } from "vitest";
 
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import {
-  arraySource,
+  mappedElementEntryBytes,
+  mappedElementSource,
+} from "../../src/psi/link";
+import {
   MATCHED_LIST_PART_HEADER_BYTES,
   matchedListParts,
-  receiveMatchedArray,
 } from "../../src/psi/matchedListParts";
+import {
+  MAPPED_ELEMENT_LAYOUT,
+  receiveWordList,
+} from "../../src/psi/uint32ListParts";
+
+type MappedElementEntry = Parameters<typeof mappedElementSource>[0][number];
 
 // Replays matched-list-part-vectors.json
-// (generate-matched-list-part-vectors.mjs): the parts a cascade cuts a list of
-// matched records into, byte for byte, and the part sequences a receiver
+// (generate-matched-list-part-vectors.mjs): the parts a cascade cuts a
+// mapped-element list into, byte for byte, and the part sequences a receiver
 // refuses, with the refusal's whole message.
 
 interface ListPartVectors {
   headerBytes: number;
   lists: Array<{
     name: string;
-    entries: Array<unknown>;
+    entries: Array<MappedElementEntry>;
     partPayloadBytes: number;
     partsHex: Array<string>;
   }>;
@@ -43,22 +51,32 @@ const fromHex = (hex: string): Uint8Array =>
   new Uint8Array(Buffer.from(hex, "hex"));
 const toHex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
+// The vectors' entries hold at most two positions.
+const MAX_POSITIONS = 2;
+
 async function received(
   partsHex: Array<string>,
   maxEntries: number,
-): Promise<Array<unknown>> {
+): Promise<Array<MappedElementEntry>> {
   const [a, b] = createMessagePipe();
   for (const part of partsHex) await a.send(fromHex(part));
-  return receiveMatchedArray(
+  const list = await receiveWordList(
     b,
     "client",
     "list",
-    { entries: maxEntries },
-    (value) => {
-      if (!Array.isArray(value)) throw new Error("not an array");
-      return value as Array<unknown>;
-    },
+    { entries: maxEntries, entryBytes: mappedElementEntryBytes(MAX_POSITIONS) },
+    [MAPPED_ELEMENT_LAYOUT],
   );
+  let at = 0;
+  return Array.from(list.columns[0], (iteration, index) => {
+    const positions = Array.from(
+      list.values.subarray(at, (at += list.counts[index])),
+    );
+    return {
+      theirIndex: positions.length === 1 ? positions[0] : positions,
+      iteration,
+    };
+  });
 }
 
 test("the header length is the one the vectors state", () => {
@@ -71,7 +89,7 @@ test.each(vectors.lists.map((v) => [v.name, v] as const))(
     expect(
       [
         ...matchedListParts(
-          arraySource(vector.entries),
+          mappedElementSource(vector.entries),
           vector.partPayloadBytes,
         ),
       ].map(toHex),

@@ -102,7 +102,16 @@ async function linkRound(
       if (set.length !== values || grouping === undefined)
         throw new Error("the probe's round did not take the expected form");
       grouping.describe(matched);
-      grouping.accept(partnerOwners > 1 ? owners : undefined, matched);
+      grouping.accept(
+        partnerOwners > 1
+          ? {
+              form: "owner-lists",
+              ownerCounts: owners.map((list) => list.length),
+              owners: owners.flat(),
+            }
+          : undefined,
+        matched,
+      );
       return [matched, matched];
     },
   } as unknown as PSIParticipant;

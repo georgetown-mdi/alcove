@@ -8,12 +8,11 @@ import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
 import type { ProbeCase, ProbeResult } from "./matchedListParts.probe";
 import { stressMemory } from "./stressMemory";
 
-// The lists naming matched records, exchanged over file-sync past both bounds
-// one message holds -- 2^24 entries and MAX_FRAME_SIZE_BYTES -- so each goes in
-// more than one part (docs/spec/PROTOCOL.md, A list of matched records is sent
-// in parts). Both parties run in one process, which is what the memory figure
-// in the spec counts. Minutes and several GB resident, which is why it is the
-// opt-in tier.
+// The lists naming matched records, exchanged over file-sync past 2^24
+// entries, the most one JSON message holds (docs/spec/PROTOCOL.md, A list of
+// matched records is sent in parts). Both parties run in one process, which is
+// what the memory figure in the spec counts. Several GB resident, which is why
+// it is the opt-in tier.
 
 const PROBE = fileURLToPath(
   new URL("./matchedListParts.probe.ts", import.meta.url),
@@ -56,8 +55,9 @@ function measure(probe: ProbeCase, entries: number): ProbeResult {
 // The free memory a case needs before it spawns: its peak resident set as
 // measured in docs/spec/PROTOCOL.md, rounded up to whole GiB.
 const cases: ReadonlyArray<[ProbeCase, number, number, number]> = [
-  // Four lists of two parts each: two mapped-element passes, each way.
-  ["mappedElements", PAST_LIST_LIMIT, 8, 9],
+  // Four lists of one part each, two mapped-element passes each way: a word
+  // list's part is held to the frame's bytes alone, which these fit.
+  ["mappedElements", PAST_LIST_LIMIT, 4, 4],
   // One payload of two parts, and the partner's empty one.
   ["payload", PAST_LIST_LIMIT, 3, 7],
 ];
