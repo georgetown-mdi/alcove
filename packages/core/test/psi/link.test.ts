@@ -1459,6 +1459,10 @@ test("a file-sync reply too large for one file stops before it is written, and t
   await expect(sender).rejects.toThrow(
     /the single-pass reply came to \d+ byte\(s\), above the 400 byte\(s\)/,
   );
+  await expect(sender).rejects.toThrow(
+    /To shrink it, either party can reduce its record count or split its dataset into smaller batches/,
+  );
+  await expect(sender).rejects.not.toThrow(SINGLE_PASS_LOCAL_REMEDY);
   await expect(receiver).rejects.toBeInstanceOf(PeerAbortError);
 });
 

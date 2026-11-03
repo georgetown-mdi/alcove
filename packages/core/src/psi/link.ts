@@ -1889,7 +1889,8 @@ function singlePassOverCapMessage(
 // Over file-sync a frame's real size is known only after masking, and the
 // counts bound it from above without deciding it: a run can fit where its counts
 // would not. So a frame too large for one message file is refused here, ahead of
-// the write, and the partner parked on it is told.
+// the write, and the partner parked on it is told. The reply includes the
+// receiver's re-encrypted request, so its remedy is addressed to both parties.
 async function refuseSinglePassFrameOverFileBound(
   conn: MessageConnection,
   id: string,
@@ -1904,10 +1905,16 @@ async function refuseSinglePassFrameOverFileBound(
   );
   if (fileBytes <= fileBound) return;
   await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
+  const remedy =
+    frame === "reply"
+      ? "To shrink it, either party can reduce its record count or split its " +
+        "dataset into smaller batches, or the two parties can agree on new " +
+        "terms with fewer linkage keys."
+      : SINGLE_PASS_LOCAL_REMEDY;
   throw new UsageError(
     `${id}: the single-pass ${frame} came to ${fileBytes} byte(s), above the ` +
       `${fileBound} byte(s) one exchange file can hold, so the exchange stopped ` +
-      `and your partner was told. ${SINGLE_PASS_LOCAL_REMEDY}`,
+      `and your partner was told. ${remedy}`,
   );
 }
 
