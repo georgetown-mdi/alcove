@@ -23,7 +23,7 @@ import {
 } from "./uint32ListParts";
 
 import type { MessageConnection } from "../connection/messageConnection";
-import type { MatchedListBound } from "./matchedListParts";
+import type { MatchedListBound, WordListSource } from "./matchedListParts";
 import type { RoundGroupingBounds, RoundGroupingField } from "./roundGrouping";
 
 /** Sends one index list of a round's position-naming frame, in parts. */
@@ -61,50 +61,54 @@ export async function receiveRoundIndexList(
   return Array.from(list.columns[0]);
 }
 
+/** @internal exported for the part tests, which send a grouping in many parts. */
+export function roundGroupingSource(
+  field: RoundGroupingField | undefined,
+): WordListSource {
+  if (field === undefined)
+    return wordListSource(OMITTED_GROUPING_LAYOUT, {
+      entries: 0,
+      column: () => 0,
+    });
+  if (field.form === "run-lengths") {
+    const { runLengths } = field;
+    return wordListSource(RUN_LENGTHS_LAYOUT, {
+      entries: runLengths.length,
+      column: (_column, index) => runLengths[index],
+    });
+  }
+  const { ownerCounts, owners } = field;
+  const from = new Float64Array(ownerCounts.length);
+  for (let t = 1; t < ownerCounts.length; t++)
+    from[t] = from[t - 1] + ownerCounts[t - 1];
+  return wordListSource(OWNER_LISTS_LAYOUT, {
+    entries: ownerCounts.length,
+    column: () => 0,
+    ragged: (index) =>
+      Array.prototype.slice.call(
+        owners,
+        from[index],
+        from[index] + ownerCounts[index],
+      ) as Array<number>,
+  });
+}
+
 /**
  * Sends a round's grouping after the index lists it describes, in parts; an
- * omitted grouping is one part of no entries.
+ * omitted grouping is one part of no entries. A grouping whose parts total
+ * more than the connection's stated frame bound, which the receiver holds it
+ * to, sends no part and throws an `InternalConsistencyError`.
  */
 export async function sendRoundGrouping(
   conn: MessageConnection,
   field: RoundGroupingField | undefined,
 ): Promise<void> {
-  if (field === undefined)
-    await sendMatchedList(
-      conn,
-      wordListSource(OMITTED_GROUPING_LAYOUT, {
-        entries: 0,
-        column: () => 0,
-      }),
-    );
-  else if (field.form === "run-lengths") {
-    const { runLengths } = field;
-    await sendMatchedList(
-      conn,
-      wordListSource(RUN_LENGTHS_LAYOUT, {
-        entries: runLengths.length,
-        column: (_column, index) => runLengths[index],
-      }),
-    );
-  } else {
-    const { ownerCounts, owners } = field;
-    const from = new Float64Array(ownerCounts.length);
-    for (let t = 1; t < ownerCounts.length; t++)
-      from[t] = from[t - 1] + ownerCounts[t - 1];
-    await sendMatchedList(
-      conn,
-      wordListSource(OWNER_LISTS_LAYOUT, {
-        entries: ownerCounts.length,
-        column: () => 0,
-        ragged: (index) =>
-          Array.prototype.slice.call(
-            owners,
-            from[index],
-            from[index] + ownerCounts[index],
-          ) as Array<number>,
-      }),
-    );
-  }
+  await sendMatchedList(
+    conn,
+    roundGroupingSource(field),
+    undefined,
+    statedFrameBound(conn),
+  );
 }
 
 // A part's header and its body's layout tag and entry count, charged for each

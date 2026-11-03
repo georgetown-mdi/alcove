@@ -11,13 +11,15 @@ import {
 import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
 import { webrtcFrameExceedsBound } from "../../src/connection/webrtcOutboundBound";
 import { binaryPackByteStringLength } from "../../src/connection/webrtcOutboundBound";
-import { ConnectionError } from "../../src/errors";
+import { ConnectionError, InternalConsistencyError } from "../../src/errors";
+import { matchedListParts } from "../../src/psi/matchedListParts";
 import { psiSetPartPayloadBytes } from "../../src/psi/psiSetParts";
 import { readPartnerRoundGrouping } from "../../src/psi/roundGrouping";
 import {
   receiveRoundGrouping,
   receiveRoundIndexList,
   roundGroupingBound,
+  roundGroupingSource,
   sendRoundGrouping,
   sendRoundIndexList,
 } from "../../src/psi/roundTableParts";
@@ -67,6 +69,20 @@ function webRtcPipe(): {
 const ENTRIES_PER_PART = Math.floor(
   (psiSetPartPayloadBytes(webRtcPipe().sender) - 8) / 4,
 );
+
+// A grouping sent in the parts `conn`'s frame bound cuts it to, without the
+// sender's check of their total against that bound, which several parts
+// at that bound exceed.
+async function sendGroupingUnchecked(
+  conn: MessageConnection,
+  field: RoundGroupingField | undefined,
+): Promise<void> {
+  for (const part of matchedListParts(
+    roundGroupingSource(field),
+    psiSetPartPayloadBytes(conn),
+  ))
+    await conn.send(part);
+}
 
 const digits = (count: number): Array<number> =>
   Array.from({ length: count }, (_, i) => i % 10);
@@ -178,7 +194,7 @@ test("a grouping in several parts joins back in order, in either form", async ()
   const owners = ownerLists(Array.from({ length: 60 }, (_, i) => [i, i + 1]));
   for (const grouping of [runs, owners]) {
     const { sender, receiver, sent } = webRtcPipe();
-    await sendRoundGrouping(sender, grouping);
+    await sendGroupingUnchecked(sender, grouping);
     expect(sent.length).toBeGreaterThan(1);
     expect(
       plain(
@@ -277,7 +293,7 @@ test.each([
       }),
     ).not.toThrow();
     const { sender, receiver, sent } = webRtcPipe();
-    await sendRoundGrouping(sender, grouping);
+    await sendGroupingUnchecked(sender, grouping);
     expect(sent.length).toBeGreaterThan(2);
     const sentBytes = sent.reduce((sum, frame) => sum + frame.byteLength, 0);
     expect(sentBytes).toBe(
@@ -465,6 +481,29 @@ test("a grouping over the frame bound in all its parts is refused, one just unde
       )
     ).message,
   ).toMatch(/part 3 is over the 28 bytes this party admits/);
+});
+
+test("a grouping is sent only if its parts total within the frame bound", async () => {
+  const sendAtBound = async (grouping: RoundGroupingField | undefined) => {
+    const { sender, sent } = webRtcPipe();
+    const outcome = await sendRoundGrouping(sender, grouping).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    return { sent, outcome };
+  };
+  const fits = await sendAtBound(ownerLists([[1, 2, 3]]));
+  expect(fits.outcome).toBeUndefined();
+  expect(fits.sent).toHaveLength(1);
+
+  const grouping = largestOwnerLists(8, 60, 4);
+  const over = await sendAtBound(grouping);
+  expect(over.sent).toHaveLength(0);
+  expect(over.outcome).toBeInstanceOf(InternalConsistencyError);
+  expect(over.outcome).not.toBeInstanceOf(ConnectionError);
+  expect((over.outcome as Error).message).toMatch(
+    new RegExp(`list of \\d+ bytes is over the ${WEBRTC_BOUND} bytes`),
+  );
 });
 
 test("a grouping of one-entry parts is refused once their bytes pass the frame bound", async () => {
