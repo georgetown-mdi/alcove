@@ -366,7 +366,12 @@ describe("the readiness check", () => {
       )
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("Re-invite your partner", { exact: false }))
+      .element(
+        page.getByText(
+          "Change the coordination server under Connection settings",
+          { exact: false },
+        ),
+      )
       .toBeInTheDocument();
     expect(probe).not.toHaveBeenCalled();
   });
