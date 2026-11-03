@@ -27,8 +27,8 @@ import {
 import {
   LINKAGE_STRATEGY_LABEL,
   LINKAGE_STRATEGY_OPTION_COPY,
-  SINGLE_PASS_DISCLOSURE_BODY,
   SINGLE_PASS_DISCLOSURE_TITLE,
+  SINGLE_PASS_TERMS_STATEMENT,
 } from "@psi/linkageStrategyChoice";
 import {
   USE_BUILT_IN_RULES_LABEL,
@@ -444,7 +444,7 @@ export function KeysTab({
           role="alert"
           mt="sm"
         >
-          {SINGLE_PASS_DISCLOSURE_BODY}
+          {SINGLE_PASS_TERMS_STATEMENT}
         </Alert>
       )}
       {countOnly && (

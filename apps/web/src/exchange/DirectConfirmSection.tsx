@@ -32,8 +32,8 @@ import {
 import {
   LINKAGE_STRATEGY_LABEL,
   LINKAGE_STRATEGY_OPTION_COPY,
-  SINGLE_PASS_DISCLOSURE_BODY,
   SINGLE_PASS_DISCLOSURE_TITLE,
+  SINGLE_PASS_TERMS_STATEMENT,
 } from "@psi/linkageStrategyChoice";
 import { overlongColumnsAlert, sanitizedColumnsAlert } from "@psi/columnNames";
 
@@ -268,7 +268,7 @@ export function DirectConfirmSection({
             // even if Mantine's default role changes.
             role="alert"
           >
-            {SINGLE_PASS_DISCLOSURE_BODY}
+            {SINGLE_PASS_TERMS_STATEMENT}
           </Alert>
         )}
       </Stack>

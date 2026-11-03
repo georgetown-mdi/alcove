@@ -19,8 +19,8 @@ import {
 } from "@alcove/core";
 
 import {
-  SINGLE_PASS_DISCLOSURE_BODY,
   SINGLE_PASS_DISCLOSURE_TITLE,
+  SINGLE_PASS_TERMS_STATEMENT,
 } from "@psi/linkageStrategyChoice";
 import { DEDUPLICATE_CONTROL_LABEL } from "@psi/deduplicateChoice";
 
@@ -1056,7 +1056,7 @@ describe("direct exchange confirm and run", () => {
     await expect
       .element(page.getByText(SINGLE_PASS_DISCLOSURE_TITLE))
       .toBeInTheDocument();
-    expect(app.container.textContent).toContain(SINGLE_PASS_DISCLOSURE_BODY);
+    expect(app.container.textContent).toContain(SINGLE_PASS_TERMS_STATEMENT);
     // The preview is the terms the run uses, so the terms panel exposes the
     // strategy too rather than showing the cascade the run does not use.
     expect(app.container.textContent).toContain(
