@@ -615,9 +615,13 @@ function partnerStorageFailure(
     kind: "partner-storage",
     title: PARTNER_SECRET_NOT_SAVED_TITLE,
     message:
-      `${stopped} Scheduled runs keep running but cannot reach your partner, ` +
-      "and running the exchange again cannot either; it needs a fresh " +
-      "invitation, which keeps your terms and gives the exchange a new secret.",
+      partnerStorageReach(record, now) === "not-kept-after-success"
+        ? `${stopped} It needs a fresh invitation, which keeps your terms ` +
+          "and gives the exchange a new secret."
+        : `${stopped} Scheduled runs keep running but cannot reach your ` +
+          "partner, and running the exchange again cannot either; it needs a " +
+          "fresh invitation, which keeps your terms and gives the exchange a " +
+          "new secret.",
     recovery: "reinvite",
   };
 }

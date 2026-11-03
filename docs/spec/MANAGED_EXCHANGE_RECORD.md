@@ -800,8 +800,6 @@ Neither write clears it while the record lists a run after the condition's
 `since` holding a failed save on this device or a failed-closed handshake,
 whichever side of the success it falls: the first raise kept that run off the
 record, so the condition stays standing for the operator's acknowledgement.
-Its view then keeps the copy the partner's report sets, so a not-kept report
-still says no run reaches the partner after that success.
 
 The condition tiers as the equivalent `lastRun` entry would: a `"storage"`
 condition is the benign persist-failure state, a `"partner-storage"` condition

@@ -2112,7 +2112,7 @@ function secretVerdictListedSince(
 
 /** Whether a run the record lists ({@link recentRunsOf}) succeeded after
  * `since`, and where `notAfterMs` is given, no later than it. */
-function runSucceededSince(
+export function runSucceededSince(
   record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
   since: string,
   notAfterMs: number = Number.POSITIVE_INFINITY,

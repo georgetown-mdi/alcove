@@ -272,6 +272,8 @@ function partnerStorageClause(reach: PartnerStorageReach): string {
       return "the next run can still reach them";
     case "not-kept":
       return "no run can reach them until you re-invite";
+    case "not-kept-after-success":
+      return "re-invite to reconnect";
   }
 }
 

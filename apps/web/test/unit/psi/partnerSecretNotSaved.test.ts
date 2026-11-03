@@ -285,6 +285,109 @@ describe("a managed exchange", () => {
     },
   );
 
+  describe("where a success is listed after the condition but a failed-closed handshake follows it", () => {
+    const missedLater = {
+      at: "2026-07-14T11:00:00.000Z",
+      outcome: "missed",
+    } as const;
+    const auth = {
+      at: "2026-07-14T10:00:00.000Z",
+      outcome: "failed",
+      failureKind: "auth",
+    } as const;
+    const succeeded = {
+      at: "2026-07-14T09:30:00.000Z",
+      outcome: "succeeded",
+    } as const;
+    const withSuccess = () =>
+      record({
+        previousSharedSecret: undefined,
+        lastRun: missedLater,
+        recentRuns: [missedLater, auth, succeeded],
+        standingCondition: { since: RUN_AT, kind: "partner-storage" },
+      });
+    const withoutSuccess = () =>
+      record({
+        previousSharedSecret: undefined,
+        lastRun: missedLater,
+        recentRuns: [missedLater, auth],
+        standingCondition: { since: RUN_AT, kind: "partner-storage" },
+      });
+
+    test("the run surface drops the sentence that no run can reach the partner", () => {
+      const failure = managedRunFailureFromRecord(
+        withSuccess(),
+        undefined,
+        NOW,
+      );
+      if (failure === undefined) throw new Error("expected the alert");
+      expect(failure.kind).toBe("partner-storage");
+      expect(failure.message).toMatch(
+        /\. It needs a fresh invitation, which keeps your terms and gives the exchange a new secret\.$/,
+      );
+      expect(failure.message).not.toMatch(/cannot reach your partner/);
+      expect(failure.message).not.toMatch(/cannot either/);
+      expect(managedRunReinvites(failure)).toBe(true);
+    });
+
+    test("the run surface keeps the sentence with no success listed", () => {
+      const failure = managedRunFailureFromRecord(
+        withoutSuccess(),
+        undefined,
+        NOW,
+      );
+      expect(failure?.message).toMatch(
+        /\. Scheduled runs keep running but cannot reach your partner, and running the exchange again cannot either; it needs a fresh invitation/,
+      );
+    });
+
+    test("the between-visit notification drops its sentence and keeps the re-invite", () => {
+      const notice = betweenVisitNotice({
+        record: withSuccess(),
+        local: undefined,
+        caughtUpMisses: 1,
+        disposition: "missed",
+        now: NOW,
+      });
+      expect(notice?.kind).toBe("partner-storage");
+      expect(notice?.body).toMatch(
+        /\. Open this app and re-invite your partner\.$/,
+      );
+      expect(notice?.body).not.toMatch(/cannot reach your partner/);
+      const without = betweenVisitNotice({
+        record: withoutSuccess(),
+        local: undefined,
+        caughtUpMisses: 1,
+        disposition: "missed",
+        now: NOW,
+      });
+      expect(without?.body).toMatch(
+        /Scheduled runs keep running but cannot reach your partner until you re-invite them\. Open this app and re-invite your partner\.$/,
+      );
+    });
+
+    test("the saved-exchanges list reads re-invite to reconnect, and keeps its line with no success", () => {
+      expect(savedExchangeRow(withSuccess(), undefined, NOW).status).toMatch(
+        /^Your partner could not save the new secret \(.*\); re-invite to reconnect$/,
+      );
+      expect(savedExchangeRow(withoutSuccess(), undefined, NOW).status).toMatch(
+        /; no run can reach them until you re-invite$/,
+      );
+    });
+
+    test("the standing alert drops the sentence, and keeps it with no success", () => {
+      expect(
+        managedStandingConditionView(withSuccess(), undefined, NOW)?.message,
+      ).toMatch(/\. Re-invite your partner to reconnect\. /);
+      expect(
+        managedStandingConditionView(withSuccess(), undefined, NOW)?.message,
+      ).not.toMatch(/cannot reach your partner/);
+      expect(
+        managedStandingConditionView(withoutSuccess(), undefined, NOW)?.message,
+      ).toMatch(/cannot reach your partner, and running the exchange again/);
+    });
+  });
+
   test("a no-show after it keeps the re-invite on the live launch", () => {
     const live = classifyManagedRunFailure(
       new PartnerNoShowError("nobody arrived"),
