@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
+import {
+  MAX_FRAME_SIZE_BYTES,
+  MAX_PSI_DECODE_ELEMENTS,
+} from "../src/connection/frameSize";
+import { sendAbort, sendLocalFaultAbort } from "../src/protocolSetup";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import {
   PeerAbortError,
@@ -22,6 +26,7 @@ import {
   roundOneSetOverPartnerCeilingMessage,
 } from "../src/exchange/firstRoundCapacity";
 import {
+  LOCAL_FAULT_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "../src/partnerAbortFrame";
@@ -39,7 +44,11 @@ import type {
   LinkageKey,
   LinkageStrategy,
 } from "../src/config/linkageTermsSchema";
-import type { PreparedExchange, RunExchangeOptions } from "../src/exchange";
+import type {
+  PreparedExchange,
+  RunExchangeOptions,
+  SinglePassPartnerSize,
+} from "../src/exchange";
 import type { Algorithm } from "../src/types";
 import { prepared } from "./utils/support";
 
@@ -556,6 +565,124 @@ test("a failure of the capacity check other than a capacity refusal propagates a
   expect(sent).not.toContainEqual(
     expect.objectContaining({ decision: "abort" }),
   );
+});
+
+describe("single-pass over file-sync, at the terms exchange", () => {
+  const fileSync = (conn: MessageConnection): MessageConnection =>
+    Object.assign(conn, {
+      outboundFileSyncFrameBound: () => MAX_FRAME_SIZE_BYTES,
+    });
+
+  async function runSinglePass(
+    localFileSync: boolean,
+    check: RunExchangeOptions["checkSinglePassPartnerSize"],
+    strategy: LinkageStrategy = "single-pass",
+  ) {
+    const [local, partner] = createMessagePipe();
+    const sent: Array<unknown> = [];
+    const wrap = (conn: MessageConnection, frames: Array<unknown>) => {
+      const wrapped = withCeiling(conn, undefined, frames);
+      return localFileSync ? fileSync(wrapped) : wrapped;
+    };
+    const outcomes = await Promise.allSettled([
+      runExchange(
+        wrap(local, sent),
+        "initiator",
+        preparedRows("Local Co", 5, strategy),
+        {
+          psiLibrary,
+          checkSinglePassPartnerSize: check,
+        },
+      ),
+      runExchange(
+        wrap(partner, []),
+        "responder",
+        preparedRows("Partner Co", 12, strategy),
+        {
+          psiLibrary,
+        },
+      ),
+    ]);
+    return { local: outcomes[0], partner: outcomes[1], sent };
+  }
+
+  test("the check is handed the declared sizes, and a run it passes proceeds", async () => {
+    const seen: Array<SinglePassPartnerSize> = [];
+    const { local, partner } = await runSinglePass(true, (size) => {
+      seen.push(size);
+    });
+    expect(local.status).toBe("fulfilled");
+    expect(partner.status).toBe("fulfilled");
+    // The larger party sends, so this party receives and is handed its table.
+    expect(seen).toEqual([
+      {
+        partnerValueSlots: 12,
+        localValueSlots: 5,
+        partnerRecordCount: 12,
+        irreducibleReplyBytes: 48,
+      },
+    ]);
+  });
+
+  test("a capacity refusal stops the run before any set moves and tells the partner", async () => {
+    const failure = new RoundCapacityError("cannot fit", "terms-exchange");
+    const { local, partner, sent } = await runSinglePass(true, () => {
+      throw failure;
+    });
+    expect((local as PromiseRejectedResult).reason).toBe(failure);
+    expect(binaryFrames(sent)).toEqual([]);
+    expect(sent.at(-1)).toEqual({
+      decision: "abort",
+      abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
+    });
+    expect((partner as PromiseRejectedResult).reason).toBeInstanceOf(
+      PeerAbortError,
+    );
+  });
+
+  test("a connection stating no file-sync bound is not checked here", async () => {
+    const check = vi.fn();
+    const { local } = await runSinglePass(false, check);
+    expect(local.status).toBe("fulfilled");
+    expect(check).not.toHaveBeenCalled();
+  });
+
+  test("a cascade over file-sync is not checked here", async () => {
+    const check = vi.fn();
+    await runSinglePass(true, check, "cascade");
+    expect(check).not.toHaveBeenCalled();
+  });
+});
+
+describe("the abort frame a local fault sends", () => {
+  const FAULT_WAIT_MS = 5_000;
+
+  test("the partner reads it in place of the frame it awaits", async () => {
+    const [local, partner] = createMessagePipe();
+    await sendLocalFaultAbort(local, FAULT_WAIT_MS);
+    expect(await partner.receive()).toEqual({
+      decision: "abort",
+      abortReasons: [LOCAL_FAULT_ABORT_REASON],
+    });
+  });
+
+  test("a run's own refusal already told the partner, so a second is not sent", async () => {
+    const [local] = createMessagePipe();
+    const sent: Array<unknown> = [];
+    const conn = withCeiling(local, undefined, sent);
+    await sendAbort(conn, [PARTNER_SET_OVER_CAPACITY_ABORT_REASON]);
+    await sendLocalFaultAbort(conn, FAULT_WAIT_MS);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("a write that cannot finish does not hold up the run's end", async () => {
+    const conn: MessageConnection = {
+      send: () => new Promise<void>(() => {}),
+      receive: () => new Promise<never>(() => {}),
+      close: async () => {},
+    };
+    await expect(sendLocalFaultAbort(conn, 1)).resolves.toBeUndefined();
+  });
 });
 
 describe("in a count-only exchange", () => {

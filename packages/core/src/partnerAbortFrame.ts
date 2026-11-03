@@ -54,6 +54,14 @@ export const NEXT_SECRET_STORE_FAILED_ABORT_REASON =
 export const PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON =
   "the partner could not remove its previous shared secret";
 
+/**
+ * The abort reason a party sends when a fault of its own ends the run past the
+ * terms exchange and no authenticated abort marker is armed to say so
+ * (`sendLocalFaultAbort`). A fixed literal, as every abort reason must be (see
+ * `sendAbort`): it states nothing of what the fault was.
+ */
+export const LOCAL_FAULT_ABORT_REASON = "the partner's run stopped on a fault";
+
 // The fixed reasons a partner's abort past the terms exchange is matched
 // against: those a PSI round sends, and the two failed saves of a rotation.
 const KEPT_ABORT_REASONS: ReadonlyArray<string> = [
@@ -62,6 +70,7 @@ const KEPT_ABORT_REASONS: ReadonlyArray<string> = [
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
+  LOCAL_FAULT_ABORT_REASON,
 ];
 
 /**

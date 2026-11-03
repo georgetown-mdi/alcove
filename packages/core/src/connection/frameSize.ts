@@ -1,3 +1,5 @@
+import { FAN_OUT_CANDIDATES_PER_ELEMENT } from "../fanOutFunctions";
+
 /**
  * Maximum size, in bytes, of a single inbound frame the transport reads into
  * memory, and the upper clamp for the single-pass cap below
@@ -24,9 +26,12 @@ export const MAX_PSI_DECODE_ELEMENTS = 2 ** 24;
 export const BROWSER_PSI_SET_MAX_ELEMENTS = 8_388_608;
 
 /**
- * The single-pass dataset ceiling, a per-party budget on value slots
- * (`effectiveKeyCount * recordCount`, not rows). Fixed, not configurable: a
- * configurable maximum reopens the memory-exhaustion denial of service. Raise it
+ * The single-pass dataset ceiling over WebRTC, a per-party budget on value slots
+ * (`effectiveKeyCount * recordCount`, not rows), so the derived reply stays under
+ * `MAX_WEBRTC_FRAME_BYTES`. File-sync has no such budget: it has
+ * {@link MAX_FRAME_SIZE_BYTES}, {@link MAX_PSI_DECODE_ELEMENTS} and the check at
+ * the terms exchange. Fixed, not configurable: a configurable maximum reopens the
+ * memory-exhaustion denial of service. Raise it
  * only by re-deriving it from a fresh measurement (docs/spec/PROTOCOL.md, The
  * single-pass dataset ceiling: receiver memory and masking compute).
  */
@@ -86,7 +91,8 @@ export function partyFansOut(
 
 /**
  * Whether one party's own value slots exceed {@link MAX_SINGLE_PASS_CELLS}: the
- * one-party pre-flight in {@link prepareForExchange}. The two-party gate is
+ * one-party pre-flight in {@link prepareForExchange} on any channel but
+ * file-sync, which has no such limit. The two-party gate is
  * {@link singlePassCeilingBreach}.
  */
 export function singlePassDatasetExceedsCap(
@@ -112,9 +118,9 @@ export const SINGLE_PASS_LOCAL_REMEDY =
 export type SinglePassCeilingBreach = "local" | "partner" | "both";
 
 /**
- * Which side breached the single-pass ceiling, from the asking party's view, or
- * `undefined` within it. Computed from authenticated state both parties have, so
- * the two verdicts mirror each other and the abort stays symmetric.
+ * Which side breached the WebRTC single-pass ceiling, from the asking party's
+ * view, or `undefined` within it. Computed from authenticated state both parties
+ * have, so the two verdicts mirror each other and the abort stays symmetric.
  */
 export function singlePassCeilingBreach(
   local: SinglePassPartySize,
@@ -150,7 +156,8 @@ export function singlePassExchangeExceedsCap(
  * The accepted byte size of the single-pass reply, identical on both parties:
  * the receiver's read gate and the sender's send-time check. Its terms and integer
  * arithmetic are fixed in docs/spec/PROTOCOL.md (The single-pass dataset ceiling).
- * Call only for an in-cap exchange.
+ * Over WebRTC call only for an in-cap exchange. Over file-sync the sum can round
+ * above 2^53, which leaves it past the clamp the read gate applies.
  */
 export function singlePassReplyByteCap(
   keyCount: number,
@@ -164,6 +171,24 @@ export function singlePassReplyByteCap(
     SINGLE_PASS_BYTES_PER_INDEX_WORD * keyCount * sender.recordCount +
     SINGLE_PASS_REPLY_OVERHEAD_BYTES
   );
+}
+
+/**
+ * The least memory a single-pass reply from this sender can take, in bytes: its
+ * index table's one word per key and row, which no choice of values reduces. A
+ * declared count is the sender's rows times its fan-out factor, 1 or
+ * {@link FAN_OUT_CANDIDATES_PER_ELEMENT}, so a count the larger factor divides is
+ * weighed at the fewer rows.
+ */
+export function singlePassIrreducibleReplyBytes(
+  keyCount: number,
+  senderRecordCount: number,
+): number {
+  const rows =
+    senderRecordCount % FAN_OUT_CANDIDATES_PER_ELEMENT === 0
+      ? senderRecordCount / FAN_OUT_CANDIDATES_PER_ELEMENT
+      : senderRecordCount;
+  return SINGLE_PASS_BYTES_PER_INDEX_WORD * keyCount * rows;
 }
 
 /**

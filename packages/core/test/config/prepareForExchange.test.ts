@@ -745,6 +745,41 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
     expect(prepare).toThrow(/Removing a step that splits values/);
   });
 
+  test.each(["sftp", "filedrop"] as const)(
+    "a file-sync %s run has no size refusal",
+    (channel) => {
+      const rows = rowsOverCeiling(declaredEffectiveKeyCount(singlePassTerms));
+      const prepared = prepareForExchange(
+        { linkageTerms: singlePassTerms, metadata },
+        "Tester",
+        rows,
+        columns,
+        undefined,
+        undefined,
+        channel,
+      );
+      expect(prepared.rowCount).toBe(rows.length);
+    },
+  );
+
+  test.each(["webrtc", undefined] as const)(
+    "a run on channel %s keeps the WebRTC budget",
+    (channel) => {
+      const prepare = () =>
+        prepareForExchange(
+          { linkageTerms: singlePassTerms, metadata },
+          "Tester",
+          rowsOverCeiling(declaredEffectiveKeyCount(singlePassTerms)),
+          columns,
+          undefined,
+          undefined,
+          channel,
+        );
+      expect(prepare).toThrow(OperatorConfigError);
+      expect(prepare).toThrow(/exceed the single-pass limit\./);
+    },
+  );
+
   test("a fan-out config inside the ceiling prepares", () => {
     // The pre-flight's other side: the same terms over a dataset the declared
     // width admits reach the built exchange rather than a refusal, so the case

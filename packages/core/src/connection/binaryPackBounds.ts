@@ -49,11 +49,10 @@
  *
  * Also the WebRTC half of the single-pass frame cap's per-transport clamp:
  * single-pass derives a per-exchange reply cap from the exchanged record
- * counts (`singlePassReplyByteCap`) and aborts an exchange whose
- * `keyCount * rows` exceeds `MAX_SINGLE_PASS_CELLS`, a shared,
- * transport-agnostic check both parties run from authenticated counts
- * (`linkViaSinglePassPSI`). WebRTC keeps this fixed envelope at the
- * reassembly read gate rather than threading the derived cap into it (the
+ * counts (`singlePassReplyByteCap`) and, over WebRTC, aborts an exchange whose
+ * `keyCount * rows` exceeds `MAX_SINGLE_PASS_CELLS`, a check both parties run
+ * from authenticated counts (`linkViaSinglePassPSI`). WebRTC keeps this fixed
+ * envelope at the reassembly read gate rather than threading the derived cap into it (the
  * file-sync transport threads it into its `get()` read gate instead). At the
  * single-pass ceiling the derived reply cap is ~240 MiB, below this 256 MiB
  * envelope, so it never rejects a legitimate single-pass reply the count

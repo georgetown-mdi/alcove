@@ -68,6 +68,7 @@ import { boundedWireCertificateSchema } from "./records/signingIdentity";
 import {
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   receiveAfterTerms,
+  LOCAL_FAULT_ABORT_REASON,
 } from "./partnerAbortFrame";
 
 import type { SigningCertificate } from "./records/signingIdentity";
@@ -758,6 +759,7 @@ export async function sendAbort(
   abortReasons: string[],
   slot?: ResponderAbortSlot,
 ): Promise<void> {
+  connectionsAborted.add(conn);
   try {
     await conn.send(
       slot !== undefined
@@ -772,6 +774,32 @@ export async function sendAbort(
   } catch {
     /* swallow: see doc comment */
   }
+}
+
+// The connections an abort frame was sent on, so a run's own refusal and the
+// teardown of the run it ended do not send two: the partner stops at the first,
+// and never reads the second, which close() then waits on.
+const connectionsAborted = new WeakSet<MessageConnection>();
+
+/**
+ * Tells a partner parked past the terms exchange that a fault ended this party's
+ * run, unless an abort frame already did. Waits for the write at most `maxWaitMs`,
+ * since a send waits on the partner reading this party's last message, and a
+ * partner that has gone never will. Best-effort, as {@link sendAbort} is.
+ */
+export async function sendLocalFaultAbort(
+  conn: MessageConnection,
+  maxWaitMs: number,
+): Promise<void> {
+  if (connectionsAborted.has(conn)) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    sendAbort(conn, [LOCAL_FAULT_ABORT_REASON]),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, maxWaitMs);
+    }),
+  ]);
+  clearTimeout(timer);
 }
 
 // The lenient probe that extracts ONLY `protocolVersion` from a raw terms

@@ -74,6 +74,7 @@ export {
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
+  LOCAL_FAULT_ABORT_REASON,
 } from "./partnerAbortFrame";
 export { loadPsiBackend } from "./psi/psiBackend";
 export type { PsiBackendOptions, PsiBackendSelection } from "./psi/psiBackend";
@@ -839,6 +840,8 @@ export type {
 export { PARTNER_CERTIFICATE_REFUSAL_MESSAGES } from "./exchange/signingChecks";
 export type { PartnerCertificateRefusalKind } from "./exchange/signingChecks";
 export { assertFirstRoundWithinSetMaximum } from "./exchange/firstRoundCapacity";
+export { sendLocalFaultAbort } from "./protocolSetup";
+export type { SinglePassPartnerSize } from "./exchange";
 export {
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,

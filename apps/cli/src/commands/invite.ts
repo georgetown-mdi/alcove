@@ -862,7 +862,12 @@ export async function validateInvite(params: {
     });
     // prepareForOnlineExchange can throw; run it here, before the token print in
     // the caller's commit step, so a failure never follows disclosure.
-    const prepared = await prepareForOnlineExchange(dataSpec, identity, rows);
+    const prepared = await prepareForOnlineExchange(
+      dataSpec,
+      identity,
+      rows,
+      connection.channel,
+    );
 
     return {
       mode: "online",

@@ -433,6 +433,7 @@ import {
   NEW_INVITATION_REMEDY,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
+  LOCAL_FAULT_ABORT_REASON,
   PeerAbortError,
   ConnectionError,
   causeChainSome,
@@ -4255,6 +4256,61 @@ test("a run that registers its relay key records the registration as pending in 
   expect(seenAtOutputComplete).toEqual(rotatedA);
   expect(loadKeyFile(keyFileB)?.relayRegistrationPendingSince).toBeUndefined();
 }, 20_000);
+
+// --- The abort frame on a run with no armed marker -----------------------------
+
+test(
+  "a local fault past the terms exchange on an unauthenticated run sends the partner the abort frame",
+  { timeout: 20_000 },
+  async () => {
+    const frames: Array<unknown> = [];
+    vi.mocked(runExchange).mockImplementation((async (
+      conn: { receive: () => Promise<unknown> },
+      role: unknown,
+      _prepared: unknown,
+      options: {
+        onProtocolConfirmed: (
+          terms: { identity: string },
+          resolvedRole: string,
+          shape: unknown,
+        ) => void;
+      },
+    ) => {
+      await awaitBothArmed();
+      if (role === "initiator") {
+        options.onProtocolConfirmed({ identity: "p" }, "sender", {
+          deduplicate: { local: false, partner: false },
+          cardinality: "one-to-one",
+        });
+        throw new ConnectionError("simulated local fault", "transport");
+      }
+      frames.push(await conn.receive());
+      throw new PeerAbortError(undefined, LOCAL_FAULT_ABORT_REASON);
+    }) as never);
+
+    const party = (name: string) =>
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: {
+            pollIntervalMs: 1,
+            peerTimeoutMs: 2_000,
+            inactivityTimeoutMs: 2_000,
+          },
+        },
+        auth: null,
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: name,
+      }) as unknown as Promise<unknown>;
+    await Promise.allSettled([party("test-a"), party("test-b")]);
+    expect(frames).toEqual([
+      { decision: "abort", abortReasons: [LOCAL_FAULT_ABORT_REASON] },
+    ]);
+  },
+);
 
 // --- Abort-marker echo suppression via runProtocol ---------------------------
 //

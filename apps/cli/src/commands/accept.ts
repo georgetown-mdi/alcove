@@ -770,7 +770,12 @@ export async function validateAccept(params: {
       };
     }
 
-    const prepared = await prepareForOnlineExchange(dataSpec, myIdentity, rows);
+    const prepared = await prepareForOnlineExchange(
+      dataSpec,
+      myIdentity,
+      rows,
+      connection.channel,
+    );
     // Bind the inviting party's own side of the cardinality to what this
     // acceptance consented to: the invitation declared it, the consent surface
     // stated it, and nothing in the agreed terms compares the two sides -- so a
@@ -956,7 +961,12 @@ export async function validateAccept(params: {
     rows !== undefined &&
     brokerAuthority !== undefined
   ) {
-    const prepared = await prepareForOnlineExchange(dataSpec, myIdentity, rows);
+    const prepared = await prepareForOnlineExchange(
+      dataSpec,
+      myIdentity,
+      rows,
+      runnableConnection.channel,
+    );
     // The same binding the URL-driven mode sets on its prepared exchange, for
     // the same single run: the cardinality side the invitation declared for
     // its own party.
