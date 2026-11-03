@@ -206,14 +206,14 @@ function discardedEntryCause(raw: unknown): string | undefined {
 }
 
 /**
- * Parse and validate a value read from the sibling store as a
- * {@link ManagedLocalState}, or `undefined` where nothing is stored or the
- * entry is discarded for its version, whose cause is logged as a warning
- * naming the entry's `key`, the record id it is stored under, where the caller
- * has it.
+ * Parse and validate a value of a sibling-store entry that exists as a
+ * {@link ManagedLocalState}, or `undefined` where the entry is discarded for
+ * its version, whose cause is logged as a warning naming the entry's `key`,
+ * the record id it is stored under, where the caller has it.
  * Throws on an unknown key or a malformed instant rather than silently
  * accepting -- the reader-rejects-unknown rule -- except inside the terms
- * proposal, which is dropped instead ({@link managedLocalStateSchema}).
+ * proposal, which is dropped instead ({@link managedLocalStateSchema}). A
+ * stored `undefined` is not valid local state and throws.
  *
  * @throws {ZodError} if the value is not valid local state.
  */
@@ -221,7 +221,6 @@ export function parseManagedLocalState(
   raw: unknown,
   key?: IDBValidKey,
 ): ManagedLocalState | undefined {
-  if (raw === undefined) return undefined;
   const cause = discardedEntryCause(raw);
   if (cause === undefined) return managedLocalStateSchema.parse(raw);
   const exchange =
@@ -231,6 +230,19 @@ export function parseManagedLocalState(
       `terms change: ${cause}`,
   );
   return undefined;
+}
+
+/**
+ * {@link parseManagedLocalState} for the result of a `get` of one key, where
+ * `undefined` means the key holds nothing and reads as absent.
+ *
+ * @throws {ZodError} if the value is not valid local state.
+ */
+export function parseManagedLocalStateOfKey(
+  raw: unknown,
+  key: IDBValidKey,
+): ManagedLocalState | undefined {
+  return raw === undefined ? undefined : parseManagedLocalState(raw, key);
 }
 
 /**

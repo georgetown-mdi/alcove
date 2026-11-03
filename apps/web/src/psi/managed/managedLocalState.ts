@@ -21,7 +21,7 @@
  * (shared with the record store's rotation write, which clears the backup marker in
  * the same cross-store transaction), and the pure backup-state derivation is in
  * {@link ./managedBackupState.ts}. Every read validates through
- * {@link parseManagedLocalState} and every write through
+ * {@link parseManagedLocalStateOfKey} and every write through
  * {@link storableManagedLocalState}, so a corrupted sibling entry rejects loudly
  * rather than loading, the same discipline the record store follows; the
  * unattended wake's read reports such an entry by key instead
@@ -35,8 +35,8 @@ import {
 } from "./managedExchangeStore";
 import {
   managedTermsProposalSchema,
-  parseManagedLocalState,
   parseManagedLocalStateEntries,
+  parseManagedLocalStateOfKey,
   partitionReadableManagedLocalState,
   storableManagedLocalState,
 } from "./managedLocalStateShape";
@@ -88,7 +88,7 @@ async function withLocalStore<T>(
 /**
  * Read the local sibling state for a record, or `undefined` when none exists or
  * the entry is at a format version this build does not read. The stored value
- * is re-validated through {@link parseManagedLocalState}, so a corrupted sibling
+ * is re-validated through {@link parseManagedLocalStateOfKey}, so a corrupted sibling
  * entry rejects rather than loading.
  *
  * @throws {ZodError} if the stored value is not valid local state.
@@ -100,7 +100,7 @@ export async function getManagedLocalState(
     "readonly",
     (store) => store.get(id) as IDBRequest<unknown>,
   );
-  return parseManagedLocalState(raw, id);
+  return parseManagedLocalStateOfKey(raw, id);
 }
 
 /**
@@ -211,7 +211,7 @@ async function readModifyWriteLocalState(
       let failure: unknown;
       read.onsuccess = () => {
         try {
-          const next = transform(parseManagedLocalState(read.result, id));
+          const next = transform(parseManagedLocalStateOfKey(read.result, id));
           if (next === null) store.delete(id);
           else store.put(storableManagedLocalState(next), id);
         } catch (error) {

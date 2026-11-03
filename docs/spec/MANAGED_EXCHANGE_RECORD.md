@@ -2189,8 +2189,12 @@ and a version this build does not read is discarded rather than refused.
   runs, and the next write to it replaces it at version 1. A rotation deletes it
   as it deletes any entry.
 
-Absent is a state each member already has. No backup marker reads "backup
-needed"; no import marker tiers a handshake failure as unexplained rather than
+Absent is a state each member already has. A discarded marker, like an absent
+or unreadable one, loses the saved folder location of the exchange's automatic
+backup, so the next scheduled run's automatic folder backup writes a new file
+and does not replace the earlier one. The earlier file, which holds the secret
+as it stood when it was written, stays in the working folder until the operator
+removes it. No backup marker reads "backup needed"; no import marker tiers a handshake failure as unexplained rather than
 as the import, as a failed import-marker write does; no proposal is the
 no-proposal state, and the next unattended run that meets the change keeps it
 again. A member whose absence would let a run go ahead that its presence stops

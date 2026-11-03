@@ -1648,6 +1648,35 @@ describe("a local sibling entry the read could not parse", () => {
     expect([...read.states.keys()]).toEqual(["current"]);
   });
 
+  test("skips the record whose stored value is undefined", async () => {
+    const stranded = recordWith();
+    const healthy = recordWith();
+    const read = partitionReadableManagedLocalState(
+      [stranded.id, healthy.id],
+      [
+        undefined,
+        {
+          version: MANAGED_LOCAL_STATE_VERSION,
+          backup: { backedUpAt: "2026-01-01T00:00:00.000Z" },
+        },
+      ],
+    );
+    const runner = harness({
+      records: [stranded, healthy],
+      startAt: "2026-01-06T14:30:00.000Z",
+      script: [{ kind: "succeed" }],
+      unreadableLocalStateIds: read.unreadableIds,
+    });
+
+    const entries = await tickManagedSchedules(runner.seams);
+
+    expect(entries.find((entry) => entry.id === stranded.id)).toMatchObject({
+      attempts: 0,
+      skipped: "unreadable",
+    });
+    expect(runner.attempts.map((attempt) => attempt.id)).toEqual([healthy.id]);
+  });
+
   test("reads one a newer build wrote as absent, so its record is not skipped", () => {
     const read = partitionReadableManagedLocalState(
       ["newer-build"],

@@ -63,6 +63,7 @@ import {
 } from "./managedLiveCopyMatch";
 import {
   parseManagedLocalState,
+  parseManagedLocalStateOfKey,
   storableManagedLocalState,
 } from "./managedLocalStateShape";
 import { foldElapsedWindowsUnderResponse } from "./managedSchedule";
@@ -871,7 +872,7 @@ function markBackupOnLocalStore(
   raw: unknown,
   marker: ManagedBackupMarker,
 ): void {
-  const current = parseManagedLocalState(raw, id);
+  const current = parseManagedLocalStateOfKey(raw, id);
   if (
     current?.backup !== undefined &&
     Date.parse(current.backup.backedUpAt) > Date.parse(marker.backedUpAt)
@@ -1778,7 +1779,7 @@ function parsedSiblingEntry(
   id: string,
 ): ManagedLocalState | undefined {
   try {
-    return parseManagedLocalState(raw, id);
+    return parseManagedLocalStateOfKey(raw, id);
   } catch {
     return undefined;
   }
@@ -1788,7 +1789,7 @@ function parsedSiblingEntry(
  * discarded for its version is read as absent, not as unreadable. */
 function siblingEntryUnreadable(raw: unknown, id: string): boolean {
   try {
-    parseManagedLocalState(raw, id);
+    parseManagedLocalStateOfKey(raw, id);
     return false;
   } catch {
     return true;

@@ -4,6 +4,7 @@ import {
   MANAGED_LOCAL_STATE_VERSION,
   parseManagedLocalState,
   parseManagedLocalStateEntries,
+  parseManagedLocalStateOfKey,
   partitionReadableManagedLocalState,
   storableManagedLocalState,
 } from "@psi/managed/managedLocalStateShape";
@@ -148,7 +149,24 @@ describe("a value that is not an entry", () => {
     expect([...read.states.keys()]).toEqual(["current"]);
   });
 
-  test("nothing stored reads as absent", () => {
-    expect(parseManagedLocalState(undefined)).toBeUndefined();
+  test("nothing stored under a key reads as absent", () => {
+    expect(
+      parseManagedLocalStateOfKey(undefined, "exchange-a"),
+    ).toBeUndefined();
+  });
+
+  test("a stored undefined value is unreadable on every entry read", () => {
+    expect(() => parseManagedLocalState(undefined)).toThrow();
+    expect(() =>
+      parseManagedLocalStateEntries(["stored-undefined"], [undefined]),
+    ).toThrow();
+
+    const read = partitionReadableManagedLocalState(
+      ["stored-undefined", "current"],
+      [undefined, storableManagedLocalState(markers)],
+    );
+
+    expect(read.unreadableIds).toEqual(["stored-undefined"]);
+    expect([...read.states.keys()]).toEqual(["current"]);
   });
 });

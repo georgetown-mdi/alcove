@@ -67,6 +67,7 @@ import {
 import {
   getManagedLocalState,
   listManagedLocalState,
+  listReadableManagedLocalState,
   markManagedExchangeBackedUp,
   markManagedExchangeKeyImported,
 } from "@psi/managed/managedLocalState";
@@ -1807,6 +1808,27 @@ describe("diagnostic read never rejects wholesale", () => {
     expect(states.has(created.id)).toBe(false);
     const recovered = await listManagedExchanges();
     expect(recovered.map((record) => record.id)).toEqual([good.id]);
+  });
+
+  test("a sibling entry whose stored value is undefined is unreadable on every entry read, and a key holding nothing reads as absent", async () => {
+    const created = await createRunnableExchange(
+      newExchange({ label: "Stored undefined" }),
+    );
+    const bare = await createRunnableExchange(newExchange({ label: "Bare" }));
+    await rawLocalPut(created.id, undefined);
+
+    await expect(listManagedLocalState()).rejects.toThrow();
+    expect((await listReadableManagedLocalState()).unreadableIds).toEqual([
+      created.id,
+    ]);
+    const entries = await listManagedExchangesDiagnostic();
+    expect(
+      entries.find(
+        (entry) =>
+          entry.kind === "readable" && entry.essentials.id === created.id,
+      ),
+    ).toMatchObject({ backedUp: true, stateUnreadable: true });
+    expect(await getManagedLocalState(bare.id)).toBeUndefined();
   });
 
   test("a sibling entry a newer version wrote reads as absent, and the next write replaces it at this version", async () => {
