@@ -80,7 +80,8 @@ You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove
 
 ### 3. Set your ID column, and the columns your partner asked for
 
-**Your ID column.** Set your own ID column, whatever it is called: its entry reads `role: identifier`. Your result then starts each row with your own ID. With `is_payload: false` your partner never receives it; to send it for matched records, change that to `is_payload: true`. Alcove recognizes common ID names, such as `id`, `Client ID`, `MRN`, and `case_number` ([inference table](../EXCHANGE_REFERENCE.md#input-metadata)), and writes an entry for the first one with `is_payload: false`, taking a record number such as `case_number` only when the file has no other ID column. Accepting writes no entry for a column Alcove does not recognize: add your ID column's entry at the end of the `metadata` block, as below, with your column's name. With no ID column, your result holds row numbers only, counting from 0.
+<!--@include: ./_id-column.md#cli-->
+Accepting writes no entry for a column Alcove does not recognize: add your ID column's entry at the end of the `metadata` block, as below, with your column's name.
 
 ```yaml
   - name: Client_Number

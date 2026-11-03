@@ -1781,9 +1781,7 @@ export function InviterScreen() {
       }
       ledger={
         <Ledger
-          tag={
-            sealed ? "Terms locked when the invitation was created" : undefined
-          }
+          tag={sealed ? "Terms finalized" : undefined}
           demoNotice={
             demoActive
               ? {

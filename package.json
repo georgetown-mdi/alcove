@@ -57,6 +57,7 @@
     "check:webrtc-provider-options-unread": "node scripts/check-webrtc-provider-options-unread.mjs",
     "check:run-failure-sink": "node scripts/check-run-failure-sink.mjs",
     "check:alert-roles": "node scripts/check-alert-roles.mjs",
+    "check:guide-labels": "node scripts/check-guide-labels.mjs",
     "check:zero-setup-keys": "node scripts/check-zero-setup-keys.mjs",
     "check:init-template-coverage": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-init-template-coverage.mjs",
     "check:spec-sentences": "node scripts/check-spec-sentence-moves.mjs",

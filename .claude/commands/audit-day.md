@@ -76,6 +76,7 @@ Run one trial at a time, or two at once: four testers is the writing-spawn cap o
    ```
    Guide: <repo>/docs/guides/agree-on-terms.md and <repo>/docs/guides/<web-invite.md | web-accept.md>.
    Read them before you start and follow them; they name the production site, so use the site above.
+   Where a guide holds an `<!--@include: ...-->` line, read the region it names from that file in its place.
    ```
 3. The invitation's lifetime and the inviter page's 10-minute wait are the app's own: the session never shortens, extends or pauses them, and never relays anything between the testers.
 4. When both have reported, run `npx --yes @playwright/cli@0.1.23 list` and close any of the trial's sessions still open.

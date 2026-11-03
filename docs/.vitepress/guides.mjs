@@ -15,6 +15,13 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** The directory the guides live in, relative to the repository root. */
 export const GUIDES_DIR = "docs/guides/";
+
+/**
+ * The files in GUIDES_DIR that are text the guides include
+ * (`<!--@include: ./_name.md#region-->`), not pages.
+ */
+export const GUIDE_INCLUDES = `${GUIDES_DIR}_*.md`;
+const isGuideInclude = (name) => name.startsWith("_");
 const HOME = `${GUIDES_DIR}index.md`;
 const ABOUT = `${GUIDES_DIR}about.md`;
 
@@ -63,13 +70,13 @@ export const GUIDE_SECTIONS = [
 
 /**
  * Each guide is served at the site root under its file stem, the home page at
- * the root itself: a VitePress rewrite for every Markdown file in GUIDES_DIR.
+ * the root itself: a VitePress rewrite for every Markdown page in GUIDES_DIR.
  * @returns {Record<string, string>}
  */
 export function guideRewrites() {
   return Object.fromEntries(
     readdirSync(resolve(repoRoot, GUIDES_DIR))
-      .filter((name) => name.endsWith(".md"))
+      .filter((name) => name.endsWith(".md") && !isGuideInclude(name))
       .map((name) => [`${GUIDES_DIR}${name}`, name]),
   );
 }

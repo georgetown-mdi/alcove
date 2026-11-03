@@ -2355,9 +2355,7 @@ describe("inviter screen", () => {
     expect(call.sharedSecret.length).toBeGreaterThan(0);
     expect(call.expires).toBeDefined();
     expect(call.signal.aborted).toBe(false);
-    await expect
-      .element(page.getByText("Terms locked when the invitation was created"))
-      .toBeInTheDocument();
+    await expect.element(page.getByText("Terms finalized")).toBeInTheDocument();
 
     // The status panel tracks the lifecycle's stage events; Share stays the
     // timeline's current step while the browser waits for the partner. (The
@@ -2951,9 +2949,7 @@ describe("inviter screen", () => {
     await expect
       .element(page.getByText("Ready to create."))
       .toBeInTheDocument();
-    expect(
-      page.getByText("Terms locked when the invitation was created").query(),
-    ).toBeNull();
+    expect(page.getByText("Terms finalized").query()).toBeNull();
   });
 
   test("choosing SFTP routes Create to the save surface without listening", async () => {
@@ -3104,7 +3100,7 @@ describe("inviter screen", () => {
         .element(page.getByRole("heading", { level: 1 }))
         .toMatchTextContent("Review & create");
       await expect
-        .element(page.getByText("Terms locked when the invitation was created"))
+        .element(page.getByText("Terms finalized"))
         .toBeInTheDocument();
     } finally {
       downloads.restore();

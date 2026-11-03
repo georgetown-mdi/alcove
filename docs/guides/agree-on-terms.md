@@ -8,7 +8,7 @@ next: "[Invite with the web app](./web-invite.md), [Invite from the console](./c
 
 Settle these decisions with your partner before anyone creates an invitation.
 
-Once the invitation is created, its terms are locked. Your partner accepts them whole or asks you for a new invitation.
+After you create the invitation, you cannot change its terms. Your partner accepts them whole or asks you for a new invitation.
 
 ## What you match on
 
@@ -44,7 +44,8 @@ Each of you sets a use for every column in your own file. The inviter does it on
 
 Alcove fills in each column's type and use from its name. It sends nothing by default, your ID column included.
 
-**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes common ID names, such as `id`, `Client ID`, `MRN`, and `case_number` ([inference table](../EXCHANGE_REFERENCE.md#input-metadata)), and starts the first one as **Unique record identifier - not sent**, taking a record number such as `case_number` only when the file has no other ID column. A column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0. To send your ID for matched records, choose **Unique record identifier - sent to your partner**. On the command line, its `metadata` entry reads `role: identifier`, with `is_payload: false` to keep it or `is_payload: true` to send it.
+<!--@include: ./_id-column.md#app-->
+On the command line, your ID column's `metadata` entry reads `role: identifier`, with `is_payload: false` to keep it or `is_payload: true` to send it.
 
 ## Who receives the result
 
