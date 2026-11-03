@@ -1,7 +1,7 @@
 import { ConnectionError, DeliveryUnconfirmedError } from "../../src/errors";
 import { readFileSync } from "node:fs";
 
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   EncryptedMessageConnection,
@@ -20,6 +20,22 @@ import {
 } from "../../src/connection/messageConnection";
 import { deriveAeadKey, AEAD_CONTEXTS, type AeadContext } from "../../src/auth";
 import type { HandshakeRole } from "../../src/types";
+
+// The inbound frame-size bound, lowered for one describe block so a frame of
+// a few dozen bytes reaches it; every other test runs at the real bound.
+const frameBound = vi.hoisted(() => ({
+  lowered: undefined as number | undefined,
+}));
+vi.mock("../../src/connection/frameSize", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/connection/frameSize")>();
+  return {
+    ...actual,
+    get MAX_FRAME_SIZE_BYTES() {
+      return frameBound.lowered ?? actual.MAX_FRAME_SIZE_BYTES;
+    },
+  };
+});
 
 // Fixed 32-byte session key for deterministic tests.
 const SESSION_KEY = new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>;
@@ -310,6 +326,38 @@ test("an envelope shorter than version + IV + tag is rejected as a security fail
   // fires, ahead of the version-byte check, as a security failure.
   await peer.send(new Uint8Array(20) as Uint8Array<ArrayBuffer>);
   await expectSecurity(recv.receive(), /too short/i);
+});
+
+describe("under a lowered inbound frame-size bound", () => {
+  const LOWERED_BOUND = 64;
+  const payloadAtBound = LOWERED_BOUND - AEAD_ENVELOPE_OVERHEAD_BYTES;
+
+  beforeEach(() => {
+    frameBound.lowered = LOWERED_BOUND;
+  });
+  afterEach(() => {
+    frameBound.lowered = undefined;
+  });
+
+  test("an envelope of exactly the bound is opened", async () => {
+    const [encA, encB] = await makeEncryptedPair();
+    await encA.send(new Uint8Array(payloadAtBound).fill(7));
+    expect(Array.from((await encB.receive()) as Uint8Array)).toEqual(
+      Array.from(new Uint8Array(payloadAtBound).fill(7)),
+    );
+  });
+
+  test("an envelope one byte over the bound is rejected and latches the wrapper", async () => {
+    const [encA, encB] = await makeEncryptedPair();
+    await encA.send(new Uint8Array(payloadAtBound + 1));
+    const latched = await expectSecurity(
+      encB.receive(),
+      /exceeds the maximum frame size/,
+    );
+    expect(
+      await expectSecurity(encB.receive(), /exceeds the maximum frame size/),
+    ).toBe(latched);
+  });
 });
 
 test("an envelope with an unsupported version byte is rejected as a security failure", async () => {
@@ -846,6 +894,43 @@ test("close latches the wrapper dead and delegates to the inner connection", asy
   // Delegation reached the inner transport: the pipe propagated the close, so
   // the peer observes a transport drop rather than hanging.
   await expect(encB.receive()).rejects.toThrow(/peer closed/i);
+});
+
+test("close refuses a later send and receive itself, over an inner connection that would accept them", async () => {
+  let innerSends = 0;
+  let innerReceives = 0;
+  const inner: MessageConnection = {
+    send: () => {
+      innerSends++;
+      return Promise.resolve();
+    },
+    receive: () => {
+      innerReceives++;
+      return Promise.resolve(new Uint8Array(0));
+    },
+    close: () => Promise.resolve(),
+  };
+  const enc = await EncryptedMessageConnection.create(
+    inner,
+    SESSION_KEY,
+    "initiator",
+  );
+  await enc.close();
+
+  const afterSend = await expectRejection(
+    enc.send({ x: 1 }),
+    "usage",
+    /cannot use a closed connection/,
+  );
+  expect(
+    await expectRejection(
+      enc.receive(),
+      "usage",
+      /cannot use a closed connection/,
+    ),
+  ).toBe(afterSend);
+  expect(innerSends).toBe(0);
+  expect(innerReceives).toBe(0);
 });
 
 test("close() is idempotent", async () => {
