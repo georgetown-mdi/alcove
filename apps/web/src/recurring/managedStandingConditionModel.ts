@@ -216,5 +216,12 @@ function partnerStorageView(
           "your partner to reconnect." +
           (clearedByRun ? "" : ` ${STANDS_UNTIL}`),
       };
+    case "not-kept-after-success":
+      return {
+        ...base,
+        message:
+          `${stopped} Re-invite your partner to reconnect.` +
+          (clearedByRun ? "" : ` ${STANDS_UNTIL}`),
+      };
   }
 }

@@ -568,6 +568,21 @@ describe("savedExchangeRow: a standing condition", () => {
     );
     expect(row.status).not.toMatch(/a run since then succeeded/);
     expect(row.status).toMatch(
+      /^Your partner could not save the new secret .*; re-invite to reconnect$/,
+    );
+  });
+
+  test("the partner's failed save with no run listed after it keeps its no-run-can-reach line", () => {
+    const row = savedExchangeRow(
+      record({
+        side: "acceptor",
+        lastRun: { at: missedAt, outcome: "missed" },
+        standingCondition: { since: standingAt, kind: "partner-storage" },
+      }),
+      undefined,
+      NOW,
+    );
+    expect(row.status).toMatch(
       /^Your partner could not save the new secret .*; no run can reach them until you re-invite$/,
     );
   });

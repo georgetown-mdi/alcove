@@ -389,18 +389,23 @@ function failureNotice(
         PARTNER_REFUSED_SET_REMEDY,
       tag: noticeTag(record.id, "partner-refused-set"),
     };
-  if (tier === "partner-storage")
+  if (tier === "partner-storage") {
+    const reach = partnerStorageReach(record, now);
+    const reinvite = "Open this app and re-invite your partner.";
     return {
       kind: "partner-storage",
       title: NOTICE_TITLES["partner-storage"],
       body:
         `${name} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
-        (partnerStorageReach(record, now) === "kept"
+        (reach === "kept"
           ? PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY
-          : "Scheduled runs keep running but cannot reach your partner until " +
-            "you re-invite them. Open this app and re-invite your partner."),
+          : reach === "not-kept-after-success"
+            ? reinvite
+            : "Scheduled runs keep running but cannot reach your partner " +
+              `until you re-invite them. ${reinvite}`),
       tag: noticeTag(record.id, "partner-storage"),
     };
+  }
   if (tier === "partner-refused-terms")
     return {
       kind: "partner-refused-terms",

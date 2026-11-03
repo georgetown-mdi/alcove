@@ -11,6 +11,7 @@ import {
   raisedStandingCondition,
   recentRunsOf,
   runHoldsSecretVerdict,
+  runSucceededSince,
   runSucceededWithNoVerdictSince,
 } from "./managedExchangeRecord";
 import { managedExchangeLapsed } from "./managedExpiry";
@@ -169,11 +170,14 @@ export function managedStandingConditionTier(
  * `now`: a run succeeded since the partner's failed save and no run since it
  * holds a verdict on the secret (`"succeeded-since"`), the record holds a
  * previous secret its next run would offer (`"kept"`), or neither, which only
- * a re-invite answers
- * (`"not-kept"`). The failed save is the standing condition's, else the last
- * run's.
+ * a re-invite answers (`"not-kept"`). Where a run is listed as succeeded
+ * since the failed save, but a failed save on this device or a failed-closed
+ * handshake is listed after it too, the re-invite stands, and no copy may say
+ * that no run can reach the partner (`"not-kept-after-success"`). The failed
+ * save is the standing condition's, else the last run's.
  */
-export type PartnerStorageReach = "succeeded-since" | "kept" | "not-kept";
+export type PartnerStorageReach =
+  "succeeded-since" | "kept" | "not-kept" | "not-kept-after-success";
 
 /** The {@link PartnerStorageReach} of `record` at `now`. */
 export function partnerStorageReach(
@@ -187,8 +191,9 @@ export function partnerStorageReach(
       : record.lastRun?.at;
   if (since !== undefined && runSucceededWithNoVerdictSince(record, since))
     return "succeeded-since";
-  return offeredManagedPreviousSecret(record, now) !== undefined
-    ? "kept"
+  if (offeredManagedPreviousSecret(record, now) !== undefined) return "kept";
+  return since !== undefined && runSucceededSince(record, since)
+    ? "not-kept-after-success"
     : "not-kept";
 }
 
