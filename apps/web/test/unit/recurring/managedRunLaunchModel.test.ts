@@ -954,7 +954,7 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
     ).toBeUndefined();
   });
 
-  test("a failed save a run has succeeded since leaves a plain no-show beside the standing view", () => {
+  test("a failed save a run has succeeded since leaves a plain no-show and no standing view", () => {
     const failedSaveAt = Date.parse("2026-07-14T09:00:00.000Z");
     const succeededAt = Date.parse("2026-07-14T10:00:00.000Z");
     const missedAt = Date.parse("2026-07-14T11:00:00.000Z");
@@ -967,7 +967,7 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
       { at: new Date(succeededAt).toISOString(), outcome: "succeeded" },
       succeededAt,
     );
-    expect(atLaunch.standingCondition.kind).toBe("storage");
+    expect(atLaunch.standingCondition).toEqual(NO_STANDING_CONDITION);
     const afterRun = applyManagedExchangeLastRun(
       atLaunch,
       missedRun(missedAt),
@@ -984,8 +984,41 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
     expect(failure.kind).toBe("missed");
     expect(failure.message).not.toMatch(/different secrets/);
     expect(managedRunReinvites(failure)).toBe(false);
+    expect(
+      managedStandingConditionView(afterRun, undefined, NOW),
+    ).toBeUndefined();
+  });
 
-    const view = managedStandingConditionView(afterRun, undefined, NOW);
+  test("a failed save an earlier version left beside a later success leaves a plain no-show beside the standing view", () => {
+    const failedSaveAt = Date.parse("2026-07-14T09:00:00.000Z");
+    const succeededAt = Date.parse("2026-07-14T10:00:00.000Z");
+    const atLaunch = {
+      ...applyManagedExchangeLastRun(
+        applyManagedExchangeLastRun(
+          record(),
+          storageFailureRun(failedSaveAt),
+          failedSaveAt,
+        ),
+        { at: new Date(succeededAt).toISOString(), outcome: "succeeded" },
+        succeededAt,
+      ),
+      standingCondition: {
+        since: new Date(failedSaveAt).toISOString(),
+        kind: "storage" as const,
+      },
+    };
+
+    const failure = classifyManagedRunFailure(
+      new PartnerNoShowError("timed out waiting for the other party"),
+      { atLaunch, afterRun: atLaunch },
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("missed");
+    expect(managedRunReinvites(failure)).toBe(false);
+
+    const view = managedStandingConditionView(atLaunch, undefined, NOW);
     expect(view?.message).toContain(RUN_SUCCEEDED_SINCE_SAME_SECRET);
     expect(view?.message).not.toMatch(/re-invite/i);
     expect(
@@ -993,7 +1026,7 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
     ).toBe(true);
   });
 
-  test("a handshake that failed closed after the success keeps the re-invite on a later no-show", () => {
+  test("a handshake that failed closed after the success raises its own condition, confirmed first on a later no-show", () => {
     const failedSaveAt = Date.parse("2026-07-14T09:00:00.000Z");
     const succeededAt = Date.parse("2026-07-14T10:00:00.000Z");
     const authFailedAt = Date.parse("2026-07-14T10:30:00.000Z");
@@ -1015,7 +1048,13 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
       },
       authFailedAt,
     );
-    expect(atLaunch.standingCondition.kind).toBe("storage");
+    expect(atLaunch.standingCondition).toEqual({
+      since: new Date(authFailedAt).toISOString(),
+      kind: "auth",
+    });
+    expect(managedRunFailureFromRecord(atLaunch, undefined, NOW)?.kind).toBe(
+      "unexplained",
+    );
     const afterRun = applyManagedExchangeLastRun(
       atLaunch,
       missedRun(missedAt),
@@ -1029,24 +1068,13 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
       NOW,
       false,
     );
-    expect(failure).toEqual(
-      managedRunFailureFromRecord(
-        applyManagedExchangeLastRun(
-          record(),
-          storageFailureRun(failedSaveAt),
-          failedSaveAt,
-        ),
-        undefined,
-        NOW,
-      ),
-    );
-    expect(failure.kind).toBe("storage");
-    expect(managedRunReinvites(failure)).toBe(true);
+    expect(failure.kind).toBe("missed");
+    expect(managedRunReinvites(failure)).toBe(false);
 
     const view = managedStandingConditionView(afterRun, undefined, NOW);
+    expect(view?.tier).toBe("unexplained");
+    expect(view?.clearance).toBe("confirmation");
     expect(view?.message).not.toContain(RUN_SUCCEEDED_SINCE_SAME_SECRET);
-    expect(view?.message).toMatch(/Re-invite your partner to reconnect\./);
-    expect(view?.reinvite).toBeUndefined();
   });
 
   test("a handshake that failed closed before the success keeps the re-invite on a later no-show", () => {

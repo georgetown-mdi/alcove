@@ -8,7 +8,7 @@
  * wherever one stands, including on a record whose last run succeeded, and it
  * holds the clearance the operator reaches from a page where the condition has
  * gone unanswered. What clears a condition, and why a successful run clears
- * only the partner's failed save, is
+ * a failed save but not a failed handshake, is
  * docs/MANAGED_EXCHANGE.md, "A standing condition outlives the run that raised
  * it"; the two-outcome gate the unexplained tier routes through is the one the
  * live Tier-2 failure uses ({@link ../psi/managed/managedFailureConfirmation.ts}).
@@ -18,8 +18,8 @@
  */
 
 import {
+  LATER_SUCCESS_CLEARS_ALERT,
   PARTNER_KEPT_SECRET_NEXT_RUN_REACHES,
-  PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING,
   PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY,
   PARTNER_SECRET_NOT_SAVED_PROBLEM,
   PARTNER_SECRET_NOT_SAVED_TITLE,
@@ -139,12 +139,13 @@ export function managedStandingConditionView(
 }
 
 /** The storage condition's view, by what its failed save recorded and the
- * runs since ({@link storageReach}). It clears only by the operator's
- * acknowledgement, a successful run since included. */
+ * runs since ({@link storageReach}). The copy says a run clears it only where
+ * one does ({@link standingConditionClearedBySuccess}). */
 function storageView(
   record: ManagedExchangeRecord,
   when: string,
 ): ManagedStandingConditionView {
+  const clearedByRun = standingConditionClearedBySuccess(record);
   const failed = `A run on ${when} changed this exchange's secret and could not save the change`;
   const base = {
     tier: "storage" as const,
@@ -163,8 +164,11 @@ function storageView(
         ...base,
         message:
           `${failed}. ${PARTNER_KEPT_SECRET_NEXT_RUN_REACHES} ` +
-          `${REINVITE_IF_RUNS_KEEP_FAILING}. Once a later run succeeds, you ` +
-          "are both on the new secret and you can clear this.",
+          `${REINVITE_IF_RUNS_KEEP_FAILING}. ` +
+          (clearedByRun
+            ? LATER_SUCCESS_CLEARS_ALERT
+            : "Once a later run succeeds, you are both on the new secret " +
+              "and you can clear this."),
         reinvite: "if-runs-keep-failing",
       };
     case "reinvite":
@@ -204,7 +208,7 @@ function partnerStorageView(
         ...base,
         message:
           `${stopped} ${PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY} ` +
-          (clearedByRun ? PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING : STANDS_UNTIL),
+          (clearedByRun ? LATER_SUCCESS_CLEARS_ALERT : STANDS_UNTIL),
         reinvite: "if-runs-keep-failing",
       };
     case "not-kept":

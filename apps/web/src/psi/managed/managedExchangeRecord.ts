@@ -530,8 +530,9 @@ export interface ManagedExchangeRecord {
    * `partner-storage` failure raised, or
    * {@link NO_STANDING_CONDITION} while none stands. Cleared by the operator's
    * explicit clear-and-acknowledge, by a re-invite, or with the record itself --
-   * never by a no-show. A successful run clears a `partner-storage` condition
-   * holding no response, and no other. */
+   * never by a no-show. A successful run clears a `storage` or
+   * `partner-storage` condition holding no response, and never an `auth`
+   * one. */
   standingCondition: ManagedStandingConditionField;
 }
 
@@ -2020,8 +2021,8 @@ function mergedRecentRuns(
  * of two runs' STAMPS the record keeps, while the condition is not one run's
  * stamp but evidence nobody has answered yet, so the run that met it raises it
  * even where a newer entry keeps the `lastRun` slot. A success after a
- * `"partner-storage"` condition clears it the same way, whether or not its
- * entry lands ({@link withoutPartnerStorageAnsweredBySuccess}).
+ * failed-save condition clears it the same way, whether or not its entry lands
+ * ({@link withoutConditionAnsweredBySuccess}).
  *
  * A failure never overwrites a success stamped after its own run began:
  * `runStartedAtMs` is the instant the run producing `lastRun` began, and a
@@ -2270,32 +2271,32 @@ function withStandingCondition(
   return { ...record, standingCondition: condition };
 }
 
-/** Whether a successful run clears the record's standing condition: a
- * `"partner-storage"` one holding no compromise response, where no run the
- * record lists after it holds a verdict on the secret
- * ({@link secretVerdictListedSince}), which first raise wins kept off the
- * record. Every other condition stays until the operator's act. */
+/** Whether a successful run clears the record's standing condition: a failed
+ * save on either side (`"storage"` or `"partner-storage"`) holding no
+ * compromise response, where no run the record lists after it holds a verdict
+ * on the secret ({@link secretVerdictListedSince}), which first raise wins
+ * kept off the record. An `"auth"` condition stays until the operator's act. */
 export function standingConditionClearedBySuccess(
   record: ManagedExchangeRecord,
 ): boolean {
   const standing = raisedStandingCondition(record);
   return (
-    standing?.kind === "partner-storage" &&
+    (standing?.kind === "storage" || standing?.kind === "partner-storage") &&
     standing.response === undefined &&
     !secretVerdictListedSince(record, standing.since)
   );
 }
 
-/** `record` with a standing `"partner-storage"` condition cleared where a run
+/** `record` with a standing failed-save condition cleared where a run
  * succeeded after it and the condition is one a success clears
  * ({@link standingConditionClearedBySuccess}): `lastRun` when it is that
- * success, or a success the record already lists, which covers the
- * partner-storage entry that arrives after a later success. A listed success
- * stamped later than `nowMs`, the writer's clock, does not count, so a stamp
- * from the future cannot hold off every new report. Both sides saved the next
- * secret in such a run, which answers what the partner reported. The input
- * record is not mutated. */
-function withoutPartnerStorageAnsweredBySuccess(
+ * success, or a success the record already lists, which covers the failed
+ * save's entry that arrives after a later success. A listed success stamped
+ * later than `nowMs`, the writer's clock, does not count, so a stamp from the
+ * future cannot hold off every new report. Both sides saved the next secret
+ * in such a run, which answers the failed save. The input record is not
+ * mutated. */
+function withoutConditionAnsweredBySuccess(
   record: ManagedExchangeRecord,
   lastRun: ManagedExchangeLastRun | undefined,
   nowMs: number,
@@ -2313,9 +2314,9 @@ function withoutPartnerStorageAnsweredBySuccess(
 }
 
 /** `record` after a run's write: `condition` raised
- * ({@link withStandingCondition}), with a `"partner-storage"` condition a
- * success answers cleared both before and after the raise
- * ({@link withoutPartnerStorageAnsweredBySuccess}). The clear before keeps a
+ * ({@link withStandingCondition}), with a failed-save condition a success
+ * answers cleared both before and after the raise
+ * ({@link withoutConditionAnsweredBySuccess}). The clear before keeps a
  * condition a success already answered from blocking the raise and then
  * being cleared with the raise lost; the clear after removes a raised one a
  * listed success answers, as for an entry arriving after that success. */
@@ -2325,9 +2326,9 @@ function withRunStandingCondition(
   lastRun: ManagedExchangeLastRun | undefined,
   nowMs: number,
 ): ManagedExchangeRecord {
-  return withoutPartnerStorageAnsweredBySuccess(
+  return withoutConditionAnsweredBySuccess(
     withStandingCondition(
-      withoutPartnerStorageAnsweredBySuccess(record, lastRun, nowMs),
+      withoutConditionAnsweredBySuccess(record, lastRun, nowMs),
       condition,
     ),
     lastRun,
