@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 import {
+  KEX_MESSAGE_MAX_BYTES,
   runKex,
   computeKexKeys,
   deriveKeyAgreement,
@@ -942,6 +943,33 @@ test("the ephemeral public key on the wire is the pinned 65-byte uncompressed po
   const e = fromBase64Url(msg1.e[SUITE]!);
   expect(e.length).toBe(65);
   expect(e[0]).toBe(0x04);
+});
+
+test("each handshake message, with its hello at the hello's limit, fits KEX_MESSAGE_MAX_BYTES", async () => {
+  const [connA, connB] = createMessagePipe();
+  const sent: Array<Record<string, unknown>> = [];
+  for (const conn of [connA, connB]) {
+    const send = conn.send.bind(conn);
+    conn.send = (message) => {
+      sent.push(message as Record<string, unknown>);
+      return send(message);
+    };
+  }
+  const results = await Promise.allSettled([
+    runKex(connA, "initiator", PSK_A, false),
+    runKex(connB, "responder", PSK_A, false),
+  ]);
+  expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+  expect(sent.map((m) => m.kexMsg)).toEqual(["1", "2", "3"]);
+
+  const helloAtLimit = "A".repeat(Math.ceil(1024 / 3) * 4);
+  const sizes = sent.map((m) =>
+    Buffer.byteLength(
+      JSON.stringify("hello" in m ? { ...m, hello: helloAtLimit } : m),
+    ),
+  );
+  expect(Math.max(...sizes)).toBe(1683);
+  expect(Math.max(...sizes)).toBeLessThanOrEqual(KEX_MESSAGE_MAX_BYTES);
 });
 
 test("a mismatched secret fails closed on both sides with the generic error", async () => {

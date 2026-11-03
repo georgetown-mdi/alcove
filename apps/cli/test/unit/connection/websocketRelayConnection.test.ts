@@ -793,6 +793,10 @@ test.each([
     (s: FakeRelaySocket) => s.text(JSON.stringify({ type: "paired", x: 1 })),
   ],
   ["text that is not JSON", (s: FakeRelaySocket) => s.text("paired")],
+  [
+    "a pairing one character longer than the relay sends it",
+    (s: FakeRelaySocket) => s.text(` ${JSON.stringify({ type: "paired" })}`),
+  ],
 ])("%s is refused as a protocol fault", async (_, deliver) => {
   const { sockets, options } = harness();
   const opening = openWebSocketRelayMessageConnection(

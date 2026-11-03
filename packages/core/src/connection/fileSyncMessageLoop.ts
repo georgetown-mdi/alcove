@@ -19,11 +19,7 @@ import {
   redactAndSanitizeForDisplay,
   redactPrivateKeyMaterial,
 } from "../utils/sanitizeErrorForDisplay";
-import {
-  JsonMemoryBudgetError,
-  parseBoundedJson,
-  partnerMessageMemoryShortfall,
-} from "../utils/boundedJson";
+import { parseBoundedJson } from "../utils/boundedJson";
 import type { getLoggerForVerbosity } from "../utils/logger";
 import {
   ConnectionError,
@@ -324,6 +320,7 @@ export interface MessageLoopOptions {
   inactivityTimeoutGuidance?: string;
   writeWithoutRenaming?: boolean;
   renameRefusedGuidance?: string;
+  maxJsonMessageBytes?: number;
 }
 
 const INACTIVITY_LIMIT_CLAUSE = ` (the limit ${INACTIVITY_TIMEOUT_KEY} sets)`;
@@ -1186,6 +1183,15 @@ export class FileSyncMessageLoop {
                   `unencrypted message on an encrypted channel, so it was ` +
                   `refused without being parsed`,
               );
+            const jsonCap = deps.options().maxJsonMessageBytes;
+            if (jsonCap !== undefined && envelope.payload.length > jsonCap)
+              throw new UsageError(
+                `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
+                  `from ${redactPrivateKeyMaterial(peerId)} holds a JSON ` +
+                  `message of ${envelope.payload.length} bytes, over the ` +
+                  `${jsonCap}-byte limit for a key-exchange message, so it ` +
+                  `was refused without being parsed`,
+              );
             let value: unknown;
             try {
               // parseBoundedJson takes the raw payload bytes and structurally
@@ -1196,13 +1202,6 @@ export class FileSyncMessageLoop {
               // the filename, and neutralized at the same display boundary.
               value = parseBoundedJson(envelope.payload);
             } catch (parseErr: unknown) {
-              if (parseErr instanceof JsonMemoryBudgetError)
-                throw new UsageError(
-                  partnerMessageMemoryShortfall(
-                    messageFileLabel(messageFile.name, peerId, path),
-                    parseErr,
-                  ),
-                );
               throw new UsageError(
                 `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
                   `from ${redactPrivateKeyMaterial(peerId)} is fully ` +

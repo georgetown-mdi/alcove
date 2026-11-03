@@ -110,7 +110,7 @@ With decode and config load both bounding their own side, that safety check is n
 The bound fires far below the overflow and far above any real config (the deepest schema path is under a dozen levels, and `params` legitimately holds shallow scalars).
 
 A further bound sits *upstream* of the entire Zod/`camelizeKeys` family above, at the JSON-decode layer, and is enforced as a single chokepoint.
-Every parse of untrusted JSON in the core routes through `parseBoundedJson` (`packages/core/src/utils/boundedJson.ts`), which checks the body's structure against a per-object key ceiling, a per-array element ceiling, and a nesting-depth ceiling (`MAX_JSON_OBJECT_KEYS` = 65536, `MAX_JSON_ARRAY_ELEMENTS` = 16777216, `MAX_JSON_NESTING_DEPTH` = 4096), and the memory the body's values need against the memory available (the whole-document value budget, below), *before* handing it to `JSON.parse`.
+Every parse of untrusted JSON in the core routes through `parseBoundedJson` (`packages/core/src/utils/boundedJson.ts`), which checks the body's structure against a per-object key ceiling, a per-array element ceiling, and a nesting-depth ceiling (`MAX_JSON_OBJECT_KEYS` = 65536, `MAX_JSON_ARRAY_ELEMENTS` = 16777216, `MAX_JSON_NESTING_DEPTH` = 4096) *before* handing it to `JSON.parse`.
 A lint rule forbids a raw `JSON.parse` elsewhere in the package, so a new parse site cannot silently reopen the hole.
 Unlike the rest of the family this is not a CPU-burn or `RangeError` guard.
 A single object made wide enough, or a single array made long enough, drives `JSON.parse` into a process-terminating internal limit of the JSON engine - a per-object property ceiling, or the array backing-store length limit - that is *not* a thrown exception, so a `try`/`catch` around the parse cannot intercept it (the engine's per-object and array-length limits are V8 behavior that was unverified as of 2026-09-29, and the ceilings named here are chosen to sit well inside them).
@@ -125,7 +125,7 @@ Once the encryption layer takes over, the transport parses no message body: it r
 All route through the same chokepoint, so a wide-object or long-array body from any source is refused rather than crashing the process.
 Each caller maps the refusal to its own terminal error - a `ConnectionError("security")` on the wire, a `UsageError` on a transport file, a rejected invitation - with no attacker bytes.
 
-The ceilings' unit is per *container*, not per byte or per total count, because that is what fits the data *at this layer*: a fixed decoded-byte or total-count budget here would have to sit below the largest legitimate message and so would reject it, yet no single legitimate container is pathological.
+The unit is per *container*, not per byte or per total count, because that is what fits the data *at this layer*: a decoded-byte or total-count budget here would have to sit below the largest legitimate message and so would reject it, yet no single legitimate container is pathological.
 (The `camelizeKeys` total-node budget above *can* be a running total precisely because it sees only the small parsed-config family - linkage terms and the like - never these large set frames, which are parsed by other schemas the pre-pass does not touch.)
 The widest legitimate object is the `transform.params` record at `MAX_PARAMS_ENTRIES` = 256; the longest legitimate array is an association-index, payload-row, or mapped-pair list, one entry per matched record; a list that can pass this cap is sent in parts, each a message of its own held to it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
 So `MAX_JSON_OBJECT_KEYS` sits far above any real object and far below the per-object engine limit, and `MAX_JSON_ARRAY_ELEMENTS` sits above any real array and well below the array-length limit - each fires only on a pathological container and never pre-empts a schema-layer rejection or a legitimate large message.
@@ -133,26 +133,28 @@ The depth ceiling sits far above any real nesting (the parsed-config ceiling is 
 This bound composes with rather than overlaps the post-parse `camelizeKeys` bounds.
 It caps any single container's width before the walker ever sees it, while the walker's own `MAX_NODE_COUNT` budget (above) caps the total it then rewrites - a width the per-container ceiling does not bound (a body within every per-container limit can still hold far more nodes in aggregate than the walker should rewrite).
 
-**The whole-document value budget.**
-Beside the per-container ceilings, `parseBoundedJson` bounds the whole body by memory rather than by a fixed figure.
-The scan counts the values the parse would create by kind, and the body is refused when their charges (`JSON_RETAINED_BYTES`) together exceed the memory available as it is parsed:
-- an object 88 bytes, an array 48, and an array element 8;
-- a string 24, plus 1 byte a character, or 2 for a string holding a character past Latin-1 or a `\u` escape, its characters counted from the raw input;
-- a number other than an integer of at most nine digits 16;
-- an object member 72, with no charge for its key string, when its key and every key before it repeat those of the previous object closed at the same depth; 279 when its key is all digits or holds an escape, repeated or not; and otherwise 104, plus its key string.
+**Per-message byte caps.**
+The structural ceilings bound a body's shape, not the memory its parse holds, which grows with the body's length.
+So a JSON message a party reads from anyone other than its authenticated partner - before the key exchange completes, or outside the encrypted channel - is held to a byte cap sized to the largest legitimate message of its type, and a longer one is refused before it reaches `parseBoundedJson`.
+These caps sit at the parse sites rather than in the chokepoint, because only the site knows which message it reads.
+Each cap's worst case is static: the last column is the most a body at the cap was measured to hold once parsed, on Node 26.13.0 under `--expose-gc`, across the object, array, string and number shapes the structural ceilings admit.
 
-For that comparison the scan holds the keys of at most two objects of `MAX_JSON_OBJECT_KEYS` members at once, so its own memory stays bounded, and a key it cannot hold is charged as not repeated.
-Each charge is the most its kind was measured to retain on Node 26.13.0 under `--expose-gc`, across objects of distinct, shared, alternating and integer-like keys from one member to 65536 and repeated after the engine stops sharing their layout, packed and nested arrays, short and long one-byte and two-byte strings, and small integers and doubles.
-The counts are exact on well-formed JSON that repeats no key within an object (a repeated key counts once per occurrence, though the parse keeps one member), and on malformed JSON cover the well-formed prefix a parse builds before it fails.
-The memory available is read at each parse (`availableMemoryBytes`, `packages/core/src/utils/availableMemory.ts`):
-- on Node, the least of the V8 heap's headroom (`heap_size_limit` less `used_heap_size`) and, under a container memory limit below the host's memory (`process.constrainedMemory()`), that limit less the resident set;
-- in a Chromium tab, the JavaScript heap's headroom (`performance.memory`).
+| Message | Cap, checked before the parse | Basis | Most held at the cap |
+| --- | --- | --- | --- |
+| File-sync rendezvous hello and control file (`fileSyncRendezvous.ts`) | 1,024 bytes (`HELLO_MAX_BYTES`), on the listed size and on the read | The envelope is under 100 bytes | 41 KB |
+| File-sync abort marker (`abortMarker.ts`) | 1,024 bytes (`ABORT_MARKER_MAX_BYTES`), on the listed size and on the read | The envelope is about 80 bytes | 41 KB |
+| JSON message on a file-sync run with a key exchange (`fileSyncMessageLoop.ts`, set by `apps/cli/src/run/prepare.ts`) | 4,096 bytes of payload (`KEX_MESSAGE_MAX_BYTES`) | The run's only JSON messages are the key exchange's; the largest, message 2 carrying a hello at the hello's limit, is 1,683 bytes, and the rest is room for further key shares in message 1 | 163 KB |
+| Version hello within a key-exchange message (`versionHello.ts`) | 1,368 characters, 1,024 decoded bytes | The prologue length-prefixes a hello in two bytes; a hello this build writes is under 100 bytes | 41 KB |
+| Invitation and terms update (`invitation.ts`, `termsUpdate.ts`) | 65,536 characters (`MAX_ENCODED_INVITATION_LENGTH`, `MAX_ENCODED_TERMS_UPDATE_LENGTH`), at most 49,147 decoded bytes | The encoder refuses to write a longer one | 2.0 MB |
+| Coordination-server signaling frame, CLI and web (`brokerClient.ts`, `signalingBounds.ts`) | 262,144 bytes (`MAX_SIGNALING_FRAME_BYTES`) | A frame is an SDP or one ICE candidate, kilobytes with every interface's candidates inlined | 10.5 MB |
+| WebSocket relay control frame, CLI and web (`websocketRelayConnection.ts`) | 17 characters | The length of `{"type":"paired"}`, the longer of the two control frames the relay sends | under 1 KB |
+| A party's hello or start, at the WebSocket relay (`packages/websocket-relay`) | 16,384 bytes (`RELAY_MAX_MESSAGE_BYTES`, the socket's maximum message) | The largest chunk a party sends | 656 KB |
+| A client's frame, at the coordination server (`packages/peerjs-broker`) | 262,144 bytes (`MAX_SIGNALING_PAYLOAD_BYTES`, the socket's maximum message) | As the signaling frame | 10.5 MB |
+| Published coordination-server document (`signalingDiscovery.ts`) | 4,096 bytes (`MAX_SIGNALING_DISCOVERY_BYTES`) | The document names one server address of at most 2,048 characters | 163 KB |
+| Relay registrar answer (`relayRegistrarClient.ts`) | 4,096 bytes | The registrar's requests are capped at 1,024 bytes, and an answer holds less | 163 KB |
+| Server provisioning answer (`serverProvision.ts`) | 32,768 bytes (`MAX_PROVISION_RESPONSE_BYTES`) | The widest answer the schema admits, every character escaped, is 26,632 bytes | 1.3 MB |
 
-Where the runtime reports neither (a browser other than Chromium) there is no reading, so the budget does not apply and the per-frame size bound governs alone ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#inbound-frame-size-bound)).
-Garbage not yet collected counts as used, so on Node a body over this budget is checked once more after a full collection before it is refused, whether or not Node was started with `--expose-gc`: where it was not, the collector is obtained at run time (`v8.setFlagsFromString("--expose-gc")`, then `gc` from a new `vm` context).
-A refusal is a `JsonMemoryBudgetError`, apart from the per-container ceilings' `JsonStructureBoundError`, because the shortfall is this machine's and not the body's: it states the bytes needed and the bytes available.
-A caller reading a partner's message - the decrypted frame, the file-sync message body, the peer hello - reports it as this machine lacking the memory to read that message, with both figures and the remedy (free memory, or raise the container's memory limit), as a `usage` failure rather than a security or malformed-payload one.
-Because the budget follows the memory available rather than a fixed count, it is not set below the largest legitimate message: a message is refused only when its values, at those charges, exceed the memory the process has left.
+A file-sync message over its cap is a terminal `UsageError` that leaves the file in place, and a relay control frame over its cap ends the relay connection as a `protocol` failure.
 
 The severity is defense-in-depth, not a live vulnerability: the counterparty is authenticated and can already abort the exchange trivially, and most of these sites already report a clean refusal rather than an ungraceful throw - a `receiveParsed` / `parseOrProtocolError` wrap reports a `ConnectionError("protocol")` from whatever `schema.parse` throws, and the linkage-terms parse-error catch aborts the same way.
 The stack-overflow `RangeError` is what `parse` throws, so the wrap catches it directly; the string-length `RangeError` is not, since the `ZodError` message builds lazily - the wrap sees only the unread `ZodError`, and that `RangeError`, if the issue list is that large, fires only where the cause's message is first read.

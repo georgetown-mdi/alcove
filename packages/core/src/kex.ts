@@ -101,6 +101,15 @@ export interface KexSuite {
 export const KEX_SUITES: readonly KexSuite[] = [{ id: 3, approved: true }];
 
 /**
+ * The most bytes a key-exchange message may hold as JSON. The largest of the
+ * four is message 2 carrying a hello at the hello's 1,024-byte limit, 1,683
+ * bytes; the rest is room for further key shares in message 1. A file-sync run
+ * with a key exchange refuses a larger JSON message before parsing it
+ * (docs/spec/PARSED_INPUT_BOUNDS.md, "Per-message byte caps").
+ */
+export const KEX_MESSAGE_MAX_BYTES = 4096;
+
+/**
  * The ids of the suites in `suites` a party offers: the approved ones alone
  * when `approvedOnly` is set.
  *

@@ -244,6 +244,11 @@ interface Options {
   // The remedy sentence a refused rename of this party's own temp ends on.
   // Unset names the configuration key (DEFAULT_RENAME_REFUSED_GUIDANCE).
   renameRefusedGuidance?: string;
+  // The most payload bytes a JSON message may hold; a larger one is refused
+  // before it is parsed. A run with a key exchange sets KEX_MESSAGE_MAX_BYTES,
+  // since its JSON messages are the key exchange's. Unset leaves the frame
+  // bound alone.
+  maxJsonMessageBytes?: number;
   // The clock and random source open() fills a peer_id's fields from. Not in
   // the public config; tests pin it to name the files a run writes.
   peerIdFieldSource: PeerIdFieldSource;

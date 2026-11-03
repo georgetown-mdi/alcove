@@ -3143,6 +3143,47 @@ test("an unkeyed run whose connection reports no selected versions leaves the pr
     expect(options.unkeyedProtocolVersion).toBeUndefined();
 });
 
+test.each([
+  [
+    "a run with a key exchange caps its JSON messages at the key exchange's largest",
+    true,
+  ],
+  [
+    "a run without a key exchange leaves its JSON messages at the frame bound",
+    false,
+  ],
+])("%s", async (_, keyed) => {
+  const { KEX_MESSAGE_MAX_BYTES } =
+    await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
+  const keyFile = path.join(tmpDir, "a.key");
+  if (keyed) saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  let options: { maxJsonMessageBytes?: number } | undefined;
+  const openSpy = vi
+    .spyOn(FileSyncConnection.prototype, "open")
+    .mockImplementation(async function (this: FileSyncConnection) {
+      options = (this as unknown as { options: typeof options }).options;
+      throw new Error("stop after construction");
+    });
+  try {
+    await Promise.allSettled([
+      runProtocol({
+        connection: { channel: "filedrop", path: dropDir },
+        auth: keyed ? { sharedSecret: TOKEN_A, keyFilePath: keyFile } : null,
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-a",
+      }),
+    ]);
+  } finally {
+    openSpy.mockRestore();
+  }
+  expect(options).toBeDefined();
+  expect(options?.maxJsonMessageBytes).toBe(
+    keyed ? KEX_MESSAGE_MAX_BYTES : undefined,
+  );
+});
+
 test("the both-swept advice is absent from a flagged retain-mode run", async () => {
   // Retain mode keeps the transcript -- cleanup() deletes nothing -- so the
   // folder this run leaves behind still holds the rendezvous files, and the

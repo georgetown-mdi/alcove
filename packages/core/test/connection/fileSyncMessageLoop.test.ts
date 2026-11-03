@@ -54,26 +54,6 @@ import {
   makeMockClient,
   type MockClientOptions,
 } from "../utils/support";
-import {
-  JSON_RETAINED_BYTES,
-  MAX_JSON_NESTING_DEPTH,
-} from "../../src/utils/boundedJson";
-
-// The memory the JSON budget reads: the runtime's own unless a case sets a
-// figure, with no collection to retry after.
-const memoryOverride = vi.hoisted(() => ({ bytes: null as number | null }));
-
-vi.mock("../../src/utils/availableMemory", async (importOriginal) => {
-  const real =
-    await importOriginal<typeof import("../../src/utils/availableMemory")>();
-  return {
-    ...real,
-    availableMemoryBytes: () =>
-      memoryOverride.bytes ?? real.availableMemoryBytes(),
-    collectGarbage: () =>
-      memoryOverride.bytes === null ? real.collectGarbage() : false,
-  };
-});
 
 describe("messageFilename", () => {
   test("no-timestamp form is <id>-<byteCount>.json", () => {
@@ -1402,45 +1382,56 @@ describe("FileSyncMessageLoop requireBinaryFrames", () => {
   });
 });
 
-describe("FileSyncMessageLoop memory shortfall on a JSON message", () => {
-  test("a JSON message over the memory available is refused as this machine's shortfall, and kept", async () => {
-    const f = makeLoop();
-    plantDeleteMessage(f.files, [[], [], []]);
-    // The outer array, its three elements, and three empty arrays.
-    const needed =
-      JSON_RETAINED_BYTES.array * 4 + JSON_RETAINED_BYTES.element * 3;
-    memoryOverride.bytes = needed - 1;
-
-    try {
-      await f.pollOnce();
-    } finally {
-      memoryOverride.bytes = null;
-    }
-
-    expect(f.emitted).toHaveLength(1);
-    const err = f.emitted[0].arg as UsageError;
-    expect(err).toBeInstanceOf(UsageError);
-    expect(err.message).toMatch(
-      /^this machine does not have enough free memory to read message file .+: it needs about 216 bytes and 215 are available\. Free memory on this machine, or raise the container's memory limit, and run the exchange again\.$/,
-    );
-    expect(f.emitted[0].pollerActiveAtEmit).toBe(false);
-    expect(f.files.size).toBe(1);
-  });
-
-  test("a JSON message past a structural bound is still refused as not valid JSON", async () => {
-    const f = makeLoop();
-    const body = serializeFileSyncMessage(
-      MESSAGE_TYPE_OBJECT,
-      0,
-      Buffer.from("[".repeat(MAX_JSON_NESTING_DEPTH + 1)),
-    );
-    f.files.set(`${DIR}/${PEER}-${body.length}.json`, body);
+describe("FileSyncMessageLoop maxJsonMessageBytes", () => {
+  const CAP = 16;
+  const plant = (
+    files: Map<string, Buffer>,
+    type: number,
+    payload: string,
+  ): string => {
+    const body = serializeFileSyncMessage(type, 0, Buffer.from(payload));
+    const name = `${DIR}/${PEER}-${body.length}.json`;
+    files.set(name, body);
+    return name;
+  };
+  test("a JSON message at the cap is parsed and delivered", async () => {
+    const value = '{"a":"12345678"}';
+    expect(Buffer.byteLength(value)).toBe(CAP);
+    const f = makeLoop({ maxJsonMessageBytes: CAP });
+    plant(f.files, MESSAGE_TYPE_OBJECT, value);
 
     await f.pollOnce();
 
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+    expect(f.emitted[0].arg).toEqual({ a: "12345678" });
+  });
+
+  test("a JSON message one byte over the cap is refused unparsed as a terminal failure, and kept", async () => {
+    const value = ' {"a":"12345678"}';
+    expect(Buffer.byteLength(value)).toBe(CAP + 1);
+    const f = makeLoop({ maxJsonMessageBytes: CAP });
+    const name = plant(f.files, MESSAGE_TYPE_OBJECT, value);
+
+    await f.pollOnce();
+
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].arg).toBeInstanceOf(UsageError);
     expect((f.emitted[0].arg as Error).message).toMatch(
-      /is not valid JSON: JSON payload structure exceeds the permitted bound/,
+      `holds a JSON message of ${CAP + 1} bytes, over the ${CAP}-byte ` +
+        "limit for a key-exchange message, so it was refused without being " +
+        "parsed",
     );
+    expect(f.emitted[0].pollerActiveAtEmit).toBe(false);
+    expect(f.files.has(name)).toBe(true);
+  });
+
+  test("a binary message over the cap is still delivered", async () => {
+    const f = makeLoop({ maxJsonMessageBytes: CAP });
+    plant(f.files, MESSAGE_TYPE_BINARY, "x".repeat(CAP + 1));
+
+    await f.pollOnce();
+
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
   });
 });
 

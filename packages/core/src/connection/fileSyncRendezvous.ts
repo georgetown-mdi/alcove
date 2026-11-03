@@ -32,8 +32,6 @@ import {
 } from "../utils/sanitizeErrorForDisplay";
 import {
   parseBoundedJson,
-  partnerMessageMemoryShortfall,
-  JsonMemoryBudgetError,
   JsonStructureBoundError,
 } from "../utils/boundedJson";
 import type { getLoggerForVerbosity } from "../utils/logger";
@@ -284,15 +282,6 @@ export async function readControlFileWithGate(
     try {
       parsed = parseBoundedJson(raw.toString());
     } catch (err) {
-      // This machine's own shortfall, so not a malformed hello; terminal
-      // all the same, since re-reading needs the same memory.
-      if (err instanceof JsonMemoryBudgetError)
-        throw new UsageError(
-          partnerMessageMemoryShortfall(
-            `the partner's control file at ${redactPrivateKeyMaterial(filePath)}`,
-            err,
-          ),
-        );
       // Every declared byte has arrived, so the body is fully formed and
       // retrying cannot make it valid: refused like a message body that fails
       // to parse after its size gate.

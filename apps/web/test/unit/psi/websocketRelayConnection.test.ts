@@ -290,6 +290,16 @@ describe("the hello", () => {
     },
   );
 
+  test("refuses a pairing one character longer than the relay sends it, unparsed", async () => {
+    const { socket, pending } = await startOpening();
+    socket.open();
+    socket.fromRelay(` ${PAIRED}`);
+    await expect(pending).rejects.toMatchObject({ kind: "protocol" });
+    await expect(pending).rejects.toThrow(
+      /sent a control message longer than the 17 characters/,
+    );
+  });
+
   test("refuses a start before the pairing", async () => {
     const { socket, pending } = await startOpening();
     socket.open();
