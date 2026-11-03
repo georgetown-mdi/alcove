@@ -78,4 +78,6 @@ It is the session's last step: the board alone holds the state afterwards.
    way, print one sentence the owner can give a new session to watch it and
    act on its result. State the final action items: only what the owner alone
    can take and no board item carries, each with the one line the ruleset
-   requires on why the session cannot; with none, say so in one line.
+   requires on why the session cannot; with none, say so in one line. Also
+   list the delivered items the continuation brief holds, which the owner
+   confirms and closes.

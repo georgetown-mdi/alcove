@@ -13,8 +13,8 @@ The owner's instruction this command stands for:
 The owner revised its last sentence on 2026-10-29: "When I make a decision mid
 orchestration, I'm doing so so that it can be acted on." On 2026-11-02 he named
 two kinds: a blocker, which work in flight needs in order to proceed, is acted
-on when ruled; an end-of-run decision becomes a board item in the follow-ups
-pass. With the owner AFK, blockers are held too.
+on when ruled; an end-of-run decision is written to the board in the
+follow-ups pass. With the owner AFK, blockers are held too.
 
 The bare command is that whole instruction, so the owner never types it out. A
 note after the command -- a merge report, a handoff result path -- is acted on
