@@ -55,6 +55,6 @@
 - - -> A frame too large for one message file is refused before the write, once masking has built it, and the partner is told.
 - - -> A file-sync run with no marker armed, which has no session key, tells its partner in band instead.
 - - -> When it fails on a local fault after the terms exchange agreed and before the exchange completed, it sends the abort frame its partner already reads in place of the frame it awaits, with the one fixed reason `the partner's run stopped on a fault`.
-- - -> The send is best-effort and waits at most 10 seconds.
+- - -> The send is best-effort and waits at most 10 seconds; in delete mode, closing then waits up to the terminal-frame drain timeout for the partner to read the frame, and deletes it after, so a partner whose synced folder does not deliver the frame in that time never sees it unless the run keeps its files (`--retain-files`).
 - - -> A run that already sent an abort frame of its own does not send a second, and a run the partner stopped or a signal ended sends none.
 - - -> The frame carries no cause and is not authenticated, as the run it ends is not.

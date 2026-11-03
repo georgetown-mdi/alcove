@@ -1680,8 +1680,11 @@ async function authenticateRun(params: {
 }
 
 /**
- * How long a run ending on a fault waits to write the abort frame. The partner
- * reads the last message promptly unless it has gone, and then nothing is owed.
+ * How long a run ending on a fault waits to write the abort frame. Closing then
+ * waits further, in delete mode, up to the terminal-frame drain timeout for the
+ * partner to read the frame, and deletes it after: a partner whose synced
+ * folder does not deliver it in that time never sees it unless the run keeps
+ * its files (`--retain-files`).
  */
 const LOCAL_FAULT_ABORT_WAIT_MS = 10_000;
 
