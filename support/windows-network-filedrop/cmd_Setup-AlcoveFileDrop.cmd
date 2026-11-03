@@ -1,17 +1,20 @@
 @echo off
 rem ==========================================================================
-rem  Makes a network file-drop folder usable by Alcove running in Docker.
-rem  Run this once, from a Command Prompt window, before your first exchange.
+rem  Makes a network file-drop folder usable by Alcove running in Docker or
+rem  Podman. Run this once, from a Command Prompt window, before your first
+rem  exchange.
 rem
 rem  This is the Command Prompt version of Setup-AlcoveFileDrop.ps1, for
 rem  machines where Windows PowerShell is absent or blocked. It does the same
 rem  four things: works out the real server behind the path you see in
-rem  Explorer, tests the share from inside a container, creates the Docker
-rem  volume, and checks that the volume mounts the folder that was tested.
+rem  Explorer, tests the share from inside a container, creates the volume,
+rem  and checks that the volume mounts the folder that was tested.
+rem
+rem  It runs docker when docker answers, and podman otherwise.
 rem
 rem  About the password. The checks receive it through an inherited environment
 rem  variable, so it never reaches a command line there. Creating the volume is
-rem  different -- Docker takes the credentials only as a mount option, which is
+rem  different -- the engine takes the credentials only as a mount option, which is
 rem  a command-line argument -- so it appears on one command line, and is then
 rem  stored in cleartext in the volume metadata. See the passwords page.
 rem
@@ -116,7 +119,7 @@ echo   -SubPath ^<folder^>    the folder inside the share
 echo   -Username ^<name^>     the account the container will use
 echo   -Domain ^<name^>       its domain, if it has one
 echo   -Dialect ^<d^>         pin the SMB dialect: SMB3, SMB2, or NT1
-echo   -VolumeName ^<name^>   the Docker volume to create (alcove-sync)
+echo   -VolumeName ^<name^>   the volume to create (alcove-sync)
 echo   -SkipConfirm         do not ask you to confirm the server and share
 echo   -SkipVolumeTest      run the checks but do not create the volume
 echo(
@@ -129,19 +132,53 @@ exit /b 1
 rem ================================================================= preflight
 call :head "Alcove file-drop setup"
 
-echo Checking Docker...
-docker version --format "{{.Server.Os}} {{.Server.Version}}" >"%WORK%" 2>&1
-if errorlevel 1 goto no_docker
+rem docker first, podman second, each counting only when it answers: a docker
+rem that cannot reach its engine is the ordinary "Docker Desktop is not started
+rem yet" case, and must not be chosen over a podman that works. When neither
+rem answers, what the first installed one said is in WORK.
+echo Checking for Docker or Podman...
+set "ENGINE="
+set "DOCKER_INSTALLED="
+set "PODMAN_INSTALLED="
+where docker >nul 2>&1
+if errorlevel 1 goto find_podman
+set "DOCKER_INSTALLED=1"
+call :engine_version docker "%WORK%"
+if errorlevel 1 goto find_podman
+set "ENGINE=docker"
+goto engine_found
 
+:find_podman
+where podman >nul 2>&1
+if errorlevel 1 goto no_engine
+set "PODMAN_INSTALLED=1"
+if defined DOCKER_INSTALLED (
+  call :engine_version podman nul
+) else (
+  call :engine_version podman "%WORK%"
+)
+if errorlevel 1 goto no_engine
+set "ENGINE=podman"
+
+:engine_found
+set "ENGINE_LABEL=Docker"
+if "%ENGINE%"=="podman" set "ENGINE_LABEL=Podman"
+if not "%ENGINE%"=="podman" goto docker_found
+call :good "Podman is running."
+goto engine_ready
+
+:docker_found
 set "DOCKER_OS="
 set "DOCKER_VER="
 for /f "usebackq tokens=1,2" %%a in ("%WORK%") do (
   set "DOCKER_OS=%%a"
   set "DOCKER_VER=%%b"
 )
-if not defined DOCKER_OS goto no_docker
+if not defined DOCKER_OS goto no_engine
 if /i "%DOCKER_OS%"=="windows" goto windows_containers
 call :good "Docker engine %DOCKER_VER% is running."
+
+:engine_ready
 
 rem The checks are the image's own, "alcove doctor", run in the same image the
 rem exchange itself runs, at the same floating tag. Floating is deliberate --
@@ -152,12 +189,12 @@ rem Pulled here rather than left to the first docker run: an image that cannot
 rem be fetched exits 125, which is indistinguishable from the checks deciding
 rem something about the share, and would be reported as a share problem with no
 rem diagnosis printed above it.
-docker image inspect "ghcr.io/georgetown-mdi/alcove:latest" >nul 2>&1
+%ENGINE% image inspect "ghcr.io/georgetown-mdi/alcove:latest" >nul 2>&1
 if errorlevel 1 (
   echo Fetching the Alcove image ^(first run only^). It is a few hundred
   echo megabytes -- the same image the exchange itself runs -- so this can
   echo take several minutes with nothing on screen.
-  docker pull --quiet "ghcr.io/georgetown-mdi/alcove:latest" >"%WORK%" 2>&1
+  %ENGINE% pull --quiet "ghcr.io/georgetown-mdi/alcove:latest" >"%WORK%" 2>&1
   if errorlevel 1 goto no_image
 )
 
@@ -200,7 +237,7 @@ if defined RESOLVE_FULL (
 )
 
 :have_target
-rem Everything downstream -- the SMB path and the Docker device string -- wants
+rem Everything downstream -- the SMB path and the volume's device string -- wants
 rem forward slashes.
 if defined SUBPATH set "SUBPATH=%SUBPATH:\=/%"
 call :trim_slashes
@@ -242,12 +279,12 @@ rem ============================================== part 2: credentials
 call :head "Part 2: credentials for the file server"
 
 echo These are the credentials the CONTAINER will use to reach the share.
-echo Windows signs you in to it as yourself; Docker cannot borrow that, so
-echo it needs a username and password of its own.
+echo It cannot borrow your Windows sign-in, so it needs a username and
+echo password of its own.
 echo(
 call :warn "Prefer an account scoped to this share, or one you are prepared to"
-call :note "retire. Docker stores this password in cleartext in the volume"
-call :note "metadata and puts it on a command line while creating the volume."
+call :note "retire. The password is kept in cleartext in the volume metadata"
+call :note "and is put on a command line while the volume is created."
 call :note "Do not use a domain administrator account, and do not use one whose"
 call :note "password protects anything else you care about."
 call :info ""
@@ -281,7 +318,7 @@ rem a checkout with core.autocrlf on still runs.
 set "VERDICT="
 set "PWWARN="
 set "TOKEN="
-docker run --rm -i --env SMB_PASS --entrypoint sh "ghcr.io/georgetown-mdi/alcove:latest" -c "tr -d '\r' | sh" <"%SCRIPT_DIR%cmd_alcove-credcheck.sh" >"%WORK%" 2>nul
+%ENGINE% run --rm -i --env SMB_PASS --entrypoint sh "ghcr.io/georgetown-mdi/alcove:latest" -c "tr -d '\r' | sh" <"%SCRIPT_DIR%cmd_alcove-credcheck.sh" >"%WORK%" 2>nul
 if errorlevel 1 goto credcheck_failed
 for /f "usebackq tokens=1,* delims==" %%a in ("%WORK%") do (
   if "%%a"=="VERDICT" set "VERDICT=%%b"
@@ -317,10 +354,10 @@ if defined SKIP_VOLUME_TEST set "SMB_MARKER="
 rem The image's own checks, "alcove doctor probe". Every value reaches them by
 rem name from the environment, so the password is never on a command line, and
 rem their lines stream to this window: they are the thing the operator reads.
-docker run --rm --env SMB_SERVER --env SMB_SHARE --env SMB_PATH --env SMB_USER --env SMB_DOMAIN --env SMB_PASS --env SMB_DIALECT --env SMB_MARKER --env SMB_TOKEN "ghcr.io/georgetown-mdi/alcove:latest" doctor probe
+%ENGINE% run --rm --env SMB_SERVER --env SMB_SHARE --env SMB_PATH --env SMB_USER --env SMB_DOMAIN --env SMB_PASS --env SMB_DIALECT --env SMB_MARKER --env SMB_TOKEN "ghcr.io/georgetown-mdi/alcove:latest" doctor probe
 set "PROBE_RC=%errorlevel%"
 
-if %PROBE_RC% GEQ 125 goto docker_broke
+if %PROBE_RC% GEQ 125 goto engine_broke
 if "%PROBE_RC%"=="78" goto probe_not_ready
 if not "%PROBE_RC%"=="0" goto probe_failed
 
@@ -330,7 +367,7 @@ if defined SKIP_VOLUME_TEST (
 )
 
 rem =========================================== part 4: create the volume
-call :head "Part 4: creating the Docker volume"
+call :head "Part 4: creating the volume"
 
 set "DEVICE=//%SERVER%/%SHARE%"
 if defined SUBPATH set "DEVICE=//%SERVER%/%SHARE%/%SUBPATH%"
@@ -340,7 +377,7 @@ rem code of the inspection below. Anything that stops the inspection running
 rem also exits non-zero, and reading that as "no such volume" walks straight
 rem past the guard and into the removal further down.
 set "VOLUME_EXISTS="
-docker volume ls --quiet >"%WORK%" 2>nul
+%ENGINE% volume ls --quiet >"%WORK%" 2>nul
 if errorlevel 1 goto volume_list_failed
 for /f "usebackq delims=" %%v in ("%WORK%") do (
   if "%%v"=="%VOLUME_NAME%" set "VOLUME_EXISTS=1"
@@ -349,7 +386,7 @@ for /f "usebackq delims=" %%v in ("%WORK%") do (
 if not defined VOLUME_EXISTS goto create_volume
 
 set "EXISTING="
-docker volume inspect --format "{{.Driver}} {{.Options.type}}" "%VOLUME_NAME%" >"%WORK%" 2>nul
+%ENGINE% volume inspect --format "{{.Driver}} {{.Options.type}}" "%VOLUME_NAME%" >"%WORK%" 2>nul
 if errorlevel 1 goto volume_not_ours
 for /f "usebackq delims=" %%v in ("%WORK%") do set "EXISTING=%%v"
 if not "%EXISTING%"=="local cifs" goto volume_not_ours
@@ -358,7 +395,7 @@ rem docker volume create on an existing name exits 0 and silently keeps the
 rem options the volume already has, so a run after a password change would
 rem quietly go on using the old one. Removing it first is what makes a re-run
 rem mean anything.
-docker volume rm "%VOLUME_NAME%" >"%WORK%" 2>&1
+%ENGINE% volume rm "%VOLUME_NAME%" >"%WORK%" 2>&1
 if errorlevel 1 goto volume_rm_failed
 call :info "Replaced the existing '%VOLUME_NAME%' volume."
 
@@ -380,17 +417,17 @@ set "VOL_OPTS=username=%SMB_USERNAME%,password=%SMB_PASS%,uid=1000,gid=1000"
 if defined SMB_DOMAINNAME set "VOL_OPTS=username=%SMB_USERNAME%,password=%SMB_PASS%,uid=1000,gid=1000,domain=%SMB_DOMAINNAME%"
 call :dialect_opt
 
-docker volume create --driver local --opt type=cifs --opt "device=%DEVICE%" --opt "o=%VOL_OPTS%" "%VOLUME_NAME%" >"%WORK%" 2>&1
+%ENGINE% volume create --driver local --opt type=cifs --opt "device=%DEVICE%" --opt "o=%VOL_OPTS%" "%VOLUME_NAME%" >"%WORK%" 2>&1
 if errorlevel 1 goto volume_create_failed
 set "VOL_OPTS="
-call :good "Volume created. Docker mounts it the first time it is used."
+call :good "Volume created. It is mounted the first time it is used."
 
 rem The kernel-side half of the checks, over the real mount. SMB_MARKER and
 rem SMB_TOKEN are still set from part 3, which is what lets this confirm that the
 rem volume and those checks reached the same folder. Collected rather than
 rem streamed, so that a refused mount's message can be read for its cause.
 echo Mounting it and running the checks over it...
-docker run --rm --env SMB_MARKER --env SMB_TOKEN -v "%VOLUME_NAME%:/rz" "ghcr.io/georgetown-mdi/alcove:latest" doctor mount /rz >"%WORK%" 2>&1
+%ENGINE% run --rm --env SMB_MARKER --env SMB_TOKEN -v "%VOLUME_NAME%:/rz" "ghcr.io/georgetown-mdi/alcove:latest" doctor mount /rz >"%WORK%" 2>&1
 set "VOL_RC=%errorlevel%"
 echo(
 call :show_safely
@@ -406,7 +443,7 @@ echo need to run this script again unless the password changes.
 echo(
 echo Run your exchange like this, on one line:
 echo(
-echo   docker run --rm -v "C:\path\to\your\work:/work" -v "%VOLUME_NAME%:/sync" ghcr.io/georgetown-mdi/alcove:latest file:///sync input.csv matches.csv
+echo   %ENGINE% run --rm -v "C:\path\to\your\work:/work" -v "%VOLUME_NAME%:/sync" ghcr.io/georgetown-mdi/alcove:latest file:///sync input.csv matches.csv
 echo(
 call :info "C:\path\to\your\work is a LOCAL folder on this PC holding your input"
 call :info "CSV; results are written back there. It must not be a network path."
@@ -430,7 +467,7 @@ echo(
 call :folder_name
 echo There is also a browser console, on one line:
 echo(
-echo   docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/data --env JOB_RENDEZVOUS_DIR=/sync --env "JOB_RENDEZVOUS_NAME=%FOLDER_NAME%" -v "C:\path\to\your\work:/data" -v "%VOLUME_NAME%:/sync" ghcr.io/georgetown-mdi/alcove:latest serve
+echo   %ENGINE% run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/data --env JOB_RENDEZVOUS_DIR=/sync --env "JOB_RENDEZVOUS_NAME=%FOLDER_NAME%" -v "C:\path\to\your\work:/data" -v "%VOLUME_NAME%:/sync" ghcr.io/georgetown-mdi/alcove:latest serve
 echo(
 call :info "then open http://127.0.0.1:3000"
 call :info ""
@@ -438,11 +475,11 @@ call :info "The console cannot set --lockless-rendezvous. If you were told above
 call :info "that you need it, or this is a synced folder, use the command-line"
 call :info "form instead."
 echo(
-call :warn "Docker stored the share password in cleartext in this volume's"
-call :note "metadata: 'docker volume inspect %VOLUME_NAME%' shows it to anyone"
-call :note "who can run Docker on this PC. When you are finished:"
+call :warn "%ENGINE_LABEL% stored the share password in cleartext in this volume's"
+call :note "metadata: '%ENGINE% volume inspect %VOLUME_NAME%' shows it to anyone"
+call :note "who can run %ENGINE_LABEL% on this PC. When you are finished:"
 call :info ""
-call :info "    docker volume rm %VOLUME_NAME%"
+call :info "    %ENGINE% volume rm %VOLUME_NAME%"
 call :info ""
 call :info "That removes the volume but not every trace of the password, so"
 call :info "retire or rotate the account when the exchanges are done. See the"
@@ -466,13 +503,24 @@ endlocal
 exit /b 0
 
 rem ================================================================= failures
-:no_docker
-call :bad "Docker is not running, or is not installed, or you cannot use it."
-call :note "Start Docker Desktop and wait for the whale icon to stop animating."
-call :note "If it is already running, the message below usually says which of"
-call :note "the three it is -- 'access is denied' means your account is not in"
-call :note "the local docker-users group, which an administrator has to add"
-call :note "you to before Docker will talk to you."
+:no_engine
+if defined DOCKER_INSTALLED goto engine_not_answering
+if defined PODMAN_INSTALLED goto engine_not_answering
+call :bad "Neither docker nor podman is installed on this PC."
+call :note "Install Docker Desktop, start it, and run this again."
+goto fail_generic
+
+:engine_not_answering
+if not defined DOCKER_INSTALLED goto podman_not_answering
+call :bad "Docker is installed but is not answering."
+call :start_engine docker
+echo(        "Access is denied" below means your account is not in the local
+call :note "docker-users group, which an administrator has to add you to."
+:podman_not_answering
+if not defined PODMAN_INSTALLED goto engine_said
+call :bad "Podman is installed but is not answering."
+call :start_engine podman
+:engine_said
 echo(
 if exist "%WORK%" type "%WORK%"
 goto fail_generic
@@ -491,7 +539,7 @@ call :bad "Could not fetch the Alcove image the checks run in."
 echo(
 if exist "%WORK%" type "%WORK%"
 echo(
-call :note "Nothing about your file drop has been tested yet -- this is Docker"
+call :note "Nothing about your file drop has been tested yet -- this is %ENGINE_LABEL%"
 call :note "being unable to reach its registry. A corporate proxy intercepting"
 call :note "HTTPS is the usual cause. The troubleshooting page covers it under"
 call :note "'The image download fails with a certificate error' and, if the"
@@ -499,7 +547,7 @@ call :note "registry refused the request, 'The image download is refused':"
 call :info "https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md"
 call :info ""
 call :info "The checks run in the same image as the exchange itself, so nothing"
-call :info "will run until Docker can fetch it."
+call :info "will run until %ENGINE_LABEL% can fetch it."
 call :info ""
 call :info "If your network blocks this download, Start-Alcove.ps1 can get"
 call :info "the image from Docker Hub instead."
@@ -509,14 +557,13 @@ goto fail_generic
 call :head "This folder is already local"
 call :good "%RESOLVE_LOCAL% is on this PC, not a network server."
 if not exist "%RESOLVE_LOCAL%" (
-  call :warn "It does not exist yet -- create it before running the exchange,"
-  call :note "or Docker will report 'bind source path does not exist'."
+  call :warn "It does not exist yet -- create it before running the exchange."
 )
 echo(
-echo That means you do not need a Docker volume at all -- you can mount
+echo That means you do not need a volume at all -- you can mount
 echo the folder directly. Run your exchange like this, on one line:
 echo(
-echo   docker run --rm -v "C:\path\to\your\work:/work" -v "%RESOLVE_LOCAL%:/sync" ghcr.io/georgetown-mdi/alcove:latest file:///sync input.csv matches.csv
+echo   %ENGINE% run --rm -v "C:\path\to\your\work:/work" -v "%RESOLVE_LOCAL%:/sync" ghcr.io/georgetown-mdi/alcove:latest file:///sync input.csv matches.csv
 echo(
 call :warn "If this folder is kept in step with your partner by a sync client"
 call :note "(OneDrive, Dropbox, Egnyte, ShareFile), both sides must also pass"
@@ -536,7 +583,7 @@ goto fail_generic
 
 :credcheck_failed
 call :bad "Could not check the password in a container."
-call :note "Nothing about your file drop has been tested. This is Docker failing"
+call :note "Nothing about your file drop has been tested. This is %ENGINE_LABEL% failing"
 call :note "to run the Alcove image, not a verdict about your share."
 echo(
 if exist "%WORK%" type "%WORK%"
@@ -551,11 +598,10 @@ call :note "password', first."
 goto fail_generic
 
 :pw_comma
-call :bad "That password contains a comma, and Docker cannot carry it."
+call :bad "That password contains a comma, which a volume cannot take."
 call :note "Mount options are separated by commas, so the password is cut off at"
 call :note "the first one and the mount fails with 'invalid argument'. There is"
-call :note "no way to quote or escape it -- this is a limit of Docker volumes,"
-call :note "not of Alcove, and doing it by hand hits exactly the same wall."
+call :note "no way to quote or escape it, here or by hand."
 call :info ""
 call :info "Use an account whose password has no comma. The troubleshooting"
 call :info "page has a ready-made request for one, under 'What to ask your IT"
@@ -564,8 +610,8 @@ goto fail_generic
 
 :pw_quote
 call :bad "That password contains a double quote, which cannot be carried here."
-call :note "The mount options go to Docker as one quoted argument, and a quote"
-call :note "inside the password ends that argument early: Docker then reads the"
+call :note "The mount options go to %ENGINE_LABEL% as one quoted argument, and a quote"
+call :note "inside the password ends that argument early: %ENGINE_LABEL% then reads the"
 call :note "rest as separate words and creates an unnamed volume instead of the"
 call :note "one asked for. Refusing now avoids leaving that stray behind."
 call :info ""
@@ -574,10 +620,10 @@ call :info "troubleshooting page has a ready-made request for one, under"
 call :info "'What to ask your IT department for'."
 goto fail_generic
 
-:docker_broke
+:engine_broke
 echo(
-call :bad "Docker could not start the container (exit %PROBE_RC%)."
-call :note "Nothing was tested. The message Docker printed above is the one"
+call :bad "%ENGINE_LABEL% could not start the container (exit %PROBE_RC%)."
+call :note "Nothing was tested. The message %ENGINE_LABEL% printed above is the one"
 call :note "to read."
 goto fail_generic
 
@@ -608,8 +654,8 @@ call :doctor_exit %PROBE_RC%
 goto fail_generic
 
 :volume_list_failed
-call :bad "Could not list the Docker volumes."
-call :note "The volume was not created. Docker answered the version check and"
+call :bad "Could not list the volumes."
+call :note "The volume was not created. %ENGINE_LABEL% answered the version check and"
 call :note "then refused this, which is unusual -- the message below is the one"
 call :note "to read."
 echo(
@@ -617,7 +663,7 @@ if exist "%WORK%" type "%WORK%"
 goto fail_generic
 
 :volume_not_ours
-call :bad "A Docker volume called '%VOLUME_NAME%' already exists and was not"
+call :bad "A volume called '%VOLUME_NAME%' already exists and was not"
 call :note "made by this script -- it is not a network-share volume. It has"
 call :note "been left alone; removing it could destroy data belonging to"
 call :note "something else on this PC."
@@ -625,7 +671,7 @@ call :info ""
 call :info "Run this script again with -VolumeName set to another name, or"
 call :info "remove that volume yourself if you are certain:"
 call :info ""
-call :info "    docker volume rm %VOLUME_NAME%"
+call :info "    %ENGINE% volume rm %VOLUME_NAME%"
 goto fail_generic
 
 :volume_rm_failed
@@ -634,7 +680,7 @@ echo(
 call :show_safely
 echo(
 call :note "A container is probably still using it. Stop any exchange that is"
-call :note "running, then try again: docker ps"
+call :note "running, then try again: %ENGINE% ps"
 goto fail_generic
 
 :volume_create_failed
@@ -652,13 +698,13 @@ if "%VOL_RC%"=="78" (
 ) else (
   call :doctor_exit %VOL_RC%
 )
-docker volume rm "%VOLUME_NAME%" >nul 2>&1
+%ENGINE% volume rm "%VOLUME_NAME%" >nul 2>&1
 goto fail_generic
 
 :volume_mount_failed
 echo(
 call :bad "The volume could not be mounted."
-rem The message being classified is the one the Docker daemon prints, which is
+rem The message being classified is the one the engine prints, which is
 rem the mount(2) errno rendered from Go's own table -- lowercase throughout,
 rem where mount.cifs and glibc capitalise the same errors. findstr is
 rem case-sensitive unless told otherwise, so every arm below takes /i and
@@ -697,16 +743,16 @@ goto mount_arms_done
 :mount_arm_nokey
 findstr /i /c:"required key not available" "%WORK%" >nul 2>&1
 if errorlevel 1 goto mount_arm_other
-call :note "The mount wanted a Kerberos ticket and the Docker VM has none."
+call :note "The mount wanted a Kerberos ticket and the %ENGINE_LABEL% VM has none."
 call :note "The server is refusing password authentication. See the"
 call :note "troubleshooting page, 'The share never asks for a password'."
 goto mount_arms_done
 
 :mount_arm_other
-call :note "The message Docker printed above is the one to read."
+call :note "The message %ENGINE_LABEL% printed above is the one to read."
 
 :mount_arms_done
-docker volume rm "%VOLUME_NAME%" >nul 2>&1
+%ENGINE% volume rm "%VOLUME_NAME%" >nul 2>&1
 goto fail_generic
 
 :fail_generic
@@ -781,19 +827,42 @@ if "%~1"=="64" (
   call :note "report it as a problem with this script. An image older than"
   call :note "these checks also ends this way, and downloading it again"
   call :note "fixes that:"
-  call :note "    docker pull ghcr.io/georgetown-mdi/alcove:latest"
+  call :note "    %ENGINE% pull ghcr.io/georgetown-mdi/alcove:latest"
   exit /b 0
 )
-docker version --format "{{.Server.Os}} {{.Server.Version}}" >nul 2>&1
+call :engine_version %ENGINE% nul
 if errorlevel 1 (
-  call :bad "Docker stopped during the checks."
-  call :note "Start Docker Desktop, wait for the whale icon to stop animating,"
-  call :note "and run this script again."
+  call :bad "%ENGINE_LABEL% stopped during the checks."
+  call :start_engine %ENGINE%
   exit /b 0
 )
 call :bad "The checks ended with exit %~1, which this script does not know."
 call :note "Nothing was established about your file drop. Look for a newer"
 call :note "copy of this script wherever you downloaded it."
+exit /b 0
+
+:engine_version
+rem %1 = the engine, %2 = the file that receives its answer. docker is asked
+rem its server's OS and version, which the Windows-containers check reads;
+rem podman a bare "version", as the PowerShell script asks it.
+if "%~1"=="docker" (
+  docker version --format "{{.Server.Os}} {{.Server.Version}}" >"%~2" 2>&1
+) else (
+  podman version >"%~2" 2>&1
+)
+exit /b %errorlevel%
+
+:start_engine
+rem %1 = the engine. How to start it, for every message about one not
+rem answering. Echoed rather than passed to :note, whose quoted argument
+rem cannot hold the quotes around the podman command.
+if not "%~1"=="podman" goto start_docker
+echo(        Start the Podman machine with "podman machine start", and run
+echo(        this script again.
+exit /b 0
+:start_docker
+call :note "Start Docker Desktop, wait for the whale icon to stop animating,"
+call :note "and run this script again."
 exit /b 0
 
 :show_safely
@@ -818,7 +887,7 @@ if /i "%DIALECT%"=="SMB3" set "VOL_OPTS=%VOL_OPTS%,vers=3.1.1"
 if /i "%DIALECT%"=="SMB2" set "VOL_OPTS=%VOL_OPTS%,vers=2.1"
 if /i "%DIALECT%"=="NT1" (
   set "VOL_OPTS=%VOL_OPTS%,vers=1.0"
-  call :warn "The Docker VM kernel is built without SMB1, so the mount below"
+  call :warn "The %ENGINE_LABEL% VM kernel is built without SMB1, so the mount below"
   call :note "will be refused however well the checks went. -Dialect NT1 is"
   call :note "useful for diagnosis only. If the server speaks nothing newer,"
   call :note "ask IT for a scheduled mirror to a local folder instead -- the"

@@ -498,7 +498,7 @@ function Invoke-LapCommandPrompt {
 function Invoke-EngineCheckLaps {
     <#  The three scripts against a missing or silent engine: each stops at
         its preflight with the message given, exit 1. #>
-    param([string] $Prefix, [string] $Path, [string] $LauncherSays, [string] $SetupSays, [switch] $SkipCommandPrompt)
+    param([string] $Prefix, [string] $Path, [string] $LauncherSays, [string] $SetupSays)
 
     $environment = @{ PATH = $Path }
     $drop = Get-DropFolder 'alcove-vm-1'
@@ -508,17 +508,15 @@ function Invoke-EngineCheckLaps {
                     -Arguments @{ DataRoot = (Get-WorkFolder 'op'); RendezvousDir = $drop; VolumeName = 'alcove-vm-noengine' } } },
         @{ Name = "$Prefix-SF"; Says = $SetupSays
             Run = { Invoke-StandInRun -Name "$Prefix-SF" -Target (Get-SetupScript) -Environment $environment `
-                    -Arguments @{ DropPath = $drop; VolumeName = 'alcove-vm-noengine' } } })
-    if (-not $SkipCommandPrompt) {
-        $runs += @{ Name = "$Prefix-CMD"; Says = 'Docker is not running, or is not installed, or you cannot use it.'
+                    -Arguments @{ DropPath = $drop; VolumeName = 'alcove-vm-noengine' } } },
+        @{ Name = "$Prefix-CMD"; Says = $SetupSays
             Run = {
                 $savedPath = $env:PATH
                 $env:PATH = $Path
                 try { $console = Start-CmdScript -Name "$Prefix-CMD" -Arguments "-DropPath `"$drop`" -VolumeName alcove-vm-noengine" }
                 finally { $env:PATH = $savedPath }
                 Complete-ConsoleCommand -Console $console -TimeoutSeconds 120
-            } }
-    }
+            } })
     foreach ($entry in $runs) {
         $run = & $entry.Run
         $reasons = @(Get-ScreenReasons -Screen $run.Screen -Has @($entry.Says) -Lacks @('Part 1'))
@@ -668,7 +666,7 @@ function Invoke-LapPodman {
         -Arguments @{ DropPath = $drop; VolumeName = 'alcove-vm-podman' }
     Write-LapResult -Name 'Podman-choice-SF' -Exit $run.Exit -Reasons @(Get-ScreenReasons -Screen $run.Screen -Has @('Podman is running.'))
     Set-PodmanMachine stop
-    Invoke-EngineCheckLaps -Prefix 'Podman-stopped' -Path $path -SkipCommandPrompt `
+    Invoke-EngineCheckLaps -Prefix 'Podman-stopped' -Path $path `
         -LauncherSays 'Podman is installed but is not answering.' -SetupSays 'Podman is installed but is not answering.'
 }
 

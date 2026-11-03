@@ -19,7 +19,8 @@ blocked. The guide already had a section for the blocked case, but its advice
 was to do the work by hand using PowerShell commands, which is no help on a
 machine where PowerShell is the obstacle. The Command Prompt script closes
 that: it does the same four parts against the same container checks, using
-nothing but `cmd`, `net use`, `fsutil`, `findstr` and `docker`.
+nothing but `cmd`, `net use`, `fsutil`, `findstr`, `where`, and the container
+engine.
 
 This script has no operator-facing page of its own. All three pages serve both
 scripts, giving both forms of a command wherever the two shells need different
@@ -294,13 +295,17 @@ installed. The script warns before prompting and suggests `cls` afterwards.
 Given the operator is the machine's own user, this is a warn-and-guide case
 rather than a reason to refuse.
 
-**This script runs docker alone, with no podman fallback.** The PowerShell
-scripts run podman when docker does not answer. This one names `docker` at
-every one of its engine call sites rather than through one variable, and
-reads the engine's answer through docker's own `{{.Server.Os}}` template, so a
-fallback here is a rewrite of every call site rather than a choice made once.
-An operator with Podman alone runs the PowerShell script, or does it by hand
-with `podman` in place of `docker`.
+**The engine is chosen once, as the PowerShell setup script chooses it.**
+docker first, podman second, each counting only when it answers the same
+version question that script asks it; every later call and every printed
+command line goes through `%ENGINE%`, and messages name `%ENGINE_LABEL%`.
+`where` takes the place of `Get-Command` to tell an engine that is not installed
+from one that does not answer, which is what picks the screen a run with
+neither ends on. The two engines are reached without `call`, so each must be a
+program: a `docker.cmd` or `podman.cmd` on the PATH would take over the run
+and never return to it. `cmd_Setup-AlcoveFileDrop.Tests.ps1` drives the choice
+against compiled stand-ins in the CI test job; no pass has run this script
+against a real Podman.
 
 **The password is not masked out of Docker's error text; the line is dropped.**
 The PowerShell script does a string substitution to mask it. `cmd` cannot
