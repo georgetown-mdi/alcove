@@ -1300,11 +1300,36 @@ weeks, so the runner applies a waiting version itself:
 - **When.** Just before the first attempt at a due window, never between
   two attempts at one, so a window that has made an attempt runs its retries
   to its normal end and a version found meanwhile is applied before the first
-  attempt of a later window. The apply reloads the
-  runner's own window by the path the update notice's Reload takes. The
-  attempt is not made, the window is left with no disposition and no
-  bookkeeping, and the reloaded page's first wake occupies the still-open
-  window on the new code.
+  attempt of a later window.
+- **What counts as waiting.** A worker other than the one controlling the
+  page is waiting in the registration, read when the runner asks, or a
+  takeover this page asked for has landed while the page still runs the
+  code it loaded before it. A page loaded under the newest worker has
+  nothing to apply.
+- **How.** The runner tells the waiting worker to take over, waits for the
+  page's controller to change, and then reloads the runner's own window, so
+  the reloaded page loads under the new worker. The attempt is not made, the
+  window is left with no disposition and no bookkeeping, and the reloaded
+  page's first wake occupies the still-open window on the new code. Once the
+  takeover has landed, the holds below are read again before the reload,
+  since a run or a view may have started during the wait; one that has
+  started defers the reload to a later window.
+- **How long it waits.** The outgoing worker holds a takeover back until it
+  finishes the work it has in flight, such as the route warm a page asks for
+  when it loads. The runner waits 10 seconds
+  (`APP_UPDATE_TAKEOVER_WAIT_MS`). Measured in Chromium against the built app
+  on a loopback origin, a takeover landed 7 to 33 ms after it was asked with
+  nothing in flight, and 27 to 322 ms when asked straight after a first load,
+  while the outgoing worker was still warming the routes (about 9.7 MB of
+  assets over the load and the warm; 10 trials each). The wait is about
+  thirty times the slowest of these, which leaves room for the same warm over
+  a real connection. A takeover that has not landed by then reloads nothing:
+  the window makes its attempt on the current version, and the takeover lands
+  when the outgoing worker lets it, to be applied before the first attempt of
+  a later window.
+- **What a page warms.** A page that finds a worker waiting when it loads
+  does not ask the outgoing worker to warm the routes, since the new worker
+  warms them once it controls the page.
 - **What holds it back.** Nothing is applied while any same-origin window
   holds or has queued for a record's single-writer lock (a run, a re-invite,
   relay enrollment, an import replace), or has its leave-page prompt armed (a
@@ -1326,7 +1351,8 @@ weeks, so the runner applies a waiting version itself:
 
 An installed app running its schedule therefore trails a deployment by up to
 an hour to find it, then its install, then until the first window after that
-whose first attempt finds nothing holding the apply back. A page running no schedule -- an ordinary
+whose first attempt finds nothing holding the apply back, and one window more
+when the takeover lands only after the runner has stopped waiting for it. A page running no schedule -- an ordinary
 tab, or an installed app whose runner is not running -- is never asked to
 look: it finds a deployment at its next navigation, and trails it for as long
 as it stays open without one. Its update notice applies a version it has

@@ -34,9 +34,9 @@
  *     URLs, which miss the cache and are fetched.
  *   - A new worker does NOT call skipWaiting() on install. It waits, and takes
  *     over when the last client controlled by the old worker goes away (the next
- *     cold start), or when a client applying it posts SKIP_WAITING_MESSAGE as it
- *     unloads -- on its operator's Reload, or on the installed app's own reload
- *     between scheduled runs. Swapping under a live
+ *     cold start), or when a client applying it posts SKIP_WAITING_MESSAGE: as
+ *     it unloads on its operator's Reload, or, between the installed app's
+ *     scheduled runs, before the reload that follows. Swapping under a live
  *     client would purge, on activate, the very asset cache that client's
  *     already-loaded code lazily fetches from -- during an exchange, on an app
  *     whose exchanges are long-running and interactive. The waiting worker is
@@ -129,8 +129,9 @@ const ASSET_CONTENT_TYPES = new Map([
   ["png", ["image/png"]],
 ]);
 
-/** The message a client posts to make a waiting worker take over now, having
- * reached the unload of the reload that applies it.
+/** The message a client posts to make a waiting worker take over now, as the
+ * reload that applies it unloads the page, or just before that reload where
+ * nothing in any window can be lost to the takeover.
  * Mirrored by the client registration in `apps/web/src/utils/appShellUpdate.ts`.
  */
 const SKIP_WAITING_MESSAGE = "alcove-skip-waiting";
@@ -306,10 +307,11 @@ async function warmRouteAssets() {
  * already-open clients. Claiming matters on the first install -- the page that
  * registered the worker is otherwise uncontrolled until its next navigation, so
  * nothing it loads reaches a cache and a reload straight into offline finds
- * nothing. Claiming on activate takes control of whatever client is open, and
- * the client that asked for this takeover is not one of them -- it posts
- * SKIP_WAITING_MESSAGE as it unloads (`apps/web/src/utils/appShellUpdate.ts`).
- * A SECOND client of the same origin, left open in another tab, is claimed here
+ * nothing. Claiming on activate takes control of whatever client is open. A
+ * client that asked for this takeover from its operator's Reload is not one of
+ * them -- it posts SKIP_WAITING_MESSAGE as it unloads -- while the installed
+ * app between scheduled runs is, and reloads on the claim
+ * (`apps/web/src/utils/appShellUpdate.ts`). A SECOND client of the same origin, left open in another tab, is claimed here
  * while it goes on running the old code: the discard beside the claim purges
  * nothing today because CACHE_VERSION is constant across deployments, and
  * bumping it would take that tab's asset cache out from under it. The claim does

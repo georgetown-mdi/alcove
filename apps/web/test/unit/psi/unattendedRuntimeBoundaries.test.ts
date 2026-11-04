@@ -7,11 +7,13 @@ import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
 import {
   APP_SHELL_UPDATE_HOLD_LOCK_NAME,
+  appShellUpdateHeldHere,
   holdAppShellUpdateAcrossWindows,
   holdAppShellUpdateHere,
   resetAppShellUpdateHold,
 } from "@utils/appShellUpdateHold";
 import {
+  SKIP_WAITING_MESSAGE,
   appShellUpdateReady,
   registerAppShell,
   resetAppShellUpdate,
@@ -19,10 +21,13 @@ import {
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
+  APP_UPDATE_TAKEOVER_WAIT_MS,
+  applyWaitingAppUpdateBetweenRuns,
+} from "@psi/managed/managedAppUpdate";
+import {
   awaitManagedExchangeLockTurn,
   withManagedExchangeLock,
 } from "@psi/managed/managedExchangeLock";
-import { applyWaitingAppUpdateBetweenRuns } from "@psi/managed/managedAppUpdate";
 
 import {
   MANAGED_INPUT_FILE_NAME,
@@ -166,11 +171,14 @@ describe("the app-shell service worker", () => {
 
 /** A worker whose state a test can advance, firing `statechange` as a real
  * one does. */
-function fakeWorker(state: string) {
+function fakeWorker(
+  state: string,
+  onMessage: (message: unknown) => void = () => undefined,
+) {
   const listeners: Array<() => void> = [];
   const worker = {
     state,
-    postMessage: () => undefined,
+    postMessage: onMessage,
     addEventListener: (_type: "statechange", listener: () => void) => {
       listeners.push(listener);
     },
@@ -186,37 +194,55 @@ function fakeWorker(state: string) {
 
 /** A container whose page is controlled, with `waiting` behind it when an
  * update is already installed, and a way to announce one later -- as the
- * browser does when it finds a redeployed script mid-run. */
-function shellContainer(waiting: boolean) {
+ * browser does when it finds a redeployed script mid-run. A waiting worker
+ * takes over when told to, as one whose predecessor has nothing in flight
+ * does, unless `takeoverHeld`; `landTakeover` then lands it. */
+function shellContainer(waiting: boolean, takeoverHeld = false) {
   const updateFound: Array<() => void> = [];
+  const controllerChange: Array<() => void> = [];
   const registration = {
     installing: null as ShellWorker | null,
-    waiting: waiting ? fakeWorker("installed").worker : null,
+    waiting: null as ShellWorker | null,
     addEventListener: (_type: "updatefound", listener: () => void) => {
       updateFound.push(listener);
     },
     update: () => Promise.resolve(),
   };
-  const container: ShellContainer = {
-    controller: fakeWorker("activated").worker,
+  const container = {
+    controller: fakeWorker("activated").worker as ShellWorker | null,
     register: () => Promise.resolve(registration),
-    addEventListener: () => undefined,
+    addEventListener: (_type: "controllerchange", listener: () => void) => {
+      controllerChange.push(listener);
+    },
   };
+  const landTakeover = () => {
+    container.controller = registration.waiting;
+    registration.waiting = null;
+    for (const listener of controllerChange) listener();
+  };
+  const waitingWorker = (state: string) =>
+    fakeWorker(state, (message) => {
+      if (message === SKIP_WAITING_MESSAGE && !takeoverHeld)
+        queueMicrotask(landTakeover);
+    });
+  if (waiting) registration.waiting = waitingWorker("installed").worker;
   return {
-    container,
+    container: container as ShellContainer,
+    landTakeover,
     installUpdate() {
-      const installing = fakeWorker("installing");
+      const installing = waitingWorker("installing");
       registration.installing = installing.worker;
       for (const listener of updateFound) listener();
-      installing.advanceTo("installed");
+      registration.installing = null;
       registration.waiting = installing.worker;
+      installing.advanceTo("installed");
     },
   };
 }
 
 /** This page's shell, registered with a reload the test counts. */
-async function registerShell(waiting: boolean) {
-  const shell = shellContainer(waiting);
+async function registerShell(waiting: boolean, takeoverHeld = false) {
+  const shell = shellContainer(waiting, takeoverHeld);
   const reload = vi.fn();
   await registerAppShell(shell.container, {
     reload,
@@ -416,15 +442,65 @@ describe("a scheduled run and a waiting app-shell update", () => {
 
   test("is not applied where the lock state cannot be read", async () => {
     let applied = 0;
+    let takeovers = 0;
     const answer = await applyWaitingAppUpdateBetweenRuns({
       updateReady: () => true,
       heldHere: () => false,
       lockNames: () => Promise.reject(new Error("the lock manager is gone")),
+      takeOver: () => {
+        takeovers += 1;
+        return Promise.resolve(true);
+      },
       apply: () => (applied += 1),
     });
 
     expect(answer).toBe(false);
+    expect(takeovers).toBe(0);
     expect(applied).toBe(0);
+  });
+
+  test("that a view here holds once the takeover has landed is not reloaded until it lets go", async () => {
+    let applied = 0;
+    let release = (): void => undefined;
+    const seams = {
+      updateReady: () => true,
+      heldHere: appShellUpdateHeldHere,
+      lockNames: () => Promise.resolve([]),
+      takeOver: () => {
+        release = holdAppShellUpdateHere();
+        return Promise.resolve(true);
+      },
+      apply: () => (applied += 1),
+    };
+
+    expect(await applyWaitingAppUpdateBetweenRuns(seams)).toBe(false);
+    expect(applied).toBe(0);
+    release();
+    seams.takeOver = () => Promise.resolve(true);
+    expect(await applyWaitingAppUpdateBetweenRuns(seams)).toBe(true);
+    expect(applied).toBe(1);
+  });
+
+  test("whose takeover does not land within the wait: the run is made, and the next window reloads onto it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const shell = await registerShell(true, true);
+    const { seams, attempts } = seamsForDueWindow(dueRecord());
+
+    const tick = tickManagedSchedules(seams);
+    await vi.advanceTimersByTimeAsync(APP_UPDATE_TAKEOVER_WAIT_MS);
+    const [entry] = await tick;
+
+    expect(shell.reload).not.toHaveBeenCalled();
+    expect(attempts()).toBe(1);
+    expect(entry.disposition).toBe("succeeded");
+
+    // The outgoing worker lets the posted takeover land after the wait.
+    shell.landTakeover();
+    const [next] = await tickManagedSchedules(seams);
+
+    expect(shell.reload).toHaveBeenCalledTimes(1);
+    expect(attempts()).toBe(1);
+    expect(next.skipped).toBe("app-update");
   });
 });
 
