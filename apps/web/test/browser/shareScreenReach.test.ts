@@ -1,6 +1,6 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { page, userEvent } from "vitest/browser";
 
@@ -8,7 +8,11 @@ import { createElement } from "react";
 
 import "@mantine/core/styles.css";
 
-import { InviterExchangeSection } from "@exchange/InviterExchangeSection";
+import {
+  InviterExchangeSection,
+  REPLACE_INVITATION_BODY,
+  REPLACE_INVITATION_LABEL,
+} from "@exchange/InviterExchangeSection";
 import { initialRun } from "@exchange/exchangeRun";
 
 import {
@@ -20,6 +24,7 @@ import { CoordinationServerUnreachableError } from "@psi/transport/signalingAddr
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 
 import type { GeneratedInvitation } from "@psi/invitation";
+import type { RunFailure } from "@exchange/useInviterExchange";
 
 const app = createAppMount();
 
@@ -254,5 +259,84 @@ describe("an unanswered coordination server the invitation names", () => {
       )
       .toBeEnabled();
     expect(app.container.querySelector('a[href="/relay"]')).toBeNull();
+  });
+});
+
+describe("replacing a waiting invitation", () => {
+  function renderReplaceable(
+    onReplaceInvitation: (() => void) | undefined,
+    failure?: RunFailure,
+  ): void {
+    app.render(
+      createElement(InviterExchangeSection, {
+        invitation: invitationAt("https://psi.data-bridge.org"),
+        inviterName: "County Health Department",
+        run: initialRun("inviter"),
+        outputs: undefined,
+        failure,
+        runRecord: undefined,
+        warnings: [],
+        partnerAcceptsByCli: false,
+        serverJob: false,
+        jobId: undefined,
+        reattached: undefined,
+        reattaching: false,
+        onTryAgain: () => {},
+        onStartOver: () => {},
+        ...(onReplaceInvitation !== undefined ? { onReplaceInvitation } : {}),
+        onReviewAppliedTerms: () => {},
+        onAbandon: () => {},
+      }),
+    );
+  }
+
+  test("the share screen offers it, saying the link stops working and the choices are kept", async () => {
+    const onReplaceInvitation = vi.fn();
+    renderReplaceable(onReplaceInvitation);
+    await expect
+      .element(page.getByRole("heading", { name: "Your invitation is ready" }))
+      .toBeInTheDocument();
+    expect(REPLACE_INVITATION_BODY).toBe(
+      "To change the terms, replace this invitation. Its link stops " +
+        "working, and you go back to Review & create with your choices kept.",
+    );
+    await expect.element(page.getByText(REPLACE_INVITATION_BODY)).toBeVisible();
+    await page
+      .getByRole("button", { name: REPLACE_INVITATION_LABEL, exact: true })
+      .click();
+    expect(onReplaceInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  test("is not offered where the page holds no settings to carry over", async () => {
+    renderReplaceable(undefined);
+    await expect
+      .element(page.getByRole("heading", { name: "Share this invitation" }))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: REPLACE_INVITATION_LABEL }).query(),
+    ).toBeNull();
+    expect(app.container.textContent).not.toContain(REPLACE_INVITATION_BODY);
+  });
+
+  test("gives way to the failure's own recovery once a run fails", async () => {
+    renderReplaceable(
+      vi.fn(),
+      failureFor(
+        "exchange",
+        new CoordinationServerUnreachableError("wss://coordination.example/"),
+        undefined,
+        "browser",
+      ),
+    );
+    await expect
+      .element(
+        page.getByRole("button", {
+          name: "Start over with a fresh invitation",
+        }),
+      )
+      .toBeEnabled();
+    expect(
+      page.getByRole("button", { name: REPLACE_INVITATION_LABEL }).query(),
+    ).toBeNull();
   });
 });

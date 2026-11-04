@@ -18,9 +18,19 @@ const EMPTY_AGREEMENT: DraftLegalAgreement = {
   expirationDate: "",
 };
 
+/** The Attach checkbox's description: what attaching asks of each party. */
+export const ATTACH_AGREEMENT_DESCRIPTION =
+  "Optional. Your partner sees these values before they accept.";
+
+/** What the tab says once an agreement is attached. */
+export const ATTACHED_AGREEMENT_NOTE =
+  "Enter the reference, purpose, and expiration date as your signed " +
+  "agreement states them. Your partner checks them against their copy " +
+  "before they accept.";
+
 /**
  * The Legal agreement tab: attach or detach the optional agreement block and
- * author the three values the partner must enter identically at accept time.
+ * author the three values the partner's consent step displays.
  * Validation errors show inline on the field they belong to.
  */
 export function AgreementTab({
@@ -61,7 +71,7 @@ export function AgreementTab({
       <h1 tabIndex={-1}>Legal agreement</h1>
       <Checkbox
         label="Attach a legal agreement"
-        description="Reference, purpose, and expiry your partner must enter identically."
+        description={ATTACH_AGREEMENT_DESCRIPTION}
         checked={agreement !== undefined}
         onChange={(event) =>
           onAgreement(event.currentTarget.checked ? EMPTY_AGREEMENT : undefined)
@@ -71,9 +81,7 @@ export function AgreementTab({
       {agreement !== undefined && (
         <>
           <Alert variant="light" mt="md">
-            Your partner must enter these three values exactly as written here
-            before they can accept. A mismatch stops the exchange - use the
-            wording from your signed agreement.
+            {ATTACHED_AGREEMENT_NOTE}
           </Alert>
           <TextInput
             ref={referenceRef}

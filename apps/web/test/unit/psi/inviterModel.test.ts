@@ -64,6 +64,7 @@ import {
 } from "@psi/inviterEditor";
 
 import {
+  NO_LEGAL_AGREEMENT,
   answersRows,
   cleaningCoverageProblems,
   inviterCleaningAttention,
@@ -607,6 +608,23 @@ describe("review and create", () => {
     expect(byLabel.get("Results go to")?.value).toBe("You and your partner");
     expect(byLabel.get("Results go to")?.changeTarget).toBe("columns");
     expect(byLabel.get("How it runs")?.value).toBe("Live, in this browser");
+  });
+
+  test("check-your-answers states no legal agreement as optional, and an attached one by its reference", () => {
+    const editor = editorFromCsv("Dana", csv);
+    const none = rowOf(answersRows(editor, csv, "browser"), "Legal agreement");
+    expect(none.value).toBe(NO_LEGAL_AGREEMENT);
+    expect(none.mono).toBe(false);
+    expect(none.changeTarget).toBe("agreement");
+
+    const attached = editorWithLegalAgreement(editor, {
+      reference: "MOU-2025-0042",
+      purpose: "Program evaluation",
+      expirationDate: "2027-01-01",
+    });
+    const row = rowOf(answersRows(attached, csv, "browser"), "Legal agreement");
+    expect(row.value).toBe("MOU-2025-0042");
+    expect(row.mono).toBe(true);
   });
 
   test("check-your-answers restates a count-only method", () => {

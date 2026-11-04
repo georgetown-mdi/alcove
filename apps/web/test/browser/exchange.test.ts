@@ -29,6 +29,10 @@ import {
   createdFromSampleInThisBrowser,
 } from "@exchange/sampleInvitationRecord";
 
+import {
+  ATTACHED_AGREEMENT_NOTE,
+  ATTACH_AGREEMENT_DESCRIPTION,
+} from "@exchange/AgreementTab";
 import { Lobby } from "@exchange/Lobby";
 
 import { COUNT_ONLY_CHOICE_CAVEAT } from "@psi/formatting";
@@ -1723,7 +1727,14 @@ describe("inviter screen", () => {
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Legal agreement");
-    await page.getByLabelText("Attach a legal agreement").click();
+    // What attaching asks of each party: the inviter enters the signed
+    // agreement's values, and the partner only checks them.
+    const attach = page.getByLabelText("Attach a legal agreement");
+    await expect
+      .element(attach)
+      .toHaveAccessibleDescription(ATTACH_AGREEMENT_DESCRIPTION);
+    await attach.click();
+    await expect.element(page.getByText(ATTACHED_AGREEMENT_NOTE)).toBeVisible();
     await userEvent.fill(
       page.getByLabelText("Agreement reference"),
       "MOU-2025-0042",

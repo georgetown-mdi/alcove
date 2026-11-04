@@ -48,7 +48,7 @@ Every part of the default terms is adjustable in place; there is no separate adv
 - what the exchange produces -- the matching method, then who receives the matched results: both parties, only the inviter, or only the partner ("neither receives" is not offered) -- at the top of the confirm-disclosure step, grouped as the consent review groups them, ahead of the column choices both constrain;
 - a column metadata grid mapping each column to a semantic type and one disclosure choice (used to match, unique record identifier, sent to your partner, or ignored), on the confirm-disclosure step;
 - which linkage keys are active and in what order, with a per-key indicator of whether the inviter's columns satisfy it, plus the linkage strategy, in the Matching keys tab. Choosing `single-pass` over the default `cascade` shows its disclosure tradeoff (fewer round trips over a high-latency channel in exchange for disclosing more) and writes terms stating that choice, which both parties must agree on or the exchange aborts. The disclosure mechanics are in [PROTOCOL.md](spec/PROTOCOL.md);
-- an optional legal agreement (the partner must enter it identically), in an Agreement tab.
+- an optional legal agreement (the partner sees it on the consent step before accepting), in an Agreement tab.
 
 Per-field data cleaning is set in a Cleaning tab: the inviter authors each field's cleaning steps, raw regular-expression steps included (each marked "advanced"), and chooses which column feeds it. A whole-file coverage warning is shown, and a malformed step blocks creation, as in the acceptor's cleaning editor (below).
 

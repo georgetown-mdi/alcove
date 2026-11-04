@@ -16,7 +16,7 @@ Your file of Riverbend clients is `inviter.csv` in your folder.
 
 ## Your notes from the agreement meeting
 
-- We match on first name, last name, date of birth and ZIP code, with the app's standard matching rules.
+- We match on first name, last name, date of birth and ZIP code, with the app's default matching rules.
 - Riverbend sends each matched client's housing program, and nothing else. Income band never leaves Riverbend.
 - Lakeshore sends us nothing.
 - Both of us get the list of matched people.

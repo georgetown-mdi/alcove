@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { UNNAMED_PARTY_LABEL } from "@alcove/core";
 
 import {
+  ACCEPTOR_CLEANING_OPTIONAL,
   ACCEPTOR_NAME_CONTROL_CHAR_PROBLEM,
   ACCEPTOR_NAME_PRIVATE_KEY_PROBLEM,
   ACCEPTOR_NAME_TEXT_DIRECTION_PROBLEM,
@@ -171,12 +172,18 @@ describe("acceptor spine derivation", () => {
 });
 
 describe("acceptor rail facts", () => {
-  test("the single Customize fact is Cleaning with an em-dash placeholder value", () => {
+  test("the single Customize fact is Cleaning, stated as optional while nothing needs review", () => {
     const facts = acceptorRailFacts();
     expect(facts).toHaveLength(1);
     expect(facts[0].label).toBe("Cleaning");
-    // No fact value yet -- the Rail renders undefined as the em-dash mark.
-    expect(facts[0].fact).toBeUndefined();
+    expect(facts[0].fact).toBe(ACCEPTOR_CLEANING_OPTIONAL);
+    expect(facts[0].tone).toBeUndefined();
+  });
+
+  test("a reason to review cleaning replaces the optional fact, in the attention tone", () => {
+    const [fact] = acceptorRailFacts("2 fields failing");
+    expect(fact.fact).toBe("2 fields failing");
+    expect(fact.tone).toBe("attention");
   });
 });
 

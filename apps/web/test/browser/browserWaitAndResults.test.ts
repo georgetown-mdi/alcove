@@ -455,6 +455,35 @@ describe("waiting again on an invitation after a reload", () => {
   });
 });
 
+describe("replacing an invitation while it waits", () => {
+  test("stops the old run, removes the kept invitation, and keeps the settings for a new one", async () => {
+    await createInvitation();
+    const first = lifecycleCall(0);
+    expect(first.signal.aborted).toBe(false);
+    expect(window.sessionStorage.getItem(PENDING_KEY)).not.toBeNull();
+
+    await page.getByRole("button", { name: "Replace this invitation" }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Review & create");
+    expect(first.signal.aborted).toBe(true);
+    await vi.waitFor(() =>
+      expect(window.sessionStorage.getItem(PENDING_KEY)).toBeNull(),
+    );
+    const nameRow = Array.from(document.querySelectorAll("th")).find(
+      (heading) => heading.textContent === "Your name or agency",
+    )?.parentElement;
+    expect(nameRow?.textContent).toContain("Dana Okafor");
+
+    await page.getByRole("button", { name: "Create the invitation" }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Your invitation is ready");
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(2));
+    expect(lifecycleCall(1).sharedSecret).not.toBe(first.sharedSecret);
+  });
+});
+
 describe("leaving a completed browser run", () => {
   test("the inviter is asked first while a download is untaken, naming what is left", async () => {
     await createInvitation();
