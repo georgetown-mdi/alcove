@@ -323,7 +323,7 @@ export const CHECKS = [
     group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
-      "Every bold UI label in the guides under docs/guides/ matches a string in the web app, the console, the CLI, or core, except the bold text listed as not a label.",
+      "Every bold UI label in the guides under docs/guides/ matches a string in the web app, the console, the CLI, or core, except the bold text listed as not a label, and every VitePress include under docs/ names a file and region that exist.",
   },
   {
     script: "check:zero-setup-keys",
