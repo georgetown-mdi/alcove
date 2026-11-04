@@ -959,7 +959,7 @@ copy. A successful run does not clear a save failure in two cases:
 
 - you answered it as a possible compromise;
 - a handshake failed closed, or this device could not save a new secret, after
-  it.
+  it, among the last 10 runs.
 
 A handshake that fails closed after that success is not explained by the save
 failure: it raises its own standing condition and gets the full confirmation.

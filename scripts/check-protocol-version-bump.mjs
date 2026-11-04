@@ -157,12 +157,12 @@ export const UNCOVERED_VECTORS = [
   {
     vectors: "transform-regex-divergent-vectors.json",
     versionedBy:
-      "the operator-authored linkage-terms `version`, which is what the transform dialect is compared under between two parties.",
+      "nothing: the transform dialect may change between releases, and the release notes name each change of meaning (docs/spec/PROTOCOL.md, Transform regular-expression dialect). packages/core/test/utils/linear-regex-golden.jsonl guards the engine.",
   },
   {
     vectors: "transform-regex-vectors.json",
     versionedBy:
-      "the operator-authored linkage-terms `version`, which is what the transform dialect is compared under between two parties.",
+      "nothing: the transform dialect may change between releases, and the release notes name each change of meaning (docs/spec/PROTOCOL.md, Transform regular-expression dialect). packages/core/test/utils/linear-regex-golden.jsonl guards the engine.",
   },
   {
     vectors: "webrtc-interop-vectors.json",
