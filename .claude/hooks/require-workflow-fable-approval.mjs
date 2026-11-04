@@ -36,10 +36,12 @@ export const EXPIRES_ON = "2027-03-31";
 
 // `model: 'fable'` / `"model": "claude-fable-5"` in any quote style (the key is
 // quoted when the option rides in a JSON args object), plus a quoted string that
-// is nothing but a Fable spelling, which reaches the option by another name.
+// is nothing but a Fable spelling, which reaches the option by another name. A
+// spelling is `fable` or `claude-fable` with numeric version parts only, so a
+// branch or file name that begins with fable passes.
 const FABLE_PATTERNS = [
-  /(?<![\w$])(?:model|(['"`])model\1)\s*:\s*(['"`])\s*(?:claude-)?fable[a-z0-9-]*\s*\2/i,
-  /(['"`])\s*(?:claude-)?fable[a-z0-9-]*\s*\1/i,
+  /(?<![\w$])(?:model|(['"`])model\1)\s*:\s*(['"`])\s*(?:claude-)?fable(?:-\d+)*\s*\2/i,
+  /(['"`])\s*(?:claude-)?fable(?:-\d+)*\s*\1/i,
 ];
 
 const ASK_REASON =

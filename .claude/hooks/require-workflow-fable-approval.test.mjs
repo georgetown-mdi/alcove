@@ -50,6 +50,7 @@ describe("require-workflow-fable-approval hook", () => {
     const argsObjects = [
       { model: "fable" },
       { model: "claude-fable-5" },
+      { model: "claude-fable-5-1" },
       { tier: "fable" },
     ];
     for (const args of argsObjects) {
@@ -83,6 +84,17 @@ describe("require-workflow-fable-approval hook", () => {
       tool_input: {
         script: "await agent(p, { model: 'opus' })",
         args: { claims: ["The hook asks before a Workflow runs on Fable"] },
+      },
+    });
+    expect(out).toBe("");
+  });
+
+  it("passes through args naming a ref that begins with fable", () => {
+    const out = runHook({
+      tool_name: "Workflow",
+      tool_input: {
+        script: "await agent(p, { model: 'opus' })",
+        args: { targetRef: "fable-ask-text", model: "fable-notes" },
       },
     });
     expect(out).toBe("");
