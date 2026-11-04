@@ -36,19 +36,19 @@ export const EXPIRES_ON = "2027-03-31";
 
 // `model: 'fable'` / `"model": "claude-fable-5"` in any quote style (the key is
 // quoted when the option rides in a JSON args object), plus a quoted string that
-// is nothing but a Fable spelling, which reaches the option by another name.
+// is nothing but a Fable spelling, which reaches the option by another name. A
+// spelling is `fable` or `claude-fable` with numeric version parts only, so a
+// branch or file name that begins with fable passes.
 const FABLE_PATTERNS = [
-  /(?<![\w$])(?:model|(['"`])model\1)\s*:\s*(['"`])\s*(?:claude-)?fable[a-z0-9-]*\s*\2/i,
-  /(['"`])\s*(?:claude-)?fable[a-z0-9-]*\s*\1/i,
+  /(?<![\w$])(?:model|(['"`])model\1)\s*:\s*(['"`])\s*(?:claude-)?fable(?:-\d+)*\s*\2/i,
+  /(['"`])\s*(?:claude-)?fable(?:-\d+)*\s*\1/i,
 ];
 
 const ASK_REASON =
   "This Workflow's script requests the Fable tier for one of its agents, which " +
-  "requires your explicit approval " +
-  "(per `.claude/orchestration/ruleset.md`, Models and spawns): " +
-  "Fable is reserved for deliberate hard cases and is never chosen " +
-  "autonomously. Approve to run it on Fable, or deny and it will be re-issued on " +
-  "a cheaper tier.";
+  "needs your approval " +
+  "(`.claude/orchestration/ruleset.md`, Models and spawns). Approve to run it " +
+  "on Fable, or deny and it will be re-issued on a cheaper tier.";
 
 function ask(reason) {
   process.stdout.write(

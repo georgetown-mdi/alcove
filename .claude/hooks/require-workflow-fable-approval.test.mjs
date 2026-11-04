@@ -21,7 +21,12 @@ function assertAsks(out) {
   const parsed = JSON.parse(out);
   expect(parsed.hookSpecificOutput.hookEventName).toBe("PreToolUse");
   expect(parsed.hookSpecificOutput.permissionDecision).toBe("ask");
-  expect(parsed.hookSpecificOutput.permissionDecisionReason).toMatch(/Fable/);
+  expect(parsed.hookSpecificOutput.permissionDecisionReason).toBe(
+    "This Workflow's script requests the Fable tier for one of its agents, which " +
+      "needs your approval " +
+      "(`.claude/orchestration/ruleset.md`, Models and spawns). Approve to run it " +
+      "on Fable, or deny and it will be re-issued on a cheaper tier.",
+  );
 }
 
 describe("require-workflow-fable-approval hook", () => {
@@ -45,6 +50,7 @@ describe("require-workflow-fable-approval hook", () => {
     const argsObjects = [
       { model: "fable" },
       { model: "claude-fable-5" },
+      { model: "claude-fable-5-1" },
       { tier: "fable" },
     ];
     for (const args of argsObjects) {
@@ -78,6 +84,17 @@ describe("require-workflow-fable-approval hook", () => {
       tool_input: {
         script: "await agent(p, { model: 'opus' })",
         args: { claims: ["The hook asks before a Workflow runs on Fable"] },
+      },
+    });
+    expect(out).toBe("");
+  });
+
+  it("passes through args naming a ref that begins with fable", () => {
+    const out = runHook({
+      tool_name: "Workflow",
+      tool_input: {
+        script: "await agent(p, { model: 'opus' })",
+        args: { targetRef: "fable-ask-text", model: "fable-notes" },
       },
     });
     expect(out).toBe("");

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // PreToolUse hook: route any Agent spawn on the Fable tier to a user-approval
 // prompt. Fable is the most expensive tier, reserved for deliberate hard cases (a
-// complicated plan, a high-stakes security/protocol review); the owner approves
-// each such spawn rather than letting the agent choose it autonomously. This hook
-// returns permissionDecision "ask" for a Fable spawn so the harness prompts the
-// owner; every other tier passes through untouched.
+// complicated plan, a high-stakes security/protocol review); the owner is asked
+// for approval on each such spawn. This hook returns permissionDecision "ask"
+// for a Fable spawn so the harness prompts the owner; every other tier passes
+// through untouched.
 //
 // Detection covers both Fable spellings the Agent tool admits: an explicit
 // `model: "fable"`, and a bare spawn whose subagent_type's .claude/agents/*.md
@@ -31,11 +31,9 @@ import { eventForTools } from "./lib/event.mjs";
 export const EXPIRES_ON = "2027-03-31";
 
 const ASK_REASON =
-  "This spawn runs on the Fable tier, which requires your explicit approval " +
-  "(per `.claude/orchestration/ruleset.md`, Models and spawns): " +
-  "Fable is reserved for deliberate hard cases and is never chosen " +
-  "autonomously. Approve to run it on Fable, or deny and it will be re-issued " +
-  "on a cheaper tier.";
+  "This spawn runs on the Fable tier, which needs your approval " +
+  "(`.claude/orchestration/ruleset.md`, Models and spawns). Approve to run it " +
+  "on Fable, or deny and it will be re-issued on a cheaper tier.";
 
 function ask(reason) {
   process.stdout.write(
