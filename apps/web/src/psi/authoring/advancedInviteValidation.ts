@@ -297,8 +297,9 @@ function cleaningFanOutMessage(
   return countOnly
     ? `A count-only exchange cannot run ${step}, because the invitation does ` +
         "not state how many parts it adds to each record. Remove that step, " +
-        "and to match on the parts, turn on expert authoring and add it to " +
-        "the transform of the linkage key elements that read that field; or " +
+        "and to match on the parts, turn on expert authoring on the Matching " +
+        "keys tab and add it to the transform of the linkage key elements " +
+        "that read that field; or " +
         REVEAL_IDENTIFIERS_INSTEAD
     : `This linkage strategy matches one value per record, but ${step} ` +
         "splits a value into parts. Remove that step, or on the Matching keys " +

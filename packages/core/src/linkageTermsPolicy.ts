@@ -67,7 +67,7 @@ export function countOnlyStandardizationFanOutMessage(step?: {
     step === undefined
       ? {
           where: `a ${QUOTED_FAN_OUT_FUNCTION_NAMES} step in your standardization`,
-          field: "that field",
+          field: "the field it cleans",
         }
       : {
           where: `the "${step.functionName}" step on standardization output "${step.output}"`,

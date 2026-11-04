@@ -1972,7 +1972,7 @@ describe("assertFanOutImplemented", () => {
         "standardization, because the agreed linkage terms do not state how " +
         "many parts it adds to each record. Remove that step, and to match on " +
         "the parts, add it to the transform of the linkage key elements that " +
-        'read that field; or set algorithm to "psi".',
+        'read the field it cleans; or set algorithm to "psi".',
     );
   });
 

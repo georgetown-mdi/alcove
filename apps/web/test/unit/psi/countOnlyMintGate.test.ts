@@ -272,8 +272,9 @@ describe("the count-only fan-out gate at the Generate boundary", () => {
       "A count-only exchange cannot run the Split on step in the Last name " +
         "cleaning from the last_name column, because the invitation does not " +
         "state how many parts it adds to each record. Remove that step, and " +
-        "to match on the parts, turn on expert authoring and add it to the " +
-        "transform of the linkage key elements that read that field; or set " +
+        "to match on the parts, turn on expert authoring on the Matching keys " +
+        "tab and add it to the transform of the linkage key elements that " +
+        "read that field; or set " +
         'Matching method to "Reveal the matched identifiers (standard)" on ' +
         "Matching & sharing.",
     );
