@@ -270,7 +270,7 @@ export function ReviewCreateSection({
   conversion?: { statement: string; onConvert: () => void };
   /** The hosted browser exchange's Allowed relays, shown in the browser
    * transport card: the text the field shows, its error, and whether it is
-   * fixed on the list a created invitation took. A line the field refuses
+   * fixed on the list the press of Create took. A line the field refuses
    * holds the create. Absent where the field is not offered. */
   allowedRelays?: {
     value: string;

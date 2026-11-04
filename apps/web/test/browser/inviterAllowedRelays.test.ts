@@ -429,6 +429,56 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 });
 
+describe("InviterScreen: the review's Allowed relays from the press of Create", () => {
+  const COMMITTED = ["relay.example.org"];
+
+  test("are fixed while the invitation is created: no edit is accepted, and the invitation and the fixed view keep the list at the press", async () => {
+    await openReview(OWN_RELAY);
+    await setRelays("Relay.Example.org");
+    let release: () => void = () => undefined;
+    mintHarness.hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await createButton().click();
+    await expect
+      .element(page.getByText(allowedRelaysSummary(COMMITTED)))
+      .toBeInTheDocument();
+    expect(allowedField().query()).toBeNull();
+    expect(changeButton().query()).toBeNull();
+    expect(removeButton().query()).toBeNull();
+    expect(setButton().query()).toBeNull();
+
+    release();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Your invitation is ready");
+    const { record, turn } = await keptInvitation();
+    expect(record.allowedRelays).toEqual(COMMITTED);
+    expect(turn).toEqual([KEPT_URL]);
+
+    await backToReview();
+    await expect
+      .element(page.getByText(allowedRelaysSummary(COMMITTED)))
+      .toBeInTheDocument();
+    expect(allowedField().query()).toBeNull();
+    expect(changeButton().query()).toBeNull();
+  });
+
+  test("a create that fails returns the list to the draft as typed, open to edits", async () => {
+    await openReview(OWN_RELAY);
+    await setRelays("Relay.Example.org");
+    mintHarness.fail = new Error("mint refused");
+
+    await createButton().click();
+    await expect
+      .element(page.getByText("Could not create the invitation"))
+      .toBeInTheDocument();
+    await expect.element(allowedField()).toHaveValue("Relay.Example.org");
+    await expect.element(allowedField()).toBeEnabled();
+  });
+});
+
 describe("InviterScreen: the review's Connection settings", () => {
   const scheme = () => (window.location.protocol === "https:" ? "wss" : "ws");
   const serverField = () =>

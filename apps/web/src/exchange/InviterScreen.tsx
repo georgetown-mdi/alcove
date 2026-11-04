@@ -299,11 +299,13 @@ const EMPTY_COVERAGE_INPUT: CoverageInput = {
 };
 const EMPTY_COLUMN_SAMPLES: ColumnSamples = new Map();
 
-/** The Connection settings an invitation took at the press of Create: the
- * text the fields showed and its read, which the invitation names. */
+/** The Connection settings and Allowed relays an invitation took at the
+ * press of Create: the text the Connection fields showed and its read, and
+ * the relays the list keeps, which the invitation names. */
 interface CommittedConnectionSettings {
   values: ConnectionSettingsText;
   read: Extract<ExchangeConnectionRead, { ok: true }>;
+  allowedRelays: ReadonlyArray<string> | undefined;
 }
 
 const SPINE_LABELS: Record<InviterSpineStep, string> = {
@@ -644,10 +646,10 @@ export function InviterScreen() {
   // The browser exchange's Connection settings, in its transport card on the
   // hosted build: the coordination server, starting from this site's, the
   // switch and the exchange's own relays. Pressing Create commits their text
-  // and its read: the invitation names them and keeps them for the run and a
-  // save as a recurring exchange. While it is created and once it exists the
-  // fields show the committed values, fixed; a failed create or a start over
-  // returns them to the draft as typed.
+  // and its read, and the Allowed relays list: the invitation names them and
+  // keeps them for the run and a save as a recurring exchange. While it is
+  // created and once it exists the fields show the committed values, fixed; a
+  // failed create or a start over returns them to the draft as typed.
   const pageProtocol =
     typeof window === "undefined" ? "https:" : window.location.protocol;
   const [siteServer] = useState(() =>
@@ -682,10 +684,10 @@ export function InviterScreen() {
     !isConsoleBuild() && transport === "browser";
   // The browser exchange's Allowed relays, set in its transport card on the
   // hosted build where the run lists a relay for them to keep or leave out,
-  // or where they hold a list or were edited. Creating the invitation commits
-  // their parse: the invitation names only the relays they keep and holds the
-  // list, which the run and a save as a recurring exchange read. Once it
-  // exists the field is fixed on that list.
+  // or where they hold a list or were edited. Pressing Create commits their
+  // parse: the invitation names only the relays they keep and holds the list,
+  // which the run and a save as a recurring exchange read. From the press on
+  // the field is fixed on the committed list.
   const allowedRelaysOffered =
     !isConsoleBuild() &&
     transport === "browser" &&
@@ -698,7 +700,6 @@ export function InviterScreen() {
       }));
   const allowedRelayLines =
     parseExchangeAllowedRelayLines(inviterAllowedRelays);
-  const allowedRelaysFixed = invitation !== undefined;
   // A console run of the opened configuration continues the exchange it set
   // up, under the key file beside it on the server, so it sends no invitation.
   const continuesOpenedExchange =
@@ -1537,10 +1538,18 @@ export function InviterScreen() {
       retainsFiles:
         connectionEndpoint !== undefined && runOptions?.retainFiles === true,
     });
+    const allowedRelaysCommitted =
+      allowedRelaysOffered && allowedRelayLines.ok
+        ? allowedRelayLines.entries
+        : undefined;
     setCommittedConnection(
       connection === undefined
         ? undefined
-        : { values: connectionText, read: connection },
+        : {
+            values: connectionText,
+            read: connection,
+            allowedRelays: allowedRelaysCommitted,
+          },
     );
     dispatch({ type: "mint-started" });
     try {
@@ -1557,10 +1566,7 @@ export function InviterScreen() {
         ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
         ...(connectionEndpoint !== undefined ? { connectionEndpoint } : {}),
         retainsFiles: declaresRetainedFiles,
-        allowedRelays:
-          allowedRelaysOffered && allowedRelayLines.ok
-            ? allowedRelayLines.entries
-            : undefined,
+        allowedRelays: allowedRelaysCommitted,
         ...(connection?.ownRelay !== undefined
           ? { ownRelay: connection.ownRelay }
           : {}),
@@ -2149,23 +2155,26 @@ export function InviterScreen() {
                   : {})}
                 {...(allowedRelaysOffered
                   ? {
-                      allowedRelays: allowedRelaysFixed
-                        ? {
-                            value: allowedRelaysText(invitation.allowedRelays),
-                            error: undefined,
-                            fixed: true,
-                            onChange: () => undefined,
-                          }
-                        : {
-                            value: inviterAllowedRelays,
-                            error: allowedRelayLinesError(allowedRelayLines),
-                            fixed: false,
-                            onChange: (value: string) =>
-                              dispatch({
-                                type: "allowed-relays-changed",
-                                value,
-                              }),
-                          },
+                      allowedRelays:
+                        connectionCommitted !== undefined
+                          ? {
+                              value: allowedRelaysText(
+                                connectionCommitted.allowedRelays,
+                              ),
+                              error: undefined,
+                              fixed: true,
+                              onChange: () => undefined,
+                            }
+                          : {
+                              value: inviterAllowedRelays,
+                              error: allowedRelayLinesError(allowedRelayLines),
+                              fixed: false,
+                              onChange: (value: string) =>
+                                dispatch({
+                                  type: "allowed-relays-changed",
+                                  value,
+                                }),
+                            },
                     }
                   : {})}
               />
