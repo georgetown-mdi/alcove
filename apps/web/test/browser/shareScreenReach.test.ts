@@ -264,7 +264,7 @@ describe("an unanswered coordination server the invitation names", () => {
 
 describe("replacing a waiting invitation", () => {
   function renderReplaceable(
-    onStartOver: () => void,
+    onReplaceInvitation: (() => void) | undefined,
     failure?: RunFailure,
   ): void {
     app.render(
@@ -282,7 +282,8 @@ describe("replacing a waiting invitation", () => {
         reattached: undefined,
         reattaching: false,
         onTryAgain: () => {},
-        onStartOver,
+        onStartOver: () => {},
+        ...(onReplaceInvitation !== undefined ? { onReplaceInvitation } : {}),
         onReviewAppliedTerms: () => {},
         onAbandon: () => {},
       }),
@@ -290,8 +291,8 @@ describe("replacing a waiting invitation", () => {
   }
 
   test("the share screen offers it, saying the link stops working and the choices are kept", async () => {
-    const onStartOver = vi.fn();
-    renderReplaceable(onStartOver);
+    const onReplaceInvitation = vi.fn();
+    renderReplaceable(onReplaceInvitation);
     await expect
       .element(page.getByRole("heading", { name: "Your invitation is ready" }))
       .toBeInTheDocument();
@@ -299,7 +300,18 @@ describe("replacing a waiting invitation", () => {
     await page
       .getByRole("button", { name: REPLACE_INVITATION_LABEL, exact: true })
       .click();
-    expect(onStartOver).toHaveBeenCalledTimes(1);
+    expect(onReplaceInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  test("is not offered where the page holds no settings to carry over", async () => {
+    renderReplaceable(undefined);
+    await expect
+      .element(page.getByRole("heading", { name: "Share this invitation" }))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: REPLACE_INVITATION_LABEL }).query(),
+    ).toBeNull();
+    expect(app.container.textContent).not.toContain(REPLACE_INVITATION_BODY);
   });
 
   test("gives way to the failure's own recovery once a run fails", async () => {

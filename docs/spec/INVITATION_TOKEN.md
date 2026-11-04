@@ -217,6 +217,8 @@ Alcove's inviters compute `expires` with `invitationExpires`: the moment the sha
 The lifetime is `INVITATION_LIFETIME_SECONDS` (**3600**, one hour) unless the inviter sets one, and `assertInvitationLifetimeSeconds` refuses a lifetime that is not a finite positive number of seconds or exceeds `MAX_INVITATION_LIFETIME_SECONDS` (**31,536,000**, 365 days).
 That ceiling binds Alcove's inviters only: `encodeInvitation` checks that `expires` is in the future and nothing more, and `decodeInvitation` does not check the lifetime.
 
+Limit: replacing or discarding an invitation from the inviter's screen stops its link connecting at once, with no confirmation step, as the screen says before the click.
+
 ## Decoding
 
 `decodeInvitation` refuses a token at the first check it fails, in this order.
@@ -266,8 +268,6 @@ The accepting paths apply these further checks after the decode, before anything
 An `expires` that does not parse, or a `now` that does not, is treated as expired.
 A token with no `expires` does not expire.
 The CLI applies it in `decodeAndValidateInvitation` (`apps/cli/src/invitationDecode.ts`), the one decode `alcove accept` and `alcove exchange --invitation` share, and the web application in `prepareAcceptedInvitation` (`apps/web/src/psi/acceptInvitation.ts`).
-
-Limit: replacing or discarding an invitation from the inviter's screen stops its link connecting at once, with no confirmation step, as the screen says before the click.
 
 **Endpoint.**
 The web application refuses a token with no `connectionEndpoint`, and one whose channel this build cannot drive (`endpointDrivableHere`): `webrtc` on every build, `filedrop` and `sftp` on a console build only.

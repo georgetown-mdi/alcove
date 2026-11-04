@@ -2389,6 +2389,7 @@ export function InviterScreen() {
               resumableAfterReload={keepsPendingInvitation}
               onTryAgain={tryAgain}
               onStartOver={startOver}
+              onReplaceInvitation={startOver}
               onReviewAppliedTerms={reviewAppliedTerms}
               onAbandon={abandonRun}
             />
