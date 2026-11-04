@@ -213,10 +213,10 @@ export function ConnectionTuningCard({
               <DurationRow
                 label={IGNORE_FILES_OLDER_THAN_LABEL}
                 description={
-                  "Applies only when exchange files are kept. A run starts " +
-                  "even when an earlier exchange left files in the folder, " +
-                  "ignoring those older than this. Blank uses how long this " +
-                  "side waits for your partner."
+                  "Applies only when exchange files are kept. " +
+                  "An unanswered file your partner left is ignored once it is " +
+                  "older than this, so a run can start. Blank uses how long " +
+                  "this side waits for your partner."
                 }
                 units={DURATION_FIELD_UNITS.ignoreFilesOlderThan}
                 defaultMs={ignoreFilesOlderThanDefaultMs(draft, capabilities)}
@@ -230,7 +230,7 @@ export function ConnectionTuningCard({
                 set("ignoreFilesOlderThanInfinite", event.currentTarget.checked)
               }
               label="Never ignore"
-              description="A run then ignores no file for its age."
+              description="A run then never ignores an unanswered file from your partner."
             />
           </Stack>
         )}

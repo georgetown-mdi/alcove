@@ -169,7 +169,7 @@ describe("a console run that failed on a catalog cause", () => {
 
   test("an ignored partner hello states its age and names the window and wait controls", () => {
     const IGNORED_HELLO_REMEDY =
-      "If the file this run ignored was your partner's run, raise " +
+      "If the file this run ignored was your partner's, raise " +
       `"${IGNORE_FILES_OLDER_THAN_LABEL}" under ${CONNECTION_TUNING_HEADING}, ` +
       `or give both sides the same "${PEER_TIMEOUT_LABEL}", then run again.`;
     const [, , , , ignored, both] = SAMPLES["partner-never-arrived"];

@@ -62,7 +62,7 @@ const SHARED_PEER_ID_REMEDY =
   "% fields, then run again.";
 
 const IGNORED_HELLO_REMEDY =
-  "If the file this run ignored was your partner's run, raise " +
+  "If the file this run ignored was your partner's, raise " +
   `${IGNORE_FILES_OLDER_THAN_KEY} (or --ignore-files-older-than), or give ` +
   "both sides the same peer_timeout_ms, then run again.";
 

@@ -649,10 +649,10 @@ export function addCommonBootstrapOptions(
     .option("ignore-files-older-than", {
       type: "string",
       describe:
-        "with --retain-files, a run starts even when an earlier exchange " +
-        "left files in the folder, ignoring those older than this duration " +
+        "with --retain-files, a run ignores an unanswered file your partner " +
+        "left once it is older than this duration, so the run can start " +
         "(default: this side's peer timeout; maximum: " +
-        `${MAX_TIMEOUT_SECONDS / 86_400}d), or infinite to never ignore; ` +
+        `${MAX_TIMEOUT_SECONDS / 86_400}d), or infinite to never ignore one; ` +
         "overrides " +
         "connection.options.ignore_files_older_than_ms. " +
         DURATION_VALUE_HELP,
