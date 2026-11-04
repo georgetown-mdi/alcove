@@ -79,3 +79,4 @@
 - **An answer is not a working relay.** -> -
 - It does not show that the relay holds the exchange's key, or that a relayed path passes data. -> -
 - A stored one failing it on a later read, and a read the browser's storage refuses, leave the setting unreadable, and a new invitation then names the deployment's address. -> -
+- - -> Settings the earlier Relay server page stored in the browser are not read: a new invitation names the deployment's coordination server, no relay of its own, and the default relay switched off, unless its own Connection settings say otherwise.

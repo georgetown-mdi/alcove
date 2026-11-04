@@ -20,8 +20,14 @@ import {
   allowedRelaysRunNotice,
   allowedRelaysSummary,
 } from "@psi/transport/relayRestriction";
+import {
+  RELAY_OPERATOR_DISCLOSURE,
+  relaySummary,
+} from "@exchange/ExchangeConnectionSettings";
 import { ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
+import { DEFAULT_RELAY_SWITCH_LABEL } from "@psi/transport/defaultRelaySwitch";
 import { InviterScreen } from "@exchange/InviterScreen";
+import { OWN_DEFAULT_RELAY_NOTICE_LEAD } from "@exchange/DefaultRelayNotice";
 import { PENDING_INVITATION_STORAGE_KEY } from "@exchange/pendingInvitationKey";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { parkWebSocketRelayConnection } from "@psi/transport/websocketRelayConnection";
@@ -31,6 +37,7 @@ import { createAppMount } from "./renderApp";
 
 import { lifecycleCall, lifecycleCalls, parkedRelays } from "./moduleMocks";
 
+import type { DefaultRelayBuild } from "@utils/clientConfig";
 import type { OwnRelayEntry } from "./connectionSettings";
 
 // The hosted inviter sets its exchange's own Allowed relays in the browser
@@ -58,6 +65,40 @@ vi.mock("@psi/transport/websocketRelayConnection", async (importOriginal) => ({
   ),
 }));
 
+// Hold the mint open or fail it per-test, to act on the review while the
+// invitation is created; unset, it delegates to the real generateInvitation.
+const mintHarness = vi.hoisted(() => ({
+  hold: undefined as Promise<void> | undefined,
+  fail: undefined as Error | undefined,
+}));
+vi.mock("@psi/invitation", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    generateInvitation: async (params: unknown) => {
+      await mintHarness.hold;
+      if (mintHarness.fail !== undefined) throw mintHarness.fail;
+      return (actual.generateInvitation as (p: unknown) => Promise<unknown>)(
+        params,
+      );
+    },
+  };
+});
+
+// The build's default relay, the build's own where unset.
+const relayBuild = vi.hoisted(() => ({
+  current: undefined as DefaultRelayBuild | undefined,
+}));
+vi.mock("@utils/clientConfig", async (importOriginal) => {
+  const real = await (
+    await import("../utils/clientConfigMock")
+  ).clientConfigMock(importOriginal);
+  return {
+    ...real,
+    defaultRelayBuild: () => relayBuild.current ?? real.defaultRelayBuild(),
+  };
+});
+
 const KEPT_URL = "turns:relay.example.org:443?transport=tcp";
 const LEFT_OUT_URL = "turn:backup.example.net:3478";
 
@@ -70,6 +111,9 @@ const app = createAppMount();
 afterEach(() => {
   app.unmount();
   lifecycleCalls.length = 0;
+  mintHarness.hold = undefined;
+  mintHarness.fail = undefined;
+  relayBuild.current = undefined;
   vi.mocked(listenAsInviter).mockReset();
   window.sessionStorage.clear();
   window.localStorage.clear();
@@ -159,6 +203,18 @@ async function runListen() {
   const options = vi.mocked(listenAsInviter).mock.lastCall?.[2];
   if (options === undefined) throw new Error("the run did not listen");
   return { options, notices };
+}
+
+/** Go back from the created invitation to its review. */
+async function backToReview() {
+  const landed = new Promise<void>((resolve) => {
+    window.addEventListener("popstate", () => resolve(), { once: true });
+  });
+  window.history.back();
+  await landed;
+  await expect
+    .element(page.getByRole("heading", { name: "Review & create" }))
+    .toBeInTheDocument();
 }
 
 describe("InviterScreen: the review's Allowed relays", () => {
@@ -345,18 +401,6 @@ describe("InviterScreen: the review's Allowed relays", () => {
     ]);
   });
 
-  /** Go back from the created invitation to its review. */
-  async function backToReview() {
-    const landed = new Promise<void>((resolve) => {
-      window.addEventListener("popstate", () => resolve(), { once: true });
-    });
-    window.history.back();
-    await landed;
-    await expect
-      .element(page.getByRole("heading", { name: "Review & create" }))
-      .toBeInTheDocument();
-  }
-
   test("Back from the created invitation shows the list it took, fixed", async () => {
     await openReview(OWN_RELAY);
     await setRelays("Relay.Example.org");
@@ -426,5 +470,96 @@ describe("InviterScreen: the review's Connection settings", () => {
       turn: [KEPT_URL],
       stun: [],
     });
+  });
+
+  const SITE_TURN = "turns:turn.example.org:443?transport=tcp";
+  const OTHER_SERVER = () =>
+    `${scheme()}://coordination.agency.example/signal/`;
+  const relaySwitch = () =>
+    page.getByRole("switch", { name: DEFAULT_RELAY_SWITCH_LABEL });
+  const changeRelay = () => page.getByRole("button", { name: "Change relay" });
+  const removeRelay = () => page.getByRole("button", { name: "Remove relay" });
+  const committedRelayLine = () =>
+    page.getByText(
+      relaySummary({ turn: SITE_TURN, stun: "", websocket: "" }) ?? "no relay",
+    );
+
+  /** The review with the build offering its relay server switched off, the
+   * exchange's own relay naming it, and another coordination server. */
+  async function openSiteRelayReview() {
+    relayBuild.current = {
+      kind: "opt-in",
+      relay: {
+        turnUrl: SITE_TURN,
+        registrarUrl: "https://registrar.example.org",
+      },
+    };
+    await openReview({ turn: [SITE_TURN] });
+    await userEvent.fill(serverField(), OTHER_SERVER());
+  }
+
+  test("are fixed from the press of Create: an edit while the invitation is created changes neither what it names nor what the fields show", async () => {
+    await openSiteRelayReview();
+    let release: () => void = () => undefined;
+    mintHarness.hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await createButton().click();
+    await expect.element(serverField()).toHaveAttribute("readonly");
+    await serverField().click();
+    await userEvent.keyboard("{End}x");
+    await expect.element(serverField()).toHaveValue(OTHER_SERVER());
+    await expect.element(relaySwitch()).toBeDisabled();
+    await expect.element(committedRelayLine()).toBeInTheDocument();
+    expect(changeRelay().query()).toBeNull();
+    expect(removeRelay().query()).toBeNull();
+
+    release();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Your invitation is ready");
+    const { record, turn } = await keptInvitation();
+    const token = await decodeInvitation(record.encoded);
+    expect(token.connectionEndpoint).toMatchObject({
+      channel: "webrtc",
+      host: "coordination.agency.example",
+      path: "/signal/",
+    });
+    expect(turn).toEqual([SITE_TURN]);
+    expect(record).not.toHaveProperty("defaultRelayOn");
+  });
+
+  test("Back from the created invitation shows the server, relays and switch it took, fixed, and the notice they give", async () => {
+    await openSiteRelayReview();
+    await create();
+
+    await backToReview();
+    await expect.element(serverField()).toHaveValue(OTHER_SERVER());
+    await expect.element(serverField()).toHaveAttribute("readonly");
+    await expect.element(committedRelayLine()).toBeInTheDocument();
+    expect(changeRelay().query()).toBeNull();
+    expect(removeRelay().query()).toBeNull();
+    await expect.element(relaySwitch()).not.toBeChecked();
+    await expect.element(relaySwitch()).toBeDisabled();
+    await expect
+      .element(page.getByRole("note"))
+      .toHaveTextContent(
+        `${OWN_DEFAULT_RELAY_NOTICE_LEAD} ${RELAY_OPERATOR_DISCLOSURE}`,
+      );
+  });
+
+  test("a create that fails returns them to the draft as typed, open to edits", async () => {
+    await openSiteRelayReview();
+    mintHarness.fail = new Error("mint refused");
+
+    await createButton().click();
+    await expect
+      .element(page.getByText("Could not create the invitation"))
+      .toBeInTheDocument();
+    await expect.element(serverField()).not.toHaveAttribute("readonly");
+    await expect.element(serverField()).toHaveValue(OTHER_SERVER());
+    await expect.element(relaySwitch()).toBeEnabled();
+    await expect.element(removeRelay()).toBeInTheDocument();
   });
 });

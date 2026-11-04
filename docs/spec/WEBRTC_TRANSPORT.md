@@ -268,6 +268,11 @@ since the hosted build's `_headers` gives its published file
 ([below](#the-published-coordination-server)) no `Access-Control-Allow-Origin`
 header for a page on another origin to read it under.
 
+Settings the earlier Relay server page stored in the browser are not read: a
+new invitation names the deployment's coordination server, no relay of its
+own, and the default relay switched off, unless its own Connection settings
+say otherwise.
+
 An inviter registers at the endpoint its invitation names. A saved exchange's
 later runs register at the endpoint the inviter's record stored from that
 invitation, after the validation an acceptor's dial applies (below). A

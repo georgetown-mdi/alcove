@@ -247,8 +247,11 @@ import {
 import { useStepHistory } from "./useStepHistory";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
+import type {
+  ConnectionSettingsText,
+  ExchangeConnectionRead,
+} from "@recurring/managedConnectionSettingsModel";
 import type { AcceptKitEndpoint } from "./acceptKit";
-import type { ConnectionSettingsText } from "@recurring/managedConnectionSettingsModel";
 import type { RailStep } from "@psi/rail";
 
 import type {
@@ -295,6 +298,13 @@ const EMPTY_COVERAGE_INPUT: CoverageInput = {
   rows: EMPTY_ROWS,
 };
 const EMPTY_COLUMN_SAMPLES: ColumnSamples = new Map();
+
+/** The Connection settings an invitation took at the press of Create: the
+ * text the fields showed and its read, which the invitation names. */
+interface CommittedConnectionSettings {
+  values: ConnectionSettingsText;
+  read: Extract<ExchangeConnectionRead, { ok: true }>;
+}
 
 const SPINE_LABELS: Record<InviterSpineStep, string> = {
   file: "Your file",
@@ -633,9 +643,11 @@ export function InviterScreen() {
   const chosenRunMode = transportRunMode(available, transport);
   // The browser exchange's Connection settings, in its transport card on the
   // hosted build: the coordination server, starting from this site's, the
-  // switch and the exchange's own relays. Creating the invitation commits
-  // their read: the invitation names them and keeps them for the run and a
-  // save as a recurring exchange. Once it exists they are fixed.
+  // switch and the exchange's own relays. Pressing Create commits their text
+  // and its read: the invitation names them and keeps them for the run and a
+  // save as a recurring exchange. While it is created and once it exists the
+  // fields show the committed values, fixed; a failed create or a start over
+  // returns them to the draft as typed.
   const pageProtocol =
     typeof window === "undefined" ? "https:" : window.location.protocol;
   const [siteServer] = useState(() =>
@@ -655,7 +667,17 @@ export function InviterScreen() {
     siteServer,
     pageProtocol,
   );
-  const draftOwnRelay = connectionRead.ok ? connectionRead.ownRelay : undefined;
+  const [committedConnection, setCommittedConnection] =
+    useState<CommittedConnectionSettings>();
+  const connectionCommitted =
+    minting || invitation !== undefined ? committedConnection : undefined;
+  const connectionShown = connectionCommitted?.values ?? connectionText;
+  const ownRelayShown =
+    connectionCommitted !== undefined
+      ? connectionCommitted.read.ownRelay
+      : connectionRead.ok
+        ? connectionRead.ownRelay
+        : undefined;
   const connectionSettingsOffered =
     !isConsoleBuild() && transport === "browser";
   // The browser exchange's Allowed relays, set in its transport card on the
@@ -671,8 +693,8 @@ export function InviterScreen() {
       allowedRelaysEdited ||
       invitation?.allowedRelays !== undefined ||
       runListsRelay(undefined, {
-        readOwn: () => ownRelayRead(draftOwnRelay),
-        switchedOn: () => connectionText.defaultRelayOn,
+        readOwn: () => ownRelayRead(ownRelayShown),
+        switchedOn: () => connectionShown.defaultRelayOn,
       }));
   const allowedRelayLines =
     parseExchangeAllowedRelayLines(inviterAllowedRelays);
@@ -1515,6 +1537,11 @@ export function InviterScreen() {
       retainsFiles:
         connectionEndpoint !== undefined && runOptions?.retainFiles === true,
     });
+    setCommittedConnection(
+      connection === undefined
+        ? undefined
+        : { values: connectionText, read: connection },
+    );
     dispatch({ type: "mint-started" });
     try {
       const minted = await generateInvitation({
@@ -2108,10 +2135,13 @@ export function InviterScreen() {
                 {...(connectionSettingsOffered
                   ? {
                       connectionSettings: {
-                        values: connectionText,
-                        errors: connectionRead.ok ? {} : connectionRead.errors,
-                        ownRelay: draftOwnRelay,
-                        fixed: invitation !== undefined,
+                        values: connectionShown,
+                        errors:
+                          connectionCommitted !== undefined || connectionRead.ok
+                            ? {}
+                            : connectionRead.errors,
+                        ownRelay: ownRelayShown,
+                        fixed: connectionCommitted !== undefined,
                         onChange: (change: Partial<ConnectionSettingsText>) =>
                           setConnectionText((text) => ({ ...text, ...change })),
                       },
