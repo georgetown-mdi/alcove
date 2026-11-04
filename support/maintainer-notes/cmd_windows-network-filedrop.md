@@ -304,8 +304,12 @@ from one that does not answer, which is what picks the screen a run with
 neither ends on. The two engines are reached without `call`, so each must be a
 program: a `docker.cmd` or `podman.cmd` on the PATH would take over the run
 and never return to it. `cmd_Setup-AlcoveFileDrop.Tests.ps1` drives the choice
-against compiled stand-ins in the CI test job; no pass has run this script
-against a real Podman.
+against compiled stand-ins in the CI test job. Against Podman 6.1.4, the 3
+November 2026 pass (`windows-network-filedrop.md`) ran it as far as the engine
+choice: with the Podman machine running it printed "Podman is running." both
+with docker off the PATH and with Docker Desktop stopped, where docker did not
+answer; with the machine stopped it printed "Podman is installed but is not
+answering." and exited 1. No container ran under Podman on that pass.
 
 **The password is not masked out of Docker's error text; the line is dropped.**
 The PowerShell script does a string substitution to mask it. `cmd` cannot
