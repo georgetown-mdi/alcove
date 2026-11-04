@@ -5,6 +5,7 @@ import PSI from "@openmined/psi.js";
 import { prepareForExchange, runExchange } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import { PeerAbortError, ConnectionError } from "../src/errors";
+import { TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON } from "../src/partnerAbortFrame";
 import { sendAbort } from "../src/protocolSetup";
 import { getLogger } from "../src/utils/logger";
 
@@ -21,7 +22,7 @@ const psiLibrary = await PSI();
 
 afterEach(() => vi.restoreAllMocks());
 
-const REFUSAL_REASON = "a refusal this party took past the terms exchange";
+const REFUSAL_REASON = TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON;
 const LOCAL_REFUSAL = "the ending party's own refusal";
 
 const baseTerms = (identity: string): LinkageTerms => ({

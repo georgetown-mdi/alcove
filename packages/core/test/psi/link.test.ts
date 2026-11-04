@@ -71,8 +71,9 @@ import {
   PeerAbortError,
 } from "../../src/errors";
 import {
-  MAX_KEPT_ABORT_FRAME_BYTES,
-  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  ABORT_REASONS_AFTER_TERMS,
+  MAX_ABORT_FRAME_AFTER_TERMS_BYTES,
+  decisionOnlyAbortFrame,
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "../../src/partnerAbortFrame";
@@ -1253,18 +1254,25 @@ test("the single-pass sender refuses a built reply above the derived cap", async
   expect(message).not.toMatch(/single-pass ceiling of/);
 });
 
-test("the single-pass sender holds the request to the cap the counts derive, before masking it", async () => {
-  // Four slots put the request cap above the abort frame the gate admits.
-  const partnerRows = 4;
+test("the single-pass sender holds the request to the cap the counts derive, before re-encrypting it", async () => {
+  // Five slots put the request cap above the abort frame the gate admits.
+  const partnerRows = 5;
   const requestCap = singlePassRequestByteCap({
     effectiveKeyCount: 1,
     recordCount: partnerRows,
   });
   expect(requestCap).toBe(35 * partnerRows + 2);
-  expect(requestCap).toBeGreaterThan(MAX_KEPT_ABORT_FRAME_BYTES);
+  expect(requestCap).toBeGreaterThan(MAX_ABORT_FRAME_AFTER_TERMS_BYTES);
   const events: Array<string> = [];
   const partner = makeParticipant(psiLibrary, "joiner");
-  const overCap = await partner.createClientRequest(["a", "b", "c", "d", "e"]);
+  const overCap = await partner.createClientRequest([
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+  ]);
   const sender = makeParticipant(psiLibrary, "starter");
   const processed = vi.spyOn(sender, "processClientRequest");
   const fake: MessageConnection = {
@@ -1303,15 +1311,34 @@ test("the single-pass sender holds the request to the cap the counts derive, bef
   expect(processed).not.toHaveBeenCalled();
 });
 
-test("on a one-slot exchange, a partner abort read while the sender waits for the request ends the run as the partner's", async () => {
-  // A real file-sync read gate: the request cap for one slot is under the
-  // largest abort frame, so without the gate's floor the abort is refused as
-  // over the read gate rather than read. The floor's figure is the one
-  // docs/spec/TRANSPORT_BOUNDS.md states.
-  expect(MAX_KEPT_ABORT_FRAME_BYTES).toBe(119);
-  expect(
-    singlePassRequestByteCap({ effectiveKeyCount: 1, recordCount: 1 }),
-  ).toBeLessThan(MAX_KEPT_ABORT_FRAME_BYTES);
+const abortFrameJsonBytes = (reason: string): number =>
+  Buffer.byteLength(JSON.stringify(decisionOnlyAbortFrame([reason])));
+
+const LONGEST_ABORT_REASON_AFTER_TERMS = ABORT_REASONS_AFTER_TERMS.reduce(
+  (longest, reason) =>
+    abortFrameJsonBytes(reason) > abortFrameJsonBytes(longest)
+      ? reason
+      : longest,
+);
+
+test("every abort reason past the terms exchange makes a frame within the read gate floor", () => {
+  // The floor's figure is the one docs/spec/TRANSPORT_BOUNDS.md states.
+  expect(MAX_ABORT_FRAME_AFTER_TERMS_BYTES).toBe(159);
+  for (const reason of ABORT_REASONS_AFTER_TERMS)
+    expect(abortFrameJsonBytes(reason)).toBeLessThanOrEqual(
+      MAX_ABORT_FRAME_AFTER_TERMS_BYTES,
+    );
+  expect(abortFrameJsonBytes(LONGEST_ABORT_REASON_AFTER_TERMS)).toBe(
+    MAX_ABORT_FRAME_AFTER_TERMS_BYTES,
+  );
+});
+
+// Runs one side of a one-slot single-pass exchange over a real file-sync read
+// gate and writes the partner's abort with the longest reason once `ready`
+// resolves: the sender's request gate is set, or the receiver's request sent.
+async function oneSlotRunEndedByLongestAbort(
+  role: "starter" | "joiner",
+): Promise<unknown> {
   const peerId = "peer-test";
   const { client, files } = makeMockClient();
   const fileSync = await makeConnectedConn(client, {
@@ -1319,45 +1346,60 @@ test("on a one-slot exchange, a partner abort read while the sender waits for th
     inactivityTimeoutMs: 2_000,
   });
   fileSync.peerId = peerId;
-  let gateSet!: () => void;
-  const gateWasSet = new Promise<void>((resolve) => (gateSet = resolve));
+  let markReady!: () => void;
+  const ready = new Promise<void>((resolve) => (markReady = resolve));
   const setCap = fileSync.setInboundFrameCap.bind(fileSync);
   fileSync.setInboundFrameCap = (maxBytes) => {
     setCap(maxBytes);
-    if (maxBytes !== undefined) gateSet();
+    if (role === "starter" && maxBytes !== undefined) markReady();
   };
   const conn = fromEventConnection(fileSync);
+  const send = conn.send.bind(conn);
+  conn.send = async (data) => {
+    await send(data);
+    if (role === "joiner") markReady();
+  };
   fileSync.start();
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
-    makeParticipant(psiLibrary, "starter"),
+    makeParticipant(psiLibrary, role),
     conn,
     [["a"]],
     fanOutFreeBounds(1, 1),
     false,
     -1,
   );
-  await gateWasSet;
-  // The longest kept reason makes the largest abort frame.
+  await ready;
   const abort = serializeFileSyncMessage(
     MESSAGE_TYPE_OBJECT,
     0,
     Buffer.from(
-      JSON.stringify({
-        decision: "abort",
-        abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
-      }),
+      JSON.stringify(
+        decisionOnlyAbortFrame([LONGEST_ABORT_REASON_AFTER_TERMS]),
+      ),
     ),
   );
-  expect(abort.length).toBe(10 + MAX_KEPT_ABORT_FRAME_BYTES);
+  expect(abort.length).toBe(10 + MAX_ABORT_FRAME_AFTER_TERMS_BYTES);
   files.set(`/test/${peerId}-${abort.length}.json`, abort);
   const error = await run.catch((e: unknown) => e);
   fileSync.stop();
   await conn.close().catch(() => {});
+  return error;
+}
+
+test("on a one-slot exchange, the longest partner abort read while the sender waits for the request ends the run as the partner's", async () => {
+  // The request cap for one slot is under the largest abort frame, so without
+  // the gate's floor the abort is refused as over the read gate.
+  expect(
+    singlePassRequestByteCap({ effectiveKeyCount: 1, recordCount: 1 }),
+  ).toBeLessThan(MAX_ABORT_FRAME_AFTER_TERMS_BYTES);
+  const error = await oneSlotRunEndedByLongestAbort("starter");
   expect(error).toBeInstanceOf(PeerAbortError);
-  expect((error as PeerAbortError).partnerReason).toBe(
-    PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
-  );
+});
+
+test("on a one-slot exchange, the longest partner abort read while the receiver waits for the reply ends the run as the partner's", async () => {
+  const error = await oneSlotRunEndedByLongestAbort("joiner");
+  expect(error).toBeInstanceOf(PeerAbortError);
 });
 
 test("a party with more distinct values than one set holds is refused before masking", () => {

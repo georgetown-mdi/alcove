@@ -3,6 +3,10 @@ import {
   PayloadDisclosureDivergenceError,
 } from "../errors.js";
 import { declaresNoPayloadColumn } from "../linkageTermsPolicy.js";
+import {
+  INVITATION_DEDUPLICATE_DIVERGENCE_ABORT_REASON,
+  PAYLOAD_DISCLOSURE_DIVERGENCE_ABORT_REASON,
+} from "../partnerAbortFrame.js";
 import { sendAbort } from "../protocolSetup.js";
 
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
@@ -60,9 +64,7 @@ export async function assertPresentedDeduplicateOrAbort(
     // receive the partner is parked on, the bootstrap frame or its first PSI
     // round, reads the frame as a peer abort before it parses what it awaited
     // (partnerAbortFrame.ts), so that run ends naming the termination.
-    await sendAbort(conn, [
-      "partner presented a deduplicate its invitation did not declare",
-    ]);
+    await sendAbort(conn, [INVITATION_DEDUPLICATE_DIVERGENCE_ABORT_REASON]);
     throw err;
   }
 }
@@ -189,10 +191,7 @@ export async function resolvePayloadDisclosureOrAbort(
     // metadata fires this on one side alone, and without the frame the other
     // waits out its full peer-inactivity budget. The reason is a fixed literal,
     // disclosing nothing new.
-    await sendAbort(conn, [
-      "a party asserts a payload disclosure the agreed linkage terms " +
-        "declare no column for",
-    ]);
+    await sendAbort(conn, [PAYLOAD_DISCLOSURE_DIVERGENCE_ABORT_REASON]);
     throw err;
   }
   return payloadDisclosure;

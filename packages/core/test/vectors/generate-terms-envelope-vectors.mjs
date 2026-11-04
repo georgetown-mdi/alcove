@@ -22,10 +22,10 @@
 // The frames are CAPTURED, not authored: each scenario drives a genuine two-party
 // exchange over createMessagePipe with every send recorded, so what lands here is
 // what exchangeTerms emits rather than a second model of it. The two abort frames
-// come from sendAbort directly, the abort slot being reachable only on a failure
+// come from sendTermsAbort directly, the abort slot being reachable only on a failure
 // path; their `abortReasons` are fixed literals of this generator's own rather
 // than real compatibility copy, so a reworded diagnostic does not move the pin.
-// The abort frames hold no separate input block: sendAbort relays the reasons
+// The abort frames hold no separate input block: sendTermsAbort relays the reasons
 // verbatim, so the captured `envelope.abortReasons` is also what the replay feeds
 // back in.
 //
@@ -43,7 +43,7 @@ import {
   TERMS_ENVELOPE_FIELDS,
   createMessagePipe,
   exchangeTerms,
-  sendAbort,
+  sendTermsAbort,
 } from "../../dist/testing.esm.js";
 
 // A compatible pair of minimal terms: two linkage keys, so the effective key
@@ -365,7 +365,7 @@ async function runScenario(scenario) {
   };
 }
 
-/** Capture one sendAbort frame without a peer: the send is the whole surface. */
+/** Capture one sendTermsAbort frame without a peer: the send is the whole surface. */
 async function captureAbort(entry) {
   const sent = [];
   const conn = {
@@ -375,7 +375,7 @@ async function captureAbort(entry) {
     receive: async () => ({}),
     close: () => {},
   };
-  await sendAbort(
+  await sendTermsAbort(
     conn,
     entry.abortReasons,
     entry.carriesLinkageTerms === null
@@ -387,7 +387,7 @@ async function captureAbort(entry) {
   );
   if (sent.length !== 1)
     throw new Error(
-      `sendAbort emitted ${sent.length} frame(s) for ${entry.name}; the abort ` +
+      `sendTermsAbort emitted ${sent.length} frame(s) for ${entry.name}; the abort ` +
         "slot carries exactly one.",
     );
   return {

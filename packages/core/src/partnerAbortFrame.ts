@@ -33,8 +33,7 @@ export const PSI_SET_REFUSED_ABORT_REASON =
  * `sendAbort`).
  */
 export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
-  "the partner cannot process a set as large as the one you send for a " +
-  "linkage key";
+  "the partner cannot process a set as large as the one you send for a linkage key";
 
 /**
  * The abort reason a party sends when its write of the next shared secret
@@ -63,9 +62,128 @@ export const PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON =
  */
 export const LOCAL_FAULT_ABORT_REASON = "the partner's run stopped on a fault";
 
+/**
+ * The abort reason a party sends when it could not record the payload
+ * receive list the first run filled: its own failure, not the partner's.
+ */
+export const PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON =
+  "a party could not record the payload columns it receives";
+
+/**
+ * The abort reason a party sends when its operator declines the payload
+ * columns the partner's terms declare it sends, on a run that holds no list of
+ * the columns it receives (`RunExchangeOptions.onPayloadReceiveFill`).
+ */
+export const PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON =
+  "the partner has not accepted the payload columns you send";
+
+/**
+ * The abort reason a party sends when asking about the payload columns failed
+ * rather than being answered.
+ */
+export const PAYLOAD_RECEIVE_UNCONFIRMED_ABORT_REASON =
+  "a party could not confirm the payload columns it receives";
+
+/**
+ * The abort reason a party sends when the caller's step after the terms
+ * exchange (`RunExchangeOptions.onTermsExchanged`) threw.
+ */
+export const TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON =
+  "a party could not complete its step after the terms exchange";
+
+/**
+ * The abort reason a party sends when the partner presented a `deduplicate`
+ * other than the one the invitation this party accepted declared.
+ */
+export const INVITATION_DEDUPLICATE_DIVERGENCE_ABORT_REASON =
+  "partner presented a deduplicate its invitation did not declare";
+
+/**
+ * The abort reason a party sends when the two parties' payload-disclosure
+ * assertions do not resolve against the agreed terms.
+ */
+export const PAYLOAD_DISCLOSURE_DIVERGENCE_ABORT_REASON =
+  "a party asserts a payload disclosure the agreed linkage terms declare no column for";
+
+/**
+ * The abort reason a party sends when a signed receipt would name both
+ * parties and one side's agreed terms name no identity.
+ */
+export const UNNAMED_PARTY_ABORT_REASON =
+  "a signed receipt names both parties and one side's agreed terms name no identity";
+
+/**
+ * The abort reason a party sends when its own signing certificate does not
+ * authorize the identity under which it agreed on the terms.
+ */
+export const CERTIFICATE_DIVERGENCE_ABORT_REASON =
+  "a signing certificate does not authorize the identity under which its holder agreed on the terms";
+
+/**
+ * The abort reason a party sends when it could not record the partner
+ * fingerprint it pinned on a first contact: its own failure, not the
+ * partner's.
+ */
+export const PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON =
+  "a party could not record the fingerprint it pinned on this first contact";
+
+/** The abort reason for a partner certificate the wire format does not admit. */
+export const PARTNER_CERTIFICATE_UNREADABLE_ABORT_REASON =
+  "a party presented a signing certificate the wire format does not admit";
+
+/** The abort reason for a signing run whose partner presented no certificate. */
+export const PARTNER_CERTIFICATE_ABSENT_ABORT_REASON =
+  "a party signs receipts and its partner presented no signing certificate";
+
+/** The abort reason for a partner certificate that fails its self-signature. */
+export const PARTNER_CERTIFICATE_UNVERIFIED_ABORT_REASON =
+  "a party presented a signing certificate that does not verify under its own key";
+
+/**
+ * The abort reason for a partner certificate that does not authorize the
+ * identity in the partner's agreed terms.
+ */
+export const PARTNER_CERTIFICATE_UNAUTHORIZED_IDENTITY_ABORT_REASON =
+  "a party presented a signing certificate that does not authorize the identity under which its holder agreed on the terms";
+
+/** The abort reason for a partner certificate other than the one pinned. */
+export const PARTNER_CERTIFICATE_DIVERGENT_ABORT_REASON =
+  "a party presented a signing certificate that is not the one its partner pinned";
+
+/**
+ * Every reason a party can put on an abort past the terms exchange. Each entry
+ * is a single string literal, so its type is that literal and `sendAbort`
+ * refuses at compile time any reason not listed here.
+ */
+export const ABORT_REASONS_AFTER_TERMS = [
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+  PSI_SET_REFUSED_ABORT_REASON,
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
+  LOCAL_FAULT_ABORT_REASON,
+  PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON,
+  PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON,
+  PAYLOAD_RECEIVE_UNCONFIRMED_ABORT_REASON,
+  TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON,
+  INVITATION_DEDUPLICATE_DIVERGENCE_ABORT_REASON,
+  PAYLOAD_DISCLOSURE_DIVERGENCE_ABORT_REASON,
+  UNNAMED_PARTY_ABORT_REASON,
+  CERTIFICATE_DIVERGENCE_ABORT_REASON,
+  PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON,
+  PARTNER_CERTIFICATE_UNREADABLE_ABORT_REASON,
+  PARTNER_CERTIFICATE_ABSENT_ABORT_REASON,
+  PARTNER_CERTIFICATE_UNVERIFIED_ABORT_REASON,
+  PARTNER_CERTIFICATE_UNAUTHORIZED_IDENTITY_ABORT_REASON,
+  PARTNER_CERTIFICATE_DIVERGENT_ABORT_REASON,
+] as const;
+
+/** One of {@link ABORT_REASONS_AFTER_TERMS}. */
+export type AbortReasonAfterTerms = (typeof ABORT_REASONS_AFTER_TERMS)[number];
+
 // The fixed reasons a partner's abort past the terms exchange is matched
 // against: those a PSI round sends, and the two failed saves of a rotation.
-const KEPT_ABORT_REASONS: ReadonlyArray<string> = [
+const KEPT_ABORT_REASONS: ReadonlyArray<AbortReasonAfterTerms> = [
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
@@ -86,13 +204,14 @@ export function decisionOnlyAbortFrame(abortReasons: string[]): {
 }
 
 /**
- * The most bytes an abort frame a PSI round may read in place of the frame it
- * waits on takes: the decision-only frame with the longest kept reason, as the
- * UTF-8 JSON every transport sends it in. A read gate derived for a smaller
- * frame is held at or above it, so the abort is read rather than refused.
+ * The most bytes an abort frame a party sends past the terms exchange takes:
+ * the decision-only frame with the longest of {@link ABORT_REASONS_AFTER_TERMS},
+ * as the UTF-8 JSON every transport sends it in. A read gate derived for a
+ * smaller frame is held at or above it, so the abort is read rather than
+ * refused.
  */
-export const MAX_KEPT_ABORT_FRAME_BYTES = Math.max(
-  ...KEPT_ABORT_REASONS.map(
+export const MAX_ABORT_FRAME_AFTER_TERMS_BYTES = Math.max(
+  ...ABORT_REASONS_AFTER_TERMS.map(
     (reason) =>
       new TextEncoder().encode(JSON.stringify(decisionOnlyAbortFrame([reason])))
         .byteLength,

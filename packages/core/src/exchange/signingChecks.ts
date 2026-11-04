@@ -1,6 +1,17 @@
 import { OperatorConfigError, markStatesItsOwnNextStep } from "../errors.js";
 import { reasonTermsCannotStateIdentity } from "../config/linkageTermsSchema.js";
 import { partnerPinIsPresent } from "../config/signing.js";
+import {
+  CERTIFICATE_DIVERGENCE_ABORT_REASON,
+  PARTNER_CERTIFICATE_ABSENT_ABORT_REASON,
+  PARTNER_CERTIFICATE_DIVERGENT_ABORT_REASON,
+  PARTNER_CERTIFICATE_UNAUTHORIZED_IDENTITY_ABORT_REASON,
+  PARTNER_CERTIFICATE_UNREADABLE_ABORT_REASON,
+  PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON,
+  PARTNER_CERTIFICATE_UNVERIFIED_ABORT_REASON,
+  UNNAMED_PARTY_ABORT_REASON,
+  type AbortReasonAfterTerms,
+} from "../partnerAbortFrame.js";
 import { sendAbort } from "../protocolSetup.js";
 import { ReceiptVerificationError } from "../records/signedReceipt.js";
 import {
@@ -178,16 +189,6 @@ export function assertLocalCertificateAuthorizesAgreedIdentity(
   );
 }
 
-// The abort reasons the two local receipt bindings send. Fixed literals, as
-// every reason on this frame must be (see sendAbort): the frame is a
-// disclosure to the partner like any other, so neither names a value.
-const UNNAMED_PARTY_ABORT_REASON =
-  "a signed receipt names both parties and one side's agreed terms name no " +
-  "identity";
-const CERTIFICATE_DIVERGENCE_ABORT_REASON =
-  "a signing certificate does not authorize the identity under which its " +
-  "holder agreed on the terms";
-
 /**
  * Hold the two receipt bindings that follow from the agreed terms alone --
  * both parties named ({@link assertSignedReceiptNamesBothParties}) and
@@ -231,14 +232,6 @@ export async function assertReceiptBindingsOrAbort(
   return namedParties;
 }
 
-// The abort reason a caller that could not record the pin it adopted sends.
-// Outside the refusal table below: the run ends on this party's own failure,
-// not on anything the partner presented, and the caller's error is what
-// propagates. A fixed literal, as every reason on this frame must be (see
-// sendAbort).
-const PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON =
-  "a party could not record the fingerprint it pinned on this first contact";
-
 /**
  * The five refusals the terms-time pin resolution raises, by the condition the
  * partner's certificate met, each holding the abort reason its refusal sends
@@ -259,8 +252,7 @@ const PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON =
  */
 const PARTNER_CERTIFICATE_REFUSALS = {
   unreadable: {
-    abortReason:
-      "a party presented a signing certificate the wire format does not admit",
+    abortReason: PARTNER_CERTIFICATE_UNREADABLE_ABORT_REASON,
     message:
       "your partner presented a signing certificate this version of Alcove " +
       "cannot read. The run stopped before any linkage key or payload row " +
@@ -269,8 +261,7 @@ const PARTNER_CERTIFICATE_REFUSALS = {
       "unsigned.",
   },
   absent: {
-    abortReason:
-      "a party signs receipts and its partner presented no signing certificate",
+    abortReason: PARTNER_CERTIFICATE_ABSENT_ABORT_REASON,
     message:
       "this exchange signs receipts (signing.mode: certificate), but your " +
       "partner presented no signing certificate. The run stopped before any " +
@@ -279,9 +270,7 @@ const PARTNER_CERTIFICATE_REFUSALS = {
       'or set signing.mode to "none" to run unsigned.',
   },
   unverified: {
-    abortReason:
-      "a party presented a signing certificate that does not verify under its own " +
-      "key",
+    abortReason: PARTNER_CERTIFICATE_UNVERIFIED_ABORT_REASON,
     message:
       "your partner's signing certificate does not verify under its own key, " +
       "so nothing was pinned. The run stopped before any linkage key or " +
@@ -289,9 +278,7 @@ const PARTNER_CERTIFICATE_REFUSALS = {
       "'alcove fingerprint' again.",
   },
   unauthorizedIdentity: {
-    abortReason:
-      "a party presented a signing certificate that does not authorize the " +
-      "identity under which its holder agreed on the terms",
+    abortReason: PARTNER_CERTIFICATE_UNAUTHORIZED_IDENTITY_ABORT_REASON,
     message:
       "your partner's signing certificate is bound to a name other than the " +
       "identity in their agreed linkage terms, so nothing was pinned. The " +
@@ -300,9 +287,7 @@ const PARTNER_CERTIFICATE_REFUSALS = {
       "terms, or to set that identity to the name their certificate holds.",
   },
   divergent: {
-    abortReason:
-      "a party presented a signing certificate that is not the one its partner " +
-      "pinned",
+    abortReason: PARTNER_CERTIFICATE_DIVERGENT_ABORT_REASON,
     message:
       "your partner's signing certificate is not the one pinned in " +
       "signing.partner_fingerprint. The run stopped before any linkage key " +
@@ -312,7 +297,10 @@ const PARTNER_CERTIFICATE_REFUSALS = {
       "replace signing.partner_fingerprint with the new value.",
   },
 } as const satisfies Partial<
-  Record<PartnerCertificateCondition, { abortReason: string; message: string }>
+  Record<
+    PartnerCertificateCondition,
+    { abortReason: AbortReasonAfterTerms; message: string }
+  >
 >;
 
 /**

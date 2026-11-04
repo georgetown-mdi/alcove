@@ -91,6 +91,7 @@ export {
   TERMS_ENVELOPE_FIELDS,
   exchangeTerms,
   sendAbort,
+  sendTermsAbort,
 } from "./protocolSetup.js";
 export { PROTOCOL_VERSION } from "./versionHello.js";
 

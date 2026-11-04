@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 import {
   TERMS_ENVELOPE_FIELDS,
   exchangeTerms,
-  sendAbort,
+  sendTermsAbort,
 } from "../../src/protocolSetup";
 import { PROTOCOL_VERSION } from "../../src/versionHello";
 import { createMessagePipe } from "../../src/connection/messageConnection";
@@ -238,7 +238,7 @@ describe("terms-exchange envelope vectors", () => {
         close: async () => {},
       };
 
-      await sendAbort(
+      await sendTermsAbort(
         conn,
         frame.envelope.abortReasons as Array<string>,
         frame.carriesLinkageTerms === null

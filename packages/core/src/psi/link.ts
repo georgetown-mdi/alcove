@@ -78,7 +78,7 @@ import {
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 import {
-  MAX_KEPT_ABORT_FRAME_BYTES,
+  MAX_ABORT_FRAME_AFTER_TERMS_BYTES,
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "../partnerAbortFrame";
 import {
@@ -1901,7 +1901,7 @@ function setSinglePassReadGate(
 ): void {
   conn.setInboundFrameCap?.(
     fileSyncMessageFileBytes(
-      Math.max(frameBytes, MAX_KEPT_ABORT_FRAME_BYTES),
+      Math.max(frameBytes, MAX_ABORT_FRAME_AFTER_TERMS_BYTES),
       conn.outboundFrameOverheadBytes?.() ?? 0,
     ),
   );

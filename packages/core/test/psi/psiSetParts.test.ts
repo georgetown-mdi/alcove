@@ -212,7 +212,7 @@ test("an abort in place of any part ends the receive as the partner's abort", as
   for (let k = 0; k < parts.length; k++) {
     const [a, b] = createMessagePipe();
     for (const part of parts.slice(0, k)) await a.send(part);
-    await sendAbort(a, ["a reason"]);
+    await sendAbort(a, [PSI_SET_TOO_LARGE_ABORT_REASON]);
     await expect(
       receivePsiSet(b, "client", "serverSetup", 25),
     ).rejects.toBeInstanceOf(PeerAbortError);
@@ -567,7 +567,7 @@ test("a round ends on an abort in place of a setup part before the setup complet
   const ended = await joinerFed(UNBOUNDED_PSI_ELEMENTS, async (starter) => {
     await starter.send(parts[0]);
     await starter.send(parts[1]);
-    await sendAbort(starter, ["a reason"]);
+    await sendAbort(starter, [PSI_SET_TOO_LARGE_ABORT_REASON]);
   });
   expect(ended).toBeInstanceOf(PeerAbortError);
   // Each part reaches the engine as it arrives; the setup never completes.
@@ -680,7 +680,8 @@ test.each([
       (err: unknown) => err,
     );
     await a.send(parts[0]);
-    if (refusal === "abort") await sendAbort(a, ["a reason"]);
+    if (refusal === "abort")
+      await sendAbort(a, [PSI_SET_TOO_LARGE_ABORT_REASON]);
     else await a.send(parts[1]);
     const outcome = await ended;
     const liveAtRefusal = matches.created - matches.deleted;
