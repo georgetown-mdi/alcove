@@ -9,6 +9,14 @@ import {
   inboundPsiFramePeakBytes,
   psiFrameHandlingBytes,
 } from "../../src/connection/inboundFrameMemory";
+import {
+  AEAD_CHUNK_PLAINTEXT_BYTES,
+  AEAD_TAG_BYTES,
+} from "../../src/connection/chunkedAead";
+import {
+  CHUNKED_ENVELOPE_VERSION,
+  SINGLE_CALL_ENVELOPE_VERSION,
+} from "../../src/connection/encryptedMessageConnection";
 
 // Each multiple is a measured figure, stated with its measurement in the
 // table of docs/spec/FILE_SYNC.md, "Memory an inbound frame takes", whose
@@ -41,6 +49,33 @@ describe("the measured multiples of an inbound frame", () => {
   test("a read is the frame, or the frame with its decryption", () => {
     expect(inboundFrameReadBytes(100, false)).toBe(100);
     expect(inboundFrameReadBytes(100, true)).toBe(400);
+    expect(inboundFrameReadBytes(100, false, CHUNKED_ENVELOPE_VERSION)).toBe(
+      100,
+    );
+  });
+
+  test("a version-1 read, or one before a version is negotiated, is at the aeadOpen multiple", () => {
+    expect(inboundFrameReadBytes(100, true, SINGLE_CALL_ENVELOPE_VERSION)).toBe(
+      100 * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen,
+    );
+    expect(inboundFrameReadBytes(100, true, undefined)).toBe(
+      100 * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen,
+    );
+  });
+
+  test("a version-2 read is the frame and one chunk's copy and plaintext", () => {
+    const workingSet = 2 * (AEAD_CHUNK_PLAINTEXT_BYTES + AEAD_TAG_BYTES);
+    expect(workingSet).toBe(32 * 1024 * 1024 + 32);
+    expect(inboundFrameReadBytes(100, true, CHUNKED_ENVELOPE_VERSION)).toBe(
+      100 + workingSet,
+    );
+    const gib = 1024 ** 3;
+    expect(inboundFrameReadBytes(gib, true, CHUNKED_ENVELOPE_VERSION)).toBe(
+      gib + workingSet,
+    );
+    expect(inboundFrameReadBytes(gib, true, SINGLE_CALL_ENVELOPE_VERSION)).toBe(
+      4 * gib,
+    );
   });
 
   test("a hand-off is the worker's copy and what the engine builds", () => {

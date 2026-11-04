@@ -5,6 +5,12 @@
 //   version (1) || seq (8, big-endian) || chunk_0 || ... || chunk_(n-1)
 //   chunk_k = AES-256-GCM(IV_k, AAD_k) of plaintext bytes [k*C, (k+1)*C)
 
+/**
+ * The envelope version that encrypts a frame in chunks
+ * (docs/spec/CHANNEL_SECURITY.md, "The chunked envelope, version 2").
+ */
+export const CHUNKED_ENVELOPE_VERSION = 2;
+
 /** Envelope version 2's plaintext bytes in each chunk but the last. */
 export const AEAD_CHUNK_PLAINTEXT_BYTES = 16_777_216;
 

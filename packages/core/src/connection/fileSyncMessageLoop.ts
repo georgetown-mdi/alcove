@@ -1155,7 +1155,11 @@ export class FileSyncMessageLoop {
             .inboundFrameMemoryCheck?.(
               declaredSize,
               this.queuedFileBytes() +
-                inboundFrameReadBytes(declaredSize, this.binaryFramesRequired),
+                inboundFrameReadBytes(
+                  declaredSize,
+                  this.binaryFramesRequired,
+                  this.negotiatedEnvelopeVersion,
+                ),
             );
           const inPath = joinFileSyncPath(path, messageFile.name);
           deps

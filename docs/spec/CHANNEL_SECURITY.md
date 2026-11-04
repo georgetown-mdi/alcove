@@ -74,21 +74,9 @@ AAD_k     = version || uint64_be(seq) || uint32_be(k) || final_k              # 
 final_k   = 0x01 where k = n - 1, else 0x00
 ```
 
-**The chunk size.** `C` is 2^24 bytes of plaintext, the fastest of the chunk sizes measured. Measured on 2026-11-04 in the development container (10-core arm64 Linux, Node 26.13): a frame of random bytes encrypted and then decrypted through `crypto.subtle` in chunks of each size, the median of five runs, in milliseconds:
+**The chunk size.** `C` is 2^24 bytes of plaintext, the fastest of the chunk sizes measured under Node ([the measurement](../notes/chunked-aead-envelope.md#the-chunk-size)). Not measured: the browser's `crypto.subtle`, which a web party's frames, at most `MAX_WEBRTC_FRAME_BYTES`, go through.
 
-| Chunk | 512 MiB frame, encrypt / decrypt | 1 GiB frame, encrypt / decrypt |
-| --- | --- | --- |
-| 64 KiB | 1,839 / 2,267 | 2,979 / 2,860 |
-| 256 KiB | 1,162 / 744 | 1,762 / 1,487 |
-| 1 MiB | 524 / 529 | 1,121 / 1,110 |
-| 4 MiB | 563 / 548 | 1,104 / 954 |
-| 16 MiB | 464 / 375 | 1,040 / 876 |
-| 64 MiB | 503 / 457 | 1,546 / 1,218 |
-| The whole frame, one call | 505 / 554 | 2,842 / 4,524 |
-
-A smaller chunk pays the cost of each call, and a larger one the allocation of each call's output. What a chunk adds to memory while it is encrypted or decrypted is a small multiple of `C`, against the frames of hundreds of megabytes and more that need the chunks. Not measured: the browser's `crypto.subtle`, which a web party's frames, at most `MAX_WEBRTC_FRAME_BYTES`, go through.
-
-**Every frame is chunked.** The measurement shows no cost to chunking against one call, at 512 MiB or at 1 GiB, so version 2 has one shape rather than one call below the AEAD's limit and chunks above it: a frame of at most `C` plaintext bytes is one chunk. The cost is 16 bytes of tag for each chunk, so the envelope adds `10 + 16 * n` bytes to a frame, a figure that grows with the frame (`outboundFrameOverheadBytes`); a sender sizing a frame to a bound takes that figure at the bound, which is never below it at a smaller frame.
+**Every frame is chunked.** Version 2 has one shape, since chunking measured no slower than one call ([the measurement](../notes/chunked-aead-envelope.md#every-frame-is-chunked)): a frame of at most `C` plaintext bytes is one chunk. The cost is 16 bytes of tag for each chunk, so the envelope adds `10 + 16 * n` bytes to a frame, a figure that grows with the frame (`outboundFrameOverheadBytes`); a sender sizing a frame to a bound takes that figure at the bound, which is never below it at a smaller frame.
 
 **The nonce.** `IV_k` is the chunk index in its leading 32 bits and the frame's sequence number in its trailing 64. Under one key, which is one direction of one session, the sequence number differs for every frame ([IV construction and SP 800-38D conformance](#iv-construction-and-sp-800-38d-conformance)) and the index differs for every chunk of a frame, so no IV repeats under a key across frames or chunks. A frame is at most 2^53 - 1 bytes, the largest exact integer and Node's largest `Buffer`, so `n` is at most 2^29 and the index never reaches its 32-bit limit. Chunk 0's IV equals the version-1 IV of the same sequence number, and the two never meet under one key: a session uses the one envelope version it negotiated.
 

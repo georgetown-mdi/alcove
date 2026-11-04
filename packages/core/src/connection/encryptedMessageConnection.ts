@@ -18,6 +18,7 @@ import { ENVELOPE_VERSION, OFFERED_ENVELOPE_VERSIONS } from "../versionHello";
 import {
   AEAD_CHUNK_PLAINTEXT_BYTES,
   CHUNKED_ENVELOPE_HEADER_BYTES,
+  CHUNKED_ENVELOPE_VERSION,
   AEAD_TAG_BYTES,
   chunkLayout,
   chunkedEnvelopeBytes,
@@ -38,11 +39,7 @@ export const AEAD_ENVELOPE_VERSION = ENVELOPE_VERSION;
 /** The envelope version that encrypts a frame in one AES-GCM call. */
 export const SINGLE_CALL_ENVELOPE_VERSION = 1;
 
-/**
- * The envelope version that encrypts a frame in chunks
- * (docs/spec/CHANNEL_SECURITY.md, "The chunked envelope, version 2").
- */
-export const CHUNKED_ENVELOPE_VERSION = 2;
+export { CHUNKED_ENVELOPE_VERSION };
 
 // First byte of the pre-encryption plaintext, preserving the original payload's
 // type across the wire. It lives INSIDE the authenticated ciphertext, so the

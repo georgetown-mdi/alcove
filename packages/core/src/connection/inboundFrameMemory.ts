@@ -2,9 +2,15 @@
 // and handled. The figures and how each was measured: docs/spec/FILE_SYNC.md,
 // "Memory an inbound frame takes".
 
+import {
+  AEAD_CHUNK_PLAINTEXT_BYTES,
+  AEAD_TAG_BYTES,
+  CHUNKED_ENVELOPE_VERSION,
+} from "./chunkedAead";
+
 /** The measured multiples of an inbound frame's size, by what is done with it. */
 export const INBOUND_FRAME_MEMORY_MULTIPLES = {
-  /** Reading a frame and decrypting it with AES-GCM, the frame and its plaintext included. */
+  /** Reading a frame and decrypting it with AES-GCM in one call (envelope version 1), the frame and its plaintext included. */
   aeadOpen: 4,
   /** Decoding a PSI request into the library's objects, beyond the frame itself. */
   psiDecode: 7.65,
@@ -22,13 +28,20 @@ export type InboundPsiFrameUse = "decode" | "stream";
 
 /**
  * The memory reading one frame of `frameBytes` takes: the frame and, on an
- * encrypted connection, its decryption.
+ * encrypted connection, its decryption. Under the chunked envelope
+ * (`envelopeVersion` 2) that is the frame and one chunk's decryption; under
+ * version 1, or before a version is negotiated, the `aeadOpen` multiple.
  */
 export function inboundFrameReadBytes(
   frameBytes: number,
   encrypted: boolean,
+  envelopeVersion?: number,
 ): number {
-  return frameBytes * (encrypted ? INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen : 1);
+  if (!encrypted) return frameBytes;
+  // One chunk open at a time: crypto.subtle's copy of it and its plaintext.
+  return envelopeVersion === CHUNKED_ENVELOPE_VERSION
+    ? frameBytes + 2 * (AEAD_CHUNK_PLAINTEXT_BYTES + AEAD_TAG_BYTES)
+    : frameBytes * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen;
 }
 
 /**
