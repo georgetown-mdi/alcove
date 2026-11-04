@@ -99,8 +99,8 @@ const MODES = [
     warning: (role: string) =>
       `[${role}] could not acknowledge the refused message file: ` +
       "EACCES: permission denied\\x0aforged line. In retain mode each message " +
-      "read is acknowledged by writing a file, so the account must be allowed " +
-      "to create files in the exchange directory. Grant that permission.",
+      "read is acknowledged by writing a file, so this party must be able to " +
+      "create files in the exchange directory.",
   },
 ];
 

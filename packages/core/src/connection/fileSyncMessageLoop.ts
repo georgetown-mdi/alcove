@@ -87,8 +87,7 @@ const PARTNER_MESSAGE_DELETE_FAILED =
 
 const ACKNOWLEDGE_NEXT_STEP =
   "In retain mode each message read is acknowledged by writing a file, so " +
-  "the account must be allowed to create files in the exchange directory. " +
-  "Grant that permission.";
+  "this party must be able to create files in the exchange directory.";
 
 // A JSON message on a channel the encryption layer has taken over: a
 // `security` failure, as the encryption layer reports any frame that is not
