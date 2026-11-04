@@ -1327,6 +1327,14 @@ weeks, so the runner applies a waiting version itself:
   the window makes its attempt on the current version, and the takeover lands
   when the outgoing worker lets it, to be applied before the first attempt of
   a later window.
+- **The one exception to the holds.** A takeover the runner stopped waiting
+  for cannot be withdrawn: the new worker takes over whenever the outgoing
+  worker finishes its work in flight, which can be during a later run in any
+  window, past every hold below. It is harmless with the worker as it is: the
+  takeover claims each open window, which keeps running the code it loaded,
+  and `CACHE_VERSION` is the same across deployments, so the takeover purges
+  no cache from under that code. Only the reload is held back, and it waits
+  for a later window's first attempt.
 - **What a page warms.** A page that finds a worker waiting when it loads
   does not ask the outgoing worker to warm the routes, since the new worker
   warms them once it controls the page.
@@ -1352,11 +1360,11 @@ weeks, so the runner applies a waiting version itself:
 An installed app running its schedule therefore trails a deployment by up to
 an hour to find it, then its install, then until the first window after that
 whose first attempt finds nothing holding the apply back, and one window more
-when the takeover lands only after the runner has stopped waiting for it. A page running no schedule -- an ordinary
-tab, or an installed app whose runner is not running -- is never asked to
-look: it finds a deployment at its next navigation, and trails it for as long
-as it stays open without one. Its update notice applies a version it has
-found.
+when the takeover lands only after the runner has stopped waiting for it. A
+page running no schedule -- an ordinary tab, or an installed app whose runner
+is not running -- is never asked to look: it finds a deployment at its next
+navigation, and trails it for as long as it stays open without one. Its
+update notice applies a version it has found.
 
 The apply is implemented in `apps/web/src/psi/managed/managedAppUpdate.ts`,
 and what holds it back in `apps/web/src/utils/appShellUpdateHold.ts`.

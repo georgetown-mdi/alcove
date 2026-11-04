@@ -35,6 +35,7 @@ import {
   encodeManagedExchangeArtifact,
   reconstructRecordFromArtifact,
 } from "@psi/managed/managedExchangeArtifact";
+import { APP_UPDATE_TAKEOVER_WAIT_MS } from "@psi/managed/managedAppUpdate";
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
@@ -505,6 +506,32 @@ describe("a due window in the open runtime", () => {
 });
 
 describe("a due window with a waiting app update", () => {
+  test("whose takeover wait runs out measures the attempt's remaining time and pacing from after the wait", async () => {
+    const closesAtMs = at("2026-01-06T17:00:00.000Z");
+    const startedAtMs = closesAtMs - ATTEMPT_PEER_WAIT_MS;
+    let advanceClock = (_ms: number): void => undefined;
+    const runner = harness({
+      records: [recordWith()],
+      startAt: new Date(startedAtMs).toISOString(),
+      script: [{ kind: "fail", error: new Error("the channel dropped") }],
+      applyWaitingAppUpdate: () => {
+        advanceClock(APP_UPDATE_TAKEOVER_WAIT_MS);
+        return Promise.resolve(false);
+      },
+    });
+    advanceClock = runner.advanceClock;
+
+    await tickManagedSchedules(runner.seams);
+
+    const [first, second] = runner.attempts;
+    expect(first.startedAtMs).toBe(startedAtMs + APP_UPDATE_TAKEOVER_WAIT_MS);
+    expect(first.peerWaitTimeoutMs).toBe(
+      ATTEMPT_PEER_WAIT_MS - APP_UPDATE_TAKEOVER_WAIT_MS,
+    );
+    expect(first.startedAtMs + first.peerWaitTimeoutMs).toBe(closesAtMs);
+    expect(second.startedAtMs - first.startedAtMs).toBe(ATTEMPT_RATE_GAP_MS);
+  });
+
   test("asks to apply it before the attempt, and leaves the window open and unrecorded when the page reloads", async () => {
     let asked = 0;
     const runner = harness({

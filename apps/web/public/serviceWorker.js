@@ -311,8 +311,9 @@ async function warmRouteAssets() {
  * client that asked for this takeover from its operator's Reload is not one of
  * them -- it posts SKIP_WAITING_MESSAGE as it unloads -- while the installed
  * app between scheduled runs is, and reloads on the claim
- * (`apps/web/src/utils/appShellUpdate.ts`). A SECOND client of the same origin, left open in another tab, is claimed here
- * while it goes on running the old code: the discard beside the claim purges
+ * (`apps/web/src/utils/appShellUpdate.ts`). A SECOND client of the same
+ * origin, left open in another tab, is claimed here while it goes on running
+ * the old code: the discard beside the claim purges
  * nothing today because CACHE_VERSION is constant across deployments, and
  * bumping it would take that tab's asset cache out from under it. The claim does
  * not depend on the discard: a storage that will not enumerate leaves the old

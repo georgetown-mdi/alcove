@@ -189,8 +189,9 @@ traffic passes through it, and no exchange work happens in it.
   and reloads onto a waiting one just before a scheduled run starts, so that
   run uses it, never between the retries of one run. If the new version does
   not take over within a few seconds, the run goes ahead on the current one,
-  and the app reloads before a later run. It waits while any window is running an exchange or has an
-  unsent invitation or acceptance open, and while its own window shows
+  and the app reloads before a later run. It waits while any window is
+  running an exchange or has an unsent invitation or acceptance open, and
+  while its own window shows
   something a reload would lose, such as a finished run's downloads or an
   unsaved change. The rule and how long an app can run an older version:
   [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#applying-a-waiting-app-version-between-windows).
