@@ -43,7 +43,8 @@ const FABLE_PATTERNS = [
 ];
 
 const ASK_REASON =
-  "This spawn runs on the Fable tier, which needs your approval " +
+  "This Workflow's script requests the Fable tier for one of its agents, which " +
+  "needs your approval " +
   "(`.claude/orchestration/ruleset.md`, Models and spawns). Approve to run it " +
   "on Fable, or deny and it will be re-issued on a cheaper tier.";
 
