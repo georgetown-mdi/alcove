@@ -36,7 +36,10 @@ import {
 } from "../errors";
 import { cancellableDelay } from "./fileSyncConstants";
 import { ackMarkerName, type AgreedHelloNames } from "./fileSyncNames";
-import { FileSyncMessageLoop } from "./fileSyncMessageLoop";
+import {
+  FileSyncMessageLoop,
+  type InboundFrameMemoryCheck,
+} from "./fileSyncMessageLoop";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
 import { renameOwnTemp } from "./fileSyncWrite";
@@ -249,6 +252,10 @@ interface Options {
   // since its JSON messages are the key exchange's. Unset leaves the frame
   // bound alone.
   maxJsonMessageBytes?: number;
+  // Weighs each partner message file's read against the memory the process
+  // has, before the read (InboundFrameMemoryCheck). Unset reads every file
+  // within the frame bound.
+  inboundFrameMemoryCheck?: InboundFrameMemoryCheck;
   // The clock and random source open() fills a peer_id's fields from. Not in
   // the public config; tests pin it to name the files a run writes.
   peerIdFieldSource: PeerIdFieldSource;

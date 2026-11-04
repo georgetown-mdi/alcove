@@ -1,0 +1,60 @@
+- `memoryShortfall` | The run went ahead under `--allow-memory-shortfall` although its PSI round needs more memory than the process has; the message names both figures and which limit sets the second ([FILE_SYNC.md](FILE_SYNC.md#memory-a-psi-round-needs)). Raised before any network contact, and only under that flag. -> `memoryShortfall` | The run went ahead under `--allow-memory-shortfall` although its PSI round needs more memory than the process has; the message names both figures and which limit sets the second ([FILE_SYNC.md](FILE_SYNC.md#memory-a-psi-round-needs)). Raised before any network contact, at the terms exchange, once a single-pass exchange has gathered its own distinct values, and over file-sync before a partner message is read or handed to the PSI worker ([FILE_SYNC.md](FILE_SYNC.md#memory-an-inbound-frame-takes)), only under that flag, and each check raises it at most once per run.
+- **An installed CLI** calls `v8.setFlagsFromString("--max-old-space-size=19075")` immediately before it starts the PSI worker, unless the process already runs under a larger limit (`raisePsiWorkerHeapLimit`). -> **An installed CLI** calls `v8.setFlagsFromString("--max-old-space-size=19075")` immediately before it starts the PSI worker, or, on a single-pass run over file-sync, with the heap the counts need ([The worker's heap, from the counts](#the-workers-heap-from-the-counts)), unless the process already runs under a larger limit (`raisePsiWorkerHeapLimit`).
+- A single-pass exchange is left to its dataset ceiling. -> A single-pass exchange is left to its dataset ceiling over WebRTC, and over file-sync to the checks in [Memory an inbound frame takes](#memory-an-inbound-frame-takes).
+- Before either party masks anything, a receiver refuses a run when the sender's index table alone, `4 * keyCount * senderRows` bytes, cannot fit in `process.availableMemory()` at that moment. -> Before either party masks anything, each party weighs the partner frame it will read, the reply where it receives and the request where it sends: the most bytes the counts allow, held to `MAX_FRAME_SIZE_BYTES`, at the measured multiples of reading it and handing it to the PSI engine ([FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes)).
+- No choice of values reduces that table, so the refusal blocks only a run that could not finish. -> A receiver weighs no less than the sender's index table, `4 * keyCount * senderRows` bytes, which no choice of values reduces.
+- - -> Memory an inbound frame takes
+- - -> A command-line party over file-sync weighs each partner frame against `process.availableMemory()`, which follows the host's memory and a container's limit and falls as the process uses memory.
+- - -> It weighs a frame at measured multiples of its size (`INBOUND_FRAME_MEMORY_MULTIPLES`, `packages/core/src/connection/inboundFrameMemory.ts`), which a unit test holds to this table:
+- - -> Step | Multiple | Measured
+- - -> Reading a frame and decrypting it with AES-GCM, the frame and its plaintext included (`aeadOpen`) | 4 | 3.1 to 4.0 for 2,147,483,584 bytes through `crypto.subtle`, on Darwin arm64 and in Linux arm64 containers (2026-11-02); 3.00 for a 536,870,904-byte file read and decrypted in one process, in the development container under Node 26.13.0 (2026-11-04)
+- - -> Decoding a PSI request, beyond the frame (`psiDecode`) | 7.65 | 267.1 to 267.8 bytes retained for each element of 35 frame bytes, two runs of 2,000,000 elements on the WebAssembly library (2026-11-02 and 2026-11-03; [PROTOCOL.md, The single-pass dataset ceiling](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), "Every element is 33 bytes")
+- - -> A setup or a response the engine takes in pieces, beyond the frame (`streamedSetup`) | 1 | a 2.31 GB setup of 66,000,000 elements taken, sealed and matched at 2.2 GiB RSS on the native library, Darwin arm64 (2026-11-02)
+- - -> The PSI worker's copy of a frame (`workerClone`) | 1 | 1.00 held and 2.00 at the peak of the post, for a 536,870,888-byte array posted to a worker in the development container under Node 26.13.0 (2026-11-04)
+- - -> Each multiple is the largest figure measured for what it counts.
+- - -> The checks:
+- - -> **Before each read.**
+- - -> The read gate weighs a message file before reading it (`inboundFrameMemoryCheck` on `FileSyncConnection`): the files already read that the exchange has not received, plus this file at `aeadOpen` once the connection is encrypted, or at its own size before (`inboundFrameReadBytes`).
+- - -> **Before the worker takes a frame.**
+- - -> A request the worker decodes is weighed at `workerClone + psiDecode` times its size, and a setup or a response it takes in pieces at `workerClone + streamedSetup` (`psiFrameHandlingBytes`).
+- - -> The frame itself is already held.
+- - -> The copy's peak, twice the frame, is not above either.
+- - -> **At the terms exchange of a single-pass run.**
+- - -> Before either party masks anything, the frame this party will read is bounded from the agreed counts: the reply cap where it receives, and `40 * slots + 256` bytes where it sends and reads the partner's request (`singlePassRequestByteBound`), each held to `MAX_FRAME_SIZE_BYTES`.
+- - -> That frame is weighed at the larger of its read and of the frame with its handling (`inboundPsiFramePeakBytes`), and at no less than the reply's index table.
+- - -> The two do not add: the exchange collects garbage between the read and the hand-off (`relieveTransientMemory`), under the `--expose-gc` the images run node with.
+- - -> A need over what is available is refused.
+- - -> Before a read or a hand-off it is a usage error (exit 64) and the file is left unread; past the terms exchange the partner is told by the abort marker on an authenticated run, or by the local-fault abort frame on a quick exchange.
+- - -> At the terms exchange it is a `RoundCapacityError`, and the partner is sent `PARTNER_SET_OVER_CAPACITY_ABORT_REASON`.
+- - -> `--allow-memory-shortfall` turns each into a warning, on stderr and on the event stream under `memoryShortfall`.
+- - -> The worker's heap, from the counts
+- - -> At the terms exchange of a single-pass run over file-sync, the PSI worker's heap is set to `298,000,000 + 709 * n` bytes, `n` the larger party's value slots (`psiWorkerHeapNeedBytes`): the measured worker V8 heap of a joiner's full round, the costlier role, in [The measured costs](#the-measured-costs).
+- - -> It is raised to that need, never below the limit the process already runs under.
+- - -> A run whose counts need more than 19,075 MiB gets it, and on a host where node runs at its default limit, a smaller run's worker keeps that limit, so running out of heap there ends the worker with an error the run reports rather than ending the process.
+- - -> The main thread's heap, from the values
+- - -> Once a single-pass party has gathered its own distinct values, and before it masks any, a command-line party refuses a run whose main thread's `heap_size_limit` is under `120,000,000 + 135 * d` bytes, `d` the distinct values (`checkSinglePassOwnValuesHeap`, `apps/cli/src/psiMemoryBudget.ts`), on any channel.
+- - -> The refusal is a usage error (exit 64) naming the need, the limit, and the `NODE_OPTIONS=--max-old-space-size` line to set; the partner is told by the run's abort.
+- - -> `--allow-memory-shortfall` turns it into a warning.
+- - -> The figure is the line through the first and last rows below, rounded up, which is above the rows between.
+- - -> Measured 2026-11-04 in the development container (aarch64 Linux, Node v26.13.0, native library): the smallest main-thread `--max-old-space-size` under which `linkViaSinglePassPSI` completed with the right match count, bisected to 32 MiB, with the engine in a worker and the input of 14 keys built in the same heap.
+- - -> The sender and the receiver passed at the same limit at every size.
+- - -> The single-pass limit of 3,000,000 value slots a party bounds `d`, so the last row is at that limit.
+- - -> Distinct values | Smallest passing `--max-old-space-size` | Its `heap_size_limit`
+- - -> 500,000 | 82 MiB | 178 MiB
+- - -> 1,000,000 | 140 MiB | 236 MiB
+- - -> 2,000,000 | 245 MiB | 341 MiB
+- - -> 2,999,990 | 403 MiB | 499 MiB
+- - -> **Frame multiples from separate measurements.**
+- - -> Each multiple in [Memory an inbound frame takes](#memory-an-inbound-frame-takes) was measured on its own step, not through a whole exchange, and the read multiple through `crypto.subtle` rather than the encryption layer's own path.
+- - -> The files read and not received are counted at their size, though each is decrypted when it is received.
+- - -> **At the terms exchange, an upper bound.**
+- - -> The single-pass check weighs the largest frame the counts allow, not the frame masking builds: a run whose values repeat sends a smaller one, so a host near the bound is refused unless `--allow-memory-shortfall` is passed, though the frame it would read could fit.
+- - -> It weighs the frame's read and hand-off, not the masking around them.
+- - -> **Not over WebRTC, or with no bundled worker.**
+- - -> The frame checks run on file-sync only, and the hand-off check only where the engine runs in the worker.
+- - -> A party refuses the run when the figure is more than `process.availableMemory()` at that moment.
+- - -> **Memory, before each read.**
+- - -> A message file is read only when the files read and not yet received, and this file with its decryption, fit `process.availableMemory()`.
+- - -> A PSI frame is handed to the worker only when its copy and what the engine builds from it fit.
+- - -> Past the terms exchange a refusal reaches the partner as the run's abort.
+- - -> `--allow-memory-shortfall` turns each into a warning.

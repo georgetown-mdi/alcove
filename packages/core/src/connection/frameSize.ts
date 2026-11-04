@@ -174,6 +174,19 @@ export function singlePassReplyByteCap(
 }
 
 /**
+ * The most bytes a single-pass request from this receiver can take: one masked
+ * value a slot, at the per-value figure the reply cap weighs its response at.
+ */
+export function singlePassRequestByteBound(
+  receiver: SinglePassPartySize,
+): number {
+  return (
+    SINGLE_PASS_BYTES_PER_MASKED_VALUE * valueSlots(receiver) +
+    SINGLE_PASS_REPLY_OVERHEAD_BYTES
+  );
+}
+
+/**
  * The least memory a single-pass reply from this sender can take, in bytes: its
  * index table's one word per key and row, which no choice of values reduces. A
  * declared count is the sender's rows times its fan-out factor, 1 or

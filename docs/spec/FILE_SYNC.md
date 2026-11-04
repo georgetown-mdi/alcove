@@ -507,7 +507,7 @@ The heap ceiling is that need at the protocol's per-set maximum, 2^24 = 16,777,2
 
 ### How the ceiling reaches the engine
 
-- **An installed CLI** calls `v8.setFlagsFromString("--max-old-space-size=19075")` immediately before it starts the PSI worker, unless the process already runs under a larger limit (`raisePsiWorkerHeapLimit`). A worker created after the call is created with that limit; the main thread keeps the one it started with. A unit test starts a worker through the production call and reads the worker's own `heap_size_limit`.
+- **An installed CLI** calls `v8.setFlagsFromString("--max-old-space-size=19075")` immediately before it starts the PSI worker, or, on a single-pass run over file-sync, with the heap the counts need ([The worker's heap, from the counts](#the-workers-heap-from-the-counts)), unless the process already runs under a larger limit (`raisePsiWorkerHeapLimit`). A worker created after the call is created with that limit; the main thread keeps the one it started with. A unit test starts a worker through the production call and reads the worker's own `heap_size_limit`.
 - **An installed CLI's main thread**, which reads and prepares the input, keeps the limit node started it with: the CLI never raises it and never starts a second `node`. A heap option the operator gives, in `NODE_OPTIONS` or on node's own command line, is honored as given. Before the input is parsed, the CLI refuses an input that limit cannot hold ([The main thread's heap](#the-main-threads-heap)), and the refusal names the `NODE_OPTIONS=--max-old-space-size=19075` setting the images use.
 - **The container images** export `NODE_OPTIONS=--max-old-space-size=19075` in `docker-entrypoint.sh` before starting the CLI, which the FIPS variant's entrypoint also runs. It raises the main thread and the worker alike, and an operator's own `NODE_OPTIONS` follows it in the variable, so a larger value given with `docker run --env NODE_OPTIONS=...` takes precedence. A unit test runs the real entrypoint under the real shell with a stand-in `node` that reports both threads' limits.
 
@@ -568,7 +568,43 @@ Once the terms are exchanged and before any PSI set moves, a cascade or count-on
 
 The partner's figure is an authenticated upper bound for a conforming partner, not the size of the set it sends: duplicate values and empty cells shrink the real set below it, and a sender partner on a swapped key whose cleaning does not fan out sends at most half of it. A command-line party whose memory sits near the bound is therefore refused unless `--allow-memory-shortfall` is passed, though the set it would receive could fit. Under the [PSI-C](PROTOCOL.md#psi-c) construction the figure is the size of the set itself: every round's set has one element for each of the partner's declared records, so one check covers every round.
 
-A single-pass exchange is left to its dataset ceiling. A browser party refuses against a fixed ceiling instead, on the same upper bound, and has no override ([PROTOCOL.md, What a browser tab can match](PROTOCOL.md#what-a-browser-tab-can-match)).
+A single-pass exchange is left to its dataset ceiling over WebRTC, and over file-sync to the checks in [Memory an inbound frame takes](#memory-an-inbound-frame-takes). A browser party refuses against a fixed ceiling instead, on the same upper bound, and has no override ([PROTOCOL.md, What a browser tab can match](PROTOCOL.md#what-a-browser-tab-can-match)).
+
+### Memory an inbound frame takes
+
+A command-line party over file-sync weighs each partner frame against `process.availableMemory()`, which follows the host's memory and a container's limit and falls as the process uses memory. It weighs a frame at measured multiples of its size (`INBOUND_FRAME_MEMORY_MULTIPLES`, `packages/core/src/connection/inboundFrameMemory.ts`), which a unit test holds to this table:
+
+| Step | Multiple | Measured |
+| --- | --- | --- |
+| Reading a frame and decrypting it with AES-GCM, the frame and its plaintext included (`aeadOpen`) | 4 | 3.1 to 4.0 for 2,147,483,584 bytes through `crypto.subtle`, on Darwin arm64 and in Linux arm64 containers (2026-11-02); 3.00 for a 536,870,904-byte file read and decrypted in one process, in the development container under Node 26.13.0 (2026-11-04) |
+| Decoding a PSI request, beyond the frame (`psiDecode`) | 7.65 | 267.1 to 267.8 bytes retained for each element of 35 frame bytes, two runs of 2,000,000 elements on the WebAssembly library (2026-11-02 and 2026-11-03; [PROTOCOL.md, The single-pass dataset ceiling](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), "Every element is 33 bytes") |
+| A setup or a response the engine takes in pieces, beyond the frame (`streamedSetup`) | 1 | a 2.31 GB setup of 66,000,000 elements taken, sealed and matched at 2.2 GiB RSS on the native library, Darwin arm64 (2026-11-02) |
+| The PSI worker's copy of a frame (`workerClone`) | 1 | 1.00 held and 2.00 at the peak of the post, for a 536,870,888-byte array posted to a worker in the development container under Node 26.13.0 (2026-11-04) |
+
+Each multiple is the largest figure measured for what it counts. The checks:
+
+- **Before each read.** The read gate weighs a message file before reading it (`inboundFrameMemoryCheck` on `FileSyncConnection`): the files already read that the exchange has not received, plus this file at `aeadOpen` once the connection is encrypted, or at its own size before (`inboundFrameReadBytes`).
+- **Before the worker takes a frame.** A request the worker decodes is weighed at `workerClone + psiDecode` times its size, and a setup or a response it takes in pieces at `workerClone + streamedSetup` (`psiFrameHandlingBytes`). The frame itself is already held. The copy's peak, twice the frame, is not above either.
+- **At the terms exchange of a single-pass run.** Before either party masks anything, the frame this party will read is bounded from the agreed counts: the reply cap where it receives, and `40 * slots + 256` bytes where it sends and reads the partner's request (`singlePassRequestByteBound`), each held to `MAX_FRAME_SIZE_BYTES`. That frame is weighed at the larger of its read and of the frame with its handling (`inboundPsiFramePeakBytes`), and at no less than the reply's index table. The two do not add: the exchange collects garbage between the read and the hand-off (`relieveTransientMemory`), under the `--expose-gc` the images run node with.
+
+A need over what is available is refused. Before a read or a hand-off it is a usage error (exit 64) and the file is left unread; past the terms exchange the partner is told by the abort marker on an authenticated run, or by the local-fault abort frame on a quick exchange. At the terms exchange it is a `RoundCapacityError`, and the partner is sent `PARTNER_SET_OVER_CAPACITY_ABORT_REASON`. `--allow-memory-shortfall` turns each into a warning, on stderr and on the event stream under `memoryShortfall`.
+
+### The worker's heap, from the counts
+
+At the terms exchange of a single-pass run over file-sync, the PSI worker's heap is set to `298,000,000 + 709 * n` bytes, `n` the larger party's value slots (`psiWorkerHeapNeedBytes`): the measured worker V8 heap of a joiner's full round, the costlier role, in [The measured costs](#the-measured-costs). It is raised to that need, never below the limit the process already runs under. A run whose counts need more than 19,075 MiB gets it, and on a host where node runs at its default limit, a smaller run's worker keeps that limit, so running out of heap there ends the worker with an error the run reports rather than ending the process.
+
+### The main thread's heap, from the values
+
+Once a single-pass party has gathered its own distinct values, and before it masks any, a command-line party refuses a run whose main thread's `heap_size_limit` is under `120,000,000 + 135 * d` bytes, `d` the distinct values (`checkSinglePassOwnValuesHeap`, `apps/cli/src/psiMemoryBudget.ts`), on any channel. The refusal is a usage error (exit 64) naming the need, the limit, and the `NODE_OPTIONS=--max-old-space-size` line to set; the partner is told by the run's abort. `--allow-memory-shortfall` turns it into a warning.
+
+The figure is the line through the first and last rows below, rounded up, which is above the rows between. Measured 2026-11-04 in the development container (aarch64 Linux, Node v26.13.0, native library): the smallest main-thread `--max-old-space-size` under which `linkViaSinglePassPSI` completed with the right match count, bisected to 32 MiB, with the engine in a worker and the input of 14 keys built in the same heap. The sender and the receiver passed at the same limit at every size. The single-pass limit of 3,000,000 value slots a party bounds `d`, so the last row is at that limit.
+
+| Distinct values | Smallest passing `--max-old-space-size` | Its `heap_size_limit` |
+| --- | --- | --- |
+| 500,000 | 82 MiB | 178 MiB |
+| 1,000,000 | 140 MiB | 236 MiB |
+| 2,000,000 | 245 MiB | 341 MiB |
+| 2,999,990 | 403 MiB | 499 MiB |
 
 ### Limits
 
@@ -576,6 +612,9 @@ A single-pass exchange is left to its dataset ceiling. A browser party refuses a
 - **Total, not free, memory.** The host figure is the host's total memory, so two parties on one host, or other workloads beside the run, share memory the check counts once.
 - **The container figure is Node's.** The container limit the check counts is `process.constrainedMemory()`, which enters the least of the three figures when it is below the host's memory; the check reads no cgroup file itself.
 - **Measured on cgroup v2 only.** On Docker Desktop 29.8.1 (linuxkit 7.0.14, cgroup v2), `process.constrainedMemory()` equals the `docker run --memory` value, and with no limit it returns 2^64, which the check treats as no container limit. cgroup v1 is not measured. Under a small container limit V8 shrinks its young generation, so the heap figure in the memory line is 20.03 GB at 768m and 20.10 GB at 4g or with no limit. Under 768m the check refuses with exit 64 and writes nothing to the drop directory; with `--allow-memory-shortfall` it warns and the run proceeds. The FIPS image behaves the same.
+- **Frame multiples from separate measurements.** Each multiple in [Memory an inbound frame takes](#memory-an-inbound-frame-takes) was measured on its own step, not through a whole exchange, and the read multiple through `crypto.subtle` rather than the encryption layer's own path. The files read and not received are counted at their size, though each is decrypted when it is received.
+- **At the terms exchange, an upper bound.** The single-pass check weighs the largest frame the counts allow, not the frame masking builds: a run whose values repeat sends a smaller one, so a host near the bound is refused unless `--allow-memory-shortfall` is passed, though the frame it would read could fit. It weighs the frame's read and hand-off, not the masking around them.
+- **Not over WebRTC, or with no bundled worker.** The frame checks run on file-sync only, and the hand-off check only where the engine runs in the worker.
 
 ### Measured runs at 2^24
 

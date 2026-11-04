@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 import {
+  INBOUND_FRAME_MEMORY_MULTIPLES,
   WorkerPsiEngine,
+  psiFrameHandlingBytes,
   type PsiWorkerRequest,
   type PsiWorkerResponse,
 } from "@alcove/core";
@@ -262,5 +264,102 @@ describe("a signal exit while a PSI worker request is in flight", () => {
     expect(fake.terminateCalls).toBe(1);
     fake.emit("exit", 1);
     await stopping;
+  });
+});
+
+describe("the memory check before the worker takes a partner frame", () => {
+  const FRAME_BYTES = 100;
+  const frame = () => new Uint8Array(FRAME_BYTES);
+
+  // Each partner message the engine is given, the memory it is weighed at,
+  // and the reply that settles the call.
+  const calls = [
+    [
+      "a request",
+      (engine: WorkerPsiEngine) => engine.processClientRequest(frame()),
+      FRAME_BYTES,
+      psiFrameHandlingBytes(FRAME_BYTES, "decode"),
+      new Uint8Array(1),
+    ],
+    [
+      "a setup",
+      (engine: WorkerPsiEngine) => engine.receiveServerSetup(frame()),
+      FRAME_BYTES,
+      psiFrameHandlingBytes(FRAME_BYTES, "stream"),
+      undefined,
+    ],
+    [
+      "a setup piece",
+      (engine: WorkerPsiEngine) => engine.receiveServerSetupPiece(frame()),
+      FRAME_BYTES,
+      psiFrameHandlingBytes(FRAME_BYTES, "stream"),
+      undefined,
+    ],
+    [
+      "a response",
+      (engine: WorkerPsiEngine) => engine.computeAssociationTable(frame()),
+      FRAME_BYTES,
+      psiFrameHandlingBytes(FRAME_BYTES, "stream"),
+      [[], []],
+    ],
+    [
+      "a permuted response",
+      (engine: WorkerPsiEngine) => engine.matchPermutedRound(frame()),
+      FRAME_BYTES,
+      psiFrameHandlingBytes(FRAME_BYTES, "stream"),
+      undefined,
+    ],
+    [
+      "an index table",
+      (engine: WorkerPsiEngine) =>
+        engine.receiveIndexTable(new Int32Array(FRAME_BYTES / 4)),
+      FRAME_BYTES,
+      FRAME_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.workerClone,
+      undefined,
+    ],
+  ] as const;
+
+  test.each(calls)(
+    "%s is weighed at its copy and its handling before it is posted",
+    async (_what, call, frameBytes, needBytes, result) => {
+      const fake = new FakeWorker();
+      const weighed: Array<[number, number]> = [];
+      const engine = trackWorkerPsiEngine(fake, (frame, need) => {
+        weighed.push([frame, need]);
+      });
+      const pending = call(engine);
+      expect(weighed).toEqual([[frameBytes, needBytes]]);
+      expect(fake.posted).toHaveLength(1);
+      fake.emit("message", { id: fake.posted[0]!.id, ok: true, result });
+      await pending;
+      fake.emit("exit", 0);
+    },
+  );
+
+  test.each(calls)(
+    "%s is refused without posting when it does not fit",
+    async (_what, call) => {
+      const fake = new FakeWorker();
+      const refusal = new Error("not enough memory");
+      const engine = trackWorkerPsiEngine(fake, () => {
+        throw refusal;
+      });
+      await expect(call(engine)).rejects.toBe(refusal);
+      expect(fake.posted).toEqual([]);
+      fake.emit("exit", 0);
+    },
+  );
+
+  test("the handling multiples are the measured ones", () => {
+    expect(psiFrameHandlingBytes(FRAME_BYTES, "decode")).toBe(
+      FRAME_BYTES *
+        (INBOUND_FRAME_MEMORY_MULTIPLES.workerClone +
+          INBOUND_FRAME_MEMORY_MULTIPLES.psiDecode),
+    );
+    expect(psiFrameHandlingBytes(FRAME_BYTES, "stream")).toBe(
+      FRAME_BYTES *
+        (INBOUND_FRAME_MEMORY_MULTIPLES.workerClone +
+          INBOUND_FRAME_MEMORY_MULTIPLES.streamedSetup),
+    );
   });
 });

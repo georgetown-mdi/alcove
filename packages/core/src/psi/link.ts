@@ -2087,6 +2087,9 @@ export type SinglePassStageId =
  *   passed. Invoked on the RECEIVER under `"many-to-many"` alone: every
  *   other cardinality forms no blocks, and the sender holds neither the
  *   rounds nor the blocks a cluster's value count is read from.
+ * @param checkOwnValues - Optional check handed the count of this party's
+ *   own distinct values once they are gathered, before any is masked. A
+ *   throw refuses the run.
  */
 export async function linkViaSinglePassPSI(
   protocol: {
@@ -2100,6 +2103,7 @@ export async function linkViaSinglePassPSI(
   verbosity: number = 0,
   setStage?: (id: string) => void,
   reportEntityClusters?: (summary: EntityClusterSummary) => void,
+  checkOwnValues?: (distinctValues: number) => void | Promise<void>,
 ): Promise<AssociationTable> {
   if (participant.config.role === "either")
     throw new InternalConsistencyError("the participant's role is unresolved");
@@ -2159,6 +2163,7 @@ export async function linkViaSinglePassPSI(
 
   const { distinctValues, columns, numRecords, slotCount } =
     getDistinctValuesAndIndices(data, localFansOut, localCellWidths);
+  await checkOwnValues?.(distinctValues.length);
 
   // Map (own count, partner count, role) -> (sender size, receiver size). Both
   // parties derive the SAME pair: the starter is the PSI sender, the joiner the

@@ -45,7 +45,11 @@ import type {
   SigningPersist,
 } from "../protocol";
 import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
-import { checkPsiMemoryBudget, readMemory } from "../psiMemoryBudget";
+import {
+  checkPsiMemoryBudget,
+  inboundFrameMemoryCheck,
+  readMemory,
+} from "../psiMemoryBudget";
 import { psiEngineRunsInWorker } from "../psiWorkerHost";
 import {
   preflightOutputFolder,
@@ -786,6 +790,13 @@ export async function prepareTransport(
       inactivityTimeoutGuidance: INACTIVITY_TIMEOUT_GUIDANCE,
       renameRefusedGuidance: RENAME_REFUSED_GUIDANCE,
       ...(auth && { maxJsonMessageBytes: KEX_MESSAGE_MAX_BYTES }),
+      inboundFrameMemoryCheck: inboundFrameMemoryCheck({
+        allowShortfall: allowMemoryShortfall,
+        onShortfallWarning: (message) => {
+          log.warn(message);
+          emit((e) => e.warning("memoryShortfall", message));
+        },
+      }),
     });
     build.fileSync = fileSyncConn;
 

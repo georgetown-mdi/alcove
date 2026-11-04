@@ -65,6 +65,7 @@ export async function runPsiPhase(p: {
   withholdSenderTable: boolean;
   onStage: (id: string) => void;
   reportMatchedKeys?: boolean;
+  checkSinglePassOwnValues?: RunExchangeOptions["checkSinglePassOwnValues"];
 }): Promise<{
   associationTable: AssociationTable | undefined;
   intersectionCount: number | undefined;
@@ -94,6 +95,7 @@ export async function runPsiPhase(p: {
     withholdSenderTable,
     onStage,
     reportMatchedKeys = false,
+    checkSinglePassOwnValues,
   } = p;
 
   if (
@@ -212,6 +214,7 @@ export async function runPsiPhase(p: {
             (summary) => {
               entityClusters = summary;
             },
+            checkSinglePassOwnValues,
           )
         : await linkViaPSI(
             { cardinality },

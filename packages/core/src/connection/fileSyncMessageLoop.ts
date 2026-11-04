@@ -35,6 +35,7 @@ import {
   markStatesItsOwnNextStep,
 } from "../errors";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
+import { inboundFrameReadBytes } from "./inboundFrameMemory";
 import { joinFileSyncPath } from "./fileSyncPath";
 import { renameOwnTemp } from "./fileSyncWrite";
 import {
@@ -321,7 +322,19 @@ export interface MessageLoopOptions {
   writeWithoutRenaming?: boolean;
   renameRefusedGuidance?: string;
   maxJsonMessageBytes?: number;
+  inboundFrameMemoryCheck?: InboundFrameMemoryCheck;
 }
+
+/**
+ * Weighs, before a partner message file is read, the memory the read needs
+ * (`needBytes`: the messages read and not yet received, and this file with its
+ * decryption) against what the process has. A throw refuses the read and
+ * stops the poller; a return lets the read go on.
+ */
+export type InboundFrameMemoryCheck = (
+  frameBytes: number,
+  needBytes: number,
+) => void;
 
 const INACTIVITY_LIMIT_CLAUSE = ` (the limit ${INACTIVITY_TIMEOUT_KEY} sets)`;
 
@@ -1080,6 +1093,13 @@ export class FileSyncMessageLoop {
                 "waits until the messages already read are received",
             );
         } else {
+          deps
+            .options()
+            .inboundFrameMemoryCheck?.(
+              declaredSize,
+              this.queuedFileBytes() +
+                inboundFrameReadBytes(declaredSize, this.binaryFramesRequired),
+            );
           const inPath = joinFileSyncPath(path, messageFile.name);
           deps
             .log()
@@ -1498,16 +1518,23 @@ export class FileSyncMessageLoop {
   // already read and queued, together with this one, may not exceed it. With
   // none queued the file is read, so no file within the bound waits for good.
   private readAheadFull(fileBytes: number, boundBytes: number): boolean {
-    if (this.queuedMessages === undefined) return false;
+    const queuedBytes = this.queuedFileBytes();
+    if (this.deliveredFileBytes.length === 0) return false;
+    return fileBytes + queuedBytes > boundBytes;
+  }
+
+  // The file bytes of the messages read and delivered that the consumer has
+  // not received.
+  private queuedFileBytes(): number {
+    if (this.queuedMessages === undefined) return 0;
     const queued = this.queuedMessages();
     this.deliveredFileBytes.splice(
       0,
       Math.max(0, this.deliveredFileBytes.length - queued),
     );
-    if (this.deliveredFileBytes.length === 0) return false;
-    let heldBytes = fileBytes;
+    let heldBytes = 0;
     for (const bytes of this.deliveredFileBytes) heldBytes += bytes;
-    return heldBytes > boundBytes;
+    return heldBytes;
   }
 
   // The consumer's count of messages it has not yet received, which bounds

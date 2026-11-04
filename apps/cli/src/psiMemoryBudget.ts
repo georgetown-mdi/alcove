@@ -5,6 +5,9 @@ import {
   RoundCapacityError,
   UsageError,
   formatCount,
+  inboundPsiFramePeakBytes,
+  markStatesItsOwnNextStep,
+  type InboundFrameMemoryCheck,
   type SinglePassPartnerSize,
 } from "@alcove/core";
 
@@ -75,16 +78,34 @@ export const PSI_HEAP_CEILING_MIB = Math.ceil(PSI_HEAP_CEILING_BYTES / 2 ** 20);
 export const PSI_HEAP_CEILING_FLAG = `--max-old-space-size=${PSI_HEAP_CEILING_MIB}`;
 
 /**
- * Raise the V8 old-generation limit that PSI workers started after this call
- * get to {@link PSI_HEAP_CEILING_MIB}, unless this process already runs under
- * a larger one. A worker's `resourceLimits` and `execArgv` cannot do this on
- * Node 26.10; the flag set here is read when a worker's heap is
- * created, and leaves this thread's own limit as it is.
+ * Peak V8 heap of the PSI worker per element of a set, in bytes, fitted over
+ * measured joiner full rounds, the costlier role.
  */
-export function raisePsiWorkerHeapLimit(): void {
-  if (getHeapStatistics().heap_size_limit >= PSI_HEAP_CEILING_MIB * 2 ** 20)
-    return;
-  setFlagsFromString(PSI_HEAP_CEILING_FLAG);
+export const PSI_WORKER_HEAP_BYTES_PER_ELEMENT = 709;
+
+/** The intercept of that fit, in bytes. */
+export const PSI_WORKER_HEAP_FIXED_BYTES = 298_000_000;
+
+/** The worker heap a PSI round over `elements` a side needs, in bytes. */
+export function psiWorkerHeapNeedBytes(elements: number): number {
+  return (
+    PSI_WORKER_HEAP_FIXED_BYTES + elements * PSI_WORKER_HEAP_BYTES_PER_ELEMENT
+  );
+}
+
+/**
+ * Raise the V8 old-generation limit that PSI workers started after this call
+ * get to `needBytes`, {@link PSI_HEAP_CEILING_BYTES} by default, unless this
+ * process already runs under a larger one. A worker's `resourceLimits` and
+ * `execArgv` cannot do this on Node 26.10; the flag set here is read when a
+ * worker's heap is created, and leaves this thread's own limit as it is.
+ */
+export function raisePsiWorkerHeapLimit(
+  needBytes: number = PSI_HEAP_CEILING_BYTES,
+): void {
+  const mib = Math.ceil(needBytes / 2 ** 20);
+  if (getHeapStatistics().heap_size_limit >= mib * 2 ** 20) return;
+  setFlagsFromString(`--max-old-space-size=${mib}`);
 }
 
 /** The memory figures a run's budget is checked against, in bytes. */
@@ -261,26 +282,49 @@ export function checkPsiMemoryBudget(params: {
 }
 
 /**
+ * The memory reading the partner's PSI frame in a single-pass run can take, in
+ * bytes, from the agreed counts: the larger of the reply's index table, which
+ * no choice of values reduces, and the most the frame the counts allow takes
+ * to read and hand to the PSI engine at the measured multiples.
+ */
+export function singlePassInboundPeakBytes(
+  size: SinglePassPartnerSize,
+  encrypted: boolean,
+): number {
+  return Math.max(
+    size.irreducibleReplyBytes,
+    inboundPsiFramePeakBytes(
+      size.inboundFrameBytes,
+      size.inboundFrameUse,
+      encrypted,
+    ),
+  );
+}
+
+/**
  * What a single-pass run over file-sync does with the partner's declared size at
- * the terms exchange. As the receiver, a reply whose index table alone cannot fit
- * in the memory available now is a {@link RoundCapacityError}, since that run
- * cannot finish, or, with `allowShortfall`, a warning and the run continues. Every
- * run states the partner's value slots and its worst-case memory and time.
+ * the terms exchange. When reading the partner's PSI frame can take more memory
+ * than is available now ({@link singlePassInboundPeakBytes}), the run is a
+ * {@link RoundCapacityError}, or, with `allowShortfall`, a warning and the run
+ * continues. Every run states the partner's value slots and its worst-case
+ * memory and time.
  */
 export function checkSinglePassPartnerMemory(params: {
   size: SinglePassPartnerSize;
+  encrypted: boolean;
   allowShortfall: boolean;
   availableBytes: number;
   log: { warn: (message: string) => void };
   onShortfallWarning: (message: string) => void;
 }): void {
   const { size, availableBytes, log } = params;
-  if (size.irreducibleReplyBytes > availableBytes) {
+  const needBytes = singlePassInboundPeakBytes(size, params.encrypted);
+  if (needBytes > availableBytes) {
     const sentence =
       `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +
-      `a reply over that many needs at least ` +
-      `${gigabytes(size.irreducibleReplyBytes)} of memory, and this machine has ` +
-      `${gigabytes(availableBytes)} available now`;
+      `and reading what they send could take up to ${gigabytes(needBytes)} ` +
+      `of memory, but this machine has ${gigabytes(availableBytes)} available ` +
+      `now`;
     if (!params.allowShortfall)
       throw new RoundCapacityError(
         `${sentence}, so the exchange stopped before any value was masked and ` +
@@ -377,4 +421,104 @@ export function checkPartnerRoundMemory(params: {
     partnerRoundMemoryShortfallOverrideWarning(assessment),
   );
   return assessment;
+}
+
+/**
+ * Main-thread heap limit a single-pass link needs per distinct value of this
+ * party's own, in bytes, with the PSI engine in a worker: the line through the
+ * smallest passing limits measured at 500,000 and 2,999,990 values, rounded
+ * up, which is above the points between.
+ */
+export const SINGLE_PASS_MAIN_HEAP_BYTES_PER_VALUE = 135;
+
+/** The intercept of that line, in bytes, rounded up. */
+export const SINGLE_PASS_MAIN_HEAP_FIXED_BYTES = 120_000_000;
+
+/** The main-thread heap limit a single-pass link over `distinctValues` needs. */
+export function singlePassMainHeapNeedBytes(distinctValues: number): number {
+  return (
+    SINGLE_PASS_MAIN_HEAP_FIXED_BYTES +
+    distinctValues * SINGLE_PASS_MAIN_HEAP_BYTES_PER_VALUE
+  );
+}
+
+/**
+ * Hold a single-pass link's own distinct values to this thread's heap limit,
+ * before anything is masked: a need over it is a {@link UsageError} naming the
+ * `--max-old-space-size` that fits, or, with `allowShortfall`, a warning
+ * passed to `onShortfallWarning` and the run continues.
+ */
+export function checkSinglePassOwnValuesHeap(params: {
+  distinctValues: number;
+  allowShortfall: boolean;
+  onShortfallWarning: (message: string) => void;
+  heapLimitBytes?: number;
+}): void {
+  const needBytes = singlePassMainHeapNeedBytes(params.distinctValues);
+  const limit = params.heapLimitBytes ?? getHeapStatistics().heap_size_limit;
+  if (needBytes <= limit) return;
+  const sentence =
+    `matching your ${formatCount(params.distinctValues)} distinct values ` +
+    `needs about ${gigabytes(needBytes)} of heap, more than this process's ` +
+    `limit of ${gigabytes(limit)}`;
+  const mib = Math.max(PSI_HEAP_CEILING_MIB, Math.ceil(needBytes / 2 ** 20));
+  if (!params.allowShortfall)
+    throw markStatesItsOwnNextStep(
+      new UsageError(
+        `${sentence}, so the exchange stopped and told your partner. Set ` +
+          `NODE_OPTIONS=--max-old-space-size=${mib} in the environment and ` +
+          `run the exchange again, or pass --allow-memory-shortfall to run ` +
+          `anyway; the exchange may then run out of memory, which fails it ` +
+          `for both parties.`,
+      ),
+    );
+  params.onShortfallWarning(
+    `running with --allow-memory-shortfall: ${sentence}. The exchange may ` +
+      `run out of memory, which fails it for both parties.`,
+  );
+}
+
+function megabytes(bytes: number): string {
+  return `${(bytes / 1e6).toFixed(1)} MB`;
+}
+
+/**
+ * Weigh the memory a partner message needs (`needBytes`, for one of
+ * `frameBytes`) against `availableBytes()`, by default
+ * `process.availableMemory()`: a need over it is a {@link UsageError}, or,
+ * with `allowShortfall`, a warning passed to `onShortfallWarning` and the run
+ * continues. The file-sync read gate takes it before each read, and the PSI
+ * worker before it takes a frame. Each check warns on its first shortfall only.
+ */
+export function inboundFrameMemoryCheck(params: {
+  allowShortfall: boolean;
+  onShortfallWarning: (message: string) => void;
+  availableBytes?: () => number;
+}): InboundFrameMemoryCheck {
+  const availableBytes =
+    params.availableBytes ?? (() => process.availableMemory());
+  let warned = false;
+  return (frameBytes, needBytes) => {
+    const available = availableBytes();
+    if (needBytes <= available) return;
+    const sentence =
+      `your partner's message is ${megabytes(frameBytes)} and needs about ` +
+      `${gigabytes(needBytes)} of memory to process, but this machine has ` +
+      `${gigabytes(available)} available now`;
+    if (!params.allowShortfall)
+      throw markStatesItsOwnNextStep(
+        new UsageError(
+          `${sentence}, so the exchange stopped. Run the exchange on a host ` +
+            `with more memory, or pass --allow-memory-shortfall to run ` +
+            `anyway; the exchange may then run out of memory, which fails it ` +
+            `for both parties.`,
+        ),
+      );
+    if (warned) return;
+    warned = true;
+    params.onShortfallWarning(
+      `running with --allow-memory-shortfall: ${sentence}. The exchange may ` +
+        `run out of memory, which fails it for both parties.`,
+    );
+  };
 }

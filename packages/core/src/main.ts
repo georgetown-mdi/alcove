@@ -170,6 +170,15 @@ export {
   BROWSER_PSI_SET_MAX_ELEMENTS,
   MAX_PSI_DECODE_ELEMENTS,
 } from "./connection/frameSize";
+// The measured memory an inbound frame takes, which the CLI weighs against the
+// memory its process has before each read and each hand-off to the PSI worker.
+export {
+  INBOUND_FRAME_MEMORY_MULTIPLES,
+  inboundPsiFramePeakBytes,
+  psiFrameHandlingBytes,
+  type InboundPsiFrameUse,
+} from "./connection/inboundFrameMemory";
+export type { InboundFrameMemoryCheck } from "./connection/fileSyncMessageLoop";
 // The send-side half of the same wire. Core's PeerJS framing below calls it,
 // and the web transport encodes its outbound frames outside this package
 // (apps/web/src/psi/transport/iterativePacking.ts), so one implementation
