@@ -1,10 +1,17 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 import {
+  checkKnownDifferences,
   compareOutcomes,
   comparisonCases,
   formatDifferences,
+  formatKnownDifferenceCheck,
   re2jsOutcome,
+  readKnownDifferences,
 } from "./compare-regex-with-re2.mjs";
 
 // Hand-written reference outcomes in re2-reference.py's shape, since RE2
@@ -191,26 +198,87 @@ describe("comparison against a reference", () => {
     );
   });
 
-  test("a long outcome is shortened in the report", () => {
-    const input = "a".repeat(400);
-    const [inputLine] = formatDifferences([
-      { pattern: "a", inputs: [{ input, re2js: null, re2: null }] },
-    ]).slice(1);
-    expect(inputLine).toMatch(/\.\.\. \(402 characters\)$/);
-  });
-
-  test("a pattern shows its first three differing inputs and counts the rest", () => {
+  test("the report shows every differing input and each outcome in full", () => {
+    const long = "a".repeat(2000);
     const inputs = ["a", "b", "c", "d", "e"].map((input) => ({
       input,
-      re2js: null,
+      re2js: { findAll: [long] },
       re2: null,
     }));
     const lines = formatDifferences([{ pattern: "a", inputs }]);
-    expect(lines.filter((line) => line.startsWith("  input "))).toEqual([
-      '  input "a"',
-      '  input "b"',
-      '  input "c"',
+    expect(lines.filter((line) => line.startsWith("  input "))).toHaveLength(5);
+    expect(lines).toContain(
+      `    re2js: ${JSON.stringify({ findAll: [long] })}`,
+    );
+  });
+});
+
+describe("known differences", () => {
+  const cases = [
+    { pattern: "a(b)?", inputs: ["a", "xaba"] },
+    { pattern: "\\pN", inputs: ["a"] },
+  ];
+  const rejecting = { pattern: "\\pN", compiles: false, error: "invalid" };
+  const accepting = {
+    pattern: "\\pN",
+    compiles: true,
+    inputs: [{ search: null, fullmatch: false, findAll: [] }],
+  };
+  const known = [{ pattern: "\\pN", cause: "RE2 has no \\pN" }];
+
+  test("a listed difference passes and the report gives its cause", () => {
+    const { differences } = compare(cases, [agreeing, rejecting]);
+    expect(checkKnownDifferences(differences, known)).toEqual({
+      unlisted: [],
+      agreeing: [],
+    });
+    expect(formatDifferences(differences, known)).toEqual([
+      'pattern "\\\\pN"',
+      "  known: RE2 has no \\pN",
+      "  re2js: compiles",
+      "  RE2:   rejects (invalid)",
     ]);
-    expect(lines.at(-1)).toBe("  and 2 more inputs differ");
+  });
+
+  test("a difference the list does not name fails, naming the pattern", () => {
+    const { differences } = compare(cases, [agreeing, rejecting]);
+    const check = checkKnownDifferences(differences, []);
+    expect(check).toEqual({ unlisted: ["\\pN"], agreeing: [] });
+    expect(formatKnownDifferenceCheck(check)).toEqual([
+      'differs and is not in re2-known-differences.json: "\\\\pN"',
+    ]);
+  });
+
+  test("a listed pattern that no longer differs fails, naming it", () => {
+    const { differences } = compare(cases, [agreeing, accepting]);
+    expect(differences).toEqual([]);
+    const check = checkKnownDifferences(differences, known);
+    expect(check).toEqual({ unlisted: [], agreeing: ["\\pN"] });
+    expect(formatKnownDifferenceCheck(check)).toEqual([
+      'in re2-known-differences.json but no longer differs, so remove it: "\\\\pN"',
+    ]);
+  });
+
+  test("a list naming a pattern twice is refused", () => {
+    const dir = mkdtempSync(join(tmpdir(), "re2-known-"));
+    try {
+      const path = join(dir, "known.json");
+      writeFileSync(path, JSON.stringify([...known, ...known]));
+      expect(() => readKnownDifferences(path)).toThrow(
+        /lists pattern .* twice/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the checked-in list names golden patterns, each with a cause", () => {
+    const patterns = new Set(comparisonCases().map(({ pattern }) => pattern));
+    const listed = readKnownDifferences();
+    expect(listed.length).toBeGreaterThan(0);
+    for (const { pattern, cause } of listed) {
+      expect(patterns.has(pattern), pattern).toBe(true);
+      expect(cause, pattern).toMatch(/\S/);
+    }
   });
 });

@@ -3,7 +3,8 @@ name: re2js Reference Comparison
 # Compares re2js, the regex engine both parties run, with C++ RE2 over the
 # regex golden cases. The golden test in packages/core fails on any change in
 # re2js's output; this asks whether the new output is RE2's, where a difference
-# is an re2js bug to fix or refuse. It runs only on a pull request that moves
+# scripts/re2-known-differences.json does not list is an re2js bug to fix or
+# refuse. It runs only on a pull request that moves
 # re2js's resolved version: the path filter skips a pull request leaving
 # package-lock.json alone, and the gate job compares the version the base
 # branch tip locks with the one the merged tree locks. To run it by hand on a

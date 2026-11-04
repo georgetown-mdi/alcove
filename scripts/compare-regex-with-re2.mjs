@@ -9,16 +9,18 @@
 //
 //   node scripts/compare-regex-with-re2.mjs [--python <interpreter>]
 //
-// It installs google-re2 at GOOGLE_RE2_VERSION into a virtual environment in a
-// temporary directory, runs re2-reference.py there, prints each pattern whose
-// outcomes differ with both engines' outcomes (on its first three differing
-// inputs), and exits 1 on any difference.
+// (`--python python3.12` where `python3` has no google-re2 wheel.) It installs
+// google-re2 at GOOGLE_RE2_VERSION into a virtual environment in a temporary
+// directory, runs re2-reference.py there, and prints each pattern whose
+// outcomes differ with both engines' outcomes in full. It exits 1 on a
+// difference re2-known-differences.json does not list, and on a pattern it
+// lists that no longer differs.
 // re2js_reference.yaml runs it on a pull request that moves re2js's version.
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { RE2JS } from "re2js";
@@ -26,14 +28,16 @@ import { RE2JS } from "re2js";
 import { goldenCases } from "../packages/core/test/utils/linearRegexGoldenCases.ts";
 
 /** The google-re2 release the comparison installs, which bundles its C++ RE2. */
-export const GOOGLE_RE2_VERSION = "1.1.20240702";
+export const GOOGLE_RE2_VERSION = "1.1.20251105";
 
-const REFERENCE_PROGRAM = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "re2-reference.py",
+const SCRIPTS = dirname(fileURLToPath(import.meta.url));
+const REFERENCE_PROGRAM = join(SCRIPTS, "re2-reference.py");
+
+/** The patterns measured to differ from RE2, each with its cause. */
+export const KNOWN_DIFFERENCES_FILE = join(
+  SCRIPTS,
+  "re2-known-differences.json",
 );
-const SHOWN_CHARACTERS = 300;
-const SHOWN_INPUTS = 3;
 
 /**
  * The cases as both engines receive them: each input NFC-normalized, as the
@@ -105,10 +109,7 @@ export function re2jsOutcome({ pattern, inputs }) {
 }
 
 function shown(value) {
-  const text = JSON.stringify(value);
-  return text.length <= SHOWN_CHARACTERS
-    ? text
-    : `${text.slice(0, SHOWN_CHARACTERS)}... (${text.length} characters)`;
+  return JSON.stringify(value);
 }
 
 function compileOutcome(outcome) {
@@ -165,30 +166,75 @@ export function compareOutcomes(cases, re2js, reference) {
   return { differences, skippedPatterns, skippedInputs };
 }
 
-/** The report lines for {@link compareOutcomes}'s differences. */
-export function formatDifferences(differences) {
+/**
+ * Reads a known-differences list, [{pattern, cause}], refusing a repeated
+ * pattern.
+ */
+export function readKnownDifferences(path = KNOWN_DIFFERENCES_FILE) {
+  const known = JSON.parse(readFileSync(path, "utf8"));
+  const seen = new Set();
+  for (const { pattern } of known) {
+    if (seen.has(pattern))
+      throw new Error(`${path} lists pattern ${shown(pattern)} twice`);
+    seen.add(pattern);
+  }
+  return known;
+}
+
+/**
+ * The differences a known-differences list does not name, and the listed
+ * patterns that no longer differ.
+ */
+export function checkKnownDifferences(differences, known) {
+  const differing = new Set(differences.map(({ pattern }) => pattern));
+  const listed = new Set(known.map(({ pattern }) => pattern));
+  return {
+    unlisted: differences
+      .map(({ pattern }) => pattern)
+      .filter((pattern) => !listed.has(pattern)),
+    agreeing: known
+      .map(({ pattern }) => pattern)
+      .filter((pattern) => !differing.has(pattern)),
+  };
+}
+
+/**
+ * The report lines for {@link compareOutcomes}'s differences, each in full,
+ * with the cause the known-differences list gives it.
+ */
+export function formatDifferences(differences, known = []) {
+  const causes = new Map(known.map(({ pattern, cause }) => [pattern, cause]));
   const lines = [];
   for (const difference of differences) {
     lines.push(`pattern ${shown(difference.pattern)}`);
+    const cause = causes.get(difference.pattern);
+    if (cause !== undefined) lines.push(`  known: ${cause}`);
     if (difference.inputs === undefined) {
       lines.push(`  re2js: ${difference.re2js}`, `  RE2:   ${difference.re2}`);
       continue;
     }
-    for (const { input, re2js, re2 } of difference.inputs.slice(
-      0,
-      SHOWN_INPUTS,
-    ))
+    for (const { input, re2js, re2 } of difference.inputs)
       lines.push(
         `  input ${shown(input)}`,
         `    re2js: ${shown(re2js)}`,
         `    RE2:   ${shown(re2)}`,
       );
-    if (difference.inputs.length > SHOWN_INPUTS)
-      lines.push(
-        `  and ${difference.inputs.length - SHOWN_INPUTS} more inputs differ`,
-      );
   }
   return lines;
+}
+
+/** The report's closing lines for {@link checkKnownDifferences}'s result. */
+export function formatKnownDifferenceCheck({ unlisted, agreeing }) {
+  const file = basename(KNOWN_DIFFERENCES_FILE);
+  return [
+    ...unlisted.map(
+      (pattern) => `differs and is not in ${file}: ${shown(pattern)}`,
+    ),
+    ...agreeing.map(
+      (pattern) =>
+        `in ${file} but no longer differs, so remove it: ${shown(pattern)}`,
+    ),
+  ];
 }
 
 function run(command, args) {
@@ -230,12 +276,17 @@ function main(argv) {
       cases.map(re2jsOutcome),
       reference,
     );
+    const known = readKnownDifferences();
+    const check = checkKnownDifferences(differences, known);
     console.log(
-      `re2js against ${reference.engine}: ${cases.length} patterns, ${differences.length} differ; ` +
+      `re2js against ${reference.engine}: ${cases.length} patterns, ${differences.length} differ ` +
+        `(${known.length} listed in ${basename(KNOWN_DIFFERENCES_FILE)}); ` +
         `${skippedPatterns} patterns and ${skippedInputs} inputs left out for a lone surrogate`,
     );
-    for (const line of formatDifferences(differences)) console.log(line);
-    return differences.length === 0 ? 0 : 1;
+    for (const line of formatDifferences(differences, known)) console.log(line);
+    const failures = formatKnownDifferenceCheck(check);
+    for (const line of failures) console.log(line);
+    return failures.length === 0 ? 0 : 1;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
