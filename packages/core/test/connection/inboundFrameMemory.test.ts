@@ -4,15 +4,12 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import {
+  CHUNKED_OPEN_PEAK_BYTES,
   INBOUND_FRAME_MEMORY_MULTIPLES,
   inboundFrameReadBytes,
   inboundPsiFramePeakBytes,
   psiFrameHandlingBytes,
 } from "../../src/connection/inboundFrameMemory";
-import {
-  AEAD_CHUNK_PLAINTEXT_BYTES,
-  AEAD_TAG_BYTES,
-} from "../../src/connection/chunkedAead";
 import {
   CHUNKED_ENVELOPE_VERSION,
   SINGLE_CALL_ENVELOPE_VERSION,
@@ -63,18 +60,44 @@ describe("the measured multiples of an inbound frame", () => {
     );
   });
 
-  test("a version-2 read is the frame and one chunk's copy and plaintext", () => {
-    const workingSet = 2 * (AEAD_CHUNK_PLAINTEXT_BYTES + AEAD_TAG_BYTES);
-    expect(workingSet).toBe(32 * 1024 * 1024 + 32);
+  // The largest of three peaks above the loaded envelope at each size, in a
+  // fresh process with no forced collection (docs/spec/TRANSPORT_BOUNDS.md,
+  // Inbound frame-size bound).
+  const MEASURED_CHUNKED_OPENS = [
+    { envelopeBytes: 16_777_258, peakAboveEnvelopeBytes: 33_984_512 },
+    { envelopeBytes: 67_108_954, peakAboveEnvelopeBytes: 83_263_488 },
+    { envelopeBytes: 268_435_738, peakAboveEnvelopeBytes: 99_962_880 },
+    { envelopeBytes: 1_073_742_874, peakAboveEnvelopeBytes: 100_077_568 },
+    { envelopeBytes: 2_147_489_818, peakAboveEnvelopeBytes: 101_023_744 },
+  ];
+
+  test.each(MEASURED_CHUNKED_OPENS)(
+    "a version-2 read of $envelopeBytes bytes covers the measured peak",
+    ({ envelopeBytes, peakAboveEnvelopeBytes }) => {
+      expect(
+        inboundFrameReadBytes(envelopeBytes, true, CHUNKED_ENVELOPE_VERSION),
+      ).toBeGreaterThanOrEqual(envelopeBytes + peakAboveEnvelopeBytes);
+      expect(
+        inboundFrameReadBytes(
+          envelopeBytes,
+          true,
+          SINGLE_CALL_ENVELOPE_VERSION,
+        ),
+      ).toBe(envelopeBytes * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen);
+      expect(inboundFrameReadBytes(envelopeBytes, true, undefined)).toBe(
+        envelopeBytes * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen,
+      );
+    },
+  );
+
+  test("a version-2 read is the frame and the largest peak measured", () => {
+    expect(CHUNKED_OPEN_PEAK_BYTES).toBe(
+      Math.max(
+        ...MEASURED_CHUNKED_OPENS.map((row) => row.peakAboveEnvelopeBytes),
+      ),
+    );
     expect(inboundFrameReadBytes(100, true, CHUNKED_ENVELOPE_VERSION)).toBe(
-      100 + workingSet,
-    );
-    const gib = 1024 ** 3;
-    expect(inboundFrameReadBytes(gib, true, CHUNKED_ENVELOPE_VERSION)).toBe(
-      gib + workingSet,
-    );
-    expect(inboundFrameReadBytes(gib, true, SINGLE_CALL_ENVELOPE_VERSION)).toBe(
-      4 * gib,
+      100 + CHUNKED_OPEN_PEAK_BYTES,
     );
   });
 

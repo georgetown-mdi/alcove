@@ -180,6 +180,19 @@ export async function decryptChunkedInPlace(
     }
     envelope.set(new Uint8Array(plain), plainStart + written);
     written += plain.byteLength;
+    releaseNow(plain);
   }
   return envelope.subarray(plainStart, plainStart + written);
+}
+
+/**
+ * Frees `buffer`'s memory at once rather than at the next garbage collection,
+ * by detaching it with `ArrayBuffer.prototype.transfer`. That is ES2024,
+ * newer than the ES2022 floor this package compiles against, so where the
+ * engine lacks it the buffer is left to the collector.
+ */
+function releaseNow(buffer: ArrayBuffer): void {
+  const transfer = (buffer as { transfer?: (length: number) => ArrayBuffer })
+    .transfer;
+  if (typeof transfer === "function") transfer.call(buffer, 0);
 }

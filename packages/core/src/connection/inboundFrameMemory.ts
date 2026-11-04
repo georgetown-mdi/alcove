@@ -2,11 +2,14 @@
 // and handled. The figures and how each was measured: docs/spec/FILE_SYNC.md,
 // "Memory an inbound frame takes".
 
-import {
-  AEAD_CHUNK_PLAINTEXT_BYTES,
-  AEAD_TAG_BYTES,
-  CHUNKED_ENVELOPE_VERSION,
-} from "./chunkedAead";
+import { CHUNKED_ENVELOPE_VERSION } from "./chunkedAead";
+
+/**
+ * The most memory opening a version-2 frame was measured to take above the
+ * frame itself, at any size measured (docs/spec/TRANSPORT_BOUNDS.md, Inbound
+ * frame-size bound).
+ */
+export const CHUNKED_OPEN_PEAK_BYTES = 101_023_744;
 
 /** The measured multiples of an inbound frame's size, by what is done with it. */
 export const INBOUND_FRAME_MEMORY_MULTIPLES = {
@@ -29,8 +32,8 @@ export type InboundPsiFrameUse = "decode" | "stream";
 /**
  * The memory reading one frame of `frameBytes` takes: the frame and, on an
  * encrypted connection, its decryption. Under the chunked envelope
- * (`envelopeVersion` 2) that is the frame and one chunk's decryption; under
- * version 1, or before a version is negotiated, the `aeadOpen` multiple.
+ * (`envelopeVersion` 2) that is the frame and {@link CHUNKED_OPEN_PEAK_BYTES};
+ * under version 1, or before a version is negotiated, the `aeadOpen` multiple.
  */
 export function inboundFrameReadBytes(
   frameBytes: number,
@@ -38,9 +41,8 @@ export function inboundFrameReadBytes(
   envelopeVersion?: number,
 ): number {
   if (!encrypted) return frameBytes;
-  // One chunk open at a time: crypto.subtle's copy of it and its plaintext.
   return envelopeVersion === CHUNKED_ENVELOPE_VERSION
-    ? frameBytes + 2 * (AEAD_CHUNK_PLAINTEXT_BYTES + AEAD_TAG_BYTES)
+    ? frameBytes + CHUNKED_OPEN_PEAK_BYTES
     : frameBytes * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen;
 }
 

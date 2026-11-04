@@ -394,6 +394,36 @@ describe("a frame that fails at chunk k", () => {
   });
 });
 
+describe("each chunk's decrypted buffer", () => {
+  const prototype = ArrayBuffer.prototype as unknown as {
+    transfer(length: number): ArrayBuffer;
+  };
+
+  test("is detached once it is copied into the envelope", async () => {
+    chunk.bytes = 4;
+    const transfer = vi.spyOn(prototype, "transfer");
+    const [a, b] = await pair();
+    await a.send(ELEVEN);
+    expect(await b.receive()).toEqual(ELEVEN);
+    expect(transfer.mock.calls).toEqual([[0], [0], [0]]);
+    for (const buffer of transfer.mock.contexts)
+      expect((buffer as ArrayBuffer).byteLength).toBe(0);
+  });
+
+  test("is left to the collector where the engine has no ArrayBuffer transfer", async () => {
+    chunk.bytes = 4;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "transfer")!;
+    delete (prototype as Partial<typeof prototype>).transfer;
+    try {
+      const [a, b] = await pair();
+      await a.send(ELEVEN);
+      expect(await b.receive()).toEqual(ELEVEN);
+    } finally {
+      Object.defineProperty(prototype, "transfer", descriptor);
+    }
+  });
+});
+
 describe("the nonce", () => {
   test("no IV repeats across the chunks and frames of a direction, and each is the index then the sequence number", async () => {
     chunk.bytes = 4;

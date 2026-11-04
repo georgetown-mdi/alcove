@@ -8,11 +8,10 @@ import { describe, expect, test } from "vitest";
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
 import { fromEventConnection } from "../../src/connection/messageConnection";
 import { MESSAGE_HEADER_BYTES } from "../../src/connection/fileSyncFraming";
-import { INBOUND_FRAME_MEMORY_MULTIPLES } from "../../src/connection/inboundFrameMemory";
 import {
-  AEAD_CHUNK_PLAINTEXT_BYTES,
-  AEAD_TAG_BYTES,
-} from "../../src/connection/chunkedAead";
+  CHUNKED_OPEN_PEAK_BYTES,
+  INBOUND_FRAME_MEMORY_MULTIPLES,
+} from "../../src/connection/inboundFrameMemory";
 import {
   CHUNKED_ENVELOPE_VERSION,
   SINGLE_CALL_ENVELOPE_VERSION,
@@ -53,8 +52,6 @@ async function rendezvous(check: InboundFrameMemoryCheck) {
   await Promise.all([a.synchronize(), b.synchronize()]);
   return { a, b, files };
 }
-
-const CHUNKED_OPEN_BYTES = 2 * (AEAD_CHUNK_PLAINTEXT_BYTES + AEAD_TAG_BYTES);
 
 const parts = (count: number): Uint8Array[] =>
   Array.from({ length: count }, (_, i) => new Uint8Array(PART_BYTES).fill(i));
@@ -117,7 +114,7 @@ describe("the memory check before each message file is read", () => {
     await Promise.all([sender.close(), receiver.close()]);
   });
 
-  test("under envelope version 2 an encrypted file is weighed at its bytes and one chunk's open", async () => {
+  test("under envelope version 2 an encrypted file is weighed at its bytes and the measured open peak", async () => {
     const calls: Array<[number, number]> = [];
     const { a, b } = await rendezvous((frameBytes, needBytes) => {
       calls.push([frameBytes, needBytes]);
@@ -130,16 +127,18 @@ describe("the memory check before each message file is read", () => {
     b.start();
     await sender.send(parts(1)[0]);
     await receiver.receive();
-    expect(calls).toEqual([[FILE_BYTES, FILE_BYTES + CHUNKED_OPEN_BYTES]]);
+    expect(calls).toEqual([[FILE_BYTES, FILE_BYTES + CHUNKED_OPEN_PEAK_BYTES]]);
     await Promise.all([sender.close(), receiver.close()]);
   });
 
   test("a version-2 file the aeadOpen multiple would refuse is read", async () => {
     // The smallest frames where the two charges part: above a third of the
-    // chunked open's working set.
-    const frame = new Uint8Array(12 * 1024 * 1024).fill(7);
+    // chunked open's measured peak.
+    const frame = new Uint8Array(Math.ceil(CHUNKED_OPEN_PEAK_BYTES / 3)).fill(
+      7,
+    );
     const fileBytes = frame.length + MESSAGE_HEADER_BYTES;
-    const availableBytes = fileBytes + CHUNKED_OPEN_BYTES;
+    const availableBytes = fileBytes + CHUNKED_OPEN_PEAK_BYTES;
     expect(fileBytes * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen).toBeGreaterThan(
       availableBytes,
     );
