@@ -70,14 +70,18 @@ import type { EntityClusterSummary } from "./psi/entityClosure.js";
 import type { ResolvedRunShape } from "./pairTableProjection.js";
 import type { ResolvedMatching } from "./linkageTermsPolicy.js";
 import {
+  MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
   partyFansOut,
   psiElementBounds,
   SINGLE_PASS_LOCAL_REMEDY,
   singlePassDatasetExceedsCap,
   singlePassIrreducibleReplyBytes,
+  singlePassReplyByteCap,
+  singlePassRequestByteBound,
   valueSlots,
 } from "./connection/frameSize.js";
+import type { InboundPsiFrameUse } from "./connection/inboundFrameMemory.js";
 import {
   preparePayload,
   exchangePayloads,
@@ -1211,6 +1215,13 @@ export interface RunExchangeOptions {
     size: SinglePassPartnerSize,
   ) => void | Promise<void>;
   /**
+   * Called on a single-pass exchange with the count of this party's own
+   * distinct values, once they are gathered and before any is masked. A throw
+   * refuses the run. The command-line application weighs the main thread's
+   * heap against it here.
+   */
+  checkSinglePassOwnValues?: (distinctValues: number) => void | Promise<void>;
+  /**
    * Zero-setup `--save` intent for this party. `undefined` (the default) keeps
    * this exchange out of the bootstrap flow entirely: no `save` field is put on
    * the wire and {@link ExchangeResult.bootstrap} is `undefined`, so the
@@ -1447,6 +1458,14 @@ export interface SinglePassPartnerSize {
    * ({@link singlePassIrreducibleReplyBytes}), or 0 where this party sends it.
    */
   irreducibleReplyBytes: number;
+  /**
+   * The most bytes the partner's PSI frame this party reads can take, from the
+   * counts and held to the frame bound: the reply where this party receives,
+   * the request where it sends.
+   */
+  inboundFrameBytes: number;
+  /** What the PSI engine does with that frame. */
+  inboundFrameUse: InboundPsiFrameUse;
 }
 
 /**
@@ -1935,17 +1954,22 @@ export async function runExchange(
         options.onPsiProgress,
       );
   } else if (conn.outboundFileSyncFrameBound?.() !== undefined) {
+    const keyCount = linkageRounds(linkageTerms.linkageKeys).length;
     await assertPartnerRoundWithinCapacity(conn, () =>
       options.checkSinglePassPartnerSize?.({
         partnerValueSlots: valueSlots(partnerSize),
         localValueSlots: valueSlots(localSize),
         partnerRecordCount,
         irreducibleReplyBytes: isReceiver
-          ? singlePassIrreducibleReplyBytes(
-              linkageRounds(linkageTerms.linkageKeys).length,
-              partnerRecordCount,
-            )
+          ? singlePassIrreducibleReplyBytes(keyCount, partnerRecordCount)
           : 0,
+        inboundFrameBytes: Math.min(
+          MAX_FRAME_SIZE_BYTES,
+          isReceiver
+            ? singlePassReplyByteCap(keyCount, partnerSize, localSize)
+            : singlePassRequestByteBound(partnerSize),
+        ),
+        inboundFrameUse: isReceiver ? "stream" : "decode",
       }),
     );
   }
@@ -1978,6 +2002,7 @@ export async function runExchange(
     withholdSenderTable,
     onStage,
     reportMatchedKeys: prepared.includeMatchingKey === true,
+    checkSinglePassOwnValues: options.checkSinglePassOwnValues,
   });
 
   // One entry per matched PAIR, in this party's own ascending row order, is what

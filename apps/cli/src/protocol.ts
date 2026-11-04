@@ -110,7 +110,10 @@ import {
 } from "./psiProgressDisplay";
 import {
   checkPartnerRoundMemory,
+  checkSinglePassOwnValuesHeap,
   checkSinglePassPartnerMemory,
+  inboundFrameMemoryCheck,
+  psiWorkerHeapNeedBytes,
   readMemory,
 } from "./psiMemoryBudget";
 import {
@@ -471,6 +474,20 @@ async function runExchangeStage(params: {
   // from here on is a "run" fault (until output, marked below).
   emit((e) => e.stages(stageDefinitions));
   onRunPhase();
+  const warnMemoryShortfall = (message: string): void => {
+    log.warn(message);
+    emit((e) => e.warning("memoryShortfall", message));
+  };
+  // Set at the terms exchange of a single-pass run over file-sync, before the
+  // PSI worker starts.
+  let psiWorkerHeapBytes: number | undefined;
+  const psiFrameMemoryCheck =
+    build.fileSync === undefined
+      ? undefined
+      : inboundFrameMemoryCheck({
+          allowShortfall: allowMemoryShortfall,
+          onShortfallWarning: warnMemoryShortfall,
+        });
   return runExchange(
     // Every authenticated run reaches here with `secure`, the AEAD
     // decorator over mc, since authenticateRun refuses a handshake that
@@ -487,7 +504,10 @@ async function runExchangeStage(params: {
       // liveness timers. Falls back to in-process when
       // the bundled worker is absent (dev / tests); see createPsiEngine.
       psiEngineFactory: (role, id, mode) =>
-        createPsiEngine(psiLibrary, role, id, mode),
+        createPsiEngine(psiLibrary, role, id, mode, {
+          heapBytes: psiWorkerHeapBytes,
+          frameMemoryCheck: psiFrameMemoryCheck,
+        }),
       verbosity,
       saveIntent,
       // Signed-receipt inputs, threaded only when a signing config was
@@ -640,22 +660,27 @@ async function runExchangeStage(params: {
           partnerRoundValues,
           allowShortfall: allowMemoryShortfall,
           readings: readMemory(psiEngineRunsInWorker()),
-          onShortfallWarning: (message) => {
-            log.warn(message);
-            emit((e) => e.warning("memoryShortfall", message));
-          },
+          onShortfallWarning: warnMemoryShortfall,
         });
       },
       checkSinglePassPartnerSize: (size) => {
         checkSinglePassPartnerMemory({
           size,
+          encrypted: run.secure !== undefined,
           allowShortfall: allowMemoryShortfall,
           availableBytes: process.availableMemory(),
           log,
-          onShortfallWarning: (message) => {
-            log.warn(message);
-            emit((e) => e.warning("memoryShortfall", message));
-          },
+          onShortfallWarning: warnMemoryShortfall,
+        });
+        psiWorkerHeapBytes = psiWorkerHeapNeedBytes(
+          Math.max(size.localValueSlots, size.partnerValueSlots),
+        );
+      },
+      checkSinglePassOwnValues: (distinctValues) => {
+        checkSinglePassOwnValuesHeap({
+          distinctValues,
+          allowShortfall: allowMemoryShortfall,
+          onShortfallWarning: warnMemoryShortfall,
         });
       },
       onProtocolConfirmed: (partnerTerms, resolvedRole, runShape) => {

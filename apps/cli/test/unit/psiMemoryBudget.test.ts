@@ -9,21 +9,31 @@ import {
   MAX_PSI_DECODE_ELEMENTS,
   RoundCapacityError,
   UsageError,
+  statesItsOwnNextStep,
+  type InboundPsiFrameUse,
 } from "@alcove/core";
 
 import {
   assessPsiMemory,
   checkPartnerRoundMemory,
+  checkSinglePassOwnValuesHeap,
   checkSinglePassPartnerMemory,
   checkPsiMemoryBudget,
+  inboundFrameMemoryCheck,
   PSI_HEAP_CEILING_BYTES,
   PSI_HEAP_CEILING_MIB,
   PSI_ROUND_BYTES_PER_ELEMENT,
   PSI_ROUND_FIXED_BYTES,
   PSI_TARGET_ELEMENTS,
+  PSI_WORKER_HEAP_BYTES_PER_ELEMENT,
+  PSI_WORKER_HEAP_FIXED_BYTES,
   psiMemoryStatement,
   psiRoundMemoryNeedBytes,
+  psiWorkerHeapNeedBytes,
   readMemory,
+  SINGLE_PASS_MAIN_HEAP_BYTES_PER_VALUE,
+  SINGLE_PASS_MAIN_HEAP_FIXED_BYTES,
+  singlePassMainHeapNeedBytes,
   type MemoryReadings,
 } from "../../src/psiMemoryBudget";
 import { startPsiWorkerThread } from "../../src/psiWorkerHost";
@@ -422,7 +432,12 @@ worker.once("message", (limit) => {
 
 describe("the single-pass partner size at the terms exchange", () => {
   const run = (
-    irreducibleReplyBytes: number,
+    params: {
+      irreducibleReplyBytes?: number;
+      inboundFrameBytes?: number;
+      inboundFrameUse?: InboundPsiFrameUse;
+      encrypted?: boolean;
+    },
     availableBytes: number,
     allowShortfall = false,
   ) => {
@@ -433,8 +448,11 @@ describe("the single-pass partner size at the terms exchange", () => {
         partnerValueSlots: 10_500_000,
         localValueSlots: 350_000,
         partnerRecordCount: 150_000,
-        irreducibleReplyBytes,
+        irreducibleReplyBytes: params.irreducibleReplyBytes ?? 0,
+        inboundFrameBytes: params.inboundFrameBytes ?? 0,
+        inboundFrameUse: params.inboundFrameUse ?? "stream",
       },
+      encrypted: params.encrypted ?? true,
       allowShortfall,
       availableBytes,
       log: { warn: (message) => lines.push(message) },
@@ -444,7 +462,10 @@ describe("the single-pass partner size at the terms exchange", () => {
   };
 
   it("states the partner's value slots and the worst case on a run that fits", () => {
-    const { lines, shortfall } = run(15_000_000, 15_000_000);
+    const { lines, shortfall } = run(
+      { irreducibleReplyBytes: 15_000_000 },
+      15_000_000,
+    );
     expect(shortfall).toEqual([]);
     expect(lines).toEqual([
       "your partner declared 10,500,000 value slots, so it can test up to " +
@@ -454,16 +475,220 @@ describe("the single-pass partner size at the terms exchange", () => {
   });
 
   it("refuses a reply whose index table alone cannot fit what is available", () => {
-    expect(() => run(15_000_001, 15_000_000)).toThrow(RoundCapacityError);
-    expect(() => run(15_000_001, 15_000_000)).toThrow(
-      /at least 0\.0\d GB of memory, and this machine has 0\.0\d GB available now.*--allow-memory-shortfall/,
+    const over = () => run({ irreducibleReplyBytes: 15_000_001 }, 15_000_000);
+    expect(over).toThrow(RoundCapacityError);
+    expect(over).toThrow(
+      /could take up to 0\.0\d GB of memory, but this machine has 0\.0\d GB available now.*--allow-memory-shortfall/,
+    );
+  });
+
+  // 100 MB frames: a reply read with its decryption, a reply read without
+  // it and handed to the worker, and a request the worker decodes.
+  it.each([
+    ["an encrypted reply", "stream", true, 400_000_000],
+    ["an unencrypted reply", "stream", false, 300_000_000],
+    ["an encrypted request", "decode", true, 965_000_000],
+  ] as const)(
+    "weighs %s the counts allow at the measured multiples",
+    (_what, inboundFrameUse, encrypted, needBytes) => {
+      const size = {
+        inboundFrameBytes: 100_000_000,
+        inboundFrameUse,
+        encrypted,
+      };
+      expect(() => run(size, needBytes)).not.toThrow();
+      expect(() => run(size, needBytes - 1)).toThrow(RoundCapacityError);
+    },
+  );
+
+  it("refuses with one plain message naming the override", () => {
+    expect(() =>
+      run(
+        { inboundFrameBytes: 500_000_000, inboundFrameUse: "stream" },
+        1_200_000_000,
+      ),
+    ).toThrow(
+      "your partner declared 150,000 records, and reading what they send " +
+        "could take up to 2.00 GB of memory, but this machine has 1.20 GB " +
+        "available now, so the exchange stopped before any value was masked " +
+        "and told your partner. Run the exchange on a host with more memory, " +
+        "or ask your partner to split their input into smaller files and run " +
+        "one exchange for each. Pass --allow-memory-shortfall to run anyway; " +
+        "the exchange may then run out of memory partway through, which " +
+        "fails it for both parties.",
     );
   });
 
   it("runs past that refusal under --allow-memory-shortfall, and still states the worst case", () => {
-    const { lines, shortfall } = run(15_000_001, 15_000_000, true);
+    const { lines, shortfall } = run(
+      { irreducibleReplyBytes: 15_000_001 },
+      15_000_000,
+      true,
+    );
     expect(shortfall).toHaveLength(1);
     expect(shortfall[0]).toMatch(/^running with --allow-memory-shortfall: /);
     expect(lines).toHaveLength(1);
+  });
+});
+
+describe("the memory check before a partner message is read or handed to the worker", () => {
+  const check = (availableBytes: number, allowShortfall = false) => {
+    const warnings: Array<string> = [];
+    const weigh = inboundFrameMemoryCheck({
+      allowShortfall,
+      onShortfallWarning: (message) => warnings.push(message),
+      availableBytes: () => availableBytes,
+    });
+    return { weigh, warnings };
+  };
+
+  it("lets a message through when what it needs is available", () => {
+    const { weigh, warnings } = check(2_000_000_000);
+    expect(() => weigh(500_000_000, 2_000_000_000)).not.toThrow();
+    expect(warnings).toEqual([]);
+  });
+
+  it("refuses a message that needs more, saying what to do", () => {
+    const { weigh } = check(1_200_000_000);
+    let refusal: unknown;
+    try {
+      weigh(480_000_000, 1_920_000_000);
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal).toBeInstanceOf(UsageError);
+    expect((refusal as Error).message).toBe(
+      "your partner's message is 480.0 MB and needs about 1.92 GB of memory " +
+        "to process, but this machine has 1.20 GB available now, so the " +
+        "exchange stopped. Run the exchange on a host with more memory, or " +
+        "pass --allow-memory-shortfall to run anyway; the exchange may then " +
+        "run out of memory, which fails it for both parties.",
+    );
+    expect(statesItsOwnNextStep(refusal)).toBe(true);
+  });
+
+  it("warns instead under --allow-memory-shortfall", () => {
+    const { weigh, warnings } = check(1_200_000_000, true);
+    expect(() => weigh(480_000_000, 1_920_000_000)).not.toThrow();
+    expect(warnings).toEqual([
+      "running with --allow-memory-shortfall: your partner's message is " +
+        "480.0 MB and needs about 1.92 GB of memory to process, but this " +
+        "machine has 1.20 GB available now. The exchange may run out of " +
+        "memory, which fails it for both parties.",
+    ]);
+  });
+
+  it("reads the memory available when no reading is given", () => {
+    const weigh = inboundFrameMemoryCheck({
+      allowShortfall: false,
+      onShortfallWarning: () => undefined,
+    });
+    expect(() => weigh(1, 1)).not.toThrow();
+    expect(() => weigh(1, Number.MAX_SAFE_INTEGER)).toThrow(UsageError);
+  });
+});
+
+describe("the PSI worker's heap, from the counts", () => {
+  it("is the measured worker heap per element of the larger set", () => {
+    expect(PSI_WORKER_HEAP_BYTES_PER_ELEMENT).toBe(709);
+    expect(PSI_WORKER_HEAP_FIXED_BYTES).toBe(298_000_000);
+    expect(psiWorkerHeapNeedBytes(10_500_000)).toBe(7_742_500_000);
+  });
+
+  it("reaches a worker started for counts past the default ceiling", async () => {
+    const heapBytes = psiWorkerHeapNeedBytes(40_000_000);
+    expect(heapBytes).toBeGreaterThan(PSI_HEAP_CEILING_BYTES);
+    const entry = path.join(scratchDir(), "worker.cjs");
+    fs.writeFileSync(entry, HEAP_REPORTING_WORKER);
+    const worker = startPsiWorkerThread(
+      entry,
+      { role: "joiner", id: "heap-probe", mode: "identifier-revealing" },
+      heapBytes,
+    );
+    const limit = await new Promise<number>((resolve, reject) => {
+      worker.once("message", (value: number) => resolve(value));
+      worker.once("error", reject);
+    });
+    await worker.terminate();
+    expect(limit).toBeGreaterThanOrEqual(heapBytes);
+  });
+});
+
+describe("the main thread's heap, from this party's distinct values", () => {
+  // The smallest heap limit a single-pass link completed under, both roles,
+  // from docs/spec/FILE_SYNC.md, "The main thread's heap, from the values".
+  const MEASURED: Array<[values: number, heapLimitMiB: number]> = [
+    [500_000, 178],
+    [1_000_000, 236],
+    [2_000_000, 341],
+    [2_999_990, 499],
+  ];
+
+  it("is at least each measured limit", () => {
+    expect(SINGLE_PASS_MAIN_HEAP_BYTES_PER_VALUE).toBe(135);
+    expect(SINGLE_PASS_MAIN_HEAP_FIXED_BYTES).toBe(120_000_000);
+    for (const [values, mib] of MEASURED)
+      expect(singlePassMainHeapNeedBytes(values)).toBeGreaterThanOrEqual(
+        mib * 2 ** 20,
+      );
+  });
+
+  const check = (heapLimitBytes: number, allowShortfall = false) => {
+    const warnings: Array<string> = [];
+    const run = () =>
+      checkSinglePassOwnValuesHeap({
+        distinctValues: 2_000_000,
+        allowShortfall,
+        onShortfallWarning: (message) => warnings.push(message),
+        heapLimitBytes,
+      });
+    return { run, warnings };
+  };
+
+  it("lets a run through when its heap limit is enough", () => {
+    const { run, warnings } = check(390_000_000);
+    expect(run).not.toThrow();
+    expect(warnings).toEqual([]);
+  });
+
+  it("refuses a run whose heap limit is short, naming the setting", () => {
+    const { run } = check(300_000_000);
+    let refusal: unknown;
+    try {
+      run();
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal).toBeInstanceOf(UsageError);
+    expect((refusal as Error).message).toBe(
+      "matching your 2,000,000 distinct values needs about 0.39 GB of heap, " +
+        "more than this process's limit of 0.30 GB, so the exchange stopped " +
+        "and told your partner. Set NODE_OPTIONS=--max-old-space-size=" +
+        `${PSI_HEAP_CEILING_MIB} in the environment and run the exchange ` +
+        "again, or pass --allow-memory-shortfall to run anyway; the exchange " +
+        "may then run out of memory, which fails it for both parties.",
+    );
+    expect(statesItsOwnNextStep(refusal)).toBe(true);
+  });
+
+  it("warns instead under --allow-memory-shortfall", () => {
+    const { run, warnings } = check(300_000_000, true);
+    expect(run).not.toThrow();
+    expect(warnings).toEqual([
+      "running with --allow-memory-shortfall: matching your 2,000,000 " +
+        "distinct values needs about 0.39 GB of heap, more than this " +
+        "process's limit of 0.30 GB. The exchange may run out of memory, " +
+        "which fails it for both parties.",
+    ]);
+  });
+
+  it("reads this thread's heap limit when none is given", () => {
+    expect(() =>
+      checkSinglePassOwnValuesHeap({
+        distinctValues: 1,
+        allowShortfall: false,
+        onShortfallWarning: () => undefined,
+      }),
+    ).not.toThrow();
   });
 });

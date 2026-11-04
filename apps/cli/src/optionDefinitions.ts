@@ -601,7 +601,10 @@ export function addCommonBootstrapOptions(
         "a warning, an input file larger than this process's heap is " +
         "estimated to hold, on every command that reads one. On invite and " +
         "accept the PSI round check applies to every form that runs an " +
-        "exchange",
+        "exchange. It also goes on, with a warning, when a single-pass " +
+        "exchange's values need more heap than this process has, and over a " +
+        "shared folder or SFTP when a message from your partner may need " +
+        "more memory than this machine has available",
     })
     .option("lockless-rendezvous", {
       type: "boolean",

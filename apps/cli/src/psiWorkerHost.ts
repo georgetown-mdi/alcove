@@ -5,6 +5,9 @@ import { Worker } from "node:worker_threads";
 import {
   InProcessPsiEngine,
   WorkerPsiEngine,
+  psiFrameHandlingBytes,
+  type InboundFrameMemoryCheck,
+  type InboundPsiFrameUse,
   type PsiEngine,
   type PsiEngineMode,
   type PsiWorkerHandle,
@@ -46,16 +49,26 @@ export function psiEngineRunsInWorker(): boolean {
 }
 
 /**
- * Start the PSI worker thread at `entry`, seeded with `init`, under the raised
- * heap limit.
+ * Start the PSI worker thread at `entry`, seeded with `init`, under the heap
+ * limit `heapBytes` asks for, {@link raisePsiWorkerHeapLimit}'s default when
+ * unset.
  * @internal
  */
 export function startPsiWorkerThread(
   entry: string,
   init: PsiWorkerInit,
+  heapBytes?: number,
 ): Worker {
-  raisePsiWorkerHeapLimit();
+  raisePsiWorkerHeapLimit(heapBytes);
   return new Worker(entry, { workerData: init });
+}
+
+/** How a CLI exchange's PSI worker is sized and guarded, from its counts. */
+export interface PsiWorkerSizing {
+  /** The worker heap the run's counts need, in bytes. */
+  heapBytes?: number;
+  /** Weighs each partner frame against the memory the process has before the worker takes it. */
+  frameMemoryCheck?: InboundFrameMemoryCheck;
 }
 
 /**
@@ -69,10 +82,69 @@ export function createPsiEngine(
   role: "starter" | "joiner",
   id: string,
   mode: PsiEngineMode,
+  sizing: PsiWorkerSizing = {},
 ): PsiEngine {
   const entry = resolveWorkerEntry();
-  if (entry !== undefined) return spawnWorkerPsiEngine(entry, role, id, mode);
+  if (entry !== undefined)
+    return spawnWorkerPsiEngine(entry, role, id, mode, sizing);
   return new InProcessPsiEngine(library, role, id, mode);
+}
+
+// A worker engine that weighs each partner frame it is given against the
+// memory the process has, before posting the frame to the worker.
+class MemoryCheckedWorkerPsiEngine extends WorkerPsiEngine {
+  readonly #checkFrame: InboundFrameMemoryCheck;
+
+  constructor(handle: PsiWorkerHandle, checkFrame: InboundFrameMemoryCheck) {
+    super(handle);
+    this.#checkFrame = checkFrame;
+  }
+
+  #checked<T>(
+    bytes: Uint8Array,
+    use: InboundPsiFrameUse,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      this.#checkFrame(
+        bytes.byteLength,
+        psiFrameHandlingBytes(bytes.byteLength, use),
+      );
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return run();
+  }
+
+  override processClientRequest(
+    requestBytes: Uint8Array,
+    declaredElements?: number,
+    width?: number,
+  ): Promise<Uint8Array> {
+    return this.#checked(requestBytes, "decode", () =>
+      super.processClientRequest(requestBytes, declaredElements, width),
+    );
+  }
+
+  override receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
+    return this.#checked(setupBytes, "stream", () =>
+      super.receiveServerSetup(setupBytes),
+    );
+  }
+
+  override receiveServerSetupPiece(piece: Uint8Array): Promise<void> {
+    return this.#checked(piece, "stream", () =>
+      super.receiveServerSetupPiece(piece),
+    );
+  }
+
+  override computeAssociationTable(
+    responseBytes: Uint8Array,
+  ): Promise<[Array<number>, Array<number>]> {
+    return this.#checked(responseBytes, "stream", () =>
+      super.computeAssociationTable(responseBytes),
+    );
+  }
 }
 
 // The minimal worker_threads Worker surface {@link createWorkerThreadHandle} drives.
@@ -181,6 +253,7 @@ function spawnWorkerPsiEngine(
   role: "starter" | "joiner",
   id: string,
   mode: PsiEngineMode,
+  sizing: PsiWorkerSizing,
 ): WorkerPsiEngine {
   // Typed as the seed the worker reads back, so an added required field is a
   // compile error here rather than a value the worker silently misses.
@@ -192,19 +265,27 @@ function spawnWorkerPsiEngine(
   // alive, exactly as the synchronous masking kept it. dispose() (driven by the
   // exchange's teardown finally) calls terminate(), which releases the process
   // at the end, so a ref'd worker handle never outlives the exchange.
-  return trackWorkerPsiEngine(startPsiWorkerThread(entry, init));
+  return trackWorkerPsiEngine(
+    startPsiWorkerThread(entry, init, sizing.heapBytes),
+    sizing.frameMemoryCheck,
+  );
 }
 
 /**
  * Wrap `worker` as a {@link WorkerPsiEngine} that
- * {@link stopPsiWorkersBeforeExit} waits for until the worker exits.
+ * {@link stopPsiWorkersBeforeExit} waits for until the worker exits, and that
+ * weighs each partner frame with `frameMemoryCheck` when one is given.
  * @internal
  */
 export function trackWorkerPsiEngine(
   worker: TrackedWorkerThreadLike,
+  frameMemoryCheck?: InboundFrameMemoryCheck,
 ): WorkerPsiEngine {
   const handle = createWorkerThreadHandle(worker);
-  const engine = new WorkerPsiEngine(handle);
+  const engine =
+    frameMemoryCheck === undefined
+      ? new WorkerPsiEngine(handle)
+      : new MemoryCheckedWorkerPsiEngine(handle, frameMemoryCheck);
   liveWorkers.set(engine, {
     exited: new Promise<void>((resolve) =>
       worker.once("exit", () => {

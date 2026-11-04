@@ -1338,6 +1338,8 @@ What the run has is the least of the matching's heap limit, the machine's memory
 - **Split the input** and run one exchange per file.
 - **Pass `--allow-memory-shortfall`.** A warning names the shortfall on `stderr` and, with `--event-stream`, as `memoryShortfall`; the run may end with exit 134. The flag also covers the input-size check below.
 
+**Over a shared folder or SFTP**, the run also checks the memory available now before it reads each message from your partner, and at the start of a single-pass exchange for the largest message your partner's record count allows. When the machine is short, the run stops (exit 64) and your partner is told. Give the run more memory, or pass `--allow-memory-shortfall` to go on with a warning. How the need is computed: [FILE_SYNC.md](spec/FILE_SYNC.md#memory-an-inbound-frame-takes).
+
 **An installed `alcove`** runs its main thread, which reads your input, under the heap limit `node` starts with -- at Node's default, about six million records of a four-column input. Set the container image's larger limit for a large input:
 
 ```sh
@@ -1345,6 +1347,7 @@ NODE_OPTIONS=--max-old-space-size=19075 alcove exchange input.csv ./results
 ```
 
 - **An input too large for the main thread's heap is refused** before it is read (exit 64), stating the record count and size, the heap needed, the limit, and the `NODE_OPTIONS` line to set. The check counts the file's lines; input from stdin is not checked and runs out of heap (exit 134) instead.
+- **A single-pass exchange checks the heap again** once it has gathered your distinct values, before it masks any, and stops (exit 64) with the `NODE_OPTIONS` line to set when the heap is too small. Your partner is told. How the need is computed: [FILE_SYNC.md](spec/FILE_SYNC.md#the-main-threads-heap-from-the-values).
 - **A heap option you give is kept**, and the memory line states it.
 - **The figure assumes four columns a record**; an input with more or longer columns can run out of heap below the count the check admits.
 

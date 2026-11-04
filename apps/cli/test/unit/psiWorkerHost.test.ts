@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 import {
+  INBOUND_FRAME_MEMORY_MULTIPLES,
   WorkerPsiEngine,
+  psiFrameHandlingBytes,
   type PsiWorkerRequest,
   type PsiWorkerResponse,
 } from "@alcove/core";
@@ -262,5 +264,82 @@ describe("a signal exit while a PSI worker request is in flight", () => {
     expect(fake.terminateCalls).toBe(1);
     fake.emit("exit", 1);
     await stopping;
+  });
+});
+
+describe("the memory check before the worker takes a partner frame", () => {
+  const FRAME_BYTES = 100;
+  const frame = () => new Uint8Array(FRAME_BYTES);
+
+  // Each partner frame the engine is given, the use it is weighed for, and
+  // the reply that settles the call.
+  const calls = [
+    [
+      "a request",
+      (engine: WorkerPsiEngine) => engine.processClientRequest(frame()),
+      "decode",
+      new Uint8Array(1),
+    ],
+    [
+      "a setup",
+      (engine: WorkerPsiEngine) => engine.receiveServerSetup(frame()),
+      "stream",
+      undefined,
+    ],
+    [
+      "a setup piece",
+      (engine: WorkerPsiEngine) => engine.receiveServerSetupPiece(frame()),
+      "stream",
+      undefined,
+    ],
+    [
+      "a response",
+      (engine: WorkerPsiEngine) => engine.computeAssociationTable(frame()),
+      "stream",
+      [[], []],
+    ],
+  ] as const;
+
+  test.each(calls)(
+    "%s is weighed at its copy and its handling before it is posted",
+    async (_what, call, use, result) => {
+      const fake = new FakeWorker();
+      const weighed: Array<[number, number]> = [];
+      const engine = trackWorkerPsiEngine(fake, (frameBytes, needBytes) => {
+        weighed.push([frameBytes, needBytes]);
+      });
+      const pending = call(engine);
+      expect(weighed).toEqual([
+        [FRAME_BYTES, psiFrameHandlingBytes(FRAME_BYTES, use)],
+      ]);
+      expect(fake.posted).toHaveLength(1);
+      fake.emit("message", { id: fake.posted[0]!.id, ok: true, result });
+      await pending;
+      fake.emit("exit", 0);
+    },
+  );
+
+  test("a refusal fails the call without posting the frame", async () => {
+    const fake = new FakeWorker();
+    const refusal = new Error("not enough memory");
+    const engine = trackWorkerPsiEngine(fake, () => {
+      throw refusal;
+    });
+    await expect(engine.processClientRequest(frame())).rejects.toBe(refusal);
+    expect(fake.posted).toEqual([]);
+    fake.emit("exit", 0);
+  });
+
+  test("the handling multiples are the measured ones", () => {
+    expect(psiFrameHandlingBytes(FRAME_BYTES, "decode")).toBe(
+      FRAME_BYTES *
+        (INBOUND_FRAME_MEMORY_MULTIPLES.workerClone +
+          INBOUND_FRAME_MEMORY_MULTIPLES.psiDecode),
+    );
+    expect(psiFrameHandlingBytes(FRAME_BYTES, "stream")).toBe(
+      FRAME_BYTES *
+        (INBOUND_FRAME_MEMORY_MULTIPLES.workerClone +
+          INBOUND_FRAME_MEMORY_MULTIPLES.streamedSetup),
+    );
   });
 });

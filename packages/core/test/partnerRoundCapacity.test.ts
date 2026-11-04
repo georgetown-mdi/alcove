@@ -5,6 +5,8 @@ import PSI from "@openmined/psi.js";
 import {
   MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
+  singlePassReplyByteCap,
+  singlePassRequestByteBound,
 } from "../src/connection/frameSize";
 import { sendAbort, sendLocalFaultAbort } from "../src/protocolSetup";
 import { createMessagePipe } from "../src/connection/messageConnection";
@@ -577,6 +579,7 @@ describe("single-pass over file-sync, at the terms exchange", () => {
     localFileSync: boolean,
     check: RunExchangeOptions["checkSinglePassPartnerSize"],
     strategy: LinkageStrategy = "single-pass",
+    [localRows, partnerRows] = [5, 12],
   ) {
     const [local, partner] = createMessagePipe();
     const sent: Array<unknown> = [];
@@ -588,7 +591,7 @@ describe("single-pass over file-sync, at the terms exchange", () => {
       runExchange(
         wrap(local, sent),
         "initiator",
-        preparedRows("Local Co", 5, strategy),
+        preparedRows("Local Co", localRows, strategy),
         {
           psiLibrary,
           checkSinglePassPartnerSize: check,
@@ -597,7 +600,7 @@ describe("single-pass over file-sync, at the terms exchange", () => {
       runExchange(
         wrap(partner, []),
         "responder",
-        preparedRows("Partner Co", 12, strategy),
+        preparedRows("Partner Co", partnerRows, strategy),
         {
           psiLibrary,
         },
@@ -613,13 +616,44 @@ describe("single-pass over file-sync, at the terms exchange", () => {
     });
     expect(local.status).toBe("fulfilled");
     expect(partner.status).toBe("fulfilled");
-    // The larger party sends, so this party receives and is handed its table.
+    // The larger party sends, so this party receives and is handed its table
+    // and the reply's bound.
+    const sender = { effectiveKeyCount: 1, recordCount: 12 };
+    const receiver = { effectiveKeyCount: 1, recordCount: 5 };
     expect(seen).toEqual([
       {
         partnerValueSlots: 12,
         localValueSlots: 5,
         partnerRecordCount: 12,
         irreducibleReplyBytes: 48,
+        inboundFrameBytes: singlePassReplyByteCap(1, sender, receiver),
+        inboundFrameUse: "stream",
+      },
+    ]);
+  });
+
+  test("a sending party is handed the bound of the request it decodes", async () => {
+    const seen: Array<SinglePassPartnerSize> = [];
+    const { local } = await runSinglePass(
+      true,
+      (size) => {
+        seen.push(size);
+      },
+      "single-pass",
+      [12, 5],
+    );
+    expect(local.status).toBe("fulfilled");
+    expect(seen).toEqual([
+      {
+        partnerValueSlots: 5,
+        localValueSlots: 12,
+        partnerRecordCount: 5,
+        irreducibleReplyBytes: 0,
+        inboundFrameBytes: singlePassRequestByteBound({
+          effectiveKeyCount: 1,
+          recordCount: 5,
+        }),
+        inboundFrameUse: "decode",
       },
     ]);
   });
@@ -651,6 +685,51 @@ describe("single-pass over file-sync, at the terms exchange", () => {
     const check = vi.fn();
     await runSinglePass(true, check, "cascade");
     expect(check).not.toHaveBeenCalled();
+  });
+});
+
+describe("a single-pass party's own distinct values", () => {
+  async function runWithOwnValuesCheck(
+    check: RunExchangeOptions["checkSinglePassOwnValues"],
+  ) {
+    const [local, partner] = createMessagePipe();
+    const sent: Array<unknown> = [];
+    const partnerRun = runExchange(
+      partner,
+      "responder",
+      preparedRows("Partner Co", 12, "single-pass"),
+      { psiLibrary },
+    );
+    const [localOutcome] = await Promise.allSettled([
+      runExchange(
+        withCeiling(local, undefined, sent),
+        "initiator",
+        preparedRows("Local Co", 5, "single-pass"),
+        { psiLibrary, checkSinglePassOwnValues: check },
+      ),
+    ]);
+    // A refusing party's front end tells the partner; here the pipe closes.
+    await local.close();
+    await partnerRun.catch(() => undefined);
+    return { local: localOutcome, sent };
+  }
+
+  test("are counted to the check before any is masked", async () => {
+    const counts: Array<number> = [];
+    const { local } = await runWithOwnValuesCheck((count) => {
+      counts.push(count);
+    });
+    expect(local.status).toBe("fulfilled");
+    expect(counts).toEqual([5]);
+  });
+
+  test("a refusal there stops the run before this party sends a frame", async () => {
+    const refusal = new Error("not enough heap");
+    const { local, sent } = await runWithOwnValuesCheck(() => {
+      throw refusal;
+    });
+    expect((local as PromiseRejectedResult).reason).toBe(refusal);
+    expect(binaryFrames(sent)).toEqual([]);
   });
 });
 

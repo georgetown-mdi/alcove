@@ -1,0 +1,64 @@
+// The memory an inbound frame takes, per byte of the frame, while it is read
+// and handled. The figures and how each was measured: docs/spec/FILE_SYNC.md,
+// "Memory an inbound frame takes".
+
+/** The measured multiples of an inbound frame's size, by what is done with it. */
+export const INBOUND_FRAME_MEMORY_MULTIPLES = {
+  /** Reading a frame and decrypting it with AES-GCM, the frame and its plaintext included. */
+  aeadOpen: 4,
+  /** Decoding a PSI request into the library's objects, beyond the frame itself. */
+  psiDecode: 7.65,
+  /** A PSI setup or response the engine takes in pieces, beyond the frame itself. */
+  streamedSetup: 1,
+  /** The copy of a frame the PSI worker holds. */
+  workerClone: 1,
+} as const;
+
+/**
+ * What the PSI engine does with a partner frame: decode it whole (a request),
+ * or take it in pieces (a setup or a response).
+ */
+export type InboundPsiFrameUse = "decode" | "stream";
+
+/**
+ * The memory reading one frame of `frameBytes` takes: the frame and, on an
+ * encrypted connection, its decryption.
+ */
+export function inboundFrameReadBytes(
+  frameBytes: number,
+  encrypted: boolean,
+): number {
+  return frameBytes * (encrypted ? INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen : 1);
+}
+
+/**
+ * The memory handing a frame already read to the PSI worker adds: the
+ * worker's copy, and what the engine builds from it.
+ */
+export function psiFrameHandlingBytes(
+  frameBytes: number,
+  use: InboundPsiFrameUse,
+): number {
+  const { workerClone, psiDecode, streamedSetup } =
+    INBOUND_FRAME_MEMORY_MULTIPLES;
+  return (
+    frameBytes * (workerClone + (use === "decode" ? psiDecode : streamedSetup))
+  );
+}
+
+/**
+ * The most memory a PSI frame of `frameBytes` takes from its read to the end
+ * of its handling: the larger of the read and of the frame held beside its
+ * handling. The two do not add, since a collection between them releases
+ * the read's copies (docs/spec/FILE_SYNC.md, "Memory an inbound frame takes").
+ */
+export function inboundPsiFramePeakBytes(
+  frameBytes: number,
+  use: InboundPsiFrameUse,
+  encrypted: boolean,
+): number {
+  return Math.max(
+    inboundFrameReadBytes(frameBytes, encrypted),
+    frameBytes + psiFrameHandlingBytes(frameBytes, use),
+  );
+}
