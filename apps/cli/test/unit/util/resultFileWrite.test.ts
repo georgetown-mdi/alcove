@@ -2,9 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { writeOutput } from "../../../src/util/dataIo";
+import { resetStdoutErrorGuard, writeOutput } from "../../../src/util/dataIo";
 
 // The result file is written from rows built as they are read: each line is
 // written under the stream's backpressure, and a row that fails to build
@@ -50,4 +50,56 @@ test("a row that fails to build rejects the write", async () => {
   await expect(
     writeOutput(path.join(dir, "result.csv"), ["id"], rows(), log),
   ).rejects.toBe(failure);
+});
+
+// The stdout path pulls the same lazily built rows, so a row that fails to
+// build rejects with the row's own error there too, never as a lost stdout.
+
+test("stdout: a row that fails to build on the first pump rejects with its error", async () => {
+  const failure = new Error("row 1 could not be built");
+  function* rows(): Generator<Array<string>> {
+    throw failure;
+  }
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(
+      ((_chunk: string | Uint8Array): boolean =>
+        true) as typeof process.stdout.write,
+    );
+  try {
+    await expect(writeOutput(undefined, ["id"], rows(), log)).rejects.toBe(
+      failure,
+    );
+  } finally {
+    stdoutSpy.mockRestore();
+    resetStdoutErrorGuard();
+  }
+});
+
+test("stdout: a row that fails to build after a drain rejects with its error", async () => {
+  const failure = new Error("row 3 could not be built");
+  function* rows(): Generator<Array<string>> {
+    for (let i = 0; i < 3; i++) yield [String(i)];
+    throw failure;
+  }
+  let written = 0;
+  const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(((
+    _chunk: string | Uint8Array,
+  ): boolean => {
+    written += 1;
+    if (written === 2) {
+      setImmediate(() => process.stdout.emit("drain"));
+      return false;
+    }
+    return true;
+  }) as typeof process.stdout.write);
+  try {
+    await expect(writeOutput(undefined, ["id"], rows(), log)).rejects.toBe(
+      failure,
+    );
+    expect(written).toBe(3);
+  } finally {
+    stdoutSpy.mockRestore();
+    resetStdoutErrorGuard();
+  }
 });

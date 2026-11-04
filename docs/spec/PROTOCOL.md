@@ -300,13 +300,13 @@ Every part of a list has the same tag. An empty list is one part with `n` = 0. A
 
 Every part of a payload names the same columns. A payload with no data is one part with `c` = 0 and `n` = 0. A row index is at most 2^32 - 1, a value at most 2^32 - 2 bytes, far past any part's bytes, and `c` at most 4,096 (`MAX_PAYLOAD_ENTRIES`). A column name is 1 to 256 characters (`MAX_NAME_LENGTH`), so at most 768 bytes of UTF-8. A value is well-formed UTF-8: an empty value is the length 0, and a value is read back with no byte-order mark removed and no character replaced. A sender refuses, before it sends the first part, a payload with more than 4,096 columns, a row index outside 0 to 2^32 - 1, a row whose width is not `c`, and a value or name holding an unpaired UTF-16 surrogate, which has no UTF-8 form.
 
-**What a received payload holds.** A receiver keeps each part's values as one byte array, with the offset where each row starts, and turns a row into strings only when it is read: by the result writer, one row at a time, and by the commitment and receipt MAC encodings ([CANONICAL_ENCODING.md, Implementation note](CANONICAL_ENCODING.md#implementation-note-non-normative)). Measured on 2026-11-04 in a 10-core aarch64 Linux container with 23 GB of memory, Node 26.13, `--expose-gc`: one payload part as large as a message file holds, read by the receiver from an in-memory connection. The figure is the memory the received payload holds (`heapUsed` plus `arrayBuffers` after two collections, the part itself released), divided by the part's bytes. The JSON part body sent before this layout, measured the same way, holds at most 2^24 rows:
+**What a received payload holds.** A receiver keeps each part's values as one byte array, with the offset where each row starts, and turns a row into strings only when it is read: by the result writer, one row at a time, and by the commitment and receipt MAC encodings ([CANONICAL_ENCODING.md, Implementation note](CANONICAL_ENCODING.md#implementation-note-non-normative)). Measured on 2026-11-04 in a 10-core aarch64 Linux container with 23 GB of memory, Node 26.13, `--expose-gc`: one payload part as large as a message file holds, read by the receiver from an in-memory connection. The figure is the memory the received payload holds (`heapUsed` plus `arrayBuffers` after two collections, the part itself released), divided by the part's bytes.
 
-| Rows of | JSON body: rows, part bytes, held | This layout: rows, part bytes, held |
-| --- | --- | --- |
-| one 24-character column | 14,420,554, 536,870,015, 3.0 times the part | 16,777,186, 536,869,986, 1.12 times |
-| 16 columns of 1 to 6 characters | 3,897,238, 536,869,916, 4.2 times | 3,639,172, 536,869,982, 1.03 times |
-| one empty column | 16,777,216, 223,769,987, 5.4 times | 67,108,747, 536,870,010, 1.50 times |
+| Rows of | Rows, part bytes, held |
+| --- | --- |
+| one 24-character column | 16,777,186, 536,869,986, 1.12 times the part |
+| 16 columns of 1 to 6 characters | 3,639,172, 536,869,982, 1.03 times the part |
+| one empty column | 67,108,747, 536,870,010, 1.50 times the part |
 
 Each row adds 8 bytes to what the part holds: its row index, and the offset where it starts.
 

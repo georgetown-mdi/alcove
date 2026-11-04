@@ -257,6 +257,8 @@ async function writeResultToStdout(
   let rejectDrain!: (err: unknown) => void;
   let onDrain!: () => void;
   let outcome: CeilingOutcome;
+  // A row that fails to build is the row's own error, not a lost stdout.
+  const rowErrors: Array<unknown> = [];
   try {
     outcome = await settleWithinCeiling(
       idleCeilingMs,
@@ -269,11 +271,21 @@ async function writeResultToStdout(
             else reject(err);
           };
           const lines = resultLines(headers, rows, delimiter);
-          let current = lines.next();
+          const step = (): IteratorResult<string, void> | undefined => {
+            try {
+              return lines.next();
+            } catch (err) {
+              rowErrors.push(err);
+              reject(err);
+              return undefined;
+            }
+          };
+          let current = step();
           const pump = (): void => {
-            while (current.done !== true) {
+            while (current !== undefined && current.done !== true) {
               const line = current.value;
-              current = lines.next();
+              current = step();
+              if (current === undefined) return;
               const isLast = current.done === true;
               const accepted = process.stdout.write(
                 line,
@@ -296,6 +308,7 @@ async function writeResultToStdout(
     );
   } catch (err) {
     ignoreLaterStdoutErrors();
+    if (rowErrors.length > 0) throw rowErrors[0];
     throw new Error(stdoutWriteFailedNotice(), { cause: err });
   } finally {
     // The pump is parked on a drain that never came where the wait expired,
