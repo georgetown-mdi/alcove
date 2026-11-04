@@ -100,12 +100,13 @@ export interface MessageConnection {
    */
   inboundPsiSetElementCeiling?(): number | undefined;
   /**
-   * Optional: the bytes this connection adds around each binary frame before
-   * the transport under it packs the frame (an encryption envelope), or 0 when
-   * absent. A sender sizing a frame to either bound above adds it to the
-   * frame's length first.
+   * Optional: the bytes this connection adds around a binary frame of
+   * `frameBytes` before the transport under it packs the frame (an encryption
+   * envelope), or 0 when absent. The figure never falls as the frame grows, so
+   * a sender sizing a frame to either bound above takes it at the bound and
+   * subtracts it from the bound.
    */
-  outboundFrameOverheadBytes?(): number;
+  outboundFrameOverheadBytes?(frameBytes: number): number;
   /**
    * Optional: the envelope version the key exchange negotiated, which the
    * transport writes on each frame after this party's first and requires on

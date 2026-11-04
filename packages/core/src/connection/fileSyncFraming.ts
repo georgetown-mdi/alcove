@@ -108,13 +108,20 @@ export class IncompatibleEnvelopeVersionError extends Error {
 /**
  * Parse a message file's bytes into its envelope fields, throwing on any
  * structural failure. The payload is not decoded, so a frame past Node's
- * maximum string length can be read.
+ * maximum string length can be read. A JSON message at
+ * {@link MESSAGE_ENVELOPE_VERSION} is read in place of `expectedVersion`: it
+ * is how a party sends an abort before it has negotiated, and every envelope
+ * version shares this layout (docs/spec/FILE_SYNC.md, "Message body format").
  */
 export function deserializeFileSyncMessage(
   raw: Uint8Array,
   expectedVersion: number = MESSAGE_ENVELOPE_VERSION,
 ): DeserializedMessage {
-  if (raw.length > 0 && raw[0] !== expectedVersion)
+  if (
+    raw.length > 0 &&
+    raw[0] !== expectedVersion &&
+    !(raw[0] === MESSAGE_ENVELOPE_VERSION && raw[1] === MESSAGE_TYPE_OBJECT)
+  )
     throw new IncompatibleEnvelopeVersionError(raw[0], expectedVersion);
   if (raw.length < MESSAGE_HEADER_BYTES)
     throw new Error("message envelope is shorter than its header");

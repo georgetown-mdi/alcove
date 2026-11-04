@@ -125,20 +125,33 @@ function largestWebRtcFrameBytes(maxFrameBytes: number): number {
  * part size is chosen.
  */
 export function psiSetPartPayloadBytes(conn: MessageConnection): number {
-  const envelopeBytes = conn.outboundFrameOverheadBytes?.() ?? 0;
-  const frameOverheadBytes = envelopeBytes + PSI_SET_PART_HEADER_BYTES;
+  // The envelope a frame of at most `bound` bytes takes is at most the one a
+  // frame of `bound` takes.
+  const envelopeBytes = (bound: number): number =>
+    conn.outboundFrameOverheadBytes?.(bound) ?? 0;
   const candidates: Array<number> = [];
   const webRtcBound = conn.outboundWebRtcFrameBound?.();
-  if (webRtcBound !== undefined)
-    candidates.push(largestWebRtcFrameBytes(webRtcBound) - frameOverheadBytes);
+  if (webRtcBound !== undefined) {
+    const frameBytes = largestWebRtcFrameBytes(webRtcBound);
+    candidates.push(
+      frameBytes - envelopeBytes(frameBytes) - PSI_SET_PART_HEADER_BYTES,
+    );
+  }
   const fileBound = conn.outboundFileSyncFrameBound?.();
   if (fileBound !== undefined)
     candidates.push(
       fileBound -
-        fileSyncMessageFileBytes(PSI_SET_PART_HEADER_BYTES, envelopeBytes),
+        fileSyncMessageFileBytes(
+          PSI_SET_PART_HEADER_BYTES,
+          envelopeBytes(fileBound),
+        ),
     );
   if (candidates.length === 0)
-    candidates.push(MAX_FRAME_SIZE_BYTES - frameOverheadBytes);
+    candidates.push(
+      MAX_FRAME_SIZE_BYTES -
+        envelopeBytes(MAX_FRAME_SIZE_BYTES) -
+        PSI_SET_PART_HEADER_BYTES,
+    );
   const payloadBytes = Math.min(...candidates);
   if (payloadBytes < 1)
     throw new Error(

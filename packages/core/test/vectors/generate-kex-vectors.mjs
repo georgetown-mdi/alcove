@@ -372,11 +372,11 @@ const previousPsk = Buffer.alloc(32, 0x43);
 // responder's holds a member no reader knows, which the prologue still binds.
 const SUITE_ID = 3;
 const initiatorHello = Buffer.from(
-  `{"kex":[${SUITE_ID}],"protocol":[1],"envelope":[1]}`,
+  `{"kex":[${SUITE_ID}],"protocol":[1],"envelope":[1,2]}`,
   "utf8",
 );
 const responderHello = Buffer.from(
-  `{"kex":[${SUITE_ID}],"protocol":[1],"envelope":[1],"later":{"note":"x"}}`,
+  `{"kex":[${SUITE_ID}],"protocol":[1],"envelope":[1,2],"later":{"note":"x"}}`,
   "utf8",
 );
 const prologue = helloPrologue(initiatorHello, responderHello);

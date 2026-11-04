@@ -10,7 +10,6 @@ import {
 } from "../../src/connection/messageConnection";
 import { EncryptedMessageConnection } from "../../src/connection/encryptedMessageConnection";
 import { runKex, supportedVersions } from "../../src/kex";
-import type * as VersionHello from "../../src/versionHello";
 import {
   driveUntilError,
   makeRendezvousPair,
@@ -19,15 +18,8 @@ import {
 import { makeMockClient } from "../utils/support";
 
 // The envelope-version wiring from the key exchange to the file-sync frames,
-// driven with a second envelope version: this build implements only 1, so
-// here the build's version is 2, which the message loop then accepts as
-// negotiated. Each party's first frame stays at 1 whatever was negotiated
-// (docs/spec/FILE_SYNC.md, "Message body format").
-vi.mock("../../src/versionHello", async (importOriginal) => ({
-  ...(await importOriginal<typeof VersionHello>()),
-  ENVELOPE_VERSION: 2,
-}));
-
+// driven at this build's envelope version 2. Each party's first frame stays at
+// 1 whatever was negotiated (docs/spec/FILE_SYNC.md, "Message body format").
 const NEGOTIATED = 2;
 const ID_A = "00000000-0000-4000-8000-000000000001";
 const ID_B = "ffffffff-ffff-4fff-bfff-ffffffffffff";
@@ -141,19 +133,19 @@ describe("the file-sync message loop with a negotiated envelope version", () => 
       expect(received).toEqual([{ n: 0 }, { n: 1 }, { n: 2 }]);
     });
 
-    test.each([1, 3])(
-      "refuses a later partner frame at envelope version %i",
-      async (version) => {
+    test.each([
+      { version: 1, data: new Uint8Array([1, 2, 3]), kind: "binary" },
+      { version: 3, data: new Uint8Array([1, 2, 3]), kind: "binary" },
+      { version: 3, data: { n: 1 }, kind: "JSON" },
+    ])(
+      "refuses a later $kind partner frame at envelope version $version",
+      async ({ version, data }) => {
         const { connA, connB, files } = await negotiatedPair(options);
         const { errors: early, next } = deliveries(connA);
         await sendAndFind(connB, files, { n: 0 });
         await runPoller(connA, next(1));
         expect(early).toEqual([]);
-        setVersionByte(
-          files,
-          await sendAndFind(connB, files, { n: 1 }),
-          version,
-        );
+        setVersionByte(files, await sendAndFind(connB, files, data), version);
         const { errors } = await driveUntilError(connA);
         expect(errors).toHaveLength(1);
         expect((errors[0] as Error).message).toContain(
@@ -161,6 +153,21 @@ describe("the file-sync message loop with a negotiated envelope version", () => 
         );
       },
     );
+
+    test("reads a later partner JSON frame at version 1, the version a party aborts at before it has negotiated", async () => {
+      const { connA, connB, files } = await negotiatedPair(options);
+      const { received, errors, next } = deliveries(connA);
+      await sendAndFind(connB, files, { n: 0 });
+      await runPoller(connA, next(1));
+      setVersionByte(
+        files,
+        await sendAndFind(connB, files, { kexMsg: "abort" }),
+        1,
+      );
+      await runPoller(connA, next(2));
+      expect(errors).toEqual([]);
+      expect(received).toEqual([{ n: 0 }, { kexMsg: "abort" }]);
+    });
 
     test("refuses a partner's first frame at the negotiated version", async () => {
       const { connA, connB, files } = await negotiatedPair(options);

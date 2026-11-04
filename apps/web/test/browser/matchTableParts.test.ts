@@ -56,7 +56,8 @@ function recording(conn: EncryptedMessageConnection): {
       close: () => conn.close(),
       outboundWebRtcFrameBound: () => conn.outboundWebRtcFrameBound(),
       outboundFileSyncFrameBound: () => conn.outboundFileSyncFrameBound(),
-      outboundFrameOverheadBytes: () => conn.outboundFrameOverheadBytes(),
+      outboundFrameOverheadBytes: (frameBytes) =>
+        conn.outboundFrameOverheadBytes(frameBytes),
     },
   };
 }

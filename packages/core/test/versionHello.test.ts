@@ -125,11 +125,11 @@ describe("the selection rule", () => {
     ).toEqual({ ok: false, olderVersion: "unknown" });
   });
 
-  test("this build offers its one version in each layer", () => {
+  test("this build offers its one protocol version and both envelope versions", () => {
     expect(supportedVersions()).toEqual({
       kex: KEX_SUITES.map((s) => s.id),
       protocol: [PROTOCOL_VERSION],
-      envelope: [1],
+      envelope: [1, ENVELOPE_VERSION],
     });
   });
 });
@@ -454,17 +454,15 @@ describe("the negotiated envelope version", () => {
     expect(envelopeVersionForFrame(false, undefined)).toBe(1);
   });
 
-  test("this build offers envelope version 1 only, the version a party aborts at before it has negotiated", () => {
+  test("this build offers envelope versions 1 and 2, keeping 1, the version a party aborts at before it has negotiated", () => {
     for (const approvedKexSuitesOnly of [false, true])
       expect(
         supportedVersions({ approvedKexSuitesOnly }).envelope,
-        "This build offers an envelope version other than 1. A party that " +
-          "aborts before it has negotiated sends that abort at envelope " +
-          "version 1, so its partner reports the abort as an incompatible " +
-          "version rather than the generic failure (docs/spec/FILE_SYNC.md, " +
-          "Message body format). Settle the pre-negotiation abort before a " +
-          "second envelope version ships.",
-      ).toEqual([MESSAGE_ENVELOPE_VERSION]);
+        "A party that aborts before it has negotiated sends that abort at " +
+          "envelope version 1, which a reader takes on a JSON message in " +
+          "place of the negotiated version (docs/spec/FILE_SYNC.md, Message " +
+          "body format); a build dropping version 1 settles that first.",
+      ).toEqual([MESSAGE_ENVELOPE_VERSION, ENVELOPE_VERSION]);
   });
 });
 
@@ -548,7 +546,7 @@ describe("an authenticated run takes the negotiated versions from its authentica
   test("the encrypted connection keys the channel at the envelope version the result names", async () => {
     const { a, initiator } = await authenticatedPair();
     expect(initiator.negotiated.envelope).toBe(ENVELOPE_VERSION + 1);
-    // This build implements only its own envelope version, so the guard
+    // This build implements no envelope version above its own, so the guard
     // naming the result's version shows the connection read it.
     const refused = await EncryptedMessageConnection.create(
       a,

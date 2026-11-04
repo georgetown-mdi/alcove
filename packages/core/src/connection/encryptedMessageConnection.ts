@@ -14,10 +14,19 @@ import {
   JsonStructureBoundError,
 } from "../utils/boundedJson";
 import type { HandshakeRole } from "../types";
-import { ENVELOPE_VERSION } from "../versionHello";
+import { ENVELOPE_VERSION, OFFERED_ENVELOPE_VERSIONS } from "../versionHello";
+import {
+  AEAD_CHUNK_PLAINTEXT_BYTES,
+  CHUNKED_ENVELOPE_HEADER_BYTES,
+  AEAD_TAG_BYTES,
+  chunkLayout,
+  chunkedEnvelopeBytes,
+  decryptChunkedInPlace,
+  encryptChunked,
+} from "./chunkedAead";
 
 // Leading byte of the binary AEAD envelope: the negotiated envelope version,
-// this build's only one by default. A frame whose first byte is not that
+// this build's latest by default. A frame whose first byte is not that
 // value, or that is not binary at all (a Uint8Array or an ArrayBuffer), is
 // rejected as a security failure rather than silently misparsed. A change to
 // the envelope layout (the IV/ciphertext/tag order or widths) is a new
@@ -25,6 +34,15 @@ import { ENVELOPE_VERSION } from "../versionHello";
 // hello").
 /** @internal */
 export const AEAD_ENVELOPE_VERSION = ENVELOPE_VERSION;
+
+/** The envelope version that encrypts a frame in one AES-GCM call. */
+export const SINGLE_CALL_ENVELOPE_VERSION = 1;
+
+/**
+ * The envelope version that encrypts a frame in chunks
+ * (docs/spec/CHANNEL_SECURITY.md, "The chunked envelope, version 2").
+ */
+export const CHUNKED_ENVELOPE_VERSION = 2;
 
 // First byte of the pre-encryption plaintext, preserving the original payload's
 // type across the wire. It lives INSIDE the authenticated ciphertext, so the
@@ -45,10 +63,25 @@ const TYPE_BINARY = 1;
 /** @internal */
 export const IV_SEQ_OFFSET = 4;
 
-// Bytes send() adds to a payload: the version byte, the 12-byte IV, the type
-// tag inside the ciphertext, and the 16-byte GCM tag.
+// Bytes send() adds to a payload under envelope version 1: the version byte,
+// the 12-byte IV, the type tag inside the ciphertext, and the 16-byte GCM tag.
 /** @internal */
 export const AEAD_ENVELOPE_OVERHEAD_BYTES = 1 + 12 + 1 + 16;
+
+/**
+ * The bytes the envelope of `version` adds to a binary frame of `frameBytes`:
+ * a fixed figure under version 1, and under version 2 one that grows with the
+ * frame, never smaller for a larger frame.
+ */
+export function aeadEnvelopeOverheadBytes(
+  version: number,
+  frameBytes: number,
+): number {
+  return version === CHUNKED_ENVELOPE_VERSION
+    ? chunkedEnvelopeBytes(1 + frameBytes, AEAD_CHUNK_PLAINTEXT_BYTES) -
+        frameBytes
+    : AEAD_ENVELOPE_OVERHEAD_BYTES;
+}
 
 /**
  * The largest plaintext `crypto.subtle` AES-GCM encrypts: 2^31 - 18 bytes,
@@ -58,8 +91,8 @@ export const AEAD_ENVELOPE_OVERHEAD_BYTES = 1 + 12 + 1 + 16;
 export const MAX_AEAD_PLAINTEXT_BYTES = 2_147_483_630;
 
 /**
- * The largest frame this layer sends or opens: the largest plaintext less its
- * type tag. A larger frame needs the AEAD in chunks.
+ * The largest frame envelope version 1 sends or opens: the largest plaintext
+ * less its type tag. Version 2 encrypts in chunks and has no such limit.
  */
 export const MAX_AEAD_FRAME_BYTES = MAX_AEAD_PLAINTEXT_BYTES - 1;
 
@@ -82,8 +115,11 @@ export const MAX_AEAD_FRAME_BYTES = MAX_AEAD_PLAINTEXT_BYTES - 1;
  * one key is catastrophic. One key per direction makes that reuse impossible
  * because each key is used by exactly one sender.
  *
- * Wire format: a binary envelope `version || IV || ciphertext || 16-byte GCM
- * tag`, encoded as raw bytes (no base64url, no JSON wrapper) so the transport
+ * Envelope version 2 encrypts the same plaintext in chunks, each with its own
+ * nonce and tag ({@link encryptChunked}, docs/spec/CHANNEL_SECURITY.md, "The
+ * chunked envelope, version 2"); the sequence checks below apply to both.
+ * Version 1's wire format: a binary envelope `version || IV || ciphertext ||
+ * 16-byte GCM tag`, encoded as raw bytes (no base64url, no JSON wrapper) so the transport
  * stores it byte-for-byte. `version` is a single leading format marker
  * ({@link AEAD_ENVELOPE_VERSION}); IV is 12 bytes: 4 leading bytes (zeroed by
  * the sender) followed by an 8-byte big-endian sequence number. Those leading
@@ -202,7 +238,7 @@ export class EncryptedMessageConnection implements MessageConnection {
     const [sessionKey, envelopeVersion] = ArrayBuffer.isView(keying)
       ? [keying, AEAD_ENVELOPE_VERSION]
       : [keying.sessionKey, keying.negotiated.envelope];
-    if (envelopeVersion !== AEAD_ENVELOPE_VERSION)
+    if (!OFFERED_ENVELOPE_VERSIONS.includes(envelopeVersion))
       throw new InternalConsistencyError(
         `EncryptedMessageConnection: envelope version ${envelopeVersion} is ` +
           "not one this build implements",
@@ -292,6 +328,36 @@ export class EncryptedMessageConnection implements MessageConnection {
     return iv;
   }
 
+  // Envelope version 1: a 1-byte version marker, the 12-byte IV, then the
+  // ciphertext+tag of `typeTag || payload`, encrypted in one call. The type
+  // tag stays inside the authenticated ciphertext.
+  private async encryptSingleCall(
+    seq: number,
+    typeTag: number,
+    payload: Uint8Array,
+  ): Promise<Uint8Array<ArrayBuffer>> {
+    const plaintext = new Uint8Array(
+      1 + payload.length,
+    ) as Uint8Array<ArrayBuffer>;
+    plaintext[0] = typeTag;
+    plaintext.set(payload, 1);
+    const iv = this.seqToIv(seq);
+    const cipher = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        this.sendKey,
+        plaintext,
+      ),
+    );
+    const envelope = new Uint8Array(
+      1 + 12 + cipher.length,
+    ) as Uint8Array<ArrayBuffer>;
+    envelope[0] = this.envelopeVersion;
+    envelope.set(iv, 1);
+    envelope.set(cipher, 13);
+    return envelope;
+  }
+
   async send(data: unknown): Promise<void> {
     if (this.failed !== undefined) throw this.failed;
 
@@ -309,7 +375,7 @@ export class EncryptedMessageConnection implements MessageConnection {
       );
     }
 
-    // Build the plaintext before consuming a sequence number, so a pre-counter
+    // Serialize the payload before consuming a sequence number, so a pre-counter
     // failure (a circular-reference payload throwing in JSON.stringify, or the
     // un-serializable guard below) does not burn a counter value and the
     // connection stays usable. The counter still advances synchronously below,
@@ -320,11 +386,11 @@ export class EncryptedMessageConnection implements MessageConnection {
     // later frame is ever sent, so a consumed-but-unsent counter value can only
     // truncate the tail - it never leaves a gap between two delivered frames for
     // the receiver to mistake for an attack (see docs/spec/CHANNEL_SECURITY.md).
-    let plaintext: Uint8Array<ArrayBuffer>;
+    let typeTag: number;
+    let payload: Uint8Array;
     if (data instanceof Uint8Array) {
-      plaintext = new Uint8Array(1 + data.length) as Uint8Array<ArrayBuffer>;
-      plaintext[0] = TYPE_BINARY;
-      plaintext.set(data, 1);
+      typeTag = TYPE_BINARY;
+      payload = data;
     } else {
       // JSON.stringify rejects an un-encodable value two ways, both caller
       // misuse caught here at the sender with a "usage" error, before any
@@ -352,22 +418,25 @@ export class EncryptedMessageConnection implements MessageConnection {
           "usage",
         );
       }
-      const json = enc.encode(serialized);
-      plaintext = new Uint8Array(1 + json.length) as Uint8Array<ArrayBuffer>;
-      plaintext[0] = TYPE_JSON;
-      plaintext.set(json, 1);
+      typeTag = TYPE_JSON;
+      payload = enc.encode(serialized);
     }
 
     const seq = this.sendSeq++;
-    const iv = this.seqToIv(seq);
 
-    let cipherBuffer: ArrayBuffer;
+    let envelope: Uint8Array<ArrayBuffer>;
     try {
-      cipherBuffer = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv },
-        this.sendKey,
-        plaintext,
-      );
+      envelope =
+        this.envelopeVersion === CHUNKED_ENVELOPE_VERSION
+          ? await encryptChunked(
+              this.sendKey,
+              this.envelopeVersion,
+              seq,
+              typeTag,
+              payload,
+              AEAD_CHUNK_PLAINTEXT_BYTES,
+            )
+          : await this.encryptSingleCall(seq, typeTag, payload);
     } catch (err) {
       // A failure to encrypt our OWN outbound data is not tampering: the
       // realistic causes are local runtime faults (resource exhaustion, a
@@ -385,18 +454,6 @@ export class EncryptedMessageConnection implements MessageConnection {
         ),
       );
     }
-
-    const cipher = new Uint8Array(cipherBuffer);
-    // Binary envelope: a 1-byte version marker, the 12-byte IV, then the
-    // ciphertext+tag. Handed to the inner transport as raw bytes (no base64url,
-    // no JSON wrapper); the payload type tag stays inside the authenticated
-    // ciphertext (plaintext[0] above).
-    const envelope = new Uint8Array(
-      1 + 12 + cipher.length,
-    ) as Uint8Array<ArrayBuffer>;
-    envelope[0] = this.envelopeVersion;
-    envelope.set(iv, 1);
-    envelope.set(cipher, 13);
 
     try {
       await this.inner.send(envelope);
@@ -430,6 +487,24 @@ export class EncryptedMessageConnection implements MessageConnection {
       throw asConnectionError(err, "transport");
     }
     return this.handleInbound(data);
+  }
+
+  // Envelope version 1: the plaintext of `version || IV || ciphertext || tag`,
+  // or undefined where the tag fails.
+  private async decryptSingleCall(
+    bytes: Uint8Array<ArrayBuffer>,
+  ): Promise<Uint8Array<ArrayBuffer> | undefined> {
+    try {
+      return new Uint8Array(
+        await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: bytes.slice(1, 13) },
+          this.recvKey,
+          bytes.subarray(13),
+        ),
+      );
+    } catch {
+      return undefined;
+    }
   }
 
   // Validates, decrypts, and unwraps one inbound envelope, returning the
@@ -467,10 +542,14 @@ export class EncryptedMessageConnection implements MessageConnection {
       );
     }
 
-    // Minimum: 1-byte version + 12-byte IV + 16-byte GCM tag (zero-length
-    // ciphertext). The 28-byte IV+tag floor is byte-for-byte the pre-version
-    // layout; the version byte adds one ahead of it.
-    if (bytes.length < 1 + 28) {
+    // Minimum: under version 1, the version byte, the 12-byte IV and the
+    // 16-byte GCM tag (zero-length ciphertext); under version 2, the version
+    // byte, the sequence number, and one chunk of one byte and its tag.
+    const chunked = this.envelopeVersion === CHUNKED_ENVELOPE_VERSION;
+    const minBytes = chunked
+      ? CHUNKED_ENVELOPE_HEADER_BYTES + 1 + AEAD_TAG_BYTES
+      : 1 + 12 + AEAD_TAG_BYTES;
+    if (bytes.length < minBytes) {
       throw this.fail(
         new ConnectionError(
           "EncryptedMessageConnection: envelope is too short",
@@ -491,13 +570,23 @@ export class EncryptedMessageConnection implements MessageConnection {
       );
     }
 
-    const iv = bytes.slice(1, 13) as Uint8Array<ArrayBuffer>;
-    const cipherWithTag = bytes.slice(13) as Uint8Array<ArrayBuffer>;
+    if (
+      chunked &&
+      chunkLayout(bytes.length, AEAD_CHUNK_PLAINTEXT_BYTES) === undefined
+    ) {
+      throw this.fail(
+        new ConnectionError(
+          "EncryptedMessageConnection: envelope ends in a chunk too short to hold a tag and a byte",
+          "security",
+        ),
+      );
+    }
 
-    const seqBig = new DataView(iv.buffer, iv.byteOffset).getBigUint64(
-      IV_SEQ_OFFSET,
-      false,
-    );
+    const seqBig = new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+    ).getBigUint64(chunked ? 1 : 1 + IV_SEQ_OFFSET, false);
     // A legitimate sender caps its counter at Number.MAX_SAFE_INTEGER, so any
     // higher value is proof of injection. Comparing as BigInt avoids Number()
     // precision loss above 2^53 that would let a crafted IV slip past the
@@ -560,14 +649,17 @@ export class EncryptedMessageConnection implements MessageConnection {
     // but the guard costs nothing and a future concurrent caller would need it.
     this.recvSeq = seq;
 
-    let plainBuffer: ArrayBuffer;
-    try {
-      plainBuffer = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv },
-        this.recvKey,
-        cipherWithTag,
-      );
-    } catch {
+    // Under version 2 the plaintext is decrypted into the envelope's own bytes
+    // and released only once the final chunk verifies.
+    const plain = chunked
+      ? await decryptChunkedInPlace(
+          this.recvKey,
+          bytes,
+          seq,
+          AEAD_CHUNK_PLAINTEXT_BYTES,
+        )
+      : await this.decryptSingleCall(bytes);
+    if (plain === undefined) {
       throw this.fail(
         new ConnectionError(
           "EncryptedMessageConnection: AES-GCM authentication tag verification failed",
@@ -575,8 +667,6 @@ export class EncryptedMessageConnection implements MessageConnection {
         ),
       );
     }
-
-    const plain = new Uint8Array(plainBuffer);
     if (plain.length < 1) {
       throw this.fail(
         new ConnectionError(
@@ -588,7 +678,7 @@ export class EncryptedMessageConnection implements MessageConnection {
 
     const tag = plain[0];
     if (tag === TYPE_BINARY) {
-      return plain.slice(1);
+      return plain.subarray(1);
     } else if (tag === TYPE_JSON) {
       try {
         // parseBoundedJson structurally bounds the body BEFORE JSON.parse, so a
@@ -641,13 +731,17 @@ export class EncryptedMessageConnection implements MessageConnection {
 
   // Forward the per-exchange inbound frame cap to the inner transport's read
   // gate (pinned in encryptedMessageConnection.test.ts), and hold this layer's
-  // own length check to it, both up to the largest envelope this layer opens.
-  // The cap is in message-file bytes (fileSyncMessageFileBytes), so the inner
-  // gate's clamp is that envelope's message file.
+  // own length check to it, under version 1 both up to the largest envelope
+  // that version opens. The cap is in message-file bytes
+  // (fileSyncMessageFileBytes), so the inner gate's clamp is that envelope's
+  // message file. Version 2 opens a frame of any length and clamps nothing.
   setInboundFrameCap(maxBytes: number | undefined): void {
-    if (maxBytes === undefined) {
-      this.inboundFrameCap = undefined;
-      this.inner.setInboundFrameCap?.(undefined);
+    if (
+      maxBytes === undefined ||
+      this.envelopeVersion === CHUNKED_ENVELOPE_VERSION
+    ) {
+      this.inboundFrameCap = maxBytes;
+      this.inner.setInboundFrameCap?.(maxBytes);
       return;
     }
     this.inboundFrameCap = Math.min(
@@ -659,14 +753,16 @@ export class EncryptedMessageConnection implements MessageConnection {
         maxBytes,
         fileSyncMessageFileBytes(
           MAX_AEAD_FRAME_BYTES,
-          this.outboundFrameOverheadBytes(),
+          this.outboundFrameOverheadBytes(MAX_AEAD_FRAME_BYTES),
         ),
       ),
     );
   }
 
-  frameCeilingBytes(): number {
-    return MAX_AEAD_FRAME_BYTES;
+  frameCeilingBytes(): number | undefined {
+    return this.envelopeVersion === CHUNKED_ENVELOPE_VERSION
+      ? undefined
+      : MAX_AEAD_FRAME_BYTES;
   }
 
   outboundWebRtcFrameBound(): number | undefined {
@@ -702,11 +798,11 @@ export class EncryptedMessageConnection implements MessageConnection {
   }
 
   // The envelope is added before the inner transport packs and chunks the
-  // frame, so it is charged once per frame, not per chunk.
-  outboundFrameOverheadBytes(): number {
+  // frame, so it is charged once per frame, not per transport chunk.
+  outboundFrameOverheadBytes(frameBytes: number): number {
+    const own = aeadEnvelopeOverheadBytes(this.envelopeVersion, frameBytes);
     return (
-      AEAD_ENVELOPE_OVERHEAD_BYTES +
-      (this.inner.outboundFrameOverheadBytes?.() ?? 0)
+      own + (this.inner.outboundFrameOverheadBytes?.(frameBytes + own) ?? 0)
     );
   }
 }

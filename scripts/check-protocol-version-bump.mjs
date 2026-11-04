@@ -110,6 +110,11 @@ export const COVERED_VECTORS = [
  */
 export const UNCOVERED_VECTORS = [
   {
+    vectors: "aead-chunked-envelope-vectors.json",
+    versionedBy:
+      "the same leading version byte, at envelope version 2, the chunked envelope (docs/spec/CHANNEL_SECURITY.md), which the version hello negotiates beneath the terms layer PROTOCOL_VERSION marks.",
+  },
+  {
     vectors: "aead-envelope-vectors.json",
     versionedBy:
       "the channel AEAD envelope's own leading version byte (docs/spec/CHANNEL_SECURITY.md), a transport-layer format beneath the terms layer PROTOCOL_VERSION marks.",

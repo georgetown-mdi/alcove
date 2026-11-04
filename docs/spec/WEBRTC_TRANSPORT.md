@@ -512,9 +512,9 @@ application-layer AEAD envelope (see
 [Application-layer encryption](#application-layer-encryption)) and sized to the
 partner's data-channel bound
 ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
-No list is bounded by one frame. One part's body holds at most 267,532,635
-bytes, what one part of a PSI set holds at `MAX_WEBRTC_FRAME_BYTES` with the
-application envelope
+No list is bounded by one frame. One part's body holds at most 267,532,399
+bytes under envelope version 2 and 267,532,635 under version 1, what one part
+of a PSI set holds at `MAX_WEBRTC_FRAME_BYTES` with the application envelope
 ([PROTOCOL.md, The part size](PROTOCOL.md#a-psi-set-is-sent-in-parts)). A part
 of any list but the payload rows is refused past the byte bound PROTOCOL.md
 derives from the agreed terms and this party's own round, before its body is

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   EncryptedMessageConnection,
   AEAD_ENVELOPE_OVERHEAD_BYTES,
-  AEAD_ENVELOPE_VERSION,
+  SINGLE_CALL_ENVELOPE_VERSION,
   IV_SEQ_OFFSET,
   MAX_AEAD_FRAME_BYTES,
   MAX_AEAD_PLAINTEXT_BYTES,
@@ -42,14 +42,21 @@ vi.mock("../../src/connection/frameSize", async (importOriginal) => {
 // Fixed 32-byte session key for deterministic tests.
 const SESSION_KEY = new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>;
 
+// This file drives envelope version 1, the single-call envelope; version 2,
+// the chunked one, is driven in chunkedEnvelope.test.ts.
+const V1_KEYING = {
+  sessionKey: SESSION_KEY,
+  negotiated: { kex: 3, protocol: 1, envelope: SINGLE_CALL_ENVELOPE_VERSION },
+};
+
 // A connected pair of decorators over one in-memory pipe, one per end.
 async function makeEncryptedPair(): Promise<
   [EncryptedMessageConnection, EncryptedMessageConnection]
 > {
   const [rawA, rawB] = createMessagePipe();
   return Promise.all([
-    EncryptedMessageConnection.create(rawA, SESSION_KEY, "initiator"),
-    EncryptedMessageConnection.create(rawB, SESSION_KEY, "responder"),
+    EncryptedMessageConnection.create(rawA, V1_KEYING, "initiator"),
+    EncryptedMessageConnection.create(rawB, V1_KEYING, "responder"),
   ]);
 }
 
@@ -62,7 +69,7 @@ async function makeInjectable(
   const [rawPeer, rawLocal] = createMessagePipe();
   const recv = await EncryptedMessageConnection.create(
     rawLocal,
-    SESSION_KEY,
+    V1_KEYING,
     role,
   );
   return [recv, rawPeer];
@@ -93,7 +100,7 @@ async function sealRawBytes(
   const envelope = new Uint8Array(
     1 + 12 + cipher.length,
   ) as Uint8Array<ArrayBuffer>;
-  envelope[0] = AEAD_ENVELOPE_VERSION;
+  envelope[0] = SINGLE_CALL_ENVELOPE_VERSION;
   envelope.set(iv, 1);
   envelope.set(cipher, 13);
   return envelope;
@@ -309,7 +316,7 @@ test("terminated stays pending over an inner connection that reports no end", as
   };
   const enc = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   await enc.close();
@@ -384,7 +391,7 @@ test("the frame ceiling is the largest plaintext the AEAD seals, less the type t
   const [, rawLocal] = createMessagePipe();
   const conn = await EncryptedMessageConnection.create(
     rawLocal,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   expect(conn.frameCeilingBytes()).toBe(MAX_AEAD_PLAINTEXT_BYTES - 1);
@@ -398,7 +405,7 @@ test("an envelope with an unsupported version byte is rejected as a security fai
   // (a different layout, or a frame from an incompatible build) fails cleanly
   // rather than being misparsed as the start of the IV.
   const bytes = await sealRawBytes("initiator", 0, jsonPlaintext({ ok: true }));
-  bytes[0] = (AEAD_ENVELOPE_VERSION + 1) & 0xff;
+  bytes[0] = (SINGLE_CALL_ENVELOPE_VERSION + 1) & 0xff;
   await peer.send(bytes);
   await expectSecurity(recv.receive(), /unsupported envelope version/i);
 });
@@ -557,7 +564,7 @@ test("an inbound seq above MAX_SAFE_INTEGER is rejected before decryption", asyn
   // version || IV || garbage (ciphertext+tag): passes the version and
   // minimum-length checks so the inbound-seq range guard is the rejecting one.
   const bytes = new Uint8Array(1 + 12 + 32) as Uint8Array<ArrayBuffer>;
-  bytes[0] = AEAD_ENVELOPE_VERSION;
+  bytes[0] = SINGLE_CALL_ENVELOPE_VERSION;
   bytes.set(iv, 1);
   bytes.set(garbage, 13);
   await peer.send(bytes);
@@ -688,7 +695,7 @@ test("create requires binary frames of the inner connection before its first awa
   };
   const created = EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   expect(required).toBe(1);
@@ -807,7 +814,7 @@ test("a second failure keeps the first latched error rather than replacing it", 
   const { inner, sends, receives, sendReached } = parkingInner();
   const enc = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
 
@@ -837,7 +844,7 @@ test("send after a failure rejects with the latched error without reaching the t
   const { inner, sends, receives } = parkingInner();
   const enc = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
 
@@ -867,7 +874,7 @@ test("receive after a failure rejects with the latched error without reaching th
   const { inner, receives } = parkingInner();
   const enc = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
 
@@ -892,7 +899,7 @@ test("a receive parked when the wrapper latches reports the inner failure as tra
   const { inner, receives } = parkingInner();
   const enc = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
 
@@ -944,7 +951,7 @@ test("close refuses a later send and receive itself, over an inner connection th
   };
   const enc = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   await enc.close();
@@ -1007,7 +1014,7 @@ test("close() passes through an unconfirmed-delivery rejection, tearing down onc
   };
   const enc = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   // A transport that could not confirm delivery says so through close(); a
@@ -1031,7 +1038,7 @@ test("close() resolves when the inner close rejects with anything else", async (
   };
   const enc = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   await expect(enc.close()).resolves.toBeUndefined();
@@ -1052,7 +1059,7 @@ test("an unconfirmed-delivery rejection during a failure teardown is reported by
   };
   const enc = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   // A malformed frame latches a failure, which starts the inner teardown with
@@ -1220,11 +1227,7 @@ async function captureEnvelope(
     receive: () => new Promise<unknown>(() => {}),
     close: () => Promise.resolve(),
   };
-  const conn = await EncryptedMessageConnection.create(
-    inner,
-    SESSION_KEY,
-    role,
-  );
+  const conn = await EncryptedMessageConnection.create(inner, V1_KEYING, role);
   // Drive the encrypt path at the vector's fixed sequence (the same private-
   // field cast the overflow tests use) so the IV - and therefore the ciphertext
   // and tag - is deterministic.
@@ -1247,7 +1250,7 @@ test("the AEAD envelope vector file is present and keyed by SESSION_KEY", () => 
   expect(toHex(SESSION_KEY)).toBe(aeadVectors.sessionKeyHex);
   // The recorded version must match the decorator's, or the pinned envelopeHex
   // describes a different format than the one under test.
-  expect(aeadVectors.envelopeVersion).toBe(AEAD_ENVELOPE_VERSION);
+  expect(aeadVectors.envelopeVersion).toBe(SINGLE_CALL_ENVELOPE_VERSION);
 });
 
 test.each(aeadVectors.vectors)(
@@ -1278,7 +1281,7 @@ test.each(aeadVectors.vectors)(
     // Structural breakdown, so a failure names the field that diverged (version,
     // IV, ciphertext, or tag) rather than only reporting that the blob differs.
     // Layout: version (1) || IV (12) || ciphertext || tag (16).
-    expect(bytes[0]).toBe(AEAD_ENVELOPE_VERSION);
+    expect(bytes[0]).toBe(SINGLE_CALL_ENVELOPE_VERSION);
     const iv = bytes.slice(1, 13);
     const tag = bytes.slice(bytes.length - 16);
     const ciphertext = bytes.slice(13, bytes.length - 16);
@@ -1291,7 +1294,7 @@ test.each(aeadVectors.vectors)(
     // concatenation of the component fields, so it cannot silently drift when a
     // vector is edited.
     expect(vector.envelopeHex).toBe(
-      toHex(Uint8Array.from([AEAD_ENVELOPE_VERSION])) +
+      toHex(Uint8Array.from([SINGLE_CALL_ENVELOPE_VERSION])) +
         vector.ivHex +
         vector.ciphertextHex +
         vector.tagHex,
@@ -1319,7 +1322,7 @@ test("setInboundFrameCap reaches the inner transport's read gate", async () => {
   };
   const conn = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "responder",
   );
 
@@ -1334,7 +1337,7 @@ test("the envelope a binary payload is sent in is the payload plus the stated ov
   const [rawPeer, rawLocal] = createMessagePipe();
   const conn = await EncryptedMessageConnection.create(
     rawLocal,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   for (const length of [0, 1, 1000]) {
@@ -1342,7 +1345,9 @@ test("the envelope a binary payload is sent in is the payload plus the stated ov
     const envelope = (await rawPeer.receive()) as Uint8Array;
     expect(envelope.byteLength - length).toBe(AEAD_ENVELOPE_OVERHEAD_BYTES);
   }
-  expect(conn.outboundFrameOverheadBytes()).toBe(AEAD_ENVELOPE_OVERHEAD_BYTES);
+  expect(conn.outboundFrameOverheadBytes(1000)).toBe(
+    AEAD_ENVELOPE_OVERHEAD_BYTES,
+  );
   await conn.close();
   await rawPeer.close();
 });
@@ -1358,18 +1363,18 @@ test("the outbound frame bound and the ceiling on a partner's set are forwarded,
   };
   const once = await EncryptedMessageConnection.create(
     inner,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   const twice = await EncryptedMessageConnection.create(
     once,
-    SESSION_KEY,
+    V1_KEYING,
     "initiator",
   );
   expect(once.outboundWebRtcFrameBound()).toBe(4096);
   expect(twice.outboundWebRtcFrameBound()).toBe(4096);
   expect(twice.inboundPsiSetElementCeiling()).toBe(77);
-  expect(twice.outboundFrameOverheadBytes()).toBe(
+  expect(twice.outboundFrameOverheadBytes(1000)).toBe(
     2 * AEAD_ENVELOPE_OVERHEAD_BYTES,
   );
   await twice.close();
@@ -1383,7 +1388,7 @@ describe("over an inner transport that implements none of the optional members",
       receive: (timeoutMs) => rawLocal.receive(timeoutMs),
       close: () => rawLocal.close(),
     };
-    return EncryptedMessageConnection.create(plain, SESSION_KEY, "initiator");
+    return EncryptedMessageConnection.create(plain, V1_KEYING, "initiator");
   }
 
   test("setInboundFrameCap does not throw", async () => {

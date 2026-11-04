@@ -5,6 +5,8 @@ import PSI from "@openmined/psi.js";
 import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
 import {
   AEAD_ENVELOPE_OVERHEAD_BYTES,
+  CHUNKED_ENVELOPE_VERSION,
+  aeadEnvelopeOverheadBytes,
   EncryptedMessageConnection,
 } from "../../src/connection/encryptedMessageConnection";
 import { fileSyncMessageFileBytes } from "../../src/connection/fileSyncOutboundBound";
@@ -346,6 +348,40 @@ test("at the real bounds, the largest set the decode admits goes in two message 
   expect(AEAD_ENVELOPE_OVERHEAD_BYTES).toBe(30);
   expect(wrappedWebRtc).toBe(267_532_635);
   expect(Math.ceil(largestSet / wrappedWebRtc)).toBe(3);
+
+  // Under the chunked envelope the overhead grows with the frame, 16 bytes a
+  // chunk of 2^24, and is taken at the bound.
+  const chunked = (frameBytes: number) =>
+    aeadEnvelopeOverheadBytes(CHUNKED_ENVELOPE_VERSION, frameBytes);
+  expect(chunked(MAX_FRAME_SIZE_BYTES)).toBe(10 + 16 * 32);
+  const chunkedFileSync = psiSetPartPayloadBytes({
+    ...withBounds(raw, { fileSync: MAX_FRAME_SIZE_BYTES }),
+    outboundFrameOverheadBytes: chunked,
+  });
+  expect(chunkedFileSync).toBe(536_870_340);
+  expect(Math.ceil(largestSet / chunkedFileSync)).toBe(2);
+  const chunkedWebRtc = psiSetPartPayloadBytes({
+    ...withBounds(raw, { webRtc: MAX_WEBRTC_FRAME_BYTES }),
+    outboundFrameOverheadBytes: chunked,
+  });
+  expect(chunkedWebRtc).toBe(267_532_399);
+  expect(Math.ceil(largestSet / chunkedWebRtc)).toBe(3);
+});
+
+test("under the chunked envelope a part's frame, its envelope taken at its own size, fits the bound", () => {
+  const [raw] = createMessagePipe();
+  const chunked = (frameBytes: number) =>
+    aeadEnvelopeOverheadBytes(CHUNKED_ENVELOPE_VERSION, frameBytes);
+  for (const fileSync of [4096, 33_554_500, MAX_FRAME_SIZE_BYTES]) {
+    const payload = psiSetPartPayloadBytes({
+      ...withBounds(raw, { fileSync }),
+      outboundFrameOverheadBytes: chunked,
+    });
+    const frame = payload + PSI_SET_PART_HEADER_BYTES;
+    expect(fileSyncMessageFileBytes(frame, chunked(frame))).toBeLessThanOrEqual(
+      fileSync,
+    );
+  }
 });
 
 function values(count: number, prefix: string): Array<string> {
@@ -377,7 +413,8 @@ async function round(
     close: () => conn.close(),
     outboundWebRtcFrameBound: () => conn.outboundWebRtcFrameBound(),
     outboundFileSyncFrameBound: () => conn.outboundFileSyncFrameBound(),
-    outboundFrameOverheadBytes: () => conn.outboundFrameOverheadBytes(),
+    outboundFrameOverheadBytes: (frameBytes) =>
+      conn.outboundFrameOverheadBytes(frameBytes),
   });
   const [a, b] = (
     await Promise.all([
@@ -481,7 +518,10 @@ test.each([
     ).toHaveLength(3);
     expect(binaryFrames(parted.sent).length).toBeGreaterThan(15);
     for (const frame of binaryFrames(parted.sent)) {
-      const envelope = AEAD_ENVELOPE_OVERHEAD_BYTES;
+      const envelope = aeadEnvelopeOverheadBytes(
+        CHUNKED_ENVELOPE_VERSION,
+        frame.byteLength,
+      );
       if (bounds.webRtc !== undefined)
         expect(
           webrtcFrameExceedsBound(

@@ -40,6 +40,8 @@ Under envelope version 2, which two parties on this build select, a frame is enc
 An encrypted frame is then bounded, over file-sync, by the caps the counts derive, the read gate's clamp below, and the memory checked before each read, and over WebRTC by [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound).
 The file-sync read gate itself clamps a per-exchange cap only to the largest exact integer (`MAX_DERIVED_FRAME_BYTES`), at or below Node's largest `Buffer`: memory is checked before each read ([FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes)).
 On 2026-11-04, in a 10-core arm64 Linux container with 23 GB of memory, a frame of 2,147,487,744 bytes crossed a local synced folder whole with no key exchange, written in 1.6 s and read in 4.2 s (`apps/cli/test/stress/fileSyncLargeFrame.stress.test.ts`, `npm run test:stress -w apps/cli`).
+On the same day and host, under a load average near 15 from other work, a frame of that size crossed the folder whole under envelope version 2, encrypted and written in 41.7 s and read and decrypted in 20.7 s, at a peak resident set of 4.32 GiB with both parties in one process (`apps/cli/test/stress/fileSyncKeyedLargeFrame.stress.test.ts`).
+Sampling the resident set while one connection opened a delivered envelope, under `--expose-gc` in a probe outside the repository, opening that frame took 32 MiB above the envelope, since each chunk decrypts into the envelope's own bytes; opening a 1 GiB frame under version 1 took 2.0 GiB above it.
 Not run: a frame that size over an SFTP server or a sync client.
 
 **Read-ahead.**
