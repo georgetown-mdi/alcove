@@ -1743,6 +1743,11 @@ describe("FileSyncRendezvous entry scan and sweep contract", () => {
 // that, so every assertion below runs on the rendered string.
 
 describe("FileSyncRendezvous entry-guard refusals at the display boundary", () => {
+  const PEER_HELLOS_REFUSAL =
+    "a shared folder serves one partner, but several partner hello files " +
+    "are present. Check whether another session is using this path. If none " +
+    "is, one of you reruns with --sweep-exchange-files, then the other starts.";
+  const PEER_HELLOS_REFUSAL_LENGTH = 212;
   // A path an operator would really configure. The rest of this suite runs on
   // the two-character DIR, which is precisely the wrong measurement here: the
   // path shares one rendered link with the filenames.
@@ -1940,9 +1945,8 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
     const rendered = sanitizeErrorForDisplay(err);
     expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
     expect(rendered).toContain("a shared folder serves one partner");
-    expect(rendered).toContain(
-      "Check whether another session is using this path.",
-    );
+    expect((err as Error).message).toBe(PEER_HELLOS_REFUSAL);
+    expect((err as Error).message.length).toBe(PEER_HELLOS_REFUSAL_LENGTH);
     expect((err as Error).message.length).toBeLessThanOrEqual(
       DEFAULT_MAX_DISPLAY_LENGTH,
     );
@@ -1952,6 +1956,37 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
     for (const name of shown)
       expect(files.has(`${REAL_DIR}/${name}`)).toBe(true);
     expect(shown.length + omitted).toBe(3);
+  });
+
+  test("the peer-hello refusal names the sweep flag and fits its link beside the longest hello list", async () => {
+    const files = new Map<string, Buffer>();
+    const peers = Array.from(
+      { length: 12 },
+      (_, i) => `acme-health-2026-partner-exchange-north-region-${i}`,
+    );
+    for (const peer of peers)
+      files.set(
+        `${SPLIT_INBOUND}/${helloName(peer)}`,
+        serializeEnvelope(flags),
+      );
+    const p = makeParty("site-a", flags, files);
+
+    const err = await p.rdv.run(splitScope()).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(UsageError);
+    const rendered = sanitizeErrorForDisplay(err);
+    expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(rendered.split("\ncaused by: ")[0]).toBe(PEER_HELLOS_REFUSAL);
+    expect(rendered).toContain(
+      "one of you reruns with --sweep-exchange-files, then the other starts.",
+    );
+    expect(detailLink(rendered)).toContain("12 peer hello files");
+    expect(detailLink(rendered).length).toBeLessThanOrEqual(
+      DEFAULT_MAX_DISPLAY_LENGTH,
+    );
   });
 
   test("a split-mode scope is trimmed to make room for the names, not the other way round", async () => {

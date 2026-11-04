@@ -1626,7 +1626,12 @@ export class FileSyncRendezvous {
         throw entryGuardRefusal(
           "a shared folder serves one partner, but several partner " +
             "hello files are present. Check whether another session is using " +
-            "this path.",
+            "this path. If none is, " +
+            (deps.options().retainFiles
+              ? `run again once they are older than ${UNANSWERED_HELLO_WINDOW_KEY} ` +
+                "(your peer timeout when unset)."
+              : "one of you reruns with --sweep-exchange-files, then the " +
+                "other starts."),
           "peer hello files",
           scope.inboundPath,
           peerHellos.map((f) => f.name),

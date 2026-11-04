@@ -23,6 +23,7 @@ import {
 import { serializeEnvelope } from "../../src/connection/controlEnvelope";
 import { helloEnvelope } from "../../src/connection/fileSyncRendezvous";
 import { UsageError, isPeerWaitTimeout } from "../../src/errors";
+import { DEFAULT_MAX_DISPLAY_LENGTH } from "../../src/utils/sanitizeForDisplay";
 import { failureCauseOf } from "../../src/failureCause";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { withCapturedLogs } from "../../src/testing";
@@ -51,6 +52,7 @@ async function openParty(
   options: FileSyncOptions,
   modifyTimes?: Map<string, number>,
   verbose = -1,
+  runtime: { sweepExchangeFiles?: boolean; forceRetainSweep?: boolean } = {},
 ): Promise<FileSyncConnection> {
   const checked = safeParseFileSyncOptions({ ...RETAIN, ...options });
   if (!checked.success) throw checked.error;
@@ -58,6 +60,7 @@ async function openParty(
   const conn = new FileSyncConnection(client, {
     pollingFrequency: 5,
     verbose,
+    ...runtime,
   });
   await conn.open({
     channel: "filedrop",
@@ -413,7 +416,17 @@ describe("a rerun after a bilateral-mode mismatch", () => {
   // the leftover hellos are older than the window.
   async function rerunAfterMismatch(
     helloAgeMs: number,
-  ): Promise<{ first: unknown[]; acks: string[]; rerun: unknown[] }> {
+    rerunRuntime: {
+      sweepExchangeFiles?: boolean;
+      forceRetainSweep?: boolean;
+    } = {},
+  ): Promise<{
+    first: unknown[];
+    acks: string[];
+    rerun: unknown[];
+    files: Map<string, Buffer>;
+    leftovers: string[];
+  }> {
     const files = new Map<string, Buffer>();
     const modifyTimes = new Map<string, number>();
     const a = await openParty(files, {}, modifyTimes);
@@ -426,14 +439,27 @@ describe("a rerun after a bilateral-mode mismatch", () => {
     const acks = [...files.keys()].filter((name) => name.endsWith("-ack.json"));
     for (const name of files.keys())
       modifyTimes.set(name, Date.now() - helloAgeMs);
-    const c = await openParty(files, { peerTimeoutMs: 2_000 }, modifyTimes);
-    const d = await openParty(files, { peerTimeoutMs: 2_000 }, modifyTimes);
+    const leftovers = [...files.keys()];
+    const c = await openParty(
+      files,
+      { peerTimeoutMs: 2_000 },
+      modifyTimes,
+      -1,
+      rerunRuntime,
+    );
+    const d = await openParty(
+      files,
+      { peerTimeoutMs: 2_000 },
+      modifyTimes,
+      -1,
+      rerunRuntime,
+    );
     const rerun = await Promise.all([
       rejectionOf(c.synchronize()),
       rejectionOf(d.synchronize()),
     ]);
     await Promise.all([c.close(), d.close()]);
-    return { first, acks, rerun };
+    return { first, acks, rerun, files, leftovers };
   }
 
   test("leaves two unanswered hellos, which refuse a rerun inside the window", async () => {
@@ -446,6 +472,38 @@ describe("a rerun after a bilateral-mode mismatch", () => {
         "several partner hello files are present",
       );
     }
+  });
+
+  test("the refusal a retain-mode rerun meets names the window, not the sweep flag", async () => {
+    const { rerun } = await rerunAfterMismatch(0);
+    for (const err of rerun) {
+      expect((err as Error).message).toBe(
+        "a shared folder serves one partner, but several partner hello " +
+          "files are present. Check whether another session is using this " +
+          "path. If none is, run again once they are older than " +
+          "unanswered_hello_window_ms (your peer timeout when unset).",
+      );
+      expect((err as Error).message.length).toBeLessThanOrEqual(
+        DEFAULT_MAX_DISPLAY_LENGTH,
+      );
+      expect(sanitizeErrorForDisplay(err)).not.toContain(
+        "--sweep-exchange-files",
+      );
+    }
+  });
+
+  test("the bare sweep flag does not clear them in retain mode", async () => {
+    const { rerun, files, leftovers } = await rerunAfterMismatch(0, {
+      sweepExchangeFiles: true,
+    });
+    for (const err of rerun) {
+      expect(err).toBeInstanceOf(UsageError);
+      expect((err as Error).message).toContain(
+        "may hold a retain-mode transcript",
+      );
+      expect((err as Error).message).toContain("--force-retain-sweep");
+    }
+    expect([...files.keys()].sort()).toEqual(leftovers.sort());
   });
 
   test("a rerun once both hellos are older than the window ignores them", async () => {
