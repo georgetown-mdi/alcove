@@ -18,6 +18,9 @@ from importlib.metadata import version
 
 import re2
 
+QUIET = re2.Options()
+QUIET.log_errors = False
+
 
 def encodable(text):
     try:
@@ -59,7 +62,7 @@ def case_outcome(pattern, inputs):
     if not encodable(pattern):
         return {"pattern": pattern, "unencodable": True}
     try:
-        regexp = re2.compile(pattern)
+        regexp = re2.compile(pattern, options=QUIET)
     except re2.error as err:
         return {"pattern": pattern, "compiles": False, "error": str(err)}
     return {
