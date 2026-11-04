@@ -310,13 +310,12 @@ describe("the hello over a handshake", () => {
     ["message 1", "1"],
     ["message 2", "2"],
   ])(
-    "a hello altered in %s, dropping envelope version 2 and adding an unknown member, fails the handshake with the generic failure",
+    "a hello altered in %s, still selecting the same versions, fails the handshake with the generic failure",
     async (_name, kexMsg) => {
-      // The reader selects envelope version 1 from the altered hello where
-      // the sender offered [1, 2], and ignores the added member; the
-      // transcript binds the hello as sent, so the parties' keys differ.
+      // An added member the reader does not know: the selection is unchanged,
+      // so only the transcript tells the two hellos apart.
       const altered = toBase64Url(
-        enc.encode('{"kex":[3],"protocol":[1],"envelope":[1],"added":true}'),
+        enc.encode('{"kex":[3],"protocol":[1],"envelope":[1,2],"added":true}'),
       );
       const { initiatorConn, responderConn } = tamperedPipe((frame) =>
         frame.kexMsg === kexMsg ? { ...frame, hello: altered } : frame,
