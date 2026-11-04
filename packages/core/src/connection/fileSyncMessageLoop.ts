@@ -76,6 +76,12 @@ const CLEAN_DIRECTORY_RESTART_REMEDY =
   "Re-run the exchange in a clean directory; both parties must start the new " +
   "exchange fresh.";
 
+const PARTNER_MESSAGE_DELETE_FAILED =
+  "could not delete a partner message after reading it (two attempts). " +
+  "In delete mode each message is deleted once read, so the account must be " +
+  "allowed to delete files in the exchange directory. Grant that permission, " +
+  "or have both parties set retain_files: true.";
+
 const ACKNOWLEDGE_NEXT_STEP =
   "In retain mode each message read is acknowledged by writing a file, so " +
   "the account must be allowed to create files in the exchange directory. " +
@@ -469,7 +475,11 @@ export class FileSyncMessageLoop {
       await consume();
     } catch (err: unknown) {
       if (!this.pollerActive) throw err;
-      const detail = redactAndSanitizeForDisplay(errorMessage(err));
+      const detail =
+        err instanceof UsageError &&
+        err.message === PARTNER_MESSAGE_DELETE_FAILED
+          ? PARTNER_MESSAGE_DELETE_FAILED
+          : redactAndSanitizeForDisplay(errorMessage(err));
       const nextStep =
         failedAction === "acknowledge"
           ? `${detail.endsWith(".") ? "" : "."} ${ACKNOWLEDGE_NEXT_STEP}`
@@ -1377,19 +1387,12 @@ export class FileSyncMessageLoop {
                     // Terminal: the delete is the sender's go-ahead, and a
                     // message left on disk is re-read by the next poll, so
                     // emitting it here would deliver it again on every cycle.
-                    throw new UsageError(
-                      "could not delete a partner message after reading it " +
-                        "(two attempts). In delete mode each message is deleted " +
-                        "once read, so the account must be allowed to delete " +
-                        "files in the exchange directory. Grant that permission, " +
-                        "or have both parties set retain_files: true.",
-                      {
-                        cause: chainDetailCauses(
-                          [`message file: ${messageFile.name}`],
-                          deleteErr,
-                        ),
-                      },
-                    );
+                    throw new UsageError(PARTNER_MESSAGE_DELETE_FAILED, {
+                      cause: chainDetailCauses(
+                        [`message file: ${messageFile.name}`],
+                        deleteErr,
+                      ),
+                    });
                   }
                 }
               }

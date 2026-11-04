@@ -71,13 +71,11 @@ const MODES = [
     },
     consumed: (f: Fixture) => !f.files.has(f.messagePath),
     warning: (role: string) =>
-      expect.stringContaining(
-        `[${role}] could not delete the refused message file: ` +
-          "could not delete a partner message after reading it (two " +
-          "attempts). In delete mode each message is deleted once read, so " +
-          "the account must be allowed to delete files in the exchange " +
-          "directory.",
-      ),
+      `[${role}] could not delete the refused message file: ` +
+      "could not delete a partner message after reading it (two attempts). " +
+      "In delete mode each message is deleted once read, so the account must " +
+      "be allowed to delete files in the exchange directory. Grant that " +
+      "permission, or have both parties set retain_files: true.",
   },
   {
     mode: "retain mode",
@@ -142,6 +140,7 @@ describe.each(MODES)(
       expect(f.warn.mock.calls.map(([message]) => message)).toEqual([
         warning(f.conn.role),
       ]);
+      expect(f.warn.mock.calls[0][0]).not.toContain("[truncated]");
     });
 
     test("a successful cleanup logs no warning and ends with the refusal", async () => {
