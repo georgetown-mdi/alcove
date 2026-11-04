@@ -420,6 +420,7 @@ describe("a rerun after a bilateral-mode mismatch", () => {
       sweepExchangeFiles?: boolean;
       forceRetainSweep?: boolean;
     } = {},
+    rerunOptions: FileSyncOptions = {},
   ): Promise<{
     first: unknown[];
     acks: string[];
@@ -442,14 +443,14 @@ describe("a rerun after a bilateral-mode mismatch", () => {
     const leftovers = [...files.keys()];
     const c = await openParty(
       files,
-      { peerTimeoutMs: 2_000 },
+      { peerTimeoutMs: 2_000, ...rerunOptions },
       modifyTimes,
       -1,
       rerunRuntime,
     );
     const d = await openParty(
       files,
-      { peerTimeoutMs: 2_000 },
+      { peerTimeoutMs: 2_000, ...rerunOptions },
       modifyTimes,
       -1,
       rerunRuntime,
@@ -488,6 +489,25 @@ describe("a rerun after a bilateral-mode mismatch", () => {
       );
       expect(sanitizeErrorForDisplay(err)).not.toContain(
         "--sweep-exchange-files",
+      );
+    }
+  });
+
+  test("with an infinite window the refusal says to set a duration", async () => {
+    const { rerun } = await rerunAfterMismatch(
+      0,
+      {},
+      { unansweredHelloWindowMs: "infinite" },
+    );
+    for (const err of rerun) {
+      expect((err as Error).message).toBe(
+        "a shared folder serves one partner, but several partner hello " +
+          "files are present. Check whether another session is using this " +
+          "path. If none is, set unanswered_hello_window_ms to a duration, " +
+          "then run again once they are older than it.",
+      );
+      expect((err as Error).message.length).toBeLessThanOrEqual(
+        DEFAULT_MAX_DISPLAY_LENGTH,
       );
     }
   });
