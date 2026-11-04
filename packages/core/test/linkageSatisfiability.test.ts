@@ -68,7 +68,7 @@ import type {
 } from "../src/config/linkageTermsSchema";
 import type { Standardization } from "../src/config/standardizationSchema";
 import { safeParseLinkageTerms } from "../src/config/linkageTermsSchema";
-import { COUNT_ONLY_SHAPE_REFUSALS } from "../src/linkageTermsPolicy";
+import { countOnlyStandardizationFanOutMessage } from "../src/linkageTermsPolicy";
 
 const col = (name: string, type: ColumnMetadata["type"]): ColumnMetadata => ({
   name,
@@ -1925,7 +1925,12 @@ describe("assertFanOutImplemented", () => {
       ];
       expect(() => assertFanOutImplemented(countOnly, standardization)).toThrow(
         new OperatorConfigError(
-          COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut,
+          'a count-only ("psi-c") exchange cannot run the "split_on" step on ' +
+            'standardization output "last_name", because the agreed linkage ' +
+            "terms do not state how many parts it adds to each record. Remove " +
+            "that step, and to match on the parts, add it to the transform of " +
+            'the linkage key elements that read "last_name"; or set algorithm ' +
+            'to "psi".',
         ),
       );
       expect(() =>
@@ -1936,6 +1941,40 @@ describe("assertFanOutImplemented", () => {
       ).not.toThrow();
     },
   );
+
+  // The reachability the count-only refusal's quoted output name rests on: an
+  // acceptor's standardization derived from the partner's adopted terms holds
+  // no fan-out step, so the refusal names only an output the operator wrote.
+  test("under the count-only algorithm, a default standardization is never refused", () => {
+    const countOnly: LinkageTerms = {
+      ...getDefaultLinkageTerms("Agency A"),
+      algorithm: "psi-c",
+    };
+    const ownTypes: Metadata = countOnly.linkageFields.map((field) => ({
+      name: `column ${field.name}`,
+      type: field.type,
+      role: "linkage",
+      isPayload: false,
+    }));
+    const derivedSsn4 = ownTypes.filter((column) => column.type !== "ssn4");
+    for (const metadata of [ownTypes, derivedSsn4]) {
+      const standardization = getDefaultStandardization(metadata, countOnly);
+      expect(standardization.length).toBeGreaterThan(0);
+      expect(() =>
+        assertFanOutImplemented(countOnly, standardization),
+      ).not.toThrow();
+    }
+  });
+
+  test("the count-only refusal without the standardization names the step's function and the same remedy", () => {
+    expect(countOnlyStandardizationFanOutMessage()).toBe(
+      'a count-only ("psi-c") exchange cannot run a "split_on" step in your ' +
+        "standardization, because the agreed linkage terms do not state how " +
+        "many parts it adds to each record. Remove that step, and to match on " +
+        "the parts, add it to the transform of the linkage key elements that " +
+        'read the field it cleans; or set algorithm to "psi".',
+    );
+  });
 
   test("the refusal names the strategy rule and the two ways out of it", () => {
     // What an operator does about it: agree on terms whose strategy matches a

@@ -118,8 +118,8 @@ const logger = getLogger("cleaning");
  *   as `split_on`. `Set` enforces uniqueness: duplicate values from splitting or
  *   subsequent element-wise steps are automatically deduplicated.
  *   {@link buildKeyStrings} crosses these candidates into the key's candidate
- *   set; both linkage strategies match on that set, and what refuses it is the
- *   count-only algorithm, or an expansion the agreed linkage terms and
+ *   set; both linkage strategies and the count-only algorithm match on that
+ *   set, and what refuses it is an expansion the agreed linkage terms and
  *   standardization do not account for (see
  *   {@link fanOutReachedMatchingRefusal}).
  */

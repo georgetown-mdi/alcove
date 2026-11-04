@@ -279,7 +279,7 @@ export function fieldCleaningCard(fieldType: string | undefined): string {
  * count-only algorithm, whose terms do not state how many parts it adds, or
  * a strategy that matches none ({@link refusedCleaningFanOut}), which the
  * terms alone do not show. The count-only wording follows core's own refusal
- * (`COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut`). Names
+ * (`countOnlyStandardizationFanOutMessage`). Names
  * the step by its menu label, and the card by what the Cleaning tab shows: the
  * field's type label and the operator's input column. The field's own name is
  * left out: the tab never shows it, and an imported one is
@@ -296,8 +296,10 @@ function cleaningFanOutMessage(
     `${sanitizeForDisplay(refused.input)} column`;
   return countOnly
     ? `A count-only exchange cannot run ${step}, because the invitation does ` +
-        "not state how many parts it adds to each record. Remove that step " +
-        "and split the value in the linkage key instead, or " +
+        "not state how many parts it adds to each record. Remove that step, " +
+        "and to match on the parts, turn on expert authoring on the Matching " +
+        "keys tab and add it to the transform of the linkage key elements " +
+        "that read that field; or " +
         REVEAL_IDENTIFIERS_INSTEAD
     : `This linkage strategy matches one value per record, but ${step} ` +
         "splits a value into parts. Remove that step, or on the Matching keys " +

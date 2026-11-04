@@ -199,11 +199,12 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
     file: "packages/core/src/exchange.ts",
     anchor: "runExchange",
     raises: "OperatorConfigError",
-    interpolates: ["COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut"],
+    interpolates: ["countOnlyStandardizationFanOutMessage()"],
     provenance:
-      "a module constant of fixed prose that quotes no value at all. The " +
-      "condition reads this party's own prepared dataset (whether its own " +
-      "standardization declares a fan-out), never partner-authored text.",
+      "called with no argument, the callee composes fixed prose and the " +
+      "quoted fan-out function list, a build literal. The condition reads " +
+      "this party's own prepared dataset (whether its own standardization " +
+      "declares a fan-out), never partner-authored text.",
   },
   {
     file: "packages/core/src/exchange.ts",
@@ -242,15 +243,20 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
     anchor: "assertFanOutImplemented",
     raises: "OperatorConfigError",
     interpolates: [
-      "COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut",
+      "countOnlyStandardizationFanOutMessage({ functionName: declared, output: transformation.output, })",
       "fanOutDeclaredMessage(declared)",
     ],
     provenance:
       "`declared` is read off this party's own standardization argument and is " +
       "matched against FAN_OUT_FUNCTION_NAMES before it reaches the message, so " +
-      "what the callee interpolates is a build literal; the count-only arm " +
-      "beside it holds a module constant of fixed prose and quotes no value at " +
-      "all. The sibling arm over the agreed terms' linkage keys, which the " +
+      "what the callee interpolates is a build literal. The count-only arm " +
+      "also quotes `transformation.output`, an output name off the same " +
+      "standardization argument. That half rests on REACHABILITY, as " +
+      "assertStandardizationMatchesTerms's does: an acceptor's standardization " +
+      "reconstructed from its adopted terms by getDefaultStandardization holds " +
+      "no fan-out step, so the arm fires only on a standardization the operator " +
+      "authored (pinned in packages/core/test/linkageSatisfiability.test.ts). " +
+      "The sibling arm over the agreed terms' linkage keys, which the " +
       "accept path adopts wholesale, raises a plain UsageError instead and " +
       "is correctly absent from this ledger.",
   },
