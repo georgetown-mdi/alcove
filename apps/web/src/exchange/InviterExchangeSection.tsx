@@ -95,7 +95,6 @@ export function InviterExchangeSection({
   resumed = false,
   onTryAgain,
   onStartOver,
-  onReplaceInvitation,
   onReviewAppliedTerms,
   onAbandon,
 }: {
@@ -177,11 +176,6 @@ export function InviterExchangeSection({
   resumed?: boolean;
   onTryAgain: () => void;
   onStartOver: () => void;
-  /** Discard the invitation while it waits for the partner, so its link no
-   * longer connects, and return to Review & create with the settings kept.
-   * Omitted where the page no longer holds those settings; the share screen
-   * then offers no replace control. */
-  onReplaceInvitation?: () => void;
   /** Leave a run whose partner's changed terms were applied to the mounted
    * configuration for Review & create, with that configuration opened again
    * so the next run is composed from the terms it now holds. */
@@ -472,10 +466,10 @@ export function InviterExchangeSection({
                 .
               </strong>
             </p>
-            {onReplaceInvitation !== undefined && failure === undefined && (
+            {failure === undefined && (
               <>
                 <p className={styles.small}>{REPLACE_INVITATION_BODY}</p>
-                <Button variant="default" onClick={onReplaceInvitation}>
+                <Button variant="default" onClick={onStartOver}>
                   {REPLACE_INVITATION_LABEL}
                 </Button>
               </>

@@ -13,13 +13,11 @@ const PLAIN_WORDS: ReadonlySet<string> = new Set([
 ]);
 
 /** The short forms in one built-in key name: each capitalized token, and each
- * function name written before a parenthesis. */
+ * function call as written, argument included. */
 function shortFormsOf(keyName: string): Array<string> {
   const tokens = keyName.match(/\b[A-Z][A-Z0-9]*\b/g) ?? [];
-  const functions = [...keyName.matchAll(/\b([a-z]+)\(/g)].map(
-    (match) => `${match[1]}(`,
-  );
-  return [...tokens.filter((token) => !PLAIN_WORDS.has(token)), ...functions];
+  const calls = keyName.match(/\b[a-z]+\([^)]*\)/g) ?? [];
+  return [...tokens.filter((token) => !PLAIN_WORDS.has(token)), ...calls];
 }
 
 describe("the key name explanation on Matching keys", () => {
@@ -28,10 +26,10 @@ describe("the key name explanation on Matching keys", () => {
     const unexplained = new Set<string>();
     for (const key of DEFAULT_LINKAGE_RULE_SET.linkageKeys)
       for (const form of shortFormsOf(key.name)) {
-        const pattern = form.endsWith("(")
-          ? new RegExp(`\\b${form.slice(0, -1)}\\(`)
-          : new RegExp(`\\b${form}\\b`);
-        if (!pattern.test(explanation)) unexplained.add(form);
+        const found = form.includes("(")
+          ? explanation.includes(form)
+          : new RegExp(`\\b${form}\\b`).test(explanation);
+        if (!found) unexplained.add(form);
       }
     expect([...unexplained]).toEqual([]);
   });
@@ -42,7 +40,7 @@ describe("the key name explanation on Matching keys", () => {
       "LN",
       "FN",
       "DOB",
-      "soundex(",
+      "soundex(LN)",
     ]);
     expect(shortFormsOf("LN + FN + PHONE")).toEqual(["LN", "FN"]);
   });

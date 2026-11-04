@@ -1009,6 +1009,42 @@ describe("KeysTab: the built-in rule choice and the less certain mark", () => {
     await expect.element(explanation).toBeVisible();
   });
 
+  test("offers the key name explanation only beside built-in keys", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const shorthand = page.getByRole("button", {
+      name: KEY_NAME_SHORTHAND_INFO.label,
+      exact: true,
+    });
+    const authored = editorWithAuthoredDraft(seeded, seeded.draft);
+    app.render(createElement(Harness, { initial: authored }));
+    await expect.element(page.getByText(keyOrderHelp(authored))).toBeVisible();
+    expect(shorthand.query()).toBeNull();
+  });
+
+  test("offers no key name explanation beside an opened configuration's keys", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    app.render(
+      createElement(Harness, {
+        initial: editorWithImportedTerms(
+          seeded,
+          csv,
+          buildAdvancedTerms(seeded.draft),
+        ),
+        keysFromOpenedConfiguration: true,
+      }),
+    );
+    await expect
+      .element(
+        page
+          .getByRole("note")
+          .filter({ hasText: OPENED_CONFIGURATION_KEYS_NOTE }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: KEY_NAME_SHORTHAND_INFO.label }).query(),
+    ).toBeNull();
+  });
+
   test("describes the key list with the order the chosen floor gives it", async () => {
     const seeded = editorFromCsv("Dana Okafor", csv);
     app.render(createElement(Harness, { initial: seeded }));

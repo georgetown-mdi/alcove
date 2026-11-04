@@ -1,0 +1,1 @@
+- - -> Limit: replacing or discarding an invitation from the inviter's screen stops its link connecting at once, with no confirmation step, as the screen says before the click.

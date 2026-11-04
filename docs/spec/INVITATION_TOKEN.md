@@ -267,6 +267,8 @@ An `expires` that does not parse, or a `now` that does not, is treated as expire
 A token with no `expires` does not expire.
 The CLI applies it in `decodeAndValidateInvitation` (`apps/cli/src/invitationDecode.ts`), the one decode `alcove accept` and `alcove exchange --invitation` share, and the web application in `prepareAcceptedInvitation` (`apps/web/src/psi/acceptInvitation.ts`).
 
+Limit: replacing or discarding an invitation from the inviter's screen stops its link connecting at once, with no confirmation step, as the screen says before the click.
+
 **Endpoint.**
 The web application refuses a token with no `connectionEndpoint`, and one whose channel this build cannot drive (`endpointDrivableHere`): `webrtc` on every build, `filedrop` and `sftp` on a console build only.
 The CLI drives all three channels and accepts a token with no endpoint.

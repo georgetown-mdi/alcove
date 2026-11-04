@@ -102,11 +102,11 @@ In the side panel, under **Customize**, choose **Matching keys**. The **Matching
 
 Choose **Back to Review & create**.
 
-If you agreed to name your data sharing agreement in the invitation, choose **Legal agreement** under **Customize**, tick **Attach a legal agreement**, and enter its reference, purpose, and expiration date as the signed agreement states them. Your partner sees them before accepting and types nothing. Otherwise leave it: Review & create shows **None (optional)**.
-
 ### 4. Review & create
 
 Screen: Step 3 of 3 - Review & create
+
+If you agreed to name your data sharing agreement in the invitation, choose **Legal agreement** under **Customize**, tick **Attach a legal agreement**, and enter its reference, purpose, and expiration date as the signed agreement states them. Your partner sees them before accepting and types nothing. Otherwise leave it: Review & create shows **None (optional)**.
 
 **Invitation duration** sets how long your partner can accept:
 

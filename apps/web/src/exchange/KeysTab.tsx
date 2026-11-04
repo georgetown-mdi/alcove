@@ -56,6 +56,7 @@ import {
   highestPrecisionUnavailable,
   keyOrderHelp,
   keySatisfiabilityFor,
+  keysAreBuiltIn,
   seedRows,
 } from "@psi/inviterEditor";
 
@@ -104,7 +105,8 @@ const SHARED_VALUE_CAVEAT =
  * columns, each with a checkbox and the reorder pair, and a key core marks
  * less certain (`linkageKeyIsLessCertain`) states the mark in its label with
  * the button that explains it, and the button beside the list's help line
- * explains the short forms the built-in key names use. Highest precision is
+ * explains the short forms the built-in key names use, shown only while the
+ * listed keys are built-in. Highest precision is
  * disabled, naming the columns it needs, while the columns supply none of its
  * rules; still chosen then, it keeps the list empty and that reason replaces
  * the key error
@@ -314,15 +316,21 @@ export function KeysTab({
           </Input.Label>
         </InfoButton>
       )}
-      <InfoButton
-        label={KEY_NAME_SHORTHAND_INFO.label}
-        explanation={KEY_NAME_SHORTHAND_INFO.explanation}
-        mt="sm"
-      >
-        <p id="key-order-help" className={styles.infoLine}>
+      {keysAreBuiltIn(editor, keysFromOpenedConfiguration) ? (
+        <InfoButton
+          label={KEY_NAME_SHORTHAND_INFO.label}
+          explanation={KEY_NAME_SHORTHAND_INFO.explanation}
+          mt="sm"
+        >
+          <p id="key-order-help" className={styles.infoLine}>
+            {keyOrderHelp(editor, keysFromOpenedConfiguration)}
+          </p>
+        </InfoButton>
+      ) : (
+        <p id="key-order-help">
           {keyOrderHelp(editor, keysFromOpenedConfiguration)}
         </p>
-      </InfoButton>
+      )}
       <ol className={styles.guidedKeys} aria-describedby="key-order-help">
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);

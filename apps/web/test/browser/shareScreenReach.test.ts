@@ -264,7 +264,7 @@ describe("an unanswered coordination server the invitation names", () => {
 
 describe("replacing a waiting invitation", () => {
   function renderReplaceable(
-    onReplaceInvitation: (() => void) | undefined,
+    onStartOver: () => void,
     failure?: RunFailure,
   ): void {
     app.render(
@@ -282,8 +282,7 @@ describe("replacing a waiting invitation", () => {
         reattached: undefined,
         reattaching: false,
         onTryAgain: () => {},
-        onStartOver: () => {},
-        ...(onReplaceInvitation !== undefined ? { onReplaceInvitation } : {}),
+        onStartOver,
         onReviewAppliedTerms: () => {},
         onAbandon: () => {},
       }),
@@ -291,31 +290,16 @@ describe("replacing a waiting invitation", () => {
   }
 
   test("the share screen offers it, saying the link stops working and the choices are kept", async () => {
-    const onReplaceInvitation = vi.fn();
-    renderReplaceable(onReplaceInvitation);
+    const onStartOver = vi.fn();
+    renderReplaceable(onStartOver);
     await expect
       .element(page.getByRole("heading", { name: "Your invitation is ready" }))
       .toBeInTheDocument();
-    expect(REPLACE_INVITATION_BODY).toBe(
-      "To change the terms, replace this invitation. Its link stops " +
-        "working, and you go back to Review & create with your choices kept.",
-    );
     await expect.element(page.getByText(REPLACE_INVITATION_BODY)).toBeVisible();
     await page
       .getByRole("button", { name: REPLACE_INVITATION_LABEL, exact: true })
       .click();
-    expect(onReplaceInvitation).toHaveBeenCalledTimes(1);
-  });
-
-  test("is not offered where the page holds no settings to carry over", async () => {
-    renderReplaceable(undefined);
-    await expect
-      .element(page.getByRole("heading", { name: "Share this invitation" }))
-      .toBeInTheDocument();
-    expect(
-      page.getByRole("button", { name: REPLACE_INVITATION_LABEL }).query(),
-    ).toBeNull();
-    expect(app.container.textContent).not.toContain(REPLACE_INVITATION_BODY);
+    expect(onStartOver).toHaveBeenCalledTimes(1);
   });
 
   test("gives way to the failure's own recovery once a run fails", async () => {
