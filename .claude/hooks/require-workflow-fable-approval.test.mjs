@@ -21,7 +21,11 @@ function assertAsks(out) {
   const parsed = JSON.parse(out);
   expect(parsed.hookSpecificOutput.hookEventName).toBe("PreToolUse");
   expect(parsed.hookSpecificOutput.permissionDecision).toBe("ask");
-  expect(parsed.hookSpecificOutput.permissionDecisionReason).toMatch(/Fable/);
+  expect(parsed.hookSpecificOutput.permissionDecisionReason).toBe(
+    "This spawn runs on the Fable tier, which needs your approval " +
+      "(`.claude/orchestration/ruleset.md`, Models and spawns). Approve to run it " +
+      "on Fable, or deny and it will be re-issued on a cheaper tier.",
+  );
 }
 
 describe("require-workflow-fable-approval hook", () => {
