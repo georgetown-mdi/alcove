@@ -111,7 +111,11 @@ import {
   allowedRelaysText,
   parseExchangeAllowedRelayLines,
 } from "@psi/transport/relayRestriction";
-import { browserRelaysForSavedExchange } from "@psi/transport/ownRelaySetting";
+import {
+  exchangeConnectionRead,
+  siteSignalingServerText,
+} from "@recurring/managedConnectionSettingsModel";
+import { ownRelayRead } from "@psi/transport/ownRelaySetting";
 import { runListsRelay } from "@psi/transport/runRelayPlan";
 
 import {
@@ -243,6 +247,10 @@ import {
 import { useStepHistory } from "./useStepHistory";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
+import type {
+  ConnectionSettingsText,
+  ExchangeConnectionRead,
+} from "@recurring/managedConnectionSettingsModel";
 import type { AcceptKitEndpoint } from "./acceptKit";
 import type { RailStep } from "@psi/rail";
 
@@ -290,6 +298,15 @@ const EMPTY_COVERAGE_INPUT: CoverageInput = {
   rows: EMPTY_ROWS,
 };
 const EMPTY_COLUMN_SAMPLES: ColumnSamples = new Map();
+
+/** The Connection settings and Allowed relays an invitation took at the
+ * press of Create: the text the Connection fields showed and its read, and
+ * the relays the list keeps, which the invitation names. */
+interface CommittedConnectionSettings {
+  values: ConnectionSettingsText;
+  read: Extract<ExchangeConnectionRead, { ok: true }>;
+  allowedRelays: ReadonlyArray<string> | undefined;
+}
 
 const SPINE_LABELS: Record<InviterSpineStep, string> = {
   file: "Your file",
@@ -626,22 +643,63 @@ export function InviterScreen() {
   // console filedrop as a save-a-file card, unlike the raw driver mapping): the
   // create branch and the live run both read it.
   const chosenRunMode = transportRunMode(available, transport);
+  // The browser exchange's Connection settings, in its transport card on the
+  // hosted build: the coordination server, starting from this site's, the
+  // switch and the exchange's own relays. Pressing Create commits their text
+  // and its read, and the Allowed relays list: the invitation names them and
+  // keeps them for the run and a save as a recurring exchange. While it is
+  // created and once it exists the fields show the committed values, fixed; a
+  // failed create or a start over returns them to the draft as typed.
+  const pageProtocol =
+    typeof window === "undefined" ? "https:" : window.location.protocol;
+  const [siteServer] = useState(() =>
+    isConsoleBuild() ? "" : siteSignalingServerText(pageProtocol),
+  );
+  const [connectionText, setConnectionText] = useState<ConnectionSettingsText>(
+    () => ({
+      server: siteServer,
+      turn: "",
+      stun: "",
+      websocket: "",
+      defaultRelayOn: false,
+    }),
+  );
+  const connectionRead = exchangeConnectionRead(
+    connectionText,
+    siteServer,
+    pageProtocol,
+  );
+  const [committedConnection, setCommittedConnection] =
+    useState<CommittedConnectionSettings>();
+  const connectionCommitted =
+    minting || invitation !== undefined ? committedConnection : undefined;
+  const connectionShown = connectionCommitted?.values ?? connectionText;
+  const ownRelayShown =
+    connectionCommitted !== undefined
+      ? connectionCommitted.read.ownRelay
+      : connectionRead.ok
+        ? connectionRead.ownRelay
+        : undefined;
+  const connectionSettingsOffered =
+    !isConsoleBuild() && transport === "browser";
   // The browser exchange's Allowed relays, set in its transport card on the
   // hosted build where the run lists a relay for them to keep or leave out,
-  // or where they hold a list or were edited. Creating the invitation commits
-  // their parse: the invitation names only the relays they keep and holds the
-  // list, which the run and a save as a recurring exchange read. Once it
-  // exists the field is fixed on that list.
+  // or where they hold a list or were edited. Pressing Create commits their
+  // parse: the invitation names only the relays they keep and holds the list,
+  // which the run and a save as a recurring exchange read. From the press on
+  // the field is fixed on the committed list.
   const allowedRelaysOffered =
     !isConsoleBuild() &&
     transport === "browser" &&
     (inviterAllowedRelays !== "" ||
       allowedRelaysEdited ||
       invitation?.allowedRelays !== undefined ||
-      runListsRelay(undefined));
+      runListsRelay(undefined, {
+        readOwn: () => ownRelayRead(ownRelayShown),
+        switchedOn: () => connectionShown.defaultRelayOn,
+      }));
   const allowedRelayLines =
     parseExchangeAllowedRelayLines(inviterAllowedRelays);
-  const allowedRelaysFixed = invitation !== undefined;
   // A console run of the opened configuration continues the exchange it set
   // up, under the key file beside it on the server, so it sends no invitation.
   const continuesOpenedExchange =
@@ -903,7 +961,10 @@ export function InviterScreen() {
             },
             connection,
             allowedRelays: invitation.allowedRelays,
-            ...browserRelaysForSavedExchange(),
+            ...(invitation.ownRelay !== undefined
+              ? { ownRelay: invitation.ownRelay }
+              : {}),
+            defaultRelayOn: invitation.defaultRelayOn === true,
             rotatedSecret,
             choices,
           },
@@ -1332,6 +1393,11 @@ export function InviterScreen() {
     // The create gate holds a refused Allowed relays line; repeated here so no
     // invitation names relays the field does not show.
     if (allowedRelaysOffered && !allowedRelayLines.ok) return;
+    if (connectionSettingsOffered && !connectionRead.ok) return;
+    const connection =
+      connectionSettingsOffered && connectionRead.ok
+        ? connectionRead
+        : undefined;
     // A save-file run mode seals the terms exactly as the live path does but
     // mints NOTHING here: the code and the config YAML are minted together on
     // the save surface, from the authored locator. Seal, discard any prior
@@ -1354,7 +1420,7 @@ export function InviterScreen() {
     // from the one place it is built, so the sheet can print back only what the
     // partner's own invitation already contains.
     let kitEndpoint: AcceptKitEndpoint | undefined;
-    let location = invitationLocation();
+    let location = invitationLocation(connection?.signaling);
     if (
       transport === "webrtc" &&
       continuesOpenedExchange &&
@@ -1472,6 +1538,19 @@ export function InviterScreen() {
       retainsFiles:
         connectionEndpoint !== undefined && runOptions?.retainFiles === true,
     });
+    const allowedRelaysCommitted =
+      allowedRelaysOffered && allowedRelayLines.ok
+        ? allowedRelayLines.entries
+        : undefined;
+    setCommittedConnection(
+      connection === undefined
+        ? undefined
+        : {
+            values: connectionText,
+            read: connection,
+            allowedRelays: allowedRelaysCommitted,
+          },
+    );
     dispatch({ type: "mint-started" });
     try {
       const minted = await generateInvitation({
@@ -1487,10 +1566,11 @@ export function InviterScreen() {
         ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
         ...(connectionEndpoint !== undefined ? { connectionEndpoint } : {}),
         retainsFiles: declaresRetainedFiles,
-        allowedRelays:
-          allowedRelaysOffered && allowedRelayLines.ok
-            ? allowedRelayLines.entries
-            : undefined,
+        allowedRelays: allowedRelaysCommitted,
+        ...(connection?.ownRelay !== undefined
+          ? { ownRelay: connection.ownRelay }
+          : {}),
+        defaultRelayOn: connection?.defaultRelayOn === true,
       });
       // The bilateral file-handling choices are captured beside the locator:
       // the lockless rendezvous from the options block the run itself holds
@@ -2058,25 +2138,43 @@ export function InviterScreen() {
                 }
                 onCreate={() => void createInvitation()}
                 onNavigate={goTo}
+                {...(connectionSettingsOffered
+                  ? {
+                      connectionSettings: {
+                        values: connectionShown,
+                        errors:
+                          connectionCommitted !== undefined || connectionRead.ok
+                            ? {}
+                            : connectionRead.errors,
+                        ownRelay: ownRelayShown,
+                        fixed: connectionCommitted !== undefined,
+                        onChange: (change: Partial<ConnectionSettingsText>) =>
+                          setConnectionText((text) => ({ ...text, ...change })),
+                      },
+                    }
+                  : {})}
                 {...(allowedRelaysOffered
                   ? {
-                      allowedRelays: allowedRelaysFixed
-                        ? {
-                            value: allowedRelaysText(invitation.allowedRelays),
-                            error: undefined,
-                            fixed: true,
-                            onChange: () => undefined,
-                          }
-                        : {
-                            value: inviterAllowedRelays,
-                            error: allowedRelayLinesError(allowedRelayLines),
-                            fixed: false,
-                            onChange: (value: string) =>
-                              dispatch({
-                                type: "allowed-relays-changed",
-                                value,
-                              }),
-                          },
+                      allowedRelays:
+                        connectionCommitted !== undefined
+                          ? {
+                              value: allowedRelaysText(
+                                connectionCommitted.allowedRelays,
+                              ),
+                              error: undefined,
+                              fixed: true,
+                              onChange: () => undefined,
+                            }
+                          : {
+                              value: inviterAllowedRelays,
+                              error: allowedRelayLinesError(allowedRelayLines),
+                              fixed: false,
+                              onChange: (value: string) =>
+                                dispatch({
+                                  type: "allowed-relays-changed",
+                                  value,
+                                }),
+                            },
                     }
                   : {})}
               />

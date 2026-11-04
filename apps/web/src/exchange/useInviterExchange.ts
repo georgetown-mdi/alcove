@@ -26,6 +26,10 @@ import {
 import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
 
 import {
+  ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY,
+  INVITER_DEFAULT_RELAY_OFF_REMEDY,
+} from "@psi/transport/defaultRelaySwitch";
+import {
   COORDINATION_SERVER_CHANGED_REFUSAL,
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
@@ -58,7 +62,6 @@ import {
 } from "@psi/jobClient/consoleJobAttachment";
 import { AcceptedSignalingServerUnsetError } from "@psi/jobClient/signalingServerClient";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
-import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { consoleFailureForCause } from "@console/consoleFailureCause";
 import { consoleJobColumnRefusalAlert } from "@psi/columnNames";
 import { consolePartnerCertificateRefusal } from "@console/partnerCertificateRefusal";
@@ -69,6 +72,7 @@ import { inviterExchangeDataSpec } from "@psi/authoring/advancedInvite";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { openOneShotPeerConnection } from "@psi/exchangeLifecycle";
 import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
+import { ownRelayRead } from "@psi/transport/ownRelaySetting";
 import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
@@ -177,10 +181,13 @@ export interface RunFailure {
   /** Set when the partner never connected in the time this page waited. The
    * seat offers its retry as "Keep waiting", on the same invitation. */
   partnerNoShow?: true;
-  /** Set when the coordination server this browser's setting named did not
-   * answer the inviter's registration. The seat offers a fresh invitation
-   * beside its retry, and a link to relay settings. */
+  /** Set when the coordination server the invitation's Connection settings
+   * named did not answer the inviter's registration. The seat offers a fresh
+   * invitation beside its retry. */
   coordinationServerUnreachable?: true;
+  /** Set when the connection did not open with this site's relay server
+   * off. The inviter's seat offers a fresh invitation beside its retry. */
+  defaultRelayOff?: true;
   /** Set when a file with this side's name appeared while the partner never
    * arrived, so both sides likely set the same name. The seat offers its way
    * back to the settings, where that name is set, beside its retry. */
@@ -929,9 +936,9 @@ function failureContentFor(
           partnerNoShow: true,
         };
   }
-  // The coordination server this browser's setting named did not answer the
-  // inviter's registration: the setting, not a passing network fault, is the
-  // likely cause, so the copy names the server and the control that clears it.
+  // The coordination server the invitation's Connection settings named did
+  // not answer the inviter's registration: the setting, not a passing network
+  // fault, is the likely cause, so the copy names the server and the field.
   if (error instanceof CoordinationServerUnreachableError)
     return {
       category: "exchange",
@@ -982,8 +989,9 @@ function failureContentFor(
         : "The exchange could not be completed - usually a temporary " +
           "connection problem rather than an issue with your data." +
           (failedWithDefaultRelayOff(error)
-            ? ` ${DEFAULT_RELAY_OFF_REMEDY}`
+            ? ` ${seat === "acceptor" ? ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY : INVITER_DEFAULT_RELAY_OFF_REMEDY}`
             : ""),
+    ...(failedWithDefaultRelayOff(error) && { defaultRelayOff: true as const }),
     // A rejection that is not an `Error` has no chain to attribute, and its
     // `String()` form displays as `undefined` or `[object Object]` under a label
     // promising the exchange's own account of the failure. The fixed copy above
@@ -995,27 +1003,27 @@ function failureContentFor(
 }
 
 /**
- * What the run's alert says when the coordination server this browser's
- * setting named, `server`, did not answer: the server, then how to retry or
- * clear the setting and start over.
+ * What the run's alert says when the coordination server the invitation's
+ * Connection settings named, `server`, did not answer: the server, then how
+ * to retry or change it and start over.
  *
  * @internal exported for testing
  */
 export function coordinationServerUnreachableMessage(server: string): string {
   return (
     `This page could not connect to ${sanitizeForDisplay(server)}, the ` +
-    "coordination server set in relay settings, which this invitation " +
-    "names. Your partner cannot use this invitation until that server " +
-    "answers. Ask whoever runs it to check it, then choose Try again. Or " +
-    "clear the address under Coordination server in relay settings, choose " +
-    "Start over with a fresh invitation, and send your partner the new one."
+    "coordination server this invitation names. Your partner cannot use " +
+    "this invitation until that server answers. Ask whoever runs it to " +
+    "check it, then choose Try again. Or choose Start over with a fresh " +
+    "invitation, change the Coordination server under Connection settings, " +
+    "and send your partner the new invitation."
   );
 }
 
 /**
  * Register the inviter at the coordination server `minted` names. A
- * registration that server did not answer, where it is the one this
- * browser's setting named rather than the deployment's own
+ * registration that server did not answer, where it is the one the
+ * invitation's Connection settings named rather than the deployment's own
  * ({@link settingServerNamedBy}), fails with
  * {@link CoordinationServerUnreachableError}, naming it.
  *
@@ -1448,7 +1456,12 @@ export function useInviterExchange({
         minted.sharedSecret,
         undefined,
         minted.allowedRelays,
-        { signal, onRunNotice },
+        {
+          signal,
+          onRunNotice,
+          readOwn: () => ownRelayRead(minted.ownRelay),
+          switchedOn: () => minted.defaultRelayOn === true,
+        },
       );
       const connection = await openRunConnectionWithRelayFallback({
         role: "inviter",

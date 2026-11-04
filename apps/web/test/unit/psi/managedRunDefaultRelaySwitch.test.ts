@@ -47,7 +47,7 @@ describe("a saved exchange's default relay switch", () => {
     vi.unstubAllGlobals();
   });
 
-  test("lists the build's relay where the exchange turns it on, whatever this browser's switch says", async () => {
+  test("lists the build's relay where the exchange turns it on, with no switch left in storage", async () => {
     vi.stubGlobal("localStorage", { getItem: () => null });
     const plan = await managedRunRelayPlan(record(true), {
       defaultRelay: enrolled,
@@ -56,7 +56,7 @@ describe("a saved exchange's default relay switch", () => {
     expect(plan.defaultRelayOff).toBeUndefined();
   });
 
-  test("leaves it off where the exchange does, though this browser's switch is on", async () => {
+  test("leaves it off where the exchange does, though the old relay page left the switch on in storage", async () => {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
         key === "alcove-default-relay-on" ? "1" : null,

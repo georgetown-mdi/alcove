@@ -27,6 +27,7 @@ import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { openOneShotPeerConnection } from "@psi/exchangeLifecycle";
 import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
+import { ownRelayRead } from "@psi/transport/ownRelaySetting";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import { deploymentProfile } from "@utils/clientConfig";
@@ -74,6 +75,7 @@ import type { AcceptedSignalingServer } from "@console/signalingServerModel";
 import type { ExchangeDriver } from "@psi/exchangeDriver";
 import type { ExchangeRun } from "./exchangeRun";
 import type { JobExchangeOptions } from "@jobContract/intentSchemas";
+import type { OwnRelay } from "@psi/transport/ownRelaySetting";
 import type { ReceiptsIntentFields } from "@psi/receiptsModel";
 import type { RunDiagnosticsIntentFields } from "@psi/runDiagnosticsModel";
 import type { RunFailure } from "./useInviterExchange";
@@ -240,6 +242,12 @@ export interface AcceptorLaunch {
    * keep (`relayPlanForRun`); a console WebRTC run sends them in its job
    * request ({@link acceptorWebrtcTransport}). */
   allowedRelays: ReadonlyArray<string> | undefined;
+  /** The exchange's own relay, as the review step's Connection settings
+   * committed it, which a browser run lists. */
+  ownRelay?: OwnRelay;
+  /** Whether the same settings turn on the relay server the build offers
+   * switched off. */
+  defaultRelayOn: boolean;
   /** The confirm-columns step's file-handling choices for a server-job accept,
    * already resolved through core's retain-mode implication. Fixed into the launch
    * so the run cannot be retuned under itself; absent when the operator changed
@@ -540,7 +548,12 @@ export function useAcceptorExchange({
         token.sharedSecret,
         endpoint.relay,
         current.allowedRelays,
-        { signal, onRunNotice },
+        {
+          signal,
+          onRunNotice,
+          readOwn: () => ownRelayRead(current.ownRelay),
+          switchedOn: () => current.defaultRelayOn,
+        },
       );
       const connection = await openRunConnectionWithRelayFallback({
         role: "acceptor",

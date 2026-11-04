@@ -914,7 +914,7 @@ describe("the relay key registration", () => {
     },
   );
 
-  test("this browser's own relay setting does not reach the export", () => {
+  test("a relay the old relay page left in storage does not reach the export", () => {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
         key === "alcove-own-relay"

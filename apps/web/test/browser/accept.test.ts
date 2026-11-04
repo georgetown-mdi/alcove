@@ -54,12 +54,10 @@ import {
   PARTNER_SECRET_NOT_SAVED_TITLE,
   PARTNER_SET_TOO_LARGE_TITLE,
 } from "@psi/managed/managedFailureCopy";
+import { Lobby } from "@exchange/Lobby";
 import { NonEmptyRateController } from "@psi/workers/nonEmptyAggregateController";
 import { PartnerSecretNotSavedError } from "@psi/partnerSecretNotSaved";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
-import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
-
-import { Lobby } from "@exchange/Lobby";
 import { stagesFor } from "@exchange/exchangeRun";
 import styles from "@styles/app.module.css";
 
@@ -74,6 +72,7 @@ import { MetadataGrid } from "@components/MetadataGrid";
 
 import { applyDisclosure } from "@psi/metadataEditing";
 
+import { removeOwnRelay, setOwnRelay } from "./connectionSettings";
 import { createAppMount } from "./renderApp";
 import { expandFieldCards } from "./fieldCards";
 import { expectConsole } from "./expectedConsole";
@@ -2156,12 +2155,13 @@ describe("acceptor screen: run and completion", () => {
   // step's launch, which auto-starts the run. The run token has a future expiry
   // and a declared payload send. Returns once the captured lifecycle exists so
   // callers can drive its callbacks right away.
-  async function reachRun(hash?: string) {
+  async function reachRun(hash?: string, onReview?: () => Promise<void>) {
     window.location.hash = hash ?? (await encodeRunToken());
     app.render(createElement(AcceptorScreen));
     await expect
       .element(page.getByText("Invitation from County Health Department"))
       .toBeInTheDocument();
+    await onReview?.();
     await userEvent.click(
       page.getByRole("button", { name: "Continue: consent & your file" }),
     );
@@ -3066,15 +3066,12 @@ describe("acceptor screen: run and completion", () => {
     expect(lifecycleCalls).toHaveLength(0);
   });
 
-  test("a run parks the WebSocket relay its own setting names, as acceptor, beside the WebRTC dial", async () => {
+  test("a run parks the WebSocket relay its Connection settings name, as acceptor, beside the WebRTC dial", async () => {
     parkedRelays.length = 0;
-    writeOwnRelaySetting({
-      turn: [],
-      stun: [],
-      websocket: "wss://wsrelay.example.org/relay",
-    });
     try {
-      await reachRun();
+      await reachRun(undefined, () =>
+        setOwnRelay({ websocket: "wss://wsrelay.example.org/relay" }),
+      );
       await lifecycleCall(0)
         .acquire({
           signal: new AbortController().signal,
@@ -3096,7 +3093,6 @@ describe("acceptor screen: run and completion", () => {
         },
       ]);
     } finally {
-      writeOwnRelaySetting({ turn: [], stun: [] });
       vi.mocked(dialAsAcceptor).mockReset();
     }
   });
@@ -3429,7 +3425,6 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
 
   afterEach(() => {
     window.localStorage.removeItem(RESTRICTION_KEY);
-    writeOwnRelaySetting({ turn: [], stun: [] });
   });
 
   /** Open a webrtc invitation whose relay is `relay`, two TURN urls unless
@@ -3508,16 +3503,17 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     expect(pageText()).not.toContain(ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE);
   });
 
-  test("is not offered where neither the invitation nor this browser names a relay", async () => {
+  test("is not offered where neither the invitation nor the exchange names a relay", async () => {
     await openInvitation(null);
 
     expect(setButton().query()).toBeNull();
     expect(pageText()).not.toContain("Allowed relays");
   });
 
-  test("is offered for an invitation naming no relay where this browser's own relay lists one", async () => {
-    writeOwnRelaySetting({ turn: [KEPT_URL], stun: [] });
+  test("is offered for an invitation naming no relay once the exchange's own relay lists one", async () => {
     await openInvitation(null);
+    expect(setButton().query()).toBeNull();
+    await setOwnRelay({ turn: [KEPT_URL] });
 
     await expect.element(setButton()).toBeInTheDocument();
   });
@@ -3562,12 +3558,12 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
   });
 
   test("Remove after the run stops listing a relay keeps the line, with focus on its action", async () => {
-    writeOwnRelaySetting({ turn: [KEPT_URL], stun: [] });
     await openInvitation(null);
+    await setOwnRelay({ turn: [KEPT_URL] });
     await setRelays("partner.example.net");
     await doneButton().click();
 
-    writeOwnRelaySetting({ turn: [], stun: [] });
+    await removeOwnRelay();
     await removeButton().click();
     await expect.element(setButton()).toHaveFocus();
     expect(document.activeElement).not.toBe(document.body);

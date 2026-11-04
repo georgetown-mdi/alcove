@@ -160,16 +160,16 @@ describe("the hosted build's route documents", () => {
   });
 
   test("leave a route whose code is all in the shell at the template", () => {
-    expect(writtenDocuments().get("relay.html")).toBe(templateHtml);
+    expect(writtenDocuments().get("verify.html")).toBe(templateHtml);
   });
 
   test("fail the build when no chunk holds a warmed route's file", () => {
-    const withoutRelay = declaredRoutes()
+    const withoutVerify = declaredRoutes()
       .map(({ file }) => file)
-      .filter((file) => !file.endsWith("/relay.tsx"));
+      .filter((file) => !file.endsWith("/verify.tsx"));
 
-    expect(() => writtenDocuments(fabricatedBundle(withoutRelay))).toThrow(
-      "relay.tsx",
+    expect(() => writtenDocuments(fabricatedBundle(withoutVerify))).toThrow(
+      "verify.tsx",
     );
   });
 

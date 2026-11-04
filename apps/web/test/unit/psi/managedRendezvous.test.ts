@@ -503,8 +503,8 @@ describe("beginManagedRendezvous: relay", () => {
     stun: [],
   };
 
-  /** This browser's own relay setting naming `turn`, which a saved
-   * exchange's run does not read. */
+  /** A relay the old relay page left in storage naming `turn`, which no
+   * run reads. */
   function stubBrowserRelay(turn: Array<string>): void {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
@@ -515,7 +515,7 @@ describe("beginManagedRendezvous: relay", () => {
   }
 
   test.each(["inviter", "acceptor"] as const)(
-    "the %s's flow gathers against the exchange's own relay, not this browser's",
+    "the %s's flow gathers against the exchange's own relay, not one left in storage",
     async (side) => {
       stubAppLocation();
       stubBrowserRelay(["turns:browser-relay.example.org:443"]);

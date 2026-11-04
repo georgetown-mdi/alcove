@@ -55,6 +55,13 @@ export const CONSOLE_RELAY_POINTER =
   "invitation, choose Over WebRTC, run here on its review step, and choose " +
   "Set a relay.";
 
+/** Where a hosted user enters a relay: each exchange's Connection
+ * settings. */
+export const HOSTED_RELAY_POINTER =
+  "If you can't connect to your partner, your IT team can give you a relay " +
+  "server address. Enter it under Connection settings when you create or " +
+  "accept an invitation, or on a saved exchange's page.";
+
 /**
  * The quick path's screen: two primary actions side by side -- invite a partner to a
  * one-off exchange, or paste an invitation you were sent -- then the first-visit
@@ -316,13 +323,7 @@ export function Lobby() {
           </p>
         ) : (
           <p className={`${styles.sub} ${styles.small}`}>
-            {
-              "If you can't connect to your partner, your IT team can give you a relay server address to enter in "
-            }
-            <Anchor inherit component={Link} to="/relay">
-              relay settings
-            </Anchor>
-            .
+            {HOSTED_RELAY_POINTER}
           </p>
         )}
       </main>

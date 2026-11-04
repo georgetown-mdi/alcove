@@ -14,6 +14,7 @@ import {
   safeParseStandardization,
 } from "@alcove/core";
 
+import { OwnRelaySchema } from "@psi/transport/ownRelaySetting";
 import { deepLinkFor } from "@psi/invitation";
 import { invitationUsable } from "@psi/formatting";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
@@ -27,6 +28,7 @@ import type {
   Standardization,
 } from "@alcove/core";
 import type { GeneratedInvitation } from "@psi/invitation";
+import type { OwnRelay } from "@psi/transport/ownRelaySetting";
 import type { RunFailure } from "./useInviterExchange";
 import type { RunOutputs } from "@psi/runOutputs";
 
@@ -73,6 +75,8 @@ interface StoredRecord {
   includeOwnColumns?: OwnColumnSelection;
   includeMatchingKey?: true;
   allowedRelays?: Array<string>;
+  ownRelay?: OwnRelay;
+  defaultRelayOn?: true;
 }
 
 function storage(): Storage | undefined {
@@ -117,6 +121,10 @@ export function writePendingInvitation(
     ...(invitation.allowedRelays !== undefined
       ? { allowedRelays: [...invitation.allowedRelays] }
       : {}),
+    ...(invitation.ownRelay !== undefined
+      ? { ownRelay: invitation.ownRelay }
+      : {}),
+    ...(invitation.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
   };
   try {
     storage()?.setItem(STORAGE_KEY, JSON.stringify(record));
@@ -269,6 +277,8 @@ const STORED_MEMBERS: ReadonlySet<string> = new Set(
     includeOwnColumns: true,
     includeMatchingKey: true,
     allowedRelays: true,
+    ownRelay: true,
+    defaultRelayOn: true,
   } satisfies Record<keyof StoredRecord, true>),
 );
 
@@ -365,6 +375,14 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
     return undefined;
   if (allowedRelays !== undefined && !isAllowedRelayList(allowedRelays))
     return undefined;
+  if (fields.defaultRelayOn !== undefined && fields.defaultRelayOn !== true)
+    return undefined;
+  let ownRelay: OwnRelay | undefined;
+  if (fields.ownRelay !== undefined) {
+    const parsed = OwnRelaySchema.safeParse(fields.ownRelay);
+    if (!parsed.success) return undefined;
+    ownRelay = parsed.data;
+  }
   if (
     csvDelimiter !== undefined &&
     (typeof csvDelimiter !== "string" || !isCsvDelimiterChoice(csvDelimiter))
@@ -402,6 +420,8 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
     ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
     ...(includeMatchingKey !== undefined ? { includeMatchingKey } : {}),
     ...(allowedRelays !== undefined ? { allowedRelays } : {}),
+    ...(ownRelay !== undefined ? { ownRelay } : {}),
+    ...(fields.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
   };
 }
 
@@ -468,6 +488,8 @@ async function pendingInvitationOf(
       ...(stored.allowedRelays !== undefined
         ? { allowedRelays: stored.allowedRelays }
         : {}),
+      ...(stored.ownRelay !== undefined ? { ownRelay: stored.ownRelay } : {}),
+      ...(stored.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
     },
     inviterName: stored.inviterName,
     fileName: stored.fileName,

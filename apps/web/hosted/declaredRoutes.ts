@@ -26,6 +26,14 @@ const routesDirectory = fileURLToPath(
  */
 export const EXCLUDED_ROUTE_PREFIX = "/bench";
 
+/**
+ * Redirect-only routes outside the `/bench` subtree. Each has a `beforeLoad`
+ * that throws a redirect and no component, so the route tree resolves it from
+ * the shell's own graph before any lazy load: there is no route code to warm.
+ * test/integration/offlineUnvisitedRoute.test.ts holds the offline redirect.
+ */
+export const EXCLUDED_ROUTE_PATHS: ReadonlyArray<string> = ["/relay"];
+
 /** Every route file under src/routes, recursively, excluding the root route and
  * the server routes under api/ (which the worker never intercepts). */
 function routeFiles(directory: string): Array<string> {
@@ -47,8 +55,8 @@ export interface DeclaredRoute {
   readonly path: string;
 }
 
-/** Every route file outside {@link EXCLUDED_ROUTE_PREFIX} with the path it
- * declares. */
+/** Every route file outside {@link EXCLUDED_ROUTE_PREFIX} and
+ * {@link EXCLUDED_ROUTE_PATHS} with the path it declares. */
 export function declaredRoutes(): Array<DeclaredRoute> {
   return routeFiles(routesDirectory)
     .map((file) => {
@@ -60,7 +68,11 @@ export function declaredRoutes(): Array<DeclaredRoute> {
       const path = declared[1];
       return { file, path: path.length > 1 ? path.replace(/\/$/, "") : path };
     })
-    .filter(({ path }) => !path.startsWith(EXCLUDED_ROUTE_PREFIX));
+    .filter(
+      ({ path }) =>
+        !path.startsWith(EXCLUDED_ROUTE_PREFIX) &&
+        !EXCLUDED_ROUTE_PATHS.includes(path),
+    );
 }
 
 /** The route path each file declares (see {@link DeclaredRoute.path}). */

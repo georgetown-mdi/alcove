@@ -24,8 +24,8 @@ import type { RouteState } from "./routeStates";
 
 // The contrast sweep (contrastSweep.ts) over the console profile's route
 // states, in both schemes: the console's own cards render on the exchange
-// screens in place of the hosted ones. The `/saved` routes and `/relay`
-// redirect on the console, so they have no state here.
+// screens in place of the hosted ones. The `/saved` routes redirect on the
+// console, so they have no state here.
 
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
@@ -173,10 +173,7 @@ describe("console route contrast sweep (WCAG 2.1 AA)", () => {
     const swept = new Set(CONSOLE_ROUTE_STATES.map(({ route }) => route));
     expect(
       declaredRoutes().filter(
-        (route) =>
-          !route.startsWith("/saved") &&
-          route !== "/relay" &&
-          !swept.has(route),
+        (route) => !route.startsWith("/saved") && !swept.has(route),
       ),
     ).toEqual([]);
   });

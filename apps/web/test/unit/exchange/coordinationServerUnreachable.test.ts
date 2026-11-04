@@ -14,10 +14,10 @@ import { CoordinationServerUnreachableError } from "@psi/transport/signalingAddr
 import type Peer from "peerjs";
 import type { WebRTCEndpoint } from "@alcove/core";
 
-// An inviter whose invitation names the coordination server this browser's
-// setting named, and whose registration there goes unanswered, fails naming
-// that server and the control that clears the setting. The build's own server
-// going unanswered keeps the generic transport failure.
+// An inviter whose invitation names a coordination server other than the
+// build's, and whose registration there goes unanswered, fails naming that
+// server and where to change it. The build's own server going unanswered keeps
+// the generic transport failure.
 
 vi.mock("@utils/clientConfig", async (importOriginal) =>
   (await import("../../utils/clientConfigMock")).clientConfigMock(
@@ -77,7 +77,7 @@ afterEach(() => {
 });
 
 describe("an inviter's unanswered registration", () => {
-  test("at the server the setting named fails naming it and how to clear it", async () => {
+  test("at the server the invitation named fails naming it and how to change it", async () => {
     const error = await listenUnanswered(SET_SERVER);
 
     expect(error).toBeInstanceOf(CoordinationServerUnreachableError);
@@ -90,11 +90,11 @@ describe("an inviter's unanswered registration", () => {
     expect(failure.message).toBe(
       "This page could not connect to " +
         "wss://coordination.agency.example/signal/, the coordination server " +
-        "set in relay settings, which this invitation names. Your partner " +
-        "cannot use this invitation until that server answers. Ask whoever " +
-        "runs it to check it, then choose Try again. Or clear the address " +
-        "under Coordination server in relay settings, choose Start over " +
-        "with a fresh invitation, and send your partner the new one.",
+        "this invitation names. Your partner cannot use this invitation " +
+        "until that server answers. Ask whoever runs it to check it, then " +
+        "choose Try again. Or choose Start over with a fresh invitation, " +
+        "change the Coordination server under Connection settings, and send " +
+        "your partner the new invitation.",
     );
     expect(failure.retry).toBe("offered");
     expect(failure.coordinationServerUnreachable).toBe(true);

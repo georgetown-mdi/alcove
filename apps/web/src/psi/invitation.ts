@@ -20,12 +20,15 @@ import {
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
+import {
+  ownRelayForInvitation,
+  ownRelayRead,
+} from "./transport/ownRelaySetting";
 import { emptyColumnPositions } from "./columnNames";
 import { linkageRefusalFor } from "./linkageRefusal";
 import { loadCSVFileOffMainThread } from "./workers/csvParseController";
 import { matchingKeyField } from "./matchingKeyModel";
 import { ownColumnsField } from "./ownColumnsModel";
-import { ownRelayForInvitation } from "./transport/ownRelaySetting";
 import { standardizationForTerms } from "./authoring/advancedInviteTerms";
 
 import {
@@ -46,10 +49,10 @@ import type {
   WebRTCEndpoint,
 } from "@alcove/core";
 
+import type { OwnRelay, RelayUrls } from "./transport/ownRelaySetting";
 import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { LinkageRefusal } from "./linkageRefusal";
 import type { OwnColumnsChoice } from "./ownColumnsModel";
-import type { RelayUrls } from "./transport/ownRelaySetting";
 import type { SignalingAddress } from "./transport/signalingAddress";
 
 /** The CSV input {@link generateInvitation} parses, typed from
@@ -157,6 +160,12 @@ export interface GeneratedInvitation {
    * restricts none. The run and a save as a recurring exchange read them from
    * here. Never in the token. */
   allowedRelays?: ReadonlyArray<string>;
+  /** The exchange's own relay, as given to the mint, which the run and a
+   * save as a recurring exchange read. */
+  ownRelay?: OwnRelay;
+  /** The exchange turned on the relay server the build offers switched
+   * off. */
+  defaultRelayOn?: true;
 }
 
 /** Why {@link generateInvitation} refused the inviter's file. Each is
@@ -330,8 +339,8 @@ export type ConnectionEndpointRequest =
 
 /**
  * Resolve a request to the token's endpoint. This app's own webrtc locator
- * names this browser's own relay ({@link ownRelayForInvitation}) and the build's
- * default relay with its registrar, where the locator has room for it
+ * names the exchange's own relay ({@link ownRelayForInvitation}) and the
+ * build's default relay with its registrar, where the locator has room for it
  * ({@link invitationRelayWithDefault}); no registrar is contacted. A webrtc
  * endpoint naming its host is taken as given.
  */
@@ -340,12 +349,13 @@ function resolveConnectionEndpoint(
   location: InvitationLocation,
   readDefaultRelay: () => DefaultRelaySetting | undefined,
   allowedRelays: ReadonlyArray<string> | undefined,
+  ownRelay: OwnRelay | undefined,
 ): ConnectionEndpoint {
   if (request.channel === "webrtc" && !("host" in request))
     return invitationWebrtcEndpoint(
       location,
       invitationRelayWithDefault(
-        ownRelayForInvitation(allowedRelays),
+        ownRelayForInvitation(allowedRelays, () => ownRelayRead(ownRelay)),
         readDefaultRelay(),
         allowedRelays,
       ),
@@ -427,9 +437,15 @@ export async function generateInvitation(params: {
   /** Whether the inviter's result file names the key each pair matched on,
    * narrowed against the emitted terms and returned. Omitted is off. */
   includeMatchingKey?: boolean;
-  /** Reads the default relay in use; {@link defaultRelayInUse} when
-   * omitted. */
+  /** Reads the default relay in use; {@link defaultRelayInUse} of
+   * `defaultRelayOn` when omitted. */
   defaultRelay?: () => DefaultRelaySetting | undefined;
+  /** The exchange's own relay, which a webrtc locator names; none when
+   * omitted. Returned. */
+  ownRelay?: OwnRelay;
+  /** Whether the exchange turns on the relay server the build offers
+   * switched off; off when omitted. Returned. */
+  defaultRelayOn?: boolean;
   /**
    * The relays this exchange may use (`turnUrlIsAllowed` in core): a webrtc
    * locator names no TURN url they leave out. Returned as
@@ -584,8 +600,11 @@ export async function generateInvitation(params: {
   const resolvedEndpoint = resolveConnectionEndpoint(
     connectionEndpoint,
     location,
-    params.defaultRelay ?? defaultRelayInUse,
+    params.defaultRelay ??
+      (() =>
+        defaultRelayInUse(undefined, () => params.defaultRelayOn === true)),
     params.allowedRelays,
+    params.ownRelay,
   );
   const token: InvitationToken = {
     version: "1",
@@ -614,5 +633,7 @@ export async function generateInvitation(params: {
     ...(params.allowedRelays !== undefined && {
       allowedRelays: params.allowedRelays,
     }),
+    ...(params.ownRelay !== undefined && { ownRelay: params.ownRelay }),
+    ...(params.defaultRelayOn === true && { defaultRelayOn: true as const }),
   };
 }

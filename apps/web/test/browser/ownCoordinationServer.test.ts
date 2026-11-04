@@ -8,9 +8,9 @@ import { decodeInvitation } from "@alcove/core";
 
 import { dialAsAcceptor, listenAsInviter } from "@psi/transport/rendezvous";
 import {
-  parseCoordinationServerUrl,
-  writeCoordinationServerSetting,
-} from "@psi/transport/coordinationServerSetting";
+  exchangeConnectionRead,
+  siteSignalingServerText,
+} from "@recurring/managedConnectionSettingsModel";
 import { boundPeerSignaling } from "@psi/transport/signalingBounds";
 import { generateInvitation } from "@psi/invitation";
 import { invitationLocation } from "@psi/invitationLocation";
@@ -22,8 +22,9 @@ import type { DataConnection, PeerOptions } from "peerjs";
 import type { WebRTCEndpoint } from "@alcove/core";
 
 /**
- * A browser inviter with its own coordination server set, in real Chromium
- * over the standalone broker: the invitation it creates names that server,
+ * A browser inviter naming another coordination server in its invitation's
+ * Connection settings, in real Chromium over the standalone broker: the
+ * invitation it creates names that server,
  * the inviter registers there rather than at this page's own `/api/`, and an
  * acceptor dialling the server the invitation names reaches it.
  *
@@ -49,29 +50,35 @@ const peers: Array<Peer> = [];
 
 afterEach(() => {
   for (const peer of peers.splice(0)) peer.destroy();
-  writeCoordinationServerSetting(undefined);
 });
 
 test(
-  "an inviter with its own coordination server registers there, and an acceptor reaches it",
+  "an inviter naming another coordination server registers there, and an acceptor reaches it",
   { timeout: 60_000 },
   async (ctx) => {
     if (!(await canReachServer(hostString)))
       return ctx.skip(
         `PeerJS coordination server at ${hostString} unreachable`,
       );
-    const entry = parseCoordinationServerUrl(
-      `ws://${brokerHost}:${String(brokerPort)}/api/`,
-      window.location.protocol,
+    const pageProtocol = window.location.protocol;
+    const connection = exchangeConnectionRead(
+      {
+        server: `ws://${brokerHost}:${String(brokerPort)}/api/`,
+        turn: "",
+        stun: "",
+        websocket: "",
+        defaultRelayOn: false,
+      },
+      siteSignalingServerText(pageProtocol),
+      pageProtocol,
     );
-    if (!entry.ok) throw new Error(entry.message);
-    writeCoordinationServerSetting(entry.url);
+    if (!connection.ok) throw new Error(JSON.stringify(connection.errors));
 
     const minted = await generateInvitation({
       allowedRelays: undefined,
       inviterName: "County Health Dept",
       profiledColumns: ["ssn", "first_name", "last_name", "dob"],
-      location: invitationLocation(),
+      location: invitationLocation(connection.signaling),
       defaultRelay: () => undefined,
     });
     const named = (await decodeInvitation(minted.encoded)).connectionEndpoint;

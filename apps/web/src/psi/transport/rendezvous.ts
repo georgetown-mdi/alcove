@@ -145,7 +145,7 @@ const RELAY_CREDENTIAL_LABEL = "alcove";
  * the relay key the exchange's shared secret derives. Every relay a browser
  * run lists, its own, the invitation's and the build's default, is keyed from
  * that relay key, so the one credential serves each. The STUN entry is the
- * relay's STUN urls, this browser's own and the invitation's, each once, in
+ * relay's STUN urls, the exchange's own and the invitation's, each once, in
  * place of the default STUN server, as on the CLI; with none it is the
  * default alone. A party that cannot reach the STUN servers listed gathers
  * no server-reflexive candidate the default would have given. Nothing minted
@@ -207,8 +207,7 @@ function buildPeerOptions(
 
 /**
  * The inviter's signaling location, for listening on its derived id: the
- * server its invitation names, so a change to this browser's setting after
- * the invitation was created moves no inviter. The scheme, and a missing
+ * server its invitation names. The scheme, and a missing
  * port and path, are resolved as {@link acceptorLocationFromEndpoint}
  * resolves them, so both parties reach the same address.
  *

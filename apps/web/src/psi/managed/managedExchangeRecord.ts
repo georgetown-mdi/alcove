@@ -1108,7 +1108,7 @@ export function managedAllowedRelays(
 }
 
 /** A record's own relays in the form the run and invitation helpers of
- * ../transport/ownRelaySetting.ts read this browser's setting in. */
+ * ../transport/ownRelaySetting.ts read them in. */
 export function managedOwnRelayRead(
   record: Pick<ManagedExchangeRecord, "ownRelay">,
 ): OwnRelayRead {

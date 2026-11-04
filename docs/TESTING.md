@@ -397,7 +397,7 @@ the loopback TLS certificate (`apps/web/test/devServer/relayTls.ts`), and the
 project launches Chromium with `--ignore-certificate-errors-spki-list` naming
 that certificate's key, so the page accepts it and no other; without the switch
 Chromium refuses the socket (`ERR_CERT_AUTHORITY_INVALID`). The suite lists the
-relay from this browser's own relay setting, as a run does, dials it through the
+relay as an exchange's own relay, as a run does, dials it through the
 production client, enrolls each exchange's key through a test route beside it,
 and reads back what the relay forwarded through another.
 
@@ -511,8 +511,8 @@ and inviter spec assembly, and its browser WASM PSI engine.
 
 `cliWebRelayFallback.test.ts` meets the CLI party over the WebSocket relay
 instead, with WebRTC blocked. The CLI waits at the standalone broker and parks
-at a `wss` relay the test runs on loopback; the web party lists that relay from
-its own relay setting and races it through the app's fallback. Its WebRTC open
+at a `wss` relay the test runs on loopback; the web party lists that relay as
+its exchange's own relay and races it through the app's fallback. Its WebRTC open
 is the harness's: Node cannot stand up a browser peer connection, so it reports
 the path failed at once, and the CLI abandons WebRTC on the web party's start
 and follows it onto the relay. The CLI trusts the relay's loopback certificate

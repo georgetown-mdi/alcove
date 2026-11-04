@@ -131,6 +131,43 @@ describe("the invitation kept for a resume", () => {
     ]);
   });
 
+  test("keeps the relay and the switch the mint took, and a resume runs under them", async () => {
+    const ownRelay = {
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      stun: [],
+    };
+    const minted = await generateInvitation({
+      allowedRelays: undefined,
+      inviterName: "County Health Dept",
+      file: Readable.from(CSV),
+      location,
+      ownRelay,
+      defaultRelayOn: true,
+    });
+    writePendingInvitation(minted, context);
+    expect(JSON.parse(storage.getItem(STORAGE_KEY) ?? "")).toMatchObject({
+      ownRelay,
+      defaultRelayOn: true,
+    });
+
+    const pending = await readPendingInvitation(new Date());
+    if (pending === undefined) throw new Error("no pending invitation");
+    const outcome = await resumeFromChosenFile(pending, Readable.from(CSV));
+    if (outcome.kind !== "resumed") throw new Error(outcome.kind);
+    expect(outcome.invitation.ownRelay).toEqual(ownRelay);
+    expect(outcome.invitation.defaultRelayOn).toBe(true);
+  });
+
+  test("an invitation minted with no relay keeps none, and the switch off", async () => {
+    writePendingInvitation(await mint(), context);
+    const entry: unknown = JSON.parse(storage.getItem(STORAGE_KEY) ?? "");
+    expect(entry).not.toHaveProperty("ownRelay");
+    expect(entry).not.toHaveProperty("defaultRelayOn");
+    const pending = await readPendingInvitation(new Date());
+    expect(pending?.invitation).not.toHaveProperty("ownRelay");
+    expect(pending?.invitation).not.toHaveProperty("defaultRelayOn");
+  });
+
   test("an invitation minted with no allowed relays keeps none", async () => {
     writePendingInvitation(await mint(), context);
     expect(JSON.parse(storage.getItem(STORAGE_KEY) ?? "")).not.toHaveProperty(
@@ -317,6 +354,16 @@ describe("the invitation kept for a resume", () => {
       "holds an allowed relay naming a scheme",
       (entry) => (entry.allowedRelays = ["turns:relay.example.org:443"]),
     ],
+    [
+      "holds a relay holding a credential",
+      (entry) =>
+        (entry.ownRelay = {
+          turn: ["turn:relay.example.org"],
+          stun: [],
+          credential: "not-a-real-credential",
+        }),
+    ],
+    ["holds a switch written off", (entry) => (entry.defaultRelayOn = false)],
     [
       "holds an allowed relay twice",
       (entry) =>

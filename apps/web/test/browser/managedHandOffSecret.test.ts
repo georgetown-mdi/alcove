@@ -24,9 +24,9 @@ import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
 import { managedAllowedRelays } from "@psi/managed/managedExchangeRecord";
 import { stagesFor } from "@exchange/exchangeRun";
-import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { createAppMount } from "./renderApp";
+import { setOwnRelay } from "./connectionSettings";
 
 import { lifecycleCall, lifecycleCalls } from "./moduleMocks";
 
@@ -61,7 +61,6 @@ afterEach(async () => {
   app.unmount();
   window.location.hash = "";
   lifecycleCalls.length = 0;
-  writeOwnRelaySetting({ turn: [], stun: [] });
   await clearManagedExchanges();
 });
 
@@ -157,8 +156,7 @@ describe("the managed record a one-shot hand-off deposits", () => {
     expect(record.sharedSecret).not.toBe(invitationSecret);
   });
 
-  test("the inviter's record keeps the Allowed relays set on its review", async () => {
-    writeOwnRelaySetting({ turn: ["turn:own.example.org"], stun: [] });
+  test("the inviter's record keeps the relay and the Allowed relays set on its review", async () => {
     app.render(createElement(InviterScreen));
     await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
     const fileInput = document.querySelector('input[type="file"]');
@@ -180,6 +178,7 @@ describe("the managed record a one-shot hand-off deposits", () => {
     await page
       .getByRole("button", { name: "Continue to review & create" })
       .click();
+    await setOwnRelay({ turn: ["turn:own.example.org"] });
     await page.getByRole("button", { name: "Set Allowed relays" }).click();
     await userEvent.fill(
       page.getByRole("textbox", { name: "Allowed relays" }),
@@ -224,15 +223,15 @@ describe("the managed record a one-shot hand-off deposits", () => {
     expect(record.sharedSecret).not.toBe(token.sharedSecret);
   });
 
-  test("the acceptor's record keeps the Allowed relays set on its review, not this browser's", async () => {
+  test("the acceptor's record keeps the relay and the Allowed relays set on its review, not this browser's", async () => {
     window.localStorage.setItem(
       "alcove-relay-restriction",
       JSON.stringify({ version: 1, allowedRelays: ["browser.example.org"] }),
     );
-    writeOwnRelaySetting({ turn: ["turn:own.example.org"], stun: [] });
     try {
       window.location.hash = await encodeInvitation(acceptorToken());
       app.render(createElement(AcceptorScreen));
+      await setOwnRelay({ turn: ["turn:own.example.org"] });
       await page.getByRole("button", { name: "Set Allowed relays" }).click();
       await userEvent.fill(
         page.getByRole("textbox", { name: "Allowed relays" }),

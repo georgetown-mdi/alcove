@@ -25,6 +25,7 @@ import type { LinkageTerms, RelayLocator } from "@alcove/core";
 import type { AcceptableInvitation } from "@psi/acceptInvitation";
 import type { AcceptorAcquiredCsv } from "@exchange/acceptorColumnsModel";
 import type { AlertContent } from "@components/csvIntake";
+import type { ConnectionSettingsText } from "@recurring/managedConnectionSettingsModel";
 import type { ProfiledJobInput } from "@psi/jobClient/workInputClient";
 
 // Headers chosen from inferMetadata's exact-match alias table, as the acceptor
@@ -806,6 +807,68 @@ describe("the review step's allowed relays", () => {
     ]);
     const committedEmpty = accepted({ type: "review-continued" });
     expect(launch(committedEmpty).launched?.allowedRelays).toBeUndefined();
+  });
+});
+
+describe("the review step's Connection settings", () => {
+  const TURN = "turns:relay.example.org:443?transport=tcp";
+  const changed = (
+    change: Partial<ConnectionSettingsText>,
+    state = ACCEPTOR_SCREEN_INITIAL,
+  ) =>
+    acceptorScreenReducer(state, {
+      type: "connection-settings-changed",
+      change,
+    });
+  const continued = (state: AcceptorScreenState) =>
+    acceptorScreenReducer(state, { type: "review-continued" });
+  const launch = (state: AcceptorScreenState) =>
+    acceptorScreenReducer(state, {
+      type: "exchange-launched",
+      edits: { metadata: [], standardization: [] },
+    });
+
+  test("start with no relay and the switch off", () => {
+    expect(ACCEPTOR_SCREEN_INITIAL.acceptorConnection).toEqual({
+      server: "",
+      turn: "",
+      stun: "",
+      websocket: "",
+      defaultRelayOn: false,
+    });
+    expect(continued(ACCEPTOR_SCREEN_INITIAL).committedAllowedRelays).toEqual(
+      {},
+    );
+  });
+
+  test("Continue commits the relay and the switch, and a launch takes them", () => {
+    const committed = continued(changed({ turn: TURN, defaultRelayOn: true }));
+    expect(committed.committedAllowedRelays).toEqual({
+      ownRelay: { turn: [TURN], stun: [] },
+      defaultRelayOn: true,
+    });
+    expect(launch(committed).launched).toMatchObject({
+      ownRelay: { turn: [TURN], stun: [] },
+      defaultRelayOn: true,
+    });
+    expect(launch(continued(ACCEPTOR_SCREEN_INITIAL)).launched).toMatchObject({
+      defaultRelayOn: false,
+    });
+    expect(
+      launch(continued(ACCEPTOR_SCREEN_INITIAL)).launched,
+    ).not.toHaveProperty("ownRelay");
+  });
+
+  test("an edit after Continue voids the commit until the next one", () => {
+    const committed = continued(changed({ turn: TURN }));
+    const edited = changed({ turn: "" }, committed);
+    expect(edited.committedAllowedRelays).toBeUndefined();
+    expect(continued(edited).committedAllowedRelays).toEqual({});
+  });
+
+  test("Continue over a refused url changes nothing", () => {
+    const state = changed({ turn: "turn:" });
+    expect(continued(state)).toBe(state);
   });
 });
 

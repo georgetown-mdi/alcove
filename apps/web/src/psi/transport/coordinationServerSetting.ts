@@ -1,36 +1,18 @@
 /**
- * This browser's own coordination server: the address a user names on the
- * relay settings page for the invitations this browser creates, kept in
- * localStorage and so held per origin. With none set, an invitation names the
- * deployment's own server (`ownSignalingAddress` in `./signalingAddress.ts`).
- * An invitation already created and an accepted invitation keep the server
- * they name, so a change here moves neither. A saved exchange holds its own
- * server, which its re-invites name, so a change here never reaches it.
+ * An exchange's coordination server address as a user types it in its
+ * Connection settings: the rule it is held to and the messages that refuse
+ * it. An invitation names the server its Connection settings name, the
+ * deployment's own (`ownSignalingAddress` in `./signalingAddress.ts`) unless
+ * changed; a saved exchange holds its own, which its re-invites name.
  */
-
-import { z } from "zod";
 
 import {
   MAX_ENDPOINT_HOST_LENGTH,
-  MAX_SIGNALING_SERVER_URL_LENGTH,
-  maxCodeUnits,
-  parseBoundedJson,
   publishedSignalingServerURL,
 } from "@alcove/core";
 
-/** The localStorage key the setting is written under. */
-const STORAGE_KEY = "alcove-own-coordination-server";
-
 /** The longest label, the text between two dots, a DNS host name may have. */
 const MAX_HOST_LABEL_LENGTH = 63;
-
-/** The stored value's schema version; a value under any other is refused. */
-const SETTING_VERSION = 1;
-
-const StoredCoordinationServerSchema = z.strictObject({
-  version: z.literal(SETTING_VERSION),
-  url: z.string().check(maxCodeUnits(MAX_SIGNALING_SERVER_URL_LENGTH)),
-});
 
 /** What {@link parseCoordinationServerUrl} made of the entered text. */
 export type CoordinationServerEntry =
@@ -106,68 +88,4 @@ export function parseCoordinationServerUrl(
   )
     return { ok: false, message: COORDINATION_SERVER_TOO_LONG_MESSAGE };
   return { ok: true, url: url.href };
-}
-
-/** How reading the stored setting turned out. */
-export type CoordinationServerRead =
-  /** Nothing is stored, or this context has no storage. */
-  | { kind: "none" }
-  | { kind: "set"; url: string }
-  /** A value is stored that this build or page refuses, or the browser
-   * refuses access to its storage, so whether one is set is unknown. */
-  | { kind: "unreadable" };
-
-/**
- * This context's localStorage, or `undefined` where it has none (server
- * rendering).
- *
- * @throws where the browser refuses access to it (storage disabled).
- */
-function storage(): Storage | undefined {
-  const store: Storage | undefined = globalThis.localStorage;
-  return store;
-}
-
-/** Read the stored coordination server, held again to
- * {@link parseCoordinationServerUrl} for a page served with `pageProtocol`. */
-export function readCoordinationServerSetting(
-  pageProtocol: string,
-): CoordinationServerRead {
-  let raw: string | null | undefined;
-  try {
-    raw = storage()?.getItem(STORAGE_KEY);
-  } catch {
-    return { kind: "unreadable" };
-  }
-  if (raw === null || raw === undefined) return { kind: "none" };
-  try {
-    const stored = StoredCoordinationServerSchema.parse(parseBoundedJson(raw));
-    const entry = parseCoordinationServerUrl(stored.url, pageProtocol);
-    if (!entry.ok || entry.url === undefined) return { kind: "unreadable" };
-    return { kind: "set", url: entry.url };
-  } catch {
-    return { kind: "unreadable" };
-  }
-}
-
-/**
- * Store `url` as this browser's coordination server, or remove the setting
- * when it is undefined. `url` is one {@link parseCoordinationServerUrl}
- * returned.
- *
- * @throws if storage is unavailable or refuses the write.
- */
-export function writeCoordinationServerSetting(url: string | undefined): void {
-  const store = storage();
-  if (store === undefined)
-    throw new Error("this browser's storage is not available");
-  if (url === undefined) {
-    store.removeItem(STORAGE_KEY);
-    return;
-  }
-  const value = StoredCoordinationServerSchema.parse({
-    version: SETTING_VERSION,
-    url,
-  });
-  store.setItem(STORAGE_KEY, JSON.stringify(value));
 }

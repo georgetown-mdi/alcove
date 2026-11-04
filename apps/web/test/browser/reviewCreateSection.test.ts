@@ -28,12 +28,6 @@ import { RECEIPTS_DEFAULT } from "@psi/receiptsModel";
 import { RUN_DIAGNOSTICS_DEFAULT } from "@psi/runDiagnosticsModel";
 import { ReviewCreateSection } from "@exchange/ReviewCreateSection";
 
-import {
-  parseCoordinationServerUrl,
-  writeCoordinationServerSetting,
-} from "@psi/transport/coordinationServerSetting";
-import { COORDINATION_SERVER_UNREADABLE_AT_INVITE } from "@exchange/CoordinationServerSection";
-
 import { workingFolderCommand } from "@psi/dockerRunCommand";
 
 import { createAppMount } from "./renderApp";
@@ -41,6 +35,7 @@ import { expectWorkingFolderCommandPerShell } from "./workingFolderCommandBlocks
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type { AdvancedInviteDraft } from "@psi/authoring/advancedInvite";
+import type { ConnectionSettingsText } from "@recurring/managedConnectionSettingsModel";
 import type { EditedTermsWarning } from "@console/mountedConfiguration";
 
 const INERT_COALESCE_NOTICE_NAME = "A default value will not be substituted";
@@ -69,6 +64,9 @@ function render(
     continuesOpenedExchange?: boolean;
     runWithheld?: string;
     editedTermsWarning?: EditedTermsWarning;
+    connectionSettings?: Parameters<
+      typeof ReviewCreateSection
+    >[0]["connectionSettings"];
   } = {},
 ) {
   app.render(
@@ -210,49 +208,85 @@ describe("ReviewCreateSection: the inert-coalesce notice", () => {
   });
 });
 
-describe("ReviewCreateSection: an unreadable coordination server setting", () => {
-  const unreadableWarning = () =>
-    page.getByText(COORDINATION_SERVER_UNREADABLE_AT_INVITE);
-
-  afterEach(() => {
-    window.localStorage.clear();
+describe("ReviewCreateSection: the Connection settings", () => {
+  const SERVER = "wss://signaling.example.org/api/";
+  const values = (
+    change: Partial<ConnectionSettingsText> = {},
+  ): ConnectionSettingsText => ({
+    server: SERVER,
+    turn: "",
+    stun: "",
+    websocket: "",
+    defaultRelayOn: false,
+    ...change,
   });
+  const createButton = () =>
+    page.getByRole("button", { name: "Create the invitation" });
 
-  test("warns that the invitation will name this site's server", async () => {
-    window.localStorage.setItem("alcove-own-coordination-server", "{not json");
-    render(editorFromCsv("Dana Okafor", csv));
+  test("show the coordination server and a relay line, and leave the create open", async () => {
+    render(editorFromCsv("Dana Okafor", csv), {
+      connectionSettings: {
+        values: values(),
+        errors: {},
+        ownRelay: undefined,
+        fixed: false,
+        onChange: () => undefined,
+      },
+    });
 
-    expect(COORDINATION_SERVER_UNREADABLE_AT_INVITE).toBe(
-      "Your saved coordination server could not be read, so this " +
-        "invitation will name this site's coordination server. To use " +
-        "yours, set it again in relay settings before you create the " +
-        "invitation.",
-    );
-    await expect.element(unreadableWarning()).toBeVisible();
     await expect
-      .element(page.getByRole("button", { name: "Create the invitation" }))
+      .element(page.getByRole("textbox", { name: "Coordination server" }))
+      .toHaveValue(SERVER);
+    await expect.element(page.getByText("No relay set.")).toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: "Set a relay" }))
       .toBeEnabled();
+    await expect.element(createButton()).toBeEnabled();
   });
 
-  test("shows nothing where the setting is unset or readable", async () => {
-    render(editorFromCsv("Dana Okafor", csv));
-    await expect
-      .element(page.getByRole("heading", { name: "Review & create" }))
-      .toBeInTheDocument();
-    expect(unreadableWarning().query()).toBeNull();
+  test("a value a field refuses holds the create", async () => {
+    render(editorFromCsv("Dana Okafor", csv), {
+      connectionSettings: {
+        values: values({ server: "" }),
+        errors: { server: "Enter a coordination server address." },
+        ownRelay: undefined,
+        fixed: false,
+        onChange: () => undefined,
+      },
+    });
 
-    app.unmount();
-    const entry = parseCoordinationServerUrl(
-      `${window.location.protocol === "https:" ? "wss" : "ws"}://coordination.agency.example/`,
-      window.location.protocol,
-    );
-    if (!entry.ok) throw new Error(entry.message);
-    writeCoordinationServerSetting(entry.url);
-    render(editorFromCsv("Dana Okafor", csv));
     await expect
-      .element(page.getByRole("heading", { name: "Review & create" }))
-      .toBeInTheDocument();
-    expect(unreadableWarning().query()).toBeNull();
+      .element(page.getByText("Enter a coordination server address."))
+      .toBeVisible();
+    await expect.element(createButton()).toBeDisabled();
+    expect(app.container.textContent).toContain(
+      "Resolve the connection settings above",
+    );
+  });
+
+  test("are fixed on what a created invitation took", async () => {
+    render(editorFromCsv("Dana Okafor", csv), {
+      connectionSettings: {
+        values: values({ turn: "turn:relay.example.org" }),
+        errors: {},
+        ownRelay: { turn: ["turn:relay.example.org"], stun: [] },
+        fixed: true,
+        onChange: () => undefined,
+      },
+    });
+
+    await expect
+      .element(page.getByRole("textbox", { name: "Coordination server" }))
+      .toHaveAttribute("readonly");
+    await expect
+      .element(page.getByText("Relay: turn:relay.example.org"))
+      .toBeVisible();
+    expect(
+      page.getByRole("button", { name: "Change relay" }).query(),
+    ).toBeNull();
+    expect(
+      page.getByRole("button", { name: "Remove relay" }).query(),
+    ).toBeNull();
   });
 });
 

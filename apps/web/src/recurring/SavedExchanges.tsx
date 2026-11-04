@@ -31,8 +31,8 @@ import {
 import { MAX_KEY_FILE_IMPORT_BYTES } from "@psi/managed/managedCommandLineImport";
 import { listManagedLocalState } from "@psi/managed/managedLocalState";
 
+import { HOSTED_RELAY_POINTER, Lobby } from "@exchange/Lobby";
 import { HOME_HEADLINE } from "@exchange/homeCopy";
-import { Lobby } from "@exchange/Lobby";
 import { PASTE_INVITATION_FIELD_ID } from "@psi/invitation";
 import { RECURRING_SETUP_HREF } from "@exchange/recurringSetup";
 
@@ -315,15 +315,7 @@ function SavedExchangesList({
         </Anchor>{" "}
         without saving it here.
       </p>
-      <p className={`${styles.sub} ${styles.small}`}>
-        If you can&apos;t connect to your partner, your IT team can give you a
-        relay server address. For a saved exchange, enter it under Connection
-        settings on its page. For a new exchange, enter it in{" "}
-        <Anchor inherit component={Link} to="/relay">
-          relay settings
-        </Anchor>
-        .
-      </p>
+      <p className={`${styles.sub} ${styles.small}`}>{HOSTED_RELAY_POINTER}</p>
       <ImportExchangeFile />
     </>
   );

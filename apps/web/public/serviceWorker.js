@@ -164,7 +164,6 @@ const SHELL_ROUTES = [
   "/accept",
   "/direct",
   "/verify",
-  "/relay",
 ];
 
 /** The document served when the network is unreachable and no shell has been

@@ -1,27 +1,33 @@
 import { isConsoleBuild } from "@utils/clientConfig";
 
-import { inviterSignalingAddress } from "./transport/signalingAddress";
+import { ownSignalingAddress } from "./transport/signalingAddress";
 
 import type { InvitationLocation } from "@psi/invitation";
 import type { ReinviteLocation } from "@psi/managed/managedReinvite";
+import type { SignalingAddress } from "./transport/signalingAddress";
 
 /**
- * This page's origin and the signaling address a new invitation names
- * ({@link inviterSignalingAddress}), in the shape
- * {@link generateInvitation} takes. It reads `window`, so it must be called
- * from the client and throws when `window` is absent rather than return a
- * server-side value. The inviter console's create and save-exchange-file paths
- * both use it so they build the locator identically.
+ * This page's origin and the signaling address a new invitation names,
+ * `signaling` where its Connection settings name one, else this deployment's
+ * own ({@link ownSignalingAddress}), in the shape {@link generateInvitation}
+ * takes. It reads `window`, so it must be called from the client and throws
+ * when `window` is absent rather than return a server-side value. The inviter
+ * console's create and save-exchange-file paths both use it so they build the
+ * locator identically.
  *
  * A console build names no signaling address: its server serves no signaling,
  * and its own origin is loopback, which a partner cannot reach.
  */
-export function invitationLocation(): InvitationLocation {
+export function invitationLocation(
+  signaling?: SignalingAddress,
+): InvitationLocation {
   if (typeof window === "undefined")
     throw new Error("invitationLocation must be called in the browser");
   return {
     origin: window.location.origin,
-    signaling: isConsoleBuild() ? undefined : inviterSignalingAddress(),
+    signaling: isConsoleBuild()
+      ? undefined
+      : (signaling ?? ownSignalingAddress()),
   };
 }
 

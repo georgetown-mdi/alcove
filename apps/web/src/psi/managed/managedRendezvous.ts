@@ -167,7 +167,7 @@ export class ManagedSignalingEndpointRefusedError extends Error {
  * ({@link refusedSignalingEndpointField}). An acceptor dials it and an
  * inviter registers at it; the port and scheme defaults are each flow's own,
  * as on a fresh run. No other source is read: not the page's location, not
- * this deployment's setting, not this browser's coordination server setting.
+ * this deployment's setting.
  *
  * @throws {Error} if the record is not a webrtc exchange
  *                 ({@link assertManagedRerunDispatchable}).

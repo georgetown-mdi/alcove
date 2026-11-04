@@ -82,8 +82,8 @@ import {
   runDiagnosticsIntentFields,
   runDiagnosticsProblems,
 } from "@psi/runDiagnosticsModel";
-import { browserRelaysForSavedExchange } from "@psi/transport/ownRelaySetting";
 import { byteSizeLabel } from "@psi/formatting";
+import { ownRelayRead } from "@psi/transport/ownRelaySetting";
 import { runListsRelay } from "@psi/transport/runRelayPlan";
 import { seedRows } from "@psi/inviterEditor";
 
@@ -149,6 +149,7 @@ import {
 import {
   ACCEPTOR_SCREEN_INITIAL,
   acceptOffersAllowedRelays,
+  acceptorConnectionRead,
   acceptorSampleInUse,
   acceptorScreenReducer,
 } from "./acceptorScreenModel";
@@ -168,6 +169,7 @@ import { AcceptorCleaningStep } from "./AcceptorCleaningStep";
 import { AcceptorColumnsStep } from "./AcceptorColumnsStep";
 import { AcceptorExchangeSection } from "./AcceptorExchangeSection";
 import { DefaultRelayNotice } from "./DefaultRelayNotice";
+import { ExchangeConnectionSettings } from "./ExchangeConnectionSettings";
 import { WorkShell } from "./WorkShell";
 import { createdFromSampleInThisBrowser } from "./sampleInvitationRecord";
 import { samplePartnerFile } from "./sampleData";
@@ -295,6 +297,7 @@ function AcceptorInvitationScreen({
   const {
     acceptedFile,
     acceptorAllowedRelays,
+    acceptorConnection,
     acceptorDeduplicate,
     acceptorName,
     acquired,
@@ -360,6 +363,17 @@ function AcceptorInvitationScreen({
     : allowedRelayLines.ok
       ? allowedRelayLines.entries
       : undefined;
+  // The review step's Connection settings on a browser WebRTC accept, read
+  // the same way and fixed with Allowed relays once a launch exists.
+  const connectionRead = acceptorConnectionRead(acceptorConnection);
+  const draftOwnRelay = allowedRelaysFixed
+    ? launched.ownRelay
+    : connectionRead.ok
+      ? connectionRead.ownRelay
+      : undefined;
+  const draftSwitchedOn = allowedRelaysFixed
+    ? launched.defaultRelayOn
+    : acceptorConnection.defaultRelayOn;
 
   // Decode the token once, failing closed: an empty fragment, a bad
   // checksum/schema, an expired token, or an endpoint this build cannot drive
@@ -651,7 +665,7 @@ function AcceptorInvitationScreen({
   // parsed, so the two cannot disagree.
   function continueFromReview() {
     dispatch({ type: "review-continued" });
-    if (allowedRelayLines.ok) goToStep("consent");
+    if (allowedRelayLines.ok && connectionRead.ok) goToStep("consent");
   }
 
   // The file-assurance line for the acceptor's own intake: the console reads the
@@ -970,6 +984,10 @@ function AcceptorInvitationScreen({
       inputSource,
       deduplicate: launched.deduplicate,
       allowedRelays: launched.allowedRelays,
+      ...(launched.ownRelay !== undefined
+        ? { ownRelay: launched.ownRelay }
+        : {}),
+      defaultRelayOn: launched.defaultRelayOn,
       ...(options !== undefined ? { options } : {}),
       runDiagnostics: runDiagnosticsIntentFields(
         fileSyncAccept
@@ -1356,7 +1374,10 @@ function AcceptorInvitationScreen({
             },
             connection: webrtcLocatorFromEndpoint(endpoint),
             allowedRelays: launched.allowedRelays,
-            ...browserRelaysForSavedExchange(),
+            ...(launched.ownRelay !== undefined
+              ? { ownRelay: launched.ownRelay }
+              : {}),
+            defaultRelayOn: launched.defaultRelayOn,
             rotatedSecret,
             choices,
           },
@@ -1443,17 +1464,34 @@ function AcceptorInvitationScreen({
             )}
             {!consoleBuild &&
               decode.invitation.endpoint.channel === "webrtc" && (
-                <DefaultRelayNotice
-                  {...(decode.invitation.endpoint.relay !== undefined && {
-                    invitationRelay: decode.invitation.endpoint.relay,
-                  })}
-                />
+                <>
+                  <ExchangeConnectionSettings
+                    text={acceptorConnection}
+                    errors={connectionRead.ok ? {} : connectionRead.errors}
+                    fixed={allowedRelaysFixed}
+                    showServer={false}
+                    onChange={(change) =>
+                      dispatch({ type: "connection-settings-changed", change })
+                    }
+                  />
+                  <DefaultRelayNotice
+                    ownRelay={draftOwnRelay}
+                    switchedOn={draftSwitchedOn}
+                    {...(decode.invitation.endpoint.relay !== undefined && {
+                      invitationRelay: decode.invitation.endpoint.relay,
+                    })}
+                  />
+                </>
               )}
             {acceptOffersAllowedRelays(
               decode.invitation.endpoint,
               consoleBuild,
               allowedRelaysFieldText !== "" || allowedRelaysEdited,
-              runListsRelay,
+              (invitationRelay) =>
+                runListsRelay(invitationRelay, {
+                  readOwn: () => ownRelayRead(draftOwnRelay),
+                  switchedOn: () => draftSwitchedOn,
+                }),
             ) && (
               <>
                 <AllowedRelaysField

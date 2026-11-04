@@ -1,21 +1,13 @@
 import { useState } from "react";
 
-import {
-  Alert,
-  Button,
-  Stack,
-  Switch,
-  TextInput,
-  Textarea,
-} from "@mantine/core";
+import { Alert, Button, Stack, Switch, TextInput } from "@mantine/core";
 
 import {
-  RELAY_OPERATOR_DISCLOSURE,
-  RELAY_PAGE_INTRO,
-  STUN_FIELD_DESCRIPTION,
-  TURN_FIELD_DESCRIPTION,
-  WEBSOCKET_RELAY_FIELD_DESCRIPTION,
-} from "@exchange/RelaySettingsScreen";
+  DEFAULT_RELAY_SWITCH_HELP,
+  RELAY_INTRO,
+  RelayFields,
+  SERVER_FIELD_DESCRIPTION,
+} from "@exchange/ExchangeConnectionSettings";
 import { DEFAULT_RELAY_SWITCH_LABEL } from "@psi/transport/defaultRelaySwitch";
 import { defaultRelayBuild } from "@utils/clientConfig";
 import styles from "@styles/app.module.css";
@@ -35,14 +27,6 @@ import type {
   ManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import type { DefaultRelayBuild } from "@utils/clientConfig";
-
-/** The server field's description. */
-export const SERVER_FIELD_DESCRIPTION =
-  "You and your partner must use the same server.";
-
-/** The switch's description, where the build offers its relay server
- * switched off. */
-export const DEFAULT_RELAY_SWITCH_HELP = `Use it when a network blocks a direct connection. ${RELAY_OPERATOR_DISCLOSURE}`;
 
 /**
  * A saved exchange's Connection settings: the coordination server its runs
@@ -113,7 +97,7 @@ export function ManagedConnectionSettings({
           errorProps={{ role: "alert" }}
           onChange={(event) => edit({ server: event.currentTarget.value })}
         />
-        <p className={styles.small}>{RELAY_PAGE_INTRO}</p>
+        <p className={styles.small}>{RELAY_INTRO}</p>
         {offersSwitch && (
           <Switch
             label={DEFAULT_RELAY_SWITCH_LABEL}
@@ -124,33 +108,11 @@ export function ManagedConnectionSettings({
             }
           />
         )}
-        <Textarea
-          label="TURN server urls"
-          description={TURN_FIELD_DESCRIPTION}
-          autosize
-          minRows={2}
-          value={text.turn}
-          error={errors.turn}
-          errorProps={{ role: "alert" }}
-          onChange={(event) => edit({ turn: event.currentTarget.value })}
-        />
-        <Textarea
-          label="STUN server urls"
-          description={STUN_FIELD_DESCRIPTION}
-          autosize
-          minRows={2}
-          value={text.stun}
-          error={errors.stun}
-          errorProps={{ role: "alert" }}
-          onChange={(event) => edit({ stun: event.currentTarget.value })}
-        />
-        <TextInput
-          label="WebSocket relay url"
-          description={WEBSOCKET_RELAY_FIELD_DESCRIPTION}
-          value={text.websocket}
-          error={errors.websocket}
-          errorProps={{ role: "alert" }}
-          onChange={(event) => edit({ websocket: event.currentTarget.value })}
+        <RelayFields
+          text={text}
+          errors={errors}
+          onChange={edit}
+          errorsAnnounced
         />
       </Stack>
       {failed && (
