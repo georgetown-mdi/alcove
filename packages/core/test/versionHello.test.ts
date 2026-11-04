@@ -310,15 +310,42 @@ describe("the hello over a handshake", () => {
     ["message 1", "1"],
     ["message 2", "2"],
   ])(
-    "a hello altered in %s, still selecting the same versions, fails the handshake with the generic failure",
+    "a hello altered in %s, dropping envelope version 2 and adding an unknown member, fails the handshake with the generic failure",
     async (_name, kexMsg) => {
-      // An added member the reader does not know: the selection is unchanged,
-      // so only the transcript tells the two hellos apart.
+      // The reader selects envelope version 1 from the altered hello where
+      // the sender offered [1, 2], and ignores the added member; the
+      // transcript binds the hello as sent, so the parties' keys differ.
       const altered = toBase64Url(
         enc.encode('{"kex":[3],"protocol":[1],"envelope":[1],"added":true}'),
       );
       const { initiatorConn, responderConn } = tamperedPipe((frame) =>
         frame.kexMsg === kexMsg ? { ...frame, hello: altered } : frame,
+      );
+      const results = await Promise.allSettled([
+        runKex(initiatorConn, "initiator", PSK, true),
+        runKex(responderConn, "responder", PSK, true),
+      ]);
+      for (const result of results) {
+        expect(result.status).toBe("rejected");
+        const reason = (result as PromiseRejectedResult).reason as unknown;
+        expect(reason).toBeInstanceOf(AuthenticationError);
+        expect((reason as Error).message).toBe(GENERIC_FAILURE);
+      }
+    },
+  );
+
+  test.each([
+    ["message 1", "1"],
+    ["message 2", "2"],
+  ])(
+    "a hello rewritten in %s to offer envelope version 1 alone fails the handshake with the generic failure",
+    async (_name, kexMsg) => {
+      expect(supportedVersions().envelope).toEqual([1, 2]);
+      const downgraded = toBase64Url(
+        enc.encode('{"kex":[3],"protocol":[1],"envelope":[1]}'),
+      );
+      const { initiatorConn, responderConn } = tamperedPipe((frame) =>
+        frame.kexMsg === kexMsg ? { ...frame, hello: downgraded } : frame,
       );
       const results = await Promise.allSettled([
         runKex(initiatorConn, "initiator", PSK, true),
