@@ -112,6 +112,10 @@ describe.each(deployments)(
         }
         expect(failedAssets).toEqual([]);
 
+        await page.goto(`${base}/relay`);
+        await page.locator("main").first().waitFor();
+        expect(new URL(page.url()).pathname).toBe("/exchange");
+
         await context.close();
       },
       WARM_TIMEOUT_MS + 60_000,
