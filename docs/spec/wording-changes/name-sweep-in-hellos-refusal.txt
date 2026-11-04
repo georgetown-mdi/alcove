@@ -1,0 +1,4 @@
+- - -> That refusal names the way out: if no other session is using the path, one party reruns with `--sweep-exchange-files`, then the other starts.
+- - -> A rerun against the hellos it leaves is refused by the entry guard, whose refusal names the recovery: one party reruns with `--sweep-exchange-files`, then the other starts, or in retain mode both run again once the hellos are older than the window.
+- - -> In retain mode it names the window instead, since the bare flag refuses a retain-mode folder: run again once the hellos are older than `unanswered_hello_window_ms`; with the window set to `infinite`, which never ignores a hello, it says to set a duration first.
+- - -> A delete-mode party that follows the advice and reruns with a bare `--sweep-exchange-files` is refused in turn, because the leftover partner hello advertises retain mode, and that refusal names `--force-retain-sweep`.
