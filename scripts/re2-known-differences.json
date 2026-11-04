@@ -1,0 +1,35 @@
+[
+  { "pattern": "\\C", "cause": "re2js has no \\C escape" },
+  {
+    "pattern": "(?P<n>a)(?P<n>b)",
+    "cause": "re2js rejects a repeated group name"
+  },
+  {
+    "pattern": "\\B",
+    "cause": "RE2 matches inside a multibyte character's UTF-8 bytes"
+  },
+  { "pattern": "(?i)Ɤ", "cause": "Unicode 16 case pair Ɤ/ɤ" },
+  { "pattern": "(?i)[Ɤ]", "cause": "Unicode 16 case pair Ɤ/ɤ" },
+  { "pattern": "(?i)[^Ɤ]", "cause": "Unicode 16 case pair Ɤ/ɤ" },
+  { "pattern": "(?i)ɤ", "cause": "Unicode 16 case pair Ɤ/ɤ" },
+  { "pattern": "(?i)[ɤ]", "cause": "Unicode 16 case pair Ɤ/ɤ" },
+  { "pattern": "(?i)[^ɤ]", "cause": "Unicode 16 case pair Ɤ/ɤ" },
+  { "pattern": "(?i)Ƛ", "cause": "Unicode 16 case pair Ƛ/ƛ" },
+  { "pattern": "(?i)[Ƛ]", "cause": "Unicode 16 case pair Ƛ/ƛ" },
+  { "pattern": "(?i)[^Ƛ]", "cause": "Unicode 16 case pair Ƛ/ƛ" },
+  { "pattern": "(?i)ƛ", "cause": "Unicode 16 case pair Ƛ/ƛ" },
+  { "pattern": "(?i)[ƛ]", "cause": "Unicode 16 case pair Ƛ/ƛ" },
+  { "pattern": "(?i)[^ƛ]", "cause": "Unicode 16 case pair Ƛ/ƛ" },
+  {
+    "pattern": "(?i)\\p{Lu}",
+    "cause": "Unicode 16 case pairs Ɤ/ɤ and Ƛ/ƛ"
+  },
+  {
+    "pattern": "(?i)\\p{Ll}",
+    "cause": "Unicode 16 case pairs Ɤ/ɤ and Ƛ/ƛ"
+  },
+  {
+    "pattern": "(?i)\\P{Lu}",
+    "cause": "Unicode 16 case pairs Ɤ/ɤ and Ƛ/ƛ"
+  }
+]
