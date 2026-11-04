@@ -13,6 +13,7 @@ import {
   dialectArgs,
   freeMegabytes,
   runProbe,
+  servedFrom,
   statusOf,
   transportFailed,
   withoutListingEntries,
@@ -20,6 +21,7 @@ import {
 import type { ProbeDeps } from "../../../src/doctor/probe";
 import type { SmbProbeInput } from "../../../src/doctor/smbEnvironment";
 import {
+  DOCTOR_EXIT_CODE,
   overallOf,
   verdictJson,
   verdictLines,
@@ -204,6 +206,8 @@ function healthyReply(args: string[]): Partial<CommandResult> {
   if (args.includes("--version")) return { output: "Version 4.19.5" };
   if (args.includes("-L")) return { output: SHARE_LIST };
   if (commandOf(args) === "ls") return { output: DIRECTORY_LISTING };
+  if (commandOf(args) === "showconnect")
+    return { output: `//${args[0].slice(2)}\n` };
   return { output: "" };
 }
 
@@ -680,7 +684,130 @@ describe("inputs that change the shape of the run", () => {
   });
 });
 
+describe("a subfolder that is a DFS link stops the run before anything is written", () => {
+  // Shaped after the checks' lines on a standalone DFS namespace path of a
+  // Windows file server: every step passed with no status, because smbclient
+  // followed the referral itself. The `showconnect` answer, the share the
+  // link points at, is modeled rather than recorded.
+  const NAMESPACE: SmbProbeInput = {
+    ...INPUT,
+    server: "alcove-winfs",
+    share: "AlcoveDfs",
+    subdirectory: "drop",
+    domain: "",
+  };
+  const NAMESPACE_SHARE_LIST = [
+    "\tSharename       Type      Comment",
+    "\t---------       ----      -------",
+    "\tAlcoveDfs       Disk",
+    "\tAlcoveShare     Disk",
+    "\tIPC$            IPC       Remote IPC",
+    "",
+  ].join("\n");
+  const EMPTY_LINK_LISTING = [
+    "  .                                   D        0  Mon Nov  3 21:40:00 2026",
+    "  ..                                  D        0  Mon Nov  3 21:40:00 2026",
+    "",
+    "\t\t52428800 blocks of size 1048576. 48255 blocks available",
+    "",
+  ].join("\n");
+
+  function namespaceReply(showconnect: string) {
+    return (args: string[]): Partial<CommandResult> => {
+      if (args.includes("--version")) return { output: "Version 4.21.4" };
+      if (args.includes("-L")) return { output: NAMESPACE_SHARE_LIST };
+      if (commandOf(args) === "ls") return { output: EMPTY_LINK_LISTING };
+      if (commandOf(args) === "showconnect") return { output: showconnect };
+      return { output: "" };
+    };
+  }
+
+  test("fails the subdirectory check with the DFS-link finding, exit 78", async () => {
+    const probeDeps = deps(namespaceReply("//alcove-winfs/AlcoveShare\n"));
+    const report = await runProbe(NAMESPACE, probeDeps);
+
+    expect(checkById(report, "authentication").status).toBe("ok");
+    expect(checkById(report, "share_open").status).toBe("ok");
+    const check = checkById(report, "subdirectory");
+    expect(check.status).toBe("fail");
+    expect(check.summary).toBe("this folder is a DFS link.");
+    expect(check.action).toContain("'Reading the real path from Windows'");
+    expect(DOCTOR_EXIT_CODE[overallOf(report)]).toBe(78);
+
+    const rendered = verdictLines(report);
+    expect(rendered).toContain("FAIL: this folder is a DFS link.");
+    expect(rendered.join("\n")).not.toContain("ALL CHECKS PASSED");
+
+    const showconnect = probeDeps.calls.find(
+      (call) => commandOf(call.args) === "showconnect",
+    );
+    expect(showconnect?.args[showconnect.args.indexOf("-D") + 1]).toBe("drop");
+    const commands = probeDeps.calls.map((call) => commandOf(call.args));
+    for (const command of commands)
+      expect(command ?? "").not.toMatch(/^(put|rename|del) /);
+    expect(checkById(report, "write").status).toBe("skipped");
+    expect(checkById(report, "marker").status).toBe("skipped");
+  });
+
+  test("the configured server and share, in any case, are not a DFS link", async () => {
+    const report = await runProbe(
+      NAMESPACE,
+      deps(namespaceReply("//ALCOVE-WINFS/alcovedfs\n")),
+    );
+    expect(checkById(report, "subdirectory").status).toBe("ok");
+    expect(overallOf(report)).toBe("ok");
+  });
+
+  test("a showconnect answer that names no share decides nothing", async () => {
+    for (const output of ["", "showconnect: command not found\n"]) {
+      const report = await runProbe(NAMESPACE, deps(namespaceReply(output)));
+      expect(checkById(report, "subdirectory").status).toBe("ok");
+      expect(overallOf(report)).toBe("ok");
+    }
+  });
+
+  test("a server that refuses the link outright gives the same finding", async () => {
+    const report = await runProbe(
+      NAMESPACE,
+      deps((args) =>
+        commandOf(args) === "ls" && args.includes("-D")
+          ? { code: 1, output: "cd \\drop\\: NT_STATUS_PATH_NOT_COVERED" }
+          : namespaceReply("")(args),
+      ),
+    );
+    const check = checkById(report, "subdirectory");
+    expect(check.status).toBe("fail");
+    expect(check.summary).toBe("NT_STATUS_PATH_NOT_COVERED");
+    expect(check.meaning).toContain("DFS link");
+    expect(check.action).toContain("'Reading the real path from Windows'");
+  });
+
+  test("the share root is not asked which share it is", async () => {
+    const probeDeps = deps(healthyReply);
+    await runProbe({ ...INPUT, subdirectory: "" }, probeDeps);
+    expect(probeDeps.calls.map((call) => commandOf(call.args))).not.toContain(
+      "showconnect",
+    );
+  });
+});
+
 describe("smbclient output parsing", () => {
+  test("servedFrom reads the first-column //server/share line, or nothing", () => {
+    expect(servedFrom("//alcove-winfs/AlcoveShare\n")).toEqual({
+      server: "alcove-winfs",
+      share: "AlcoveShare",
+    });
+    expect(servedFrom("//fs-04/Alcove Share$ \n")).toEqual({
+      server: "fs-04",
+      share: "Alcove Share$",
+    });
+    expect(servedFrom("  //alcove-winfs/AlcoveShare\n")).toBeUndefined();
+    expect(servedFrom("//alcove-winfs/AlcoveShare/drop\n")).toBeUndefined();
+    expect(
+      servedFrom("showconnect \\drop\\: NT_STATUS_IO_TIMEOUT"),
+    ).toBeUndefined();
+  });
+
   test("statusOf ignores NT_STATUS_OK and takes the first real status", () => {
     expect(statusOf("NT_STATUS_OK\nNT_STATUS_ACCESS_DENIED")).toBe(
       "NT_STATUS_ACCESS_DENIED",

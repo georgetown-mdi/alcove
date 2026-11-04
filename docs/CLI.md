@@ -1051,7 +1051,7 @@ alcove doctor mount DIRECTORY
 - **`doctor probe`** asks the SMB server directly over TCP, with nothing mounted: whether the name resolves from inside the container, whether port 445 is reachable, whether the credentials are accepted, whether the share and the folder open, and whether a file can be created, renamed, and deleted there.
 - **`doctor mount`** checks an already-mounted directory as the kernel presents it -- the operations Alcove's rendezvous is built on, which a share can refuse after passing every network check.
 
-Run both: the probe leaves a marker file and the mount check looks for it, which establishes that both point at the same directory. A wrong server, share, or subfolder (a DFS path is the usual cause) is caught there.
+Run both: the probe leaves a marker file and the mount check looks for it, which establishes that both point at the same directory. A wrong server, share, or subfolder (a DFS path is the usual cause) is caught there. A subfolder that is a DFS link fails the probe itself, before anything is written to the share.
 
 Neither mode changes anything on the share beyond its own working files. The probe removes every file it creates except the marker, and sweeps any `alcove-probe` working file already present; the mount check consumes the marker and removes the rest. On a share that refuses deletes, or a connection that dies mid-run, an `alcove-probe-*.tmp*` file can remain until the next run ([cleanup limits](spec/CLI_DOCTOR.md#cleanup-limits)).
 

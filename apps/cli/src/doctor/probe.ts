@@ -451,8 +451,8 @@ function shareOpenCheck(
         status,
         "the server is telling us outright that this path is a DFS link -- it " +
           "does not hold the data itself and expects the client to follow a " +
-          "referral to whichever server does. This container cannot follow " +
-          "one; it has no DFS client.",
+          "referral to whichever server does. A volume mounted on this path " +
+          "cannot follow one.",
         "find the real server by hand and pass it directly: open the folder in " +
           "File Explorer, right-click, Properties, DFS tab, and read the " +
           "referral. See the troubleshooting page, 'Reading the real path from " +
@@ -489,6 +489,54 @@ function shareOpenCheck(
   }
 }
 
+/**
+ * The server and share smbclient says it reached, from a `showconnect` run,
+ * or `undefined` when no such line came back. smbclient follows a DFS
+ * referral on its own, so a folder that is a DFS link opens without a status,
+ * and this is where it says it ended up on another share.
+ * @internal exported for testing
+ */
+export function servedFrom(
+  output: string,
+): { server: string; share: string } | undefined {
+  for (const line of output.split("\n")) {
+    const match = /^\/\/([^/\s]+)\/([^/]*[^/\s])\s*$/.exec(line);
+    if (match !== null) return { server: match[1], share: match[2] };
+  }
+  return undefined;
+}
+
+const DFS_LINK_MEANING =
+  "its files are on another share, and a volume mounted on this path " +
+  "cannot reach them.";
+const DFS_LINK_ACTION =
+  "read the real path from the folder's Properties, DFS tab and " +
+  "pass it as SMB_SERVER, SMB_SHARE, and SMB_PATH. See the " +
+  "troubleshooting page, 'Reading the real path from Windows'.";
+
+/**
+ * The subdirectory verdict when smbclient reached the folder on a server or
+ * share other than the one configured, or `undefined` when it did not or did
+ * not say.
+ */
+function dfsLinkCheck(
+  input: SmbProbeInput,
+  connection: CommandResult,
+): DoctorCheckRecord | undefined {
+  const reached = servedFrom(connection.output);
+  if (reached === undefined) return undefined;
+  const same = (a: string, b: string): boolean =>
+    a.toLowerCase() === b.toLowerCase();
+  if (same(reached.server, input.server) && same(reached.share, input.share))
+    return undefined;
+  return fail(
+    "subdirectory",
+    "this folder is a DFS link.",
+    DFS_LINK_MEANING,
+    DFS_LINK_ACTION,
+  );
+}
+
 /** Classify a refusal to open the subdirectory. */
 function subdirectoryCheck(
   input: SmbProbeInput,
@@ -508,13 +556,7 @@ function subdirectoryCheck(
             "give the folder the exchange runs in, not a file in it.",
           ]
         : status === "NT_STATUS_PATH_NOT_COVERED"
-          ? [
-              "this subfolder is a DFS link pointing at another server, and " +
-                "this container has no DFS client to follow it.",
-              "read the real path from the folder's Properties, DFS tab and " +
-                "pass it as SMB_SERVER, SMB_SHARE, and SMB_PATH. See the " +
-                "troubleshooting page, 'Reading the real path from Windows'.",
-            ]
+          ? [`this folder is a DFS link: ${DFS_LINK_MEANING}`, DFS_LINK_ACTION]
           : [
               "the subfolder exists but this account cannot open it.",
               "access to a share does not imply access to every folder in it. " +
@@ -853,6 +895,16 @@ export async function runProbe(
         checks.push(
           subdirectoryCheck(input, subdirectoryStatus, subdirectoryList),
         );
+        return finish();
+      }
+      const dfsLink = dfsLinkCheck(
+        input,
+        await smbclient(
+          shareArgs(input, authFile, input.subdirectory, "showconnect"),
+        ),
+      );
+      if (dfsLink !== undefined) {
+        checks.push(dfsLink);
         return finish();
       }
       checks.push(entryCountCheck("directory listed,", subdirectoryList));

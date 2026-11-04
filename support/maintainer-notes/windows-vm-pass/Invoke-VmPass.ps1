@@ -5,9 +5,13 @@
 
 .DESCRIPTION
     Each lap's screen is saved to <WorkRoot>\artifacts\<lap>.txt with the share
-    password removed. Laps: SelfTest, V1.1-V1.7, V2.1-V2.3, Podman, V3.1-V3.4,
+    password removed. Laps: SelfTest, V1.1-V1.7, V2.1-V2.3, Podman, V3.2-V3.4,
     V4.1, V4.2, V5. Every name of the lab -- the share's drive, its account,
     the DFS path and its target -- is a parameter.
+
+    There is no V3.1: over an RDP session UI Automation found no tab in the
+    folder's Properties sheet, so the DFS tab is not read and V3.4 runs on the
+    known target.
 
     The share password is read from a DPAPI file that -SaveSecret writes from a
     masked prompt. It reaches the scripts as a SecureString through
@@ -15,7 +19,7 @@
     an argument.
 
     Run it from a clone, in the signed-in user's own desktop session: the
-    mapped drive and the property sheets exist only there.
+    mapped drive exists only there.
 
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File .\Invoke-VmPass.ps1 -SaveSecret -SecretFile C:\pass\secret\share.dpapi
@@ -371,7 +375,7 @@ function Invoke-LapWrongPassword {
         -Answers @('Y', $script:Pass.ShareAccount, '', '@made-up-password', 'n')
     $reasons = @()
     if ($run.Exit -eq 0) { $reasons += 'exit 0' }
-    if ($run.Screen -notmatch '(?m)^.*FAIL.*authentication') { $reasons += 'no FAIL line naming authentication' }
+    if ($run.Screen -notmatch '(?m)^FAIL: NT_STATUS_LOGON_FAILURE') { $reasons += 'no line FAIL: NT_STATUS_LOGON_FAILURE' }
     if ((Get-VolumeNames) -contains 'alcove-vm-wrong') { $reasons += 'volume alcove-vm-wrong was made' }
     Write-LapResult -Name 'V1.2' -Exit $run.Exit -Reasons $reasons
 }
@@ -405,7 +409,7 @@ function Invoke-LapExchange {
         Invoke-Engine @('rm', '-f', $party.Name) | Out-Null
         if ($exit -ne '0') { $reasons += "$($party.Name) exit $exit" }
         if ($output -match 'exchange complete: (\d+) record') { $matched += [int] $Matches[1] } else { $matched += -1 }
-        $result = Get-ChildItem -LiteralPath $party.Work -Recurse -Filter '*.csv' | Where-Object { $_.Name -ne $party.Input } |
+        $result = Get-ChildItem -LiteralPath $party.Work -Recurse -File -Filter '*.csv' | Where-Object { $_.Name -ne $party.Input } |
             Sort-Object LastWriteTime | Select-Object -Last 1
         if ($result) { $rows += @(Import-Csv -LiteralPath $result.FullName).Count } else { $rows += 0 }
     }
@@ -591,7 +595,7 @@ function Invoke-LapInterrupt {
     Set-DockerDesktop start | Out-Null
     Invoke-Engine @('run', '-d', '--platform', 'linux/amd64', '--name', 'alcove-vm-stall-445', 'alpine/socat',
         'TCP-LISTEN:445,fork,reuseaddr', 'SYSTEM:sleep 600') | Out-Null
-    $stallAddress = (Invoke-Engine @('inspect', '-f', '{{.NetworkSettings.IPAddress}}', 'alcove-vm-stall-445')).Output.Trim()
+    $stallAddress = (Invoke-Engine @('inspect', '-f', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', 'alcove-vm-stall-445')).Output.Trim()
     $cmdArguments = "-Server $stallAddress -Share stall -VolumeName alcove-vm-stall"
 
     foreach ($case in @(
@@ -670,27 +674,12 @@ function Invoke-LapPodman {
         -LauncherSays 'Podman is installed but is not answering.' -SetupSays 'Podman is installed but is not answering.'
 }
 
-function Invoke-LapDfsTab {
-    $screenshot = Join-Path $script:Pass.Artifacts 'V3.1.png'
-    $said = & $script:PowerShellExe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $script:HelperFolder 'Read-DfsTab.ps1') `
-        -Path $script:Pass.DfsPath -ScreenshotFile $screenshot
-    $null = Save-Artifact -Name 'V3.1' -Text ([string] $said)
-    try { $tab = ([string] $said) | ConvertFrom-Json }
-    catch { $tab = [pscustomobject]@{ tab = $false; referrals = @(); error = 'the reader printed no JSON' } }
-    $reasons = @()
-    if ($tab.error) { $reasons += "error: $($tab.error)" }
-    if (-not $tab.tab) { $reasons += 'no DFS tab' }
-    $referral = @($tab.referrals | Where-Object { $_ -like '\\*' }) | Select-Object -First 1
-    if (@($tab.referrals) -notcontains $script:Pass.DfsTarget) { $reasons += 'the referral list lacks the target' }
-    if ($referral) { [IO.File]::WriteAllText((Join-Path $script:Pass.Artifacts 'V3.1.referral.txt'), $referral) }
-    Write-LapResult -Name 'V3.1' -Exit $null -Reasons $reasons -Notes @("referrals: $(@($tab.referrals) -join ', ')")
-}
-
 function Invoke-LapDfsSetup {
     <#  V3.2: the setup script given the namespace path. Passes on the
-        doctor's DFS-link finding, or on a volume that writes to the target. #>
+        doctor's DFS-link finding, or on a volume that writes to the target.
+        The last answer declines the offer to run the checks again. #>
     $run = Invoke-StandInRun -Name 'V3.2' -Target (Get-SetupScript) `
-        -Arguments @{ DropPath = $script:Pass.DfsPath; VolumeName = 'alcove-vm-dfs' } -Answers (@('Y') + (Get-CredentialAnswers))
+        -Arguments @{ DropPath = $script:Pass.DfsPath; VolumeName = 'alcove-vm-dfs' } -Answers (@('Y') + (Get-CredentialAnswers) + @('n'))
     $reasons = @()
     if ($run.Exit -eq 78) {
         if ($run.Screen -notmatch 'DFS link') { $reasons += 'exit 78 without the DFS-link finding' }
@@ -717,16 +706,11 @@ function Invoke-LapDfsDeclined {
 }
 
 function Invoke-LapDfsManual {
-    <#  V3.4: the launcher given the path V3.1 read off the DFS tab, or the
-        known target when it read none. #>
-    $notes = @()
-    $referralFile = Join-Path $script:Pass.Artifacts 'V3.1.referral.txt'
-    $path = $script:Pass.DfsTarget
-    if (Test-Path -LiteralPath $referralFile) { $path = (Get-Content -Raw -LiteralPath $referralFile).Trim() }
-    else { $notes += 'V3.1 read no referral; the known target was used' }
+    <#  V3.4: the launcher given the namespace's known target, the path
+        the DFS tab names. #>
     $parts = $script:Pass.DfsTarget.TrimStart('\').Split('\')
     $lap = Invoke-LauncherLap -Name 'V3.4' -Answers (@('Y') + (Get-CredentialAnswers)) `
-        -Arguments @{ RendezvousDir = $path; VolumeName = 'alcove-vm-dfs-manual' } -WhileRunning {
+        -Arguments @{ RendezvousDir = $script:Pass.DfsTarget; VolumeName = 'alcove-vm-dfs-manual' } -WhileRunning {
         param($report)
         if ($report.configured -ne $true) { 'rendezvous not configured' }
     }
@@ -735,7 +719,7 @@ function Invoke-LapDfsManual {
         if ($lap.Screen -notmatch [regex]::Escape($expected)) { $reasons += "screen lacks '$expected'" }
     }
     Remove-Volumes @('alcove-vm-dfs-manual')
-    Write-LapResult -Name 'V3.4' -Exit $lap.Exit -Reasons $reasons -Notes $notes
+    Write-LapResult -Name 'V3.4' -Exit $lap.Exit -Reasons $reasons
 }
 
 function Invoke-LapBinds {
@@ -806,16 +790,14 @@ function Invoke-LapCleanUp {
 }
 
 function Invoke-SelfTest {
-    <#  V0 item 10: console input reaches set /p, the UI Automation
-        assemblies load, and the stand-in answers both kinds of prompt. #>
+    <#  V0 item 10: console input reaches set /p, and the stand-in answers
+        both kinds of prompt. #>
     $reasons = @()
     $target = Join-Path $script:Pass.Runs 'self-test.cmd'
     Set-Content -LiteralPath $target -Encoding Ascii -Value @('@echo off', 'set /p "ANSWER=Answer: "', 'if "%ANSWER%"=="abc" echo READ_OK')
     $console = Start-ConsoleCommand -Name 'SelfTest-console' -CommandLine "`"$target`""
     $reasons += @(Send-AtPrompt -Console $console -Prompt 'Answer: ' -Text 'abc' -TimeoutSeconds 30)
     $reasons += @(Get-ScreenReasons -Screen (Complete-ConsoleCommand -Console $console -TimeoutSeconds 30).Screen -Has @('READ_OK'))
-
-    try { Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes } catch { $reasons += 'the UI Automation assemblies did not load' }
 
     $prompts = Join-Path $script:Pass.Runs 'self-test.ps1'
     Set-Content -LiteralPath $prompts -Encoding Ascii -Value @(
@@ -855,7 +837,6 @@ $laps = [ordered]@{
     'V2.2' = { Invoke-LapEngineStopsMidRun }
     'V2.3' = { Invoke-LapInterrupt }
     'Podman' = { Invoke-LapPodman }
-    'V3.1' = { Invoke-LapDfsTab }
     'V3.2' = { Invoke-LapDfsSetup }
     'V3.3' = { Invoke-LapDfsDeclined }
     'V3.4' = { Invoke-LapDfsManual }
