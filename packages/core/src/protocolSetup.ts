@@ -66,9 +66,11 @@ import {
 } from "./connection/messageConnection";
 import { boundedWireCertificateSchema } from "./records/signingIdentity";
 import {
+  decisionOnlyAbortFrame,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   receiveAfterTerms,
   LOCAL_FAULT_ABORT_REASON,
+  type AbortReasonAfterTerms,
 } from "./partnerAbortFrame";
 
 import type { SigningCertificate } from "./records/signingIdentity";
@@ -295,7 +297,7 @@ const abortReasonsField = boundedArray(
 
 // `recordCount` is optional here (unlike message 1) because this frame
 // doubles as the responder's abort frame, which holds no role metadata --
-// the same reason `save` is not spread onto an abort (see sendAbort). On a
+// the same reason `save` is not spread onto an abort (see sendTermsAbort). On a
 // `proceed` decision the initiator enforces its presence; on an `abort`
 // the exchange ends before the count is ever read. `receiveCeiling` is
 // optional for the same reason.
@@ -745,16 +747,14 @@ export interface ResponderAbortSlot {
  * abort frame holds and why: docs/spec/PROTOCOL.md ("Protocol-version reconcile
  * at the terms exchange").
  *
- * Exported for the refusals that fire past this exchange, which
- * `runExchange` applies to the terms this function's caller returned: the
- * invitation-term binding (`assertPresentedDeduplicateMatchesInvitation`)
- * and the receipt bindings (`assertReceiptBindingsOrAbort`), the latter
- * again at the signature swap. Each is one-sided, so without the abort the
- * partner waits out its peer-inactivity budget. `abortReasons` is written
- * by the calling code and must stay a fixed literal: the frame is a
- * disclosure to the partner like any other.
+ * For an abort inside the terms exchange only, which the partner reads under
+ * the static frame cap; past it, {@link sendAbort}. `abortReasons` is written
+ * by the calling code: the frame is a disclosure to the partner like any
+ * other.
+ *
+ * @internal exported for the terms-envelope vectors.
  */
-export async function sendAbort(
+export async function sendTermsAbort(
   conn: MessageConnection,
   abortReasons: string[],
   slot?: ResponderAbortSlot,
@@ -769,11 +769,31 @@ export async function sendAbort(
             abortReasons,
             protocolVersion: slot.protocolVersion,
           }
-        : { decision: "abort", abortReasons },
+        : decisionOnlyAbortFrame(abortReasons),
     );
   } catch {
     /* swallow: see doc comment */
   }
+}
+
+/**
+ * Best-effort delivery of a decision-only abort past the terms exchange, as
+ * {@link sendTermsAbort} delivers one. The one reason is typed to
+ * `ABORT_REASONS_AFTER_TERMS` (partnerAbortFrame.ts), so the read gate floor
+ * computed over that list admits every frame this sends.
+ *
+ * Exported for the refusals that fire past the terms exchange, which
+ * `runExchange` applies to the terms {@link exchangeTerms} returned: the
+ * invitation-term binding (`assertPresentedDeduplicateMatchesInvitation`)
+ * and the receipt bindings (`assertReceiptBindingsOrAbort`), the latter
+ * again at the signature swap. Each is one-sided, so without the abort the
+ * partner waits out its peer-inactivity budget.
+ */
+export async function sendAbort(
+  conn: MessageConnection,
+  abortReasons: readonly [AbortReasonAfterTerms],
+): Promise<void> {
+  await sendTermsAbort(conn, [...abortReasons]);
 }
 
 // The connections an abort frame was sent on, so a run's own refusal and the
@@ -855,7 +875,7 @@ async function checkProtocolVersion(
   slot?: ResponderAbortSlot,
 ): Promise<void> {
   if (partnerVersion === expected) return;
-  await sendAbort(conn, [PROTOCOL_VERSION_MISMATCH_MESSAGE], slot);
+  await sendTermsAbort(conn, [PROTOCOL_VERSION_MISMATCH_MESSAGE], slot);
   throw new PartnerProtocolRefusalError(PROTOCOL_VERSION_MISMATCH_MESSAGE, {
     olderVersion: olderVersionThan(partnerVersion, expected),
   });
@@ -912,7 +932,7 @@ async function settleTermsChange(params: {
   // The partner is sent the terms that differ, not this party's wording of
   // them: it words the same difference from its own side.
   const refuse = async (): Promise<never> => {
-    await sendAbort(
+    await sendTermsAbort(
       conn,
       refusedTermKinds(comparison).map(termsDifferenceReason),
       abortTerms,
@@ -947,7 +967,7 @@ async function settleTermsChange(params: {
       continuable,
     });
   } catch (err) {
-    await sendAbort(conn, [TERMS_CHANGE_NOT_ACCEPTED_REASON], abortTerms);
+    await sendTermsAbort(conn, [TERMS_CHANGE_NOT_ACCEPTED_REASON], abortTerms);
     throw err;
   }
   const settled = compareTerms(terms, partnerTerms);
@@ -958,7 +978,7 @@ async function settleTermsChange(params: {
 /**
  * Refuse with {@link SHARED_SECRET_EXPIRED_ABORT_REASON} where the current
  * secret has expired: each side checks at its last point before a store that
- * would leave the partner behind. `abortTerms` as for {@link sendAbort}.
+ * would leave the partner behind. `abortTerms` as for {@link sendTermsAbort}.
  */
 async function refuseIfSecretExpired(
   conn: MessageConnection,
@@ -966,7 +986,7 @@ async function refuseIfSecretExpired(
   abortTerms: ResponderAbortSlot | undefined,
 ): Promise<void> {
   if (expires === undefined || !isExpired(expires, Date.now())) return;
-  await sendAbort(conn, [SHARED_SECRET_EXPIRED_ABORT_REASON], abortTerms);
+  await sendTermsAbort(conn, [SHARED_SECRET_EXPIRED_ABORT_REASON], abortTerms);
   throw markStatesItsOwnNextStep(
     new Error(
       `the shared secret expired at ${expires}, before the next one was ` +
@@ -980,12 +1000,11 @@ async function storeNextSecret(
   conn: MessageConnection,
   rotation: TermsRotation,
   nextSecret: string,
-  abortTerms: ResponderAbortSlot | undefined,
 ): Promise<void> {
   try {
     await rotation.store(nextSecret);
   } catch (err) {
-    await sendAbort(conn, [NEXT_SECRET_STORE_FAILED_ABORT_REASON], abortTerms);
+    await sendAbort(conn, [NEXT_SECRET_STORE_FAILED_ABORT_REASON]);
     throw err;
   }
 }
@@ -1002,7 +1021,7 @@ async function nextSecretFromTermsReply(
 ): Promise<string | undefined> {
   if (rotation === undefined) {
     if (responderValue === undefined) return undefined;
-    await sendAbort(conn, [
+    await sendTermsAbort(conn, [
       "partner sent a next-secret value on an exchange with no key exchange",
     ]);
     throw new PartnerProtocolRefusalError(
@@ -1018,7 +1037,9 @@ async function nextSecretFromTermsReply(
     wrapped = undefined;
   }
   if (wrapped?.length !== WRAPPED_ROTATION_VALUE_BYTES) {
-    await sendAbort(conn, ["partner omitted a readable next-secret value"]);
+    await sendTermsAbort(conn, [
+      "partner omitted a readable next-secret value",
+    ]);
     throw new PartnerProtocolRefusalError(
       "the partner's reply to the terms did not include a readable value for " +
         "the next shared secret",
@@ -1027,7 +1048,9 @@ async function nextSecretFromTermsReply(
   const { sessionKey, keyAgreementOutput, initiatorValue } = rotation.inputs;
   const value = await unwrapRotationValue(sessionKey, "responder", wrapped);
   if (value === undefined) {
-    await sendAbort(conn, ["partner's next-secret value failed to unwrap"]);
+    await sendTermsAbort(conn, [
+      "partner's next-secret value failed to unwrap",
+    ]);
     throw new ConnectionError(
       "the partner's value for the next shared secret failed its integrity " +
         "check",
@@ -1194,7 +1217,7 @@ export async function exchangeTerms(
     // so its diagnosis wins over a record-count, terms, or sibling-field
     // parse difference the mismatch might also produce. A conforming
     // responder states the negotiated version whether it proceeds or aborts
-    // (see sendAbort), so an abort passes the check and reports its own
+    // (see sendTermsAbort), so an abort passes the check and reports its own
     // reasons at the decision check below.
     await checkProtocolVersion(
       conn,
@@ -1219,13 +1242,13 @@ export async function exchangeTerms(
     // role resolution and the single-pass element bounds, so a missing one
     // is a protocol failure, not something to default.
     if (msg.recordCount === undefined) {
-      await sendAbort(conn, ["partner omitted record count"]);
+      await sendTermsAbort(conn, ["partner omitted record count"]);
       throw new PartnerProtocolRefusalError(
         "partner omitted record count on terms exchange",
       );
     }
     if (msg.receiveCeiling === undefined) {
-      await sendAbort(conn, ["partner omitted receive ceiling"]);
+      await sendTermsAbort(conn, ["partner omitted receive ceiling"]);
       throw new PartnerProtocolRefusalError(
         "partner omitted receive ceiling on terms exchange",
       );
@@ -1241,7 +1264,7 @@ export async function exchangeTerms(
     try {
       partnerTerms = parseLinkageTerms(msg.linkageTerms);
     } catch (parseErr) {
-      await sendAbort(conn, ["partner linkage terms failed to parse"]);
+      await sendTermsAbort(conn, ["partner linkage terms failed to parse"]);
       // These terms are partner-controlled, so the description holds partner
       // bytes: Zod's `invalid_key` code on the bounded `z.record` key in
       // `transform.params` (a string bounded at MAX_NAME_LENGTH) places the
@@ -1288,7 +1311,7 @@ export async function exchangeTerms(
     // secret, and every refusal above came before the store.
     if (rotation !== undefined && nextSecret !== undefined) {
       await refuseIfSecretExpired(conn, rotation.inputs.expires, undefined);
-      await storeNextSecret(conn, rotation, nextSecret, undefined);
+      await storeNextSecret(conn, rotation, nextSecret);
     }
 
     await conn.send({ decision: "proceed" });
@@ -1366,7 +1389,7 @@ export async function exchangeTerms(
 
     if (parseError !== undefined) {
       const errors = [`partner linkage terms failed to parse: ${parseError}`];
-      await sendAbort(conn, errors, abortSlot);
+      await sendTermsAbort(conn, errors, abortSlot);
       throw new ProtocolRefusalError(
         `linkage terms are incompatible: ${errors.join("; ")}`,
       );
@@ -1423,12 +1446,7 @@ export async function exchangeTerms(
     // `proceed` shows the initiator already holds the next secret, so this
     // store runs with no expiry check, whatever this side's clock reads.
     if (rotation !== undefined && rotationReply !== undefined)
-      await storeNextSecret(
-        conn,
-        rotation,
-        rotationReply.nextSecret,
-        undefined,
-      );
+      await storeNextSecret(conn, rotation, rotationReply.nextSecret);
 
     return {
       partnerTerms: partnerTerms!,

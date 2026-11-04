@@ -10,6 +10,7 @@ import { encodeBinaryPackValue } from "../../src/connection/binaryPackEncode";
 import {
   PEERJS_CHUNK_MTU,
   PSI_ENCODED_ELEMENT_BYTES,
+  PSI_REQUEST_FRAMING_BYTES,
   PSI_SET_MAX_FRAMING_BYTES,
   binaryPackByteStringLength,
   webrtcFrameExceedsBound,
@@ -153,6 +154,10 @@ test("every set frame the PSI library builds is within the lengths the checks as
     }
     // The response is exactly the per-element bytes: the bound is tight.
     expect(response.byteLength).toBe(n * PSI_ENCODED_ELEMENT_BYTES);
+    // The single-pass request cap and the reply's response term rest on these.
+    expect(request.byteLength).toBe(
+      n * PSI_ENCODED_ELEMENT_BYTES + PSI_REQUEST_FRAMING_BYTES,
+    );
     sender.dispose();
     receiver.dispose();
   }

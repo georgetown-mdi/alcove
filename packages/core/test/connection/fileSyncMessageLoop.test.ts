@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { constants as bufferConstants } from "node:buffer";
 import { v4 as uuidv4 } from "uuid";
 import { default as EventEmitter } from "eventemitter3";
 
@@ -27,7 +28,10 @@ import {
   parseMessageByteCount,
   parseTimestampedMessageNNN,
 } from "../../src/connection/fileSyncNames";
-import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
+import {
+  MAX_DERIVED_FRAME_BYTES,
+  MAX_FRAME_SIZE_BYTES,
+} from "../../src/connection/frameSize";
 import { abortMarkerName } from "../../src/connection/abortMarker";
 import { ABORT_TOKEN_BYTES } from "../../src/auth";
 import { cancellableDelay } from "../../src/connection/fileSyncConstants";
@@ -275,6 +279,7 @@ type LoopInternals = {
   indeterminateWrite:
     { seq: number; error: TransportWriteIndeterminateError } | undefined;
   inboundFrameCap: number | undefined;
+  readGateBytes(): number;
   warnedUnexpectedFiles: Set<string>;
   poll(): Promise<void>;
 };
@@ -1045,14 +1050,117 @@ describe("FileSyncMessageLoop poller lifecycle", () => {
 });
 
 describe("FileSyncMessageLoop inboundFrameCap", () => {
-  test("clamps to the static cap and only ever tightens", () => {
+  test("clamps to the largest exact integer, above the static cap", () => {
     const f = makeLoop();
     f.loop.setInboundFrameCap(MAX_FRAME_SIZE_BYTES * 2);
-    expect(internals(f.loop).inboundFrameCap).toBe(MAX_FRAME_SIZE_BYTES);
+    expect(internals(f.loop).inboundFrameCap).toBe(MAX_FRAME_SIZE_BYTES * 2);
+    f.loop.setInboundFrameCap(Number.MAX_VALUE);
+    expect(internals(f.loop).inboundFrameCap).toBe(MAX_DERIVED_FRAME_BYTES);
     f.loop.setInboundFrameCap(100);
     expect(internals(f.loop).inboundFrameCap).toBe(100);
     f.loop.setInboundFrameCap(undefined);
     expect(internals(f.loop).inboundFrameCap).toBeUndefined();
+  });
+
+  test("the clamp is no higher than the largest Buffer the runtime makes", () => {
+    expect(MAX_DERIVED_FRAME_BYTES).toBeLessThanOrEqual(
+      bufferConstants.MAX_LENGTH,
+    );
+  });
+
+  // A queue reader whose consumer has received every delivery, with a receive
+  // parked or not as `waiting` says.
+  function consumerLoop(waiting: { now: boolean }) {
+    const files = new Map<string, Buffer>();
+    const f = makeLoop({}, {}, files);
+    f.loop.setInboundQueueReader(
+      () => 0,
+      () => waiting.now,
+    );
+    return f;
+  }
+
+  test("a file over the read gate waits unread until a receive asks for it, then is refused", async () => {
+    const waiting = { now: false };
+    const f = consumerLoop(waiting);
+    plantDeleteMessage(f.files, { m: 1 });
+    f.loop.setInboundFrameCap(5);
+
+    await f.pollOnce();
+    expect(f.emitted).toEqual([]);
+    expect(internals(f.loop).pollerActive).toBe(true);
+    expect(f.files.size).toBe(1);
+
+    waiting.now = true;
+    await f.pollOnce();
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].arg).toBeInstanceOf(FrameSizeExceededError);
+    f.loop.stop();
+  });
+
+  test("a file waiting over the read gate is read once the cap set for it admits it", async () => {
+    const waiting = { now: false };
+    const f = consumerLoop(waiting);
+    plantDeleteMessage(f.files, { m: 1 });
+    f.loop.setInboundFrameCap(5);
+    await f.pollOnce();
+    expect(f.emitted).toEqual([]);
+
+    f.loop.setInboundFrameCap(1_000);
+    waiting.now = true;
+    await f.pollOnce();
+    expect(f.emitted).toEqual([
+      { event: "data", arg: { m: 1 }, pollerActiveAtEmit: true },
+    ]);
+    f.loop.stop();
+  });
+
+  test("a cap above the static one applies only to the message a parked receive waits on", () => {
+    const waiting = { now: false };
+    const f = consumerLoop(waiting);
+    f.loop.setInboundFrameCap(MAX_FRAME_SIZE_BYTES + 100);
+    expect(internals(f.loop).readGateBytes()).toBe(MAX_FRAME_SIZE_BYTES);
+    waiting.now = true;
+    expect(internals(f.loop).readGateBytes()).toBe(MAX_FRAME_SIZE_BYTES + 100);
+
+    // A message queued ahead of the next one makes it a read ahead.
+    const queued = makeLoop();
+    queued.loop.setInboundQueueReader(
+      () => 1,
+      () => true,
+    );
+    queued.loop.setInboundFrameCap(MAX_FRAME_SIZE_BYTES + 100);
+    expect(internals(queued.loop).readGateBytes()).toBe(MAX_FRAME_SIZE_BYTES);
+  });
+
+  test("a file over the static cap is read under the cap a parked receive set for it", async () => {
+    const declared = `${DIR}/${PEER}-${MAX_FRAME_SIZE_BYTES + 1}.json`;
+    const raised = consumerLoop({ now: true });
+    raised.loop.setInboundFrameCap(MAX_FRAME_SIZE_BYTES + 100);
+    raised.files.set(declared, objectMessage({ m: 2 }, 0));
+    // Past the read gate, the short planted file waits for its sync to finish.
+    await raised.pollOnce();
+    expect(raised.emitted).toEqual([]);
+    expect(internals(raised.loop).pollerActive).toBe(true);
+    raised.loop.stop();
+
+    const unraised = consumerLoop({ now: true });
+    unraised.files.set(declared, objectMessage({ m: 2 }, 0));
+    await unraised.pollOnce();
+    expect(unraised.emitted).toHaveLength(1);
+    expect(unraised.emitted[0].arg).toBeInstanceOf(FrameSizeExceededError);
+  });
+
+  test("a peer abort marker is read while a file over the read gate waits", async () => {
+    const f = consumerLoop({ now: false });
+    f.state.abortArmed = true;
+    f.state.verify = async () => true;
+    plantDeleteMessage(f.files, { m: 1 });
+    f.loop.setInboundFrameCap(5);
+
+    await f.pollOnce();
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].arg).toBeInstanceOf(PeerAbortError);
   });
 
   test("the read gate refuses a frame larger than the current cap", async () => {

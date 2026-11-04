@@ -51,6 +51,10 @@ import type { CSVRow } from "./file.js";
 import {
   PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON,
+  PAYLOAD_RECEIVE_UNCONFIRMED_ABORT_REASON,
+  PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON,
+  TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON,
   afterFirstFrameNotAbort,
 } from "./partnerAbortFrame.js";
 import type { PsiProgressReporter } from "./psi/participant.js";
@@ -70,7 +74,7 @@ import type { EntityClusterSummary } from "./psi/entityClosure.js";
 import type { ResolvedRunShape } from "./pairTableProjection.js";
 import type { ResolvedMatching } from "./linkageTermsPolicy.js";
 import {
-  MAX_FRAME_SIZE_BYTES,
+  MAX_DERIVED_FRAME_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
   partyFansOut,
   psiElementBounds,
@@ -78,7 +82,7 @@ import {
   singlePassDatasetExceedsCap,
   singlePassIrreducibleReplyBytes,
   singlePassReplyByteCap,
-  singlePassRequestByteBound,
+  singlePassRequestByteCap,
   valueSlots,
 } from "./connection/frameSize.js";
 import type { InboundPsiFrameUse } from "./connection/inboundFrameMemory.js";
@@ -497,31 +501,6 @@ function assertTermsPassPartnerParse(linkageTerms: LinkageTerms): void {
       ". Correct that setting in the linkage terms and run again.",
   );
 }
-
-// The abort reason a caller that could not record the payload receive list the
-// first run filled sends; its own failure, like the unrecorded pin's
-// (exchange/signingChecks.ts).
-const PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON =
-  "a party could not record the payload columns it receives";
-
-/**
- * The abort reason a party sends when its operator declines the payload
- * columns the partner's terms declare it sends, on a run that holds no list of
- * the columns it receives ({@link RunExchangeOptions.onPayloadReceiveFill}).
- */
-export const PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON =
-  "the partner has not accepted the payload columns you send";
-
-// The abort reason a party sends when asking about the payload columns failed
-// rather than being answered; its own failure, like the unrecorded fill's.
-const PAYLOAD_RECEIVE_UNCONFIRMED_ABORT_REASON =
-  "a party could not confirm the payload columns it receives";
-
-// The abort reason a party sends when the caller's step after the terms
-// exchange (RunExchangeOptions.onTermsExchanged) threw; its own failure, like
-// the unrecorded fill's.
-const TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON =
-  "a party could not complete its step after the terms exchange";
 
 /**
  * The answer to {@link RunExchangeOptions.onPayloadReceiveFill}: the columns
@@ -1394,7 +1373,10 @@ export interface RunExchangeOptions {
   verbosity?: number;
 }
 
-export { PARTNER_SET_OVER_CAPACITY_ABORT_REASON };
+export {
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON,
+};
 
 /**
  * An upper bound on the values a conforming partner's set for one linkage key
@@ -1964,10 +1946,15 @@ export async function runExchange(
           ? singlePassIrreducibleReplyBytes(keyCount, partnerRecordCount)
           : 0,
         inboundFrameBytes: Math.min(
-          MAX_FRAME_SIZE_BYTES,
+          conn.frameCeilingBytes?.() ?? MAX_DERIVED_FRAME_BYTES,
           isReceiver
-            ? singlePassReplyByteCap(keyCount, partnerSize, localSize)
-            : singlePassRequestByteBound(partnerSize),
+            ? singlePassReplyByteCap(
+                keyCount,
+                partnerSize,
+                localSize,
+                singlePassRequestByteCap(localSize),
+              )
+            : singlePassRequestByteCap(partnerSize),
         ),
         inboundFrameUse: isReceiver ? "stream" : "decode",
       }),

@@ -18,10 +18,10 @@ The transport refuses any inbound file larger than a maximum frame size of **536
 **The value is a chosen memory bound, not a derived platform ceiling.**
 No platform limit anchors it: the transport sends a frame as raw bytes and never stringifies it (the AEAD envelope and the file-sync message body are both binary; see [Application-layer AEAD](CHANNEL_SECURITY.md#application-layer-aead)), so no string-length ceiling binds the read, and ~512 MiB stands as a reasonable single-frame memory cap on its own terms.
 
-This is the static safety check for every frame.
-The single-pass reply is bounded by a tighter per-exchange cap derived from the exchanged record counts (see [Single-pass per-exchange cap](#single-pass-per-exchange-cap) below), which can only ever tighten this value for that one read, never widen it.
+This is the static safety check for every frame but the single-pass request and reply.
+Each of those two is held instead to a per-exchange cap derived from the exchanged record counts (see [Single-pass per-exchange cap](#single-pass-per-exchange-cap) below), which may be above or below this value for that one read.
 As a headroom check against the realistic worst-case legitimate frame: the largest PSI frame is one part of a party's encrypted set sent as raw elliptic-curve points, **35 bytes per element** on the wire (see [PROTOCOL.md](PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)), encoded with no base64url expansion, and a sender fills each part to this bound and no further (see [PSI set parts: the combined bound](#psi-set-parts-the-combined-bound) below).
-512 MiB is therefore on the order of 15 million elements a part -- already more than the single-frame single-pass transport practically ships before the separate single-pass dataset ceiling binds.
+512 MiB is therefore on the order of 15 million elements a part.
 
 **Enforcement.**
 The bound is enforced at the transport read layer, which is the meaningful enforcement point.
@@ -30,7 +30,16 @@ The rendezvous gate holds a peer hello to a much smaller control-file cap of **1
 In both cases -- so a server that under-reports a file's size in its directory listing cannot slip past that check -- each `FileTransportClient` adapter also enforces a hard per-read byte cap.
 The local-filesystem adapter `fstat`s the open handle and reads exactly that many bytes, closing the append-after-stat TOCTOU; the SFTP adapter streams into a counting sink that aborts the transfer once the running total crosses the cap, buffering at most one stream chunk past it.
 Each reader passes as its per-read cap the byte count the file's name states, which the refusals above hold within the static cap, so a file that grows after listing is refused at that count rather than buffered up to the static cap.
-A binary length check on the AEAD decorator's inbound envelope caps it at the same single value -- a byte-length check on the raw envelope -- but that is documented defense-in-depth only, not the primary control: by the time the decorator runs, the inner transport has already read the frame, so the dominant allocation has already happened.
+A binary length check on the AEAD decorator's inbound envelope caps it at the same value, or at the per-exchange cap where one is set -- a byte-length check on the raw envelope -- but that is documented defense-in-depth only, not the primary control: by the time the decorator runs, the inner transport has already read the frame, so the dominant allocation has already happened.
+
+**The AEAD's limit on one frame.**
+`crypto.subtle` AES-GCM encrypts at most 2,147,483,630 bytes (2^31 - 18) of plaintext: measured on 2026-11-04 under Node 26.13 on Linux arm64, one byte more fails with an `OperationError`.
+An encrypted frame, less the one-byte type tag inside its plaintext, is therefore at most `MAX_AEAD_FRAME_BYTES`, 2,147,483,629 bytes (`packages/core/src/connection/encryptedMessageConnection.ts`), which the connection states as its frame ceiling (`frameCeilingBytes`).
+A single-pass frame over it is refused before it is written, and the decorator clamps a per-exchange cap to that frame in its envelope, both at its own length check and at the cap it forwards to the inner read gate, there as the message file that envelope is written in.
+A larger encrypted frame needs the AEAD in chunks.
+The file-sync read gate itself clamps a per-exchange cap only to the largest exact integer (`MAX_DERIVED_FRAME_BYTES`), at or below Node's largest `Buffer`: memory is checked before each read ([FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes)).
+On 2026-11-04, in a 10-core arm64 Linux container with 23 GB of memory, a frame of 2,147,487,744 bytes crossed a local synced folder whole with no key exchange, written in 1.6 s and read in 4.2 s (`apps/cli/test/stress/fileSyncLargeFrame.stress.test.ts`, `npm run test:stress -w apps/cli`).
+Not run: a frame that size over an SFTP server or a sync client.
 
 **Read-ahead.**
 The cap bounds one message file; the poll loop also bounds what it reads ahead of the consumer.
@@ -38,31 +47,44 @@ It reads the next message file only while that file and the message files it has
 With none unreceived it reads the file, so no file within the cap is held back for good.
 A file left unread is neither consumed nor acknowledged, so the partner's next send waits on it, within that send's own inactivity budget, until the consumer receives what is queued: frames a partner sends back to back, such as the parts of a PSI set, wait on disk rather than in memory, and none is refused.
 A partner that stops sending is still caught by the receive deadline, since a receive waits only on an empty queue, and an empty queue holds no file back.
+A message file over the read gate is left unread in the same way while no receive waits on the next message, since the consumer may yet set a per-exchange cap for it; once a receive waits with nothing queued, the file is the message asked for, and one still over the gate is refused.
+A peer's abort marker is read while such a file waits.
 
 The bound is a fixed constant rather than a configurable option: a configurable bound risks an operator raising it high enough to reintroduce the DoS.
 
 ### Single-pass per-exchange cap
 
 The single-pass reply (message 2 of the single-pass strategy) holds both parties' encrypted value sets and the sender's index table in one frame, whose legitimate size grows with the dataset.
-Rather than bound it by the static ~512 MiB cap above, single-pass derives a **per-exchange cap from the exchanged record counts and the agreed key count** -- authenticated session state both parties hold after the terms exchange, never any byte, name, or transport-listed size of the inbound file.
-So a small exchange's reply is held to a small bound (a hostile transport admin cannot pad it up to the static ceiling) while a large legitimate one is admitted up to a fixed maximum dataset size.
+The request (message 1) holds the receiver's encrypted value set in one frame, which grows with it too.
+Rather than bound them by the static ~512 MiB cap above, single-pass derives a **per-exchange cap for each from the exchanged record counts and the agreed key count** -- authenticated session state both parties hold after the terms exchange, never a name or transport-listed size of the inbound file.
+The sender's send-time reply cap uses the size of the request it received, and the receiver's tightened gate the size of its own request; each is at most the cap derived from the agreed counts.
+So a small exchange's frames are held to a small bound (a hostile transport admin cannot pad them up to the static ceiling) while a large legitimate one is admitted past it.
 
 The derivation, its constants, and the deterministic operation order are specified in [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
 The security-relevant properties here:
 
 - **One shared computation, two enforcement points.**
   A single exported integer function (`singlePassReplyByteCap`, `packages/core/src/connection/frameSize.ts`) yields the value the receiver enforces at its transport read gate and the value the sender checks its built reply against before sending.
-  The receiver threads it into the file-sync poll loop's `get()` read gate (via `setInboundFrameCap`), where it **replaces** the static `MAX_FRAME_SIZE_BYTES` for that one read rather than layering a second check above a still-static cap; the threaded value is clamped so it can only tighten, never widen, the static safety check.
-  The receiver sets it before it builds its request, since a peer can write the reply at any point while the request is masked, and checks the reply's length against the same value after the read, which holds the cap for a frame read before the set and on a transport whose read gate ignores it.
+  `singlePassRequestByteCap` does the same for the request: the sender's read gate, and the bound on the reply's response term until the request is built.
+  The receiver threads it into the file-sync poll loop's `get()` read gate (via `setInboundFrameCap`), where it **replaces** the static `MAX_FRAME_SIZE_BYTES` for that one read rather than layering a second check above a still-static cap.
+  A threaded value above the static cap applies only to the message a waiting receive asks for, so a message read ahead is still held to the static cap, and a file over it waits unread until it is asked for ([Inbound frame-size bound](#inbound-frame-size-bound), "Read-ahead").
+  The receiver sets it before it builds its request, since a peer can write the reply at any point while the request is masked, tightens it to the request once built, and checks the reply's length against that value after the read, which holds the cap for a frame read before the set and on a transport whose read gate ignores it.
+  The sender sets the request cap before it masks its setup, and checks the request's length against the cap after it has masked its own setup and before it re-encrypts the request.
+  A request over the cap is normally refused at the read gate, as a frame-size refusal (`FrameSizeExceededError`), and that length check refuses as a protocol error one that reached it under the abort-frame floor below.
+  A frame read ahead, before a receive parks for it, is held to no more than the static cap, so before the sender sets the request cap, and on the receiver between its count-based and its tightened reply cap, a file over the derived cap but within the read gate then in force is read and then refused by the length check after the read; the static cap bounds that read, as it bounds every read with no per-exchange cap.
+  Each party sets a cap as the message file the frame is written in, with the file header and the encryption envelope, and never below the one the largest abort frame a party sends past the terms exchange is written in (`MAX_ABORT_FRAME_AFTER_TERMS_BYTES`, 159 bytes, `packages/core/src/partnerAbortFrame.ts`), so a partner's abort on a small exchange is read rather than refused.
+  That frame is the decision-only abort with the longest of the fixed reasons in `ABORT_REASONS_AFTER_TERMS`, and `sendAbort` takes no reason outside that list, a constraint the TypeScript compiler enforces.
 - **Over WebRTC the real ceiling is a memory budget, fixed and non-configurable.**
   An exchange aborts when either party's `effectiveKeyCount * recordCount` -- its value slot count, the upper bound on its distinct-value count, over the effective key count both parties derive from the agreed terms and the record count that party declared, which for a width-free party is its `keyCount * recordCount` -- exceeds [`MAX_SINGLE_PASS_CELLS`](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
   Its value, its derivation from the heavier party's measured peak, and the constraint that binds it -- the WebRTC per-frame envelope below, not memory -- are specified there, under the single-pass dataset ceiling.
   It is a fixed constant, not an operator-configurable option, for the same reason as the frame-size bound: a configurable maximum risks being raised high enough to reintroduce the memory-exhaustion DoS.
 - **Over file-sync no value-slot budget applies.**
-  The limits are this bound on each frame, the set maximum, and the check at the terms exchange, specified [in PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
-  A frame too large for one message file is refused before the write, once masking has built it, and the partner is told.
+  The limits are the derived caps, the AEAD's limit on one frame on an encrypted connection, the set maximum, and the memory checks, specified [in PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
+  A frame over the AEAD's limit is refused before the write, once masking has built it, and the partner is told.
+  On a quick exchange (no encryption) no AEAD limit applies: a single-pass frame is bounded by the count-derived caps and by the memory check, which `--allow-memory-shortfall` turns into a warning.
 - **Transport-aware via per-transport clamps.**
-  File-sync gets the derived bound up to `MAX_FRAME_SIZE_BYTES`; the WebRTC data channel keeps its fixed browser-tab envelope [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound) at its reassembly read gate (`apps/web/src/psi/transport/boundedReassembly.ts`) and relies on the count-budget check, run identically on both parties, plus the decode-time coherence checks below.
+  The derived caps apply to single-pass over every file-sync transport, SFTP included.
+  File-sync gets the derived bound, held to the AEAD's limit on an encrypted connection; the WebRTC data channel keeps its fixed browser-tab envelope [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound) at its reassembly read gate (`apps/web/src/psi/transport/boundedReassembly.ts`) and relies on the count-budget check, run identically on both parties, plus the decode-time coherence checks below.
   At the ceiling the derived reply frame, whose size there [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) derives, sits below both envelopes -- the WebRTC one is the nearer -- so a legitimate single-pass reply the count budget admits is never rejected by the WebRTC clamp.
   An over-ceiling exchange fails closed with actionable guidance that does not recommend cascade.
   The cap is held below the point where the derived reply cap would reach the WebRTC envelope precisely so this stays true; raising it past that point would require reworking the WebRTC reassembly path to fail closed rather than mid-frame.

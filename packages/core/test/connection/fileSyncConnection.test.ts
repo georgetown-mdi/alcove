@@ -20,7 +20,11 @@ import {
   cancellableDelay,
 } from "../../src/connection/fileSyncConstants";
 import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
-import { EncryptedMessageConnection } from "../../src/connection/encryptedMessageConnection";
+import {
+  AEAD_ENVELOPE_OVERHEAD_BYTES,
+  EncryptedMessageConnection,
+  MAX_AEAD_FRAME_BYTES,
+} from "../../src/connection/encryptedMessageConnection";
 import type {
   SFTPConnectionConfig,
   FileDropConnectionConfig,
@@ -1850,10 +1854,34 @@ test("setInboundFrameCap tightens the poll-loop read gate; an over-cap frame is 
   );
 });
 
-test("setInboundFrameCap clamps to MAX_FRAME_SIZE_BYTES and delivers an in-cap frame", async () => {
-  // The cap can only tighten, never widen, the static cap: a value above
-  // MAX_FRAME_SIZE_BYTES is clamped down, and a frame within the (clamped)
-  // per-exchange cap is delivered normally.
+test("behind a message queue, a file over the read gate waits unread until a receive parks", async () => {
+  const peerId = "peer-test";
+  const { client, files } = makeMockClient();
+  const conn = await makeConnectedConn(client, {
+    pollingFrequency: 10,
+    inactivityTimeoutMs: 2_000,
+  });
+  conn.peerId = peerId;
+  const mc = fromEventConnection(conn);
+
+  const frame = binaryMessage(new Uint8Array(400).fill(7));
+  const name = `/test/${peerId}-${frame.length}.json`;
+  files.set(name, frame);
+  mc.setInboundFrameCap?.(200);
+  conn.start();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(files.has(name)).toBe(true);
+
+  const received = await mc.receive().catch((e: unknown) => e);
+  conn.stop();
+  expect(received).toBeInstanceOf(ConnectionError);
+  expect((received as ConnectionError).cause ?? received).toBeInstanceOf(
+    FrameSizeExceededError,
+  );
+  await mc.close();
+});
+
+test("setInboundFrameCap above MAX_FRAME_SIZE_BYTES delivers an in-cap frame", async () => {
   const peerId = "peer-test";
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, {
@@ -1865,7 +1893,7 @@ test("setInboundFrameCap clamps to MAX_FRAME_SIZE_BYTES and delivers an in-cap f
   const payload = new Uint8Array(300).fill(9);
   const frame = binaryMessage(payload);
   files.set(`/test/${peerId}-${frame.length}.json`, frame);
-  conn.setInboundFrameCap(MAX_FRAME_SIZE_BYTES * 4); // clamped to the static cap
+  conn.setInboundFrameCap(MAX_FRAME_SIZE_BYTES * 4);
 
   const delivered = new Promise<unknown>((resolve) => conn.on("data", resolve));
   conn.start();
@@ -1879,6 +1907,67 @@ test("setInboundFrameCap clamps to MAX_FRAME_SIZE_BYTES and delivers an in-cap f
 
   expect(msg).toBeInstanceOf(Uint8Array);
   expect((msg as Uint8Array).length).toBe(payload.length);
+});
+
+// The message file around the largest envelope the AEAD decorator opens: the
+// file header, the envelope's overhead, and its largest frame.
+const LARGEST_ENVELOPE_FILE_BYTES =
+  MESSAGE_HEADER_BYTES + AEAD_ENVELOPE_OVERHEAD_BYTES + MAX_AEAD_FRAME_BYTES;
+
+// Receives through an encrypted connection over a file-sync read gate, under a
+// cap above the AEAD's limit, with one peer message file listed and named at
+// `fileBytes` (its body is a stand-in: only the gate's decision is read).
+async function receiveListedAt(
+  fileBytes: number,
+): Promise<{ result: unknown; gets: string[] }> {
+  const peerId = "peer-test";
+  const name = `${peerId}-${fileBytes}.json`;
+  const gets: string[] = [];
+  const { client, files } = makeMockClient({
+    listScript: (entries) =>
+      entries.map((entry) =>
+        entry.name === name ? { ...entry, size: fileBytes } : entry,
+      ),
+    onGet: (path) => gets.push(path),
+  });
+  files.set(`/test/${name}`, binaryMessage(new Uint8Array(1)));
+  const conn = await makeConnectedConn(client, {
+    pollingFrequency: 10,
+    inactivityTimeoutMs: 2_000,
+  });
+  conn.peerId = peerId;
+  const encrypted = await EncryptedMessageConnection.create(
+    fromEventConnection(conn),
+    new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>,
+    "responder",
+  );
+  encrypted.setInboundFrameCap(LARGEST_ENVELOPE_FILE_BYTES * 2);
+  conn.start();
+  const result = await encrypted.receive().catch((e: unknown) => e);
+  conn.stop();
+  return { result, gets };
+}
+
+test("under a cap above the AEAD's limit, the inner read gate refuses a file over the largest envelope's unread", async () => {
+  expect(LARGEST_ENVELOPE_FILE_BYTES).toBe(2_147_483_669);
+  const { result, gets } = await receiveListedAt(
+    LARGEST_ENVELOPE_FILE_BYTES + 1,
+  );
+  expect(result).toBeInstanceOf(ConnectionError);
+  const cause = (result as ConnectionError).cause ?? result;
+  expect(cause).toBeInstanceOf(FrameSizeExceededError);
+  expect((cause as Error).message).toMatch(
+    `exceeding the maximum inbound frame size of ${LARGEST_ENVELOPE_FILE_BYTES} bytes`,
+  );
+  expect(gets).toEqual([]);
+});
+
+test("under a cap above the AEAD's limit, the inner read gate reads a file at the largest envelope", async () => {
+  const { result, gets } = await receiveListedAt(LARGEST_ENVELOPE_FILE_BYTES);
+  expect(gets).toEqual([`/test/peer-test-${LARGEST_ENVELOPE_FILE_BYTES}.json`]);
+  expect((result as Error).cause ?? result).not.toBeInstanceOf(
+    FrameSizeExceededError,
+  );
 });
 
 test("poll emits error when ENOENT threshold is reached on consecutive poll cycles", async () => {

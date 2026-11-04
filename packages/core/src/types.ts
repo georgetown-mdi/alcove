@@ -70,9 +70,13 @@ export type Connection = {
   requireBinaryFrames?: () => void;
   // Takes a reader of how many delivered frames wait unreceived in the
   // consumer's queue, so a transport that reads frames on its own schedule
-  // holds off reading the next. Omitted by a transport whose frames are pushed
-  // to it (WebRTC).
-  setInboundQueueReader?: (queuedMessages: () => number) => void;
+  // holds off reading the next, and of whether a receive is parked, so it can
+  // tell the frame the consumer waits on from one read ahead. Omitted by a
+  // transport whose frames are pushed to it (WebRTC).
+  setInboundQueueReader?: (
+    queuedMessages: () => number,
+    receiveWaiting?: () => boolean,
+  ) => void;
   // Marks the last frame sent as one the peer will not read, so a clean close
   // does not wait for the peer to consume it. Omitted by a transport whose
   // close does not wait on the peer (WebRTC).

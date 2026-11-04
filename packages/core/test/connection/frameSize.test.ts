@@ -8,6 +8,7 @@ import {
   MAX_RECORD_COUNT,
   psiElementBounds,
   singlePassReplyByteCap,
+  singlePassRequestByteCap,
   singlePassIrreducibleReplyBytes,
 } from "../../src/connection/frameSize";
 import {
@@ -46,6 +47,26 @@ test("the worked exchange derives its reply cap", () => {
       { effectiveKeyCount: 70, recordCount: 5_000 },
     ),
   ).toBe(491_000_256);
+});
+
+test("the request cap is 35 bytes a value slot of the receiver, plus 2", () => {
+  expect(
+    singlePassRequestByteCap({ effectiveKeyCount: 70, recordCount: 5_000 }),
+  ).toBe(35 * 70 * 5_000 + 2);
+});
+
+test("the reply's response term is the request's bytes where they are given", () => {
+  const sender = { effectiveKeyCount: 70, recordCount: 150_000 };
+  const receiver = { effectiveKeyCount: 70, recordCount: 5_000 };
+  const requestCap = singlePassRequestByteCap(receiver);
+  // The worked figure docs/spec/PROTOCOL.md states for the limits over file-sync.
+  expect(singlePassReplyByteCap(25, sender, receiver, requestCap)).toBe(
+    489_250_258,
+  );
+  expect(489_250_258).toBe(491_000_256 - 40 * 70 * 5_000 + requestCap);
+  expect(singlePassReplyByteCap(25, sender, receiver, 37)).toBe(
+    491_000_256 - 40 * 70 * 5_000 + 37,
+  );
 });
 
 test("effectiveKeyCount * recordCount stays an exact integer at the schema maxima", () => {

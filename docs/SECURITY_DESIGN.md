@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-02"
+last_reviewed: "2026-11-04"
 ---
 
 # Alcove security
@@ -87,7 +87,7 @@ Each use of the base PSI function reveals information to each party. For PSI, th
 
 Within the input-choice threat, a party can attempt a membership attack using crafted inputs. A linkage key built only from Social Security numbers, for example, would be easy to brute-force. Keys should combine several elements of personally identifiable information (PII). Even then a membership attack is possible, but only against a target whose PII is already known.
 
-The size of that attempt is bounded by what a party may declare. Under the single-pass strategy over WebRTC a value-slot budget caps it. Over `sftp` and `filedrop` there is no such budget: a partner can test as many values as its declared value slots, its effective key count times its record count, bounded only by the size of one exchange file and the PSI set limit. Each party is told the figure at the terms exchange. On a quick exchange, which has no shared secret, the folder administrator can stand in as that partner when the operator chose single-pass. The values are in [PROTOCOL.md](spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), "The limits over file-sync".
+The size of that attempt is bounded by what a party may declare. Under the single-pass strategy over WebRTC a value-slot budget caps it. Over `sftp` and `filedrop` there is no such budget: a partner can test as many values as its declared value slots, its effective key count times its record count, bounded only by the size of one encrypted message and the PSI set limit. Each party is told the figure at the terms exchange. On a quick exchange, which has no shared secret, the folder administrator can stand in as that partner when the operator chose single-pass; a quick exchange sends no encrypted message, so there the test is bounded only by the PSI set limit and the memory each party has. The values are in [PROTOCOL.md](spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), "The limits over file-sync".
 
 The protocol also reveals each party's dataset size.
 
