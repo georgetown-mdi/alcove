@@ -6,6 +6,7 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import { alertRoleFor } from "@theme";
 import { dateTimeLabel } from "@psi/formatting";
 import styles from "@styles/app.module.css";
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 
 import {
   clearPendingInvitation,
@@ -240,6 +241,7 @@ export function ResumedInvitationRun({
     failure,
   });
   useBeforeUnloadPrompt(outputs === undefined && failure === undefined);
+  useAppShellUpdateHold(true);
 
   return (
     <WorkShell

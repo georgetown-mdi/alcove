@@ -5,9 +5,11 @@ import {
   WARM_ROUTES_MESSAGE,
   appShellUpdateReady,
   applyAppShellUpdate,
+  checkForAppShellUpdate,
   registerAppShell,
   resetAppShellUpdate,
   subscribeAppShellUpdate,
+  takeOverWaitingAppShell,
 } from "@utils/appShellUpdate";
 
 import {
@@ -52,26 +54,49 @@ function fakeContainer(options: {
 }) {
   const updateFound: Array<() => void> = [];
   const controllerChange: Array<() => void> = [];
+  const checks = { count: 0, fail: false };
   const registration = {
     installing: null as ShellWorker | null,
     waiting: options.waiting ?? null,
     addEventListener: (_type: "updatefound", listener: () => void) =>
       updateFound.push(listener),
+    update: () => {
+      checks.count += 1;
+      return checks.fail
+        ? Promise.reject(new TypeError("Failed to update a ServiceWorker"))
+        : Promise.resolve();
+    },
   };
-  const container: ShellContainer = {
+  const container = {
     controller: options.controller ?? null,
     register: () => Promise.resolve(registration),
     addEventListener: (_type: "controllerchange", listener: () => void) =>
       controllerChange.push(listener),
   };
   return {
-    container,
+    container: container as ShellContainer,
     registration,
+    /** How many times the browser was asked to look for a new deployment, and
+     * whether the next look fails as an offline one does. */
+    checks,
     /** Announce a newly installing worker, as the browser does when it finds a
      * redeployed script. */
     findUpdate(worker: ShellWorker) {
       registration.installing = worker;
       for (const listener of updateFound) listener();
+    },
+    /** Finish the found worker's install: the browser makes it the waiting
+     * worker before it reports the `installed` state. */
+    install(installing: ReturnType<typeof fakeWorker>) {
+      registration.installing = null;
+      registration.waiting = installing.worker;
+      installing.advanceTo("installed");
+    },
+    /** The waiting worker takes over and claims this page. */
+    landTakeover() {
+      container.controller = registration.waiting;
+      registration.waiting = null;
+      for (const listener of controllerChange) listener();
     },
     changeController() {
       for (const listener of controllerChange) listener();
@@ -135,7 +160,7 @@ describe("the first install", () => {
     const installed = fakeWorker();
 
     fake.findUpdate(installed.worker);
-    installed.advanceTo("installed");
+    fake.install(installed);
 
     expect(appShellUpdateReady()).toBe(false);
   });
@@ -162,7 +187,7 @@ describe("a redeployment", () => {
     fake.findUpdate(installing.worker);
     expect(appShellUpdateReady()).toBe(false);
 
-    installing.advanceTo("installed");
+    fake.install(installing);
 
     expect(appShellUpdateReady()).toBe(true);
     expect(notified).toEqual([true]);
@@ -260,7 +285,7 @@ describe("applying an update", () => {
     expect(unloading.armed).toBe(0);
   });
 
-  test("reloads onto the code another tab's takeover already activated", async () => {
+  test("applied from another tab this page never asked, ends the announcement here and reloads nothing", async () => {
     const controller = fakeWorker("activated");
     const shipped = shippedWaitingWorker();
     const unloading = fakePageUnloading();
@@ -276,20 +301,18 @@ describe("applying an update", () => {
     expect(appShellUpdateReady()).toBe(true);
 
     // The other tab applies: the worker takes over origin-wide, so this tab's
-    // registration has nothing waiting left and the announcement it is still
-    // showing has no worker behind it.
+    // registration has nothing waiting left.
     fake.registration.waiting = null;
     fake.changeController();
+    expect(appShellUpdateReady()).toBe(false);
 
     applyAppShellUpdate();
     unloading.unloadPage();
 
-    expect(reloads).toBe(1);
+    expect(reloads).toBe(0);
     expect(unloading.armed).toBe(0);
-    expect(controller.messages).toEqual([
-      WARM_ROUTES_MESSAGE,
-      WARM_ROUTES_MESSAGE,
-    ]);
+    // Found waiting at registration, so only the claim asked for a warm.
+    expect(controller.messages).toEqual([WARM_ROUTES_MESSAGE]);
     expect(await shipped.takeovers()).toBe(0);
   });
 
@@ -300,6 +323,8 @@ describe("applying an update", () => {
     // The operator answers the confirmation with Stay, and the other tab applies
     // while this page is still on the old code with its takeover armed.
     fake.registration.waiting = null;
+    fake.changeController();
+    expect(appShellUpdateReady()).toBe(true);
 
     applyAppShellUpdate();
     unloading.unloadPage();
@@ -376,7 +401,96 @@ describe("warming every route's code", () => {
   });
 });
 
+describe("a takeover ahead of the reload", () => {
+  const BOUND_MS = 10_000;
+
+  async function waitingBehindController() {
+    const controller = fakeWorker("activated");
+    const waiting = fakeWorker("installed");
+    const fake = fakeContainer({
+      controller: controller.worker,
+      waiting: waiting.worker,
+    });
+    const reloads = { count: 0 };
+    await registerAppShell(fake.container, {
+      reload: () => (reloads.count += 1),
+      onPageUnloading: fakePageUnloading().onPageUnloading,
+    });
+    return { controller, waiting, fake, reloads };
+  }
+
+  test("posts the skip-waiting message and resolves once the takeover lands, warming nothing", async () => {
+    const { controller, waiting, fake } = await waitingBehindController();
+
+    const takeover = takeOverWaitingAppShell(BOUND_MS);
+    expect(waiting.messages).toEqual([SKIP_WAITING_MESSAGE]);
+    fake.landTakeover();
+
+    await expect(takeover).resolves.toBe(true);
+    // The page's code is now older than its controller: still ready, so the
+    // apply reloads onto the new version.
+    expect(appShellUpdateReady()).toBe(true);
+    expect(controller.messages).toEqual([]);
+    expect(waiting.messages).toEqual([SKIP_WAITING_MESSAGE]);
+  });
+
+  test("that has not landed within the bound resolves false, and a later ask resolves true once it lands", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fake, reloads } = await waitingBehindController();
+
+      const takeover = takeOverWaitingAppShell(BOUND_MS);
+      await vi.advanceTimersByTimeAsync(BOUND_MS);
+      await expect(takeover).resolves.toBe(false);
+      expect(reloads.count).toBe(0);
+
+      fake.landTakeover();
+      await expect(takeOverWaitingAppShell(BOUND_MS)).resolves.toBe(true);
+      applyAppShellUpdate();
+      expect(reloads.count).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("with nothing waiting posts nothing and resolves false", async () => {
+    const controller = fakeWorker("activated");
+    const fake = fakeContainer({ controller: controller.worker });
+    await registerAppShell(fake.container);
+
+    await expect(takeOverWaitingAppShell(BOUND_MS)).resolves.toBe(false);
+    expect(controller.messages).toEqual([WARM_ROUTES_MESSAGE]);
+  });
+
+  test("leaves the page it reloads into, loaded under the new worker, with nothing ready", async () => {
+    const { fake } = await waitingBehindController();
+    const takeover = takeOverWaitingAppShell(BOUND_MS);
+    fake.landTakeover();
+    await takeover;
+    const newController = fake.container.controller;
+
+    resetAppShellUpdate();
+    const reloaded = fakeContainer({ controller: newController });
+    await registerAppShell(reloaded.container);
+
+    expect(appShellUpdateReady()).toBe(false);
+    await expect(takeOverWaitingAppShell(BOUND_MS)).resolves.toBe(false);
+  });
+});
+
 describe("registration", () => {
+  test("that finds a worker waiting does not ask the outgoing worker to warm", async () => {
+    const controller = fakeWorker("activated");
+    const fake = fakeContainer({
+      controller: controller.worker,
+      waiting: fakeWorker("installed").worker,
+    });
+
+    await registerAppShell(fake.container);
+
+    expect(controller.messages).toEqual([]);
+  });
+
   test("takes the origin root as its scope and keeps the HTTP cache out of the update check", async () => {
     const calls: Array<[string, unknown]> = [];
     const fake = fakeContainer({ controller: null });
@@ -415,6 +529,44 @@ describe("registration", () => {
     applyAppShellUpdate();
     fake.changeController();
     expect(reloads).toBe(0);
+  });
+});
+
+describe("a look for a new deployment", () => {
+  test("asks the registration to fetch the worker script, and does nothing before there is one", async () => {
+    const fake = fakeContainer({ controller: fakeWorker("activated").worker });
+
+    await checkForAppShellUpdate();
+    expect(fake.checks.count).toBe(0);
+
+    await registerAppShell(fake.container);
+    await checkForAppShellUpdate();
+    expect(fake.checks.count).toBe(1);
+  });
+
+  test("that fails, as an offline one does, resolves and leaves nothing announced", async () => {
+    const fake = fakeContainer({ controller: fakeWorker("activated").worker });
+    await registerAppShell(fake.container);
+    fake.checks.fail = true;
+
+    await expect(checkForAppShellUpdate()).resolves.toBeUndefined();
+    expect(fake.checks.count).toBe(1);
+    expect(appShellUpdateReady()).toBe(false);
+  });
+
+  test("that finds a redeployed worker announces it as an update", async () => {
+    const fake = fakeContainer({ controller: fakeWorker("activated").worker });
+    await registerAppShell(fake.container);
+    const found = fakeWorker();
+    fake.registration.update = () => {
+      fake.findUpdate(found.worker);
+      return Promise.resolve();
+    };
+
+    await checkForAppShellUpdate();
+    fake.install(found);
+
+    expect(appShellUpdateReady()).toBe(true);
   });
 });
 

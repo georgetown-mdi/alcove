@@ -6,11 +6,28 @@ import ts from "typescript";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
 import {
+  APP_SHELL_UPDATE_HOLD_LOCK_NAME,
+  appShellUpdateHeldHere,
+  holdAppShellUpdateAcrossWindows,
+  holdAppShellUpdateHere,
+  resetAppShellUpdateHold,
+} from "@utils/appShellUpdateHold";
+import {
+  SKIP_WAITING_MESSAGE,
   appShellUpdateReady,
   registerAppShell,
   resetAppShellUpdate,
 } from "@utils/appShellUpdate";
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
+
+import {
+  APP_UPDATE_TAKEOVER_WAIT_MS,
+  applyWaitingAppUpdateBetweenRuns,
+} from "@psi/managed/managedAppUpdate";
+import {
+  awaitManagedExchangeLockTurn,
+  withManagedExchangeLock,
+} from "@psi/managed/managedExchangeLock";
 
 import {
   MANAGED_INPUT_FILE_NAME,
@@ -28,7 +45,11 @@ import {
 } from "@psi/managed/managedWorkingDirectory";
 import { managedBackupFileName } from "@psi/managed/managedExchangeExport";
 import { runResultsFileName } from "@psi/parkedResults";
-import { startManagedScheduleRuntime } from "@psi/managed/managedScheduleRuntime";
+
+import {
+  APP_UPDATE_CHECK_INTERVAL_MS,
+  startManagedScheduleRuntime,
+} from "@psi/managed/managedScheduleRuntime";
 import { tickManagedSchedules } from "@psi/managed/managedScheduleRunner";
 
 import {
@@ -47,12 +68,13 @@ import type { ManagedScheduleTickSeams } from "@psi/managed/managedScheduleRunne
 /**
  * The four runtime boundaries the unattended runner rests on, as checks rather
  * than as prose: an exchange is executed by the app runtime and by nothing else,
- * a scheduled run never applies a waiting app-shell update, the folder the
- * operator granted is written only by a recurring exchange's runs -- the
- * scheduled run and the attended one, through one writer -- and the app reads
- * exactly one conventioned name from that folder and never enumerates it.
+ * a waiting app-shell update is applied only between runs and never while
+ * anything would be lost, the folder the operator granted is written only by a
+ * recurring exchange's runs -- the scheduled run and the attended one, through
+ * one writer -- and the app reads exactly one conventioned name from that
+ * folder and never enumerates it.
  *
- * All four are claims about what does NOT happen, which is exactly the kind a
+ * Each is a claim about what does NOT happen, which is exactly the kind a
  * comment cannot keep true (CONTRIBUTING.md, Code Conventions).
  */
 
@@ -145,30 +167,88 @@ describe("the app-shell service worker", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The scheduled runner never applies a waiting app-shell update.
+// The scheduled runner applies a waiting app-shell update only between runs.
 
-/** A worker whose state never changes; the update path only reads it. */
-function fakeWorker(state: string): ShellWorker {
-  return {
+/** A worker whose state a test can advance, firing `statechange` as a real
+ * one does. */
+function fakeWorker(
+  state: string,
+  onMessage: (message: unknown) => void = () => undefined,
+) {
+  const listeners: Array<() => void> = [];
+  const worker = {
     state,
-    postMessage: () => undefined,
-    addEventListener: () => undefined,
+    postMessage: onMessage,
+    addEventListener: (_type: "statechange", listener: () => void) => {
+      listeners.push(listener);
+    },
+  };
+  return {
+    worker: worker as ShellWorker,
+    advanceTo(next: string) {
+      worker.state = next;
+      for (const listener of listeners) listener();
+    },
   };
 }
 
-/** A container reporting a worker already installed and waiting behind the one
- * controlling this page -- the state an announced update sits in. */
-function containerWithWaitingUpdate(): ShellContainer {
+/** A container whose page is controlled, with `waiting` behind it when an
+ * update is already installed, and a way to announce one later -- as the
+ * browser does when it finds a redeployed script mid-run. A waiting worker
+ * takes over when told to, as one whose predecessor has nothing in flight
+ * does, unless `takeoverHeld`; `landTakeover` then lands it. */
+function shellContainer(waiting: boolean, takeoverHeld = false) {
+  const updateFound: Array<() => void> = [];
+  const controllerChange: Array<() => void> = [];
   const registration = {
-    installing: null,
-    waiting: fakeWorker("installed"),
-    addEventListener: () => undefined,
+    installing: null as ShellWorker | null,
+    waiting: null as ShellWorker | null,
+    addEventListener: (_type: "updatefound", listener: () => void) => {
+      updateFound.push(listener);
+    },
+    update: () => Promise.resolve(),
   };
-  return {
-    controller: fakeWorker("activated"),
+  const container = {
+    controller: fakeWorker("activated").worker as ShellWorker | null,
     register: () => Promise.resolve(registration),
-    addEventListener: () => undefined,
+    addEventListener: (_type: "controllerchange", listener: () => void) => {
+      controllerChange.push(listener);
+    },
   };
+  const landTakeover = () => {
+    container.controller = registration.waiting;
+    registration.waiting = null;
+    for (const listener of controllerChange) listener();
+  };
+  const waitingWorker = (state: string) =>
+    fakeWorker(state, (message) => {
+      if (message === SKIP_WAITING_MESSAGE && !takeoverHeld)
+        queueMicrotask(landTakeover);
+    });
+  if (waiting) registration.waiting = waitingWorker("installed").worker;
+  return {
+    container: container as ShellContainer,
+    landTakeover,
+    installUpdate() {
+      const installing = waitingWorker("installing");
+      registration.installing = installing.worker;
+      for (const listener of updateFound) listener();
+      registration.installing = null;
+      registration.waiting = installing.worker;
+      installing.advanceTo("installed");
+    },
+  };
+}
+
+/** This page's shell, registered with a reload the test counts. */
+async function registerShell(waiting: boolean, takeoverHeld = false) {
+  const shell = shellContainer(waiting, takeoverHeld);
+  const reload = vi.fn();
+  await registerAppShell(shell.container, {
+    reload,
+    onPageUnloading: () => undefined,
+  });
+  return { ...shell, reload };
 }
 
 function dueRecord(): ManagedExchangeRecord {
@@ -192,8 +272,16 @@ function dueRecord(): ManagedExchangeRecord {
 }
 
 /** Seams over one due record whose run succeeds, so a tick goes all the way
- * through: catch-up, an attempt, and the window's bookkeeping write. */
-function seamsForDueWindow(record: ManagedExchangeRecord): {
+ * through: catch-up, an attempt, and the window's bookkeeping write. The
+ * stored record is never advanced, so every tick finds the window due again:
+ * each one stands for the next scheduled run. The apply before each window's
+ * first attempt is the runtime's own, over this process's real Web Locks.
+ * `during` runs inside each attempt, holding the record's run+rotate lock as
+ * a run does. */
+function seamsForDueWindow(
+  record: ManagedExchangeRecord,
+  during: () => void = () => undefined,
+): {
   seams: ManagedScheduleTickSeams;
   attempts: () => number;
 } {
@@ -212,65 +300,239 @@ function seamsForDueWindow(record: ManagedExchangeRecord): {
           unreadableIds: [],
         }),
       persistAdvance: () => Promise.resolve(record),
-      runAttempt: () => {
-        attempts += 1;
-        return Promise.resolve(undefined);
-      },
+      runAttempt: () =>
+        withManagedExchangeLock(record.id, () => {
+          attempts += 1;
+          during();
+          return Promise.resolve(undefined);
+        }),
       delay: () => Promise.resolve(),
       stopped: () => false,
+      applyWaitingAppUpdate: () => applyWaitingAppUpdateBetweenRuns(),
     },
   };
 }
 
+/** Hold another record's run+rotate lock until the returned function is
+ * called, as a run in another window does. */
+async function runInAnotherWindow(): Promise<() => void> {
+  let finish = (): void => undefined;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let started = (): void => undefined;
+  const holding = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  void withManagedExchangeLock("another-exchange", () => {
+    started();
+    return finished;
+  });
+  await holding;
+  return finish;
+}
+
 afterEach(() => {
   resetAppShellUpdate();
+  resetAppShellUpdateHold();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("a scheduled run and a waiting app-shell update", () => {
-  test("leaves the update waiting: the runner never reloads the runtime under itself", async () => {
-    const reload = vi.fn();
-    await registerAppShell(containerWithWaitingUpdate(), {
-      reload,
-      onPageUnloading: () => undefined,
-    });
+  test("waiting with nothing in progress anywhere is applied before the run, and the run is made on the reloaded page", async () => {
+    const shell = await registerShell(true);
     expect(appShellUpdateReady()).toBe(true);
 
     const record = dueRecord();
     const { seams, attempts } = seamsForDueWindow(record);
     const [entry] = await tickManagedSchedules(seams);
 
+    expect(shell.reload).toHaveBeenCalledTimes(1);
+    expect(attempts()).toBe(0);
+    expect(entry.skipped).toBe("app-update");
+
+    // The reloaded page: the takeover activated the new code, so nothing is
+    // waiting, and its first wake makes the run the old page left.
+    resetAppShellUpdate();
+    const reloaded = await registerShell(false);
+    const [rerun] = await tickManagedSchedules(seams);
+
     expect(attempts()).toBe(1);
-    expect(entry.disposition).toBe("succeeded");
-    // A waiting worker takes over at the next cold start. Applying it means a
-    // reload, and a reload during a run raises a confirmation an unattended
-    // runtime has nobody to answer -- so the runner leaves it alone and the
-    // offer stands for whoever opens the app next.
-    expect(reload).not.toHaveBeenCalled();
-    expect(appShellUpdateReady()).toBe(true);
+    expect(rerun.disposition).toBe("succeeded");
+    expect(reloaded.reload).not.toHaveBeenCalled();
   });
 
-  test("holds across the host loop that wakes the tick, not only one tick", async () => {
-    vi.useFakeTimers();
-    const reload = vi.fn();
-    await registerAppShell(containerWithWaitingUpdate(), {
-      reload,
-      onPageUnloading: () => undefined,
+  test("arriving during a run is applied after the run ends and before the next one", async () => {
+    const shell = await registerShell(false);
+    const record = dueRecord();
+    const { seams, attempts } = seamsForDueWindow(record, () => {
+      shell.installUpdate();
     });
 
-    const { seams } = seamsForDueWindow(dueRecord());
+    const [first] = await tickManagedSchedules(seams);
+
+    expect(attempts()).toBe(1);
+    expect(first.disposition).toBe("succeeded");
+    expect(appShellUpdateReady()).toBe(true);
+    expect(shell.reload).not.toHaveBeenCalled();
+
+    const [next] = await tickManagedSchedules(seams);
+
+    expect(shell.reload).toHaveBeenCalledTimes(1);
+    expect(attempts()).toBe(1);
+    expect(next.skipped).toBe("app-update");
+  });
+
+  test("waiting while another window runs an exchange is held until that run ends", async () => {
+    const shell = await registerShell(true);
+    const record = dueRecord();
+    const { seams, attempts } = seamsForDueWindow(record);
+    const finishOtherRun = await runInAnotherWindow();
+
+    const [held] = await tickManagedSchedules(seams);
+
+    expect(shell.reload).not.toHaveBeenCalled();
+    expect(attempts()).toBe(1);
+    expect(held.disposition).toBe("succeeded");
+
+    finishOtherRun();
+    await awaitManagedExchangeLockTurn("another-exchange");
+    const [next] = await tickManagedSchedules(seams);
+
+    expect(shell.reload).toHaveBeenCalledTimes(1);
+    expect(next.skipped).toBe("app-update");
+  });
+
+  test("waiting while any window's leave-page prompt is armed, or a view here holds it, is held", async () => {
+    const shell = await registerShell(true);
+    const { seams, attempts } = seamsForDueWindow(dueRecord());
+
+    const releasePrompt = holdAppShellUpdateAcrossWindows();
+    await tickManagedSchedules(seams);
+    releasePrompt();
+
+    const releaseView = holdAppShellUpdateHere();
+    await tickManagedSchedules(seams);
+    releaseView();
+
+    expect(attempts()).toBe(2);
+    expect(shell.reload).not.toHaveBeenCalled();
+
+    await vi.waitFor(async () => {
+      const { held } = await navigator.locks.query();
+      expect(held?.map((lock) => lock.name)).not.toContain(
+        APP_SHELL_UPDATE_HOLD_LOCK_NAME,
+      );
+    });
+    await tickManagedSchedules(seams);
+    expect(shell.reload).toHaveBeenCalledTimes(1);
+  });
+
+  test("none waiting reloads nothing, and the run is made", async () => {
+    const shell = await registerShell(false);
+    const { seams, attempts } = seamsForDueWindow(dueRecord());
+
+    const [entry] = await tickManagedSchedules(seams);
+
+    expect(shell.reload).not.toHaveBeenCalled();
+    expect(attempts()).toBe(1);
+    expect(entry.disposition).toBe("succeeded");
+  });
+
+  test("is not applied where the lock state cannot be read", async () => {
+    let applied = 0;
+    let takeovers = 0;
+    const answer = await applyWaitingAppUpdateBetweenRuns({
+      updateReady: () => true,
+      heldHere: () => false,
+      lockNames: () => Promise.reject(new Error("the lock manager is gone")),
+      takeOver: () => {
+        takeovers += 1;
+        return Promise.resolve(true);
+      },
+      apply: () => (applied += 1),
+    });
+
+    expect(answer).toBe(false);
+    expect(takeovers).toBe(0);
+    expect(applied).toBe(0);
+  });
+
+  test("that a view here holds once the takeover has landed is not reloaded until it lets go", async () => {
+    let applied = 0;
+    let release = (): void => undefined;
+    const seams = {
+      updateReady: () => true,
+      heldHere: appShellUpdateHeldHere,
+      lockNames: () => Promise.resolve([]),
+      takeOver: () => {
+        release = holdAppShellUpdateHere();
+        return Promise.resolve(true);
+      },
+      apply: () => (applied += 1),
+    };
+
+    expect(await applyWaitingAppUpdateBetweenRuns(seams)).toBe(false);
+    expect(applied).toBe(0);
+    release();
+    seams.takeOver = () => Promise.resolve(true);
+    expect(await applyWaitingAppUpdateBetweenRuns(seams)).toBe(true);
+    expect(applied).toBe(1);
+  });
+
+  test("whose takeover does not land within the wait: the run is made, and the next window reloads onto it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const shell = await registerShell(true, true);
+    const { seams, attempts } = seamsForDueWindow(dueRecord());
+
+    const tick = tickManagedSchedules(seams);
+    await vi.advanceTimersByTimeAsync(APP_UPDATE_TAKEOVER_WAIT_MS);
+    const [entry] = await tick;
+
+    expect(shell.reload).not.toHaveBeenCalled();
+    expect(attempts()).toBe(1);
+    expect(entry.disposition).toBe("succeeded");
+
+    // The outgoing worker lets the posted takeover land after the wait.
+    shell.landTakeover();
+    const [next] = await tickManagedSchedules(seams);
+
+    expect(shell.reload).toHaveBeenCalledTimes(1);
+    expect(attempts()).toBe(1);
+    expect(next.skipped).toBe("app-update");
+  });
+});
+
+describe("the runtime's look for a new deployment", () => {
+  test("is made once an hour of wakes has passed since the start, and not before", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-01-06T09:00:00.000Z"));
+    const looks: Array<number> = [];
     const controller = new AbortController();
     startManagedScheduleRuntime({
       signal: controller.signal,
-      intervalMs: 1000,
-      seams,
+      tick: () => Promise.resolve([]),
+      seams: seamsForDueWindow(dueRecord()).seams,
+      checkForAppUpdate: () => {
+        looks.push(Date.now());
+        return Promise.resolve();
+      },
     });
-    await vi.advanceTimersByTimeAsync(5000);
-    controller.abort();
 
-    expect(reload).not.toHaveBeenCalled();
-    expect(appShellUpdateReady()).toBe(true);
+    // The launch's own navigation was the first look.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(looks).toEqual([]);
+    await vi.advanceTimersByTimeAsync(APP_UPDATE_CHECK_INTERVAL_MS - 60_000);
+    expect(looks).toEqual([]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(looks).toEqual([Date.parse("2026-01-06T10:00:00.000Z")]);
+    await vi.advanceTimersByTimeAsync(APP_UPDATE_CHECK_INTERVAL_MS);
+    expect(looks).toEqual([
+      Date.parse("2026-01-06T10:00:00.000Z"),
+      Date.parse("2026-01-06T11:00:00.000Z"),
+    ]);
+    controller.abort();
   });
 });
 

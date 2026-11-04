@@ -191,6 +191,11 @@ export interface ManagedScheduleTickSeams {
   awaitLockTurn: (id: string) => Promise<void>;
   /** Whether the runtime hosting this tick is going away. */
   stopped: () => boolean;
+  /** Called before a window's first attempt: apply a waiting app update when
+   * nothing would be lost, resolving `true` when the page is reloading onto
+   * it. The attempt is then not made, and the window is left for the reloaded
+   * page. */
+  applyWaitingAppUpdate: () => Promise<boolean>;
 }
 
 /** Why a record's tick attempted nothing. */
@@ -205,6 +210,7 @@ type ManagedScheduleSkipReason =
   | "window-closed"
   | "deleted"
   | "stopped"
+  | "app-update"
   | "bookkeeping-failed";
 
 /** What one record's tick did, for the runtime's diagnostic line and for the
@@ -457,8 +463,14 @@ interface WindowOccupancy {
    * the record is gone, its plan no longer holds this window, or it can no
    * longer run unattended. The caller writes no bookkeeping for the window: a
    * deleted record has nothing to write onto, and a moved plan would drop the
-   * conditioned write anyway. */
-  ended?: "deleted" | "plan-moved" | "configuration-only" | "no-working-folder";
+   * conditioned write anyway. `"app-update"` is the page reloading onto a
+   * waiting app update before the window's first attempt. */
+  ended?:
+    | "deleted"
+    | "plan-moved"
+    | "configuration-only"
+    | "no-working-folder"
+    | "app-update";
 }
 
 /**
@@ -474,6 +486,14 @@ interface WindowOccupancy {
  * - as `"skipped"` where the operator's compromise response stands;
  * - with no disposition where the record is gone, its plan no longer holds
  *   this window, or it has lost its secret or its working folder.
+ *
+ * Before the window's first attempt reads the clock or the record, a waiting
+ * app update is applied where nothing would be lost ({@link
+ * ManagedScheduleTickSeams.applyWaitingAppUpdate}), which can wait for the
+ * new worker's takeover; the occupancy then ends with no disposition, and the
+ * reloaded page's first wake occupies the still-open window on the new code.
+ * Once an attempt has started, the window runs to its normal end, since a
+ * reload would drop the evidence and pacing its attempts have built up.
  *
  * Each attempt waits for the partner up to {@link ATTEMPT_PEER_WAIT_MS},
  * clamped to what is left of the window; a retryable failure starts another
@@ -512,6 +532,10 @@ async function occupyWindow(
   let disposition: ManagedScheduleWindowDisposition | undefined;
   let standingCondition: ManagedStandingCondition | undefined;
   let evidenceSharedSecret: string | undefined;
+  // Asked ahead of the loop, whose head then reads the clock and the record
+  // after a takeover wait rather than before it.
+  if (!seams.stopped() && (await seams.applyWaitingAppUpdate()))
+    return { attempts, ended: "app-update" };
   for (;;) {
     // A runtime going away mid-window leaves the window UNRESOLVED: it is still
     // open, and recording a miss for one this runner simply stopped occupying

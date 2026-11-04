@@ -36,6 +36,7 @@ import {
   RELAY_REGISTRATION_HELD_BY_RUN_TEXT,
   STOP_RUN_AND_ENROLL_LABEL,
 } from "@recurring/managedRunHolder";
+import { appShellUpdateHeldHere } from "@utils/appShellUpdateHold";
 import { withManagedExchangeLock } from "@psi/managed/managedExchangeLock";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
@@ -221,6 +222,104 @@ describe("the relay registration section", () => {
         ),
       )
       .toBeInTheDocument();
+  });
+});
+
+describe("the relay registration section's hold on a waiting app update", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Render the section as the saved exchange's page does: each change it
+   * reports re-reads the stored exchange and renders the section again. */
+  function renderFollowingStore(record: RunnableManagedExchangeRecord): void {
+    const render = (current: RunnableManagedExchangeRecord) => {
+      app.render(
+        createElement(ManagedRelayRegistration, {
+          record: current,
+          runInFlight: false,
+          runHolder: undefined,
+          onRunLockRefused: () => undefined,
+          onRecheckRunLock: () => undefined,
+          onChanged: () => {
+            void getManagedExchange(current.id).then((stored) => {
+              if (stored !== undefined)
+                render(runnableManagedExchangeOrRefuse(stored));
+            });
+          },
+        }),
+      );
+    };
+    render(record);
+  }
+
+  async function expectHeld(held: boolean): Promise<void> {
+    await vi.waitFor(() => {
+      expect(appShellUpdateHeldHere()).toBe(held);
+    });
+  }
+
+  test("is released after a successful stop, and raised again by typing", async () => {
+    const created = await createManagedExchange(newExchange());
+    renderFollowingStore(
+      await persistManagedExchangeRelayRegistrar(
+        created.id,
+        REGISTRAR,
+        created.sharedSecret,
+      ),
+    );
+    await expect.element(addressField()).toHaveValue(REGISTRAR.url);
+    await expectHeld(false);
+
+    await userEvent.click(
+      page.getByRole("button", { name: "Stop registering" }),
+    );
+
+    await expect
+      .element(page.getByText(STOPPED_OWN_RELAY_TEXT, { exact: false }))
+      .toBeInTheDocument();
+    await expect.element(addressField()).toHaveValue("");
+    await expect.element(exchangeIdField()).toHaveValue("");
+    await expectHeld(false);
+
+    await userEvent.fill(addressField(), REGISTRAR.url);
+    await expectHeld(true);
+  });
+
+  test("is released after an enrollment that stored a url differing from the typed one, and raised again by typing", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ maxAgeDays: null, lapsesAt: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    const record = runnableManagedExchangeOrRefuse(
+      await createManagedExchange(newExchange()),
+    );
+    renderFollowingStore(record);
+
+    await userEvent.fill(addressField(), "HTTPS://Relay.Example.org:8443/");
+    await userEvent.fill(exchangeIdField(), REGISTRAR.exchangeId);
+    await expectHeld(true);
+    await userEvent.click(page.getByRole("button", { name: "Enroll" }));
+
+    await expect
+      .element(
+        page.getByText(
+          "The registrar holds this exchange's current relay key.",
+        ),
+      )
+      .toBeInTheDocument();
+    expect((await getManagedExchange(record.id))?.relayRegistrar).toEqual(
+      REGISTRAR,
+    );
+    await expect.element(addressField()).toHaveValue(REGISTRAR.url);
+    await expectHeld(false);
+
+    await userEvent.fill(exchangeIdField(), "riverbend-q4");
+    await expectHeld(true);
   });
 });
 

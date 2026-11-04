@@ -7,6 +7,7 @@ import {
 } from "@exchange/manageOfferModel";
 import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
 import { resolveCsvDelimiter } from "@components/csvDelimiterChoice";
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 
 import {
   allowedRelaysError,
@@ -172,6 +173,14 @@ export function useLocalFieldsDraft(
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Every edit path clears `saved`, so an edit since the last good save is
+  // `edited && !saved`; it exists only in this page until saved.
+  const [edited, setEdited] = useState(false);
+  useAppShellUpdateHold(edited && !saved);
+  function noteEdit(): void {
+    setEdited(true);
+    setSaved(false);
+  }
 
   const maxAgeError = maxAgeEnabled ? maxAgeDaysError(maxAgeDays) : undefined;
   const tokenMaxAgeDays =
@@ -197,24 +206,24 @@ export function useLocalFieldsDraft(
 
   function editDocumentFields(edit: Partial<LocalDocumentFieldValues>) {
     setDocumentFields((current) => ({ ...current, ...edit }));
-    setSaved(false);
+    noteEdit();
   }
 
   return {
     label,
     maxAgeEnabled,
     maxAgeDays,
-    editLabel: (edited) => {
-      setLabel(edited);
-      setSaved(false);
+    editLabel: (typed) => {
+      setLabel(typed);
+      noteEdit();
     },
     editMaxAgeEnabled: (enabled) => {
       setMaxAgeEnabled(enabled);
-      setSaved(false);
+      noteEdit();
     },
     editMaxAgeDays: (days) => {
       setMaxAgeDays(days);
-      setSaved(false);
+      noteEdit();
     },
     ownColumns: documentFields.ownColumns,
     ownColumnsOffered: ownColumnsOffered(record.exchangeFile),
@@ -250,7 +259,7 @@ export function useLocalFieldsDraft(
     },
     allowedRelaysError: relaysError,
     documentEdits: localDocumentFieldEdits(record.exchangeFile, documentFields),
-    markEdited: () => setSaved(false),
+    markEdited: noteEdit,
     maxAgeError,
     tokenMaxAgeDays,
     tokenMaxAgeDaysEdit: maxAgeEnabled ? (tokenMaxAgeDays ?? null) : null,

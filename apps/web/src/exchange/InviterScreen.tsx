@@ -42,6 +42,7 @@ import { invitationLocation } from "@psi/invitationLocation";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
 import { alcoveVersion, isConsoleBuild } from "@utils/clientConfig";
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 import { useConsoleImage } from "@utils/useConsoleImage";
 import { whenDiagnostic } from "@utils/diagnostics";
 
@@ -1026,6 +1027,14 @@ export function InviterScreen() {
     finalized: invitation !== undefined || savedExchange !== undefined,
     demoActive,
   });
+  // From the file on, everything here -- a sample run included, and the
+  // results, the record and the offer to keep the exchange after a run -- is
+  // held only in this page.
+  useAppShellUpdateHold(
+    acquired !== undefined ||
+      invitation !== undefined ||
+      savedExchange !== undefined,
+  );
 
   // A hosted browser run keeps its invitation in this tab's session storage
   // while it can still be waited on, so a reload offers to wait on it again

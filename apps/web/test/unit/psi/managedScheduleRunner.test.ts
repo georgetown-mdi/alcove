@@ -35,6 +35,7 @@ import {
   encodeManagedExchangeArtifact,
   reconstructRecordFromArtifact,
 } from "@psi/managed/managedExchangeArtifact";
+import { APP_UPDATE_TAKEOVER_WAIT_MS } from "@psi/managed/managedAppUpdate";
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
@@ -183,6 +184,9 @@ function harness(options: {
   writeDuringAttempt?: (
     record: ManagedExchangeRecord,
   ) => ManagedExchangeRecord | undefined;
+  /** The apply of a waiting app update asked before a window's first attempt;
+   * by default no update is waiting. */
+  applyWaitingAppUpdate?: () => Promise<boolean>;
 }): Harness {
   const script = options.script ?? [];
   const stored = new Map(
@@ -278,6 +282,8 @@ function harness(options: {
     stopped: () =>
       options.stopAfterAttempts !== undefined &&
       attempts.length >= options.stopAfterAttempts,
+    applyWaitingAppUpdate:
+      options.applyWaitingAppUpdate ?? (() => Promise.resolve(false)),
   };
   return {
     seams,
@@ -496,6 +502,151 @@ describe("a due window in the open runtime", () => {
 
     expect(entry.attempts).toBe(MAX_WINDOW_ATTEMPTS);
     expect(entry.disposition).toBe("failed");
+  });
+});
+
+describe("a due window with a waiting app update", () => {
+  test("whose takeover wait runs out measures the attempt's remaining time and pacing from after the wait", async () => {
+    const closesAtMs = at("2026-01-06T17:00:00.000Z");
+    const startedAtMs = closesAtMs - ATTEMPT_PEER_WAIT_MS;
+    let advanceClock = (_ms: number): void => undefined;
+    const runner = harness({
+      records: [recordWith()],
+      startAt: new Date(startedAtMs).toISOString(),
+      script: [{ kind: "fail", error: new Error("the channel dropped") }],
+      applyWaitingAppUpdate: () => {
+        advanceClock(APP_UPDATE_TAKEOVER_WAIT_MS);
+        return Promise.resolve(false);
+      },
+    });
+    advanceClock = runner.advanceClock;
+
+    await tickManagedSchedules(runner.seams);
+
+    const [first, second] = runner.attempts;
+    expect(first.startedAtMs).toBe(startedAtMs + APP_UPDATE_TAKEOVER_WAIT_MS);
+    expect(first.peerWaitTimeoutMs).toBe(
+      ATTEMPT_PEER_WAIT_MS - APP_UPDATE_TAKEOVER_WAIT_MS,
+    );
+    expect(first.startedAtMs + first.peerWaitTimeoutMs).toBe(closesAtMs);
+    expect(second.startedAtMs - first.startedAtMs).toBe(ATTEMPT_RATE_GAP_MS);
+  });
+
+  test("asks to apply it before the attempt, and leaves the window open and unrecorded when the page reloads", async () => {
+    let asked = 0;
+    const runner = harness({
+      records: [recordWith()],
+      startAt: "2026-01-06T14:30:00.000Z",
+      script: [{ kind: "succeed" }],
+      applyWaitingAppUpdate: () => {
+        asked += 1;
+        return Promise.resolve(true);
+      },
+    });
+
+    const [entry] = await tickManagedSchedules(runner.seams);
+
+    expect(asked).toBe(1);
+    expect(runner.attempts).toEqual([]);
+    expect(entry).toMatchObject({ attempts: 0, skipped: "app-update" });
+    expect(entry.disposition).toBeUndefined();
+    // No write: the reloaded page's first wake finds the window still due.
+    expect(runner.advances).toEqual([]);
+  });
+
+  const record = recordWith();
+  test.each<[string, AttemptScript]>([
+    [
+      "no-show waits and a transient failure",
+      [
+        ...noShowScript(),
+        { kind: "fail", error: new Error("the channel dropped") },
+        ...noShowScript(),
+      ],
+    ],
+    [
+      "lock refusals",
+      [
+        {
+          kind: "fail",
+          error: new ManagedExchangeLockUnavailableError(record.id),
+          spendsMs: ATTEMPT_PEER_WAIT_MS,
+        },
+      ],
+    ],
+  ])(
+    "ready after the first attempt of a window of %s, does not end it: its retries and disposition are those of a window with no update",
+    async (_name, script) => {
+      const options = {
+        records: [record],
+        startAt: "2026-01-06T14:00:00.000Z",
+        script,
+      };
+      const withoutUpdate = harness(options);
+      const [expected] = await tickManagedSchedules(withoutUpdate.seams);
+
+      let asked = 0;
+      const withUpdate = harness({
+        ...options,
+        applyWaitingAppUpdate: () => {
+          asked += 1;
+          return Promise.resolve(asked > 1);
+        },
+      });
+      const [entry] = await tickManagedSchedules(withUpdate.seams);
+
+      expect(asked).toBe(1);
+      expect(entry.skipped).toBeUndefined();
+      expect(entry).toEqual(expected);
+      expect(withUpdate.attempts.map((attempt) => attempt.startedAtMs)).toEqual(
+        withoutUpdate.attempts.map((attempt) => attempt.startedAtMs),
+      );
+      expect(withUpdate.attempts.length).toBeGreaterThan(1);
+      expect(withUpdate.advances).toEqual(withoutUpdate.advances);
+      expect(withUpdate.advances).toHaveLength(1);
+    },
+  );
+
+  test("ready after a window's attempts is applied before the first attempt of the next window", async () => {
+    let ready = false;
+    const runner = harness({
+      records: [recordWith()],
+      startAt: "2026-01-06T14:00:00.000Z",
+      script: noShowScript(),
+      applyWaitingAppUpdate: () => {
+        const answer = ready;
+        ready = true;
+        return Promise.resolve(answer);
+      },
+    });
+
+    const [first] = await tickManagedSchedules(runner.seams);
+    expect(first.disposition).toBe("missed");
+    const attemptsInFirstWindow = runner.attempts.length;
+
+    runner.advanceClock(at("2026-01-13T14:00:00.000Z") - runner.nowMs());
+    const [next] = await tickManagedSchedules(runner.seams);
+
+    expect(next).toMatchObject({ attempts: 0, skipped: "app-update" });
+    expect(runner.attempts).toHaveLength(attemptsInFirstWindow);
+    expect(runner.advances).toHaveLength(1);
+  });
+
+  test("is not asked where no attempt would be made", async () => {
+    let asked = 0;
+    const runner = harness({
+      records: [recordWith()],
+      startAt: "2026-01-07T14:00:00.000Z",
+      applyWaitingAppUpdate: () => {
+        asked += 1;
+        return Promise.resolve(true);
+      },
+    });
+
+    const [entry] = await tickManagedSchedules(runner.seams);
+
+    expect(entry.skipped).toBe("not-due");
+    expect(asked).toBe(0);
   });
 });
 

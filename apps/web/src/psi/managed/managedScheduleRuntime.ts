@@ -43,6 +43,8 @@
 
 import { getLogger } from "@alcove/core";
 
+import { checkForAppShellUpdate } from "@utils/appShellUpdate";
+
 import { appendSanitizedRunWarning } from "../runWarnings";
 
 import { CLOSE_OUTCOME_WARNINGS } from "../exchangeLifecycle";
@@ -85,6 +87,7 @@ import {
   getManagedLocalState,
   listReadableManagedLocalState,
 } from "./managedLocalState";
+import { applyWaitingAppUpdateBetweenRuns } from "./managedAppUpdate";
 import { awaitManagedExchangeLockTurn } from "./managedExchangeLock";
 import { runManagedExchangeInBrowser } from "./managedRunDriver";
 import { tickManagedSchedules } from "./managedScheduleRunner";
@@ -122,6 +125,15 @@ const log = getLogger("managedScheduleRuntime");
  * costing one store read per minute in an idle runtime.
  */
 const SCHEDULE_TICK_INTERVAL_MS = 60_000;
+
+/**
+ * How often the runtime asks the browser to look for a new deployment. The
+ * browser looks at a navigation, which an app left open to run its schedule
+ * may not see for weeks ({@link checkForAppShellUpdate}); this bounds how long
+ * it trails a deployment before a window. Each look is one fetch of the worker
+ * script.
+ */
+export const APP_UPDATE_CHECK_INTERVAL_MS = 60 * 60_000;
 
 /** The diagnostic-log prefix an unattended run's notices have, so a line in the
  * console names the run that raised it. */
@@ -168,6 +180,9 @@ export interface ManagedScheduleRuntimeOptions {
   /** Overrides the between-visit notification boundary. Defaults to the store,
    * the clock, and the browser's own notification API. */
   notices?: BetweenVisitNoticeSeams;
+  /** Overrides the look for a new deployment. Defaults to
+   * {@link checkForAppShellUpdate}. */
+  checkForAppUpdate?: () => Promise<void>;
 }
 
 /** The platform boundaries the between-visit notification runs on: the two store
@@ -200,6 +215,10 @@ export interface BetweenVisitNoticeSeams {
  * while every other due record is dispatched, so one record legitimately
  * occupying its own window for hours does not hide a second exchange's due
  * window behind it.
+ *
+ * A wake also asks the browser to look for a new deployment, once
+ * {@link APP_UPDATE_CHECK_INTERVAL_MS} has passed since the runtime started or
+ * last asked: the launch's own navigation is the first look.
  */
 export function startManagedScheduleRuntime(
   options: ManagedScheduleRuntimeOptions,
@@ -213,10 +232,16 @@ export function startManagedScheduleRuntime(
   const tick = options.tick ?? tickManagedSchedules;
   const seams = options.seams ?? browserScheduleTickSeams(signal);
   const notices = options.notices ?? browserBetweenVisitNoticeSeams();
+  const checkForAppUpdate = options.checkForAppUpdate ?? checkForAppShellUpdate;
   const inFlight = new Set<string>();
   const announced = new Map<string, string>();
+  let lastAppUpdateCheckMs = Date.now();
   const wake = async (): Promise<void> => {
     if (signal.aborted) return;
+    if (Date.now() - lastAppUpdateCheckMs >= APP_UPDATE_CHECK_INTERVAL_MS) {
+      lastAppUpdateCheckMs = Date.now();
+      void checkForAppUpdate();
+    }
     try {
       const entries = await tick(seams, inFlight);
       reportTick(entries);
@@ -256,6 +281,7 @@ export function browserScheduleTickSeams(
     awaitLockTurn: awaitManagedExchangeLockTurn,
     stopped: () => signal.aborted,
     runAttempt: (attempt) => runUnattendedAttempt(attempt, signal),
+    applyWaitingAppUpdate: () => applyWaitingAppUpdateBetweenRuns(),
   };
 }
 

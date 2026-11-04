@@ -31,6 +31,7 @@ import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
 import { runListsRelay } from "@psi/transport/runRelayPlan";
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 import { useHashTarget } from "@components/useHashTarget";
 
 import { dateLabel } from "@psi/formatting";
@@ -828,6 +829,7 @@ function ScheduleEntryFieldset({
   // at the field.
   const widthNeedsDecimals = !Number.isInteger(fields.windowHours);
   const [partnerText, setPartnerText] = useState("");
+  useAppShellUpdateHold(partnerText !== "");
   const [partnerTextError, setPartnerTextError] = useState<string | undefined>(
     undefined,
   );
