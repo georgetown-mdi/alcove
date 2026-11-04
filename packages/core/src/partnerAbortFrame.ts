@@ -8,8 +8,9 @@ import type { MessageConnection } from "./connection/messageConnection";
 
 /**
  * The reason a party puts on the abort it sends the partner in place of a set
- * of its own over `MAX_PSI_DECODE_ELEMENTS` or the partner's stated
- * receive ceiling. A first round the party could not count sends
+ * of its own over `MAX_PSI_DECODE_ELEMENTS` (`MAX_SINGLE_PASS_SET_ELEMENTS`
+ * for a single-pass set over file-sync) or the partner's stated receive
+ * ceiling. A first round the party could not count sends
  * `PSI_SET_REFUSED_ABORT_REASON` instead. A fixed literal, like every abort
  * reason (see `sendAbort`).
  */

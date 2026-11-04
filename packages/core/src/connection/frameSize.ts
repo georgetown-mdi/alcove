@@ -2,6 +2,7 @@ import { FAN_OUT_CANDIDATES_PER_ELEMENT } from "../fanOutFunctions";
 import {
   PSI_ENCODED_ELEMENT_BYTES,
   PSI_REQUEST_FRAMING_BYTES,
+  PSI_SET_MAX_FRAMING_BYTES,
 } from "./webrtcOutboundBound";
 
 /**
@@ -31,6 +32,24 @@ export const MAX_DERIVED_FRAME_BYTES = Number.MAX_SAFE_INTEGER;
 export const MAX_PSI_DECODE_ELEMENTS = 2 ** 24;
 
 /**
+ * The largest value of a uint32 field: the single-pass reply states its
+ * setup's and its response's lengths and the sender's row count as uint32s.
+ */
+export const MAX_UINT32 = 0xffff_ffff;
+
+/**
+ * The most distinct values one single-pass set holds over file-sync, in place
+ * of {@link MAX_PSI_DECODE_ELEMENTS}: the most whose setup, at 35 bytes an
+ * element plus its framing, has a length a uint32 holds. A response is 35
+ * bytes an element with no framing, so the setup binds first. A sender refuses
+ * a set over it before masking any value (docs/spec/PROTOCOL.md, The limits
+ * over file-sync).
+ */
+export const MAX_SINGLE_PASS_SET_ELEMENTS = Math.floor(
+  (MAX_UINT32 - PSI_SET_MAX_FRAMING_BYTES) / PSI_ENCODED_ELEMENT_BYTES,
+);
+
+/**
  * The most elements a browser party accepts in a partner's PSI set: the
  * largest same-size round measured to complete in a browser tab in both PSI
  * roles. Stated as its receive ceiling on the terms exchange. Raise it only
@@ -44,7 +63,7 @@ export const BROWSER_PSI_SET_MAX_ELEMENTS = 8_388_608;
  * (`effectiveKeyCount * recordCount`, not rows), so the derived reply stays under
  * `MAX_WEBRTC_FRAME_BYTES`. File-sync has no such budget: it has the caps the
  * counts derive for its two frames, the AEAD's limit on one frame,
- * {@link MAX_PSI_DECODE_ELEMENTS} and the memory checks. Fixed, not
+ * {@link MAX_SINGLE_PASS_SET_ELEMENTS} and the memory checks. Fixed, not
  * configurable: a configurable maximum reopens the memory-exhaustion denial of
  * service. Raise it only by re-deriving it from a fresh measurement
  * (docs/spec/PROTOCOL.md, The single-pass dataset ceiling: receiver memory and
