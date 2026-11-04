@@ -76,11 +76,14 @@ const CLEAN_DIRECTORY_RESTART_REMEDY =
   "Re-run the exchange in a clean directory; both parties must start the new " +
   "exchange fresh.";
 
-const PARTNER_MESSAGE_DELETE_FAILED =
-  "could not delete a partner message after reading it (two attempts). " +
+const DELETE_NEXT_STEP =
   "In delete mode each message is deleted once read, so the account must be " +
   "allowed to delete files in the exchange directory. Grant that permission, " +
   "or have both parties set retain_files: true.";
+
+const PARTNER_MESSAGE_DELETE_FAILED =
+  "could not delete a partner message after reading it (two attempts). " +
+  DELETE_NEXT_STEP;
 
 const ACKNOWLEDGE_NEXT_STEP =
   "In retain mode each message read is acknowledged by writing a file, so " +
@@ -475,21 +478,22 @@ export class FileSyncMessageLoop {
       await consume();
     } catch (err: unknown) {
       if (!this.pollerActive) throw err;
-      const detail =
+      const lead =
+        `[${this.deps.role()}] could not ${failedAction} the refused ` +
+        "message file";
+      if (
         err instanceof UsageError &&
         err.message === PARTNER_MESSAGE_DELETE_FAILED
-          ? PARTNER_MESSAGE_DELETE_FAILED
-          : redactAndSanitizeForDisplay(errorMessage(err));
+      ) {
+        this.deps.log().warn(`${lead} (two attempts). ${DELETE_NEXT_STEP}`);
+        return;
+      }
+      const detail = redactAndSanitizeForDisplay(errorMessage(err));
       const nextStep =
         failedAction === "acknowledge"
           ? `${detail.endsWith(".") ? "" : "."} ${ACKNOWLEDGE_NEXT_STEP}`
           : "";
-      this.deps
-        .log()
-        .warn(
-          `[${this.deps.role()}] could not ${failedAction} the refused ` +
-            `message file: ${detail}${nextStep}`,
-        );
+      this.deps.log().warn(`${lead}: ${detail}${nextStep}`);
     }
   }
 

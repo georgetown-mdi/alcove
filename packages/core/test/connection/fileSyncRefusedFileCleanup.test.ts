@@ -71,8 +71,7 @@ const MODES = [
     },
     consumed: (f: Fixture) => !f.files.has(f.messagePath),
     warning: (role: string) =>
-      `[${role}] could not delete the refused message file: ` +
-      "could not delete a partner message after reading it (two attempts). " +
+      `[${role}] could not delete the refused message file (two attempts). ` +
       "In delete mode each message is deleted once read, so the account must " +
       "be allowed to delete files in the exchange directory. Grant that " +
       "permission, or have both parties set retain_files: true.",

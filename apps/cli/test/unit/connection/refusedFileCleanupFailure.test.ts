@@ -72,7 +72,7 @@ const MODES = [
     options: {},
     arm: (client: FaultingClient) => (client.failDeletes = true),
     warning:
-      /could not delete the refused message file: could not delete a partner message/,
+      /could not delete the refused message file \(two attempts\)\. In delete mode/,
   },
   {
     mode: "retain mode",
