@@ -183,8 +183,8 @@ function harness(options: {
   writeDuringAttempt?: (
     record: ManagedExchangeRecord,
   ) => ManagedExchangeRecord | undefined;
-  /** The apply of a waiting app update asked before each attempt; by default
-   * no update is waiting. */
+  /** The apply of a waiting app update asked before a window's first attempt;
+   * by default no update is waiting. */
   applyWaitingAppUpdate?: () => Promise<boolean>;
 }): Harness {
   const script = options.script ?? [];
@@ -527,20 +527,82 @@ describe("a due window with a waiting app update", () => {
     expect(runner.advances).toEqual([]);
   });
 
-  test("asks again before every attempt of the window, so one found mid-window is applied at the next", async () => {
-    const answers = [false, true];
+  const record = recordWith();
+  test.each<[string, AttemptScript]>([
+    [
+      "no-show waits and a transient failure",
+      [
+        ...noShowScript(),
+        { kind: "fail", error: new Error("the channel dropped") },
+        ...noShowScript(),
+      ],
+    ],
+    [
+      "lock refusals",
+      [
+        {
+          kind: "fail",
+          error: new ManagedExchangeLockUnavailableError(record.id),
+          spendsMs: ATTEMPT_PEER_WAIT_MS,
+        },
+      ],
+    ],
+  ])(
+    "ready after the first attempt of a window of %s, does not end it: its retries and disposition are those of a window with no update",
+    async (_name, script) => {
+      const options = {
+        records: [record],
+        startAt: "2026-01-06T14:00:00.000Z",
+        script,
+      };
+      const withoutUpdate = harness(options);
+      const [expected] = await tickManagedSchedules(withoutUpdate.seams);
+
+      let asked = 0;
+      const withUpdate = harness({
+        ...options,
+        applyWaitingAppUpdate: () => {
+          asked += 1;
+          return Promise.resolve(asked > 1);
+        },
+      });
+      const [entry] = await tickManagedSchedules(withUpdate.seams);
+
+      expect(asked).toBe(1);
+      expect(entry.skipped).toBeUndefined();
+      expect(entry).toEqual(expected);
+      expect(withUpdate.attempts.map((attempt) => attempt.startedAtMs)).toEqual(
+        withoutUpdate.attempts.map((attempt) => attempt.startedAtMs),
+      );
+      expect(withUpdate.attempts.length).toBeGreaterThan(1);
+      expect(withUpdate.advances).toEqual(withoutUpdate.advances);
+      expect(withUpdate.advances).toHaveLength(1);
+    },
+  );
+
+  test("ready after a window's attempts is applied before the first attempt of the next window", async () => {
+    let ready = false;
     const runner = harness({
       records: [recordWith()],
       startAt: "2026-01-06T14:00:00.000Z",
       script: noShowScript(),
-      applyWaitingAppUpdate: () => Promise.resolve(answers.shift() ?? true),
+      applyWaitingAppUpdate: () => {
+        const answer = ready;
+        ready = true;
+        return Promise.resolve(answer);
+      },
     });
 
-    const [entry] = await tickManagedSchedules(runner.seams);
+    const [first] = await tickManagedSchedules(runner.seams);
+    expect(first.disposition).toBe("missed");
+    const attemptsInFirstWindow = runner.attempts.length;
 
-    expect(runner.attempts).toHaveLength(1);
-    expect(entry).toMatchObject({ attempts: 1, skipped: "app-update" });
-    expect(runner.advances).toEqual([]);
+    runner.advanceClock(at("2026-01-13T14:00:00.000Z") - runner.nowMs());
+    const [next] = await tickManagedSchedules(runner.seams);
+
+    expect(next).toMatchObject({ attempts: 0, skipped: "app-update" });
+    expect(runner.attempts).toHaveLength(attemptsInFirstWindow);
+    expect(runner.advances).toHaveLength(1);
   });
 
   test("is not asked where no attempt would be made", async () => {

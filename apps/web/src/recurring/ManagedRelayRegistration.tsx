@@ -108,9 +108,9 @@ export function ManagedRelayRegistration({
   onRecheckRunLock: () => void;
   onChanged: () => void;
 }) {
-  const [url, setUrl] = useState(record.relayRegistrar?.url ?? "");
+  const [url, setUrl] = useState(storedRegistrarFields(record).url);
   const [exchangeId, setExchangeId] = useState(
-    record.relayRegistrar?.exchangeId ?? "",
+    storedRegistrarFields(record).exchangeId,
   );
   const [ownerToken, setOwnerToken] = useState("");
   const [replace, setReplace] = useState(false);
@@ -132,6 +132,14 @@ export function ManagedRelayRegistration({
   const changeOwnerToken = (value: string) => {
     setOwnerToken(value);
     if (value === "") setReplace(false);
+  };
+
+  /** Show what a fresh render of `stored` would, so the update hold above is
+   * up only while the typed fields differ from the stored registrar. */
+  const showStoredRegistrar = (stored: RunnableManagedExchangeRecord) => {
+    const fields = storedRegistrarFields(stored);
+    setUrl(fields.url);
+    setExchangeId(fields.exchangeId);
   };
 
   /** The registrar the form names, or `undefined` with the fields' problems
@@ -168,6 +176,7 @@ export function ManagedRelayRegistration({
         lock: afterStop ? {} : { ifAvailable: true },
       });
       if (result.kind === "enrolled") {
+        showStoredRegistrar(result.record);
         setOutcome({ kind: "enrolled" });
         onChanged();
       } else
@@ -219,7 +228,7 @@ export function ManagedRelayRegistration({
     setOutcome(undefined);
     setBusy(true);
     try {
-      await stopManagedRelayRegistration(record.id);
+      showStoredRegistrar(await stopManagedRelayRegistration(record.id));
       setOutcome({ kind: "removed" });
       onChanged();
     } catch (error) {
@@ -330,6 +339,18 @@ export function ManagedRelayRegistration({
       )}
     </div>
   );
+}
+
+/** The registrar fields a record's stored registrar fills, empty when it has
+ * none. */
+function storedRegistrarFields(record: RunnableManagedExchangeRecord): {
+  url: string;
+  exchangeId: string;
+} {
+  return {
+    url: record.relayRegistrar?.url ?? "",
+    exchangeId: record.relayRegistrar?.exchangeId ?? "",
+  };
 }
 
 function failureText(error: unknown): string {

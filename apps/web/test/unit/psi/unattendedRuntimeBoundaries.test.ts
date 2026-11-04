@@ -248,9 +248,10 @@ function dueRecord(): ManagedExchangeRecord {
 /** Seams over one due record whose run succeeds, so a tick goes all the way
  * through: catch-up, an attempt, and the window's bookkeeping write. The
  * stored record is never advanced, so every tick finds the window due again:
- * each one stands for the next scheduled run. The apply before each attempt
- * is the runtime's own, over this process's real Web Locks. `during` runs
- * inside each attempt, holding the record's run+rotate lock as a run does. */
+ * each one stands for the next scheduled run. The apply before each window's
+ * first attempt is the runtime's own, over this process's real Web Locks.
+ * `during` runs inside each attempt, holding the record's run+rotate lock as
+ * a run does. */
 function seamsForDueWindow(
   record: ManagedExchangeRecord,
   during: () => void = () => undefined,

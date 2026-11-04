@@ -1297,8 +1297,10 @@ waits behind a running page rather than taking it over (see
 An installed app left open to run its schedule may see no navigation for
 weeks, so the runner applies a waiting version itself:
 
-- **When.** Just before each attempt at a due window, so a version found
-  during an attempt is applied before the next one. The apply reloads the
+- **When.** Just before the first attempt at a due window, never between
+  two attempts at one, so a window that has made an attempt runs its retries
+  to its normal end and a version found meanwhile is applied before the first
+  attempt of a later window. The apply reloads the
   runner's own window by the path the update notice's Reload takes. The
   attempt is not made, the window is left with no disposition and no
   bookkeeping, and the reloaded page's first wake occupies the still-open
@@ -1323,8 +1325,8 @@ weeks, so the runner applies a waiting version itself:
   own navigation is the first look.
 
 An installed app running its schedule therefore trails a deployment by up to
-an hour to find it, then its install, then until the first attempt after that
-with nothing holding the apply back. A page running no schedule -- an ordinary
+an hour to find it, then its install, then until the first window after that
+whose first attempt finds nothing holding the apply back. A page running no schedule -- an ordinary
 tab, or an installed app whose runner is not running -- is never asked to
 look: it finds a deployment at its next navigation, and trails it for as long
 as it stays open without one. Its update notice applies a version it has

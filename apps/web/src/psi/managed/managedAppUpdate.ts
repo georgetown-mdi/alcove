@@ -3,8 +3,9 @@
  * open to run its schedule may see no navigation for weeks, and a new
  * deployment's worker waits behind the running page until something applies it
  * (`apps/web/src/utils/appShellUpdate.ts`). So the runner applies it itself,
- * before an attempt, through the banner's own reload-led path, and only when
- * nothing would be lost by the reload here or by the takeover elsewhere:
+ * before a window's first attempt, through the banner's own reload-led path,
+ * and only when nothing would be lost by the reload here or by the takeover
+ * elsewhere:
  *
  * - no same-origin window holds, or has queued for, a managed record's
  *   run+rotate lock (a run, a re-invite, relay enrollment, an import replace);

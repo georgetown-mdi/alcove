@@ -187,7 +187,7 @@ traffic passes through it, and no exchange work happens in it.
   leaves the offer standing.
 - An installed app running its schedule looks for a new version once an hour,
   and reloads onto a waiting one just before a scheduled run starts, so that
-  run uses it. It waits while any window is running an exchange or has an
+  run uses it, never between the retries of one run. It waits while any window is running an exchange or has an
   unsent invitation or acceptance open, and while its own window shows
   something a reload would lose, such as a finished run's downloads or an
   unsaved change. The rule and how long an app can run an older version:
