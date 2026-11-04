@@ -12,7 +12,7 @@ import {
   recordRelaysLeftOut,
   withPeerRelaysLeftOut,
 } from "@psi/transport/iceGathering";
-import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
+import { INVITER_DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { RelayedTerminalError } from "@psi/jobClient/serverJobExchangeDriver";
 import { failureFor } from "@exchange/useInviterExchange";
 
@@ -181,7 +181,7 @@ test("a connection that did not open with this site's relay switched off names t
     return { message: shown, report: reported };
   });
 
-  expect(message.textContent).toContain(DEFAULT_RELAY_OFF_REMEDY);
+  expect(message.textContent).toContain(INVITER_DEFAULT_RELAY_OFF_REMEDY);
   expect(message.contains(report)).toBe(false);
   expect(report.textContent).toBe("Negotiation of connection failed.");
 });

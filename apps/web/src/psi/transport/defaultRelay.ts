@@ -2,17 +2,17 @@
  * The default relay a build names (`VITE_DEFAULT_RELAY_TURN_URL`,
  * `VITE_DEFAULT_RELAY_REGISTRAR_URL` and, optionally,
  * `VITE_DEFAULT_RELAY_WEBSOCKET_URL`), in use where the build turns it on
- * (`VITE_DEFAULT_RELAY_MODE=on`) or this browser's user did
- * (./defaultRelaySwitch.ts). In use, an invitation this browser creates names
- * it, its registrar and its WebSocket relay, and every browser run lists its
- * TURN url and its WebSocket relay url beside any relay the invitation or this
- * browser's own setting names, once the run has enrolled its relay key at the
- * relay's registrar without a token (`enrollRelayKeyWithinWait` in core),
- * right before it connects. The key and the exchange id it is enrolled under
- * both derive from the run's current shared secret. Switched off, a run lists
- * each of the two urls only where the invitation it accepted, or this
- * browser's own relay setting, names that url, and enrolls only where one of
- * them names the TURN url.
+ * (`VITE_DEFAULT_RELAY_MODE=on`) or the exchange's switch does
+ * (./defaultRelaySwitch.ts). In use, an invitation names it, its registrar
+ * and its WebSocket relay, and every browser run lists its TURN url and its
+ * WebSocket relay url beside any relay the invitation or the exchange's own
+ * relay names, once the run has enrolled its relay key at the relay's
+ * registrar without a token (`enrollRelayKeyWithinWait` in core), right
+ * before it connects. The key and the exchange id it is enrolled under both
+ * derive from the run's current shared secret. Switched off, a run lists each
+ * of the two urls only where the invitation it accepted, or the exchange's
+ * own relay, names that url, and enrolls only where one of them names the
+ * TURN url.
  */
 
 import {
@@ -25,8 +25,6 @@ import {
 
 import { defaultRelayBuild } from "@utils/clientConfig";
 
-import { readDefaultRelaySwitch } from "./defaultRelaySwitch";
-
 import type {
   DefaultRelayBuild,
   DefaultRelaySetting,
@@ -37,20 +35,20 @@ import type { RelayUrls } from "./ownRelaySetting";
 const log = getLogger("defaultRelay");
 
 /**
- * The default relay this browser's exchanges use: the build's where the build
- * turns it on, or offers it switched off and this browser's user turned it
+ * The default relay an exchange uses: the build's where the build turns it
+ * on, or offers it switched off and the exchange's switch, `switchedOn`, is
  * on; none otherwise.
  */
 export function defaultRelayInUse(
   build: () => DefaultRelayBuild = defaultRelayBuild,
-  switchedOn: () => boolean = readDefaultRelaySwitch,
+  switchedOn: () => boolean = () => false,
 ): DefaultRelaySetting | undefined {
   const offer = build();
   if (offer.kind === "none") return undefined;
   return offer.kind === "on" || switchedOn() ? offer.relay : undefined;
 }
 
-// The part of `defaultRelay` that `relay`, an invitation's or this browser's
+// The part of `defaultRelay` that `relay`, an invitation's or the exchange's
 // own, names, service by service: none where it does not name the TURN url,
 // since the TURN url is what a run enrolls for, and the WebSocket relay url
 // only where it names that url too.
@@ -67,15 +65,15 @@ function defaultRelayNamedBy(
 
 /**
  * The default relay a run uses. `in-use`: {@link defaultRelayInUse} names
- * it. `invited`: the build offers it switched off, this browser has not
+ * it. `invited`: the build offers it switched off, the exchange has not
  * turned it on, and the invitation the run accepted names its TURN url, so
  * the run uses that url as one in use; `relay` names the WebSocket relay url
  * only where the invitation names that url too. `own`: as `invited`, but
- * where the invitation does not name its TURN url and this browser's own
- * relay setting does; `relay` names the WebSocket relay url only where that
- * setting names that url too. `off`: the build offers it switched off
+ * where the invitation does not name its TURN url and the exchange's own
+ * relay does; `relay` names the WebSocket relay url only where that relay
+ * names that url too. `off`: the build offers it switched off
  * and the run does not use its TURN url, including where the invitation or
- * the own setting names only its WebSocket relay url, which the run lists as
+ * the own relay names only its WebSocket relay url, which the run lists as
  * it lists any other WebSocket relay; `relay` is the one left out. `none`:
  * the build names none.
  */
@@ -85,11 +83,11 @@ export type DefaultRelayForRun =
 
 /** The {@link DefaultRelayForRun} of a run whose accepted invitation names
  * `invitationRelay`, which an inviter's own run passes as `undefined`, and
- * whose browser's own relay setting is `ownRelay`. */
+ * whose exchange's own relay is `ownRelay`. */
 export function defaultRelayForRun(
   invitationRelay: RelayUrls | undefined,
   build: () => DefaultRelayBuild = defaultRelayBuild,
-  switchedOn: () => boolean = readDefaultRelaySwitch,
+  switchedOn: () => boolean = () => false,
   ownRelay?: RelayUrls,
 ): DefaultRelayForRun {
   const offer = build();
@@ -218,7 +216,7 @@ export interface RelayWithDefault {
 }
 
 /**
- * The relay a browser run dials with: `relay`, this browser's own and the
+ * The relay a browser run dials with: `relay`, the exchange's own and the
  * invitation's (`relayForRun`), then the build's default relay once one
  * attempt to enroll the run's key at its registrar confirms, within
  * {@link DEFAULT_RELAY_DIAL_WAIT_MS}: its TURN url, and its WebSocket relay

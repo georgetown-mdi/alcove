@@ -9,8 +9,6 @@ import {
 
 import { signalingServerSetting } from "@utils/clientConfig";
 
-import { readCoordinationServerSetting } from "./coordinationServerSetting";
-
 import type { SignalingLocationField, WebRTCEndpoint } from "@alcove/core";
 import type { SignalingServerSetting } from "@utils/clientConfig";
 
@@ -98,9 +96,8 @@ export function resolveSignalingAddress(
 
 /**
  * This deployment's signaling address, resolved from the deployment setting
- * and `window.location`: the server an invitation names where this browser's
- * coordination server setting names none ({@link inviterSignalingAddress}).
- * Browser only.
+ * and `window.location`: the server an invitation names unless its
+ * Connection settings name another. Browser only.
  */
 export function ownSignalingAddress(): SignalingAddress {
   if (typeof window === "undefined")
@@ -109,8 +106,8 @@ export function ownSignalingAddress(): SignalingAddress {
 }
 
 /**
- * The signaling address an invitation this browser creates names: `own`,
- * this browser's coordination server setting, with its port always stated,
+ * The signaling address an invitation names: `own`, the server its
+ * Connection settings name, with its port always stated,
  * else `deployment`, read only then. `own` is an address
  * `parseCoordinationServerUrl` accepted.
  */
@@ -130,26 +127,10 @@ export function resolveInviterSignalingAddress(
 }
 
 /**
- * The signaling address an invitation this browser creates names, and where
- * its inviter registers: this browser's coordination server setting, else
- * {@link ownSignalingAddress}. A stored setting this page cannot read names
- * none. Browser only.
- */
-export function inviterSignalingAddress(): SignalingAddress {
-  if (typeof window === "undefined")
-    throw new Error("inviterSignalingAddress must be called in the browser");
-  const own = readCoordinationServerSetting(window.location.protocol);
-  return resolveInviterSignalingAddress(
-    own.kind === "set" ? own.url : undefined,
-    ownSignalingAddress,
-  );
-}
-
-/**
  * The address of the server `endpoint` names, as a `ws://` or `wss://` url
  * by this page's scheme, when it is not this deployment's own: the server
- * this browser's coordination server setting named when the invitation was
- * created. Undefined for the deployment's own server. Browser only.
+ * the invitation's Connection settings named when it was created. Undefined
+ * for the deployment's own server. Browser only.
  */
 export function settingServerNamedBy(
   endpoint: Pick<WebRTCEndpoint, "host" | "port" | "path">,
@@ -170,9 +151,9 @@ export function settingServerNamedBy(
 }
 
 /**
- * An inviter's registration at the coordination server this browser's
- * setting named failed with no answer from it. The message names the server
- * and where it was set.
+ * An inviter's registration at the coordination server its Connection
+ * settings named failed with no answer from it. The message names the
+ * server.
  */
 export class CoordinationServerUnreachableError extends Error {
   /** The server's address, as {@link settingServerNamedBy} states it. */
@@ -180,7 +161,7 @@ export class CoordinationServerUnreachableError extends Error {
   constructor(server: string, options?: ErrorOptions) {
     super(
       `This page could not connect to ${server}, the coordination server ` +
-        "set in relay settings, which this invitation names.",
+        "this invitation names.",
       options,
     );
     this.name = "CoordinationServerUnreachableError";

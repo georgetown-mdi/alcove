@@ -1,6 +1,6 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { page } from "vitest/browser";
 
@@ -14,8 +14,7 @@ import {
   INVITED_DEFAULT_RELAY_NOTICE_LEAD,
   OWN_DEFAULT_RELAY_NOTICE_LEAD,
 } from "@exchange/DefaultRelayNotice";
-import { RELAY_OPERATOR_DISCLOSURE } from "@exchange/RelaySettingsScreen";
-import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
+import { RELAY_OPERATOR_DISCLOSURE } from "@exchange/ExchangeConnectionSettings";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 
@@ -26,24 +25,30 @@ const SITE_RELAY = {
   registrarUrl: "https://registrar.example.org",
 };
 
-beforeEach(() => {
-  window.localStorage.clear();
-});
+const OPT_IN = () => ({ kind: "opt-in" as const, relay: SITE_RELAY });
 
 afterEach(async () => {
   await flushPendingUpdates();
   app.unmount();
-  window.localStorage.clear();
 });
+
+/** Render `props` inside a host element, to check it renders nothing. */
+function renderHosted(props: Parameters<typeof DefaultRelayNotice>[0]) {
+  app.render(
+    createElement(
+      "div",
+      { "data-testid": "host" },
+      createElement(DefaultRelayNotice, props),
+    ),
+  );
+}
 
 describe("the default relay notice", () => {
   test("with a default relay states what the relay's operator learns, naming no operator", async () => {
     app.render(
       createElement(DefaultRelayNotice, {
-        setting: () => ({
-          turnUrl: "turns:turn.example.org:443?transport=tcp",
-          registrarUrl: "https://registrar.example.org",
-        }),
+        build: () => ({ kind: "on" as const, relay: SITE_RELAY }),
+        switchedOn: false,
       }),
     );
     await expect.element(page.getByRole("note")).toBeInTheDocument();
@@ -56,15 +61,11 @@ describe("the default relay notice", () => {
   });
 
   test("switched off, on the review of an invitation naming it, says the exchange may connect through it", async () => {
-    const relay = {
-      turnUrl: "turns:turn.example.org:443?transport=tcp",
-      registrarUrl: "https://registrar.example.org",
-    };
     app.render(
       createElement(DefaultRelayNotice, {
-        build: () => ({ kind: "opt-in" as const, relay }),
-        setting: () => undefined,
-        invitationRelay: { turn: [relay.turnUrl] },
+        build: OPT_IN,
+        switchedOn: false,
+        invitationRelay: { turn: [SITE_RELAY.turnUrl] },
       }),
     );
     await expect
@@ -79,32 +80,20 @@ describe("the default relay notice", () => {
   });
 
   test("switched off, with an invitation naming another relay, renders nothing", async () => {
-    app.render(
-      createElement(
-        "div",
-        { "data-testid": "host" },
-        createElement(DefaultRelayNotice, {
-          build: () => ({
-            kind: "opt-in" as const,
-            relay: {
-              turnUrl: "turns:turn.example.org:443?transport=tcp",
-              registrarUrl: "https://registrar.example.org",
-            },
-          }),
-          setting: () => undefined,
-          invitationRelay: { turn: ["turn:partner.example.net:3478"] },
-        }),
-      ),
-    );
+    renderHosted({
+      build: OPT_IN,
+      switchedOn: false,
+      invitationRelay: { turn: ["turn:partner.example.net:3478"] },
+    });
     await expect.element(page.getByTestId("host")).toBeEmptyDOMElement();
   });
 
-  test("switched off, on the create review, with this browser's relay setting naming it, says the exchange may connect through it", async () => {
-    writeOwnRelaySetting({ turn: [SITE_RELAY.turnUrl], stun: [] });
+  test("switched off, with the exchange's own relay naming it, says the exchange may connect through it", async () => {
     app.render(
       createElement(DefaultRelayNotice, {
-        build: () => ({ kind: "opt-in" as const, relay: SITE_RELAY }),
-        setting: () => undefined,
+        build: OPT_IN,
+        switchedOn: false,
+        ownRelay: { turn: [SITE_RELAY.turnUrl], stun: [] },
       }),
     );
     await expect
@@ -113,17 +102,18 @@ describe("the default relay notice", () => {
         `${OWN_DEFAULT_RELAY_NOTICE_LEAD} ${RELAY_OPERATOR_DISCLOSURE}`,
       );
     expect(OWN_DEFAULT_RELAY_NOTICE_LEAD).toBe(
-      "Your relay settings name the site's relay server, so this exchange " +
-        "may connect through it, unless its allowed relays leave it out.",
+      "Your Connection settings name the site's relay server, so this " +
+        "exchange may connect through it, unless its allowed relays leave " +
+        "it out.",
     );
   });
 
-  test("switched off, on the review of an invitation naming another relay, with this browser's relay setting naming it, says the exchange may connect through it", async () => {
-    writeOwnRelaySetting({ turn: [SITE_RELAY.turnUrl], stun: [] });
+  test("switched off, with an invitation naming another relay and the exchange's own relay naming it, says the exchange may connect through it", async () => {
     app.render(
       createElement(DefaultRelayNotice, {
-        build: () => ({ kind: "opt-in" as const, relay: SITE_RELAY }),
-        setting: () => undefined,
+        build: OPT_IN,
+        switchedOn: false,
+        ownRelay: { turn: [SITE_RELAY.turnUrl], stun: [] },
         invitationRelay: { turn: ["turn:partner.example.net:3478"] },
       }),
     );
@@ -134,12 +124,12 @@ describe("the default relay notice", () => {
       );
   });
 
-  test("switched off, where both the invitation and this browser's relay setting name it, gives the invitation as the reason", async () => {
-    writeOwnRelaySetting({ turn: [SITE_RELAY.turnUrl], stun: [] });
+  test("switched off, where both the invitation and the exchange's own relay name it, gives the invitation as the reason", async () => {
     app.render(
       createElement(DefaultRelayNotice, {
-        build: () => ({ kind: "opt-in" as const, relay: SITE_RELAY }),
-        setting: () => undefined,
+        build: OPT_IN,
+        switchedOn: false,
+        ownRelay: { turn: [SITE_RELAY.turnUrl], stun: [] },
         invitationRelay: { turn: [SITE_RELAY.turnUrl] },
       }),
     );
@@ -150,29 +140,29 @@ describe("the default relay notice", () => {
       );
   });
 
-  test("switched off, with this browser's relay setting naming another relay, renders nothing", async () => {
-    writeOwnRelaySetting({ turn: ["turn:own.example.net:3478"], stun: [] });
-    app.render(
-      createElement(
-        "div",
-        { "data-testid": "host" },
-        createElement(DefaultRelayNotice, {
-          build: () => ({ kind: "opt-in" as const, relay: SITE_RELAY }),
-          setting: () => undefined,
-        }),
-      ),
-    );
+  test("switched off, with the exchange's own relay naming another relay, renders nothing", async () => {
+    renderHosted({
+      build: OPT_IN,
+      switchedOn: false,
+      ownRelay: { turn: ["turn:own.example.net:3478"], stun: [] },
+    });
+    await expect.element(page.getByTestId("host")).toBeEmptyDOMElement();
+  });
+
+  test("switched on renders nothing, since the switch states it", async () => {
+    renderHosted({
+      build: OPT_IN,
+      switchedOn: true,
+      invitationRelay: { turn: [SITE_RELAY.turnUrl] },
+    });
     await expect.element(page.getByTestId("host")).toBeEmptyDOMElement();
   });
 
   test("without a default relay renders nothing", async () => {
-    app.render(
-      createElement(
-        "div",
-        { "data-testid": "host" },
-        createElement(DefaultRelayNotice, { setting: () => undefined }),
-      ),
-    );
+    renderHosted({
+      build: () => ({ kind: "none" as const }),
+      switchedOn: false,
+    });
     await expect.element(page.getByTestId("host")).toBeEmptyDOMElement();
   });
 });

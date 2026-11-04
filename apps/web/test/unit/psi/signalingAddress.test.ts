@@ -14,9 +14,7 @@ import {
   COORDINATION_SERVER_TOO_LONG_MESSAGE,
   coordinationServerFormMessage,
   parseCoordinationServerUrl,
-  readCoordinationServerSetting,
   webAppAddressMessage,
-  writeCoordinationServerSetting,
 } from "../../../src/psi/transport/coordinationServerSetting.js";
 import {
   NoSignalingAddressError,
@@ -25,7 +23,7 @@ import {
   webrtcEndpointFromAddress,
 } from "../../../src/psi/invitation.js";
 import {
-  inviterSignalingAddress,
+  ownSignalingAddress,
   resolveInviterSignalingAddress,
   resolveSignalingAddress,
   settingServerNamedBy,
@@ -143,7 +141,6 @@ class FakePeer extends EventEmitter {
 
 describe("the inviter's registration and its invitation", () => {
   beforeEach(() => {
-    stubStorage();
     vi.stubGlobal("window", {
       location: {
         origin: "https://app.example.org",
@@ -270,18 +267,6 @@ describe("the inviter's registration and its invitation", () => {
   );
 });
 
-/** A localStorage stand-in over a Map, returned so a test reads what was
- * written. */
-function stubStorage(): Map<string, string> {
-  const values = new Map<string, string>();
-  vi.stubGlobal("localStorage", {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => void values.set(key, value),
-    removeItem: (key: string) => void values.delete(key),
-  });
-  return values;
-}
-
 const OWN_SERVER = "wss://coordination.agency.example/signal/";
 
 /** A host name of labels of `a`s, one of each length in `lengths`. */
@@ -289,7 +274,7 @@ function hostOfLabels(lengths: Array<number>): string {
   return lengths.map((length) => "a".repeat(length)).join(".");
 }
 
-describe("this browser's coordination server setting", () => {
+describe("the coordination server an invitation's Connection settings name", () => {
   beforeEach(() => {
     vi.stubGlobal("window", {
       location: {
@@ -312,9 +297,11 @@ describe("this browser's coordination server setting", () => {
     setting.consoleBuild = false;
   });
 
-  test("resolves to the build's server when none is set", () => {
-    stubStorage();
-    expect(inviterSignalingAddress()).toStrictEqual({
+  const named = (url: string) =>
+    resolveInviterSignalingAddress(url, ownSignalingAddress);
+
+  test("is the build's server where they name none", () => {
+    expect(invitationLocation().signaling).toStrictEqual({
       host: "signaling.example.org",
       port: 443,
       path: "/api/",
@@ -322,10 +309,8 @@ describe("this browser's coordination server setting", () => {
     });
   });
 
-  test("resolves to the setting when one is set, its port stated", () => {
-    stubStorage();
-    writeCoordinationServerSetting(OWN_SERVER);
-    expect(inviterSignalingAddress()).toStrictEqual({
+  test("is the one they name, its port stated", () => {
+    expect(invitationLocation(named(OWN_SERVER)).signaling).toStrictEqual({
       host: "coordination.agency.example",
       port: 443,
       path: "/signal/",
@@ -353,58 +338,17 @@ describe("this browser's coordination server setting", () => {
     );
   });
 
-  test("a stored value this page refuses names the build's server", () => {
-    const values = stubStorage();
-    values.set(
-      "alcove-own-coordination-server",
-      JSON.stringify({ version: 1, url: "ws://coordination.agency.example/" }),
-    );
-    expect(readCoordinationServerSetting("https:")).toEqual({
-      kind: "unreadable",
-    });
-    expect(inviterSignalingAddress().host).toBe("signaling.example.org");
-  });
-
-  test("storage that refuses the read is unreadable, not unset", () => {
-    vi.stubGlobal("localStorage", {
-      getItem: () => {
-        throw new Error("The operation is insecure.");
-      },
-    });
-    expect(readCoordinationServerSetting("https:")).toEqual({
-      kind: "unreadable",
-    });
-    expect(inviterSignalingAddress().host).toBe("signaling.example.org");
-
-    vi.stubGlobal("localStorage", undefined);
-    Object.defineProperty(globalThis, "localStorage", {
-      configurable: true,
-      get: () => {
-        throw new Error("The operation is insecure.");
-      },
-    });
-    expect(readCoordinationServerSetting("https:")).toEqual({
-      kind: "unreadable",
-    });
-  });
-
-  test("no storage at all is unset", () => {
-    vi.stubGlobal("localStorage", undefined);
-    expect(readCoordinationServerSetting("https:")).toEqual({ kind: "none" });
-  });
-
   test("an accepted 255-character host mints an invitation naming it", async () => {
-    stubStorage();
     const host = hostOfLabels([63, 63, 63, 63]);
     expect(host).toHaveLength(255);
     const entry = parseCoordinationServerUrl(`wss://${host}/api/`, "https:");
-    expect(entry.ok).toBe(true);
-    writeCoordinationServerSetting(entry.ok ? entry.url : undefined);
+    if (!entry.ok || entry.url === undefined)
+      throw new Error("the host was refused");
     const minted = await generateInvitation({
       allowedRelays: undefined,
       inviterName: "County Health Dept",
       profiledColumns: ["ssn", "first_name", "last_name", "dob"],
-      location: invitationLocation(),
+      location: invitationLocation(named(entry.url)),
       defaultRelay: () => undefined,
     });
     expect(
@@ -412,22 +356,12 @@ describe("this browser's coordination server setting", () => {
     ).toMatchObject({ channel: "webrtc", host });
   });
 
-  test("clearing the setting names the build's server again", () => {
-    const values = stubStorage();
-    writeCoordinationServerSetting(OWN_SERVER);
-    writeCoordinationServerSetting(undefined);
-    expect(values.size).toBe(0);
-    expect(inviterSignalingAddress().host).toBe("signaling.example.org");
-  });
-
-  test("an invitation created with the setting names it", async () => {
-    stubStorage();
-    writeCoordinationServerSetting(OWN_SERVER);
+  test("an invitation names it, and the inviter registers there", async () => {
     const minted = await generateInvitation({
       allowedRelays: undefined,
       inviterName: "County Health Dept",
       profiledColumns: ["ssn", "first_name", "last_name", "dob"],
-      location: invitationLocation(),
+      location: invitationLocation(named(OWN_SERVER)),
       defaultRelay: () => undefined,
     });
     const expected: WebRTCEndpoint = {
@@ -442,15 +376,9 @@ describe("this browser's coordination server setting", () => {
     expect(settingServerNamedBy(expected)).toBe(
       "wss://coordination.agency.example/signal/",
     );
-  });
-
-  test("an invitation created before a change keeps its server, and the inviter registers there", async () => {
-    stubStorage();
-    writeCoordinationServerSetting(OWN_SERVER);
     const before = webrtcEndpointFromAddress(
-      invitationSignalingAddress(invitationLocation()),
+      invitationSignalingAddress(invitationLocation(named(OWN_SERVER))),
     );
-    writeCoordinationServerSetting("wss://other.agency.example/");
     const options = await new Promise<PeerOptions>((resolve) => {
       void listenAsInviter(generateSharedSecret(), before, {
         peerFactory: (_id, peerOptions) => {
@@ -469,7 +397,6 @@ describe("this browser's coordination server setting", () => {
   });
 
   test("the build's own server is not named as the setting's", () => {
-    stubStorage();
     expect(
       settingServerNamedBy({
         host: "signaling.example.org",

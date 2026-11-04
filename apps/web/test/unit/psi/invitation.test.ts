@@ -38,10 +38,10 @@ import {
 } from "../../../src/psi/invitation.js";
 import { prepareAcceptedInvitation } from "../../../src/psi/acceptInvitation.js";
 import { webrtcEndpointForSignalingServer } from "../../../src/console/signalingServerModel.js";
-import { writeOwnRelaySetting } from "../../../src/psi/transport/ownRelaySetting.js";
 
 import type { LinkageTerms, Metadata } from "@alcove/core";
 import type { InvitationLocation } from "../../../src/psi/invitation.js";
+import type { OwnRelay } from "../../../src/psi/transport/ownRelaySetting.js";
 
 const signaling = {
   host: "example.org",
@@ -169,17 +169,7 @@ describe("generateInvitation", () => {
     });
 
     test("mints the console's webrtc invitation for the server it names, with no relay", async () => {
-      const values = new Map<string, string>();
-      vi.stubGlobal("localStorage", {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => void values.set(key, value),
-        removeItem: (key: string) => void values.delete(key),
-      });
-      writeOwnRelaySetting({
-        turn: ["turns:relay.example.org:443?transport=tcp"],
-        stun: [],
-      });
-      try {
+      {
         const connectionEndpoint = webrtcEndpointForSignalingServer({
           host: "signal.example.org",
           port: 8443,
@@ -194,6 +184,10 @@ describe("generateInvitation", () => {
           file: csvStream(),
           location: { ...consoleLocation, origin: "https://app.example.org" },
           connectionEndpoint,
+          ownRelay: {
+            turn: ["turns:relay.example.org:443?transport=tcp"],
+            stun: [],
+          },
         });
         const token = await decodeInvitation(encoded);
         expect(token.connectionEndpoint).toStrictEqual({
@@ -205,8 +199,6 @@ describe("generateInvitation", () => {
         expect(deepLink.startsWith("https://app.example.org/accept#")).toBe(
           true,
         );
-      } finally {
-        vi.unstubAllGlobals();
       }
     });
 
@@ -229,29 +221,23 @@ describe("generateInvitation", () => {
     );
   });
 
-  describe("with this browser's own relay set", () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
-    test("the webrtc invitation names its urls and no credential", async () => {
-      const values = new Map<string, string>();
-      vi.stubGlobal("localStorage", {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => void values.set(key, value),
-        removeItem: (key: string) => void values.delete(key),
-      });
+  describe("with the exchange's own relay set", () => {
+    test("the webrtc invitation names its urls and no credential, and returns it", async () => {
       const ownRelay = {
         turn: ["turns:relay.example.org:443?transport=tcp"],
         stun: ["stun:relay.example.org:3478"],
       };
-      writeOwnRelaySetting(ownRelay);
-      const { encoded } = await generateInvitation({
+      const { encoded, ...minted } = await generateInvitation({
         allowedRelays: undefined,
         inviterName: "County Health Dept",
         file: csvStream(),
         location,
+        ownRelay,
+        defaultRelayOn: true,
+        defaultRelay: () => undefined,
       });
+      expect(minted.ownRelay).toStrictEqual(ownRelay);
+      expect(minted.defaultRelayOn).toBe(true);
       const token = await decodeInvitation(encoded);
       expect(token.connectionEndpoint).toStrictEqual({
         channel: "webrtc",
@@ -275,18 +261,10 @@ describe("generateInvitation", () => {
       path: "/api/",
     };
 
-    function stubOwnRelay(ownRelay: {
-      turn: Array<string>;
-      stun: Array<string>;
-      websocket?: string;
-    }) {
-      const values = new Map<string, string>();
-      vi.stubGlobal("localStorage", {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => void values.set(key, value),
-        removeItem: (key: string) => void values.delete(key),
-      });
-      writeOwnRelaySetting(ownRelay);
+    let stubbedOwnRelay: OwnRelay | undefined;
+
+    function stubOwnRelay(ownRelay: OwnRelay) {
+      stubbedOwnRelay = ownRelay;
     }
 
     async function mintedEndpoint(
@@ -298,11 +276,13 @@ describe("generateInvitation", () => {
         profiledColumns: ["ssn", "first_name", "last_name", "dob"],
         location,
         defaultRelay: setting,
+        ownRelay: stubbedOwnRelay,
       });
       return (await decodeInvitation(encoded)).connectionEndpoint;
     }
 
     afterEach(() => {
+      stubbedOwnRelay = undefined;
       vi.unstubAllGlobals();
     });
 
@@ -319,7 +299,7 @@ describe("generateInvitation", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    test("switched off, names the default TURN url this browser's own relay names, without its registrar", async () => {
+    test("switched off, names the default TURN url the exchange's own relay names, without its registrar", async () => {
       stubOwnRelay({ turn: [DEFAULT_RELAY.turnUrl], stun: [] });
       expect(await mintedEndpoint(() => undefined)).toStrictEqual({
         ...WEBRTC_ENDPOINT,
@@ -343,7 +323,7 @@ describe("generateInvitation", () => {
       });
     });
 
-    test("names the default WebSocket relay, or this browser's own in its place", async () => {
+    test("names the default WebSocket relay, or the exchange's own in its place", async () => {
       const withWebSocket = () => ({
         ...DEFAULT_RELAY,
         websocketUrl: "wss://wsrelay.example.org/relay",
@@ -385,7 +365,7 @@ describe("generateInvitation", () => {
         return endpoint.relay;
       }
 
-      test("beside this browser's own WebSocket relay and the default TURN url, at the default registrar whichever relay it allocates on", async () => {
+      test("beside the exchange's own WebSocket relay and the default TURN url, at the default registrar whichever relay it allocates on", async () => {
         stubOwnRelay({
           turn: [],
           stun: [],
@@ -456,7 +436,6 @@ describe("generateInvitation", () => {
         turn: ["turns:relay.example.org:443?transport=tcp"],
         stun: ["stun:relay.example.org:3478"],
       };
-      stubOwnRelay(ownRelay);
       const allowedRelays = ["turn.example.org"];
       const minted = await generateInvitation({
         inviterName: "County Health Dept",
@@ -464,6 +443,7 @@ describe("generateInvitation", () => {
         location,
         defaultRelay: () => DEFAULT_RELAY,
         allowedRelays,
+        ownRelay,
       });
       expect(
         (await decodeInvitation(minted.encoded)).connectionEndpoint,
@@ -504,7 +484,7 @@ describe("generateInvitation", () => {
       ).toMatchObject({ relay: { turn: [DEFAULT_RELAY.turnUrl] } });
     });
 
-    test("names no relay when the build names none and this browser has none", async () => {
+    test("names no relay when the build names none and the exchange has none", async () => {
       expect(await mintedEndpoint(() => undefined)).toStrictEqual(
         WEBRTC_ENDPOINT,
       );

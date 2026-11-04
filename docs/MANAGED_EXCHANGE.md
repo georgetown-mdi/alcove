@@ -54,10 +54,9 @@ unaffected.
 A saved exchange has its own **Connection settings**, on its page. They hold
 the coordination server its re-invites name, its TURN, STUN and WebSocket relay
 urls, and, on a site that offers its own relay switched off, the **Use this
-site's relay server** switch. Its runs use these, not the Relay server page.
-An exchange saved from a run in this browser starts with the Relay server
-page's settings as they were when you saved it. Changing either one later does
-not change the other.
+site's relay server** switch. Its runs use these. An exchange saved from a
+run in this browser starts with the Connection settings that run used
+([WEB_APP.md](WEB_APP.md#connection-settings)).
 
 ### The relays a saved exchange may use
 

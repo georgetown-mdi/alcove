@@ -4,12 +4,12 @@ import {
   webSocketRelayUrlIsAllowed,
 } from "@alcove/core";
 
-import { defaultRelayForRun, relayWithDefaultForRun } from "./defaultRelay";
 import {
-  readOwnRelaySetting,
+  NO_OWN_RELAY,
   relayForRun,
   webSocketRelaysForRun,
 } from "./ownRelaySetting";
+import { defaultRelayForRun, relayWithDefaultForRun } from "./defaultRelay";
 import { allowedRelaysRunNotice } from "./relayRestriction";
 
 import type {
@@ -43,7 +43,7 @@ export interface RunRelayPlan {
    * out, named by a failed open. */
   relaysLeftOut: ReadonlyArray<string>;
   /**
-   * The WebSocket relays it lists: this browser's own, then the
+   * The WebSocket relays it lists: the exchange's own, then the
    * invitation's, then the build's default relay's once the run's
    * enrollment there confirmed, each once, less every one the allowed
    * relays leave out.
@@ -60,13 +60,13 @@ export interface RunRelayPlanDependencies extends DefaultRelayDependencies {
   /** The build's default relay and its mode, read where `setting` is unset;
    * the build's own when unset. */
   build?: () => DefaultRelayBuild;
-  /** This browser's default relay switch, read where `setting` is unset; the
-   * stored one when unset. */
+  /** The exchange's default relay switch, read where `setting` is unset; off
+   * when unset. */
   switchedOn?: () => boolean;
-  /** This browser's own relay; the stored setting when unset. */
+  /** The exchange's own relay; none when unset. */
   readOwn?: () => OwnRelayRead;
   /**
-   * The exchange id this browser's own WebSocket relay holds the exchange's
+   * The exchange id the exchange's own WebSocket relay holds the exchange's
    * relay key under: a saved exchange's registrar's (`relayRegistrar`). The
    * id derived from the shared secret when unset.
    */
@@ -76,18 +76,18 @@ export interface RunRelayPlanDependencies extends DefaultRelayDependencies {
 /**
  * The relay a browser run dials with. Its default relay is the one
  * `defaultRelayForRun` names: the one in use, or, where the build offers it
- * switched off, the build's only where `invitationRelay` or this browser's
+ * switched off, the build's only where `invitationRelay` or the exchange's
  * own relay names its TURN url, with its WebSocket relay url only where that
  * same relay names it too; `setting` replaces that choice. Every TURN and
- * WebSocket relay url it would list, this browser's own, the invitation's and
+ * WebSocket relay url it would list, the exchange's own, the invitation's and
  * that default relay's, is kept or left out by `allowedRelays`
  * (`turnUrlIsAllowed` and `webSocketRelayUrlIsAllowed` in core; unset keeps
  * every url). Where it is set, the urls kept and left out are shown through
  * `onRunNotice`. The default relay is then enrolled at and added as
  * {@link relayWithDefaultForRun} does, if it is kept. Each WebSocket relay it
  * lists names the exchange id its proof is made under, decided by the url:
- * the invitation's url takes the invitation's `websocketExchangeId`, this
- * browser's own url `ownRelayExchangeId`, and any other, or one with none
+ * the invitation's url takes the invitation's `websocketExchangeId`, the
+ * exchange's own url `ownRelayExchangeId`, and any other, or one with none
  * named, the id derived from the secret, the one the default relay's
  * enrollment uses.
  *
@@ -104,7 +104,7 @@ export async function relayPlanForRun(
   dependencies: RunRelayPlanDependencies = {},
 ): Promise<RunRelayPlan> {
   const {
-    readOwn = readOwnRelaySetting,
+    readOwn = () => NO_OWN_RELAY,
     ownRelayExchangeId,
     build,
     switchedOn,
@@ -183,8 +183,8 @@ export async function relayPlanForRun(
 /**
  * Whether a browser run whose accepted invitation names `invitationRelay`,
  * which an inviter's own run passes as `undefined`, lists any TURN or
- * WebSocket relay url for its allowed relays to keep or leave out: this
- * browser's own, the invitation's, or the default relay's where the run uses
+ * WebSocket relay url for its allowed relays to keep or leave out: the
+ * exchange's own, the invitation's, or the default relay's where the run uses
  * it, the urls {@link relayPlanForRun} lists before the allowed relays apply.
  */
 export function runListsRelay(
@@ -194,14 +194,14 @@ export function runListsRelay(
     "build" | "switchedOn" | "readOwn" | "setting"
   > = {},
 ): boolean {
-  const own = (dependencies.readOwn ?? readOwnRelaySetting)();
+  const own = dependencies.readOwn?.() ?? NO_OWN_RELAY;
   const { site } = defaultRelayListed(invitationRelay, own, dependencies);
   const { turn, websocket } = relayUrlsListed(own, invitationRelay, site);
   return turn.length + websocket.length > 0;
 }
 
 // The default relay a run lists, `site`: the one `defaultRelayForRun` finds
-// in use, invited, or named by this browser's own relay, or `setting`'s where
+// in use, invited, or named by the exchange's own relay, or `setting`'s where
 // it is given, which replaces that choice and leaves `forRun` absent.
 function defaultRelayListed(
   invitationRelay: RelayUrls | undefined,
@@ -229,7 +229,7 @@ function defaultRelayListed(
 }
 
 // The TURN and the WebSocket relay urls a run lists before its allowed relays
-// apply: this browser's own, then the invitation's, then `site`'s, each once.
+// apply: the exchange's own, then the invitation's, then `site`'s, each once.
 function relayUrlsListed(
   own: OwnRelayRead,
   invitationRelay: RelayUrls | undefined,
@@ -288,7 +288,7 @@ function webSocketRelayUrls(sources: WebSocketRelaySources): Array<string> {
   );
 }
 
-// The exchange id the invitation or this browser's registrar names for `url`,
+// The exchange id the invitation or the exchange's registrar names for `url`,
 // or `undefined` where the proof is made under the id the secret derives.
 function namedExchangeId(
   url: string,

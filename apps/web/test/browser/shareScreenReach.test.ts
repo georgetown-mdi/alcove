@@ -210,10 +210,10 @@ describe("share screen for a console WebRTC invitation", () => {
   });
 });
 
-describe("an unanswered coordination server of this browser's setting", () => {
+describe("an unanswered coordination server the invitation names", () => {
   const SERVER = "wss://coordination.agency.example/signal/";
 
-  test("offers a fresh invitation beside Try again, and relay settings in a new tab", async () => {
+  test("offers a fresh invitation beside Try again", async () => {
     app.render(
       createElement(InviterExchangeSection, {
         invitation: invitationAt("https://psi.data-bridge.org"),
@@ -253,10 +253,6 @@ describe("an unanswered coordination server of this browser's setting", () => {
         }),
       )
       .toBeEnabled();
-    const link = page.getByRole("link", {
-      name: "Open relay settings (opens in a new tab)",
-    });
-    await expect.element(link).toHaveAttribute("href", "/relay");
-    await expect.element(link).toHaveAttribute("target", "_blank");
+    expect(app.container.querySelector('a[href="/relay"]')).toBeNull();
   });
 });

@@ -4,33 +4,18 @@ import { deriveRelayExchangeId, generateSharedSecret } from "@alcove/core";
 
 import {
   MAX_RELAY_URLS,
-  browserRelaysForSavedExchange,
+  OwnRelaySchema,
   ownRelayForInvitation,
+  ownRelayRead,
   parseRelayUrlLines,
   parseWebSocketRelayUrl,
-  readOwnRelaySetting,
   relayForRun,
   webSocketRelaysForRun,
-  writeOwnRelaySetting,
 } from "@psi/transport/ownRelaySetting";
 import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import type { RelayLocator } from "@psi/transport/rendezvous";
-
-const STORAGE_KEY = "alcove-own-relay";
-
-/** A localStorage stand-in over a Map, returned so a test reads what was
- * written. */
-function stubStorage(): Map<string, string> {
-  const values = new Map<string, string>();
-  vi.stubGlobal("localStorage", {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => void values.set(key, value),
-    removeItem: (key: string) => void values.delete(key),
-  });
-  return values;
-}
 
 const OWN: RelayLocator = {
   turn: ["turns:relay.example.org:443?transport=tcp"],
@@ -41,87 +26,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("the stored own relay", () => {
-  test("reads back what was written", () => {
-    stubStorage();
-    writeOwnRelaySetting(OWN);
-    expect(readOwnRelaySetting()).toEqual({ kind: "set", relay: OWN });
+describe("an exchange's own relay", () => {
+  test("holds urls and nothing else", () => {
+    expect(OwnRelaySchema.safeParse(OWN).success).toBe(true);
+    expect(
+      OwnRelaySchema.safeParse({ ...OWN, credential: "not-a-real-credential" })
+        .success,
+    ).toBe(false);
   });
 
-  test("stores the urls and nothing else", () => {
-    const values = stubStorage();
-    writeOwnRelaySetting(OWN);
-    expect(JSON.parse(values.get(STORAGE_KEY) ?? "")).toStrictEqual({
-      version: 1,
-      turn: OWN.turn,
-      stun: OWN.stun,
-    });
-  });
-
-  test("a stored value holding a credential is refused", () => {
-    const values = stubStorage();
-    values.set(
-      STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        turn: OWN.turn,
-        stun: [],
-        credential: "not-a-real-credential",
-      }),
+  test("refuses a url outside the grammar, and a relay naming none", () => {
+    expect(
+      OwnRelaySchema.safeParse({ turn: ["turn:"], stun: [] }).success,
+    ).toBe(false);
+    expect(
+      OwnRelaySchema.safeParse({
+        ...OWN,
+        websocket: "ws://wsrelay.example.org",
+      }).success,
+    ).toBe(false);
+    expect(OwnRelaySchema.safeParse({ turn: [], stun: [] }).success).toBe(
+      false,
     );
-    expect(readOwnRelaySetting()).toEqual({ kind: "unreadable" });
   });
 
-  test("a stored url outside the grammar is refused", () => {
-    const values = stubStorage();
-    values.set(
-      STORAGE_KEY,
-      JSON.stringify({ version: 1, turn: ["turn:"], stun: [] }),
-    );
-    expect(readOwnRelaySetting()).toEqual({ kind: "unreadable" });
-  });
-
-  test("writing no url removes the setting", () => {
-    const values = stubStorage();
-    writeOwnRelaySetting(OWN);
-    writeOwnRelaySetting({ turn: [], stun: [] });
-    expect(values.has(STORAGE_KEY)).toBe(false);
-    expect(readOwnRelaySetting()).toEqual({ kind: "none" });
-  });
-
-  test("a url outside the grammar is not written", () => {
-    const values = stubStorage();
-    expect(() =>
-      writeOwnRelaySetting({
-        turn: ["turns:relay.example.org:443?transport=udp"],
-        stun: [],
-      }),
-    ).toThrow();
-    expect(values.has(STORAGE_KEY)).toBe(false);
-  });
-
-  test("no storage reads as no relay", () => {
-    vi.stubGlobal("localStorage", undefined);
-    expect(readOwnRelaySetting()).toEqual({ kind: "none" });
-  });
-});
-
-describe("the relays a saved exchange takes from this browser", () => {
-  test("are the stored relay and the stored switch", () => {
-    const values = stubStorage();
-    expect(browserRelaysForSavedExchange()).toEqual({ defaultRelayOn: false });
-    writeOwnRelaySetting(OWN);
-    values.set("alcove-default-relay-on", "1");
-    expect(browserRelaysForSavedExchange()).toEqual({
-      ownRelay: OWN,
-      defaultRelayOn: true,
-    });
-  });
-
-  test("a stored relay this build cannot read gives none", () => {
-    const values = stubStorage();
-    values.set(STORAGE_KEY, "{");
-    expect(browserRelaysForSavedExchange()).toEqual({ defaultRelayOn: false });
+  test("reads as none where it is absent", () => {
+    expect(ownRelayRead(undefined)).toEqual({ kind: "none" });
+    expect(ownRelayRead(OWN)).toEqual({ kind: "set", relay: OWN });
   });
 });
 
@@ -234,9 +165,6 @@ describe("relayForRun", () => {
     expect(
       relayForRun(invitation, NO_RESTRICTION, () => ({ kind: "none" })),
     ).toEqual(invitation);
-    expect(
-      relayForRun(invitation, NO_RESTRICTION, () => ({ kind: "unreadable" })),
-    ).toEqual(invitation);
   });
 
   test("falls back to the own setting", () => {
@@ -268,52 +196,12 @@ describe("relayForRun", () => {
     expect(
       relayForRun(undefined, NO_RESTRICTION, () => ({ kind: "none" })),
     ).toBeUndefined();
-    expect(
-      relayForRun(undefined, NO_RESTRICTION, () => ({ kind: "unreadable" })),
-    ).toBeUndefined();
   });
 });
 
 describe("the own WebSocket relay", () => {
   const WEBSOCKET = "wss://wsrelay.example.org/relay";
   const PARTNER = "wss://partner.example.net/relay";
-
-  test("is stored beside the TURN and STUN urls and reads back", () => {
-    const values = stubStorage();
-    writeOwnRelaySetting({ ...OWN, websocket: WEBSOCKET });
-    expect(JSON.parse(values.get(STORAGE_KEY) ?? "")).toStrictEqual({
-      version: 1,
-      turn: OWN.turn,
-      stun: OWN.stun,
-      websocket: WEBSOCKET,
-    });
-    expect(readOwnRelaySetting()).toEqual({
-      kind: "set",
-      relay: { ...OWN, websocket: WEBSOCKET },
-    });
-  });
-
-  test("is a setting on its own", () => {
-    stubStorage();
-    writeOwnRelaySetting({ turn: [], stun: [], websocket: WEBSOCKET });
-    expect(readOwnRelaySetting()).toEqual({
-      kind: "set",
-      relay: { turn: [], stun: [], websocket: WEBSOCKET },
-    });
-  });
-
-  test("a url outside the grammar is not written, and a stored one is refused", () => {
-    const values = stubStorage();
-    expect(() =>
-      writeOwnRelaySetting({ ...OWN, websocket: "ws://wsrelay.example.org" }),
-    ).toThrow();
-    expect(values.has(STORAGE_KEY)).toBe(false);
-    values.set(
-      STORAGE_KEY,
-      JSON.stringify({ version: 1, turn: [], stun: [], websocket: "x" }),
-    );
-    expect(readOwnRelaySetting()).toEqual({ kind: "unreadable" });
-  });
 
   test("parseWebSocketRelayUrl reads one url, blank as none, with core's message for a refusal", () => {
     expect(parseWebSocketRelayUrl("  ")).toEqual({ ok: true });
@@ -346,11 +234,6 @@ describe("the own WebSocket relay", () => {
         ["partner.example.net"],
         own,
       ),
-    ).toEqual([PARTNER]);
-    expect(
-      webSocketRelaysForRun({ websocket: PARTNER }, undefined, () => ({
-        kind: "unreadable",
-      })),
     ).toEqual([PARTNER]);
   });
 
@@ -392,7 +275,7 @@ describe("the WebSocket relays a run's plan lists", () => {
   const enrolled = () =>
     Promise.resolve({ kind: "enrolled" as const, lapsesAt: "x" });
 
-  test("lists this browser's own, the invitation's, then the default relay's, each with its exchange id", async () => {
+  test("lists the exchange's own, the invitation's, then the default relay's, each with its exchange id", async () => {
     const secret = generateSharedSecret();
     const derived = await deriveRelayExchangeId(secret);
     const plan = await relayPlanForRun(

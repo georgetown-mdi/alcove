@@ -5,6 +5,7 @@ import {
   runDiagnosticsAfterRetarget,
 } from "@psi/runDiagnosticsModel";
 import { RECEIPTS_DEFAULT } from "@psi/receiptsModel";
+import { exchangeConnectionRead } from "@recurring/managedConnectionSettingsModel";
 import { parseExchangeAllowedRelayLines } from "@psi/transport/relayRestriction";
 
 import { CONNECTION_TUNING_DEFAULT } from "@console/connectionTuningModel";
@@ -21,10 +22,14 @@ import type {
   AcceptorAcquiredCsv,
   AcceptorColumnsState,
 } from "./acceptorColumnsModel";
+import type {
+  ConnectionSettingsText,
+  ExchangeConnectionRead,
+} from "@recurring/managedConnectionSettingsModel";
+import type { OwnRelay, RelayUrls } from "@psi/transport/ownRelaySetting";
 import type { AcceptorStep } from "./acceptorModel";
 import type { InvitationDecodeRefusal } from "./invitationDecodeRefusal";
 import type { ManageOfferState } from "./manageOfferModel";
-import type { RelayUrls } from "@psi/transport/ownRelaySetting";
 
 import type { Metadata, SemanticType, StandardizationStep } from "@alcove/core";
 
@@ -102,17 +107,24 @@ export interface FieldErrors {
  *
  * `allowedRelays` is the list the review step committed, unset where its field
  * was empty: the run lists only the relays it keeps, and the deposit records
- * it as the saved exchange's own. */
+ * it as the saved exchange's own. `ownRelay` and `defaultRelayOn` are the
+ * Connection settings the same step committed, which the run lists and the
+ * deposit records likewise. */
 export interface AcceptorLaunched {
   edits: AcceptorDataEdits;
   deduplicate: boolean;
   allowedRelays: ReadonlyArray<string> | undefined;
+  ownRelay?: OwnRelay;
+  defaultRelayOn: boolean;
 }
 
-/** The allowed relays the review step committed: `allowedRelays` absent where
- * its field was empty, which restricts nothing. */
+/** The relays the review step committed: `allowedRelays` absent where its
+ * field was empty, which restricts nothing, and the Connection settings'
+ * own relay, absent where they name none, and switch. */
 export interface AcceptorCommittedAllowedRelays {
   allowedRelays?: ReadonlyArray<string>;
+  ownRelay?: OwnRelay;
+  defaultRelayOn?: true;
 }
 
 /** The acceptor console's whole state. */
@@ -154,11 +166,14 @@ export interface AcceptorScreenState {
    * and returned to that step, which then says to continue again. Cleared by
    * the Continue that commits the field. */
   allowedRelaysChangedAtStart: boolean;
-  /** The allowed relays the review step's Continue committed, and the only ones
-   * the launch takes. Undefined until that Continue, and again after any edit
-   * to the field, so a later step restored from browser history settles back
-   * on the review step rather than launching a list the field no longer
-   * shows. */
+  /** The Connection settings on the review step of a browser WebRTC accept,
+   * as typed. They have no server field: the invitation names the server. */
+  acceptorConnection: ConnectionSettingsText;
+  /** The relays the review step's Continue committed, and the only ones the
+   * launch takes. Undefined until that Continue, and again after any edit to
+   * Allowed relays or the Connection settings, so a later step restored from
+   * browser history settles back on the review step rather than launching
+   * relays the fields no longer show. */
   committedAllowedRelays: AcceptorCommittedAllowedRelays | undefined;
   /** The field delimiter this party's file was read by when the same gate
    * passed, and the only one the run writes its result with: the consent step's
@@ -255,6 +270,13 @@ export const ACCEPTOR_SCREEN_INITIAL: AcceptorScreenState = {
   acceptorAllowedRelays: "",
   allowedRelaysEdited: false,
   allowedRelaysChangedAtStart: false,
+  acceptorConnection: {
+    server: "",
+    turn: "",
+    stun: "",
+    websocket: "",
+    defaultRelayOn: false,
+  },
   committedAllowedRelays: undefined,
   committedCsvDelimiter: undefined,
   sampleOffered: false,
@@ -314,9 +336,15 @@ export type AcceptorScreenAction =
   /** The Allowed relays field was typed in, which voids what the review step
    * committed until the operator continues from it again. */
   | { type: "allowed-relays-changed"; value: string }
-  /** The operator continued from the review step: the Allowed relays field is
-   * committed where every line parses, and nothing changes where one does
-   * not. */
+  /** A Connection settings field changed, which voids what the review step
+   * committed in the same way. */
+  | {
+      type: "connection-settings-changed";
+      change: Partial<ConnectionSettingsText>;
+    }
+  /** The operator continued from the review step: the Allowed relays field
+   * and the Connection settings are committed where every value reads, and
+   * nothing changes where one does not. */
   | { type: "review-continued" }
   /** Start met Allowed relays edited since the review step's Continue, so the
    * launch waits for that step to commit them again. */
@@ -423,6 +451,14 @@ export type AcceptorScreenAction =
   | { type: "manage-offer-deposited" }
   | { type: "manage-offer-failed"; refusal?: AlertContent };
 
+/** What the review step's Connection settings name. They have no server
+ * field, so no server is read and the page's scheme does not matter. */
+export function acceptorConnectionRead(
+  text: ConnectionSettingsText,
+): ExchangeConnectionRead {
+  return exchangeConnectionRead(text, text.server.trim(), "https:");
+}
+
 /** The kinds of relay a relay locator names that the Allowed relays list
  * can leave out, in the order the accept notice names them. */
 export function allowedRelaysCoveredKinds(
@@ -441,8 +477,8 @@ export function allowedRelaysCoveredKinds(
  * relay for the list to keep or leave out. On the
  * console that is a TURN server or WebSocket relay the invitation names,
  * since the console's run has no other relay; in the browser it is
- * `browserRunListsRelay` of the invitation's relay, which reads this
- * browser's own relay and the site's beside it (`runListsRelay`).
+ * `browserRunListsRelay` of the invitation's relay, which reads the
+ * exchange's own relay and the site's beside it (`runListsRelay`).
  */
 export function acceptOffersAllowedRelays(
   endpoint: AcceptableInvitation["endpoint"],
@@ -514,13 +550,25 @@ export function acceptorScreenReducer(
         allowedRelaysEdited: true,
         committedAllowedRelays: undefined,
       };
-    case "review-continued": {
-      const lines = parseExchangeAllowedRelayLines(state.acceptorAllowedRelays);
-      if (!lines.ok) return state;
+    case "connection-settings-changed":
       return {
         ...state,
-        committedAllowedRelays:
-          lines.entries === undefined ? {} : { allowedRelays: lines.entries },
+        acceptorConnection: { ...state.acceptorConnection, ...action.change },
+        committedAllowedRelays: undefined,
+      };
+    case "review-continued": {
+      const lines = parseExchangeAllowedRelayLines(state.acceptorAllowedRelays);
+      const connection = acceptorConnectionRead(state.acceptorConnection);
+      if (!lines.ok || !connection.ok) return state;
+      return {
+        ...state,
+        committedAllowedRelays: {
+          ...(lines.entries !== undefined && { allowedRelays: lines.entries }),
+          ...(connection.ownRelay !== undefined && {
+            ownRelay: connection.ownRelay,
+          }),
+          ...(connection.defaultRelayOn && { defaultRelayOn: true as const }),
+        },
         allowedRelaysChangedAtStart: false,
       };
     }
@@ -708,6 +756,10 @@ export function acceptorScreenReducer(
           edits: action.edits,
           deduplicate: state.committedDeduplicate,
           allowedRelays: state.committedAllowedRelays?.allowedRelays,
+          ...(state.committedAllowedRelays?.ownRelay !== undefined && {
+            ownRelay: state.committedAllowedRelays.ownRelay,
+          }),
+          defaultRelayOn: state.committedAllowedRelays?.defaultRelayOn === true,
         },
       };
     case "launch-discarded":

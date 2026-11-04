@@ -1,19 +1,12 @@
 import { Alert } from "@mantine/core";
 
-import {
-  defaultRelayForRun,
-  defaultRelayInUse,
-} from "@psi/transport/defaultRelay";
 import { defaultRelayBuild } from "@utils/clientConfig";
-import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
+import { defaultRelayForRun } from "@psi/transport/defaultRelay";
 
-import { RELAY_OPERATOR_DISCLOSURE } from "./RelaySettingsScreen";
+import { RELAY_OPERATOR_DISCLOSURE } from "./ExchangeConnectionSettings";
 
-import type {
-  DefaultRelayBuild,
-  DefaultRelaySetting,
-} from "@utils/clientConfig";
-import type { OwnRelayRead, RelayUrls } from "@psi/transport/ownRelaySetting";
+import type { OwnRelay, RelayUrls } from "@psi/transport/ownRelaySetting";
+import type { DefaultRelayBuild } from "@utils/clientConfig";
 
 /**
  * The words before {@link RELAY_OPERATOR_DISCLOSURE}. They name no operator:
@@ -28,7 +21,7 @@ export const DEFAULT_RELAY_NOTICE_LEAD =
 
 /**
  * The words before {@link RELAY_OPERATOR_DISCLOSURE} on the review of an
- * invitation that names the site's relay server where this browser has it
+ * invitation that names the site's relay server where the exchange has it
  * switched off.
  *
  * @internal exported for testing
@@ -38,60 +31,55 @@ export const INVITED_DEFAULT_RELAY_NOTICE_LEAD =
   "connect through it, unless its allowed relays leave it out.";
 
 /**
- * The words before {@link RELAY_OPERATOR_DISCLOSURE} where this browser has
- * the site's relay server switched off, its own relay setting names that
- * relay, and no accepted invitation names it.
+ * The words before {@link RELAY_OPERATOR_DISCLOSURE} where the exchange has
+ * the site's relay server switched off, its own relay names that relay, and
+ * no accepted invitation names it.
  *
  * @internal exported for testing
  */
 export const OWN_DEFAULT_RELAY_NOTICE_LEAD =
-  "Your relay settings name the site's relay server, so this exchange may " +
-  "connect through it, unless its allowed relays leave it out.";
-
-function switchedOffLead(
-  invitationRelay: RelayUrls | undefined,
-  build: () => DefaultRelayBuild,
-  own: OwnRelayRead,
-): string | undefined {
-  const forRun = defaultRelayForRun(
-    invitationRelay,
-    build,
-    () => false,
-    own.kind === "set" ? own.relay : undefined,
-  );
-  if (forRun.kind === "invited") return INVITED_DEFAULT_RELAY_NOTICE_LEAD;
-  if (forRun.kind === "own") return OWN_DEFAULT_RELAY_NOTICE_LEAD;
-  return undefined;
-}
+  "Your Connection settings name the site's relay server, so this exchange " +
+  "may connect through it, unless its allowed relays leave it out.";
 
 /**
  * What the default relay a run uses lets its operator learn, shown where a
- * party creates or accepts a browser exchange. The relay is the one in use
- * or, where the build offers it switched off, the one `invitationRelay`, an
- * accepted invitation's, names, otherwise the one this browser's own relay
- * setting names (`defaultRelayForRun`). Renders nothing where the run uses
- * none.
+ * party creates or accepts a browser exchange: where the build turns it on,
+ * or, where the build offers it switched off and the exchange's switch is
+ * off, where `invitationRelay`, an accepted invitation's, or `ownRelay`, the
+ * exchange's own, names it (`defaultRelayForRun`). Renders nothing where the
+ * run uses none, or where the switch is on, since the switch states it.
  */
 export function DefaultRelayNotice({
   build = defaultRelayBuild,
-  setting = () => defaultRelayInUse(build),
-  readOwn = readOwnRelaySetting,
+  ownRelay,
+  switchedOn,
   invitationRelay,
 }: {
   /** The build's default relay and its mode; the build's own when unset. */
   build?: () => DefaultRelayBuild;
-  /** The default relay in use; {@link defaultRelayInUse} of `build` when
-   * unset. */
-  setting?: () => DefaultRelaySetting | undefined;
-  /** This browser's own relay; the stored setting when unset. */
-  readOwn?: () => OwnRelayRead;
+  /** The exchange's own relay, where its Connection settings name one. */
+  ownRelay?: OwnRelay;
+  /** The exchange's switch. */
+  switchedOn: boolean;
   /** The relay an accepted invitation names; absent where one is created. */
   invitationRelay?: RelayUrls;
 }) {
+  const forRun = defaultRelayForRun(
+    invitationRelay,
+    build,
+    () => switchedOn,
+    ownRelay,
+  );
   const lead =
-    setting() !== undefined
+    build().kind === "on"
       ? DEFAULT_RELAY_NOTICE_LEAD
-      : switchedOffLead(invitationRelay, build, readOwn());
+      : switchedOn
+        ? undefined
+        : forRun.kind === "invited"
+          ? INVITED_DEFAULT_RELAY_NOTICE_LEAD
+          : forRun.kind === "own"
+            ? OWN_DEFAULT_RELAY_NOTICE_LEAD
+            : undefined;
   if (lead === undefined) return null;
   return (
     <Alert variant="light" color="blue" role="note" mt="md">

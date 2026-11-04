@@ -10,7 +10,7 @@ import {
   generateSharedSecret,
 } from "@alcove/core";
 
-import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
+import { ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { failedWithDefaultRelayOff } from "@psi/transport/iceGathering";
 import { failureFor } from "@exchange/useInviterExchange";
@@ -161,7 +161,7 @@ test(
       expect(failure).toBeInstanceOf(Error);
       expect(failedWithDefaultRelayOff(failure)).toBe(true);
       expect((failure as Error).message).not.toContain(
-        DEFAULT_RELAY_OFF_REMEDY,
+        ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY,
       );
       const alert = failureFor(
         "exchange",
@@ -170,11 +170,11 @@ test(
         "browser",
         "acceptor",
       );
-      expect(alert.message).toContain(DEFAULT_RELAY_OFF_REMEDY);
-      expect(alert.message).toContain(
-        "the switch to use this site's relay server",
+      expect(alert.message).toContain(ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY);
+      expect(alert.message).toContain("turn it on under Connection settings");
+      expect(alert.reportedCause).not.toContain(
+        ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY,
       );
-      expect(alert.reportedCause).not.toContain(DEFAULT_RELAY_OFF_REMEDY);
     } finally {
       inviterPeer.destroy();
     }

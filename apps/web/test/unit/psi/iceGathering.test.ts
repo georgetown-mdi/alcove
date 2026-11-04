@@ -17,7 +17,7 @@ import {
   watchIceGathering,
 } from "../../../src/psi/transport/iceGathering.js";
 import { ALLOWED_RELAYS_REMEDY } from "../../../src/psi/transport/relayRestriction.js";
-import { DEFAULT_RELAY_OFF_REMEDY } from "../../../src/psi/transport/defaultRelaySwitch.js";
+import { INVITER_DEFAULT_RELAY_OFF_REMEDY } from "../../../src/psi/transport/defaultRelaySwitch.js";
 import { dialAsAcceptor } from "../../../src/psi/transport/rendezvous.js";
 import { waitForConnectionOpen } from "../../../src/psi/transport/waitForOpen.js";
 
@@ -241,7 +241,9 @@ describe("waitForConnectionOpen with a relay configured", () => {
     const error: unknown = await opening.catch((err: unknown) => err);
     expect(error).toBeInstanceOf(ConnectionError);
     expect(failedWithDefaultRelayOff(error)).toBe(true);
-    expect((error as Error).message).not.toContain(DEFAULT_RELAY_OFF_REMEDY);
+    expect((error as Error).message).not.toContain(
+      INVITER_DEFAULT_RELAY_OFF_REMEDY,
+    );
   });
 
   test("a close in a run that listed the default relay, or names none, is not marked", async () => {

@@ -178,8 +178,8 @@ export const CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE =
  * edited since that step's Continue.
  */
 export const ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE =
-  "Allowed relays changed since you pressed Continue, so the exchange did " +
-  "not start. Press Continue to use them.";
+  "The relay settings changed since you pressed Continue, so the exchange " +
+  "did not start. Press Continue to use them.";
 
 /** What to do when a run that left relays out did not connect. */
 export const ALLOWED_RELAYS_REMEDY =

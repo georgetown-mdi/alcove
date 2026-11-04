@@ -1,8 +1,9 @@
 /**
- * The pure half of a saved exchange's Connection settings: the coordination
+ * The pure half of an exchange's Connection settings: the coordination
  * server its runs and re-invites use, shown as a `ws://` or `wss://` address,
  * and its own relays, shown one url per line, read back into the edits
- * {@link ManagedExchangeLocalEdits} takes.
+ * {@link ManagedExchangeLocalEdits} takes. A new invitation's and an accepted
+ * one's settings read the same way.
  */
 
 import {
@@ -24,7 +25,8 @@ import type {
   ManagedExchangeLocalEdits,
   ManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type { RelayUrlLines } from "@psi/transport/ownRelaySetting";
+import type { OwnRelay, RelayUrlLines } from "@psi/transport/ownRelaySetting";
+import type { SignalingAddress } from "@psi/transport/signalingAddress";
 
 /** What the operator typed in the Connection settings fields. */
 export interface ConnectionSettingsText {
@@ -55,7 +57,20 @@ export function signalingServerText(
 ): string {
   const connection = record.exchangeFile.connection;
   if (connection.channel !== "webrtc") return "";
-  const { host, port, path } = connection.server;
+  return addressText(connection.server, pageProtocol);
+}
+
+/** The address of this site's own coordination server, as
+ * {@link signalingServerText} shows it: what a new invitation's
+ * Coordination server field starts from. Browser only. */
+export function siteSignalingServerText(pageProtocol: string): string {
+  return addressText(ownSignalingAddress(), pageProtocol);
+}
+
+function addressText(
+  { host, port, path }: { host: string; port?: number; path?: string },
+  pageProtocol: string,
+): string {
   const secure = pageProtocol === "https:";
   const statedPort =
     port === undefined || port === (secure ? 443 : 80) ? "" : `:${port}`;
@@ -155,5 +170,46 @@ export function connectionSettingsEdits(
         : null,
       defaultRelayOn: text.defaultRelayOn,
     },
+  };
+}
+
+/** What {@link exchangeConnectionRead} made of the typed text. */
+export type ExchangeConnectionRead =
+  | {
+      ok: true;
+      /** Absent where the server is this site's own. */
+      signaling?: SignalingAddress;
+      ownRelay?: OwnRelay;
+      defaultRelayOn: boolean;
+    }
+  | { ok: false; errors: ConnectionSettingsErrors };
+
+/**
+ * The settings `text` names for an invitation this page creates or accepts,
+ * or the error of each field it cannot use: the coordination server where
+ * its text changed from `site`, this site's own address, the exchange's own
+ * relay where its fields name a url, and its switch. An accepted
+ * invitation's settings have no server field, so their blank server and
+ * `site` agree.
+ */
+export function exchangeConnectionRead(
+  text: ConnectionSettingsText,
+  site: string,
+  pageProtocol: string,
+): ExchangeConnectionRead {
+  const read = connectionSettingsEdits(text, site, pageProtocol);
+  if (!read.ok) return read;
+  const { signalingServer, ownRelay } = read.edits;
+  return {
+    ok: true,
+    ...(signalingServer !== undefined && {
+      signaling: {
+        ...signalingServer,
+        path: signalingServer.path ?? OWN_SIGNALING_PATH,
+        secure: pageProtocol === "https:",
+      },
+    }),
+    ...(ownRelay !== undefined && ownRelay !== null && { ownRelay }),
+    defaultRelayOn: text.defaultRelayOn,
   };
 }

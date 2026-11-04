@@ -15,7 +15,7 @@ import type { DefaultRelayBuild } from "@utils/clientConfig";
 import type { enrollRelayKeyWithinWait } from "@alcove/core";
 
 // A build offering its default relay switched off (`opt-in`) lists it only
-// once this browser turns it on, or, url by url, where the invitation a run
+// once the exchange turns it on, or, url by url, where the invitation a run
 // accepted names it; a build turning it on (`on`) lists it in every run.
 
 const SITE = {
@@ -70,6 +70,33 @@ describe("the default relay in use", () => {
       registrar: SITE.registrarUrl,
       websocket: SITE.websocketUrl,
     });
+  });
+});
+
+describe("what the old relay page left in storage", () => {
+  test("a run's plan reads neither its relay nor its switch", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "alcove-default-relay-on"
+          ? "1"
+          : key === "alcove-own-relay"
+            ? JSON.stringify({ version: 1, turn: [PARTNER_URL], stun: [] })
+            : null,
+    });
+    try {
+      const enroll = enrolling();
+      const plan = await relayPlanForRun(
+        generateSharedSecret(),
+        undefined,
+        undefined,
+        { build: () => OPT_IN, enroll },
+      );
+      expect(enroll).not.toHaveBeenCalled();
+      expect(plan.relay).toBeUndefined();
+      expect(plan.defaultRelayOff).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -451,14 +478,5 @@ describe("runListsRelay", () => {
         setting: () => SITE,
       }),
     ).toBe(true);
-  });
-
-  test("an unreadable own setting lists nothing", () => {
-    expect(
-      runListsRelay(undefined, {
-        readOwn: () => ({ kind: "unreadable" }),
-        build: () => NONE,
-      }),
-    ).toBe(false);
   });
 });

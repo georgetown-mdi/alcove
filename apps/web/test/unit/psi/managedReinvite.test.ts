@@ -30,9 +30,7 @@ import {
   reinviteManagedExchange,
 } from "@psi/managed/managedReinviteDriver";
 import { NoSignalingAddressError } from "@psi/invitation";
-import { readDefaultRelaySwitch } from "@psi/transport/defaultRelaySwitch";
 import { reinviteLocation } from "@psi/invitationLocation";
-import { writeCoordinationServerSetting } from "@psi/transport/coordinationServerSetting";
 
 import type { InvitationToken, WebRTCEndpoint } from "@alcove/core";
 import type {
@@ -403,7 +401,6 @@ describe("composeManagedReinvite", () => {
 });
 
 describe("the coordination server a re-invite names", () => {
-  const SETTING_SERVER = "wss://coordination.agency.example/signal/";
   const SAVED_ENDPOINT = {
     host: "saved-signaling.example.org",
     port: 9999,
@@ -478,8 +475,7 @@ describe("the coordination server a re-invite names", () => {
     vi.unstubAllGlobals();
   });
 
-  test("names the server the record holds whatever this browser's setting names, and the record keeps it", async () => {
-    writeCoordinationServerSetting(SETTING_SERVER);
+  test("names the server the record holds, and the record keeps it", async () => {
     const { named, reinvited } = await reinviteFrom(inviterRecord());
     expect(named).toStrictEqual({ channel: "webrtc", ...SAVED_ENDPOINT });
     expect(reinvited.exchangeFile.connection).toMatchObject({
@@ -665,18 +661,8 @@ function driverDeps(
 describe("the relays a re-invite names by default", () => {
   const OWN_TURN = "turns:relay.example.org:443?transport=tcp";
 
-  test("are the record's own, less what its allowed relays leave out, whatever this browser's setting names", () => {
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) =>
-        key === "alcove-own-relay"
-          ? JSON.stringify({
-              version: 1,
-              turn: ["turns:browser.example.org:443"],
-              stun: [],
-            })
-          : null,
-    });
-    try {
+  test("are the record's own, less what its allowed relays leave out", () => {
+    {
       expect(managedReinviteOwnRelay(inviterRecord())).toBeUndefined();
       expect(
         managedReinviteOwnRelay(
@@ -697,8 +683,6 @@ describe("the relays a re-invite names by default", () => {
           }),
         ),
       ).toBeUndefined();
-    } finally {
-      vi.unstubAllGlobals();
     }
   });
 
@@ -708,19 +692,5 @@ describe("the relays a re-invite names by default", () => {
     expect(
       managedReinviteDefaultRelay({ defaultRelayOn: true }, offered),
     ).toEqual(DEFAULT_RELAY);
-  });
-
-  test("leave the build's switched-off relay out when only this browser's switch is on", () => {
-    const offered = () => ({ kind: "opt-in", relay: DEFAULT_RELAY }) as const;
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) =>
-        key === "alcove-default-relay-on" ? "1" : null,
-    });
-    try {
-      expect(readDefaultRelaySwitch()).toBe(true);
-      expect(managedReinviteDefaultRelay({}, offered)).toBeUndefined();
-    } finally {
-      vi.unstubAllGlobals();
-    }
   });
 });

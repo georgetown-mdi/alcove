@@ -19,7 +19,6 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { Lobby } from "@exchange/Lobby";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { NotFound } from "@components/NotFound";
-import { RelaySettingsScreen } from "@exchange/RelaySettingsScreen";
 import { VerifyReceiptScreen } from "@exchange/VerifyReceiptScreen";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
@@ -195,12 +194,6 @@ export const ROUTE_STATES: ReadonlyArray<RouteState> = [
     node: () => Promise.resolve(createElement(DirectExchangeScreen)),
   },
   {
-    route: "/relay",
-    state: "no relay set",
-    heading: /./,
-    node: () => Promise.resolve(createElement(RelaySettingsScreen)),
-  },
-  {
     route: "/saved/",
     state: "a saved exchange",
     heading: "Recurring exchanges",
@@ -246,8 +239,8 @@ export const ROUTE_STATES: ReadonlyArray<RouteState> = [
 ];
 
 /** The route paths the route files declare, read from their own
- * `createFileRoute` argument; the `/bench` routes are redirects to the primary
- * routes and render nothing of their own. */
+ * `createFileRoute` argument; the `/bench` routes and `/relay` are redirects
+ * to the primary routes and render nothing of their own. */
 export function declaredRoutes(): Array<string> {
   const sources = import.meta.glob<string>("../../src/routes/**/*.tsx", {
     query: "?raw",
@@ -262,5 +255,5 @@ export function declaredRoutes(): Array<string> {
         throw new Error(`${path} declares no createFileRoute path`);
       return declared[1];
     })
-    .filter((route) => !route.startsWith("/bench"));
+    .filter((route) => !route.startsWith("/bench") && route !== "/relay");
 }

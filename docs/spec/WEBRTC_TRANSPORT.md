@@ -254,19 +254,16 @@ delimiter rules above refuse. It is also refused when the app loads if its
 scheme does not match the page's: `wss:` under an `https` page, `ws:` under an
 `http` page. `localhost` is resolved to `127.0.0.1` in either case.
 
-A new invitation names this browser's own coordination server where the user
-set one on the relay settings page, and the deployment's address otherwise.
-The browser setting is kept in the browser's storage for the page's origin,
-and is held to the rule the published file's reader applies
+A new invitation names the coordination server in its Connection settings,
+which starts from the deployment's address. The address entered is held to
+the rule the published file's reader applies
 (`publishedSignalingServerURL` in core) with the page's scheme, a port from
 1 to 65535, a host of at most 256 characters (`MAX_ENDPOINT_HOST_LENGTH`, the
 invitation endpoint's bound) with no label, the text between two dots, over
 63, and no character the URL parser stores percent-escaped, such as a
-space in the path; an address failing it is refused when entered. A stored
-one failing it on a later read, and a read the browser's storage refuses,
-leave the setting unreadable, and a new invitation then names the
-deployment's address. Its address states the port, the
-scheme's default included. A web app's `http:` or `https:` address is refused,
+space in the path; an address failing it, and a blank one, is refused when
+entered. The invitation's address states the port, the scheme's default
+included. A web app's `http:` or `https:` address is refused,
 since the hosted build's `_headers` gives its published file
 ([below](#the-published-coordination-server)) no `Access-Control-Allow-Origin`
 header for a page on another origin to read it under.
@@ -319,8 +316,8 @@ by the static host like any other file, and holds one field:
 ```
 
 - **What the build writes.** The setting's `ws:` or `wss:` URL, its path ending
-  in `/`, never a browser's own coordination server, so a CLI given the app's
-  address dials the build's server whatever a browser on it set. The build
+  in `/`, never a server an invitation's Connection settings name, so a CLI
+  given the app's address dials the build's server. The build
   fails when the setting is one the reader below would refuse. The console
   build writes no such file. The web app's dev server
   (`vite dev`) serves the same document, naming `VITE_SIGNALING_SERVER_URL`

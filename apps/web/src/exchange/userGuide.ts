@@ -13,8 +13,8 @@ export const BUILT_IN_RULES_GUIDE_URL = `${PROJECT_SITE_URL}/docs/EXCHANGE_REFER
  * not. */
 export const ALLOWED_RELAYS_GUIDE_URL = `${PROJECT_SITE_URL}/docs/WEB_APP#allowed-relays`;
 
-/** What each setting on the Relay server page does. */
-export const RELAY_SETTINGS_GUIDE_URL = `${PROJECT_SITE_URL}/docs/WEB_APP#relay-settings`;
+/** What each field of an exchange's Connection settings does. */
+export const CONNECTION_SETTINGS_GUIDE_URL = `${PROJECT_SITE_URL}/docs/WEB_APP#connection-settings`;
 
 /** The `linkage_terms.algorithm` key the console writes the matching method
  * into. */

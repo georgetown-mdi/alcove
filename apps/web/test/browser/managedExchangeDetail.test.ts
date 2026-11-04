@@ -43,11 +43,11 @@ import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 
 import {
   DEFAULT_RELAY_SWITCH_HELP,
-  ManagedConnectionSettings,
   SERVER_FIELD_DESCRIPTION,
-} from "@recurring/ManagedConnectionSettings";
+  TURN_FIELD_DESCRIPTION,
+} from "@exchange/ExchangeConnectionSettings";
 import { DEFAULT_RELAY_SWITCH_LABEL } from "@psi/transport/defaultRelaySwitch";
-import { TURN_FIELD_DESCRIPTION } from "@exchange/RelaySettingsScreen";
+import { ManagedConnectionSettings } from "@recurring/ManagedConnectionSettings";
 
 import {
   ALLOWED_RELAYS_FIELD_DESCRIPTION,
@@ -63,7 +63,6 @@ import { MANAGED_REINVITE_FAILURE_ALERTS } from "@recurring/managedRunRecoveryMo
 import { MANAGED_SCHEDULE_SECTION_ID } from "@recurring/managedSectionIds";
 import { RELAY_REGISTRATION_TITLE } from "@recurring/ManagedRelayRegistration";
 import { dateTimeLabel } from "@psi/formatting";
-import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import {
   FILEABLE_DISCLOSURE_NOTE,
@@ -1845,6 +1844,11 @@ describe("managed exchange detail document settings", () => {
       await expect
         .element(serverField())
         .toHaveAccessibleDescription(SERVER_FIELD_DESCRIPTION);
+      await expect
+        .element(page.getByText("Relay: turn:own.example.org"))
+        .toBeInTheDocument();
+      expect(turnField().query()).toBeNull();
+      await page.getByRole("button", { name: "Change relay" }).click();
       await expect.element(turnField()).toHaveValue("turn:own.example.org");
       await expect
         .element(turnField())
@@ -1881,6 +1885,7 @@ describe("managed exchange detail document settings", () => {
       renderDetail(relaysRecord(), onSave);
 
       await serverField().fill("https://app.example.org/");
+      await page.getByRole("button", { name: "Set a relay" }).click();
       await turnField().fill("turn:");
       await saveConnection().click();
 
@@ -2306,20 +2311,7 @@ describe("managed exchange detail recent runs, partner schedule, and relay secti
     ).toBeNull();
   });
 
-  test("the relay registration section is shown once the exchange sets a TURN relay, and not for this browser's", async () => {
-    writeOwnRelaySetting({
-      turn: ["turns:relay.example.org:443?transport=tcp"],
-      stun: [],
-    });
-    renderDetail(record("inviter"));
-    await expect
-      .element(page.getByRole("heading", { name: "Run history" }))
-      .toBeInTheDocument();
-    expect(
-      page.getByRole("heading", { name: RELAY_REGISTRATION_TITLE }).query(),
-    ).toBeNull();
-    writeOwnRelaySetting({ turn: [], stun: [] });
-
+  test("the relay registration section is shown once the exchange sets a TURN relay", async () => {
     renderDetail(
       record("inviter", {
         ownRelay: {

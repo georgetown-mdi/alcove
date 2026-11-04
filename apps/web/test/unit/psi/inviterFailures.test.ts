@@ -12,6 +12,10 @@ import {
 } from "@alcove/core";
 
 import {
+  ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY,
+  INVITER_DEFAULT_RELAY_OFF_REMEDY,
+} from "@psi/transport/defaultRelaySwitch";
+import {
   COORDINATION_SERVER_CHANGED_REFUSAL,
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
@@ -42,7 +46,6 @@ import {
 } from "@psi/transport/iceGathering";
 import { AcceptedSignalingServerUnsetError } from "@psi/jobClient/signalingServerClient";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
-import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { failureFor } from "@exchange/useInviterExchange";
 
 import type { CSVRow, LinkageTerms, Metadata } from "@alcove/core";
@@ -264,9 +267,12 @@ describe("failureFor", () => {
       "The exchange could not be completed - usually a temporary " +
       "connection problem rather than an issue with your data.";
 
-    test.each(["inviter", "acceptor"] as const)(
-      "the %s's alert names the switch in its own message, once, and not in the report",
-      (seat) => {
+    test.each([
+      ["inviter", INVITER_DEFAULT_RELAY_OFF_REMEDY],
+      ["acceptor", ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY],
+    ] as const)(
+      "the %s's alert names the exchange's switch in its own message, once, and not in the report",
+      (seat, remedy) => {
         const failure = failureFor(
           "exchange",
           negotiationFailure(true),
@@ -274,20 +280,25 @@ describe("failureFor", () => {
           "browser",
           seat,
         );
-        expect(failure.message).toBe(`${generic} ${DEFAULT_RELAY_OFF_REMEDY}`);
-        expect(failure.message.split(DEFAULT_RELAY_OFF_REMEDY)).toHaveLength(2);
+        expect(failure.message).toBe(`${generic} ${remedy}`);
+        expect(failure.message.split(remedy)).toHaveLength(2);
         expect(failure.reportedCause).toBe("Negotiation of connection failed.");
         expect(failure.retry).toBe("offered");
+        expect(failure.defaultRelayOff).toBe(true);
       },
     );
 
-    test("the remedy names the switch, the page and the start page's link", () => {
-      expect(DEFAULT_RELAY_OFF_REMEDY).toBe(
-        "This site's relay server is off in this browser. If a network " +
-          "blocks direct connections, or blocks connections to TURN relays, " +
-          "turning on the switch to use this site's relay server on the " +
-          "Relay server page (the relay settings link on the start page) " +
-          "and trying again may let the exchange connect.",
+    test("each remedy points at the exchange's Connection settings", () => {
+      expect(INVITER_DEFAULT_RELAY_OFF_REMEDY).toBe(
+        "This exchange does not use this site's relay server. If a network " +
+          "blocks direct connections, choose Start over with a fresh " +
+          "invitation, turn it on under Connection settings, and send your " +
+          "partner the new invitation.",
+      );
+      expect(ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY).toBe(
+        "This exchange does not use this site's relay server. If a network " +
+          "blocks direct connections, reload this page, turn it on under " +
+          "Connection settings, and accept the invitation again.",
       );
     });
 

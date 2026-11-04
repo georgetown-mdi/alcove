@@ -39,8 +39,8 @@ export interface IceGatheringRecord {
   turnErrors: Array<IceServerError>;
   /** The TURN and WebSocket relay urls the allowed relays left out of the run. */
   relaysLeftOut: ReadonlyArray<string>;
-  /** Whether the run left out the build's default relay because it is
-   * switched off in this browser. */
+  /** Whether the run left out the build's default relay because the
+   * exchange has it switched off. */
   defaultRelayOff: boolean;
 }
 
@@ -249,10 +249,10 @@ function relaysLeftOutNote({
 
 /**
  * Whether `error` is a failure to open a peer connection in a run that left
- * out the build's default relay because it is switched off in this browser,
- * so that turning it on may let the exchange connect. Its text does not say
- * so: the failure's alert states `DEFAULT_RELAY_OFF_REMEDY`
- * (./defaultRelaySwitch.ts) in its own message.
+ * out the build's default relay because the exchange has it switched off, so
+ * that turning it on may let the exchange connect. Its text does not say so:
+ * the failure's alert states a remedy of ./defaultRelaySwitch.ts, or the
+ * saved exchange's own, in its own message.
  */
 export function failedWithDefaultRelayOff(error: unknown): boolean {
   return error instanceof Error && defaultRelayOffFailures.has(error);

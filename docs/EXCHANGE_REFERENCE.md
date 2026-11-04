@@ -792,7 +792,7 @@ connection:
 
 STUN servers for ICE candidate gathering. Each entry is a `stun:` or `stuns:` URI that names a host. Refused, with an error naming the entry and the refused part but never the url: a scheme with no host (`stun:`), a user before the host (`stun:user@host`), a query string (`stun:host:3478?x=1`), a path (`stun:host:3478/x`), or a fragment (`stun:host:3478#x`). Mutually exclusive with `ice_provision`.
 
-> **Honored by the CLI only.** A `stun` list replaces the CLI's built-in default; a run that lists no STUN url, including one that lists only `turn`, uses the default. The CLI queries only the first STUN url it lists ([the stated limit](spec/PROTOCOL.md#the-invitations-relay-locator)). The browser takes its servers from its own relay setting ([WEB_APP.md](WEB_APP.md#relay-settings)), or, for a saved exchange, from that exchange's Connection settings, so these fields change nothing a browser gathers. The default, what it discloses, and the idiom for gathering host candidates only are in [CLI.md](CLI.md#stun-and-what-it-discloses).
+> **Honored by the CLI only.** A `stun` list replaces the CLI's built-in default; a run that lists no STUN url, including one that lists only `turn`, uses the default. The CLI queries only the first STUN url it lists ([the stated limit](spec/PROTOCOL.md#the-invitations-relay-locator)). The browser takes its servers from the exchange's own Connection settings ([WEB_APP.md](WEB_APP.md#connection-settings)), so these fields change nothing a browser gathers. The default, what it discloses, and the idiom for gathering host candidates only are in [CLI.md](CLI.md#stun-and-what-it-discloses).
 
 ```yaml
 connection:
@@ -809,7 +809,7 @@ connection:
 
 TURN servers for the case where a direct peer-to-peer connection cannot be established. Mutually exclusive with `ice_provision`.
 
-The CLI passes these entries to its peer connection; the browser uses its own relay setting instead ([WEB_APP.md](WEB_APP.md#relay-settings)), and a saved exchange uses its own Connection settings. Which of the relays it lists, these and the [invitation's](#connectioninvitation_relay), a CLI run allocates on is [the stated limit](spec/PROTOCOL.md#the-invitations-relay-locator); [`allowed_relays`](#connectionallowed_relays) narrows them. What a relayed run has been verified to do, the certificate the CLI requires of a relay, and the refusals at run time are in [CLI.md](CLI.md#turn).
+The CLI passes these entries to its peer connection; the browser uses the exchange's own Connection settings instead ([WEB_APP.md](WEB_APP.md#connection-settings)). Which of the relays it lists, these and the [invitation's](#connectioninvitation_relay), a CLI run allocates on is [the stated limit](spec/PROTOCOL.md#the-invitations-relay-locator); [`allowed_relays`](#connectionallowed_relays) narrows them. What a relayed run has been verified to do, the certificate the CLI requires of a relay, and the refusals at run time are in [CLI.md](CLI.md#turn).
 
 A `url` may set no query parameter other than `transport`, and no path or fragment (`turns:host:443/x`, `turn:host#x`); a `url` holding an `@` is refused as naming a user before its host. A refusal names the entry and the refused part and never repeats the url or a value, so a credential pasted into the url is not echoed. Credential type `hmac-sha1` describes how a deployment issues a time-limited credential; the issued value is still sent as the password, so both types take the same shape here.
 
@@ -864,7 +864,7 @@ An inviter names its relay from its own settings: the `url` of each `turn` entry
 - **`alcove invite` over a `ws://` or `wss://` URL** takes the relay from `--turn` and `--stun` ([CLI.md](CLI.md#inviting-over-webrtc)), and the configuration it writes holds them as url-only `turn` entries and a `stun` list.
 - **An offline `alcove invite` from a configuration whose connection is `webrtc`** names that connection's coordination server and its relay, from `turn` and `stun` as above. A configuration with neither names no relay.
 
-The web app takes the relay from the browser's own relay setting instead (a saved exchange, from its own Connection settings) and lists it and the invitation's the same way; the STUN urls it lists, its own and the invitation's, replace its default STUN server, as a `stun` list does on the CLI. It also adds a build's default relay where the run uses it: see [WEB_APP.md](WEB_APP.md#relay-settings) and [DEPLOYMENT.md](DEPLOYMENT.md#the-default-relay).
+The web app takes the relay from the exchange's own Connection settings instead and lists it and the invitation's the same way; the STUN urls it lists, its own and the invitation's, replace its default STUN server, as a `stun` list does on the CLI. It also adds a build's default relay where the run uses it: see [WEB_APP.md](WEB_APP.md#connection-settings) and [DEPLOYMENT.md](DEPLOYMENT.md#the-default-relay).
 
 ```yaml
 connection:

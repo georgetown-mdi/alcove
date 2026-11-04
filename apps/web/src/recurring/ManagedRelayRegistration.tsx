@@ -61,7 +61,7 @@ const STOPPED_TEXT =
   "keeps the key it holds until its registration lapses.";
 
 /** What stopping registration means for the next run through the exchange's
- * relay, in the words of the relay settings' notice. */
+ * relay. */
 export const STOPPED_OWN_RELAY_TEXT =
   "The shared secret changes after every run that completes its handshake, " +
   "so from the next such run the relay refuses this exchange unless its key " +

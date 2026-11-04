@@ -238,7 +238,7 @@ describe("which runs register", () => {
     ).toBeUndefined();
   });
 
-  test("this browser's own relay setting does not make a run register", () => {
+  test("a relay the old relay page left in storage does not make a run register", () => {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
         key === "alcove-own-relay"

@@ -365,7 +365,7 @@ export function defaultRelayBuildOf(resolved: ClientConfig): DefaultRelayBuild {
 /**
  * The default relay this build names and how it offers it. Which relay a run
  * or an invitation uses is `defaultRelayInUse` or `defaultRelayForRun`, in
- * psi/transport/defaultRelay.ts, which read this browser's switch too.
+ * psi/transport/defaultRelay.ts, which read the exchange's switch too.
  */
 export function defaultRelayBuild(): DefaultRelayBuild {
   return defaultRelayBuildOf(config);

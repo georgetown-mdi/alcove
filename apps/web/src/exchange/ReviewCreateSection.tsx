@@ -77,7 +77,7 @@ import styles from "@styles/app.module.css";
 
 import { ALLOWED_RELAYS_GUIDE_URL } from "./userGuide";
 import { DefaultRelayNotice } from "./DefaultRelayNotice";
-import { UnreadableCoordinationServerNotice } from "./CoordinationServerSection";
+import { ExchangeConnectionSettings } from "./ExchangeConnectionSettings";
 
 import {
   INVITER_RESET_STATEMENT,
@@ -85,7 +85,12 @@ import {
 } from "./ResetToDefaultsButton";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
+import type {
+  ConnectionSettingsErrors,
+  ConnectionSettingsText,
+} from "@recurring/managedConnectionSettingsModel";
 import type { SpineProblem, SpineTarget } from "@psi/inviterModel";
+import type { OwnRelay } from "@psi/transport/ownRelaySetting";
 import type { Transport } from "@psi/transportChooser";
 
 import type {
@@ -159,6 +164,7 @@ export function ReviewCreateSection({
   onReopenConfiguration,
   conversion,
   allowedRelays,
+  connectionSettings,
 }: {
   editor: InviterEditor;
   csv: AcquiredCsv;
@@ -271,6 +277,17 @@ export function ReviewCreateSection({
     error: string | undefined;
     fixed: boolean;
     onChange: (text: string) => void;
+  };
+  /** The hosted browser exchange's Connection settings, shown in the browser
+   * transport card: the values the fields show, their errors, and whether they
+   * are fixed on what a created invitation took. A value a field refuses
+   * holds the create. Absent where they are not offered. */
+  connectionSettings?: {
+    values: ConnectionSettingsText;
+    errors: ConnectionSettingsErrors;
+    ownRelay: OwnRelay | undefined;
+    fixed: boolean;
+    onChange: (change: Partial<ConnectionSettingsText>) => void;
   };
 }) {
   const consoleBuild = isConsoleBuild();
@@ -422,11 +439,16 @@ export function ReviewCreateSection({
     transport === "browser" &&
     allowedRelays !== undefined &&
     allowedRelays.error !== undefined;
+  const connectionSettingsBlocked =
+    transport === "browser" &&
+    connectionSettings !== undefined &&
+    Object.keys(connectionSettings.errors).length > 0;
   const createStatus = inviterCreateStatus({
     runWithheld,
     offlineBlocked,
     connectionIncomplete,
     coordinationServerHeld,
+    connectionSettingsBlocked,
     allowedRelaysBlocked,
     splitDirectoryProblem,
     exchangeFilesBlocked,
@@ -492,8 +514,21 @@ export function ReviewCreateSection({
           />
           {transport === "browser" && makesInvitation && (
             <>
-              {!consoleBuild && <UnreadableCoordinationServerNotice />}
-              <DefaultRelayNotice />
+              {connectionSettings !== undefined && (
+                <>
+                  <ExchangeConnectionSettings
+                    text={connectionSettings.values}
+                    errors={connectionSettings.errors}
+                    fixed={connectionSettings.fixed}
+                    onChange={connectionSettings.onChange}
+                    showServer
+                  />
+                  <DefaultRelayNotice
+                    ownRelay={connectionSettings.ownRelay}
+                    switchedOn={connectionSettings.values.defaultRelayOn}
+                  />
+                </>
+              )}
               {allowedRelays !== undefined && (
                 <AllowedRelaysField
                   value={allowedRelays.value}

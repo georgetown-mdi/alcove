@@ -28,7 +28,6 @@ import {
 import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
-import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import {
   canReachServer,
@@ -55,7 +54,7 @@ import type { WebSocketRelayForRun } from "@psi/transport/runRelayPlan";
 // globalSetup runs: with WebRTC blocked the exchange completes over the relay,
 // every message after the key exchange an AEAD envelope as read at the relay;
 // with WebRTC open the relay sockets close unused. Each party lists the relay
-// as a run does, from this browser's own relay setting (`relayPlanForRun`), and
+// as a run does, from the exchange's own relays (`relayPlanForRun`), and
 // dials it over `wss`; the relay client's socket factory only records each
 // socket it opens.
 
@@ -77,14 +76,20 @@ beforeEach(async (ctx) => {
     return ctx.skip("no WebSocket relay was provided");
   if (!(await canReachServer(hostString)))
     ctx.skip(`PeerJS coordination server at ${hostString} unreachable`);
-  writeOwnRelaySetting({ turn: [], stun: [], websocket: relayAddress.url });
-  return () => writeOwnRelaySetting({ turn: [], stun: [] });
 });
 
-/** The WebSocket relays a run lists from this browser's own relay setting,
- * with no default relay in the build. */
+/** The WebSocket relays a run lists from an exchange's own relays naming the
+ * test's relay, with no default relay in the build. */
 async function listedRelays(secret: string) {
   const plan = await relayPlanForRun(secret, undefined, undefined, {
+    readOwn: () => ({
+      kind: "set",
+      relay: {
+        turn: [],
+        stun: [],
+        ...(relayAddress !== undefined && { websocket: relayAddress.url }),
+      },
+    }),
     build: () => ({ kind: "none" }),
   });
   expect(plan.websocketRelays.map((relay) => relay.url)).toEqual([

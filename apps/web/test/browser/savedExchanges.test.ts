@@ -345,7 +345,7 @@ describe("saved list route: the always-list surface", () => {
     expect((await quick.element()).getAttribute("href")).toBe("/quick");
   });
 
-  test("the can't-connect pointer sends a saved exchange to its Connection settings", async () => {
+  test("the can't-connect pointer names Connection settings", async () => {
     await createRunnableExchange(newExchange());
 
     app.render(createElement(SavedExchanges));
@@ -354,9 +354,9 @@ describe("saved list route: the always-list surface", () => {
       .element(
         page.getByText(
           "If you can't connect to your partner, your IT team can give you " +
-            "a relay server address. For a saved exchange, enter it under " +
-            "Connection settings on its page. For a new exchange, enter it " +
-            "in relay settings.",
+            "a relay server address. Enter it under Connection settings " +
+            "when you create or accept an invitation, or on a saved " +
+            "exchange's page.",
         ),
       )
       .toBeInTheDocument();

@@ -4,6 +4,7 @@ import { getDefaultLinkageTerms } from "@alcove/core";
 import {
   connectionSettingsEdits,
   connectionSettingsTextFrom,
+  exchangeConnectionRead,
   signalingServerText,
 } from "@recurring/managedConnectionSettingsModel";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
@@ -148,5 +149,68 @@ describe("connectionSettingsEdits", () => {
       websocket: "",
       defaultRelayOn: true,
     });
+  });
+});
+
+describe("exchangeConnectionRead", () => {
+  const SITE = "wss://signaling.example.org/api/";
+  const blank = {
+    server: SITE,
+    turn: "",
+    stun: "",
+    websocket: "",
+    defaultRelayOn: false,
+  };
+
+  test("the site's server, no relay and the switch off name nothing of the exchange's own", () => {
+    expect(exchangeConnectionRead(blank, SITE, "https:")).toEqual({
+      ok: true,
+      defaultRelayOn: false,
+    });
+  });
+
+  test("another server becomes the invitation's address, its port stated", () => {
+    expect(
+      exchangeConnectionRead(
+        { ...blank, server: "wss://coordination.agency.example/signal/" },
+        SITE,
+        "https:",
+      ),
+    ).toEqual({
+      ok: true,
+      signaling: {
+        host: "coordination.agency.example",
+        port: 443,
+        path: "/signal/",
+        secure: true,
+      },
+      defaultRelayOn: false,
+    });
+  });
+
+  test("relay urls become the exchange's own relay, and the switch is kept as set", () => {
+    expect(
+      exchangeConnectionRead(
+        { ...blank, turn: OWN_TURN, defaultRelayOn: true },
+        SITE,
+        "https:",
+      ),
+    ).toEqual({
+      ok: true,
+      ownRelay: { turn: [OWN_TURN], stun: [] },
+      defaultRelayOn: true,
+    });
+  });
+
+  test("a blank server and a refused url are named by their fields", () => {
+    const read = exchangeConnectionRead(
+      { ...blank, server: "", stun: "stun:" },
+      SITE,
+      "https:",
+    );
+    expect(read.ok).toBe(false);
+    if (read.ok) return;
+    expect(read.errors.server).toContain("wss://");
+    expect(read.errors.stun).toMatch(/^Line 1: /);
   });
 });

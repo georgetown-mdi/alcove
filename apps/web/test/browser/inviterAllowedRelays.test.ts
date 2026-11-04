@@ -25,11 +25,13 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { PENDING_INVITATION_STORAGE_KEY } from "@exchange/pendingInvitationKey";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { parkWebSocketRelayConnection } from "@psi/transport/websocketRelayConnection";
-import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
+import { removeOwnRelay, setOwnRelay } from "./connectionSettings";
 import { createAppMount } from "./renderApp";
 
 import { lifecycleCall, lifecycleCalls, parkedRelays } from "./moduleMocks";
+
+import type { OwnRelayEntry } from "./connectionSettings";
 
 // The hosted inviter sets its exchange's own Allowed relays in the browser
 // transport card of the review step. Creating the invitation commits them:
@@ -86,13 +88,12 @@ const createButton = () =>
   page.getByRole("button", { name: "Create the invitation" });
 const pageText = () => document.body.textContent;
 
-/** Save a relay of this browser's own, which the run lists. */
-function ownRelay() {
-  writeOwnRelaySetting({ turn: [KEPT_URL, LEFT_OUT_URL], stun: [] });
-}
+/** The exchange's own relay, which the run lists. */
+const OWN_RELAY = { turn: [KEPT_URL, LEFT_OUT_URL] };
 
-/** Walk the inviting seat from an empty file step to its review step. */
-async function openReview() {
+/** Walk the inviting seat from an empty file step to its review step, and set
+ * `relay` as the exchange's own there. */
+async function openReview(relay?: OwnRelayEntry) {
   app.render(createElement(InviterScreen));
   await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
   await userEvent.upload(
@@ -109,6 +110,7 @@ async function openReview() {
     .getByRole("button", { name: "Continue to review & create" })
     .click();
   await expect.element(createButton()).toBeInTheDocument();
+  if (relay !== undefined) await setOwnRelay(relay);
 }
 
 /** Open the field from its line and type `text` into it. */
@@ -177,8 +179,7 @@ describe("InviterScreen: the review's Allowed relays", () => {
       "alcove-relay-restriction",
       JSON.stringify({ version: 1, allowedRelays: ["relay.example.org"] }),
     );
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
 
     await expect
       .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
@@ -189,8 +190,7 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 
   test("open on their action, empty, with the short description and the guide, and Done closes them", async () => {
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
 
     await setButton().click();
     await expect.element(allowedField()).toHaveValue("");
@@ -209,8 +209,7 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 
   test("a line the field refuses shows its error and holds the create and Done until it is fixed", async () => {
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
     const refusal = () => page.getByText(/^Line 1: enter /);
 
     await setRelays("turns:relay.example.org:443");
@@ -234,8 +233,7 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 
   test("once set, show the list as one line, which Change opens and Remove clears", async () => {
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
     await setRelays("Relay.Example.org\nbackup.example.org:443");
     await doneButton().click();
 
@@ -268,12 +266,11 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 
   test("a list once typed stays shown, and is created, after the run stops listing a relay", async () => {
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
     await setRelays("relay.example.org");
     await doneButton().click();
 
-    writeOwnRelaySetting({ turn: [], stun: [] });
+    await removeOwnRelay();
     await page
       .getByRole("combobox", { name: "Invitation duration" })
       .selectOptions("1 day");
@@ -286,12 +283,11 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 
   test("Remove after the run stops listing a relay keeps the line, with focus on its action", async () => {
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
     await setRelays("relay.example.org");
     await doneButton().click();
 
-    writeOwnRelaySetting({ turn: [], stun: [] });
+    await removeOwnRelay();
     await removeButton().click();
     await expect.element(setButton()).toHaveFocus();
     expect(document.activeElement).not.toBe(document.body);
@@ -299,8 +295,7 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 
   test("creating the invitation commits the list: the invitation, its waiting record and its run keep only the relays it names", async () => {
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
     await setRelays("Relay.Example.org");
     await create();
 
@@ -317,8 +312,7 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 
   test("an empty field restricts nothing", async () => {
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
     await create();
 
     const { record, turn } = await keptInvitation();
@@ -330,14 +324,12 @@ describe("InviterScreen: the review's Allowed relays", () => {
     expect(options.relaysLeftOut).toEqual([]);
   });
 
-  test("a run parks the WebSocket relay its own setting names, as inviter, and closes it when the run ends", async () => {
+  test("a run parks the WebSocket relay its Connection settings name, as inviter, and closes it when the run ends", async () => {
     parkedRelays.length = 0;
-    writeOwnRelaySetting({
+    await openReview({
       turn: [KEPT_URL],
-      stun: [],
       websocket: "wss://wsrelay.example.org/relay",
     });
-    await openReview();
     await create();
 
     await runListen();
@@ -366,8 +358,7 @@ describe("InviterScreen: the review's Allowed relays", () => {
   }
 
   test("Back from the created invitation shows the list it took, fixed", async () => {
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
     await setRelays("Relay.Example.org");
     await create();
 
@@ -382,8 +373,7 @@ describe("InviterScreen: the review's Allowed relays", () => {
   });
 
   test("Back from an invitation created with no list shows every relay, fixed", async () => {
-    ownRelay();
-    await openReview();
+    await openReview(OWN_RELAY);
     await create();
 
     await backToReview();
@@ -392,5 +382,49 @@ describe("InviterScreen: the review's Allowed relays", () => {
       .toBeInTheDocument();
     expect(setButton().query()).toBeNull();
     expect(allowedField().query()).toBeNull();
+  });
+});
+
+describe("InviterScreen: the review's Connection settings", () => {
+  const scheme = () => (window.location.protocol === "https:" ? "wss" : "ws");
+  const serverField = () =>
+    page.getByRole("textbox", { name: "Coordination server" });
+
+  test("start from this site's coordination server, and the invitation names the one entered", async () => {
+    await openReview();
+    await expect
+      .poll(() => (serverField().element() as HTMLInputElement).value)
+      .toMatch(new RegExp(`^${scheme()}://.+/api/$`));
+
+    await userEvent.fill(
+      serverField(),
+      `${scheme()}://coordination.agency.example/signal/`,
+    );
+    await create();
+    const { record } = await keptInvitation();
+    const token = await decodeInvitation(record.encoded);
+    expect(token.connectionEndpoint).toMatchObject({
+      channel: "webrtc",
+      host: "coordination.agency.example",
+      path: "/signal/",
+    });
+  });
+
+  test("a refused address holds the create", async () => {
+    await openReview();
+    await userEvent.fill(serverField(), "https://app.example.org/");
+    await expect.element(createButton()).toBeDisabled();
+    expect(pageText()).toContain("Resolve the connection settings above");
+  });
+
+  test("the relay set there is kept with the waiting invitation", async () => {
+    await openReview({ turn: [KEPT_URL] });
+    await create();
+    const { record, turn } = await keptInvitation();
+    expect(turn).toEqual([KEPT_URL]);
+    expect((record as { ownRelay?: unknown }).ownRelay).toEqual({
+      turn: [KEPT_URL],
+      stun: [],
+    });
   });
 });
