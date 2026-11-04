@@ -1,5 +1,6 @@
 import type { Connection } from "../types";
 import { ConnectionError, asConnectionError } from "../errors";
+import { MAX_WEBRTC_FRAME_BYTES } from "./binaryPackBounds";
 
 /**
  * Pull-based transport abstraction. A consumer drives the conversation by
@@ -286,6 +287,35 @@ interface SendGuard {
 // peer, not as a tuning setting.
 const DEFAULT_CAPACITY = 1024;
 
+/**
+ * The frames the largest PSI set any receiver admits takes on a WebRTC
+ * connection: `psiSetByteBound` at `MAX_PSI_DECODE_ELEMENTS`, sent in parts
+ * sized to {@link MAX_WEBRTC_FRAME_BYTES} under the encryption envelope.
+ * messageConnection.test.ts holds it to the part count `psiSetParts` sends.
+ */
+export const MAX_PSI_SET_WEBRTC_FRAMES = 3;
+
+/**
+ * The most bytes of binary frames the inbound queue holds unconsumed: the
+ * parts of the largest PSI set and the one frame a sender sends after a set
+ * without waiting for a reply, the index table of a count-only round, each at
+ * most {@link MAX_WEBRTC_FRAME_BYTES}. A frame arriving at an empty queue is
+ * queued whatever its size, so no frame the per-frame bound admits is refused
+ * here. See docs/spec/TRANSPORT_BOUNDS.md ("WebRTC data-channel inbound
+ * bound").
+ */
+export const DEFAULT_QUEUE_BYTE_CAPACITY =
+  (MAX_PSI_SET_WEBRTC_FRAMES + 1) * MAX_WEBRTC_FRAME_BYTES;
+
+// The bytes a queued message counts against the byte capacity: a binary
+// frame's length. A parsed structure has no length to read and counts only
+// against the message count.
+function queuedMessageBytes(message: unknown): number {
+  if (ArrayBuffer.isView(message) || message instanceof ArrayBuffer)
+    return message.byteLength;
+  return 0;
+}
+
 // Maximum time a parked receive() will wait for the next inbound message
 // before the connection is failed as a silent-peer transport drop.
 // fromEventConnection arms it for a caller that names no timeout, so every
@@ -340,8 +370,12 @@ type TerminalState =
  */
 export class QueuedMessageConnection implements MessageConnection {
   private readonly queue: Array<unknown> = [];
+  // The byte count of each queued message, in queue order, and their sum.
+  private readonly queueBytes: Array<number> = [];
+  private queuedBytes = 0;
   private readonly waiters: Array<Waiter> = [];
   private readonly capacity: number;
+  private readonly byteCapacity: number;
   private readonly inactivityTimeoutMs: number | undefined;
   // Transport-supplied clause appended to the peer-silence inactivity error.
   // Kept here (rather than baked into the message) so the generic core layer
@@ -378,12 +412,14 @@ export class QueuedMessageConnection implements MessageConnection {
     connect: TransportConnect,
     options?: {
       capacity?: number;
+      byteCapacity?: number;
       inactivityTimeoutMs?: number;
       inactivityHint?: string | ((limitNamed: boolean) => string);
       inactivityTimeoutSetting?: string;
     },
   ) {
     this.capacity = options?.capacity ?? DEFAULT_CAPACITY;
+    this.byteCapacity = options?.byteCapacity ?? DEFAULT_QUEUE_BYTE_CAPACITY;
     this.inactivityTimeoutMs = options?.inactivityTimeoutMs;
     this.inactivityHint = options?.inactivityHint;
     this.inactivityTimeoutSetting = options?.inactivityTimeoutSetting;
@@ -583,7 +619,20 @@ export class QueuedMessageConnection implements MessageConnection {
       );
       return;
     }
+    const bytes = queuedMessageBytes(message);
+    if (this.queue.length > 0 && this.queuedBytes + bytes > this.byteCapacity) {
+      this.fail(
+        new ConnectionError(
+          `inbound buffer overflow: over the ${this.byteCapacity}-byte bound ` +
+            "on unconsumed messages; the peer is sending out of turn",
+          "protocol",
+        ),
+      );
+      return;
+    }
     this.queue.push(message);
+    this.queueBytes.push(bytes);
+    this.queuedBytes += bytes;
   }
 
   private fail(error: ConnectionError): void {
@@ -645,6 +694,7 @@ export class QueuedMessageConnection implements MessageConnection {
     // a transport control latched behind a queued frame.
     if (this.queue.length > 0) {
       const message = this.queue.shift();
+      this.queuedBytes -= this.queueBytes.shift() ?? 0;
       // The just-drained frame was the last one a half-close was waiting on:
       // promote the deferred error to `failed`. Teardown already ran at finish()
       // time, so this is a pure state transition.
@@ -787,6 +837,7 @@ export function fromEventConnection(
   conn: Connection,
   options?: {
     capacity?: number;
+    byteCapacity?: number;
     inactivityTimeoutMs?: number;
     inactivityHint?: string | ((limitNamed: boolean) => string);
     inactivityTimeoutSetting?: string;
@@ -829,6 +880,7 @@ export function fromEventConnection(
     },
     {
       capacity: options?.capacity,
+      byteCapacity: options?.byteCapacity,
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS,
       inactivityHint: options?.inactivityHint,
@@ -923,6 +975,7 @@ export async function receiveParsed<T>(
  */
 export function createMessagePipe(options?: {
   capacity?: number;
+  byteCapacity?: number;
 }): [MessageConnection, MessageConnection] {
   const link: { a?: TransportControls; b?: TransportControls } = {};
   const peerClosed = () =>

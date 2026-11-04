@@ -6,8 +6,20 @@ import {
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
 
+import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
+import { AEAD_ENVELOPE_OVERHEAD_BYTES } from "../../src/connection/encryptedMessageConnection";
+import {
+  MAX_FRAME_SIZE_BYTES,
+  MAX_PSI_DECODE_ELEMENTS,
+} from "../../src/connection/frameSize";
+import {
+  psiSetByteBound,
+  psiSetPartPayloadBytes,
+} from "../../src/psi/psiSetParts";
 import {
   DEFAULT_INACTIVITY_TIMEOUT_MS,
+  DEFAULT_QUEUE_BYTE_CAPACITY,
+  MAX_PSI_SET_WEBRTC_FRAMES,
   QueuedMessageConnection,
   connectionEndReader,
   createMessagePipe,
@@ -17,7 +29,10 @@ import {
   receiveParsed,
 } from "../../src/connection/messageConnection";
 
-import type { TransportControls } from "../../src/connection/messageConnection";
+import type {
+  MessageConnection,
+  TransportControls,
+} from "../../src/connection/messageConnection";
 import { EVENT_LOOP_HOLD_MS, EventLoopPacer } from "../../src/utils/eventLoop";
 
 import { expectRejectionKind } from "../utils/expectRejection";
@@ -92,10 +107,104 @@ test("exceeding capacity fails the connection as a protocol violation", async ()
   await expectRejectionKind(b.receive(), "protocol");
 });
 
+// --- the byte bound on the inbound queue -------------------------------------
+
+test("frames under the count bound but over the byte bound fail the connection as a protocol violation", async () => {
+  const [a, b] = createMessagePipe({ byteCapacity: 10 });
+  await a.send(new Uint8Array(4));
+  await a.send(new Uint8Array(4));
+  await a.send(new Uint8Array(4)); // 12 bytes queued, over the 10
+  await Promise.resolve();
+  expect(await b.receive()).toHaveLength(4);
+  expect(await b.receive()).toHaveLength(4);
+  const refusal = b.receive();
+  await expectRejectionKind(refusal, "protocol");
+  await expect(refusal).rejects.toThrow(
+    "inbound buffer overflow: over the 10-byte bound on unconsumed messages",
+  );
+});
+
+test("frames within both bounds pass, and a received frame's bytes are released", async () => {
+  const [a, b] = createMessagePipe({ capacity: 4, byteCapacity: 10 });
+  await a.send(new Uint8Array(6));
+  await a.send(new ArrayBuffer(4)); // exactly 10 bytes queued
+  await Promise.resolve();
+  expect(await b.receive()).toHaveLength(6);
+  await a.send(new Uint8Array(6)); // 4 + 6 bytes queued
+  await Promise.resolve();
+  expect((await b.receive()) as ArrayBuffer).toHaveProperty("byteLength", 4);
+  expect(await b.receive()).toHaveLength(6);
+});
+
+test("a frame over the byte bound is queued when it arrives at an empty queue", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  controls.deliver(new Uint8Array(100));
+  expect(await conn.receive()).toHaveLength(100);
+  controls.deliver(new Uint8Array(100));
+  controls.deliver(new Uint8Array(1)); // behind a queued frame: refused
+  expect(await conn.receive()).toHaveLength(100);
+  await expectRejectionKind(conn.receive(), "protocol");
+});
+
+test("a frame handed to a parked receive is not counted against the byte bound", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  const parked = conn.receive();
+  controls.deliver(new Uint8Array(100));
+  expect(await parked).toHaveLength(100);
+  controls.deliver(new Uint8Array(5));
+  controls.deliver(new Uint8Array(5));
+  expect(await conn.receive()).toHaveLength(5);
+  expect(await conn.receive()).toHaveLength(5);
+});
+
+test("a message that is not binary counts against the message count only", async () => {
+  const { conn, controls } = makeQueued({ capacity: 3, byteCapacity: 1 });
+  controls.deliver({ type: "hello" });
+  controls.deliver("text");
+  controls.deliver(new Uint8Array(1));
+  expect(await conn.receive()).toEqual({ type: "hello" });
+  expect(await conn.receive()).toBe("text");
+  expect(await conn.receive()).toHaveLength(1);
+});
+
+test("the default byte bound holds the largest PSI set's frames and the frame after it", async () => {
+  const { conn, controls } = makeQueued();
+  // Views share one buffer, so the test holds one frame's memory.
+  const frameBuffer = new ArrayBuffer(MAX_WEBRTC_FRAME_BYTES);
+  for (let frame = 0; frame <= MAX_PSI_SET_WEBRTC_FRAMES; frame++)
+    controls.deliver(new Uint8Array(frameBuffer));
+  controls.deliver(new Uint8Array(1));
+  for (let frame = 0; frame <= MAX_PSI_SET_WEBRTC_FRAMES; frame++)
+    expect(await conn.receive()).toHaveLength(MAX_WEBRTC_FRAME_BYTES);
+  await expectRejectionKind(conn.receive(), "protocol");
+});
+
+test("MAX_PSI_SET_WEBRTC_FRAMES is the part count of the largest PSI set on an encrypted WebRTC connection", () => {
+  const partsOn = (envelopeBytes: number): number =>
+    Math.ceil(
+      psiSetByteBound(MAX_PSI_DECODE_ELEMENTS) /
+        psiSetPartPayloadBytes({
+          outboundWebRtcFrameBound: () => MAX_WEBRTC_FRAME_BYTES,
+          outboundFrameOverheadBytes: () => envelopeBytes,
+        } as unknown as MessageConnection),
+    );
+  expect(partsOn(AEAD_ENVELOPE_OVERHEAD_BYTES)).toBe(MAX_PSI_SET_WEBRTC_FRAMES);
+  expect(partsOn(0)).toBeLessThanOrEqual(MAX_PSI_SET_WEBRTC_FRAMES);
+  expect(DEFAULT_QUEUE_BYTE_CAPACITY).toBe(
+    (MAX_PSI_SET_WEBRTC_FRAMES + 1) * MAX_WEBRTC_FRAME_BYTES,
+  );
+});
+
+test("file-sync read-ahead stays within the default byte bound", () => {
+  // The poll loop holds what it reads ahead to the static frame cap.
+  expect(MAX_FRAME_SIZE_BYTES).toBeLessThanOrEqual(DEFAULT_QUEUE_BYTE_CAPACITY);
+});
+
 // --- finish (drain-then-fail half-close) -------------------------------------
 
 function makeQueued(options?: {
   capacity?: number;
+  byteCapacity?: number;
   inactivityTimeoutMs?: number;
   inactivityTimeoutSetting?: string;
 }): {

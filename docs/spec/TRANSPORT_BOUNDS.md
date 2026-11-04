@@ -50,6 +50,7 @@ The read gate charges an encrypted message file to match: under version 2 at its
 The cap bounds one message file; the poll loop also bounds what it reads ahead of the consumer.
 It reads the next message file only while that file and the message files it has read that the consumer has not yet received (the `QueuedMessageConnection` queue, whose count the loop reads through `setInboundQueueReader`) come to no more than the cap in force.
 With none unreceived it reads the file, so no file within the cap is held back for good.
+In bytes, the messages read ahead and not yet received come to at most `MAX_FRAME_SIZE_BYTES` (536,870,888 bytes) of message files: while one is queued no receive waits on the next, so the cap in force is at most the static cap, and a cap above it applies only to the message a waiting receive asks for, which the loop hands to that receive rather than to the queue.
 A file left unread is neither consumed nor acknowledged, so the partner's next send waits on it, within that send's own inactivity budget, until the consumer receives what is queued: frames a partner sends back to back, such as the parts of a PSI set, wait on disk rather than in memory, and none is refused.
 A partner that stops sending is still caught by the receive deadline, since a receive waits only on an empty queue, and an empty queue holds no file back.
 A message file over the read gate is left unread in the same way while no receive waits on the next message, since the consumer may yet set a per-exchange cap for it; once a receive waits with nothing queued, the file is the message asked for, and one still over the gate is refused.
@@ -136,7 +137,7 @@ The bounds that hold over partner content:
 - **A setup's element count is held part by part.**
   The element scan runs over each part of a setup as it arrives, carried from part to part, and a part that takes the declared count past the bound is refused before it reaches the engine, so the engine never holds more of the partner's setup elements than the bound admits.
 
-While a request or a response is joined the receiver holds its buffer, and while a setup arrives the engine holds the elements of the parts before the current one; either way the receiver also holds the parts the transport has delivered but the round has not yet read; the inbound queue bounds the latter by count, as the [WebRTC data-channel inbound bound](#webrtc-data-channel-inbound-bound) states for every frame.
+While a request or a response is joined the receiver holds its buffer, and while a setup arrives the engine holds the elements of the parts before the current one; either way the receiver also holds the parts the transport has delivered but the round has not yet read; the inbound queue bounds the latter by count and by bytes, as the [WebRTC data-channel inbound bound](#webrtc-data-channel-inbound-bound) states for every frame.
 
 **A browser holds a partner's set to the measured ceiling.**
 The combined bound admits a set of up to 587,202,566 bytes at `MAX_PSI_DECODE_ELEMENTS`, more than twice the 256 MiB browser-tab memory envelope the [wire-byte cap](#webrtc-data-channel-inbound-bound) justifies for one frame.
@@ -181,7 +182,7 @@ The bounds that hold over partner content across the whole list:
   The first part's declared entry count is held to the bound PROTOCOL.md derives from the agreed terms and this party's own result, and the part count to at most that entry count (1 for an empty list).
   Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the read parts hold at most that many entries between them.
 
-Frames the transport has delivered but the receive has not yet read sit in the inbound queue, which bounds them by count, as the [WebRTC data-channel inbound bound](#webrtc-data-channel-inbound-bound) states for every frame.
+Frames the transport has delivered but the receive has not yet read sit in the inbound queue, which bounds them by count and by bytes, as the [WebRTC data-channel inbound bound](#webrtc-data-channel-inbound-bound) states for every frame.
 `packages/core/test/psi/matchedListParts.test.ts` drives a refused part ending the receive before the next is read, and a part parsed before the next one arrives; `packages/core/test/psi/uint32ListParts.test.ts` drives each word-list body refused with no array made.
 
 ### The streamed match and masking chunks: no wire change
@@ -273,7 +274,7 @@ The bound acts on every datagram the data channel delivers, before the applicati
 
 No existing control reaches this transport.
 The web path applies core's `EncryptedMessageConnection` over the data channel (`apps/web/src/psi/authenticateExchange.ts`), but that wrapper's ~512 MiB `MAX_FRAME_SIZE_BYTES` check reads a frame only after the transport has reassembled it, so it does not bound reassembly.
-The only inbound limiters that do apply are core's count/structure bounds on the *parsed* payload-exchange message (the web wire is BinaryPack, not JSON, but those bounds act on the deserialized structure either way) and the `QueuedMessageConnection` message-count capacity -- none a byte-size bound.
+The only inbound limiters that do apply are core's count/structure bounds on the *parsed* payload-exchange message (the web wire is BinaryPack, not JSON, but those bounds act on the deserialized structure either way) and the `QueuedMessageConnection` bounds below, which count a frame only once it is delivered -- none a bound on a frame while it is reassembled.
 The large raw PSI set frame -- one party's full encrypted set as raw elliptic-curve points, **35 bytes per element** on the wire (see [PROTOCOL.md](PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)) -- is sent as a single binary `Uint8Array` that, left unbounded, PeerJS reassembles with no byte cap.
 
 The control is in two halves.
@@ -436,10 +437,24 @@ Finally, at the stable `data` event (`checkDeliveredFrameBound`): a fully delive
 A parsed object/array is not byte-measured here (the reassembly bounds above govern it before delivery, and core's count/structure bounds after); only binary frames are, which is exactly the raw set frame this is sized for.
 
 The bounds above are *per frame*.
-A delivered frame is then queued in core's `QueuedMessageConnection`, whose capacity is a message *count* (`DEFAULT_CAPACITY` = 1024), so the aggregate retained across queued-but-unconsumed frames is in principle the per-frame envelope times that depth.
-The queue is **a count bound** rather than a byte one: a peer that floods frames out of turn trips the count capacity (a `protocol` failure) rather than accumulating without end.
-The file-sync poll loop holds what it reads ahead of the consumer to its inbound cap ([Inbound frame-size bound](#inbound-frame-size-bound), "Read-ahead"), but a data channel pushes its frames, so on this transport the frames a sender sends back to back, such as the parts of a PSI set, queue while the consumer is busy, up to that count.
-The per-frame rules and the wire cap are therefore what state the byte envelope; the queue stays bounded by count.
+**The inbound queue.**
+A delivered frame is then queued in core's `QueuedMessageConnection` until the consumer receives it, and the queue is bounded both by count, `DEFAULT_CAPACITY` = 1024 messages, and by the byte sum of the binary frames it holds, **`DEFAULT_QUEUE_BYTE_CAPACITY` = 1,073,741,824 bytes** (`packages/core/src/connection/messageConnection.ts`).
+The file-sync poll loop holds what it reads ahead of the consumer to its inbound cap ([Inbound frame-size bound](#inbound-frame-size-bound), "Read-ahead"), but a data channel pushes its frames, so on this transport the frames a sender sends back to back queue while the consumer is busy: the parts of a setup arrive while the engine matches the parts before them.
+The byte bound is derived from what a sender sends back to back, four frames at the wire cap:
+
+- **The largest PSI set, in parts.**
+  The largest set any receiver admits is `psiSetByteBound` at `MAX_PSI_DECODE_ELEMENTS`, 587,202,566 bytes ([PSI set parts: the combined bound](#psi-set-parts-the-combined-bound)).
+  Sent in parts sized to this cap under the encryption envelope, it takes three frames (`MAX_PSI_SET_WEBRTC_FRAMES`), a count `messageConnection.test.ts` holds to the part size the sender uses (`psiSetPartPayloadBytes`).
+- **The frame after it.**
+  A sender sends one frame after a set without waiting for a reply, the index table of a count-only round.
+
+Each of the four is at most `MAX_WEBRTC_FRAME_BYTES`, so the bound is 4 x 268,435,456 bytes.
+A frame that arrives at an empty queue is queued whatever its size, so the queue refuses no frame the per-frame bound admits.
+A frame that would take the queue past either bound fails the connection as a terminal `protocol` `ConnectionError`, the same refusal at both bounds; the frames queued before it are still received first.
+A message that is not binary, a structure unpacked from a frame before the key exchange, has no length to read: it is held to the count bound and the per-frame rules above.
+Every frame after the key exchange is binary, an AEAD envelope ([WEBRTC_TRANSPORT.md, Application-layer encryption](WEBRTC_TRANSPORT.md#application-layer-encryption)), so it counts its length.
+The bound is the default of every `QueuedMessageConnection`, so it holds on the WebSocket relay path too, and on file-sync, whose read-ahead keeps the queue to `MAX_FRAME_SIZE_BYTES`, under it; `messageConnection.test.ts` holds the two in that order.
+`messageConnection.test.ts` also pins the bound with a small injected limit: frames under the count bound whose bytes pass it are refused, frames within both are received, and a frame over it arriving at an empty queue is received.
 
 The wrap reaches past the public `DataConnection` API into PeerJS internals, so it rests on two dependency assumptions a `peerjs`/`peerjs-js-binarypack` upgrade could silently break.
 The first is the reassembly/unpack shape on the binary/chunked connection class (the one `peer.connect` and an incoming connection use by default): `_handleChunk` reassembling slices keyed by `__peerData` into `_chunkedData` and deleting the entry on completion, and `_handleDataMessage` as the sole point each frame is unpacked (an unchunked frame directly, the reassembled buffer via the completion recursion), which the wrap replaces with its own unpack and a copy of the close/chunk/`data` dispatch that follows it.
