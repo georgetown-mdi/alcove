@@ -120,16 +120,21 @@ export function acceptorSpine(
   });
 }
 
-/** The Customize group's single fact: a Cleaning tab whose value is the em-dash
- * placeholder until the columns step raises a reason to review cleaning
- * (silent-empty fields, dead keys, invalid steps), then an amber attention value
- * naming the count. Renders like the inviter's quiet facts. `attention` is the
- * derived fact string (undefined -> em-dash); its presence colors the row amber. */
+/** The acceptor's Cleaning fact while nothing calls for a review: cleaning
+ * needs nothing before the exchange starts. */
+export const ACCEPTOR_CLEANING_OPTIONAL = "Optional";
+
+/** The Customize group's single fact: a Cleaning tab that reads
+ * {@link ACCEPTOR_CLEANING_OPTIONAL} until the columns step raises a reason to
+ * review cleaning (silent-empty fields, dead keys, invalid steps), then an
+ * amber attention value naming the count. Renders like the inviter's quiet
+ * facts. `attention` is the derived fact string; its presence colors the row
+ * amber. */
 export function acceptorRailFacts(attention?: string): Array<RailFact> {
   return [
     {
       label: "Cleaning",
-      fact: attention,
+      fact: attention ?? ACCEPTOR_CLEANING_OPTIONAL,
       tone: attention === undefined ? undefined : "attention",
     },
   ];

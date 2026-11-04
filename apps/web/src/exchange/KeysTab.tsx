@@ -44,7 +44,9 @@ import { TermsImportExport } from "@components/TermsImportExport";
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
   BUILT_IN_RULES_INFO,
+  DEFAULT_BUILT_IN_RULES_NOTE,
   HIGHEST_PRECISION_UNAVAILABLE_REASON,
+  KEY_NAME_SHORTHAND_INFO,
   MATCHING_KEYS_LESS_CERTAIN_REMEDY,
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
@@ -54,6 +56,7 @@ import {
   highestPrecisionUnavailable,
   keyOrderHelp,
   keySatisfiabilityFor,
+  keysAreBuiltIn,
   seedRows,
 } from "@psi/inviterEditor";
 
@@ -101,9 +104,12 @@ const SHARED_VALUE_CAVEAT =
  * The list holds the built-in keys the chosen floor selects for these
  * columns, each with a checkbox and the reorder pair, and a key core marks
  * less certain (`linkageKeyIsLessCertain`) states the mark in its label with
- * the button that explains it. Highest precision is disabled, naming the
- * columns it needs, while the columns supply none of its rules; still chosen
- * then, it keeps the list empty and that reason replaces the key error
+ * the button that explains it, and the button beside the list's help line
+ * explains the short forms the built-in key names use, shown only while the
+ * listed keys are built-in. Highest precision is
+ * disabled, naming the columns it needs, while the columns supply none of its
+ * rules; still chosen then, it keeps the list empty and that reason replaces
+ * the key error
  * (`highestPrecisionHeldWithoutRules`). The floor is withheld once the keys were
  * written in Expert authoring or loaded from a document, with a note saying
  * so and, where the file supplies a built-in
@@ -292,7 +298,9 @@ export function KeysTab({
                       description={
                         unavailable
                           ? HIGHEST_PRECISION_UNAVAILABLE_REASON
-                          : undefined
+                          : floor === DEFAULT_PRECISION_FLOOR_SELECTION.floor
+                            ? DEFAULT_BUILT_IN_RULES_NOTE
+                            : undefined
                       }
                       aria-describedby={explanationId}
                       mt="xs"
@@ -308,9 +316,21 @@ export function KeysTab({
           </Input.Label>
         </InfoButton>
       )}
-      <p id="key-order-help">
-        {keyOrderHelp(editor, keysFromOpenedConfiguration)}
-      </p>
+      {keysAreBuiltIn(editor, keysFromOpenedConfiguration) ? (
+        <InfoButton
+          label={KEY_NAME_SHORTHAND_INFO.label}
+          explanation={KEY_NAME_SHORTHAND_INFO.explanation}
+          mt="sm"
+        >
+          <p id="key-order-help" className={styles.infoLine}>
+            {keyOrderHelp(editor, keysFromOpenedConfiguration)}
+          </p>
+        </InfoButton>
+      ) : (
+        <p id="key-order-help">
+          {keyOrderHelp(editor, keysFromOpenedConfiguration)}
+        </p>
+      )}
       <ol className={styles.guidedKeys} aria-describedby="key-order-help">
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);

@@ -20,7 +20,7 @@ If they differ, tell Dana which term differs and ask for a new invitation.
 
 Data sharing agreement LCC-RCHA-2026-014, signed 2026-10-20 by both agencies.
 
-1. Matching: first name, last name, date of birth and ZIP code, with the app's standard matching rules.
+1. Matching: first name, last name, date of birth and ZIP code, with the app's default matching rules.
 2. Riverbend sends: each matched client's housing program, and no other column.
 3. Lakeshore sends: nothing.
 4. Results: Lakeshore alone receives the list of matched people. Riverbend receives no result.

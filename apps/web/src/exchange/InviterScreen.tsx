@@ -882,10 +882,11 @@ export function InviterScreen() {
     void deleteSftpConnection();
   }
 
-  // The failure alerts' "start over with a fresh invitation": the seal lifts
-  // with every input intact, the failed invitation is discarded (its run has
-  // already torn down; the hook drops the run state), and the operator lands
-  // back on Review & create, where the next create mints a fresh secret.
+  // The failure alerts' "start over with a fresh invitation" and the share
+  // screen's "replace this invitation": the seal lifts with every input
+  // intact, the invitation is discarded (the hook aborts a waiting run and
+  // drops the run state), and the operator lands back on Review & create,
+  // where the next create mints a fresh secret.
   function startOver() {
     leaveRun();
     // A run of the opened configuration in place may have changed its file,
@@ -2388,6 +2389,7 @@ export function InviterScreen() {
               resumableAfterReload={keepsPendingInvitation}
               onTryAgain={tryAgain}
               onStartOver={startOver}
+              onReplaceInvitation={startOver}
               onReviewAppliedTerms={reviewAppliedTerms}
               onAbandon={abandonRun}
             />

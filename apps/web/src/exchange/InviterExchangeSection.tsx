@@ -51,6 +51,15 @@ import type { GeneratedInvitation } from "@psi/invitation";
 import type { JobRunStatus } from "@psi/jobClient/serverJobExchangeDriver";
 import type { RunFailure } from "./useInviterExchange";
 
+/** The share screen's control that discards a waiting invitation for a new
+ * one. */
+export const REPLACE_INVITATION_LABEL = "Replace this invitation";
+
+/** What the share screen says beside {@link REPLACE_INVITATION_LABEL}. */
+export const REPLACE_INVITATION_BODY =
+  "To change the terms, replace this invitation. Its link stops working, " +
+  "and you go back to Review & create with your choices kept.";
+
 /**
  * The inviter's post-create work column, through the run's three phases: the
  * share screen (copy artifacts, one-time-secret guidance, expiry) while the
@@ -86,6 +95,7 @@ export function InviterExchangeSection({
   resumed = false,
   onTryAgain,
   onStartOver,
+  onReplaceInvitation,
   onReviewAppliedTerms,
   onAbandon,
 }: {
@@ -167,6 +177,11 @@ export function InviterExchangeSection({
   resumed?: boolean;
   onTryAgain: () => void;
   onStartOver: () => void;
+  /** Discard the invitation while it waits for the partner, so its link no
+   * longer connects, and return to Review & create with the settings kept.
+   * Omitted where the page no longer holds those settings; the share screen
+   * then offers no replace control. */
+  onReplaceInvitation?: () => void;
   /** Leave a run whose partner's changed terms were applied to the mounted
    * configuration for Review & create, with that configuration opened again
    * so the next run is composed from the terms it now holds. */
@@ -457,6 +472,14 @@ export function InviterExchangeSection({
                 .
               </strong>
             </p>
+            {onReplaceInvitation !== undefined && failure === undefined && (
+              <>
+                <p className={styles.small}>{REPLACE_INVITATION_BODY}</p>
+                <Button variant="default" onClick={onReplaceInvitation}>
+                  {REPLACE_INVITATION_LABEL}
+                </Button>
+              </>
+            )}
           </>
         )}
       {/* The keep-open callout drops the moment any failure lands: the run it

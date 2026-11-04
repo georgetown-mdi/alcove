@@ -199,6 +199,10 @@ export function inviterRailFacts(
   ];
 }
 
+/** The Review & create value of the Legal agreement row while none is
+ * attached. */
+export const NO_LEGAL_AGREEMENT = "None (optional)";
+
 /** A console section a Problems entry or a Change link can navigate to: a spine
  * step or a Customize tab. */
 export type SpineTarget =
@@ -635,7 +639,7 @@ export function answersRows(
     },
     {
       label: "Legal agreement",
-      value: editor.draft.legalAgreement?.reference ?? "None",
+      value: editor.draft.legalAgreement?.reference ?? NO_LEGAL_AGREEMENT,
       mono: editor.draft.legalAgreement?.reference !== undefined,
       changeTarget: "agreement",
     },

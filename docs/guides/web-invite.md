@@ -97,7 +97,7 @@ Choose **Continue to review & create**.
 
 In the side panel, under **Customize**, choose **Matching keys**. The **Matching keys** screen opens.
 
-- **Built-in rules**: **Broader matching** is the default; **Highest precision** keeps only the most precise keys. Untick any key you agreed to leave out ([What you match on](./agree-on-terms.md#what-you-match-on)).
+- **Built-in rules**: **Broader matching** is the default; **Highest precision** keeps only the most precise keys. Untick any key you agreed to leave out ([What you match on](./agree-on-terms.md#what-you-match-on)). The info button beside the key list explains the key names, such as `LN` for last name.
 - For a count only, untick each key with a name containing `split(`, `swap(`, `+/-` or `day/month exchanged`. The count is taken across every key left ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
 
 Choose **Back to Review & create**.
@@ -105,6 +105,8 @@ Choose **Back to Review & create**.
 ### 4. Review & create
 
 Screen: Step 3 of 3 - Review & create
+
+If you agreed to name your data sharing agreement in the invitation, choose **Legal agreement** under **Customize**, tick **Attach a legal agreement**, and enter its reference, purpose, and expiration date as the signed agreement states them. Your partner sees them before accepting and types nothing. Otherwise leave it: Review & create shows **None (optional)**.
 
 **Invitation duration** sets how long your partner can accept:
 
@@ -124,15 +126,17 @@ Screen: Step 3 of 3 - Review & create
 Check each line under **Exchange proposal**, then choose **Create the invitation**.
 
 > [!WARNING]
-> After you create the invitation, you cannot change its terms. To change them, create a new invitation.
+> After you create the invitation, you cannot change its terms. To change them, choose **Replace this invitation** on the next screen.
 
 ### 5. Send the invitation
 
 Screen: Your invitation is ready
 
 Choose **Copy** beside **A message to send**. The message holds the link, when it expires, and a note that your page must stay open.
-The link is about 10,000 characters long, so send it as text over your trusted channel, such as secure email. It holds a one-time secret: anyone who has it can take your partner's place.
-Send your partner this page's companion too: [Accept with the web app](./web-accept.md).
+The link is several thousand characters long, so send it as text over your trusted channel, such as secure email. It holds a one-time secret: anyone who has it can take your partner's place.
+Send your partner the guide for their side too: `https://data-bridge.org/web-accept` ([Accept with the web app](./web-accept.md)).
+
+If your partner reports a term that differs from what you agreed, choose **Replace this invitation**. The link you sent stops working, and **Review & create** opens with your choices kept. Change the term, create the new invitation, and send it.
 
 > [!WARNING]
 > Keep this tab open: closing it cancels the invitation. During the exchange, closing or reloading either tab stops it for both of you.

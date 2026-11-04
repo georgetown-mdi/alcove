@@ -361,6 +361,23 @@ export const BUILT_IN_RULES_INFO = {
   linkText: "How the rules were chosen",
 } as const;
 
+/** The description of the Built-in rules choice an invitation starts at. */
+export const DEFAULT_BUILT_IN_RULES_NOTE = "The default.";
+
+/** The (i) beside the key list: its accessible name and the short forms the
+ * built-in key names use. */
+export const KEY_NAME_SHORTHAND_INFO = {
+  label: "What the key names mean",
+  explanation:
+    "FN and LN are the first and last name, and FN1, FN3, LN3, or LN4 the " +
+    "first 1, 3, or 4 letters of one. DOB is the date of birth, and YOB + " +
+    "MOB its year and month. SSN4 is the last four digits of the SSN. ZIP5 " +
+    "is the ZIP code, and ZIP3 its first three digits. soundex(FN) and " +
+    "soundex(LN) match names that sound alike, swap(LN, FN) the two names " +
+    "in either order, and split(LN) any one part of a last name with " +
+    "several parts.",
+} as const;
+
 /** What Matching keys shows in place of the built-in rule
  * choice on the console, for keys a run of an opened configuration
  * continues under: the partner holds them, so no action here replaces them. */
@@ -380,6 +397,19 @@ export const MATCHING_KEYS_LESS_CERTAIN_REMEDY = {
     "alcove update, and have your partner run alcove apply on what it prints.",
 } as const;
 
+/** Whether the listed keys are the built-in ones a precision floor selected,
+ * not keys written in Expert authoring or held by an opened configuration. */
+export function keysAreBuiltIn(
+  editor: InviterEditor,
+  keysFromOpenedConfiguration = false,
+): boolean {
+  return (
+    editor.keysAuthored !== true &&
+    !keysFromOpenedConfiguration &&
+    editor.draft.precisionFloorSelection !== undefined
+  );
+}
+
 /** What the key list's help says about its order: the bands the floor
  * selects, in the order the built-in keys list them, or for keys no floor
  * selected, only that they are tried in the order listed. */
@@ -389,8 +419,7 @@ export function keyOrderHelp(
 ): string {
   const selection = editor.draft.precisionFloorSelection;
   if (
-    editor.keysAuthored === true ||
-    keysFromOpenedConfiguration ||
+    !keysAreBuiltIn(editor, keysFromOpenedConfiguration) ||
     selection === undefined
   )
     return (

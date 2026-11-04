@@ -11,7 +11,9 @@ import "@mantine/core/styles.css";
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
   BUILT_IN_RULES_INFO,
+  DEFAULT_BUILT_IN_RULES_NOTE,
   HIGHEST_PRECISION_UNAVAILABLE_REASON,
+  KEY_NAME_SHORTHAND_INFO,
   MATCHING_KEYS_LESS_CERTAIN_REMEDY,
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
@@ -464,7 +466,9 @@ describe("KeysTab: the built-in rule choice and the less certain mark", () => {
     await expect.element(floor99).not.toBeChecked();
     await expect.element(floor99).toBeEnabled();
     expect(floor99.element().getAttribute("aria-describedby")).toBeNull();
-    expect(floor95.element().getAttribute("aria-describedby")).toBeNull();
+    await expect
+      .element(floor95)
+      .toHaveAccessibleDescription(DEFAULT_BUILT_IN_RULES_NOTE);
     expect(document.body.textContent).not.toMatch(/tier/i);
 
     expect(page.getByRole("radiogroup").elements()).toHaveLength(2);
@@ -550,8 +554,11 @@ describe("KeysTab: the built-in rule choice and the less certain mark", () => {
       page.getByRole("radio", { name: at99 }),
       page.getByRole("radio", { name: at95 }),
     ];
-    for (const floor of floors)
-      await expect.element(floor).toHaveAccessibleDescription("");
+    const closedDescriptions = ["", DEFAULT_BUILT_IN_RULES_NOTE];
+    for (const [index, floor] of floors.entries())
+      await expect
+        .element(floor)
+        .toHaveAccessibleDescription(closedDescriptions[index]);
 
     await activate(control("button", "About the built-in rules"));
     await expect.element(info).toHaveAttribute("aria-expanded", "true");
@@ -567,13 +574,18 @@ describe("KeysTab: the built-in rule choice and the less certain mark", () => {
       );
     await expect.element(link).toHaveAttribute("target", "_blank");
     await expect.element(link).toHaveAttribute("rel", "noreferrer");
-    for (const floor of floors)
-      await expect.element(floor).toHaveAccessibleDescription(shown);
+    const openDescriptions = [shown, `${DEFAULT_BUILT_IN_RULES_NOTE} ${shown}`];
+    for (const [index, floor] of floors.entries())
+      await expect
+        .element(floor)
+        .toHaveAccessibleDescription(openDescriptions[index]);
 
     await activate(control("button", "About the built-in rules"));
     await expect.element(info).toHaveAttribute("aria-expanded", "false");
-    for (const floor of floors)
-      await expect.element(floor).toHaveAccessibleDescription("");
+    for (const [index, floor] of floors.entries())
+      await expect
+        .element(floor)
+        .toHaveAccessibleDescription(closedDescriptions[index]);
   });
 
   /** The tab over a live session, with buttons outside it that set the ssn4
@@ -975,6 +987,62 @@ describe("KeysTab: the built-in rule choice and the less certain mark", () => {
     const expected = labelsOfKeysMarkedByBuiltTerms(editor);
     expect(expected).not.toContain(lessCertainInfoLabel("SSN4 + LN + DOB"));
     expect(infoButtonLabels()).toStrictEqual(expected);
+  });
+
+  test("names the default choice and explains the key names behind a button beside the list's help", async () => {
+    app.render(
+      createElement(Harness, { initial: editorFromCsv("Dana Okafor", csv) }),
+    );
+
+    await expect
+      .element(page.getByText(DEFAULT_BUILT_IN_RULES_NOTE, { exact: true }))
+      .toBeVisible();
+    const info = page.getByRole("button", {
+      name: KEY_NAME_SHORTHAND_INFO.label,
+      exact: true,
+    });
+    await expect.element(info).toHaveAttribute("aria-expanded", "false");
+    const explanation = page.getByText(KEY_NAME_SHORTHAND_INFO.explanation);
+    await expect.element(explanation).not.toBeVisible();
+    await activate(control("button", KEY_NAME_SHORTHAND_INFO.label));
+    await expect.element(info).toHaveAttribute("aria-expanded", "true");
+    await expect.element(explanation).toBeVisible();
+  });
+
+  test("offers the key name explanation only beside built-in keys", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const shorthand = page.getByRole("button", {
+      name: KEY_NAME_SHORTHAND_INFO.label,
+      exact: true,
+    });
+    const authored = editorWithAuthoredDraft(seeded, seeded.draft);
+    app.render(createElement(Harness, { initial: authored }));
+    await expect.element(page.getByText(keyOrderHelp(authored))).toBeVisible();
+    expect(shorthand.query()).toBeNull();
+  });
+
+  test("offers no key name explanation beside an opened configuration's keys", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    app.render(
+      createElement(Harness, {
+        initial: editorWithImportedTerms(
+          seeded,
+          csv,
+          buildAdvancedTerms(seeded.draft),
+        ),
+        keysFromOpenedConfiguration: true,
+      }),
+    );
+    await expect
+      .element(
+        page
+          .getByRole("note")
+          .filter({ hasText: OPENED_CONFIGURATION_KEYS_NOTE }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: KEY_NAME_SHORTHAND_INFO.label }).query(),
+    ).toBeNull();
   });
 
   test("describes the key list with the order the chosen floor gives it", async () => {
