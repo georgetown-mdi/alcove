@@ -257,6 +257,15 @@ ls
 You should see the contents of your file-drop folder -- probably nothing, which
 is what an empty exchange folder looks like.
 
+A DFS link can also open with no error, since `smbclient` follows it on its
+own. Once you are in your folder, `showconnect` prints the server and share you
+actually reached; if they are not the ones you typed, the folder is a DFS link,
+and you need the real path from the Properties DFS tab.
+
+```text
+showconnect
+```
+
 `NT_STATUS_ACCESS_DENIED` here, after step 4 worked, means access to a share
 does not extend to this folder. See
 [the share opens but the folder does not](troubleshooting.md#the-share-opens-but-the-folder-does-not).
