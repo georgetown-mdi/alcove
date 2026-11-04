@@ -370,8 +370,10 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends samba smbclient cifs-utils
-          sudo mkdir -p /srv/alcove/dropbox /srv/alcove-readonly
-          sudo chown -R "$SMB_TEST_USER":"$SMB_TEST_USER" /srv/alcove /srv/alcove-readonly
+          sudo mkdir -p /srv/alcove/dropbox /srv/alcove-readonly /srv/alcove-dfsroot /srv/alcove-dfstarget
+          sudo chown -R "$SMB_TEST_USER":"$SMB_TEST_USER" /srv/alcove /srv/alcove-readonly /srv/alcove-dfsroot /srv/alcove-dfstarget
+          # A DFS link: dfsroot\drop refers the client to the dfstarget share.
+          sudo ln -s 'msdfs:127.0.0.1\dfstarget' /srv/alcove-dfsroot/drop
           sudo tee /etc/samba/smb.conf >/dev/null <<CONF
           [global]
             workgroup = WORKGROUP
@@ -389,6 +391,17 @@ jobs:
           [readonly]
             path = /srv/alcove-readonly
             read only = yes
+            valid users = $SMB_TEST_USER
+
+          [dfsroot]
+            path = /srv/alcove-dfsroot
+            msdfs root = yes
+            read only = no
+            valid users = $SMB_TEST_USER
+
+          [dfstarget]
+            path = /srv/alcove-dfstarget
+            read only = no
             valid users = $SMB_TEST_USER
           CONF
           printf '%s\n%s\n' "$SMB_TEST_PASSWORD" "$SMB_TEST_PASSWORD" |
@@ -503,6 +516,34 @@ jobs:
             expect "unreachable port 445" 78 \
               '(.checks[] | select(.id == "tcp_445") | .status == "fail")
                and (.checks[] | select(.id == "authentication") | .status == "skipped")' )
+
+      # smbclient follows a DFS referral on its own, so the link opens with no
+      # status; the probe has to notice it reached another share, and stop
+      # before it writes anything there.
+      - name: Probe a folder that is a DFS link
+        run: |
+          set -euo pipefail
+          export SMB_SERVER=127.0.0.1 SMB_SHARE=dfsroot SMB_PATH=drop
+          export SMB_USER="$SMB_TEST_USER" SMB_PASS="$SMB_TEST_PASSWORD"
+          export SMB_MARKER=alcove-check.txt SMB_TOKEN=dfsrun
+          set +e
+          verdict=$(node apps/cli/dist/index.js doctor probe --json)
+          code=$?
+          node apps/cli/dist/index.js doctor probe 2>human.log
+          human_code=$?
+          set -e
+          echo "$verdict" | jq .
+          cat human.log
+          test "$code" = 78
+          test "$human_code" = 78
+          echo "$verdict" | jq -e '
+            (.checks[] | select(.id == "share_open") | .status == "ok")
+            and (.checks[] | select(.id == "subdirectory") | .status == "fail")
+            and (.checks[] | select(.id == "subdirectory") | .action | test("Reading the real path from Windows"))
+            and (.checks[] | select(.id == "write") | .status == "skipped")'
+          grep -qx "FAIL: this folder is a DFS link." human.log
+          test "$(ls -A /srv/alcove-dfstarget | wc -l)" = 0
+          rm -f human.log
 
       - name: Probe reports failures in the human rendering too
         run: |

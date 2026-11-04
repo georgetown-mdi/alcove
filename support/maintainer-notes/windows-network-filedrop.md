@@ -786,9 +786,16 @@ below.
 
 What replaced it: the script shows the operator the server, share and subfolder
 it worked out and asks them to confirm, naming DFS as the case where they will
-be wrong; the container classifies `NT_STATUS_PATH_NOT_COVERED`, which is the
-server saying outright that the path is a DFS link; and the marker file catches
-a wrong answer that slips past both. The manual route -- Properties, DFS tab,
+be wrong; the container's checks stop on a DFS link before the volume is made;
+and the marker file catches a wrong answer that slips past both. The checks
+see a link two ways: the server answers `NT_STATUS_PATH_NOT_COVERED`, or
+`smbclient` follows the referral itself and `showconnect` names a share other
+than the one given. A standalone Windows namespace on the 2026-11-03 VM pass
+took the second way: every check passed on the namespace path, the marker
+landed in the link's target, and the volume then failed to mount with "no such
+file or directory". CI drives `showconnect` against a Samba DFS link; against
+a Windows namespace it is unmeasured until the VM pass's V3.2 lap runs. The
+manual route -- Properties, DFS tab,
 then `-Server`/`-Share`/`-SubPath` -- is the primary one for a namespace, and
 the runbook says so.
 
