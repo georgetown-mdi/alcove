@@ -34,9 +34,10 @@ A binary length check on the AEAD decorator's inbound envelope caps it at the sa
 
 **The AEAD's limit on one frame.**
 `crypto.subtle` AES-GCM encrypts at most 2,147,483,630 bytes (2^31 - 18) of plaintext: measured on 2026-11-04 under Node 26.13 on Linux arm64, one byte more fails with an `OperationError`.
-An encrypted frame, less the one-byte type tag inside its plaintext, is therefore at most `MAX_AEAD_FRAME_BYTES`, 2,147,483,629 bytes (`packages/core/src/connection/encryptedMessageConnection.ts`), which the connection states as its frame ceiling (`frameCeilingBytes`).
+Under envelope version 1, which encrypts a frame in one call, an encrypted frame, less the one-byte type tag inside its plaintext, is therefore at most `MAX_AEAD_FRAME_BYTES`, 2,147,483,629 bytes (`packages/core/src/connection/encryptedMessageConnection.ts`), which the connection states as its frame ceiling (`frameCeilingBytes`).
 A single-pass frame over it is refused before it is written, and the decorator clamps a per-exchange cap to that frame in its envelope, both at its own length check and at the cap it forwards to the inner read gate, there as the message file that envelope is written in.
-A larger encrypted frame needs the AEAD in chunks.
+Under envelope version 2, which two parties on this build select, a frame is encrypted in chunks of 2^24 bytes ([CHANNEL_SECURITY.md, The chunked envelope, version 2](CHANNEL_SECURITY.md#the-chunked-envelope-version-2)), so the AEAD sets no limit on a frame: the connection states no frame ceiling and clamps no per-exchange cap, and its own length check holds an envelope to the cap as set.
+An encrypted frame is then bounded, over file-sync, by the caps the counts derive, the read gate's clamp below, and the memory checked before each read, and over WebRTC by [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound).
 The file-sync read gate itself clamps a per-exchange cap only to the largest exact integer (`MAX_DERIVED_FRAME_BYTES`), at or below Node's largest `Buffer`: memory is checked before each read ([FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes)).
 On 2026-11-04, in a 10-core arm64 Linux container with 23 GB of memory, a frame of 2,147,487,744 bytes crossed a local synced folder whole with no key exchange, written in 1.6 s and read in 4.2 s (`apps/cli/test/stress/fileSyncLargeFrame.stress.test.ts`, `npm run test:stress -w apps/cli`).
 Not run: a frame that size over an SFTP server or a sync client.
@@ -79,14 +80,16 @@ The security-relevant properties here:
   Its value, its derivation from the heavier party's measured peak, and the constraint that binds it -- the WebRTC per-frame envelope below, not memory -- are specified there, under the single-pass dataset ceiling.
   It is a fixed constant, not an operator-configurable option, for the same reason as the frame-size bound: a configurable maximum risks being raised high enough to reintroduce the memory-exhaustion DoS.
 - **Over file-sync no value-slot budget applies.**
-  The limits are the derived caps, the AEAD's limit on one frame on an encrypted connection, the set maximum the reply's `uint32` lengths impose (`MAX_SINGLE_PASS_SET_ELEMENTS`, 122,713,351 distinct values), and the memory checks, specified [in PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
+  The limits are the derived caps, the AEAD's limit on one frame on an encrypted connection under envelope version 1, the set maximum the reply's `uint32` lengths impose (`MAX_SINGLE_PASS_SET_ELEMENTS`, 122,713,351 distinct values), and the memory checks, specified [in PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
   A set over the maximum is refused before masking, and the partner is told.
   A frame over the AEAD's limit is refused before the write, once masking has built it, and the partner is told.
-  On an encrypted connection the AEAD's limit binds first: the setup alone reaches it at about 61.4 million elements.
+  Envelope version 2 sets no such limit ([The AEAD's limit on one frame](#inbound-frame-size-bound), above).
+  Under envelope version 1 the AEAD's limit binds first: the setup alone reaches it at about 61.4 million elements.
+  Under envelope version 2 the set maximum and the transport's own bounds bind.
   On a quick exchange (no encryption) no AEAD limit applies: a single-pass frame is bounded by the count-derived caps, the set maximum and the memory check, which `--allow-memory-shortfall` turns into a warning.
 - **Transport-aware via per-transport clamps.**
   The derived caps apply to single-pass over every file-sync transport, SFTP included.
-  File-sync gets the derived bound, held to the AEAD's limit on an encrypted connection; the WebRTC data channel keeps its fixed browser-tab envelope [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound) at its reassembly read gate (`apps/web/src/psi/transport/boundedReassembly.ts`) and relies on the count-budget check, run identically on both parties, plus the decode-time coherence checks below.
+  File-sync gets the derived bound, held to the AEAD's limit on an encrypted connection under envelope version 1; the WebRTC data channel keeps its fixed browser-tab envelope [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound) at its reassembly read gate (`apps/web/src/psi/transport/boundedReassembly.ts`) and relies on the count-budget check, run identically on both parties, plus the decode-time coherence checks below.
   At the ceiling the derived reply frame, whose size there [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) derives, sits below both envelopes -- the WebRTC one is the nearer -- so a legitimate single-pass reply the count budget admits is never rejected by the WebRTC clamp.
   An over-ceiling exchange fails closed with actionable guidance that does not recommend cascade.
   The cap is held below the point where the derived reply cap would reach the WebRTC envelope precisely so this stays true; raising it past that point would require reworking the WebRTC reassembly path to fail closed rather than mid-frame.
