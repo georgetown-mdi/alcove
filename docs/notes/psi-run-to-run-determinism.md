@@ -25,6 +25,8 @@ Where a section says a claim was read from code or is pinned by a suite, it was 
 Both parties expect output and, except where section 5 adds a row, hold equal declared counts,
 so the initiator becomes the receiver ([Role resolution and work minimization](../spec/PROTOCOL.md#role-resolution-and-work-minimization)),
 and swapping which party initiates swaps the roles with the data unchanged.
+Where the records under test are uneven, a party is padded with a row that matches nothing (labelled `xF` or `yF`) to even the counts;
+each section lists every row it drove, in row order, padding included.
 
 Each configuration ran 20 times per initiator, under `cascade` and under `single-pass` where both apply, and under `psi-c` where it shows the count.
 That is 21 configurations, two initiators each, 840 exchanges in all.
@@ -44,14 +46,15 @@ fed ranks from the two groupings under the cascade and rows by `replaySinglePass
 Spec: the stated limit in [Record-level resolution: canonical order and tiebreak](../spec/PROTOCOL.md#record-level-resolution-canonical-order-and-tiebreak).
 
 **Driven input.**
-One `split_on` surname key; three records a side, each holding two parts, forming one six-pair cycle
-(party A: `Papa-Uniform`, `Sierra-Tango`, `Quebec-Romeo`; party B: `Romeo-Sierra`, `Papa-Quebec`, `Tango-Uniform`).
+One `split_on` surname key splitting on the space the default name cleaning leaves where a hyphen was; three records a side, each holding two parts, forming one six-pair cycle
+(party A, rows a0 to a2: `Papa-Uniform`, `Sierra-Tango`, `Quebec-Romeo`; party B, rows b0 to b2: `Romeo-Sierra`, `Papa-Quebec`, `Tango-Uniform`).
+The reversed run gives A the rows `Quebec-Romeo`, `Sierra-Tango`, `Papa-Uniform`.
 
 | Run | A's table | Reproduced |
 | --- | --- | --- |
 | A receiver | a0-b2, a1-b0, a2-b1 | 20/20, both strategies |
 | A sender | a0-b1, a1-b2, a2-b0 | 20/20, both strategies |
-| A receiver, A's rows reversed | a0-b1, a1-b2, a2-b0 | 20/20, both strategies |
+| A receiver, A's rows reversed (rows numbered as before the reversal) | a0-b1, a1-b2, a2-b0 | 20/20, both strategies |
 | `psi-c`, either role | count 3 | 20/20 |
 
 All three pairs differ between the roles, and reversing A's three rows moves all three as well.
@@ -92,10 +95,10 @@ and its count-only reading in [Candidate sets under count-only](../spec/PROTOCOL
 
 **Driven inputs.**
 
-| Key | X holds | Y holds | X receiver | X sender | Reproduced |
+| Key | X's rows x0, x1 | Y's rows y0, yF | X receiver | X sender | Reproduced |
 | --- | --- | --- | --- | --- | --- |
-| `swap` on first and last name | (Carol, Smith), (Smith, Carol) | (Carol, Smith) | no pair | x0-y0 | 20/20, both strategies |
-| `adjacent_years` on date of birth | 1990-01-15, 1991-01-15 | 1990-01-15 | no pair | x0-y0 | 20/20, both strategies |
+| `swap` on first and last name | (Carol, Smith), (Smith, Carol) | (Carol, Smith), (Henry, Brown) | no pair | x0-y0 | 20/20, both strategies |
+| `adjacent_years` on date of birth | 01/15/1990, 01/15/1991 | 01/15/1990, 06/15/1950 | no pair | x0-y0 | 20/20, both strategies |
 | either, under `psi-c` | as above | as above | count 0 | count 1 | 20/20 |
 
 Unlike the tie-break, this moves the number of pairs and the count.
@@ -122,12 +125,12 @@ On an element that both splits (`split_on`) and expands (`generate_fuzzy_compari
 which includes the expansion on the receiver only.
 A row that splits into more parts than the per-element fan-out factor, but fewer than the declared width, fits as the sender and is dropped as the receiver.
 Code: `readRowUnderPlan` (`packages/core/src/standardization.ts`), the drop through `dropRowFromKeyRound`.
-Spec: the drop itself is in [Which party expands](../spec/PROTOCOL.md#which-party-expands-full-variant-and-deletion-neighbourhood-expansions) (the closing sentences on the stacked case);
-that it depends on the role is not stated there.
+Spec: the stated limit "the width drop on a key that splits and expands can depend on the role" in [Which party expands](../spec/PROTOCOL.md#which-party-expands-full-variant-and-deletion-neighbourhood-expansions).
 
 **Driven input.**
 A surname element split on spaces, bounded to two characters and expanded by `transpositions`, so the declared width is 40.
-X holds one row of 21 distinct two-letter parts (`AB AC ... AV`); Y holds `AB`.
+X's rows are x0, one row of 21 distinct two-letter parts (`AB AC AD AE AF AG AH AI AJ AK AL AM AN AO AP AQ AR AS AT AU AV`), and xF, `ZZ`;
+Y's rows are y0, `AB`, and yF, `YY`.
 As the receiver, X's row realizes 42 candidates and is dropped: no pair.
 As the sender, X sends its 21 parts and Y's expanded `AB` meets one: x0-y0.
 20 of 20 runs each way, under both strategies.
@@ -146,9 +149,11 @@ Code: `expandFuzzyComparisons` and the date candidate functions (`packages/core/
 Spec: the stated limit "only the receiver refuses a date value that is not eight digits" in [Which party expands](../spec/PROTOCOL.md#which-party-expands-full-variant-and-deletion-neighbourhood-expansions).
 
 **Driven input.**
-An `adjacent_years` element behind a `replace_regex` that strips a leading `1990`, so X's 1990 birth date reaches the element as four digits and Y's values stay canonical.
+An `adjacent_years` element on date of birth behind a `replace_regex` that strips a leading `1990`.
+X's rows are x0, 01/15/1990, and x1, 01/15/1985; Y's rows are y0, 01/15/1985, and yF, 06/15/1950.
+X's 1990 birth date reaches the element as the four digits `0115`, and Y's values stay canonical.
 X as the receiver: the exchange is refused, 20 of 20.
-X as the sender: the exchange completes with one pair on X's other record, 20 of 20.
+X as the sender: the exchange completes with the one pair x1-y0, 20 of 20.
 This changes whether the run completes, not the table of a completed run.
 
 **Deterministic rule.**
@@ -164,7 +169,7 @@ They become run-to-run differences when the assignment moves between runs over t
 
 - **A count change.**
   With both parties expecting output, the smaller declared count receives (`resolveRole` and `pickRole`, `packages/core/src/protocolSetup.ts`; [Role resolution](../spec/PROTOCOL.md#role-resolution-and-work-minimization)).
-  Driven: adding one row that matches nothing to party A in the cycle input above made A the sender in 20 of 20 runs whichever party initiated,
+  Driven: adding a fourth row, `Xray`, which matches nothing, to party A in the cycle input above made A the sender in 20 of 20 runs whichever party initiated,
   and all three of the cycle's pairs moved.
   A recurring exchange whose counts cross therefore changes the pairs of records that did not change.
   The spec states that nothing holds the role steady across runs.
@@ -197,12 +202,14 @@ For one many-side record that first pair is the one with its lowest-row partner,
 so the table does not depend on the role, but does depend on the "one" party's row order.
 
 **Driven input.**
-X deduplicates and holds `Papa-Quebec` and `Quebec-Romeo`; Y holds `Papa`, `Quebec` and `Romeo`.
+The same `split_on` surname key as source 1.
+X deduplicates; its rows are x0, `Papa-Quebec`, x1, `Quebec-Romeo`, and xF, `Zulu`.
+Y's rows are y0, `Papa`, y1, `Quebec`, and y2, `Romeo`; the reversed run gives Y the rows `Romeo`, `Quebec`, `Papa`.
 
 | Run | X's table | Reproduced |
 | --- | --- | --- |
 | either role | x0-y0, x1-y1 | 20/20, both strategies |
-| either role, Y's rows reversed | x0-y1, x1-y2 | 20/20, both strategies |
+| either role, Y's rows reversed (rows numbered as before the reversal) | x0-y1, x1-y2 | 20/20, both strategies |
 
 **Deterministic rule.**
 The value-keyed order of source 1 covers this too, at the same cost.
