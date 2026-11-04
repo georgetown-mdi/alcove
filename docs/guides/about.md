@@ -54,5 +54,6 @@ Prior to joining Georgetown, Amy was a senior executive at the U.S. Census Burea
 ## Get in touch
 
 - Questions and bug reports: [GitHub issues](https://github.com/georgetown-mdi/alcove/issues)
-- Security reports: see the [security policy](https://github.com/georgetown-mdi/alcove/blob/main/SECURITY.md)
+- Security reports: see the [security policy](../../SECURITY.md)
+- Contributing to Alcove: see the [contributing guide](../../CONTRIBUTING.md)
 - [Reach out about collaborating](mailto:eric.giannella@georgetown.edu)

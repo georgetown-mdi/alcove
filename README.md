@@ -4,6 +4,8 @@ Alcove: Open Source Encrypted Matching and Sharing
 
 Alcove is an open-source tool that lets two organizations find the records (individuals) they have in common with the option of exchanging data about those shared records, without either organization revealing anything about the records they do not share. It performs privacy-preserving record linkage (PPRL) using a cryptographic protocol called private set intersection (PSI).
 
+Guides and documentation: [data-bridge.org](https://data-bridge.org).
+
 ## Three ways to use Alcove
 
 Pick the one that matches who you are. All three run the same protocol, so the two parties do not have to pick the same one.
@@ -21,9 +23,9 @@ Pick the one that matches who you are. All three run the same protocol, so the t
    ```
    Best for recurring or scheduled exchanges and for IT teams fitting linkage into a data pipeline. See the [CLI App Quickstart](#cli-app-quickstart).
 
-The commands on this page pull the image from Docker Hub. If a pull from Docker Hub is refused, put `ghcr.io/georgetown-mdi/alcove:latest` in place of `docker.io/gumdi/alcove:latest`: it is the same image on the GitHub Container Registry (see [Install and run](docs/guides/cli-install.md#install)).
+The commands on this page pull the image from Docker Hub. If a pull from Docker Hub is refused, put `ghcr.io/georgetown-mdi/alcove:latest` in place of `docker.io/gumdi/alcove:latest`: it is the same image on the GitHub Container Registry (see [Install and run](https://data-bridge.org/cli-install#install)).
 
-How many records each one handles, and roughly how long an exchange takes: [How large an exchange can be](docs/DEPLOYMENT.md#how-large-an-exchange-can-be).
+How many records each one handles, and roughly how long an exchange takes: [How large an exchange can be](https://data-bridge.org/docs/DEPLOYMENT#how-large-an-exchange-can-be).
 
 To run the web app from source instead, see [apps/web/README.md](apps/web/README.md).
 
@@ -55,9 +57,9 @@ Open [https://psi.data-bridge.org](https://psi.data-bridge.org) and choose **Cre
 
 To practice, each party picks one of the files in [`test_data/`](test_data/) as input.
 
-To exchange with the same partner on a schedule, choose **Save as a recurring exchange** on the exchange screen; see [Managed (recurring) web exchanges](docs/MANAGED_EXCHANGE.md).
+To exchange with the same partner on a schedule, choose **Save as a recurring exchange** on the exchange screen; see [Managed (recurring) web exchanges](https://data-bridge.org/docs/MANAGED_EXCHANGE).
 
-The step-by-step guide, for both the party who invites and the partner who receives the link, is [docs/WEB_APP.md](docs/WEB_APP.md). It also explains the exchange record you can download at the end and how to check it.
+The step-by-step guide, for both the party who invites and the partner who receives the link, is the [web app guide](https://data-bridge.org/docs/WEB_APP). It also explains the exchange record you can download at the end and how to check it.
 
 ## CLI App Quickstart
 
@@ -76,7 +78,7 @@ Replacing each of the following:
    * `SFTP_USER`, `SFTP_HOST`, `SFTP_PORT` - standard SFTP connection information: the account username, the server address, and the port (usually `22`; if you use the default you can omit `:SFTP_PORT`).
    * `PASSWORD_FILE` - a file in `WORK_PATH` holding the SFTP account's password, so the password stays out of the command line and your shell history. Example: `passwd`.
    * `SFTP_PATH` - path from the **root** of the SFTP server to a directory that both parties can read and write; the exchange happens through files placed here. Example: `/exchanges/county-a-county-b`.
-   * `INPUT_FILE` - your data file: a CSV with the columns to match on (such as name, date of birth, or SSN) and, optionally, columns with data to share with the other party for matched records. A column whose name Alcove recognizes as a match column, such as `first_name`, `date_of_birth`, or `ssn`, is never sent (the ones a built-in key uses are matched on, and the rest are held back and listed before the run); this command sends every other column, record id columns included, and lists them before it connects (see [Quick exchange](docs/CLI.md#quick-exchange)). A relative path is resolved inside `WORK_PATH`. Example: `clients.csv`.
+   * `INPUT_FILE` - your data file: a CSV with the columns to match on (such as name, date of birth, or SSN) and, optionally, columns with data to share with the other party for matched records. A column whose name Alcove recognizes as a match column, such as `first_name`, `date_of_birth`, or `ssn`, is never sent (the ones a built-in key uses are matched on, and the rest are held back and listed before the run); this command sends every other column, record id columns included, and lists them before it connects (see [Quick exchange](https://data-bridge.org/docs/CLI#quick-exchange)). A relative path is resolved inside `WORK_PATH`. Example: `clients.csv`.
    * `OUTPUT_FOLDER` - the folder the run writes its result and exchange record in, each run under its own time-stamped names. It is created if missing, and a relative path is resolved inside `WORK_PATH`. Example: `./` for `WORK_PATH` itself, or `matches/`.
 
 If `docker pull` stops with a certificate error or a refusal behind your organization's proxy, see [the image download fails with a certificate error](support/windows-network-filedrop/troubleshooting.md#the-image-download-fails-with-a-certificate-error).
@@ -101,11 +103,11 @@ Then paste the whole fingerprint it printed in place of `SHA256:FINGERPRINT` in 
 docker run --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work docker.io/gumdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd --server-host-key-fingerprint=SHA256:FINGERPRINT clients.csv matches/
 ```
 
-See [Reading a host key with `probe-host-key`](docs/CLI.md#reading-a-host-key-with-probe-host-key).
+See [Reading a host key with `probe-host-key`](https://data-bridge.org/docs/CLI#reading-a-host-key-with-probe-host-key).
 
 Because the only content accessible to the container is what is in `WORK_PATH`, we recommend making a new directory and placing the file you wish to link in it.
 
-If you use Docker Desktop -- on Mac, Windows, or Linux -- skip this paragraph: it makes the mounted directory reachable by the container, so the commands above work as written. The container runs unprivileged, as uid 1000. Under Docker Engine on Linux the directory keeps its own ownership, so give it to that uid once -- `sudo chown 1000:1000 WORK_PATH` -- if your account is not itself uid 1000. If an earlier Alcove image has already written into that directory, the files it left belong to root, and the directory needs `sudo chown -R 1000:1000 WORK_PATH` to hand those over as well. See [The user the image runs as](docs/DEPLOYMENT.md#the-user-the-image-runs-as) for both, and for the alternative of running the container as your own account.
+If you use Docker Desktop -- on Mac, Windows, or Linux -- skip this paragraph: it makes the mounted directory reachable by the container, so the commands above work as written. The container runs unprivileged, as uid 1000. Under Docker Engine on Linux the directory keeps its own ownership, so give it to that uid once -- `sudo chown 1000:1000 WORK_PATH` -- if your account is not itself uid 1000. If an earlier Alcove image has already written into that directory, the files it left belong to root, and the directory needs `sudo chown -R 1000:1000 WORK_PATH` to hand those over as well. See [The user the image runs as](https://data-bridge.org/docs/DEPLOYMENT#the-user-the-image-runs-as) for both, and for the alternative of running the container as your own account.
 
 The output file is a CSV giving the linkage between the two parties' records. See [Output](docs/spec/PROTOCOL.md#output) for the exact column layout and naming rules.
 
@@ -119,7 +121,7 @@ The command line app also exchanges over WebRTC with a partner who uses the web 
 docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches/
 ```
 
-It prints an invitation and waits. Send it to your partner over a trusted channel; they paste it under **Have an invitation? Paste it here** at [https://psi.data-bridge.org](https://psi.data-bridge.org). See [Inviting over WebRTC](docs/CLI.md#inviting-over-webrtc).
+It prints an invitation and waits. Send it to your partner over a trusted channel; they paste it under **Have an invitation? Paste it here** at [https://psi.data-bridge.org](https://psi.data-bridge.org). See [Inviting over WebRTC](https://data-bridge.org/docs/CLI#inviting-over-webrtc).
 
 ### Running it on a schedule
 
@@ -127,9 +129,9 @@ It prints an invitation and waits. Send it to your partner over a trusted channe
 2. That writes `alcove.yaml` and a key file into your working directory.
 3. Each later run is `exchange INPUT_FILE OUTPUT_FOLDER` from the same directory, with no further coordination.
 4. Each run rotates the shared secret in the key file, so keep the directory between runs.
-5. Hand that command to cron or the Windows Task Scheduler, as [Scheduling the run](docs/CLI.md#scheduling-the-run) shows.
+5. Hand that command to cron or the Windows Task Scheduler, as [Scheduling the run](https://data-bridge.org/docs/CLI#scheduling-the-run) shows.
 
-For a first recurring exchange step by step, every command, and what each exit code means, see [docs/CLI.md](docs/CLI.md).
+For a first recurring exchange step by step, every command, and what each exit code means, see the [command line guide](https://data-bridge.org/docs/CLI).
 
 ## Web Console Quickstart
 
@@ -155,9 +157,9 @@ Your directory holds your input, the exchange's working files, and its results; 
 
 For an SFTP or WebRTC exchange, which syncs no folder with your partner, the three shared-folder lines can be left out. A WebRTC exchange writes `alcove.yaml` and `.alcove.key` into your directory, as `alcove invite` does. For a shared-folder exchange, keep them: without them, this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration and results.
 
-Publishing to `127.0.0.1` keeps the unauthenticated console reachable only from this machine, and works the same on Linux, macOS, and Windows. For SFTP and WebRTC exchanges and the other settings, see [CONSOLE.md](docs/CONSOLE.md).
+Publishing to `127.0.0.1` keeps the unauthenticated console reachable only from this machine, and works the same on Linux, macOS, and Windows. For SFTP and WebRTC exchanges and the other settings, see the [console guide](https://data-bridge.org/docs/CONSOLE).
 
-The `serve` role is the one that cannot instead be run as your own account with `--user`: it keeps container-internal state belonging to uid 1000, so what it leaves behind in the mounted directory belongs to uid 1000 as well, and `sudo` may be needed to move or delete it afterwards. See the uid 1000 guidance above, and [The user the image runs as](docs/DEPLOYMENT.md#the-user-the-image-runs-as).
+The `serve` role is the one that cannot instead be run as your own account with `--user`: it keeps container-internal state belonging to uid 1000, so what it leaves behind in the mounted directory belongs to uid 1000 as well, and `sudo` may be needed to move or delete it afterwards. See the uid 1000 guidance above, and [The user the image runs as](https://data-bridge.org/docs/DEPLOYMENT#the-user-the-image-runs-as).
 
 ## Podman
 
@@ -245,7 +247,7 @@ docker run --rm docker.io/gumdi/alcove:latest --help
 
 ## Documentation
 
-The full documentation set lives in [docs/](docs/README.md) and covers the protocol, threat model, exchange specification, deployment, and operations. The user guides are [docs/WEB_APP.md](docs/WEB_APP.md) for the web app, [docs/CONSOLE.md](docs/CONSOLE.md) for the console, and [docs/CLI.md](docs/CLI.md) for the command line app. The role-based reading guide in [docs/README.md](docs/README.md) points each audience (analysts, invited partners, program officers, security reviewers, IT staff, contributors) to the most relevant documents. An agency security review starts with [docs/SHARED_RESPONSIBILITY.md](docs/SHARED_RESPONSIBILITY.md), which states the deployment model and what the project operates versus what the deploying agency operates.
+The documentation is published at [data-bridge.org](https://data-bridge.org), built from [docs/](docs/README.md) in this repository. The site opens on step-by-step guides for the web app, the console, and the command line app, and its [documentation index](https://data-bridge.org/docs/) leads to the full set, which covers the protocol, threat model, exchange specification, deployment, and operations. The reference guides are the [web app guide](https://data-bridge.org/docs/WEB_APP), the [console guide](https://data-bridge.org/docs/CONSOLE), and the [command line guide](https://data-bridge.org/docs/CLI). The [role-based reading guide](https://data-bridge.org/docs/#role-based-reading-guide) points each audience (analysts, invited partners, program officers, security reviewers, IT staff, contributors) to the most relevant documents. An agency security review starts with [Shared responsibility](https://data-bridge.org/docs/SHARED_RESPONSIBILITY), which states the deployment model and what the project operates versus what the deploying agency operates.
 
 Repository-level resources:
 

@@ -272,7 +272,8 @@ export default {
         text: "Project",
         items: [
           page("Changelog", "CHANGELOG.md"),
-          page("Releases", "docs/RELEASES.md"),
+          { text: "Releases on GitHub", link: `${REPOSITORY_URL}/releases` },
+          page("Release process", "docs/RELEASES.md"),
           page("Roadmap", "docs/ROADMAP.md"),
           page("Security policy", "SECURITY.md"),
           page("Incident response", "docs/INCIDENT_RESPONSE.md"),
