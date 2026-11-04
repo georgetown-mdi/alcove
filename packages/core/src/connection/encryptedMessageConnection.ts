@@ -8,6 +8,7 @@ import { deriveAeadKey, type AuthResult } from "../auth";
 import { enc } from "../utils/crypto";
 import { type MessageConnection } from "./messageConnection";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
+import { fileSyncMessageFileBytes } from "./fileSyncOutboundBound";
 import {
   parseBoundedJson,
   JsonStructureBoundError,
@@ -640,16 +641,28 @@ export class EncryptedMessageConnection implements MessageConnection {
 
   // Forward the per-exchange inbound frame cap to the inner transport's read
   // gate (pinned in encryptedMessageConnection.test.ts), and hold this layer's
-  // own length check to it, up to the largest envelope this layer opens.
+  // own length check to it, both up to the largest envelope this layer opens.
+  // The cap is in message-file bytes (fileSyncMessageFileBytes), so the inner
+  // gate's clamp is that envelope's message file.
   setInboundFrameCap(maxBytes: number | undefined): void {
-    this.inboundFrameCap =
-      maxBytes === undefined
-        ? undefined
-        : Math.min(
-            maxBytes,
-            MAX_AEAD_FRAME_BYTES + AEAD_ENVELOPE_OVERHEAD_BYTES,
-          );
-    this.inner.setInboundFrameCap?.(maxBytes);
+    if (maxBytes === undefined) {
+      this.inboundFrameCap = undefined;
+      this.inner.setInboundFrameCap?.(undefined);
+      return;
+    }
+    this.inboundFrameCap = Math.min(
+      maxBytes,
+      MAX_AEAD_FRAME_BYTES + AEAD_ENVELOPE_OVERHEAD_BYTES,
+    );
+    this.inner.setInboundFrameCap?.(
+      Math.min(
+        maxBytes,
+        fileSyncMessageFileBytes(
+          MAX_AEAD_FRAME_BYTES,
+          this.outboundFrameOverheadBytes(),
+        ),
+      ),
+    );
   }
 
   frameCeilingBytes(): number {

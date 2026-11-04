@@ -77,7 +77,10 @@ import {
   markStatesItsOwnNextStep,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
-import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../partnerAbortFrame";
+import {
+  MAX_KEPT_ABORT_FRAME_BYTES,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "../partnerAbortFrame";
 import {
   WORD_LIST_BODY_PREFIX_BYTES,
   sendMatchedList,
@@ -1889,6 +1892,21 @@ async function refuseSinglePassFrameOverCeiling(
   );
 }
 
+// Sets the read gate to the message file a frame of `frameBytes` is written as,
+// with its header and envelope, and never below the one an abort frame is
+// written as: the partner may send an abort in the frame's place.
+function setSinglePassReadGate(
+  conn: MessageConnection,
+  frameBytes: number,
+): void {
+  conn.setInboundFrameCap?.(
+    fileSyncMessageFileBytes(
+      Math.max(frameBytes, MAX_KEPT_ABORT_FRAME_BYTES),
+      conn.outboundFrameOverheadBytes?.() ?? 0,
+    ),
+  );
+}
+
 // The diagnosis for the send-time reply-cap safety check below, which is
 // NOT an over-ceiling condition: the ceiling gate has already passed, so
 // both parties' declared sizes are within budget and no dataset either
@@ -2255,12 +2273,7 @@ export async function linkViaSinglePassPSI(
     // the static cap waits unread until the receive below asks for it, and a
     // request read ahead under the static cap is held to the cap after.
     const requestCap = singlePassRequestByteCap(receiverSize);
-    conn.setInboundFrameCap?.(
-      fileSyncMessageFileBytes(
-        requestCap,
-        conn.outboundFrameOverheadBytes?.() ?? 0,
-      ),
-    );
+    setSinglePassReadGate(conn, requestCap);
     let setup: Uint8Array;
     let permutation: Array<number>;
     let request: Uint8Array;
@@ -2431,7 +2444,8 @@ export async function linkViaSinglePassPSI(
   // it opens. A transport that bounds its inbound path another way (the WebRTC
   // data channel, fixed at MAX_WEBRTC_FRAME_BYTES) no-ops setInboundFrameCap:
   // the length check after the read holds the cap there.
-  conn.setInboundFrameCap?.(
+  setSinglePassReadGate(
+    conn,
     singlePassReplyByteCap(
       numLinkageKeys,
       senderSize,
@@ -2450,7 +2464,7 @@ export async function linkViaSinglePassPSI(
       receiverSize,
       request.byteLength,
     );
-    conn.setInboundFrameCap?.(replyCap);
+    setSinglePassReadGate(conn, replyCap);
     await refuseSinglePassFrameOverCeiling(
       conn,
       participant.id,

@@ -52,8 +52,14 @@ import { MAX_AEAD_FRAME_BYTES } from "../../src/connection/encryptedMessageConne
 
 import {
   createMessagePipe,
+  fromEventConnection,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
+import {
+  MESSAGE_TYPE_OBJECT,
+  serializeFileSyncMessage,
+} from "../../src/connection/fileSyncFraming";
+import { makeConnectedConn } from "../utils/fileSyncConnectionFixture";
 import type { AssociationTable } from "../../src/types";
 import {
   InternalConsistencyError,
@@ -65,6 +71,8 @@ import {
   PeerAbortError,
 } from "../../src/errors";
 import {
+  MAX_KEPT_ABORT_FRAME_BYTES,
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "../../src/partnerAbortFrame";
@@ -79,7 +87,7 @@ import {
   receiveWordList,
 } from "../../src/psi/uint32ListParts";
 import { mirrorCardinality } from "../utils/candidateSetBounds";
-import { makeParticipant } from "../utils/support";
+import { makeMockClient, makeParticipant } from "../utils/support";
 
 const psiLibrary = await PSI();
 
@@ -1109,15 +1117,16 @@ test("the single-pass receiver read gate is bounded to the derived reply cap", a
   const senderSize = { effectiveKeyCount: keyCount, recordCount: partnerRows };
   const receiverSize = { effectiveKeyCount: keyCount, recordCount: localRows };
   // Before masking, the response term is the request cap; once the request
-  // is built, the request itself: three distinct values.
+  // is built, the request itself: three distinct values. Each gate is the
+  // message file around the reply, with its 10-byte header.
   expect(setCalls.slice(0, 2)).toEqual([
     singlePassReplyByteCap(
       keyCount,
       senderSize,
       receiverSize,
       singlePassRequestByteCap(receiverSize),
-    ),
-    singlePassReplyByteCap(keyCount, senderSize, receiverSize, 3 * 35 + 2),
+    ) + 10,
+    singlePassReplyByteCap(keyCount, senderSize, receiverSize, 3 * 35 + 2) + 10,
   ]);
   resolveReceive?.(
     encodeSinglePassReply(new Uint8Array(), new Uint8Array(), partnerRows, [0]),
@@ -1170,8 +1179,8 @@ test("a single-pass reply queued before the request is sent is held to the deriv
       `above the ${replyCap} byte(s) both parties derive from their declared sizes`,
   );
   expect(events).toEqual([
-    `cap:${replyCap}`,
-    `cap:${replyCap}`,
+    `cap:${replyCap + 10}`,
+    `cap:${replyCap + 10}`,
     "send",
     "cap:undefined",
   ]);
@@ -1245,15 +1254,17 @@ test("the single-pass sender refuses a built reply above the derived cap", async
 });
 
 test("the single-pass sender holds the request to the cap the counts derive, before masking it", async () => {
-  const partnerRows = 2;
+  // Four slots put the request cap above the abort frame the gate admits.
+  const partnerRows = 4;
   const requestCap = singlePassRequestByteCap({
     effectiveKeyCount: 1,
     recordCount: partnerRows,
   });
   expect(requestCap).toBe(35 * partnerRows + 2);
+  expect(requestCap).toBeGreaterThan(MAX_KEPT_ABORT_FRAME_BYTES);
   const events: Array<string> = [];
   const partner = makeParticipant(psiLibrary, "joiner");
-  const overCap = await partner.createClientRequest(["a", "b", "c"]);
+  const overCap = await partner.createClientRequest(["a", "b", "c", "d", "e"]);
   const sender = makeParticipant(psiLibrary, "starter");
   const processed = vi.spyOn(sender, "processClientRequest");
   const fake: MessageConnection = {
@@ -1290,6 +1301,63 @@ test("the single-pass sender holds the request to the cap the counts derive, bef
     "cap:undefined",
   ]);
   expect(processed).not.toHaveBeenCalled();
+});
+
+test("on a one-slot exchange, a partner abort read while the sender waits for the request ends the run as the partner's", async () => {
+  // A real file-sync read gate: the request cap for one slot is under the
+  // largest abort frame, so without the gate's floor the abort is refused as
+  // over the read gate rather than read. The floor's figure is the one
+  // docs/spec/TRANSPORT_BOUNDS.md states.
+  expect(MAX_KEPT_ABORT_FRAME_BYTES).toBe(119);
+  expect(
+    singlePassRequestByteCap({ effectiveKeyCount: 1, recordCount: 1 }),
+  ).toBeLessThan(MAX_KEPT_ABORT_FRAME_BYTES);
+  const peerId = "peer-test";
+  const { client, files } = makeMockClient();
+  const fileSync = await makeConnectedConn(client, {
+    pollingFrequency: 10,
+    inactivityTimeoutMs: 2_000,
+  });
+  fileSync.peerId = peerId;
+  let gateSet!: () => void;
+  const gateWasSet = new Promise<void>((resolve) => (gateSet = resolve));
+  const setCap = fileSync.setInboundFrameCap.bind(fileSync);
+  fileSync.setInboundFrameCap = (maxBytes) => {
+    setCap(maxBytes);
+    if (maxBytes !== undefined) gateSet();
+  };
+  const conn = fromEventConnection(fileSync);
+  fileSync.start();
+  const run = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    makeParticipant(psiLibrary, "starter"),
+    conn,
+    [["a"]],
+    fanOutFreeBounds(1, 1),
+    false,
+    -1,
+  );
+  await gateWasSet;
+  // The longest kept reason makes the largest abort frame.
+  const abort = serializeFileSyncMessage(
+    MESSAGE_TYPE_OBJECT,
+    0,
+    Buffer.from(
+      JSON.stringify({
+        decision: "abort",
+        abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
+      }),
+    ),
+  );
+  expect(abort.length).toBe(10 + MAX_KEPT_ABORT_FRAME_BYTES);
+  files.set(`/test/${peerId}-${abort.length}.json`, abort);
+  const error = await run.catch((e: unknown) => e);
+  fileSync.stop();
+  await conn.close().catch(() => {});
+  expect(error).toBeInstanceOf(PeerAbortError);
+  expect((error as PeerAbortError).partnerReason).toBe(
+    PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  );
 });
 
 test("a party with more distinct values than one set holds is refused before masking", () => {

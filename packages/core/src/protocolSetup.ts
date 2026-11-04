@@ -66,6 +66,7 @@ import {
 } from "./connection/messageConnection";
 import { boundedWireCertificateSchema } from "./records/signingIdentity";
 import {
+  decisionOnlyAbortFrame,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   receiveAfterTerms,
   LOCAL_FAULT_ABORT_REASON,
@@ -769,7 +770,7 @@ export async function sendAbort(
             abortReasons,
             protocolVersion: slot.protocolVersion,
           }
-        : { decision: "abort", abortReasons },
+        : decisionOnlyAbortFrame(abortReasons),
     );
   } catch {
     /* swallow: see doc comment */

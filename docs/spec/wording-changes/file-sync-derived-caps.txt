@@ -28,7 +28,7 @@
 - - -> **The AEAD's limit on one frame.**
 - - -> `crypto.subtle` AES-GCM encrypts at most 2,147,483,630 bytes (2^31 - 18) of plaintext: measured on 2026-11-04 under Node 26.13 on Linux arm64, one byte more fails with an `OperationError`.
 - - -> An encrypted frame, less the one-byte type tag inside its plaintext, is therefore at most `MAX_AEAD_FRAME_BYTES`, 2,147,483,629 bytes (`packages/core/src/connection/encryptedMessageConnection.ts`), which the connection states as its frame ceiling (`frameCeilingBytes`).
-- - -> A single-pass frame over it is refused before it is written, and the decorator clamps a per-exchange cap to that frame in its envelope.
+- - -> A single-pass frame over it is refused before it is written, and the decorator clamps a per-exchange cap to that frame in its envelope, both at its own length check and at the cap it forwards to the inner read gate, there as the message file that envelope is written in.
 - - -> A larger encrypted frame needs the AEAD in chunks.
 - - -> The file-sync read gate itself clamps a per-exchange cap only to the largest exact integer (`MAX_DERIVED_FRAME_BYTES`), at or below Node's largest `Buffer`: memory is checked before each read ([FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes)).
 - - -> On 2026-11-04, in a 10-core arm64 Linux container with 23 GB of memory, a frame of 2,147,487,744 bytes crossed a local synced folder whole with no key exchange, written in 1.6 s and read in 4.2 s (`apps/cli/test/stress/fileSyncLargeFrame.stress.test.ts`, `npm run test:stress -w apps/cli`).
@@ -38,4 +38,5 @@
 - - -> The request (message 1) holds the receiver's encrypted value set in one frame, which grows with it too.
 - - -> `singlePassRequestByteCap` does the same for the request: the sender's read gate, and the bound on the reply's response term until the request is built.
 - - -> A threaded value above the static cap applies only to the message a waiting receive asks for, so a message read ahead is still held to the static cap, and a file over it waits unread until it is asked for ([Inbound frame-size bound](#inbound-frame-size-bound), "Read-ahead").
-- - -> The sender sets the request cap, with the message file's header and envelope, before it masks its setup, and checks the request's length against the cap after the read.
+- - -> The sender sets the request cap before it masks its setup, and checks the request's length against the cap after the read.
+- - -> Each party sets a cap as the message file the frame is written in, with the file header and the encryption envelope, and never below the one the largest abort frame a PSI round reads in its place is written in (`MAX_KEPT_ABORT_FRAME_BYTES`, 119 bytes, `packages/core/src/partnerAbortFrame.ts`), so a partner's abort on a small exchange is read rather than refused.

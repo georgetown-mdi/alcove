@@ -75,6 +75,31 @@ const KEPT_ABORT_REASONS: ReadonlyArray<string> = [
 ];
 
 /**
+ * The abort frame `sendAbort` sends past the terms exchange: the decision and
+ * its reasons, and nothing else.
+ */
+export function decisionOnlyAbortFrame(abortReasons: string[]): {
+  decision: "abort";
+  abortReasons: string[];
+} {
+  return { decision: "abort", abortReasons };
+}
+
+/**
+ * The most bytes an abort frame a PSI round may read in place of the frame it
+ * waits on takes: the decision-only frame with the longest kept reason, as the
+ * UTF-8 JSON every transport sends it in. A read gate derived for a smaller
+ * frame is held at or above it, so the abort is read rather than refused.
+ */
+export const MAX_KEPT_ABORT_FRAME_BYTES = Math.max(
+  ...KEPT_ABORT_REASONS.map(
+    (reason) =>
+      new TextEncoder().encode(JSON.stringify(decisionOnlyAbortFrame([reason])))
+        .byteLength,
+  ),
+);
+
+/**
  * Whether a raw received frame is an abort decision, read off the `decision`
  * discriminant alone.
  */
