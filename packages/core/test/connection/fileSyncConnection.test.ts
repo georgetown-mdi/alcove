@@ -22,8 +22,10 @@ import {
 import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
 import {
   AEAD_ENVELOPE_OVERHEAD_BYTES,
+  CHUNKED_ENVELOPE_VERSION,
   EncryptedMessageConnection,
   MAX_AEAD_FRAME_BYTES,
+  SINGLE_CALL_ENVELOPE_VERSION,
 } from "../../src/connection/encryptedMessageConnection";
 import type {
   SFTPConnectionConfig,
@@ -1909,16 +1911,19 @@ test("setInboundFrameCap above MAX_FRAME_SIZE_BYTES delivers an in-cap frame", a
   expect((msg as Uint8Array).length).toBe(payload.length);
 });
 
-// The message file around the largest envelope the AEAD decorator opens: the
-// file header, the envelope's overhead, and its largest frame.
+// The message file around the largest envelope version 1 of the AEAD
+// decorator opens: the file header, the envelope's overhead, and its largest
+// frame.
 const LARGEST_ENVELOPE_FILE_BYTES =
   MESSAGE_HEADER_BYTES + AEAD_ENVELOPE_OVERHEAD_BYTES + MAX_AEAD_FRAME_BYTES;
 
 // Receives through an encrypted connection over a file-sync read gate, under a
-// cap above the AEAD's limit, with one peer message file listed and named at
-// `fileBytes` (its body is a stand-in: only the gate's decision is read).
+// cap above the version-1 AEAD limit, with one peer message file listed and
+// named at `fileBytes` (its body is a stand-in: only the gate's decision is
+// read).
 async function receiveListedAt(
   fileBytes: number,
+  envelope = SINGLE_CALL_ENVELOPE_VERSION,
 ): Promise<{ result: unknown; gets: string[] }> {
   const peerId = "peer-test";
   const name = `${peerId}-${fileBytes}.json`;
@@ -1938,7 +1943,10 @@ async function receiveListedAt(
   conn.peerId = peerId;
   const encrypted = await EncryptedMessageConnection.create(
     fromEventConnection(conn),
-    new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>,
+    {
+      sessionKey: new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>,
+      negotiated: { kex: 3, protocol: 1, envelope },
+    },
     "responder",
   );
   encrypted.setInboundFrameCap(LARGEST_ENVELOPE_FILE_BYTES * 2);
@@ -1960,6 +1968,16 @@ test("under a cap above the AEAD's limit, the inner read gate refuses a file ove
     `exceeding the maximum inbound frame size of ${LARGEST_ENVELOPE_FILE_BYTES} bytes`,
   );
   expect(gets).toEqual([]);
+});
+
+test("under envelope version 2, the inner read gate reads a file over version 1's largest envelope, held to the cap alone", async () => {
+  const { gets } = await receiveListedAt(
+    LARGEST_ENVELOPE_FILE_BYTES + 1,
+    CHUNKED_ENVELOPE_VERSION,
+  );
+  expect(gets).toEqual([
+    `/test/peer-test-${LARGEST_ENVELOPE_FILE_BYTES + 1}.json`,
+  ]);
 });
 
 test("under a cap above the AEAD's limit, the inner read gate reads a file at the largest envelope", async () => {

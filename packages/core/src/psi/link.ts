@@ -1901,10 +1901,11 @@ function setSinglePassReadGate(
   conn: MessageConnection,
   frameBytes: number,
 ): void {
+  const gateBytes = Math.max(frameBytes, MAX_ABORT_FRAME_AFTER_TERMS_BYTES);
   conn.setInboundFrameCap?.(
     fileSyncMessageFileBytes(
-      Math.max(frameBytes, MAX_ABORT_FRAME_AFTER_TERMS_BYTES),
-      conn.outboundFrameOverheadBytes?.() ?? 0,
+      gateBytes,
+      conn.outboundFrameOverheadBytes?.(gateBytes) ?? 0,
     ),
   );
 }

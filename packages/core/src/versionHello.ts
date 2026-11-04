@@ -18,10 +18,13 @@ import {
 /** @internal exported for the protocol-version tests. */
 export const PROTOCOL_VERSION = 1;
 
-// The encrypted-channel envelope version: byte 0 of each AEAD envelope, and on
-// file-sync byte 0 of each message file after a party's first.
+// The latest encrypted-channel envelope version: byte 0 of each AEAD envelope,
+// and on file-sync byte 0 of each message file after a party's first. Version 2
+// is the chunked AEAD envelope (docs/spec/CHANNEL_SECURITY.md, "The chunked
+// envelope, version 2"); version 1, which encrypts in one call, stays offered
+// for a partner on an earlier build.
 /** @internal exported for the envelope-version tests. */
-export const ENVELOPE_VERSION = 1;
+export const ENVELOPE_VERSION = 2;
 
 /** The protocol versions this build offers: in the key-exchange hello, and in
  * the file-sync rendezvous hello of a run with no key exchange. */
@@ -29,7 +32,10 @@ export const OFFERED_PROTOCOL_VERSIONS: readonly number[] = [PROTOCOL_VERSION];
 
 /** The envelope versions this build offers, where
  * {@link OFFERED_PROTOCOL_VERSIONS} offers its protocol versions. */
-export const OFFERED_ENVELOPE_VERSIONS: readonly number[] = [ENVELOPE_VERSION];
+export const OFFERED_ENVELOPE_VERSIONS: readonly number[] = [
+  1,
+  ENVELOPE_VERSION,
+];
 
 /** The layers a hello states versions for, in the order the spec lists them. */
 export const VERSION_LAYERS = ["kex", "protocol", "envelope"] as const;

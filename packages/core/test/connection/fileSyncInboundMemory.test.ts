@@ -8,7 +8,14 @@ import { describe, expect, test } from "vitest";
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
 import { fromEventConnection } from "../../src/connection/messageConnection";
 import { MESSAGE_HEADER_BYTES } from "../../src/connection/fileSyncFraming";
-import { INBOUND_FRAME_MEMORY_MULTIPLES } from "../../src/connection/inboundFrameMemory";
+import {
+  CHUNKED_OPEN_PEAK_BYTES,
+  INBOUND_FRAME_MEMORY_MULTIPLES,
+} from "../../src/connection/inboundFrameMemory";
+import {
+  CHUNKED_ENVELOPE_VERSION,
+  SINGLE_CALL_ENVELOPE_VERSION,
+} from "../../src/connection/encryptedMessageConnection";
 import { ConnectionError, UsageError } from "../../src/errors";
 import { makeMockClient } from "../utils/support";
 
@@ -70,7 +77,7 @@ describe("the memory check before each message file is read", () => {
     await Promise.all([sender.close(), receiver.close()]);
   });
 
-  test("once frames are encrypted, a file is weighed with its decryption", async () => {
+  test("an encrypted file read before an envelope version is negotiated is weighed at the aeadOpen multiple", async () => {
     const calls: Array<[number, number]> = [];
     const { a, b } = await rendezvous((frameBytes, needBytes) => {
       calls.push([frameBytes, needBytes]);
@@ -85,6 +92,73 @@ describe("the memory check before each message file is read", () => {
     expect(calls).toEqual([
       [FILE_BYTES, FILE_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen],
     ]);
+    await Promise.all([sender.close(), receiver.close()]);
+  });
+
+  test("under envelope version 1 an encrypted file is weighed at the aeadOpen multiple", async () => {
+    const calls: Array<[number, number]> = [];
+    const { a, b } = await rendezvous((frameBytes, needBytes) => {
+      calls.push([frameBytes, needBytes]);
+    });
+    const sender = fromEventConnection(a);
+    const receiver = fromEventConnection(b);
+    b.useEnvelopeVersion(SINGLE_CALL_ENVELOPE_VERSION);
+    b.requireBinaryFrames();
+    a.start();
+    b.start();
+    await sender.send(parts(1)[0]);
+    await receiver.receive();
+    expect(calls).toEqual([
+      [FILE_BYTES, FILE_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen],
+    ]);
+    await Promise.all([sender.close(), receiver.close()]);
+  });
+
+  test("under envelope version 2 an encrypted file is weighed at its bytes and the measured open peak", async () => {
+    const calls: Array<[number, number]> = [];
+    const { a, b } = await rendezvous((frameBytes, needBytes) => {
+      calls.push([frameBytes, needBytes]);
+    });
+    const sender = fromEventConnection(a);
+    const receiver = fromEventConnection(b);
+    b.useEnvelopeVersion(CHUNKED_ENVELOPE_VERSION);
+    b.requireBinaryFrames();
+    a.start();
+    b.start();
+    await sender.send(parts(1)[0]);
+    await receiver.receive();
+    expect(calls).toEqual([[FILE_BYTES, FILE_BYTES + CHUNKED_OPEN_PEAK_BYTES]]);
+    await Promise.all([sender.close(), receiver.close()]);
+  });
+
+  test("a version-2 file the aeadOpen multiple would refuse is read", async () => {
+    // The smallest frames where the two charges part: above a third of the
+    // chunked open's measured peak.
+    const frame = new Uint8Array(Math.ceil(CHUNKED_OPEN_PEAK_BYTES / 3)).fill(
+      7,
+    );
+    const fileBytes = frame.length + MESSAGE_HEADER_BYTES;
+    const availableBytes = fileBytes + CHUNKED_OPEN_PEAK_BYTES;
+    expect(fileBytes * INBOUND_FRAME_MEMORY_MULTIPLES.aeadOpen).toBeGreaterThan(
+      availableBytes,
+    );
+    const refusals: number[] = [];
+    const { a, b } = await rendezvous((_frameBytes, needBytes) => {
+      if (needBytes > availableBytes) {
+        refusals.push(needBytes);
+        throw new UsageError("not enough memory");
+      }
+    });
+    const sender = fromEventConnection(a);
+    const receiver = fromEventConnection(b);
+    b.useEnvelopeVersion(CHUNKED_ENVELOPE_VERSION);
+    b.requireBinaryFrames();
+    a.start();
+    b.start();
+    await sender.send(frame);
+    const received = await receiver.receive();
+    expect(refusals).toEqual([]);
+    expect((received as Uint8Array).length).toBe(frame.length);
     await Promise.all([sender.close(), receiver.close()]);
   });
 

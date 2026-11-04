@@ -473,7 +473,6 @@ import {
   operatorSuppliedSpans,
   AGREED_TERMS_VERSION,
   AEAD_ENVELOPE_VERSION,
-  MESSAGE_ENVELOPE_VERSION,
   MESSAGE_HEADER_BYTES,
   MESSAGE_TYPE_BINARY,
   minimalPreparedExchange,
@@ -7346,16 +7345,18 @@ test("authenticated exchange runs through EncryptedMessageConnection: wire bytes
     //    itself an AEAD envelope -- the PSI frame went out encrypted, not as a
     //    cleartext protocol frame. The file-sync envelope is
     //    `version || type || seq || payload`; key-exchange handshake frames are
-    //    MESSAGE_TYPE_OBJECT (JSON), while an encrypted AEAD frame rides a
+    //    MESSAGE_TYPE_OBJECT (JSON), while an encrypted AEAD frame is in a
     //    MESSAGE_TYPE_BINARY envelope. Checking the inner payload's leading
     //    AEAD_ENVELOPE_VERSION, not just the outer MESSAGE_TYPE_BINARY
-    //    discriminator, keeps this specific to the AEAD layer. The min length is
-    //    the file-sync header plus the AEAD minimum (1-byte version + 12-byte IV
-    //    + 16-byte tag).
+    //    discriminator, keeps this specific to the AEAD layer. Both parties
+    //    select that version, so it is also the file-sync envelope's version.
+    //    The min length is the file-sync header plus the chunked envelope's
+    //    minimum (1-byte version + 8-byte sequence number + one byte of
+    //    ciphertext + 16-byte tag).
     const aeadFrames = wireBuffers.filter(
       (buf) =>
-        buf.length >= MESSAGE_HEADER_BYTES + 1 + 12 + 16 &&
-        buf[0] === MESSAGE_ENVELOPE_VERSION &&
+        buf.length >= MESSAGE_HEADER_BYTES + 1 + 8 + 1 + 16 &&
+        buf[0] === AEAD_ENVELOPE_VERSION &&
         buf[1] === MESSAGE_TYPE_BINARY &&
         buf[MESSAGE_HEADER_BYTES] === AEAD_ENVELOPE_VERSION,
     );

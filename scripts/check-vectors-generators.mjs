@@ -52,6 +52,11 @@ const EXCUSE_OPENSSL =
 /** Every vectors file with a generator, and how that generator emits it. */
 export const GENERATED_VECTORS = [
   {
+    vectors: "aead-chunked-envelope-vectors.json",
+    generator: "generate-aead-chunked-envelope-vectors.mjs",
+    writes: "file",
+  },
+  {
     vectors: "aead-envelope-vectors.json",
     generator: "generate-aead-envelope-vectors.mjs",
     writes: "file",

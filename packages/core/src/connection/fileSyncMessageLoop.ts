@@ -48,7 +48,7 @@ import {
   deserializeFileSyncMessage,
   IncompatibleEnvelopeVersionError,
 } from "./fileSyncFraming";
-import { ENVELOPE_VERSION } from "../versionHello";
+import { OFFERED_ENVELOPE_VERSIONS } from "../versionHello";
 import type { DeserializedMessage } from "./fileSyncFraming";
 import {
   LOCK_SUFFIX,
@@ -1155,7 +1155,11 @@ export class FileSyncMessageLoop {
             .inboundFrameMemoryCheck?.(
               declaredSize,
               this.queuedFileBytes() +
-                inboundFrameReadBytes(declaredSize, this.binaryFramesRequired),
+                inboundFrameReadBytes(
+                  declaredSize,
+                  this.binaryFramesRequired,
+                  this.negotiatedEnvelopeVersion,
+                ),
             );
           const inPath = joinFileSyncPath(path, messageFile.name);
           deps
@@ -1631,7 +1635,7 @@ export class FileSyncMessageLoop {
   // The negotiated envelope version for frames after each party's first. Only
   // a version this build implements is accepted.
   useEnvelopeVersion(version: number): void {
-    if (version !== ENVELOPE_VERSION)
+    if (!OFFERED_ENVELOPE_VERSIONS.includes(version))
       throw new InternalConsistencyError(
         `FileSyncMessageLoop: envelope version ${version} is not one this ` +
           "build writes",

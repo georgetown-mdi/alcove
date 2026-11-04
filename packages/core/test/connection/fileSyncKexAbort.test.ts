@@ -18,7 +18,11 @@ import {
   fromEventConnection,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
-import { ConnectionError } from "../../src/errors";
+import {
+  AuthenticationError,
+  ConnectionError,
+  PartnerProtocolRefusalError,
+} from "../../src/errors";
 import { runKex } from "../../src/kex";
 import * as BoundedJson from "../../src/utils/boundedJson";
 import { makeMockClient } from "../utils/support";
@@ -162,5 +166,43 @@ describe.each(MODES)("message 3 failing after $mode", ({ opts }) => {
     ]);
     expect(outcome).toBe("closed");
     await initiatorConn.close().catch(() => {});
+  });
+});
+
+// A message 2 whose hello does not parse: the initiator aborts before it has
+// negotiated, so at envelope version 1, while the responder has negotiated
+// version 2 (docs/spec/FILE_SYNC.md, "Message body format").
+describe.each(MODES)("message 2 failing after $mode", ({ opts }) => {
+  test("the responder reads the initiator's pre-negotiation abort and fails with the generic failure, not an incompatible version", async () => {
+    const files = new Map<string, Buffer>();
+    const a = party(ID_A, files, opts);
+    const b = party(ID_B, files, opts);
+    await Promise.all([a.synchronize(), b.synchronize()]);
+    const initiatorConn = fromEventConnection(a, { inactivityTimeoutMs: 3000 });
+    const responderConn = fromEventConnection(b, { inactivityTimeoutMs: 3000 });
+    a.start();
+    b.start();
+    const send = responderConn.send.bind(responderConn);
+    responderConn.send = (message: unknown) => {
+      const msg = message as { kexMsg?: string };
+      return send(msg.kexMsg === "2" ? { ...msg, hello: "!" } : message);
+    };
+
+    const [initiatorFailure, responderFailure] = await Promise.all([
+      runKex(initiatorConn, "initiator", PSK, true).catch((e: unknown) => e),
+      runKex(responderConn, "responder", PSK, true).catch((e: unknown) => e),
+    ]);
+
+    expect(initiatorFailure).toBeInstanceOf(AuthenticationError);
+    expect(responderFailure).toBeInstanceOf(AuthenticationError);
+    expect(responderFailure).not.toBeInstanceOf(PartnerProtocolRefusalError);
+    const abortFile = [...files.values()].find((body) =>
+      body.includes(ABORT_JSON),
+    );
+    if (opts.retainFiles) expect(abortFile?.[0]).toBe(1);
+    await Promise.all([
+      initiatorConn.close().catch(() => {}),
+      responderConn.close().catch(() => {}),
+    ]);
   });
 });

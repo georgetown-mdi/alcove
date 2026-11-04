@@ -1,0 +1,95 @@
+{
+  "description": "Known-answer vectors for envelope version 2, the chunked AEAD envelope of EncryptedMessageConnection. Each vector fixes (sessionKey, role, sequence, chunk size, plaintext) and records the exact envelope: version || seq || chunk_0 || ... || chunk_(n-1), each chunk AES-256-GCM ciphertext || 16-byte tag under IV_k and AAD_k below. The construction is specified in docs/spec/CHANNEL_SECURITY.md, 'The chunked envelope, version 2'. Regenerate with generate-aead-chunked-envelope-vectors.mjs in this directory.",
+  "cipher": "AES-256-GCM",
+  "sessionKeyHex": "4242424242424242424242424242424242424242424242424242424242424242",
+  "envelopeVersion": 2,
+  "chunkPlaintextBytes": 16777216,
+  "envelopeLayout": "version (1 byte) || seq (8 bytes, big-endian) || chunks; the plaintext type_tag || payload is cut into chunks of chunkBytes bytes, the last 1 to chunkBytes bytes.",
+  "ivLayout": "12 bytes: uint32_be(chunk index) || uint64_be(seq).",
+  "additionalDataLayout": "14 bytes: version || uint64_be(seq) || uint32_be(chunk index) || final (0x01 on the last chunk, else 0x00).",
+  "keyDerivation": {
+    "function": "HKDF-SHA-256",
+    "saltHex": "0000000000000000000000000000000000000000000000000000000000000000",
+    "infoPrefix": "alcove-aead-v2:",
+    "note": "info = infoPrefix + context; the initiator sends under context 'initiator-to-responder'."
+  },
+  "patternPayload": "payloadPatternBytes N stands for N bytes, byte i being i % 251.",
+  "typeTags": {
+    "json": 0,
+    "binary": 1
+  },
+  "vectors": [
+    {
+      "name": "json-initiator-seq0",
+      "description": "JSON object payload (type tag 0) from the initiator at sequence 0: one chunk, flagged final.",
+      "role": "initiator",
+      "context": "initiator-to-responder",
+      "sequence": 0,
+      "chunkBytes": 16777216,
+      "chunks": 1,
+      "payloadType": "json",
+      "payloadJson": {
+        "hello": "world",
+        "n": 42
+      },
+      "envelopeBytes": 50,
+      "envelopeHex": "020000000000000000e547ef614f970df62aeaa503e10f26a394733796f551d72686d45f2ff522647f562167ada77fffda7d"
+    },
+    {
+      "name": "binary-responder-seq1",
+      "description": "Uint8Array payload (type tag 1) from the responder at sequence 1, under the other directional key: one chunk.",
+      "role": "responder",
+      "context": "responder-to-initiator",
+      "sequence": 1,
+      "chunkBytes": 16777216,
+      "chunks": 1,
+      "payloadType": "binary",
+      "payloadHex": "deadbeef",
+      "envelopeBytes": 30,
+      "envelopeHex": "02000000000000000168ac38ef01b6c0e17327e778f99e8b640d63cdd2d9"
+    },
+    {
+      "name": "binary-initiator-seq7-exact-chunks",
+      "description": "An 11-byte Uint8Array at a chunk size of 4: a plaintext of 12 bytes, three full chunks with no empty fourth.",
+      "role": "initiator",
+      "context": "initiator-to-responder",
+      "sequence": 7,
+      "chunkBytes": 4,
+      "chunks": 3,
+      "payloadType": "binary",
+      "payloadHex": "000102030405060708090a",
+      "envelopeBytes": 69,
+      "envelopeHex": "020000000000000007c8f0395077f8a3f0a956377ddacac159c488eb475d22de76f6aea7338e5be907cbe24be08182d464a440182f8df276b3bb90e810eb88a25d277af8b3"
+    },
+    {
+      "name": "json-initiator-seq4328719365-short-last-chunk",
+      "description": "A JSON object at a chunk size of 5 and sequence 0x0102030405, so the sequence number shows in each IV and the last chunk is short.",
+      "role": "initiator",
+      "context": "initiator-to-responder",
+      "sequence": 4328719365,
+      "chunkBytes": 5,
+      "chunks": 5,
+      "payloadType": "json",
+      "payloadJson": {
+        "ack": true,
+        "round": 3
+      },
+      "envelopeBytes": 112,
+      "envelopeHex": "020000000102030405ef524af2a21589aff61737860483874b585947046c67cef557d0ab4cacc39525e2e7a9b46782a7c4f2e8f24ea4d028094d747749b73447cdf68a78a2b6dae1903ca5d97b45fdd533a965785237a9a4d1c84248d19a522903b92010dc9ebb1b46be95cd66cc2f5a"
+    },
+    {
+      "name": "binary-initiator-seq2-one-chunk-and-one-byte",
+      "description": "A Uint8Array of 16,777,216 bytes, byte i being i % 251, at the real chunk size: a plaintext of one chunk and one byte, recorded by the SHA-256 of the envelope and its last 32 bytes.",
+      "role": "initiator",
+      "context": "initiator-to-responder",
+      "sequence": 2,
+      "chunkBytes": 16777216,
+      "chunks": 2,
+      "payloadType": "binary",
+      "payloadPatternBytes": 16777216,
+      "envelopeBytes": 16777258,
+      "envelopeSha256": "d189af49a9d309cf73fad1743933a258fb0f7d65638664d3278183639554268f",
+      "envelopeTailHex": "8a123a90fe3e817265d017032ee847ba59ac3bfe1927af7206b46b7bff6026f3"
+    }
+  ]
+}

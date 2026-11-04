@@ -4,7 +4,11 @@ import PSI from "@openmined/psi.js";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
-import { AEAD_ENVELOPE_OVERHEAD_BYTES } from "../../src/connection/encryptedMessageConnection";
+import {
+  AEAD_ENVELOPE_OVERHEAD_BYTES,
+  CHUNKED_ENVELOPE_VERSION,
+  aeadEnvelopeOverheadBytes,
+} from "../../src/connection/encryptedMessageConnection";
 import { fileSyncMessageFileBytes } from "../../src/connection/fileSyncOutboundBound";
 import {
   MAX_FRAME_SIZE_BYTES,
@@ -61,7 +65,11 @@ test("the index table at the per-set maximum fits one frame on either channel", 
   expect(ENTRY_BYTES).toBe(4);
   const largestTable = MAX_PSI_DECODE_ELEMENTS * ENTRY_BYTES;
   expect(largestTable).toBe(67_108_864);
-  for (const envelope of [0, AEAD_ENVELOPE_OVERHEAD_BYTES]) {
+  for (const envelope of [
+    0,
+    AEAD_ENVELOPE_OVERHEAD_BYTES,
+    aeadEnvelopeOverheadBytes(CHUNKED_ENVELOPE_VERSION, largestTable),
+  ]) {
     expect(
       webrtcFrameExceedsBound(
         binaryPackByteStringLength(largestTable + envelope),
