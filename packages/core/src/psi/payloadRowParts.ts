@@ -299,9 +299,16 @@ export interface PayloadPart {
  * the bytes that hold their values, so the part's frame is not kept with them.
  */
 export function readPayloadPartBody(
-  body: Uint8Array,
+  frameBody: Uint8Array,
   part: ListPartContext,
 ): PayloadPart {
+  // A Node Buffer's slice is a view into its memory pool, not a copy, so the
+  // body is read as a plain Uint8Array, whose slice copies.
+  const body = new Uint8Array(
+    frameBody.buffer,
+    frameBody.byteOffset,
+    frameBody.byteLength,
+  );
   const end = body.byteLength;
   if (end < PAYLOAD_BODY_PREFIX_BYTES)
     throw part.refuse(PAYLOAD_LENGTH_REFUSAL);

@@ -191,6 +191,26 @@ describe("a payload round-trips", () => {
     expect(part.rows.row(0)).toStrictEqual(["value"]);
   });
 
+  // A file-sync frame arrives as a Node Buffer, which may start at an offset
+  // into memory it shares with other buffers.
+  test("a body read from a Node Buffer at an offset, its rows copied out", () => {
+    const [sent] = sentBodies({
+      columns: ["program_code"],
+      rowIndices: [0, 2],
+      rows: [["A1"], [null]],
+    });
+    const shared = Buffer.alloc(16 + sent.byteLength);
+    shared.set(sent, 16);
+    const body = shared.subarray(16);
+    const part = readPayloadPartBody(body, context(2));
+    shared.fill(0);
+    expect([...part.rowIndices]).toStrictEqual([0, 2]);
+    expect([part.rows.row(0), part.rows.row(1)]).toStrictEqual([
+      ["A1"],
+      [null],
+    ]);
+  });
+
   test("a row outside the rows read is refused", () => {
     const part = readPayloadPartBody(
       sentBodies({ columns: ["c"], rowIndices: [0], rows: [["v"]] })[0],
