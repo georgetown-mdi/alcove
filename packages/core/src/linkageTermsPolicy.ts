@@ -6,6 +6,7 @@
 import { UsageError } from "./errors.js";
 import {
   candidateSetUnderStrategyMessage,
+  QUOTED_FAN_OUT_FUNCTION_NAMES,
   termsDeclareCandidateSet,
 } from "./fanOutFunctions.js";
 import { canonicalString, CanonicalEncodingError } from "./utils/canonical.js";
@@ -32,10 +33,7 @@ export type CountOnlyShapeViolation = "deduplicate" | "payload";
  * the parse-error path is not sanitized.
  */
 export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
-  Record<
-    CountOnlyShapeViolation | "transmittedColumns" | "standardizationFanOut",
-    string
-  >
+  Record<CountOnlyShapeViolation | "transmittedColumns", string>
 > = {
   deduplicate:
     'count-only ("psi-c") linkage terms must set deduplicate to false, ' +
@@ -46,17 +44,43 @@ export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
     "because a count-only exchange reveals only the size of the " +
     "intersection. Remove the payload send and receive columns, or set " +
     'algorithm to "psi".',
-  standardizationFanOut:
-    'a count-only ("psi-c") exchange cannot run a split in your own data ' +
-    "standardization, because the agreed linkage terms do not state how " +
-    "many parts it adds to each record. Move the split into the linkage " +
-    'key element\'s transform, or set algorithm to "psi".',
   transmittedColumns:
     'a count-only ("psi-c") exchange sends no data columns, but your ' +
     "input's metadata marks one or more columns to send to your partner. " +
     "Clear the payload marking on those columns, or set algorithm to " +
     '"psi".',
 };
+
+/**
+ * The refusal for a fan-out step in this party's own standardization under
+ * `psi-c`, which declares no width a count-only block can be laid out by
+ * (docs/spec/PROTOCOL.md#refusals-under-count-only). `step` names the step's
+ * function, matched against the fan-out function list, and the standardization
+ * output it cleans, both read off this party's own standardization; without
+ * it the message names neither.
+ */
+export function countOnlyStandardizationFanOutMessage(step?: {
+  readonly functionName: string;
+  readonly output: string;
+}): string {
+  const located =
+    step === undefined
+      ? {
+          where: `a ${QUOTED_FAN_OUT_FUNCTION_NAMES} step in your standardization`,
+          field: "that field",
+        }
+      : {
+          where: `the "${step.functionName}" step on standardization output "${step.output}"`,
+          field: `"${step.output}"`,
+        };
+  return (
+    `a count-only ("psi-c") exchange cannot run ${located.where}, because ` +
+    "the agreed linkage terms do not state how many parts it adds to each " +
+    "record. Remove that step, and to match on the parts, add it to the " +
+    `transform of the linkage key elements that read ${located.field}; or ` +
+    'set algorithm to "psi".'
+  );
+}
 
 /**
  * The first count-only shape rule a terms document breaks, in the

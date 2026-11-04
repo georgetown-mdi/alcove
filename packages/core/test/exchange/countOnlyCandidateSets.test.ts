@@ -2,10 +2,20 @@ import { describe, expect, test } from "vitest";
 import PSI from "@openmined/psi.js";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
+import { DEFAULT_LINKAGE_RULE_SET } from "../../src/defaults/builtInLinkageTerms";
 import { UsageError } from "../../src/errors";
 import { prepareForExchange } from "../../src/exchange";
 import { assertFirstRoundWithinSetMaximum } from "../../src/exchange/firstRoundCapacity";
-import { countOnlyWidthsOfRounds } from "../../src/psi/countOnlyRounds";
+import {
+  declaredFanOutFunction,
+  declaredKeyWidth,
+} from "../../src/fanOutFunctions";
+import { expandsOnReceiverOnly } from "../../src/fuzzyComparisons";
+import {
+  countOnlyRoundWidths,
+  countOnlyWidthsOfRounds,
+} from "../../src/psi/countOnlyRounds";
+import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
   servePsiWorker,
   WorkerPsiEngine,
@@ -19,7 +29,10 @@ import {
   type EngineFor,
 } from "../utils/psiPhasePair";
 
-import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
+import type {
+  LinkageKey,
+  LinkageTerms,
+} from "../../src/config/linkageTermsSchema";
 import type { PreparedExchange } from "../../src/exchange";
 import type { PsiProgress } from "../../src/psi/participant";
 
@@ -276,6 +289,118 @@ describe("the sender's block is the receiver's width on a key combining a fan-ou
     expect(table).toBe(1);
     expect(count).toBe(1);
   });
+
+  test("the sender pays padding here: its width is over the key's width with receiver-only factors at 1", () => {
+    expect(countOnlyRoundWidths(terms.linkageKeys[0]!).senderWidth).toBe(60);
+    expect(
+      declaredKeyWidth(withoutReceiverOnlyExpansions(terms.linkageKeys[0]!)),
+    ).toBe(20);
+  });
+
+  test("a padding element and a real element have the same length in the setup the receiver is sent", async () => {
+    const keyHolder = new InProcessPsiEngine(
+      wasm,
+      "starter",
+      "key holder",
+      "count-only-permuted",
+    );
+    const secretKey = keyHolder.copySecretKey();
+    keyHolder.dispose();
+    const receivedPieces: Array<Uint8Array> = [];
+    const engineFor: EngineFor = (role, id, mode) => {
+      if (role === "starter")
+        return new InProcessPsiEngine(wasm, role, id, mode, { secretKey });
+      const engine = new InProcessPsiEngine(wasm, role, id, mode);
+      return new Proxy(engine, {
+        get(target, property) {
+          const member: unknown = Reflect.get(target, property, target);
+          if (typeof member !== "function") return member;
+          if (property === "receiveServerSetupPiece")
+            return (piece: Uint8Array) => {
+              receivedPieces.push(piece.slice());
+              return target.receiveServerSetupPiece(piece);
+            };
+          return (member as (...a: Array<unknown>) => unknown).bind(target);
+        },
+      });
+    };
+    const counted = countOnly(terms);
+    const outcome = await runPsiPhasePair(
+      wasm,
+      counted,
+      preparedParty("Receiver Co", receiver, counted),
+      preparedParty("Sender Co", sender, counted),
+      engineFor,
+    );
+    expect(phaseResult(outcome.receiver).intersectionCount).toBe(1);
+
+    const setupValues = outcome.sender.sets.find(
+      (set) => set.kind === "setup",
+    )!.values;
+    expect(setupValues).toHaveLength(sender.length * 60);
+    const padding = setupValues.find((value) => /^[0-9a-f]{64}$/.test(value));
+    const real = setupValues.find((value) => value.startsWith("0:"));
+    expect(padding).toBeDefined();
+    expect(real).toBeDefined();
+
+    const reference = wasm.server!.createFromKey(secretKey, true);
+    const encrypted = (value: string): string =>
+      Buffer.from(
+        reference
+          .createSetupMessage(0, -1, [value], wasm.dataStructure.Raw)
+          .getRaw()!
+          .getEncryptedElementsList_asU8()[0]!,
+      ).toString("hex");
+    const encryptedPadding = encrypted(padding!);
+    const encryptedReal = encrypted(real!);
+    reference.delete();
+
+    const received = wasm.serverSetup
+      .deserializeBinary(Buffer.concat(receivedPieces))
+      .getRaw()!
+      .getEncryptedElementsList_asU8()
+      .map((element) => Buffer.from(element).toString("hex"));
+    expect(received).toHaveLength(setupValues.length);
+    expect(received).toContain(encryptedPadding);
+    expect(received).toContain(encryptedReal);
+    expect(encryptedPadding.length).toBe(encryptedReal.length);
+    expect(new Set(received.map((element) => element.length))).toEqual(
+      new Set([encryptedReal.length]),
+    );
+  });
+});
+
+// The key with each expansion only the receiver executes removed: its `swap`,
+// and each fuzzy kind expandsOnReceiverOnly names.
+function withoutReceiverOnlyExpansions(key: LinkageKey): LinkageKey {
+  const { swap: _swap, ...rest } = key;
+  return {
+    ...rest,
+    elements: key.elements.map((element) => {
+      const kind = element.generateFuzzyComparisons;
+      if (kind === undefined || !expandsOnReceiverOnly(kind)) return element;
+      const { generateFuzzyComparisons: _kind, ...shared } = element;
+      return shared;
+    }),
+  };
+}
+
+test("no built-in key pays the padding: each sender width is the key's width with receiver-only factors at 1", () => {
+  const keys = DEFAULT_LINKAGE_RULE_SET.linkageKeys;
+  for (const [index, key] of keys.entries())
+    expect(countOnlyRoundWidths(key, index).senderWidth, key.name).toBe(
+      declaredKeyWidth(withoutReceiverOnlyExpansions(key), index),
+    );
+  // The set holds both halves of the padded combination, on separate keys.
+  const fansOut = (key: LinkageKey): boolean =>
+    key.elements.some(
+      (element) => declaredFanOutFunction(element.transform) !== undefined,
+    );
+  const expandsOnReceiver = (key: LinkageKey): boolean =>
+    declaredKeyWidth(withoutReceiverOnlyExpansions(key)) <
+    declaredKeyWidth(key);
+  expect(keys.some(fansOut)).toBe(true);
+  expect(keys.some(expandsOnReceiver)).toBe(true);
 });
 
 test("count-only terms declaring single-pass give the same count over candidate sets", async () => {

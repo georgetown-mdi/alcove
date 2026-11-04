@@ -151,7 +151,7 @@ A count-only exchange runs every agreed key in order and counts each matched rec
 - payload in either direction -- a non-empty `payload.send` or `payload.receive`, or [input metadata](#input-metadata) that would transmit a column (`is_payload: true` on a column whose `role` is not `ignored`);
 The refusal happens where the terms are authored, where an invitation over them is created, and where a received invitation is parsed or accepted. It is never resolved by narrowing the document to the count-only shape or by running it as `psi`; the reasoning is in [PROTOCOL.md](spec/PROTOCOL.md#psi-c). None of this constrains `psi` terms.
 
-A `split_on` step in a party's own `standardization` is refused under `psi-c` when that party prepares its data, naming the step: the terms do not state how many parts it adds to each record, so no width covers it. Move the split into the linkage key element's `transform`, or set the algorithm to `psi`.
+A `split_on` step in a party's own `standardization` is refused under `psi-c` when that party prepares its data, naming the step and the output it cleans: the terms do not state how many parts it adds to each record, so no width covers it. Remove that step, and to match on the parts, add it to the `transform` of the linkage key elements that read that field; or set the algorithm to `psi`.
 
 ### `linkage_terms.linkage_strategy`
 

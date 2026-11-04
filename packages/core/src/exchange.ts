@@ -11,7 +11,7 @@ import {
   assertBothSidedDeduplicateImplemented,
   assertCountOnlyTermsShape,
   assertDeduplicateImplemented,
-  COUNT_ONLY_SHAPE_REFUSALS,
+  countOnlyStandardizationFanOutMessage,
   resolvedMatchingFromTerms,
   runsSinglePassLink,
   termsResolveCandidateSets,
@@ -1531,9 +1531,7 @@ export async function runExchange(
   // its own cleaning fans out a key's field, which declares no width a
   // count-only block can be laid out by, so that is refused here too.
   if (linkageTerms.algorithm === "psi-c" && prepared.dataset.declaresFanOut)
-    throw new OperatorConfigError(
-      COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut,
-    );
+    throw new OperatorConfigError(countOnlyStandardizationFanOutMessage());
 
   // Refuse a key condition the terms schema refuses, for a PreparedExchange whose
   // terms were built without a parse. See assertKeyConditionsAdmitted.

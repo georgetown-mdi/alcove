@@ -25,7 +25,7 @@ import { DEFAULT_DATE_OUTPUT_FORMAT } from "./keyElementWidth.js";
 import { declaredFanOutFunction } from "./fanOutFunctions.js";
 import {
   candidateSetIsImplementedForStrategy,
-  COUNT_ONLY_SHAPE_REFUSALS,
+  countOnlyStandardizationFanOutMessage,
   termsCandidateSetRefusal,
 } from "./linkageTermsPolicy.js";
 import { frozenLookupTable } from "./utils/frozenLookupTable.js";
@@ -128,7 +128,8 @@ export function assertStandardizationMatchesTerms(
  * The local standardization half is refused here because a partner cannot
  * derive it. It throws {@link OperatorConfigError}, since no invitation contains a
  * standardization; the terms half throws {@link UsageError}, since the accept
- * path adopts the partner's keys. Neither message contains partner free text.
+ * path adopts the partner's keys. Neither message contains partner free text;
+ * the count-only one names this party's own standardization output.
  * `standardization` is omitted where the caller no longer has one.
  */
 export function assertFanOutImplemented(
@@ -143,7 +144,10 @@ export function assertFanOutImplemented(
     if (declared !== undefined)
       throw new OperatorConfigError(
         countOnly
-          ? COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut
+          ? countOnlyStandardizationFanOutMessage({
+              functionName: declared,
+              output: transformation.output,
+            })
           : fanOutDeclaredMessage(declared),
       );
   }
