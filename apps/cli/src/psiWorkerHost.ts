@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { Worker } from "node:worker_threads";
 
 import {
+  INBOUND_FRAME_MEMORY_MULTIPLES,
   InProcessPsiEngine,
   WorkerPsiEngine,
   psiFrameHandlingBytes,
@@ -101,19 +102,28 @@ class MemoryCheckedWorkerPsiEngine extends WorkerPsiEngine {
   }
 
   #checked<T>(
-    bytes: Uint8Array,
-    use: InboundPsiFrameUse,
+    frameBytes: number,
+    needBytes: number,
     run: () => Promise<T>,
   ): Promise<T> {
     try {
-      this.#checkFrame(
-        bytes.byteLength,
-        psiFrameHandlingBytes(bytes.byteLength, use),
-      );
+      this.#checkFrame(frameBytes, needBytes);
     } catch (error) {
       return Promise.reject(error);
     }
     return run();
+  }
+
+  #checkedFrame<T>(
+    bytes: Uint8Array,
+    use: InboundPsiFrameUse,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    return this.#checked(
+      bytes.byteLength,
+      psiFrameHandlingBytes(bytes.byteLength, use),
+      run,
+    );
   }
 
   override processClientRequest(
@@ -121,19 +131,19 @@ class MemoryCheckedWorkerPsiEngine extends WorkerPsiEngine {
     declaredElements?: number,
     width?: number,
   ): Promise<Uint8Array> {
-    return this.#checked(requestBytes, "decode", () =>
+    return this.#checkedFrame(requestBytes, "decode", () =>
       super.processClientRequest(requestBytes, declaredElements, width),
     );
   }
 
   override receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
-    return this.#checked(setupBytes, "stream", () =>
+    return this.#checkedFrame(setupBytes, "stream", () =>
       super.receiveServerSetup(setupBytes),
     );
   }
 
   override receiveServerSetupPiece(piece: Uint8Array): Promise<void> {
-    return this.#checked(piece, "stream", () =>
+    return this.#checkedFrame(piece, "stream", () =>
       super.receiveServerSetupPiece(piece),
     );
   }
@@ -141,8 +151,25 @@ class MemoryCheckedWorkerPsiEngine extends WorkerPsiEngine {
   override computeAssociationTable(
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]> {
-    return this.#checked(responseBytes, "stream", () =>
+    return this.#checkedFrame(responseBytes, "stream", () =>
       super.computeAssociationTable(responseBytes),
+    );
+  }
+
+  override receiveIndexTable(
+    indexTable: Int32Array,
+    width?: number,
+  ): Promise<void> {
+    return this.#checked(
+      indexTable.byteLength,
+      indexTable.byteLength * INBOUND_FRAME_MEMORY_MULTIPLES.workerClone,
+      () => super.receiveIndexTable(indexTable, width),
+    );
+  }
+
+  override matchPermutedRound(responseBytes: Uint8Array): Promise<void> {
+    return this.#checkedFrame(responseBytes, "stream", () =>
+      super.matchPermutedRound(responseBytes),
     );
   }
 }

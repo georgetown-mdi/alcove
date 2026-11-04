@@ -578,6 +578,13 @@ describe("the memory check before a partner message is read or handed to the wor
     ]);
   });
 
+  it("warns once under --allow-memory-shortfall however many messages fall short", () => {
+    const { weigh, warnings } = check(1_200_000_000, true);
+    weigh(480_000_000, 1_920_000_000);
+    weigh(490_000_000, 1_960_000_000);
+    expect(warnings).toHaveLength(1);
+  });
+
   it("reads the memory available when no reading is given", () => {
     const weigh = inboundFrameMemoryCheck({
       allowShortfall: false,

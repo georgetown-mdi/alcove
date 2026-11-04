@@ -488,7 +488,7 @@ function megabytes(bytes: number): string {
  * `process.availableMemory()`: a need over it is a {@link UsageError}, or,
  * with `allowShortfall`, a warning passed to `onShortfallWarning` and the run
  * continues. The file-sync read gate takes it before each read, and the PSI
- * worker before it takes a frame.
+ * worker before it takes a frame. Each check warns on its first shortfall only.
  */
 export function inboundFrameMemoryCheck(params: {
   allowShortfall: boolean;
@@ -497,6 +497,7 @@ export function inboundFrameMemoryCheck(params: {
 }): InboundFrameMemoryCheck {
   const availableBytes =
     params.availableBytes ?? (() => process.availableMemory());
+  let warned = false;
   return (frameBytes, needBytes) => {
     const available = availableBytes();
     if (needBytes <= available) return;
@@ -513,6 +514,8 @@ export function inboundFrameMemoryCheck(params: {
             `for both parties.`,
         ),
       );
+    if (warned) return;
+    warned = true;
     params.onShortfallWarning(
       `running with --allow-memory-shortfall: ${sentence}. The exchange may ` +
         `run out of memory, which fails it for both parties.`,
