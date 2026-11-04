@@ -56,8 +56,8 @@ import {
   type FailureCause,
 } from "../failureCause";
 import {
-  UNANSWERED_HELLO_WINDOW_INFINITE,
-  UNANSWERED_HELLO_WINDOW_KEY,
+  IGNORE_FILES_OLDER_THAN_INFINITE,
+  IGNORE_FILES_OLDER_THAN_KEY,
 } from "../config/connection";
 import { classifyRetainLeftovers } from "./fileSyncLeftovers";
 import {
@@ -805,7 +805,7 @@ export interface RendezvousOptions {
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
   joinerRecoveryMs: number;
-  unansweredHelloWindowMs?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
+  ignoreFilesOlderThanMs?: number | typeof IGNORE_FILES_OLDER_THAN_INFINITE;
   writeWithoutRenaming?: boolean;
   renameRefusedGuidance?: string;
 }
@@ -1628,12 +1628,12 @@ export class FileSyncRendezvous {
             "hello files are present. Check whether another session is using " +
             "this path. If none is, " +
             (deps.options().retainFiles
-              ? deps.options().unansweredHelloWindowMs ===
-                UNANSWERED_HELLO_WINDOW_INFINITE
-                ? `set ${UNANSWERED_HELLO_WINDOW_KEY} to a duration, then ` +
-                  "run again once they are older than it."
-                : `run again once they are older than ${UNANSWERED_HELLO_WINDOW_KEY} ` +
-                  "(your peer timeout when unset)."
+              ? deps.options().ignoreFilesOlderThanMs ===
+                IGNORE_FILES_OLDER_THAN_INFINITE
+                ? `set ${IGNORE_FILES_OLDER_THAN_KEY} to a duration, then ` +
+                  "rerun once they are older than it, and the run starts."
+                : `rerun once they are older than ${IGNORE_FILES_OLDER_THAN_KEY} ` +
+                  "(your peer timeout when unset), and the run starts."
               : "one of you reruns with --sweep-exchange-files, then the " +
                 "other starts."),
           "peer hello files",
@@ -1687,9 +1687,9 @@ export class FileSyncRendezvous {
     const { deps } = this;
     const outboundDir = scope.split ? scope.outboundPath : undefined;
     const now = Date.now();
-    const setting = deps.options().unansweredHelloWindowMs;
+    const setting = deps.options().ignoreFilesOlderThanMs;
     const windowMs =
-      setting === UNANSWERED_HELLO_WINDOW_INFINITE
+      setting === IGNORE_FILES_OLDER_THAN_INFINITE
         ? undefined
         : (setting ??
           deps.arrivalBudgetMs() ??
@@ -1754,7 +1754,7 @@ export class FileSyncRendezvous {
               : `, and ${leftovers.unansweredHellos.length} of them are ` +
                 "partner hellos nobody answered within " +
                 `${formatWaitDuration(unansweredHello.windowMs)} ` +
-                `(${UNANSWERED_HELLO_WINDOW_KEY})`),
+                `(${IGNORE_FILES_OLDER_THAN_KEY})`),
         );
     }
 

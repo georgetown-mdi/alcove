@@ -224,10 +224,10 @@ describe(
       expect(parsed.stderr).toContain("input.csv does not exist");
     });
 
-    test("the unanswered-hello window tokens survive a real parse", async () => {
+    test("the ignore-files-older-than tokens survive a real parse", async () => {
       for (const window of [
-        { unansweredHelloWindow: { magnitude: "3", unit: "h" } as const },
-        { unansweredHelloWindowInfinite: true },
+        { ignoreFilesOlderThan: { magnitude: "3", unit: "h" } as const },
+        { ignoreFilesOlderThanInfinite: true },
       ]) {
         const optionArgs = [
           ...retainModeFileSyncArgs(),
@@ -238,7 +238,7 @@ describe(
             ),
           ),
         ];
-        expect(optionArgs.at(-1)).toMatch(/^--unanswered-hello-window=/);
+        expect(optionArgs.at(-1)).toMatch(/^--ignore-files-older-than=/);
         const { argv, dir } = await captureFiledropArgv(optionArgs);
 
         const parsed = parseWithRealCli(argv, dir);

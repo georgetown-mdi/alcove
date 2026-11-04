@@ -12,7 +12,7 @@ import {
   MAX_TIMER_MS,
   normalizeCsvDelimiter,
   sanitizeErrorForDisplay,
-  UNANSWERED_HELLO_WINDOW_INFINITE,
+  IGNORE_FILES_OLDER_THAN_INFINITE,
   UsageError,
 } from "@alcove/core";
 
@@ -92,10 +92,10 @@ export function windowFlagSeconds(
   argv: Arguments,
   name: string,
   maxSeconds: number,
-): number | typeof UNANSWERED_HELLO_WINDOW_INFINITE | undefined {
+): number | typeof IGNORE_FILES_OLDER_THAN_INFINITE | undefined {
   const raw = singleValue(argv, name);
-  if (String(raw).trim() === UNANSWERED_HELLO_WINDOW_INFINITE)
-    return UNANSWERED_HELLO_WINDOW_INFINITE;
+  if (String(raw).trim() === IGNORE_FILES_OLDER_THAN_INFINITE)
+    return IGNORE_FILES_OLDER_THAN_INFINITE;
   return durationFlagSeconds(argv, name, maxSeconds);
 }
 

@@ -290,28 +290,28 @@ describe("writeWithoutRenaming", () => {
   });
 });
 
-// --- unansweredHelloWindow override (--unanswered-hello-window) --------------
+// --- ignoreFilesOlderThan override (--ignore-files-older-than) --------------
 
-describe("unansweredHelloWindow", () => {
+describe("ignoreFilesOlderThan", () => {
   test("override is applied in milliseconds, and infinite as written", () => {
     const sftp = applyConnectionOverrides(baseSFTP, {
-      options: { unansweredHelloWindow: 5400 },
+      options: { ignoreFilesOlderThan: 5400 },
     }) as SFTPConnectionConfig;
-    expect(sftp.options?.unansweredHelloWindowMs).toBe(5_400_000);
+    expect(sftp.options?.ignoreFilesOlderThanMs).toBe(5_400_000);
     const base: ConnectionConfig = { channel: "filedrop", path: "/mnt/drop" };
     const filedrop = applyConnectionOverrides(base, {
-      options: { unansweredHelloWindow: "infinite" },
+      options: { ignoreFilesOlderThan: "infinite" },
     }) as FileDropConnectionConfig;
-    expect(filedrop.options?.unansweredHelloWindowMs).toBe("infinite");
+    expect(filedrop.options?.ignoreFilesOlderThanMs).toBe("infinite");
   });
 
   test("override is dropped on webrtc", () => {
     const result = applyConnectionOverrides(baseWebRTC, {
-      options: { unansweredHelloWindow: 60 },
+      options: { ignoreFilesOlderThan: 60 },
     });
     expect(
       (result.options as Record<string, unknown> | undefined)?.[
-        "unansweredHelloWindowMs"
+        "ignoreFilesOlderThanMs"
       ],
     ).toBeUndefined();
   });

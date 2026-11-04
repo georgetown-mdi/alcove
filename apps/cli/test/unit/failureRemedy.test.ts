@@ -180,8 +180,8 @@ test("a no-show with a file of this side's name names peer_id and no timeout fla
 test("a no-show after an ignored partner hello names its age and the window", () => {
   const [, , , , ignored, both] = SAMPLES["partner-never-arrived"];
   const remedy =
-    "If the ignored hello was your partner's run, raise " +
-    "unanswered_hello_window_ms (or --unanswered-hello-window), or give " +
+    "If the file this run ignored was your partner's, raise " +
+    "ignore_files_older_than_ms (or --ignore-files-older-than), or give " +
     "both sides the same peer_timeout_ms, then run again.";
   for (const arrivalWait of [undefined, ...ARRIVAL_WAITS]) {
     expect(rendered(ignored!, arrivalWait)).toBe(
@@ -191,11 +191,11 @@ test("a no-show after an ignored partner hello names its age and the window", ()
         remedy,
     );
     expect(rendered(both!, arrivalWait)).toMatch(
-      /^Your partner did not arrive in the shared folder on the SFTP server within 90 seconds, and a file with this side's name appeared in it; at start-up, this run ignored a partner hello file nobody had answered for 2 hours, past the limit of 90 seconds\.\nThe likely cause is that both parties set the same peer_id: .* then run again\. If the ignored hello was your partner's run, .* then run again\.$/,
+      /^Your partner did not arrive in the shared folder on the SFTP server within 90 seconds, and a file with this side's name appeared in it; at start-up, this run ignored a partner hello file nobody had answered for 2 hours, past the limit of 90 seconds\.\nThe likely cause is that both parties set the same peer_id: .* then run again\. If the file this run ignored was your partner's, .* then run again\.$/,
     );
   }
   expect(rendered(SAMPLES["partner-never-arrived"][0])).not.toContain(
-    "unanswered_hello_window_ms",
+    "ignore_files_older_than_ms",
   );
 });
 

@@ -213,7 +213,7 @@ function probeIntentFields(): JobExchangeIntentBase {
       retainFiles: true,
       unexpectedFiles: "warn",
       writeWithoutRenaming: true,
-      unansweredHelloWindowMs: 1000,
+      ignoreFilesOlderThanMs: 1000,
     },
   };
 }
@@ -801,8 +801,8 @@ function disclosedOptions(options: FileSyncOptions): DisclosedFileSyncOptions {
     ...(options.writeWithoutRenaming !== undefined
       ? { writeWithoutRenaming: options.writeWithoutRenaming }
       : {}),
-    ...(options.unansweredHelloWindowMs !== undefined
-      ? { unansweredHelloWindowMs: options.unansweredHelloWindowMs }
+    ...(options.ignoreFilesOlderThanMs !== undefined
+      ? { ignoreFilesOlderThanMs: options.ignoreFilesOlderThanMs }
       : {}),
   };
 }

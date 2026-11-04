@@ -393,7 +393,7 @@ describe("a partner hello nobody answered", () => {
   test("is met as a live partner while younger than the window", async () => {
     const { err } = await arrivalWith(30_000, {
       peerTimeoutMs: 200,
-      unansweredHelloWindowMs: 60_000,
+      ignoreFilesOlderThanMs: 60_000,
     });
     // Taken for a live partner: this run acks it and waits for its answer.
     expect(sanitizeErrorForDisplay(err)).not.toContain("ignored");
@@ -403,7 +403,7 @@ describe("a partner hello nobody answered", () => {
   test("an infinite window never ignores it", async () => {
     const { err } = await arrivalWith(30 * 86_400_000, {
       peerTimeoutMs: 200,
-      unansweredHelloWindowMs: "infinite",
+      ignoreFilesOlderThanMs: "infinite",
     });
     expect(sanitizeErrorForDisplay(err)).not.toContain("ignored");
     expect(failureCauseOf(err)).not.toHaveProperty("ignoredHello");
@@ -481,8 +481,9 @@ describe("a rerun after a bilateral-mode mismatch", () => {
       expect((err as Error).message).toBe(
         "a shared folder serves one partner, but several partner hello " +
           "files are present. Check whether another session is using this " +
-          "path. If none is, run again once they are older than " +
-          "unanswered_hello_window_ms (your peer timeout when unset).",
+          "path. If none is, rerun once they are older than " +
+          "ignore_files_older_than_ms (your peer timeout when unset), and " +
+          "the run starts.",
       );
       expect((err as Error).message.length).toBeLessThanOrEqual(
         DEFAULT_MAX_DISPLAY_LENGTH,
@@ -497,14 +498,14 @@ describe("a rerun after a bilateral-mode mismatch", () => {
     const { rerun } = await rerunAfterMismatch(
       0,
       {},
-      { unansweredHelloWindowMs: "infinite" },
+      { ignoreFilesOlderThanMs: "infinite" },
     );
     for (const err of rerun) {
       expect((err as Error).message).toBe(
         "a shared folder serves one partner, but several partner hello " +
           "files are present. Check whether another session is using this " +
-          "path. If none is, set unanswered_hello_window_ms to a duration, " +
-          "then run again once they are older than it.",
+          "path. If none is, set ignore_files_older_than_ms to a duration, " +
+          "then rerun once they are older than it, and the run starts.",
       );
       expect((err as Error).message.length).toBeLessThanOrEqual(
         DEFAULT_MAX_DISPLAY_LENGTH,

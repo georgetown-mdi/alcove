@@ -174,14 +174,13 @@ export function connectionTuningFromOptions(
         : String(stated.maxReconnectAttempts),
     connectionPerPoll:
       stated.connectionPerPoll ?? CONNECTION_TUNING_DEFAULT.connectionPerPoll,
-    unansweredHelloWindow: durationField(
-      stated.unansweredHelloWindowMs === "infinite"
+    ignoreFilesOlderThan: durationField(
+      stated.ignoreFilesOlderThanMs === "infinite"
         ? undefined
-        : stated.unansweredHelloWindowMs,
-      "unansweredHelloWindow",
+        : stated.ignoreFilesOlderThanMs,
+      "ignoreFilesOlderThan",
     ),
-    unansweredHelloWindowInfinite:
-      stated.unansweredHelloWindowMs === "infinite",
+    ignoreFilesOlderThanInfinite: stated.ignoreFilesOlderThanMs === "infinite",
   };
 }
 

@@ -6,11 +6,11 @@ import {
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
   DEFAULT_SFTP_POLLING_FREQUENCY_MS,
   DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
+  IGNORE_FILES_OLDER_THAN_INFINITE,
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
   MAX_TIMER_MS,
-  UNANSWERED_HELLO_WINDOW_INFINITE,
   defaultPollingFrequencyMs,
 } from "@alcove/core";
 
@@ -19,7 +19,7 @@ import type { Transport } from "@psi/transportChooser";
 
 /**
  * The pure model behind the console's "Connection tuning" authoring card: how the
- * operator's polling, timeout, retry, unanswered-hello window and SFTP
+ * operator's polling, timeout, retry, ignore-files-older-than and SFTP
  * session-mode choices become the
  * tuning `options` a server job holds, what the card refuses before the run
  * starts, and the two advisories the CLI raises at run time raised here instead,
@@ -65,7 +65,7 @@ export type DurationFieldName =
   | "peerTimeout"
   | "inactivityTimeout"
   | "serverConnectTimeout"
-  | "unansweredHelloWindow";
+  | "ignoreFilesOlderThan";
 
 /** The units each duration field offers. */
 export const DURATION_FIELD_UNITS: Record<
@@ -76,7 +76,7 @@ export const DURATION_FIELD_UNITS: Record<
   peerTimeout: TIMEOUT_UNITS,
   inactivityTimeout: TIMEOUT_UNITS,
   serverConnectTimeout: TIMEOUT_UNITS,
-  unansweredHelloWindow: TIMEOUT_UNITS,
+  ignoreFilesOlderThan: TIMEOUT_UNITS,
 };
 
 const COARSEST_FIRST: ReadonlyArray<DurationUnit> = ["h", "m", "s", "ms"];
@@ -134,14 +134,12 @@ export const CONNECTION_TUNING_HEADING = "Connection tuning";
  * partner to start (the CLI's `--peer-timeout`). */
 export const PEER_TIMEOUT_LABEL = "How long to wait for your partner";
 
-/** The label of the control that sets the unanswered-hello window (the CLI's
- * `--unanswered-hello-window`). */
-export const UNANSWERED_HELLO_WINDOW_LABEL =
-  "When to ignore a partner hello file nobody answered";
+/** The label of the control that sets the age past which a retain-mode run
+ * ignores an earlier exchange's files (the CLI's `--ignore-files-older-than`). */
+export const IGNORE_FILES_OLDER_THAN_LABEL = "Ignore files older than";
 
-/** The subject the window's form problems name. */
-const UNANSWERED_HELLO_WINDOW_SUBJECT =
-  "The age at which to ignore an unanswered hello file";
+/** The subject that control's form problems name. */
+const IGNORE_FILES_OLDER_THAN_SUBJECT = "The age past which to ignore files";
 
 /**
  * One duration as the card holds it: the magnitude as raw field text (blank means
@@ -165,11 +163,11 @@ export interface ConnectionTuningDraft {
    * a count, exactly as the CLI's `--max-reconnect-attempts` is. */
   maxReconnectAttempts: string;
   connectionPerPoll: boolean;
-  /** How old a partner hello nobody answered must be before a retain-mode run
-   * ignores it at start-up (the CLI's `--unanswered-hello-window`). */
-  unansweredHelloWindow: DurationField;
-  /** Never ignore one: the window's `infinite`, which overrides the field. */
-  unansweredHelloWindowInfinite: boolean;
+  /** The age past which a retain-mode run ignores an earlier exchange's files
+   * at start-up (the CLI's `--ignore-files-older-than`). */
+  ignoreFilesOlderThan: DurationField;
+  /** Never ignore: the setting's `infinite`, which overrides the field. */
+  ignoreFilesOlderThanInfinite: boolean;
 }
 
 /**
@@ -185,8 +183,8 @@ export const CONNECTION_TUNING_DEFAULT: ConnectionTuningDraft = {
   serverConnectTimeout: { magnitude: "", unit: "s" },
   maxReconnectAttempts: "",
   connectionPerPoll: false,
-  unansweredHelloWindow: { magnitude: "", unit: "m" },
-  unansweredHelloWindowInfinite: false,
+  ignoreFilesOlderThan: { magnitude: "", unit: "m" },
+  ignoreFilesOlderThanInfinite: false,
 };
 
 /** Which of the card's controls the calling flow can hold. The SFTP session mode
@@ -315,7 +313,7 @@ export function connectionTuningOptions(
   const inactivityTimeoutMs = timeoutMs(draft.inactivityTimeout);
   const serverConnectTimeoutMs = timeoutMs(draft.serverConnectTimeout);
   const maxReconnectAttempts = reconnectAttempts(draft.maxReconnectAttempts);
-  const unansweredHelloWindowMs = unansweredHelloWindowOf(draft, capabilities);
+  const ignoreFilesOlderThanMs = ignoreFilesOlderThanOf(draft, capabilities);
   const stated: JobExchangeOptions = {
     ...(typeof pollIntervalMs === "number" ? { pollIntervalMs } : {}),
     ...(typeof peerTimeoutMs === "number" ? { peerTimeoutMs } : {}),
@@ -329,16 +327,15 @@ export function connectionTuningOptions(
     ...(capabilities.connectionPerPoll && draft.connectionPerPoll
       ? { connectionPerPoll: true }
       : {}),
-    ...(unansweredHelloWindowMs !== undefined &&
-    unansweredHelloWindowMs !== null
-      ? { unansweredHelloWindowMs }
+    ...(ignoreFilesOlderThanMs !== undefined && ignoreFilesOlderThanMs !== null
+      ? { ignoreFilesOlderThanMs }
       : {}),
   };
   return Object.keys(stated).length === 0 ? undefined : stated;
 }
 
 /** Whether the flow's channel has a folder for earlier exchanges' files, which
- * is where the unanswered-hello window applies. */
+ * is where the ignore-files-older-than setting applies. */
 export function holdsExchangeFolder(
   capabilities: ConnectionTuningCapabilities,
 ): boolean {
@@ -346,19 +343,19 @@ export function holdsExchangeFolder(
 }
 
 /**
- * The unanswered-hello window the draft states: `infinite` when the operator
- * chose never to ignore one, otherwise the field held to the same rules as a
+ * The ignore-files-older-than age the draft states: `infinite` when the
+ * operator chose never to ignore, otherwise the field held to the same rules as a
  * timeout, since its flag takes the same grammar and ceiling. `undefined` on a
  * channel with no folder.
  */
-function unansweredHelloWindowOf(
+function ignoreFilesOlderThanOf(
   draft: ConnectionTuningDraft,
   capabilities: ConnectionTuningCapabilities,
-): number | typeof UNANSWERED_HELLO_WINDOW_INFINITE | undefined | null {
+): number | typeof IGNORE_FILES_OLDER_THAN_INFINITE | undefined | null {
   if (!holdsExchangeFolder(capabilities)) return undefined;
-  if (draft.unansweredHelloWindowInfinite)
-    return UNANSWERED_HELLO_WINDOW_INFINITE;
-  return timeoutMs(draft.unansweredHelloWindow);
+  if (draft.ignoreFilesOlderThanInfinite)
+    return IGNORE_FILES_OLDER_THAN_INFINITE;
+  return timeoutMs(draft.ignoreFilesOlderThan);
 }
 
 /**
@@ -453,11 +450,11 @@ export function connectionTuningProblems(
   if (connectProblem !== undefined) problems.push(connectProblem);
   if (
     holdsExchangeFolder(capabilities) &&
-    !draft.unansweredHelloWindowInfinite
+    !draft.ignoreFilesOlderThanInfinite
   ) {
     const windowProblem = timeoutProblem(
-      draft.unansweredHelloWindow,
-      UNANSWERED_HELLO_WINDOW_SUBJECT,
+      draft.ignoreFilesOlderThan,
+      IGNORE_FILES_OLDER_THAN_SUBJECT,
     );
     if (windowProblem !== undefined) problems.push(windowProblem);
   }
@@ -553,8 +550,8 @@ export function connectionTuningSummary(
     draft.maxReconnectAttempts.trim() !== "" ||
     (capabilities.connectionPerPoll && draft.connectionPerPoll) ||
     (holdsExchangeFolder(capabilities) &&
-      (draft.unansweredHelloWindowInfinite ||
-        draft.unansweredHelloWindow.magnitude.trim() !== ""));
+      (draft.ignoreFilesOlderThanInfinite ||
+        draft.ignoreFilesOlderThan.magnitude.trim() !== ""));
   return touched ? "Tuned" : "Default";
 }
 
@@ -597,9 +594,9 @@ export function peerTimeoutDefaultMs(
     : DEFAULT_PEER_TIMEOUT_MS;
 }
 
-/** The unanswered-hello window a blank field leaves the run, for the card's
+/** The ignore-files-older-than age a blank field leaves the run, for the card's
  * placeholder: this side's peer timeout, as authored or core's default. */
-export function unansweredHelloWindowDefaultMs(
+export function ignoreFilesOlderThanDefaultMs(
   draft: ConnectionTuningDraft,
   capabilities: ConnectionTuningCapabilities,
 ): number {

@@ -76,7 +76,7 @@ const MAXIMAL_OPTIONS: Required<JobExchangeOptions> = {
   maxReconnectAttempts: 12,
   connectionPerPoll: true,
   writeWithoutRenaming: true,
-  unansweredHelloWindowMs: 10_800_000,
+  ignoreFilesOlderThanMs: 10_800_000,
 };
 
 /** Where each of those options graduates, for the values above. */
@@ -126,9 +126,9 @@ const TUNING_OPTION_ROUTES: Record<
     configKey: "write_without_renaming",
     flag: "--write-without-renaming",
   },
-  unansweredHelloWindowMs: {
-    configKey: "unanswered_hello_window_ms",
-    flag: "--unanswered-hello-window=10800s",
+  ignoreFilesOlderThanMs: {
+    configKey: "ignore_files_older_than_ms",
+    flag: "--ignore-files-older-than=10800s",
   },
 };
 
@@ -415,7 +415,7 @@ describe("every authorable option graduates into the hand-off", () => {
       "--inactivity-timeout=5400s",
       "--connection-timeout=45s",
       "--max-reconnect-attempts=12",
-      "--unanswered-hello-window=10800s",
+      "--ignore-files-older-than=10800s",
       "--connection-per-poll",
       "--write-without-renaming",
       "--identity=County Health",

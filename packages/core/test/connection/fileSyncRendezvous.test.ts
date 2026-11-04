@@ -3493,7 +3493,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
   // the same class of outcome -- a terminal UsageError, bounded well inside the
   // budget, naming the file that has to go, and destroying neither -- but by
   // different guards: an ack is an unexpected protocol file, so the pair is
-  // refused at entry and never reaches the unanswered-hello window the lone
+  // refused at entry and never reaches the ignore-files-older-than age the lone
   // hello is timed by.
   test("a leftover hello paired with a leftover ack of it is refused at entry", async () => {
     const KILLED_ID = "aeb0f2c1-6d5f-4a17-9c02-7e51b8d4a390";
