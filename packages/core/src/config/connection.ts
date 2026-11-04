@@ -757,16 +757,16 @@ export const WRITE_WITHOUT_RENAMING_KEY = "write_without_renaming";
 
 /**
  * The config key the operator sets
- * {@link FileSyncOptions.unansweredHelloWindowMs} by, as written in the
+ * {@link FileSyncOptions.ignoreFilesOlderThanMs} by, as written in the
  * configuration file.
  */
-export const UNANSWERED_HELLO_WINDOW_KEY = "unanswered_hello_window_ms";
+export const IGNORE_FILES_OLDER_THAN_KEY = "ignore_files_older_than_ms";
 
 /**
- * The {@link FileSyncOptions.unansweredHelloWindowMs} value that never ignores
+ * The {@link FileSyncOptions.ignoreFilesOlderThanMs} value that never ignores
  * an unanswered partner hello.
  */
-export const UNANSWERED_HELLO_WINDOW_INFINITE = "infinite";
+export const IGNORE_FILES_OLDER_THAN_INFINITE = "infinite";
 
 /**
  * Channel-agnostic tuning parameters shared by all connection types.
@@ -986,19 +986,21 @@ export interface FileSyncOptions extends SharedOptions {
    *
    * A directory may be reused: at start-up the messages, acks, abort markers
    * and answered hellos of earlier exchanges are ignored for the run, never
-   * deleted (see {@link unansweredHelloWindowMs}).
+   * deleted (see {@link ignoreFilesOlderThanMs}).
    */
   retainFiles?: boolean;
   /**
-   * In retain mode, how old a partner hello nobody answered must be before a
-   * run ignores it at start-up, in milliseconds, or `"infinite"` to never
-   * ignore one. Unset, it is this side's own peer timeout
-   * ({@link SharedOptions.peerTimeoutMs}, or its default). A partner whose peer
-   * timeout is longer than this window can be ignored while it still waits.
+   * In retain mode, the age past which a run starting in a folder an earlier
+   * exchange left files in ignores them, in milliseconds, or `"infinite"` to
+   * never ignore. Only a partner hello nobody answered waits on this age; the
+   * scan ignores or refuses every other file whatever its age. Unset,
+   * it is this side's own peer timeout ({@link SharedOptions.peerTimeoutMs},
+   * or its default). A partner whose peer timeout is longer than this can be
+   * ignored while it still waits.
    * No effect outside retain mode. A positive integer of at most
    * {@link MAX_TIMEOUT_SECONDS} seconds.
    */
-  unansweredHelloWindowMs?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
+  ignoreFilesOlderThanMs?: number | typeof IGNORE_FILES_OLDER_THAN_INFINITE;
   /**
    * How to handle a file that appears in the shared directory *during* the
    * message loop and is neither part of this exchange nor a known transient (an
@@ -1138,10 +1140,10 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
     peerId: z.string().min(1).optional(),
     retainFiles: z.boolean().optional(),
     // Positive and capped like peerTimeoutMs: a zero window is not offered.
-    unansweredHelloWindowMs: z
+    ignoreFilesOlderThanMs: z
       .union([
         timerMs(MAX_TIMEOUT_SECONDS * 1000),
-        z.literal(UNANSWERED_HELLO_WINDOW_INFINITE),
+        z.literal(IGNORE_FILES_OLDER_THAN_INFINITE),
       ])
       .optional(),
     unexpectedFiles: z.enum(["error", "warn", "ignore"]).optional(),

@@ -211,10 +211,10 @@ describe("the connection-tuning draft a loaded options block seeds", () => {
     ).toEqual(stated);
   });
 
-  test("an unanswered-hello window round-trips, infinite included", () => {
+  test("an ignore-files-older-than age round-trips, infinite included", () => {
     for (const stated of [
-      { unansweredHelloWindowMs: 10_800_000 },
-      { unansweredHelloWindowMs: "infinite" as const },
+      { ignoreFilesOlderThanMs: 10_800_000 },
+      { ignoreFilesOlderThanMs: "infinite" as const },
     ])
       expect(
         connectionTuningOptions(connectionTuningFromOptions(stated)),

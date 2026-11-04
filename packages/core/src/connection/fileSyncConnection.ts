@@ -220,9 +220,9 @@ interface Options {
   locklessRendezvous: boolean;
   peerId?: string;
   retainFiles: boolean;
-  // See FileSyncOptions.unansweredHelloWindowMs. Unset resolves to the arrival
+  // See FileSyncOptions.ignoreFilesOlderThanMs. Unset resolves to the arrival
   // budget at the use site.
-  unansweredHelloWindowMs?: number | "infinite";
+  ignoreFilesOlderThanMs?: number | "infinite";
   // For a file that appears mid-loop and is neither an exchange file nor a
   // temp write. Unset resolves to a mode-dependent default at the use site
   // (resolveUnexpectedFilesPolicy); an explicit value wins.
@@ -780,9 +780,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       this.options.locklessRendezvous = config.options.locklessRendezvous;
     if (config.options?.retainFiles !== undefined)
       this.options.retainFiles = config.options.retainFiles;
-    if (config.options?.unansweredHelloWindowMs !== undefined)
-      this.options.unansweredHelloWindowMs =
-        config.options.unansweredHelloWindowMs;
+    if (config.options?.ignoreFilesOlderThanMs !== undefined)
+      this.options.ignoreFilesOlderThanMs =
+        config.options.ignoreFilesOlderThanMs;
     if (config.options?.unexpectedFiles !== undefined)
       this.options.unexpectedFiles = config.options.unexpectedFiles;
     if (config.options?.writeWithoutRenaming !== undefined)

@@ -9,7 +9,7 @@ import {
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   provisionRequest,
-  UNANSWERED_HELLO_WINDOW_INFINITE,
+  IGNORE_FILES_OLDER_THAN_INFINITE,
   UsageError,
 } from "@alcove/core";
 import type { ConnectionConfig, ServerProvision } from "@alcove/core";
@@ -646,14 +646,15 @@ export function addCommonBootstrapOptions(
         "may reuse the folder: the files an earlier one kept are ignored at " +
         "start-up, never deleted",
     })
-    .option("unanswered-hello-window", {
+    .option("ignore-files-older-than", {
       type: "string",
       describe:
-        "with --retain-files, how old a partner hello nobody answered must " +
-        "be before a run ignores it at start-up (default: this side's peer " +
-        `timeout; maximum: ${MAX_TIMEOUT_SECONDS / 86_400}d), or infinite to ` +
-        "never ignore one; overrides " +
-        "connection.options.unanswered_hello_window_ms. " +
+        "with --retain-files, a run starts even when an earlier exchange " +
+        "left files in the folder, ignoring those older than this duration " +
+        "(default: this side's peer timeout; maximum: " +
+        `${MAX_TIMEOUT_SECONDS / 86_400}d), or infinite to never ignore; ` +
+        "overrides " +
+        "connection.options.ignore_files_older_than_ms. " +
         DURATION_VALUE_HELP,
     })
     .option("connection-per-poll", {
@@ -735,9 +736,9 @@ export interface CommonBootstrapOptions {
   peerId?: string;
   timestampInFilename?: boolean;
   retainFiles?: boolean;
-  // --unanswered-hello-window, in seconds like the timeouts above, or the
+  // --ignore-files-older-than, in seconds like the timeouts above, or the
   // literal "infinite".
-  unansweredHelloWindow?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
+  ignoreFilesOlderThan?: number | typeof IGNORE_FILES_OLDER_THAN_INFINITE;
   connectionPerPoll?: boolean;
   writeWithoutRenaming?: boolean;
   outboundPath?: string;
@@ -822,9 +823,9 @@ export function parseCommonBootstrapArgs(
     peerId: singleValue(argv, "peer-id") as string | undefined,
     timestampInFilename: argv["timestamp-in-filename"] as boolean | undefined,
     retainFiles: argv["retain-files"] as boolean | undefined,
-    unansweredHelloWindow: windowFlagSeconds(
+    ignoreFilesOlderThan: windowFlagSeconds(
       argv,
-      "unanswered-hello-window",
+      "ignore-files-older-than",
       MAX_TIMEOUT_SECONDS,
     ),
     // Boolean toggle, so it keeps a plain cast (a repeat is valid, last-one-wins);
@@ -870,7 +871,7 @@ export type ConnectionOverrideOptions = Pick<
   | "peerId"
   | "timestampInFilename"
   | "retainFiles"
-  | "unansweredHelloWindow"
+  | "ignoreFilesOlderThan"
   | "connectionPerPoll"
   | "writeWithoutRenaming"
   | "outboundPath"
@@ -912,7 +913,7 @@ export function connectionOverridesFrom(
       peerId: options.peerId,
       timestampInFilename: options.timestampInFilename,
       retainFiles: options.retainFiles,
-      unansweredHelloWindow: options.unansweredHelloWindow,
+      ignoreFilesOlderThan: options.ignoreFilesOlderThan,
       connectionPerPoll: options.connectionPerPoll,
       writeWithoutRenaming: options.writeWithoutRenaming,
     },
@@ -965,7 +966,7 @@ export function warnUnsupportedFileSyncFlags(
     peerId?: string;
     timestampInFilename?: boolean;
     writeWithoutRenaming?: boolean;
-    unansweredHelloWindow?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
+    ignoreFilesOlderThan?: number | typeof IGNORE_FILES_OLDER_THAN_INFINITE;
   },
   log: { warn: (message: string) => void },
 ): void {
@@ -1012,9 +1013,9 @@ export function warnUnsupportedFileSyncFlags(
       `--write-without-renaming has no effect on the ${channel} channel and ` +
         "will be ignored; it is only supported on sftp and filedrop",
     );
-  if (flags.unansweredHelloWindow !== undefined)
+  if (flags.ignoreFilesOlderThan !== undefined)
     log.warn(
-      `--unanswered-hello-window has no effect on the ${channel} channel and ` +
+      `--ignore-files-older-than has no effect on the ${channel} channel and ` +
         "will be ignored; it is only supported on sftp and filedrop",
     );
 }
@@ -1349,7 +1350,7 @@ export type OfflineIgnoredOptionsOverrides = Pick<
   | "peerId"
   | "timestampInFilename"
   | "retainFiles"
-  | "unansweredHelloWindow"
+  | "ignoreFilesOlderThan"
   | "connectionPerPoll"
   | "writeWithoutRenaming"
 >;
@@ -1358,7 +1359,7 @@ export type OfflineIgnoredOptionsOverrides = Pick<
  * Warn that the connection-OPTIONS overrides (`--connection-timeout`,
  * `--peer-timeout`, `--inactivity-timeout`, `--polling-frequency`,
  * `--max-reconnect-attempts`, `--lockless-rendezvous`, `--peer-id`,
- * `--timestamp-in-filename`, `--retain-files`, `--unanswered-hello-window`,
+ * `--timestamp-in-filename`, `--retain-files`, `--ignore-files-older-than`,
  * `--connection-per-poll`, `--write-without-renaming`) have no effect on an
  * OFFLINE invite/accept. Like the server-block overrides those paths go through
  * {@link connectionFromEndpoint}, which applies no connection overrides, but
@@ -1404,8 +1405,8 @@ export function warnOptionsOverridesIgnoredOffline(
   if (options.timestampInFilename === true)
     ignored.push("--timestamp-in-filename");
   if (options.retainFiles === true) ignored.push("--retain-files");
-  if (options.unansweredHelloWindow !== undefined)
-    ignored.push("--unanswered-hello-window");
+  if (options.ignoreFilesOlderThan !== undefined)
+    ignored.push("--ignore-files-older-than");
   if (options.connectionPerPoll === true) ignored.push("--connection-per-poll");
   if (options.writeWithoutRenaming === true)
     ignored.push("--write-without-renaming");

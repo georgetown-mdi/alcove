@@ -1745,11 +1745,11 @@ describe("the zero-setup arms admit only what their argv can hold", () => {
     ).toBe(true);
   });
 
-  test("admits the unanswered-hello window as whole seconds or infinite", () => {
+  test("admits the ignore-files-older-than age as whole seconds or infinite", () => {
     for (const build of [validZeroSetupIntent, validZeroSetupSftpIntent]) {
       const admits = (window: number | "infinite") =>
         jobZeroSetupIntentSchema.safeParse(
-          build({ options: { unansweredHelloWindowMs: window } }),
+          build({ options: { ignoreFilesOlderThanMs: window } }),
         ).success;
       expect(admits(10_800_000)).toBe(true);
       expect(admits("infinite")).toBe(true);
@@ -1760,7 +1760,7 @@ describe("the zero-setup arms admit only what their argv can hold", () => {
     }
     const exchange = (window: number | "infinite") =>
       jobExchangeIntentSchema.safeParse(
-        validIntent({ options: { unansweredHelloWindowMs: window } }),
+        validIntent({ options: { ignoreFilesOlderThanMs: window } }),
       ).success;
     expect(exchange(1500)).toBe(true);
     expect(exchange("infinite")).toBe(true);

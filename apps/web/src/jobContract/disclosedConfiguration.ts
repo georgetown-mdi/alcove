@@ -71,7 +71,7 @@ export interface DisclosedFileSyncOptions {
   unexpectedFiles?: "error" | "warn" | "ignore";
   connectionPerPoll?: boolean;
   writeWithoutRenaming?: boolean;
-  unansweredHelloWindowMs?: number | "infinite";
+  ignoreFilesOlderThanMs?: number | "infinite";
 }
 
 /**

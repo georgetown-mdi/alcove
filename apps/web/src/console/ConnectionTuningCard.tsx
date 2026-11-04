@@ -18,18 +18,18 @@ import { DisclosureSection } from "../components/DisclosureSection";
 import {
   CONNECTION_TUNING_HEADING,
   DURATION_FIELD_UNITS,
+  IGNORE_FILES_OLDER_THAN_LABEL,
   PEER_TIMEOUT_LABEL,
   TUNING_DEFAULT_MS,
-  UNANSWERED_HELLO_WINDOW_LABEL,
   connectionTuningAdvisories,
   connectionTuningProblems,
   connectionTuningSummary,
   defaultPlaceholder,
   durationUnitChoices,
   holdsExchangeFolder,
+  ignoreFilesOlderThanDefaultMs,
   peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
-  unansweredHelloWindowDefaultMs,
 } from "./connectionTuningModel";
 
 import type {
@@ -209,35 +209,28 @@ export function ConnectionTuningCard({
 
         {holdsExchangeFolder(capabilities) && (
           <Stack gap="xs">
-            {!draft.unansweredHelloWindowInfinite && (
+            {!draft.ignoreFilesOlderThanInfinite && (
               <DurationRow
-                label={UNANSWERED_HELLO_WINDOW_LABEL}
+                label={IGNORE_FILES_OLDER_THAN_LABEL}
                 description={
-                  "Applies only when exchange files are kept. A run that " +
-                  "finds a hello file from a partner nobody answered treats " +
-                  "it as left by an earlier exchange once it is older than " +
-                  "this, and ignores it. Blank uses how long this side waits " +
-                  "for your partner."
+                  "Applies only when exchange files are kept. A run starts " +
+                  "even when an earlier exchange left files in the folder, " +
+                  "ignoring those older than this. Blank uses how long this " +
+                  "side waits for your partner."
                 }
-                units={DURATION_FIELD_UNITS.unansweredHelloWindow}
-                defaultMs={unansweredHelloWindowDefaultMs(draft, capabilities)}
-                value={draft.unansweredHelloWindow}
-                onChange={(next) => set("unansweredHelloWindow", next)}
+                units={DURATION_FIELD_UNITS.ignoreFilesOlderThan}
+                defaultMs={ignoreFilesOlderThanDefaultMs(draft, capabilities)}
+                value={draft.ignoreFilesOlderThan}
+                onChange={(next) => set("ignoreFilesOlderThan", next)}
               />
             )}
             <Checkbox
-              checked={draft.unansweredHelloWindowInfinite}
+              checked={draft.ignoreFilesOlderThanInfinite}
               onChange={(event) =>
-                set(
-                  "unansweredHelloWindowInfinite",
-                  event.currentTarget.checked,
-                )
+                set("ignoreFilesOlderThanInfinite", event.currentTarget.checked)
               }
-              label="Never ignore an unanswered hello file"
-              description={
-                "A run then meets any unanswered partner hello file as your " +
-                "partner's, however old it is."
-              }
+              label="Never ignore"
+              description="A run then ignores no file for its age."
             />
           </Stack>
         )}

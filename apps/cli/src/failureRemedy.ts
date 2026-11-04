@@ -14,7 +14,7 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   relayRegistrarUnreachableRemedy,
-  UNANSWERED_HELLO_WINDOW_KEY,
+  IGNORE_FILES_OLDER_THAN_KEY,
   type FailureCause,
   type FailureCauseKind,
   type FailureCauseOfKind,
@@ -62,8 +62,8 @@ const SHARED_PEER_ID_REMEDY =
   "% fields, then run again.";
 
 const IGNORED_HELLO_REMEDY =
-  "If the ignored hello was your partner's run, raise " +
-  `${UNANSWERED_HELLO_WINDOW_KEY} (or --unanswered-hello-window), or give ` +
+  "If the file this run ignored was your partner's run, raise " +
+  `${IGNORE_FILES_OLDER_THAN_KEY} (or --ignore-files-older-than), or give ` +
   "both sides the same peer_timeout_ms, then run again.";
 
 const partnerNeverArrived = (

@@ -37,9 +37,9 @@ import {
   defaultPlaceholder,
   durationFieldForMs,
   durationUnitChoices,
+  ignoreFilesOlderThanDefaultMs,
   peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
-  unansweredHelloWindowDefaultMs,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
 import { zeroSetupOptionsArgv } from "@jobs/intentArgv";
@@ -215,11 +215,11 @@ describe("the silence wait", () => {
   });
 });
 
-describe("the unanswered-hello window", () => {
+describe("the ignore-files-older-than age", () => {
   const threeHours = draft({
-    unansweredHelloWindow: { magnitude: "3", unit: "h" },
+    ignoreFilesOlderThan: { magnitude: "3", unit: "h" },
   });
-  const never = draft({ unansweredHelloWindowInfinite: true });
+  const never = draft({ ignoreFilesOlderThanInfinite: true });
 
   test("is emitted, counted and checked on the folder channels only", () => {
     for (const capabilities of [
@@ -227,10 +227,10 @@ describe("the unanswered-hello window", () => {
       FILEDROP_CONNECTION_TUNING,
     ]) {
       expect(connectionTuningOptions(threeHours, capabilities)).toEqual({
-        unansweredHelloWindowMs: 10_800_000,
+        ignoreFilesOlderThanMs: 10_800_000,
       });
       expect(connectionTuningOptions(never, capabilities)).toEqual({
-        unansweredHelloWindowMs: "infinite",
+        ignoreFilesOlderThanMs: "infinite",
       });
       expect(connectionTuningSummary(never, capabilities)).toBe("Tuned");
     }
@@ -242,7 +242,7 @@ describe("the unanswered-hello window", () => {
     );
     expect(
       connectionTuningProblems(
-        draft({ unansweredHelloWindow: { magnitude: "x", unit: "m" } }),
+        draft({ ignoreFilesOlderThan: { magnitude: "x", unit: "m" } }),
         WEBRTC_CONNECTION_TUNING,
       ),
     ).toEqual([]);
@@ -251,13 +251,13 @@ describe("the unanswered-hello window", () => {
   test("offers no zero, and holds to the seven-day ceiling", () => {
     expect(
       connectionTuningProblems(
-        draft({ unansweredHelloWindow: { magnitude: "0", unit: "m" } }),
+        draft({ ignoreFilesOlderThan: { magnitude: "0", unit: "m" } }),
       ),
     ).toHaveLength(1);
     expect(
       connectionTuningProblems(
         draft({
-          unansweredHelloWindow: {
+          ignoreFilesOlderThan: {
             magnitude: String(MAX_TIMEOUT_SECONDS / 3600 + 1),
             unit: "h",
           },
@@ -267,8 +267,8 @@ describe("the unanswered-hello window", () => {
     expect(
       connectionTuningProblems(
         draft({
-          unansweredHelloWindow: { magnitude: "0", unit: "m" },
-          unansweredHelloWindowInfinite: true,
+          ignoreFilesOlderThan: { magnitude: "0", unit: "m" },
+          ignoreFilesOlderThanInfinite: true,
         }),
       ),
     ).toEqual([]);
@@ -276,29 +276,29 @@ describe("the unanswered-hello window", () => {
 
   test("reaches the config and a quick exchange's command line", () => {
     expect(composedOptions(threeHours)).toMatchObject({
-      unanswered_hello_window_ms: 10_800_000,
+      ignore_files_older_than_ms: 10_800_000,
     });
     expect(composedOptions(never)).toMatchObject({
-      unanswered_hello_window_ms: "infinite",
+      ignore_files_older_than_ms: "infinite",
     });
     expect(
       zeroSetupOptionsArgv(
         connectionTuningOptions(threeHours, SFTP_CONNECTION_TUNING),
       ),
-    ).toEqual(["--unanswered-hello-window=10800s"]);
+    ).toEqual(["--ignore-files-older-than=10800s"]);
     expect(
       zeroSetupOptionsArgv(
         connectionTuningOptions(never, SFTP_CONNECTION_TUNING),
       ),
-    ).toEqual(["--unanswered-hello-window=infinite"]);
+    ).toEqual(["--ignore-files-older-than=infinite"]);
   });
 
   test("shows this side's peer timeout as its placeholder default", () => {
     expect(
-      unansweredHelloWindowDefaultMs(draft(), FILEDROP_CONNECTION_TUNING),
+      ignoreFilesOlderThanDefaultMs(draft(), FILEDROP_CONNECTION_TUNING),
     ).toBe(DEFAULT_PEER_TIMEOUT_MS);
     expect(
-      unansweredHelloWindowDefaultMs(
+      ignoreFilesOlderThanDefaultMs(
         draft({ peerTimeout: { magnitude: "2", unit: "h" } }),
         FILEDROP_CONNECTION_TUNING,
       ),
@@ -775,7 +775,7 @@ describe("the fields the two cards contribute", () => {
     serverConnectTimeout: { magnitude: "45", unit: "s" },
     maxReconnectAttempts: "3",
     connectionPerPoll: true,
-    unansweredHelloWindow: { magnitude: "3", unit: "h" },
+    ignoreFilesOlderThan: { magnitude: "3", unit: "h" },
   });
 
   /** The same for the file-handling card, whose block the tuning merges onto. */

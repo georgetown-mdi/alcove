@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   AllowedRelaySchema,
   FINGERPRINT_REGEX,
+  IGNORE_FILES_OLDER_THAN_INFINITE,
   LinkageTermsSchema,
   MAX_NAME_LENGTH,
   MAX_RECONNECT_ATTEMPTS,
@@ -23,7 +24,6 @@ import {
   PEER_ID_RANDOM_HEX_LENGTH,
   SHARED_SECRET_REGEX,
   StandardizationSchema,
-  UNANSWERED_HELLO_WINDOW_INFINITE,
   csvDelimiterRefusal,
   expandPeerIdTemplate,
   holdsPrivateKeyMaterial,
@@ -177,7 +177,7 @@ export interface JobExchangeOptions {
   unexpectedFiles?: "error" | "warn" | "ignore";
   connectionPerPoll?: boolean;
   writeWithoutRenaming?: boolean;
-  unansweredHelloWindowMs?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
+  ignoreFilesOlderThanMs?: number | typeof IGNORE_FILES_OLDER_THAN_INFINITE;
 }
 
 /**
@@ -221,10 +221,10 @@ const jobExchangeOptionsFields = {
     .optional(),
   retainFiles: z.boolean().optional(),
   writeWithoutRenaming: z.boolean().optional(),
-  unansweredHelloWindowMs: z
+  ignoreFilesOlderThanMs: z
     .union([
       z.number().int().positive(),
-      z.literal(UNANSWERED_HELLO_WINDOW_INFINITE),
+      z.literal(IGNORE_FILES_OLDER_THAN_INFINITE),
     ])
     .optional(),
 };
@@ -306,10 +306,10 @@ const jobZeroSetupOptionsFields = {
   peerTimeoutMs: wholeSecondFlagMs("peerTimeoutMs"),
   inactivityTimeoutMs: wholeSecondFlagMs("inactivityTimeoutMs"),
   serverConnectTimeoutMs: wholeSecondFlagMs("serverConnectTimeoutMs"),
-  unansweredHelloWindowMs: z
+  ignoreFilesOlderThanMs: z
     .union([
-      wholeSecondFlagMs("unansweredHelloWindowMs").unwrap(),
-      z.literal(UNANSWERED_HELLO_WINDOW_INFINITE),
+      wholeSecondFlagMs("ignoreFilesOlderThanMs").unwrap(),
+      z.literal(IGNORE_FILES_OLDER_THAN_INFINITE),
     ])
     .optional(),
 };

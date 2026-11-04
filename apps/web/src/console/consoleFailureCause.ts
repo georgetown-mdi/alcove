@@ -12,8 +12,8 @@ import {
 
 import {
   CONNECTION_TUNING_HEADING,
+  IGNORE_FILES_OLDER_THAN_LABEL,
   PEER_TIMEOUT_LABEL,
-  UNANSWERED_HELLO_WINDOW_LABEL,
 } from "./connectionTuningModel";
 import { EXCHANGE_FILES_HEADING, PEER_ID_LABEL } from "./exchangeFilesModel";
 
@@ -54,8 +54,8 @@ const SHARED_NAME_REMEDY =
 const IGNORED_HELLO_TITLE = "Your partner's hello file may have been ignored";
 
 const IGNORED_HELLO_REMEDY =
-  "If the ignored hello file was your partner's run, raise " +
-  `"${UNANSWERED_HELLO_WINDOW_LABEL}" under ${CONNECTION_TUNING_HEADING}, ` +
+  "If the file this run ignored was your partner's run, raise " +
+  `"${IGNORE_FILES_OLDER_THAN_LABEL}" under ${CONNECTION_TUNING_HEADING}, ` +
   `or give both sides the same "${PEER_TIMEOUT_LABEL}", then run again.`;
 
 const partnerNeverArrived = (

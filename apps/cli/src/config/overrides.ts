@@ -2,7 +2,7 @@ import type { ConnectionConfig, ServerProvision } from "@alcove/core";
 import {
   safeParseConnectionConfig,
   safeParseFileSyncOptions,
-  UNANSWERED_HELLO_WINDOW_INFINITE,
+  IGNORE_FILES_OLDER_THAN_INFINITE,
   UsageError,
   withRetainModeImplications,
 } from "@alcove/core";
@@ -82,12 +82,12 @@ export interface ConnectionOptionsOverrides {
   retainFiles?: boolean;
   timestampInFilename?: boolean;
   /**
-   * The `--unanswered-hello-window` override, in seconds like the timeouts
+   * The `--ignore-files-older-than` override, in seconds like the timeouts
    * above or the literal `infinite`, feeding the connection's
-   * `unansweredHelloWindowMs`. A FileSyncOptions field, applied on `sftp` and
+   * `ignoreFilesOlderThanMs`. A FileSyncOptions field, applied on `sftp` and
    * `filedrop`.
    */
-  unansweredHelloWindow?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
+  ignoreFilesOlderThan?: number | typeof IGNORE_FILES_OLDER_THAN_INFINITE;
   /**
    * The `--connection-per-poll` override, feeding the connection's
    * `connectionPerPoll`. SFTP-only (the ephemeral-session mode dials a real SFTP
@@ -238,10 +238,10 @@ export function applyConnectionOverrides(
       optionsOverrides.peerId !== undefined ||
       optionsOverrides.retainFiles !== undefined ||
       optionsOverrides.timestampInFilename !== undefined ||
-      optionsOverrides.unansweredHelloWindow !== undefined ||
+      optionsOverrides.ignoreFilesOlderThan !== undefined ||
       optionsOverrides.writeWithoutRenaming !== undefined)
   ) {
-    const window = optionsOverrides.unansweredHelloWindow;
+    const window = optionsOverrides.ignoreFilesOlderThan;
     result.options = withRetainModeImplications({
       ...result.options,
       ...(optionsOverrides.pollIntervalMs !== undefined && {
@@ -263,8 +263,8 @@ export function applyConnectionOverrides(
         writeWithoutRenaming: optionsOverrides.writeWithoutRenaming,
       }),
       ...(window !== undefined && {
-        unansweredHelloWindowMs:
-          window === UNANSWERED_HELLO_WINDOW_INFINITE ? window : window * 1000,
+        ignoreFilesOlderThanMs:
+          window === IGNORE_FILES_OLDER_THAN_INFINITE ? window : window * 1000,
       }),
     });
 

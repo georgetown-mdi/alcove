@@ -67,7 +67,7 @@ export type RelayRegistrarUnreachableFailure =
 
 /**
  * A partner hello nobody had answered, which a file-sync run ignored at
- * start-up as older than its unanswered-hello window.
+ * start-up as older than its ignore-files-older-than age.
  */
 export interface IgnoredUnansweredHello {
   /** The youngest such hello's age at start-up. */

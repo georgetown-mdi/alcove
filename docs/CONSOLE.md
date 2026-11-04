@@ -284,7 +284,7 @@ Retain mode and lockless rendezvous must match on both sides; a mismatch stops t
 - **How often to check for your partner's files** -- the poll interval. Not offered for WebRTC.
 - **How long to wait for your partner** and **how long to wait for each connection attempt** -- the peer and connect timeouts. The connect timeout is per attempt. Neither may exceed seven days.
 - **How many times to retry a failed connection** -- the reconnect budget.
-- **When to ignore a partner hello file nobody answered**, and **Never ignore an unanswered hello file** -- the unanswered-hello window, which applies when exchange files are kept. Blank takes this side's partner wait; it may not exceed seven days. Not offered for WebRTC. See [Directory exclusivity](EXCHANGE_REFERENCE.md#directory-exclusivity).
+- **Ignore files older than**, and **Never ignore** -- applies when exchange files are kept: a run starts even when an earlier exchange left files in the folder, ignoring those older than this. Blank takes this side's partner wait; it may not exceed seven days. Not offered for WebRTC. See [Directory exclusivity](EXCHANGE_REFERENCE.md#directory-exclusivity).
 - **Open a new connection for each check** -- SFTP only; for a server that limits how long a connection may stay open. It is this side's choice alone.
 
 Checking more than once a second, and a new connection per check at an interval under a minute, each draw a notice, not a block. These settings pass into the scheduled-run hand-off. Flags: [CLI.md](CLI.md).

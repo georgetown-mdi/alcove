@@ -275,7 +275,7 @@ export const ZERO_SETUP_OPTION_GROUPS: ReadonlyArray<
       "lockless-rendezvous",
       "timestamp-in-filename",
       "retain-files",
-      "unanswered-hello-window",
+      "ignore-files-older-than",
       "write-without-renaming",
       "outbound-path",
       "peer-id",
@@ -797,7 +797,7 @@ export async function handler(argv: Arguments): Promise<void> {
             pollingFrequencyMs: options.pollingFrequencyMs,
             connectionPerPoll: options.connectionPerPoll,
             writeWithoutRenaming: options.writeWithoutRenaming,
-            unansweredHelloWindow: options.unansweredHelloWindow,
+            ignoreFilesOlderThan: options.ignoreFilesOlderThan,
           },
           log,
         );

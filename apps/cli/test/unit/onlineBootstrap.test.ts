@@ -977,13 +977,13 @@ describe("parseCommonBootstrapArgs", () => {
     }
   });
 
-  test("--unanswered-hello-window reads a duration in seconds, or infinite", () => {
+  test("--ignore-files-older-than reads a duration in seconds, or infinite", () => {
     const window = (value: unknown) =>
       parseCommonBootstrapArgs({
         _: [],
         $0: "alcove",
-        "unanswered-hello-window": value,
-      } as unknown as Arguments).unansweredHelloWindow;
+        "ignore-files-older-than": value,
+      } as unknown as Arguments).ignoreFilesOlderThan;
     expect(window("2h")).toBe(7200);
     expect(window("infinite")).toBe("infinite");
     expect(window(undefined)).toBeUndefined();
@@ -992,15 +992,15 @@ describe("parseCommonBootstrapArgs", () => {
         parseCommonBootstrapArgs({
           _: [],
           $0: "alcove",
-          "unanswered-hello-window": "90m",
+          "ignore-files-older-than": "90m",
         } as unknown as Arguments),
-      ).options?.unansweredHelloWindow,
+      ).options?.ignoreFilesOlderThan,
     ).toBe(5400);
     for (const [value, fragment] of [
-      ["0s", "--unanswered-hello-window"],
-      ["8d", "--unanswered-hello-window must not exceed 7d"],
-      ["never", "--unanswered-hello-window"],
-      [["1h", "2h"], "--unanswered-hello-window may be given only once"],
+      ["0s", "--ignore-files-older-than"],
+      ["8d", "--ignore-files-older-than must not exceed 7d"],
+      ["never", "--ignore-files-older-than"],
+      [["1h", "2h"], "--ignore-files-older-than may be given only once"],
     ] as const) {
       expect(() => window(value)).toThrow(UsageError);
       expect(() => window(value)).toThrow(fragment);

@@ -62,7 +62,7 @@ test("a no-show after an ignored partner hello emits the fact and the window rem
   expect(event.cause).toEqual(cause);
   expect(event.message).toContain("nobody had answered for 2 hours");
   expect(event.message).toContain(
-    "unanswered_hello_window_ms (or --unanswered-hello-window)",
+    "ignore_files_older_than_ms (or --ignore-files-older-than)",
   );
   expect(failureCauseFromUntrusted(event.cause)).toEqual(cause);
 });
