@@ -1,0 +1,74 @@
+name: re2js Reference Comparison
+
+# Compares re2js, the regex engine both parties run, with C++ RE2 over the
+# regex golden cases. The golden test in packages/core fails on any change in
+# re2js's output; this asks whether the new output is RE2's, where a difference
+# is an re2js bug to fix or refuse. It runs only on a pull request that moves
+# re2js's resolved version: the path filter skips a pull request leaving
+# package-lock.json alone, and the gate job compares the version the base
+# branch tip locks with the one the merged tree locks. To run it by hand on a
+# machine with Python 3 and internet access:
+#
+#   node scripts/compare-regex-with-re2.mjs
+#
+# The reference is C++ RE2 itself, the engine docs/spec/PROTOCOL.md names,
+# through the google-re2 wheel at the version that script pins, which bundles
+# its RE2 build; Go's regexp is a reimplementation of RE2, not RE2.
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - package-lock.json
+
+# Cancel a superseded run when a newer commit lands on the same PR/branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: both jobs only read the repo.
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Decide whether re2js moved
+    runs-on: ubuntu-26.04
+    outputs:
+      moved: ${{ steps.version.outputs.moved }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The merge commit and its first parent, the base branch tip.
+          fetch-depth: 2
+      - name: Compare re2js's locked version with the base branch's
+        id: version
+        run: |
+          set -euo pipefail
+          locked_re2js() { jq -r '.packages["node_modules/re2js"].version // "absent"'; }
+          base=$(git show HEAD^1:package-lock.json | locked_re2js)
+          merged=$(locked_re2js <package-lock.json)
+          echo "re2js $base on the base branch, $merged with this pull request"
+          if [ "$base" != "$merged" ]; then
+            echo "moved=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "moved=false" >>"$GITHUB_OUTPUT"
+          fi
+
+  compare:
+    name: Compare regex golden cases with RE2
+    needs: gate
+    if: needs.gate.outputs.moved == 'true'
+    # setup-python's prebuilt interpreters cover ubuntu-24.04.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.10"
+      - name: Compare re2js with RE2 over the golden cases
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: node scripts/compare-regex-with-re2.mjs --python "$PYTHON"

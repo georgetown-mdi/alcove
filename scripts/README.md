@@ -30,6 +30,9 @@ check off it. Beside them:
   the signed manifest;
 - the relay host's deployment check `nightly_relay_deployment.yaml` runs;
 - the check of the broker's TLS front logs `broker_front_logs.yaml` runs;
+- the comparison of re2js with C++ RE2 over the regex golden cases, with its
+  reference program `re2-reference.py`, which `re2js_reference.yaml` runs on a
+  pull request that moves re2js's version;
 - the helper modules the checks import, in [`lib/`](lib).
 
 A check's test sits beside it; a guard that asserts a workflow, Dockerfile or
