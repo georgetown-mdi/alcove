@@ -459,6 +459,10 @@ It is seven frames at the wire cap:
 Each frame is at most `MAX_WEBRTC_FRAME_BYTES`, so the bound is **`DEFAULT_QUEUE_BYTE_CAPACITY` = 7 x 268,435,456 = 1,879,048,192 bytes**, and for a browser party **`BROWSER_QUEUE_BYTE_CAPACITY` = 6 x 268,435,456 = 1,610,612,736 bytes**.
 Both are computed from those constants (`countOnlyRunAheadBytes`), and `messageConnection.test.ts` holds them to the derivation.
 The other runs the protocol bounds are shorter: a single PSI set is three frames, and a round's association table, its two index lists and their grouping, comes to at most 402,653,232 bytes.
+Two streams no agreed term bounds are read as they arrive, by a receive started before the step that would otherwise hold them back.
+The joiner starts reading the starter's mapped-element list as the last round's frames end, before it resolves that round, since the starter sends the list once it has resolved the round itself.
+The responder starts reading the initiator's payload rows before it prepares its own payload, since the initiator sends them after its returned list without waiting.
+Their parts stay in the queue only while the consumer takes each one more slowly than the channel delivers the next, and a stream that reaches the bound that way is refused as any other run is.
 A frame that arrives at an empty queue, or that a waiting receive takes, is admitted whatever its size, so the queue refuses no frame the per-frame bound admits.
 A frame that would take the queue past either bound fails the connection as a terminal `protocol` `ConnectionError`, the same refusal at both bounds; the frames queued before it are still received first.
 The default bound holds on every `QueuedMessageConnection` the command-line application opens, the WebSocket relay path included, and on file-sync, whose read-ahead keeps the queue to `MAX_FRAME_SIZE_BYTES`, under it; `messageConnection.test.ts` holds the two in that order.
@@ -466,6 +470,7 @@ The browser's data channel and WebSocket relay path take the browser bound.
 `messageConnection.test.ts` also pins the bound with a small injected limit: frames under the count bound whose bytes pass it are refused, frames within both are received, a frame over it arriving at an empty queue is received, and a message delivered without its length fails the connection.
 The suites of both transports hold a structured, a string and a binary frame to the length each was received at (`apps/cli/test/unit/connection/webrtcMessageConnection.test.ts`, `apps/web/test/unit/psi/peerMessageConnection.test.ts`).
 `apps/cli/test/integration/webrtc/inboundQueueCapacity.test.ts` runs the crossing over real data channels at a lowered receive bound, with sets taking three parts there, and holds it within the bound derived at that receive bound and over one frame less.
+`apps/cli/test/integration/webrtc/inboundQueueStreams.test.ts` runs a cascade with a payload over real data channels against a queue smaller than its mapped-element list and its payload rows, and the exchange completes whole.
 
 The wrap reaches past the public `DataConnection` API into PeerJS internals, so it rests on two dependency assumptions a `peerjs`/`peerjs-js-binarypack` upgrade could silently break.
 The first is the reassembly/unpack shape on the binary/chunked connection class (the one `peer.connect` and an incoming connection use by default): `_handleChunk` reassembling slices keyed by `__peerData` into `_chunkedData` and deleting the entry on completion, and `_handleDataMessage` as the sole point each frame is unpacked (an unchunked frame directly, the reassembled buffer via the completion recursion), which the wrap replaces with its own unpack and a copy of the close/chunk/`data` dispatch that follows it.

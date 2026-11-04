@@ -602,6 +602,10 @@ export function toCommittedPayload(
  * indeterminate rejection discards this function's return value, so its report
  * hands over what it received; the initiator, which sends first, has received
  * nothing to hand over.
+ *
+ * `partnerPayloadReceive` is a read of the partner's payload the caller
+ * started with {@link startPayloadReceive}, taken in place of one started
+ * here.
  */
 export async function exchangePayloads(
   conn: MessageConnection,
@@ -609,12 +613,14 @@ export async function exchangePayloads(
   localPayload: PayloadWireMessage,
   maxPartnerRows: number,
   onLocalPayloadSent?: (partnerPayload?: PartnerPayload) => void,
+  partnerPayloadReceive?: Promise<PartnerPayload>,
 ): Promise<PartnerPayload> {
   if (handshakeRole === "initiator") {
     await sendPayloadReportingHandOff(conn, localPayload, onLocalPayloadSent);
-    return receivePayload(conn, maxPartnerRows);
+    return partnerPayloadReceive ?? receivePayload(conn, maxPartnerRows);
   }
-  const partnerPayload = await receivePayload(conn, maxPartnerRows);
+  const partnerPayload = await (partnerPayloadReceive ??
+    receivePayload(conn, maxPartnerRows));
   // This is the exchange's terminal frame on an unsigned run; on a signing
   // run the receipt swap follows it. On a buffering transport (WebRTC)
   // it looks racy: the responder's last act is a fire-and-forget send
@@ -640,6 +646,22 @@ const NO_PAYLOAD_ROWS: PayloadRowsToSend = {
   rowIndices: [],
   rows: [],
 };
+
+/**
+ * Starts reading the partner's payload, for a responder to call before it
+ * prepares its own, so the partner's parts are read as they arrive rather
+ * than held in the inbound queue (docs/spec/TRANSPORT_BOUNDS.md, The
+ * inbound queue). Pass the result to {@link exchangePayloads}; a
+ * rejection is reported where that call awaits it.
+ */
+export function startPayloadReceive(
+  conn: MessageConnection,
+  maxPartnerRows: number,
+): Promise<PartnerPayload> {
+  const receive = receivePayload(conn, maxPartnerRows);
+  void receive.catch(() => {});
+  return receive;
+}
 
 // Receives the partner's payload parts, each read as it arrives.
 async function receivePayload(

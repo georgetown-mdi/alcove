@@ -1074,6 +1074,30 @@ export async function linkViaPSI(
   // stops at a yield once the connection has ended.
   const pacer = new EventLoopPacer(connectionEndReader(conn));
 
+  // An entry names positions of this party's round, at most as many as one of
+  // the partner's records may own. The partner states one entry per record it
+  // accepted, so a list declaring more entries than its declared record count
+  // is refused at its first part.
+  let mappedEntryBytes = 0;
+  for (let j = 0; j < data.length; ++j)
+    mappedEntryBytes = Math.max(
+      mappedEntryBytes,
+      mappedElementEntryBytes(keyWidthBound(bounds, j)),
+    );
+  const receiveMappedElements = () =>
+    receiveWordList(
+      conn,
+      participant.id,
+      "mapped-element list",
+      { entries: partnerRecordCount, entryBytes: mappedEntryBytes },
+      [MAPPED_ELEMENT_LAYOUT],
+    );
+  // The starter sends its list once it has resolved the last round, without
+  // waiting, so the joiner starts reading it as that round's frames end,
+  // before resolving the round itself, and reads its parts as they arrive.
+  let partnerMappedElements:
+    ReturnType<typeof receiveMappedElements> | undefined;
+
   for (let j = 0; j < data.length; ++j) {
     setStage(`stage ${j + 1} / ${data.length}`);
     const unidentifiedIndices =
@@ -1130,6 +1154,10 @@ export async function linkViaPSI(
       data_j,
       resolvesCandidateSets ? round : undefined,
     );
+    if (!sendFirst && j === data.length - 1) {
+      partnerMappedElements = receiveMappedElements();
+      void partnerMappedElements.catch(() => {});
+    }
     if (!resolvesCandidateSets) {
       // With the grouping off the wire each party derives the partition an
       // absent grouping states -- one owner per matched position -- from its
@@ -1404,30 +1432,13 @@ export async function linkViaPSI(
     `${participant.id}: sending match map indexed by round, receiving ` +
       "partner's",
   );
-  // An entry names positions of this party's round, at most as many as one of
-  // the partner's records may own.
-  let mappedEntryBytes = 0;
-  for (let j = 0; j < candidatesByIter.length; ++j)
-    mappedEntryBytes = Math.max(
-      mappedEntryBytes,
-      mappedElementEntryBytes(keyWidthBound(bounds, j)),
-    );
-  // The partner states one entry per record it accepted, so a list declaring
-  // more entries than its declared record count is refused at its first part.
   const theirMappedElements = await exchangeMappedElements(
     participant.id,
     conn,
     log,
     sendFirst,
     mappedElementSource(identifiedIndexIterationMap),
-    () =>
-      receiveWordList(
-        conn,
-        participant.id,
-        "mapped-element list",
-        { entries: partnerRecordCount, entryBytes: mappedEntryBytes },
-        [MAPPED_ELEMENT_LAYOUT],
-      ),
+    () => partnerMappedElements ?? receiveMappedElements(),
   );
 
   // Translate the partner's list of our records into our own rows, checking
