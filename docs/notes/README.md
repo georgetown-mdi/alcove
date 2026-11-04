@@ -54,6 +54,7 @@ stands, from a direction still open to a decision taken and built.
 | [portable-configuration-readers.md](portable-configuration-readers.md) | Rule decided and specified, the unread-key refusal built; the audit of each reader and the two gaps it leaves open. |
 | [prebuild-provenance.md](prebuild-provenance.md) | Decided, built, and armed against a fork that attests. |
 | [psi-c-count-only.md](psi-c-count-only.md) | Directed by the maintainer's rulings; built over every agreed key. Missing-field conditions, `single-pass` and candidate sets are admitted; a split in a party's own cleaning stays refused. |
+| [psi-run-to-run-determinism.md](psi-run-to-run-determinism.md) | Examined and measured; nothing decided or built. |
 | [rebase-reattestation.md](rebase-reattestation.md) | Decided on the maintainer's ruling and built; the fourth mechanical re-attestation path and the limits it accepts. |
 | [receipt-run-binding.md](receipt-run-binding.md) | Resolved - built. |
 | [receipt-signing-fips-boundary.md](receipt-signing-fips-boundary.md) | Decided. |
