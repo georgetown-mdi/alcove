@@ -2139,6 +2139,23 @@ describe("diffLinkageTerms", () => {
     expect(warnings[0]).toContain("date");
   });
 
+  test("the retired version is neither a conflict nor a warning", () => {
+    const existing = cloneTerms(getDefaultLinkageTerms("Org"));
+    for (const incoming of [
+      { ...existing, version: "1.0.0" },
+      { ...existing, version: "2.0.0" },
+    ]) {
+      expect(diffLinkageTerms(existing, incoming)).toEqual({
+        conflicts: [],
+        warnings: [],
+      });
+      expect(diffLinkageTerms(incoming, existing)).toEqual({
+        conflicts: [],
+        warnings: [],
+      });
+    }
+  });
+
   test("an algorithm mismatch is a conflict naming the field", () => {
     const existing = cloneTerms(getDefaultLinkageTerms("Org"));
     const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
@@ -2577,8 +2594,6 @@ function maximallyConflictingTerms(): {
   const existing = cloneTerms(getDefaultLinkageTerms("Org"));
   const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
 
-  existing.version = "1.0.0";
-  incoming.version = "2.0.0";
   existing.algorithm = "psi";
   incoming.algorithm = "psi-c";
   existing.linkageStrategy = "cascade";
@@ -2650,7 +2665,6 @@ test("the reconcile refusal keeps its recovery step and names every field, at ev
   const { conflicts } = diffLinkageTerms(existing, incoming);
   const all = [...conflicts, ...connectionConflicts()];
   expect(all.map((d) => d.field)).toEqual([
-    "version",
     "algorithm",
     "linkage_strategy",
     "linkage_fields",
@@ -2759,8 +2773,6 @@ function ordinarilyConflictingTerms(): {
   const existing = cloneTerms(getDefaultLinkageTerms("Org"));
   const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
 
-  existing.version = "1.0.0";
-  incoming.version = "2.0.0";
   existing.algorithm = "psi";
   incoming.algorithm = "psi-c";
   existing.linkageStrategy = "cascade";
@@ -2773,7 +2785,7 @@ function ordinarilyConflictingTerms(): {
   incoming.linkageKeys = [{ name: "LN", elements: [{ field: "last_name" }] }];
 
   existing.legalAgreement = {
-    reference: "MOU-2025-0042",
+    reference: "Data Sharing MOU 2025-0042",
     purpose: "Audit and evaluation of the State tutoring program",
     expirationDate: "2030-01-01",
   };
@@ -2789,14 +2801,13 @@ function ordinarilyConflictingTerms(): {
   return { existing, incoming };
 }
 
-test("seven ordinary disagreements each have both of their values", () => {
+test("six ordinary disagreements each have both of their values", () => {
   // The count of disagreeing fields is not what decides whether their values
-  // fit: these seven ask for so little between them that every one of them is
+  // fit: these six ask for so little between them that every one of them is
   // shown whole, and the block says nothing about withholding anything.
   const { existing, incoming } = ordinarilyConflictingTerms();
   const { conflicts } = diffLinkageTerms(existing, incoming);
   expect(conflicts.map((d) => d.field)).toEqual([
-    "version",
     "algorithm",
     "linkage_strategy",
     "linkage_fields",
@@ -2820,14 +2831,14 @@ test("seven ordinary disagreements each have both of their values", () => {
     expect(rendered).toContain(d.incoming);
   }
   expect(rendered).toContain(
-    'legal_agreement: existing "MOU-2025-0042" (expires 2030-01-01)',
+    'legal_agreement: existing "Data Sharing MOU 2025-0042" (expires 2030-01-01)',
   );
 
   // What an equal split of the block's room would have handed every value slot,
   // whatever it needed. Every value above renders whole, so what the block costs
   // beyond them is the first-party skeleton their lines are named by, and the
-  // rest of the room over the fourteen slots is that split's share. The widest
-  // side asks for more than it, so a block that shows all fourteen whole is
+  // rest of the room over the twelve slots is that split's share. The widest
+  // side asks for more than it, so a block that shows all twelve whole is
   // one that shared the room out by need: dividing it by the count cuts that
   // side -- and drops the share under what shows a value's own bytes at all,
   // which is what took the values off every line here.
@@ -2866,9 +2877,9 @@ test("a schema-maximal clause beside ordinary lines never renders as bare marker
     expirationDate: "2030-01-01",
   };
   const { conflicts } = diffLinkageTerms(existing, incoming);
-  expect(conflicts).toHaveLength(7);
+  expect(conflicts).toHaveLength(6);
 
-  for (const count of [6, 7]) {
+  for (const count of [5, 6]) {
     const rendered = renderedAcceptReconcileError(
       conflicts.slice(0, count),
       ONLINE_RECONCILE_SOURCES,
@@ -5214,8 +5225,6 @@ test("no token of the reconcile refusal's copy is bare-shaped", () => {
   // is copy a bare value could impersonate.
   const existing = cloneTerms(getDefaultLinkageTerms("Org"));
   const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
-  existing.version = "1.0.0";
-  incoming.version = "2.0.0";
   incoming.legalAgreement = {
     reference: "MOU-2025-0042",
     purpose: "Audit and evaluation of the State tutoring program",
@@ -5223,11 +5232,7 @@ test("no token of the reconcile refusal's copy is bare-shaped", () => {
   };
   incoming.payload = { send: [{ name: "note" }], receive: [{ name: "memo" }] };
   const { conflicts } = diffLinkageTerms(existing, incoming);
-  expect(conflicts.map((d) => d.field)).toEqual([
-    "version",
-    "legal_agreement",
-    "payload",
-  ]);
+  expect(conflicts.map((d) => d.field)).toEqual(["legal_agreement", "payload"]);
 
   // Both sides redacting to the same text, which is what puts the withheld line
   // under the block.
@@ -5285,16 +5290,7 @@ test("no token of the reconcile refusal's copy is bare-shaped", () => {
     ]),
   );
 
-  // The values rendered undelimited: every version this drives, the schema shape
-  // the bare form exists for.
-  const bareValues = new Set([
-    existing.version,
-    incoming.version,
-    worstCase.existing.version,
-    worstCase.incoming.version,
-  ]);
-  for (const token of tokens)
-    if (!bareValues.has(token)) expect(rendersBare(token), token).toBe(false);
+  for (const token of tokens) expect(rendersBare(token), token).toBe(false);
 });
 
 // --- the operator's own path in a refusal ------------------------------------

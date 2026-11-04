@@ -255,7 +255,6 @@ type TermsDifferenceKind = ReturnType<
 const TERM_OF_DIFFERENCE: Readonly<
   Record<TermsDifferenceKind, keyof PartnerBoundTerms>
 > = {
-  version: "version",
   algorithm: "algorithm",
   "linkage-strategy": "linkageStrategy",
   output: "output",

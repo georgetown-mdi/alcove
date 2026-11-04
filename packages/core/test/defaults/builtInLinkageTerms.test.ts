@@ -3,6 +3,12 @@ import { expect, test, describe } from "vitest";
 import { getDefaultLinkageTerms } from "../../src/defaults/builtInLinkageTerms";
 import type { ColumnMetadata } from "../../src/config/metadata";
 
+test("the terms every writer starts from state no retired version", () => {
+  expect(Object.hasOwn(getDefaultLinkageTerms("Agency A"), "version")).toBe(
+    false,
+  );
+});
+
 // --- getDefaultLinkageTerms: role: ignored -----------------------------------
 
 describe("getDefaultLinkageTerms — ignored columns", () => {

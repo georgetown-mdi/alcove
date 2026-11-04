@@ -1447,12 +1447,6 @@ const RESPONDER_REFUSALS: ReadonlyArray<{
   responder: string;
 }> = [
   {
-    kind: "version",
-    responderTerms: { ...termsB, version: "2.0.0" },
-    initiator: "version mismatch: yours is 1.0.0, your partner's is 2.0.0",
-    responder: "version mismatch: yours is 2.0.0, your partner's is 1.0.0",
-  },
-  {
     kind: "algorithm",
     responderTerms: { ...termsB, algorithm: "psi-c" },
     initiator: `algorithm mismatch: yours is "psi", your partner's is "psi-c"`,

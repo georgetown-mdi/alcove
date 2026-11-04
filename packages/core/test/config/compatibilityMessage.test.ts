@@ -603,28 +603,6 @@ const SWEPT: readonly SweptDiagnostic[] = [
       ),
   },
   {
-    id: "version mismatch, local side",
-    benign: "2.0.0",
-    compose: (value) =>
-      errorStartingWith(
-        { ...base, version: value },
-        base,
-        "version mismatch",
-        "version mismatch, local side",
-      ),
-  },
-  {
-    id: "version mismatch, partner side",
-    benign: "2.0.0",
-    compose: (value) =>
-      errorStartingWith(
-        base,
-        { ...base, version: value },
-        "version mismatch",
-        "version mismatch, partner side",
-      ),
-  },
-  {
     id: "algorithm mismatch, local side",
     benign: "psi-c",
     compose: (value) =>

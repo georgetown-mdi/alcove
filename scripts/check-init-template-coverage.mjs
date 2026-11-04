@@ -83,6 +83,10 @@ export const ALLOWED_OMISSIONS = new Map([
     "A remedy for a retain-mode run that ignored a waiting partner's hello; the peer timeout that calls for it names the setting.",
   ],
   [
+    "linkage_terms.version",
+    "Retired: read and kept in older terms, never compared, and not written.",
+  ],
+  [
     "linkage_terms.linkage_keys.elements.name",
     "A key-element option the built-in keys the template writes do not use.",
   ],

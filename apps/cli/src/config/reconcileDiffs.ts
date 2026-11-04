@@ -434,7 +434,7 @@ function renderStructural(
  * This is an equality check ("do these describe the same exchange
  * agreement?"), not the cross-party {@link validateCompatibility} (which
  * checks that two different parties' terms work together). The
- * agreement-defining fields -- version, algorithm, linkage strategy, linkage
+ * agreement-defining fields -- algorithm, linkage strategy, linkage
  * fields and keys, legal agreement, and payload -- must match; per-party
  * fields (`identity`, `output`, `deduplicate`) are excluded, since each party
  * legitimately holds its own value. `date` is soft, matching
@@ -493,16 +493,10 @@ export function diffLinkageTerms(
     return ca !== cb;
   };
 
-  // version, algorithm, and linkageStrategy compare by string equality, not
-  // the canonical encoder below: all three are schema-constrained scalars
-  // (semver, and two fixed enums), so each one's encoding is the string
-  // itself -- the same byte-exact equality validateCompatibility uses.
-  if (existing.version !== incoming.version)
-    add(
-      "version",
-      reconcileDiffBareValue(existing.version),
-      reconcileDiffBareValue(incoming.version),
-    );
+  // algorithm and linkageStrategy compare by string equality, not the
+  // canonical encoder below: both are fixed enums, so each one's encoding is
+  // the string itself -- the same byte-exact equality validateCompatibility
+  // uses.
   if (existing.algorithm !== incoming.algorithm)
     add(
       "algorithm",

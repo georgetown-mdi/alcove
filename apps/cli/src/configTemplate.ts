@@ -206,10 +206,6 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       ],
     },
     {
-      path: ["linkage_terms", "version"],
-      lines: ["Linkage-terms schema version."],
-    },
-    {
       path: ["linkage_terms", "identity"],
       lines: [
         "Who holds these terms (name, organization, contact). Self-asserted.",

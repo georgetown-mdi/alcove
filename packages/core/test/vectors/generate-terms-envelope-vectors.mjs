@@ -33,10 +33,8 @@
 // top and named per frame by party, so the terms document appears once rather than
 // once per frame. Nothing is lost: the consuming suite rebuilds each full frame
 // from `fields`, `envelope`, and `carriesLinkageTerms` and compares that against
-// the captured send. The terms document's own content is versioned by the
-// operator-authored `linkage_terms.version`, a marker distinct from
-// PROTOCOL_VERSION (docs/spec/PROTOCOL.md, Protocol-version reconcile at the terms
-// exchange), so this file pins the ENVELOPE around it.
+// the captured send. The terms are fixture input, stated as a writer writes
+// them, and this file pins the ENVELOPE around them.
 
 import { readFileSync } from "node:fs";
 
@@ -53,7 +51,6 @@ import {
 // the 1 a single-key exchange would advertise. Identity is the only field that
 // differs, which validateCompatibility permits.
 const partyATerms = {
-  version: "1.0.0",
   identity: "Party A",
   date: "2025-01-01",
   algorithm: "psi",
@@ -418,9 +415,8 @@ const vectors = {
     "`linkageTerms` is lifted out of each frame into the `linkageTerms` section " +
     "below and named per frame by party; the consuming suite rebuilds the full " +
     "frame from `fields`, `envelope`, and `carriesLinkageTerms`. The terms " +
-    "document's own content is versioned by the operator-authored " +
-    "`linkage_terms.version` rather than by PROTOCOL_VERSION, so what this file " +
-    "pins is the envelope around it. `envelopeFields` is every field each slot " +
+    "are fixture input, and what this file pins is the envelope around " +
+    "them. `envelopeFields` is every field each slot " +
     "ADMITS, read off the schemas; the frames below are what each slot EMITS, " +
     "and the consuming suite holds their union to it so a field added to a " +
     "schema cannot ride the wire with no frame pinning it. Replayed by " +

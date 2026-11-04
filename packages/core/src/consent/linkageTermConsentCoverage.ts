@@ -476,9 +476,8 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
   version: {
     classification: "excluded",
     reason:
-      "A schema-compatibility gate. A version the acceptor cannot migrate to " +
-      "aborts the exchange before any data moves, and it selects nothing about " +
-      "what is matched or what is disclosed.",
+      "A retired field that older terms may state. It is never compared, and " +
+      "it selects nothing about what is matched or what is disclosed.",
   },
   identity: {
     classification: "consent-relevant",

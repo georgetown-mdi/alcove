@@ -150,8 +150,11 @@ refuses by name every file it cannot.
 
 ### The format version
 
-The top-level `format_version` is a positive integer, distinct from
-`linkage_terms.version`. It is optional in a hand-authored file, where its
+The top-level `format_version` is a positive integer. It is distinct from
+`linkage_terms.version`, a retired optional field that older terms may state,
+kept as written and never compared
+([`linkage_terms.version`](../EXCHANGE_REFERENCE.md#linkage_termsversion)).
+It is optional in a hand-authored file, where its
 absence means 1, and every file Alcove writes states it. This build reads version
 1 (`EXCHANGE_FILE_VERSION_POLICY`, `packages/core/src/config/exchangeSpec.ts`).
 

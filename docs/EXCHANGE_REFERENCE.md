@@ -102,10 +102,10 @@ The built-in keys' validation, the criticisms recorded against them, and what a 
 ### `linkage_terms.version`
 
 *Type:* string  
-*Required:* yes  
-*Consistency:* mandatory
+*Required:* no  
+*Consistency:* none
 
-A semver string identifying the schema of the linkage aggreement. Two versions are incompatible if no migration path exists from the lower version to the higher.
+Retired. Alcove does not write it and never compares it, so two parties' terms agree whatever each states here. Older terms may state it, such as `version: 1.0.0`. Alcove reads them and keeps the value as written. Leave it out of new terms.
 
 ### `linkage_terms.identity`
 
@@ -2377,7 +2377,7 @@ Each field of the example, and where its reference entry is:
 | `connection.server` | The peer coordination server the invitation named, by `host`, `port`, and `path`. | [`connection.server`](#connectionserver) |
 | `connection.role` | `inviter`: this party's side, written by the export. The partner's configuration has `acceptor`. | [`connection.role`](#connectionrole) |
 | `connection.options` (commented out) | The two timeouts at their WebRTC defaults, for you to uncomment and change. | [`connection.options`](#connectionoptions) |
-| `linkage_terms.version` | The version of the terms schema. | [`linkage_terms.version`](#linkage_termsversion) |
+| `linkage_terms.version` | A retired field the build above wrote. Alcove keeps it as written and does not compare it. | [`linkage_terms.version`](#linkage_termsversion) |
 | `linkage_terms.identity` | This party's self-asserted name, shown to the partner and written into both exchange records. | [`linkage_terms.identity`](#linkage_termsidentity) |
 | `linkage_terms.date` | The day the terms were made. A different date on the partner's side only warns. | [`linkage_terms.date`](#linkage_termsdate) |
 | `linkage_terms.algorithm` | `psi`: the matched records are revealed, not only how many there are. | [`linkage_terms.algorithm`](#linkage_termsalgorithm) |
