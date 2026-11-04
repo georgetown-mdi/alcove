@@ -24,8 +24,19 @@
 - The decode-layer chokepoint is the sharper of the set - it forestalls an uncatchable process crash, an availability loss the others do not reach, rather than a recoverable burn - but rests on the same reasoning. -> The decode-layer chokepoint refuses a body before `JSON.parse` can reach an engine limit that no `catch` intercepts, so a partner's JSON ends in a clean refusal.
 - The crash kills only a session its instigator already controls - the counterparty it is party to, or the transport a hostile server admin already mediates and can disrupt at will - so it too is defense-in-depth against a self-limited adversary, not a live vulnerability. -> The memory a partner's message holds once read is bounded on every path, each bound checked before the message is parsed or any array is made from it:
 - - -> **JSON messages** are each held to the byte cap of their type, and the table above states the most a body at the cap was measured to hold; only small structured messages travel as JSON.
-- - -> **The matched-record lists and the payload rows** travel as binary parts, each checked against its own length before any array is made from it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)); a received payload part was measured to hold 1.03 to 1.50 times its bytes (there, "What a received payload holds").
+- - -> **The matched-record lists and the payload rows** travel as binary parts, each checked against its own length before any array is made from it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)); a received payload part was measured to hold 1.03 to 1.50 times its bytes, a grouping or a mapped-element list 1.00 times, and a round's index list 2.95 times (there, "What a received payload holds" and "What a received word list holds").
 - - -> **Frames delivered but not yet received** are held to a byte bound: on file-sync the read-ahead, at most `MAX_FRAME_SIZE_BYTES` of message files, and on every transport the inbound queue, at most 1,073,741,824 bytes of binary frames ([TRANSPORT_BOUNDS.md, WebRTC data-channel inbound bound](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound), "The inbound queue").
-- - -> Two limits remain, stated rather than closed.
-- - -> A word-list part has no measured multiple of its own: what bounds it is that no array made from a part is longer than the part's own words.
+- - -> One limit remains, stated rather than closed.
 - - -> A WebRTC frame that unpacks to a structure rather than to binary holds a stated multiple of its wire bytes, about 208 times, rather than a figure near its length ([TRANSPORT_BOUNDS.md, WebRTC data-channel inbound bound](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound), "The envelope these rules leave").
+- - -> **What a received word list holds.**
+- - -> A receiver reads a word-list part's words into arrays of 32-bit words: one for each fixed column, and for a ragged list one of value counts and one of values (`readWordListBody`, `packages/core/src/psi/uint32ListParts.ts`).
+- - -> A round's index list is then copied into an array of numbers (`receiveRoundIndexList`, `packages/core/src/psi/roundTableParts.ts`).
+- - -> Measured on 2026-11-04 in a 10-core aarch64 Linux container with 23 GB of memory, Node 26.13, `--expose-gc`: one part of each list, sent and read by that list's own send and receive functions over an in-memory connection.
+- - -> The figure is the memory the received list holds (`heapUsed` plus `arrayBuffers` after two collections, the part and the sender's list released), divided by the part's bytes.
+- - -> List | Entries, part bytes, held
+- - -> a round's index list | 16,777,216, 67,108,888, 2.95 times the part
+- - -> a grouping's run lengths | 16,777,216, 67,108,888, 1.00 times the part
+- - -> a grouping's owner lists, one owner each | 16,777,216, 134,217,752, 1.00 times the part
+- - -> a mapped-element list, one-position entries | 14,000,000, 168,000,024, 1.00 times the part
+- - -> a mapped-element list, one-position entries, a whole message file | 44,739,238, 536,870,880, 1.00 times the part
+- - -> The index list holds about 11.8 bytes a position against the part's 4, the array of numbers it is copied into.

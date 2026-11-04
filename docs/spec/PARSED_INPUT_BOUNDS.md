@@ -165,11 +165,10 @@ The decode-layer chokepoint refuses a body before `JSON.parse` can reach an engi
 The memory a partner's message holds once read is bounded on every path, each bound checked before the message is parsed or any array is made from it:
 
 - **JSON messages** are each held to the byte cap of their type, and the table above states the most a body at the cap was measured to hold; only small structured messages travel as JSON.
-- **The matched-record lists and the payload rows** travel as binary parts, each checked against its own length before any array is made from it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)); a received payload part was measured to hold 1.03 to 1.50 times its bytes (there, "What a received payload holds").
+- **The matched-record lists and the payload rows** travel as binary parts, each checked against its own length before any array is made from it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)); a received payload part was measured to hold 1.03 to 1.50 times its bytes, a grouping or a mapped-element list 1.00 times, and a round's index list 2.95 times (there, "What a received payload holds" and "What a received word list holds").
 - **Frames delivered but not yet received** are held to a byte bound: on file-sync the read-ahead, at most `MAX_FRAME_SIZE_BYTES` of message files, and on every transport the inbound queue, at most 1,073,741,824 bytes of binary frames ([TRANSPORT_BOUNDS.md, WebRTC data-channel inbound bound](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound), "The inbound queue").
 
-Two limits remain, stated rather than closed.
-A word-list part has no measured multiple of its own: what bounds it is that no array made from a part is longer than the part's own words.
+One limit remains, stated rather than closed.
 A WebRTC frame that unpacks to a structure rather than to binary holds a stated multiple of its wire bytes, about 208 times, rather than a figure near its length ([TRANSPORT_BOUNDS.md, WebRTC data-channel inbound bound](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound), "The envelope these rules leave").
 
 ## CSV-read single-line byte ceiling
