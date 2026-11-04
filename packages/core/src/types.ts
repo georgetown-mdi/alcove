@@ -12,30 +12,38 @@ import { z } from "zod";
 export type AssociationTable = [Array<number>, Array<number>];
 
 /**
- * Listener signature per Connection event. `error` is an asynchronous
- * transport failure; synchronous failures (send, synchronize) throw.
+ * Listener signature per Connection event. `data` passes the length the
+ * transport read the message from (a message file's bytes), which the inbound
+ * queue charges; the queue refuses a message without one. `error` is an
+ * asynchronous transport failure; synchronous failures (send, synchronize)
+ * throw.
  */
-type ConnectionEventHandler<E extends "data" | "error"> = E extends "data"
-  ? (data: unknown) => void
-  : (err: unknown) => void;
+type DataHandler = (data: unknown, receivedBytes?: number) => void;
+type ErrorHandler = (err: unknown) => void;
 
 export type Connection = {
-  on: <E extends "data" | "error">(
-    event: E,
-    fn: ConnectionEventHandler<E>,
-    context?: undefined,
-  ) => Connection;
-  once: <E extends "data" | "error">(
-    event: E,
-    fn: ConnectionEventHandler<E>,
-    context?: undefined,
-  ) => Connection;
-  removeListener: <E extends "data" | "error">(
-    event: E,
-    fn?: ConnectionEventHandler<E>,
-    context?: undefined,
-    once?: boolean,
-  ) => Connection;
+  on: {
+    (event: "data", fn: DataHandler, context?: undefined): Connection;
+    (event: "error", fn: ErrorHandler, context?: undefined): Connection;
+  };
+  once: {
+    (event: "data", fn: DataHandler, context?: undefined): Connection;
+    (event: "error", fn: ErrorHandler, context?: undefined): Connection;
+  };
+  removeListener: {
+    (
+      event: "data",
+      fn?: DataHandler,
+      context?: undefined,
+      once?: boolean,
+    ): Connection;
+    (
+      event: "error",
+      fn?: ErrorHandler,
+      context?: undefined,
+      once?: boolean,
+    ): Connection;
+  };
   // Resolving means only that the transport accepted the message locally, not
   // that the peer received it. The final frame survives teardown through the
   // `close` contract below. See

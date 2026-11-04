@@ -144,6 +144,7 @@ export { MAX_FILE_NAME_BYTES } from "./connection/fileSyncRendezvous";
 // console matches a run's stderr tail against it.
 export { TEARDOWN_LEFTOVER_FILES_CLAUSE } from "./transportTeardownNotice";
 export {
+  BROWSER_QUEUE_BYTE_CAPACITY,
   QueuedMessageConnection,
   fromEventConnection,
 } from "./connection/messageConnection";

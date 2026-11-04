@@ -1,9 +1,17 @@
 import { default as EventEmitter } from "eventemitter3";
 
 type Events = {
-  data: (data: unknown) => void;
+  data: (data: unknown, receivedBytes?: number) => void;
   error: (err: unknown) => void;
 };
+
+// The length an in-memory message is delivered with: a binary message's, and
+// nothing for any other.
+function messageBytes(data: unknown): number {
+  return ArrayBuffer.isView(data) || data instanceof ArrayBuffer
+    ? data.byteLength
+    : 0;
+}
 
 export class PassthroughConnection extends EventEmitter<Events, never> {
   other: PassthroughConnection | undefined;
@@ -11,7 +19,7 @@ export class PassthroughConnection extends EventEmitter<Events, never> {
 
   send(data: unknown) {
     setImmediate(() => {
-      this.other!.emit("data", data);
+      this.other!.emit("data", data, messageBytes(data));
     });
   }
 
@@ -31,7 +39,7 @@ export class PassthroughConnection extends EventEmitter<Events, never> {
   // as the production transport.
   emit<E extends keyof Events>(
     event: E,
-    ...args: Parameters<Events[E]>
+    ...args: EventEmitter.EventArgs<Events, E>
   ): boolean {
     const hadListeners = super.emit(event, ...args);
     if (event === "error" && !hadListeners) this.bufferedError = args[0];

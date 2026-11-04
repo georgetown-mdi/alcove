@@ -448,6 +448,36 @@ test("an over-bound datagram fails the connection closed", async () => {
   expect(refusal?.message).toContain("64-byte size limit");
 });
 
+test.each([
+  ["a structured frame", () => ({ part: new Uint8Array(400) })],
+  ["a structured frame holding a string", () => ({ text: "a".repeat(400) })],
+  ["a chunked structured frame", () => ({ part: new Uint8Array(40_000) })],
+  ["a binary frame", () => new Uint8Array(400)],
+])(
+  "%s is charged the length it arrived at against the queue's byte bound",
+  async (_kind, frame) => {
+    const { channel, session } = harness();
+    const encoder = new PeerJsFrameEncoder();
+    const frameBytes = packValue(frame()).byteLength;
+    const connection = webRtcMessageConnection(session, {
+      inboundQueueByteCapacity: 2 * frameBytes,
+    });
+    for (let sent = 0; sent < 3; sent++)
+      for (const datagram of encoder.encode(frame())) channel.deliver(datagram);
+
+    await connection.receive();
+    await connection.receive();
+    const refusal = await connection.receive().then(
+      () => undefined,
+      (err: unknown) => err as ConnectionError,
+    );
+    expect(refusal?.kind).toBe("protocol");
+    expect(refusal?.message).toContain(
+      `over the ${2 * frameBytes}-byte bound on unconsumed messages`,
+    );
+  },
+);
+
 test("a partner that vanishes fails the connection rather than stranding it", async () => {
   // werift raises no channel `close` when the remote peer connection is torn
   // down, so without this hook the exchange would sit on its hour-scale

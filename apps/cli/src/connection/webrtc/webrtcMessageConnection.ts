@@ -136,6 +136,8 @@ export interface WebRtcMessageConnectionOptions {
    * receive path (`outboundWebRtcFrameBound`), which a PSI round sizes the parts of its
    * sets to. */
   inboundFrames?: () => BoundedInboundFrames;
+  /** The inbound queue's byte capacity; tests only, to lower it. */
+  inboundQueueByteCapacity?: number;
 }
 
 /**
@@ -300,7 +302,7 @@ export function webRtcMessageConnection(
           );
           return;
         }
-        controls.deliver(outcome.value);
+        controls.deliver(outcome.value, outcome.receivedBytes);
       };
       channel.onclose = () =>
         controls.finish(
@@ -397,6 +399,7 @@ export function webRtcMessageConnection(
       };
     },
     {
+      byteCapacity: options?.inboundQueueByteCapacity,
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
       inactivityHint: inactivityTimeoutGuidance,

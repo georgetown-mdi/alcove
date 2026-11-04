@@ -137,9 +137,13 @@ export interface MessageConnection {
 export interface TransportControls {
   /**
    * Enqueue one inbound message (or hand it to a parked
-   * {@link MessageConnection.receive}).
+   * {@link MessageConnection.receive}). `receivedBytes` is the length the
+   * transport read the message from -- the frame's wire bytes, or the message
+   * file's -- which the queue charges against its byte capacity whatever the
+   * message decoded to. A value that is not a non-negative integer fails the
+   * connection.
    */
-  deliver: (message: unknown) => void;
+  deliver: (message: unknown, receivedBytes: number) => void;
   /**
    * Latch an abnormal terminal error and tear the transport down; idempotent
    * after the first call (a later {@link fail}/{@link finish} no-ops). A frame
@@ -296,21 +300,51 @@ const DEFAULT_CAPACITY = 1024;
 export const MAX_PSI_SET_WEBRTC_FRAMES = 3;
 
 /**
- * The most bytes of binary frames the inbound queue holds unconsumed: the
- * parts of the largest PSI set and the one frame a sender sends after a set
- * without waiting for a reply, the index table of a count-only round, each at
- * most {@link MAX_WEBRTC_FRAME_BYTES}. A frame arriving at an empty queue is
- * queued whatever its size, so no frame the per-frame bound admits is refused
- * here. See docs/spec/TRANSPORT_BOUNDS.md ("WebRTC data-channel inbound
- * bound").
+ * The frames the largest PSI set a browser party admits takes on a WebRTC
+ * connection: `psiSetByteBound` at `BROWSER_PSI_SET_MAX_ELEMENTS`, the receive
+ * ceiling it states. messageConnection.test.ts holds it as it holds
+ * {@link MAX_PSI_SET_WEBRTC_FRAMES}.
  */
-export const DEFAULT_QUEUE_BYTE_CAPACITY =
-  (MAX_PSI_SET_WEBRTC_FRAMES + 1) * MAX_WEBRTC_FRAME_BYTES;
+export const BROWSER_PSI_SET_WEBRTC_FRAMES = 2;
 
-// The bytes a queued message counts against the byte capacity: a binary
-// frame's length. A parsed structure has no length to read and counts only
-// against the message count.
-function queuedMessageBytes(message: unknown): number {
+/**
+ * The most a partner sends with no receive between: under count-only, round
+ * r's response (its parts, at most this party's own request's) then round
+ * r+1's setup in parts and its index table, one frame, each frame at most
+ * `frameBytes`. `setupFrames` is the parts of the largest setup this party
+ * admits.
+ */
+export function countOnlyRunAheadBytes(
+  setupFrames: number,
+  frameBytes: number = MAX_WEBRTC_FRAME_BYTES,
+): number {
+  return (MAX_PSI_SET_WEBRTC_FRAMES + setupFrames + 1) * frameBytes;
+}
+
+/**
+ * The most bytes of frames the inbound queue holds unconsumed, each charged
+ * the length it was received at: the longest bounded run of frames a partner
+ * sends without waiting for a reply, the count-only crossing (round r's
+ * response, then round r+1's setup and index table), each frame at most
+ * {@link MAX_WEBRTC_FRAME_BYTES}. A frame arriving at an empty queue or at a
+ * waiting receive is admitted whatever its size. See docs/spec/TRANSPORT_BOUNDS.md
+ * ("WebRTC data-channel inbound bound").
+ */
+export const DEFAULT_QUEUE_BYTE_CAPACITY = countOnlyRunAheadBytes(
+  MAX_PSI_SET_WEBRTC_FRAMES,
+);
+
+/**
+ * {@link DEFAULT_QUEUE_BYTE_CAPACITY} for a browser party, whose receive
+ * ceiling holds a partner's setup to {@link BROWSER_PSI_SET_WEBRTC_FRAMES}.
+ */
+export const BROWSER_QUEUE_BYTE_CAPACITY = countOnlyRunAheadBytes(
+  BROWSER_PSI_SET_WEBRTC_FRAMES,
+);
+
+// What an in-memory pipe charges a message, which this process sent itself:
+// a binary message's length, and nothing for any other.
+function inMemoryMessageBytes(message: unknown): number {
   if (ArrayBuffer.isView(message) || message instanceof ArrayBuffer)
     return message.byteLength;
   return 0;
@@ -370,7 +404,6 @@ type TerminalState =
  */
 export class QueuedMessageConnection implements MessageConnection {
   private readonly queue: Array<unknown> = [];
-  // The byte count of each queued message, in queue order, and their sum.
   private readonly queueBytes: Array<number> = [];
   private queuedBytes = 0;
   private readonly waiters: Array<Waiter> = [];
@@ -427,7 +460,7 @@ export class QueuedMessageConnection implements MessageConnection {
       this.settleTerminal = resolve;
     });
     this.hooks = connect({
-      deliver: (message) => this.deliver(message),
+      deliver: (message, receivedBytes) => this.deliver(message, receivedBytes),
       fail: (error) => this.fail(error),
       finish: (error) => this.finish(error),
       queuedMessages: () => this.queue.length,
@@ -593,13 +626,25 @@ export class QueuedMessageConnection implements MessageConnection {
   // emit("data", ...) returns, so a synchronous throw here would re-poll the
   // same never-deleted message until inactivity_timeout_ms (docs/spec/FILE_SYNC.md I8).
   // messageConnection.test.ts pins this non-throwing contract.
-  private deliver(message: unknown): void {
+  private deliver(message: unknown, receivedBytes: number): void {
     // Ignore inbound once any terminal state is reached: a `draining` half-close
     // drains exactly what was buffered at close time and accepts nothing new,
     // while `failed`/`closed` accept nothing. PeerJS will not deliver after a
     // close, so for that transport this is defense-in-depth, but it keeps the
     // half-closed semantics crisp.
     if (this.state !== undefined) return;
+    // A transport that hands over a message without the length it read the
+    // message from would leave the message uncharged.
+    if (!Number.isSafeInteger(receivedBytes) || receivedBytes < 0) {
+      this.fail(
+        new ConnectionError(
+          "the transport delivered a message without the length it was " +
+            "received at",
+          "usage",
+        ),
+      );
+      return;
+    }
     const waiter = this.waiters.shift();
     if (waiter) {
       // A message just arrived: the peer is alive, so reset the idle clock,
@@ -619,8 +664,10 @@ export class QueuedMessageConnection implements MessageConnection {
       );
       return;
     }
-    const bytes = queuedMessageBytes(message);
-    if (this.queue.length > 0 && this.queuedBytes + bytes > this.byteCapacity) {
+    if (
+      this.queue.length > 0 &&
+      this.queuedBytes + receivedBytes > this.byteCapacity
+    ) {
       this.fail(
         new ConnectionError(
           `inbound buffer overflow: over the ${this.byteCapacity}-byte bound ` +
@@ -631,8 +678,8 @@ export class QueuedMessageConnection implements MessageConnection {
       return;
     }
     this.queue.push(message);
-    this.queueBytes.push(bytes);
-    this.queuedBytes += bytes;
+    this.queueBytes.push(receivedBytes);
+    this.queuedBytes += receivedBytes;
   }
 
   private fail(error: ConnectionError): void {
@@ -845,7 +892,8 @@ export function fromEventConnection(
 ): MessageConnection {
   return new QueuedMessageConnection(
     (controls) => {
-      const onData = (data: unknown) => controls.deliver(data);
+      const onData = (data: unknown, receivedBytes?: number) =>
+        controls.deliver(data, receivedBytes ?? Number.NaN);
       const onError = (err: unknown) =>
         controls.fail(asConnectionError(err, "transport"));
       conn.on("data", onData);
@@ -985,7 +1033,7 @@ export function createMessagePipe(options?: {
     link.a = controls;
     return {
       send: (data) => {
-        queueMicrotask(() => link.b?.deliver(data));
+        queueMicrotask(() => link.b?.deliver(data, inMemoryMessageBytes(data)));
       },
       close: () => link.b?.fail(peerClosed()),
     };
@@ -995,7 +1043,7 @@ export function createMessagePipe(options?: {
     link.b = controls;
     return {
       send: (data) => {
-        queueMicrotask(() => link.a?.deliver(data));
+        queueMicrotask(() => link.a?.deliver(data, inMemoryMessageBytes(data)));
       },
       close: () => link.a?.fail(peerClosed()),
     };

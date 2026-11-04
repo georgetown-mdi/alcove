@@ -390,7 +390,12 @@ export interface MessageLoopDeps {
   connected: () => boolean;
   abortArmed: () => boolean;
   wait: (ms: number) => Promise<void>;
-  emit: (event: "data" | "error", arg: unknown) => boolean;
+  // `receivedBytes`, on `data`: the bytes of the message file read.
+  emit: (
+    event: "data" | "error",
+    arg: unknown,
+    receivedBytes?: number,
+  ) => boolean;
   writeAck: (dir: string, originalName: string) => Promise<string>;
   verifyPeerAbortMarker: (
     files: Array<FileInfo>,
@@ -1573,7 +1578,7 @@ export class FileSyncMessageLoop {
 
   // Hands the consumer a message read from a file of `fileBytes` bytes.
   private deliver(data: unknown, fileBytes: number): void {
-    this.deps.emit("data", data);
+    this.deps.emit("data", data, fileBytes);
     if (this.queuedMessages !== undefined)
       this.deliveredFileBytes.push(fileBytes);
   }

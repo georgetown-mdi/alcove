@@ -2,7 +2,12 @@ import { describe, expect, test, vi } from "vitest";
 
 import { default as EventEmitter } from "eventemitter3";
 
-import { ConnectionError } from "@alcove/core";
+import {
+  BROWSER_QUEUE_BYTE_CAPACITY,
+  ConnectionError,
+  MAX_WEBRTC_FRAME_BYTES,
+  PeerJsFrameEncoder,
+} from "@alcove/core";
 
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
 
@@ -94,7 +99,7 @@ describe("openPeerMessageConnection", () => {
     const { fake, conn } = makeConn();
     const mc = await openPeerMessageConnection(conn);
 
-    fake.emit("data", { hello: "world" });
+    fake.emit("data", { hello: "world" }, 20);
 
     expect(await mc.receive()).toEqual({ hello: "world" });
   });
@@ -106,7 +111,7 @@ describe("openPeerMessageConnection", () => {
     const { fake, conn } = makeConn();
     const mc = await openPeerMessageConnection(conn, { maxFrameBytes: 8 });
 
-    fake.emit("data", new Uint8Array(9)); // one byte over the cap
+    fake.emit("data", new Uint8Array(9), 14); // one byte over the cap
 
     const err = await mc.receive().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConnectionError);
@@ -119,7 +124,7 @@ describe("openPeerMessageConnection", () => {
     const mc = await openPeerMessageConnection(conn, { maxFrameBytes: 8 });
 
     const atCap = new Uint8Array(8); // exactly at the cap is accepted
-    fake.emit("data", atCap);
+    fake.emit("data", atCap, 13);
 
     expect(await mc.receive()).toBe(atCap);
   });
@@ -131,9 +136,75 @@ describe("openPeerMessageConnection", () => {
     const mc = await openPeerMessageConnection(conn, { maxFrameBytes: 1 });
 
     const obj = { theirIndex: 1, iteration: 0 };
-    fake.emit("data", obj);
+    fake.emit("data", obj, 25);
 
     expect(await mc.receive()).toBe(obj);
+  });
+
+  // Hands one value to the wrap's unpack, as PeerJS's data channel handler
+  // does with each datagram, and returns the datagram's length.
+  function arriveThroughWrap(fake: FakeDataConnection, value: unknown): number {
+    const [datagram] = new PeerJsFrameEncoder().encode(value);
+    fake._handleDataMessage({
+      data: datagram.buffer.slice(
+        datagram.byteOffset,
+        datagram.byteOffset + datagram.byteLength,
+      ),
+    });
+    return datagram.byteLength;
+  }
+
+  test.each([
+    ["a structured frame", () => ({ part: new Uint8Array(400) })],
+    ["a structured frame holding a string", () => ({ text: "a".repeat(400) })],
+    ["a binary frame", () => new Uint8Array(400)],
+  ])(
+    "%s is charged the length it arrived at against the queue's byte bound",
+    async (_kind, frame) => {
+      const { fake, conn } = makeConn();
+      const mc = await openPeerMessageConnection(conn, { byteCapacity: 1_000 });
+
+      const first = arriveThroughWrap(fake, frame());
+      const second = arriveThroughWrap(fake, frame());
+      expect(first + second).toBeLessThanOrEqual(1_000);
+      arriveThroughWrap(fake, frame()); // past the bound, behind two queued
+
+      await mc.receive();
+      await mc.receive();
+      const refusal = await mc.receive().catch((e: unknown) => e);
+      expect(refusal).toBeInstanceOf(ConnectionError);
+      expect((refusal as ConnectionError).kind).toBe("protocol");
+      expect((refusal as ConnectionError).message).toContain(
+        "over the 1000-byte bound on unconsumed messages",
+      );
+    },
+  );
+
+  test("defaults the queue's byte bound to the browser's", async () => {
+    const { fake, conn } = makeConn();
+    const mc = await openPeerMessageConnection(conn);
+    // Below the frame count the browser's bound admits, charged at the
+    // per-frame bound each.
+    const frames = BROWSER_QUEUE_BYTE_CAPACITY / MAX_WEBRTC_FRAME_BYTES;
+    for (let frame = 0; frame < frames; frame++)
+      fake.emit("data", { frame }, MAX_WEBRTC_FRAME_BYTES);
+    fake.emit("data", { frame: frames }, 1);
+    for (let frame = 0; frame < frames; frame++)
+      expect(await mc.receive()).toEqual({ frame });
+    const refusal = await mc.receive().catch((e: unknown) => e);
+    expect((refusal as ConnectionError).kind).toBe("protocol");
+  });
+
+  test("fails a frame that reaches the queue without the length it arrived at", async () => {
+    const { fake, conn } = makeConn();
+    const mc = await openPeerMessageConnection(conn);
+
+    fake.emit("data", { hello: "world" });
+
+    const err = await mc.receive().catch((e: unknown) => e);
+    expect((err as ConnectionError).message).toBe(
+      "the transport delivered a message without the length it was received at",
+    );
   });
 
   test("fails to install the outbound encoder on a connection lacking PeerJS send internals", async () => {
@@ -190,7 +261,7 @@ describe("openPeerMessageConnection", () => {
     const { fake, conn } = makeConn();
     const mc = await openPeerMessageConnection(conn);
 
-    fake.emit("data", "final frame"); // buffered, no waiter
+    fake.emit("data", "final frame", 12); // buffered, no waiter
     fake.emit("close");
 
     expect(await mc.receive()).toBe("final frame");
@@ -256,7 +327,7 @@ describe("openPeerMessageConnection", () => {
     const { fake, conn } = makeConn();
     const mc = await openPeerMessageConnection(conn);
 
-    fake.emit("data", "final frame"); // buffered, no waiter
+    fake.emit("data", "final frame", 12); // buffered, no waiter
     fake.emit("error", new Error("ICE failure")); // abnormal drop behind it
 
     expect(await mc.receive()).toBe("final frame");
@@ -274,7 +345,7 @@ describe("openPeerMessageConnection", () => {
     const { fake, conn } = makeConn();
     const mc = await openPeerMessageConnection(conn);
 
-    fake.emit("data", "final frame");
+    fake.emit("data", "final frame", 12);
     fake.emit("close"); // finish: defers the error, tears down, detaches listeners
     fake.emit("error", new Error("late ICE error")); // no-op: listener detached
 
@@ -326,7 +397,7 @@ describe("openPeerMessageConnection", () => {
     const promise = openPeerMessageConnection(conn);
 
     fake.emit("open");
-    fake.emit("data", "first frame"); // arrives in the same tick as open
+    fake.emit("data", "first frame", 12); // arrives in the same tick as open
 
     const mc = await promise;
     expect(await mc.receive()).toBe("first frame");

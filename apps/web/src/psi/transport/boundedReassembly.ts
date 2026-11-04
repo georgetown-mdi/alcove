@@ -143,15 +143,17 @@ function malformedDatagramError(detail: string): ConnectionError {
 /**
  * Routes one decoded frame as PeerJS's `_handleDataMessage` does after its
  * `unpack`: a truthy `__peerData` is the in-band close sentinel or a chunk
- * envelope, and anything else is delivered to the `data` listeners. A frame
- * that decodes to `null` or `undefined` is delivered too, as the CLI's receive
- * dispatch delivers it (`classifyInboundValue`,
+ * envelope, and anything else is delivered to the `data` listeners with
+ * `receivedBytes`, the length of the frame it was unpacked from, as a second
+ * argument. A frame that decodes to `null` or `undefined` is delivered too, as
+ * the CLI's receive dispatch delivers it (`classifyInboundValue`,
  * packages/core/src/connection/peerjsWire.ts), where PeerJS itself throws.
  */
 function dispatchDecodedFrame(
   conn: DataConnection,
   internals: ChunkedDataConnection,
   decoded: unknown,
+  receivedBytes: number,
 ): void {
   const peerData: unknown =
     typeof decoded === "object" && decoded !== null
@@ -165,7 +167,14 @@ function dispatchDecodedFrame(
     internals._handleChunk(decoded);
     return;
   }
-  conn.emit("data", decoded);
+  // PeerJS types its `data` event with one argument; eventemitter3 passes
+  // every argument to the listeners.
+  (conn.emit as (event: "data", data: unknown, bytes: number) => boolean).call(
+    conn,
+    "data",
+    decoded,
+    receivedBytes,
+  );
 }
 
 /** A terminal refusal, shared by every enforcement point: `predicate` says what
@@ -440,7 +449,7 @@ export function boundChunkReassembly(
       return;
     }
     try {
-      dispatchDecodedFrame(conn, internals, decoded);
+      dispatchDecodedFrame(conn, internals, decoded, bytes.byteLength);
     } catch (error) {
       failClosed(asConnectionError(error, "transport"));
     }

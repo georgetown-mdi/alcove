@@ -207,7 +207,7 @@ const DEFAULT_VERBOSITY = 1;
 const DEFAULT_JOINER_RECOVERY_MS = 1000 * 30;
 
 interface Events {
-  data: (data: unknown) => void;
+  data: (data: unknown, receivedBytes?: number) => void;
   error: (err: unknown) => void;
 }
 
@@ -634,7 +634,10 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       connected: () => this.connected,
       abortArmed: () => this.abortArmed,
       wait: (ms) => this.wait(ms),
-      emit: (event, arg) => this.emit(event, arg),
+      emit: (event, arg, receivedBytes) =>
+        event === "data"
+          ? this.emit(event, arg, receivedBytes)
+          : this.emit(event, arg),
       writeAck: (dir, originalName) => this.writeAck(dir, originalName),
       verifyPeerAbortMarker: (files, path, peerId) =>
         this.abortMarker.verifyPeerMarker(this.client, files, path, peerId),
@@ -645,7 +648,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // most recent one is held for the next receive (takeBufferedError).
   emit<E extends keyof Events>(
     event: E,
-    ...args: Parameters<Events[E]>
+    ...args: EventEmitter.EventArgs<Events, E>
   ): boolean {
     // A delivered peer message confirms a live peer; cleared here, the one
     // funnel every delivery passes through.
