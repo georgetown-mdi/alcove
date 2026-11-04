@@ -6,7 +6,7 @@ import {
   MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
   singlePassReplyByteCap,
-  singlePassRequestByteBound,
+  singlePassRequestByteCap,
 } from "../src/connection/frameSize";
 import { sendAbort, sendLocalFaultAbort } from "../src/protocolSetup";
 import { createMessagePipe } from "../src/connection/messageConnection";
@@ -626,7 +626,12 @@ describe("single-pass over file-sync, at the terms exchange", () => {
         localValueSlots: 5,
         partnerRecordCount: 12,
         irreducibleReplyBytes: 48,
-        inboundFrameBytes: singlePassReplyByteCap(1, sender, receiver),
+        inboundFrameBytes: singlePassReplyByteCap(
+          1,
+          sender,
+          receiver,
+          singlePassRequestByteCap(receiver),
+        ),
         inboundFrameUse: "stream",
       },
     ]);
@@ -649,7 +654,7 @@ describe("single-pass over file-sync, at the terms exchange", () => {
         localValueSlots: 12,
         partnerRecordCount: 5,
         irreducibleReplyBytes: 0,
-        inboundFrameBytes: singlePassRequestByteBound({
+        inboundFrameBytes: singlePassRequestByteCap({
           effectiveKeyCount: 1,
           recordCount: 5,
         }),

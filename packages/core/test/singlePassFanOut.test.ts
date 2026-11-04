@@ -21,6 +21,7 @@ import {
 import {
   MAX_SINGLE_PASS_CELLS,
   singlePassReplyByteCap,
+  singlePassRequestByteCap,
 } from "../src/connection/frameSize";
 import { MAX_LINKAGE_ENTRIES } from "../src/config/linkageTermsSchema";
 import { createMessagePipe } from "../src/connection/messageConnection";
@@ -734,6 +735,7 @@ test("the receiver's read gate includes the ragged table's count-prefix term", a
       1,
       { effectiveKeyCount, recordCount: 2 },
       { effectiveKeyCount, recordCount: 3 },
+      singlePassRequestByteCap({ effectiveKeyCount, recordCount: 3 }),
     ),
   );
   resolveReceive?.(new Uint8Array(4));

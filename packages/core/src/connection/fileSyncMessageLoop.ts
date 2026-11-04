@@ -34,7 +34,7 @@ import {
   errorMessage,
   markStatesItsOwnNextStep,
 } from "../errors";
-import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
+import { MAX_DERIVED_FRAME_BYTES, MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { inboundFrameReadBytes } from "./inboundFrameMemory";
 import { joinFileSyncPath } from "./fileSyncPath";
 import { renameOwnTemp } from "./fileSyncWrite";
@@ -416,10 +416,8 @@ export class FileSyncMessageLoop {
 
   // Per-exchange inbound frame cap, replacing MAX_FRAME_SIZE_BYTES at the poll
   // loop's read gate for the reads it spans (see setInboundFrameCap and
-  // poll()). undefined restores the static cap. Stored as
-  // min(value, MAX_FRAME_SIZE_BYTES), so a per-exchange cap can only tighten
-  // the static ceiling, never widen it. Cleared at session reset so a stale
-  // tight cap from a prior exchange cannot reject a later one.
+  // readGateBytes). undefined restores the static cap. Cleared at session reset
+  // so a stale cap from a prior exchange cannot apply to a later one.
   private inboundFrameCap: number | undefined;
 
   // The envelope version the key exchange negotiated, and whether the
@@ -436,6 +434,7 @@ export class FileSyncMessageLoop {
   // oldest first: the queue holds the newest that many, since a receive
   // takes a delivery directly only while the queue is empty.
   private queuedMessages: (() => number) | undefined;
+  private receiveWaiting: (() => boolean) | undefined;
   private deliveredFileBytes: number[] = [];
 
   private poller: NodeJS.Timeout | undefined;
@@ -983,9 +982,15 @@ export class FileSyncMessageLoop {
       // peer's genuine marker may later overwrite); caching the non-match
       // would blind the loop to both. The redundant read is bounded to
       // ABORT_MARKER_MAX_BYTES (1 KiB), so the repeat I/O is negligible.
+      // A file over the read gate that no parked receive waits on is left for
+      // a later cycle, as an incomplete one is, so it does not hold the
+      // marker back.
       const peerMessageReady =
         messages.length === 1 &&
-        messages[0].file.size >= messages[0].declaredSize;
+        messages[0].file.size >= messages[0].declaredSize &&
+        (this.consumerWaitsForFrame() ||
+          Math.max(messages[0].declaredSize, messages[0].file.size) <=
+            this.readGateBytes());
       if (
         !peerMessageReady &&
         deps.abortArmed() &&
@@ -1036,12 +1041,23 @@ export class FileSyncMessageLoop {
         // FrameSizeExceededError is a UsageError, so poll()'s catch stops the
         // poller rather than re-reading the file.
         //
-        // The cap is the per-exchange inboundFrameCap when one is set (the
-        // single-pass receiver tightens it to the derived reply cap), else
-        // the static MAX_FRAME_SIZE_BYTES; the setter clamps it to never
-        // exceed the static cap.
-        const frameCap = this.inboundFrameCap ?? MAX_FRAME_SIZE_BYTES;
-        if (declaredSize > frameCap || messageFile.size > frameCap) {
+        // The cap is readGateBytes(): the per-exchange inboundFrameCap when
+        // one is set (single-pass sets the cap its counts derive), else the
+        // static MAX_FRAME_SIZE_BYTES. Over it, a file no parked receive
+        // waits on is left unread: the consumer may yet set the cap for it,
+        // which is the frame it reads next.
+        const frameCap = this.readGateBytes();
+        const overReadGate =
+          declaredSize > frameCap || messageFile.size > frameCap;
+        if (overReadGate && !this.consumerWaitsForFrame()) {
+          deps
+            .log()
+            .trace(
+              `[${deps.role()}] ${redactAndSanitizeForDisplay(messageFile.name)} ` +
+                `is over the ${frameCap}-byte read gate; waiting until it is ` +
+                "the message asked for",
+            );
+        } else if (overReadGate) {
           // The name and the peer id are the writing peer's bytes (neither
           // bounded here; the id is adopted from a `<peerId>-hello-<n>.json`
           // name), and the path is the configured rendezvous directory's: so
@@ -1062,9 +1078,7 @@ export class FileSyncMessageLoop {
               ],
             },
           );
-        }
-
-        if (messageFile.size < declaredSize) {
+        } else if (messageFile.size < declaredSize) {
           // The file has appeared but the sync tool has not finished
           // transferring it. Leave it untouched and re-check next cycle rather
           // than reading a truncated message. For a direct transport (SFTP),
@@ -1538,9 +1552,33 @@ export class FileSyncMessageLoop {
   }
 
   // The consumer's count of messages it has not yet received, which bounds
-  // what poll() reads ahead of it (readAheadFull).
-  setInboundQueueReader(queuedMessages: () => number): void {
+  // what poll() reads ahead of it (readAheadFull), and whether a receive is
+  // parked on the next one (consumerWaitsForFrame).
+  setInboundQueueReader(
+    queuedMessages: () => number,
+    receiveWaiting?: () => boolean,
+  ): void {
     this.queuedMessages = queuedMessages;
+    this.receiveWaiting = receiveWaiting;
+  }
+
+  // Whether the next message read is the one a parked receive waits on: no
+  // message is queued ahead of it and a receive is parked. With no reader set,
+  // every message read is taken as asked for.
+  private consumerWaitsForFrame(): boolean {
+    if (this.queuedMessages === undefined) return true;
+    return this.queuedMessages() === 0 && (this.receiveWaiting?.() ?? true);
+  }
+
+  // The most bytes the next message file may hold. A cap above the static one
+  // applies only to the message a parked receive waits on, the frame the
+  // consumer set it for; a message read ahead is held to the static cap.
+  private readGateBytes(): number {
+    const cap = this.inboundFrameCap;
+    if (cap === undefined) return MAX_FRAME_SIZE_BYTES;
+    return cap <= MAX_FRAME_SIZE_BYTES || this.consumerWaitsForFrame()
+      ? cap
+      : MAX_FRAME_SIZE_BYTES;
   }
 
   // The negotiated envelope version for frames after each party's first. Only
@@ -1562,13 +1600,12 @@ export class FileSyncMessageLoop {
 
   // Owns the per-exchange inbound frame cap and its clamp; the connection's
   // public setInboundFrameCap delegates here. Clamped to
-  // min(maxBytes, MAX_FRAME_SIZE_BYTES) so a per-exchange cap can only tighten,
-  // never widen, the static memory ceiling.
+  // MAX_DERIVED_FRAME_BYTES, past which a size is not an exact integer.
   setInboundFrameCap(maxBytes: number | undefined): void {
     this.inboundFrameCap =
       maxBytes === undefined
         ? undefined
-        : Math.min(maxBytes, MAX_FRAME_SIZE_BYTES);
+        : Math.min(maxBytes, MAX_DERIVED_FRAME_BYTES);
   }
 
   start() {

@@ -50,6 +50,19 @@ export const IV_SEQ_OFFSET = 4;
 export const AEAD_ENVELOPE_OVERHEAD_BYTES = 1 + 12 + 1 + 16;
 
 /**
+ * The largest plaintext `crypto.subtle` AES-GCM encrypts: 2^31 - 18 bytes,
+ * measured on Node 26.13; one byte more fails with an `OperationError`
+ * (docs/spec/TRANSPORT_BOUNDS.md, Inbound frame-size bound).
+ */
+export const MAX_AEAD_PLAINTEXT_BYTES = 2_147_483_630;
+
+/**
+ * The largest frame this layer sends or opens: the largest plaintext less its
+ * type tag. A larger frame needs the AEAD in chunks.
+ */
+export const MAX_AEAD_FRAME_BYTES = MAX_AEAD_PLAINTEXT_BYTES - 1;
+
+/**
  * Wraps any {@link MessageConnection} and transparently encrypts all outbound
  * messages and decrypts all inbound messages using AES-256-GCM. This is a
  * decorator: it implements {@link MessageConnection} itself and delegates the
@@ -144,6 +157,11 @@ export class EncryptedMessageConnection implements MessageConnection {
   );
 
   private readonly envelopeVersion: number;
+
+  // The per-exchange inbound frame cap, set by setInboundFrameCap and clamped
+  // to the largest envelope this layer opens; undefined holds a frame to
+  // MAX_FRAME_SIZE_BYTES.
+  private inboundFrameCap: number | undefined;
 
   private constructor(
     inner: MessageConnection,
@@ -437,9 +455,9 @@ export class EncryptedMessageConnection implements MessageConnection {
 
     // Binary length bound. The transport read layer already refuses an over-cap
     // inbound file before reading it (see MAX_FRAME_SIZE_BYTES and
-    // docs/spec/TRANSPORT_BOUNDS.md); this is the same single value applied here
-    // as defense-in-depth.
-    if (bytes.length > MAX_FRAME_SIZE_BYTES) {
+    // docs/spec/TRANSPORT_BOUNDS.md); this is the same cap applied here as
+    // defense-in-depth.
+    if (bytes.length > (this.inboundFrameCap ?? MAX_FRAME_SIZE_BYTES)) {
       throw this.fail(
         new ConnectionError(
           "EncryptedMessageConnection: envelope exceeds the maximum frame size",
@@ -621,12 +639,21 @@ export class EncryptedMessageConnection implements MessageConnection {
   }
 
   // Forward the per-exchange inbound frame cap to the inner transport's read
-  // gate (pinned in encryptedMessageConnection.test.ts). This layer's own length
-  // check stays at MAX_FRAME_SIZE_BYTES: the inner read gate refuses an over-cap
-  // frame before it is ever read into memory (fileSyncConnection.test.ts), so
-  // tightening the static check here would add nothing.
+  // gate (pinned in encryptedMessageConnection.test.ts), and hold this layer's
+  // own length check to it, up to the largest envelope this layer opens.
   setInboundFrameCap(maxBytes: number | undefined): void {
+    this.inboundFrameCap =
+      maxBytes === undefined
+        ? undefined
+        : Math.min(
+            maxBytes,
+            MAX_AEAD_FRAME_BYTES + AEAD_ENVELOPE_OVERHEAD_BYTES,
+          );
     this.inner.setInboundFrameCap?.(maxBytes);
+  }
+
+  frameCeilingBytes(): number {
+    return MAX_AEAD_FRAME_BYTES;
   }
 
   outboundWebRtcFrameBound(): number | undefined {

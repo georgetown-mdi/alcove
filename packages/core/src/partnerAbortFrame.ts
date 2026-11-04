@@ -131,6 +131,7 @@ const FORWARDED_CONNECTION_MEMBERS = {
   close: true,
   terminated: true,
   setInboundFrameCap: true,
+  frameCeilingBytes: true,
   inboundPollIntervalMs: true,
   outboundWebRtcFrameBound: true,
   outboundFileSyncFrameBound: true,

@@ -70,7 +70,7 @@ import type { EntityClusterSummary } from "./psi/entityClosure.js";
 import type { ResolvedRunShape } from "./pairTableProjection.js";
 import type { ResolvedMatching } from "./linkageTermsPolicy.js";
 import {
-  MAX_FRAME_SIZE_BYTES,
+  MAX_DERIVED_FRAME_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
   partyFansOut,
   psiElementBounds,
@@ -78,7 +78,7 @@ import {
   singlePassDatasetExceedsCap,
   singlePassIrreducibleReplyBytes,
   singlePassReplyByteCap,
-  singlePassRequestByteBound,
+  singlePassRequestByteCap,
   valueSlots,
 } from "./connection/frameSize.js";
 import type { InboundPsiFrameUse } from "./connection/inboundFrameMemory.js";
@@ -1964,10 +1964,15 @@ export async function runExchange(
           ? singlePassIrreducibleReplyBytes(keyCount, partnerRecordCount)
           : 0,
         inboundFrameBytes: Math.min(
-          MAX_FRAME_SIZE_BYTES,
+          conn.frameCeilingBytes?.() ?? MAX_DERIVED_FRAME_BYTES,
           isReceiver
-            ? singlePassReplyByteCap(keyCount, partnerSize, localSize)
-            : singlePassRequestByteBound(partnerSize),
+            ? singlePassReplyByteCap(
+                keyCount,
+                partnerSize,
+                localSize,
+                singlePassRequestByteCap(localSize),
+              )
+            : singlePassRequestByteCap(partnerSize),
         ),
         inboundFrameUse: isReceiver ? "stream" : "decode",
       }),

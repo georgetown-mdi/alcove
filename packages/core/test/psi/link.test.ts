@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
@@ -18,6 +18,7 @@ import {
   decodeInt32LE,
   encodeSinglePassReply,
   decodeSinglePassReply,
+  getDistinctValuesAndIndices,
   type LinkageCardinality,
 } from "../../src/psi/link";
 import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
@@ -45,7 +46,9 @@ import {
   singlePassDatasetExceedsCap,
   singlePassExchangeExceedsCap,
   singlePassReplyByteCap,
+  singlePassRequestByteCap,
 } from "../../src/connection/frameSize";
+import { MAX_AEAD_FRAME_BYTES } from "../../src/connection/encryptedMessageConnection";
 
 import {
   createMessagePipe,
@@ -57,6 +60,7 @@ import {
   ProtocolRefusalError,
   UsageError,
   ConnectionError,
+  RoundSetLimitError,
   statesItsOwnNextStep,
   PeerAbortError,
 } from "../../src/errors";
@@ -1102,13 +1106,19 @@ test("the single-pass receiver read gate is bounded to the derived reply cap", a
   // declaring partnerRows sender records but a mismatched index table, so decode
   // fails fast after the gate is exercised.
   await new Promise((r) => setTimeout(r, 0));
-  expect(setCalls[0]).toBe(
+  const senderSize = { effectiveKeyCount: keyCount, recordCount: partnerRows };
+  const receiverSize = { effectiveKeyCount: keyCount, recordCount: localRows };
+  // Before masking, the response term is the request cap; once the request
+  // is built, the request itself: three distinct values.
+  expect(setCalls.slice(0, 2)).toEqual([
     singlePassReplyByteCap(
       keyCount,
-      { effectiveKeyCount: keyCount, recordCount: partnerRows },
-      { effectiveKeyCount: keyCount, recordCount: localRows },
+      senderSize,
+      receiverSize,
+      singlePassRequestByteCap(receiverSize),
     ),
-  );
+    singlePassReplyByteCap(keyCount, senderSize, receiverSize, 3 * 35 + 2),
+  ]);
   resolveReceive?.(
     encodeSinglePassReply(new Uint8Array(), new Uint8Array(), partnerRows, [0]),
   );
@@ -1126,10 +1136,14 @@ test("a single-pass reply queued before the request is sent is held to the deriv
   const keyCount = 1;
   const localRows = 3;
   const partnerRows = 2;
+  const receiverSize = { effectiveKeyCount: keyCount, recordCount: localRows };
+  // Three distinct values fill the request cap, so the cap set before the
+  // request is built and the one set after it agree.
   const replyCap = singlePassReplyByteCap(
     keyCount,
     { effectiveKeyCount: keyCount, recordCount: partnerRows },
-    { effectiveKeyCount: keyCount, recordCount: localRows },
+    receiverSize,
+    singlePassRequestByteCap(receiverSize),
   );
   const receiver = makeParticipant(psiLibrary, "joiner");
   const fake: MessageConnection = {
@@ -1155,7 +1169,12 @@ test("a single-pass reply queued before the request is sent is held to the deriv
     `client protocol error: the single-pass reply is ${replyCap + 1} byte(s), ` +
       `above the ${replyCap} byte(s) both parties derive from their declared sizes`,
   );
-  expect(events).toEqual([`cap:${replyCap}`, "send", "cap:undefined"]);
+  expect(events).toEqual([
+    `cap:${replyCap}`,
+    `cap:${replyCap}`,
+    "send",
+    "cap:undefined",
+  ]);
 });
 
 test("the single-pass sender refuses a built reply above the derived cap", async () => {
@@ -1166,19 +1185,19 @@ test("the single-pass sender refuses a built reply above the derived cap", async
   // ceiling gate has already passed, so no dataset either operator controls stopped the
   // send, and the dataset remedies are withheld.
   //
-  // Driven by a client request over far more values than the partner's declared size
-  // accounts for: the response the sender doubly-encrypts grows with the request, so the
-  // built reply outgrows a cap derived from the declared sizes. Production reaches this
-  // safety check only on such an inconsistency between the reply builder and the shared
-  // derivation -- a real PsiElementBounds refuses an over-wide request at the
-  // deserialize boundary first (pinned in psiParticipant.test.ts), and the inert test
-  // bounds leave the safety check reachable here.
+  // Driven by a setup larger than the per-value figure the cap weighs it at.
+  // Production reaches this safety check only on such an inconsistency between
+  // the reply builder and the shared derivation.
   const keyCount = 1;
   const localRows = 1;
   const partnerRows = 1;
   const [conn, peer] = createMessagePipe();
   const sender = makeParticipant(psiLibrary, "starter");
   const partner = makeParticipant(psiLibrary, "joiner");
+  vi.spyOn(sender, "createServerSetup").mockResolvedValue({
+    setup: new Uint8Array(1_000),
+    permutation: [0],
+  });
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
     sender,
@@ -1188,11 +1207,8 @@ test("the single-pass sender refuses a built reply above the derived cap", async
     false,
     -1,
   );
-  await peer.send(
-    await partner.createClientRequest(
-      Array.from({ length: 500 }, (_unused, i) => `value-${i}`),
-    ),
-  );
+  const request = await partner.createClientRequest(["a"]);
+  await peer.send(request);
   const error = await run.catch((e: unknown) => e);
   // The class the message's remedy implies: an internal fault to report, which
   // the CLI boundary maps to exit 70 (pinned in apps/cli/test/unit/util/cli.test.ts).
@@ -1208,6 +1224,7 @@ test("the single-pass sender refuses a built reply above the derived cap", async
     keyCount,
     { effectiveKeyCount: keyCount, recordCount: localRows },
     { effectiveKeyCount: keyCount, recordCount: partnerRows },
+    request.byteLength,
   );
   // The size it names is the frame it actually built, and it is over the cap the
   // two parties derive -- the pair of numbers the message exists to report.
@@ -1225,6 +1242,74 @@ test("the single-pass sender refuses a built reply above the derived cap", async
   // can move this by shrinking a dataset.
   expect(message).not.toMatch(/Reduce the record count/);
   expect(message).not.toMatch(/single-pass ceiling of/);
+});
+
+test("the single-pass sender holds the request to the cap the counts derive, before masking it", async () => {
+  const partnerRows = 2;
+  const requestCap = singlePassRequestByteCap({
+    effectiveKeyCount: 1,
+    recordCount: partnerRows,
+  });
+  expect(requestCap).toBe(35 * partnerRows + 2);
+  const events: Array<string> = [];
+  const partner = makeParticipant(psiLibrary, "joiner");
+  const overCap = await partner.createClientRequest(["a", "b", "c"]);
+  const sender = makeParticipant(psiLibrary, "starter");
+  const processed = vi.spyOn(sender, "processClientRequest");
+  const fake: MessageConnection = {
+    send: async () => {},
+    receive: async () => {
+      events.push("receive");
+      return overCap;
+    },
+    close: async () => {},
+    setInboundFrameCap: (maxBytes) => {
+      events.push(`cap:${String(maxBytes)}`);
+    },
+    outboundFrameOverheadBytes: () => 30,
+  };
+  const run = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    sender,
+    fake,
+    [["a"]],
+    fanOutFreeBounds(1, partnerRows),
+    false,
+    -1,
+  );
+  await expect(run).rejects.toThrow(
+    `server protocol error: the single-pass request is ${overCap.byteLength} ` +
+      `byte(s), above the ${requestCap} byte(s) both parties derive from ` +
+      "their declared sizes",
+  );
+  // The read gate takes the message file around the request: its header and
+  // the encryption envelope.
+  expect(events).toEqual([
+    `cap:${requestCap + 10 + 30}`,
+    "receive",
+    "cap:undefined",
+  ]);
+  expect(processed).not.toHaveBeenCalled();
+});
+
+test("a party with more distinct values than one set holds is refused before masking", () => {
+  const values = ["a", "b", "c"];
+  expect(
+    getDistinctValuesAndIndices([values], false, [1], 3).distinctValues,
+  ).toEqual(values);
+  let refusal: unknown;
+  try {
+    getDistinctValuesAndIndices([[...values, "d"]], false, [1], 3);
+  } catch (error) {
+    refusal = error;
+  }
+  expect(refusal).toBeInstanceOf(RoundSetLimitError);
+  expect((refusal as RoundSetLimitError).reason).toBe("over-set-maximum");
+  expect((refusal as Error).message).toBe(
+    "Too large to send: your records give more than 3 distinct linkage key " +
+      "values, the most one single-pass set can hold, so the exchange " +
+      `stopped before masking them and told your partner. ${SINGLE_PASS_LOCAL_REMEDY}`,
+  );
 });
 
 test("single-pass receiver rejects a reply whose index table contradicts its record count", async () => {
@@ -1424,12 +1509,19 @@ test("a run whose own declared size is over the ceiling keeps the local diagnosi
   void peer;
 });
 
-// --- Single-pass over file-sync: no budget, and frames held to one message file ---
+// --- Single-pass over file-sync: no budget, and frames held to one message ---
 
-// A pipe end stating what a file-sync connection states. The pipe itself states
+// A pipe end stating what an encrypted file-sync connection states, with
+// `frameCeiling` for the AEAD's limit on one frame. The pipe itself states
 // nothing, as a WebRTC connection does.
-function asFileSync(conn: MessageConnection, fileBound = MAX_FRAME_SIZE_BYTES) {
-  return Object.assign(conn, { outboundFileSyncFrameBound: () => fileBound });
+function asFileSync(
+  conn: MessageConnection,
+  frameCeiling = MAX_AEAD_FRAME_BYTES,
+) {
+  return Object.assign(conn, {
+    outboundFileSyncFrameBound: () => MAX_FRAME_SIZE_BYTES,
+    frameCeilingBytes: () => frameCeiling,
+  });
 }
 
 test("a file-sync receiver past the WebRTC budget passes the gate and sends its request", async () => {
@@ -1450,7 +1542,7 @@ test("a file-sync receiver past the WebRTC budget passes the gate and sends its 
   await settled;
 });
 
-test("a file-sync request too large for one file stops there, naming its size, and tells the partner", async () => {
+test("a file-sync request too large for one message stops there, naming its size, and tells the partner", async () => {
   const [conn, peer] = createMessagePipe();
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
@@ -1463,7 +1555,7 @@ test("a file-sync request too large for one file stops there, naming its size, a
   );
   await expect(run).rejects.toThrow(UsageError);
   await expect(run).rejects.toThrow(
-    /the single-pass request came to \d+ byte\(s\), above the 64 byte\(s\) one exchange file can hold/,
+    /the single-pass request came to \d+ byte\(s\), above the 64 byte\(s\) one encrypted message can hold/,
   );
   await expect(run).rejects.toThrow(SINGLE_PASS_LOCAL_REMEDY);
   await expect(run).rejects.not.toThrow(new RegExp(`${MAX_SINGLE_PASS_CELLS}`));
@@ -1473,12 +1565,12 @@ test("a file-sync request too large for one file stops there, naming its size, a
   });
 });
 
-test("a file-sync reply too large for one file stops before it is written, and the partner reads an abort in its place", async () => {
+test("a file-sync reply too large for one message stops before it is written, and the partner reads an abort in its place", async () => {
   const [senderConn, receiverConn] = createMessagePipe();
   const sender = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
     makeParticipant(psiLibrary, "starter"),
-    asFileSync(senderConn, 400),
+    asFileSync(senderConn, 300),
     [["a", "b", "c", "d", "e", "f", "g", "h"]],
     fanOutFreeBounds(1, 2),
     false,
@@ -1494,7 +1586,7 @@ test("a file-sync reply too large for one file stops before it is written, and t
     -1,
   );
   await expect(sender).rejects.toThrow(
-    /the single-pass reply came to \d+ byte\(s\), above the 400 byte\(s\)/,
+    /the single-pass reply came to \d+ byte\(s\), above the 300 byte\(s\)/,
   );
   await expect(sender).rejects.toThrow(
     /To shrink it, either party can reduce its record count or split its dataset into smaller batches/,

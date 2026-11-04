@@ -42,6 +42,13 @@ export const PSI_ENCODED_ELEMENT_BYTES = PSI_ELEMENT_BYTES + 2;
 export const PSI_SET_MAX_FRAMING_BYTES = 6;
 
 /**
+ * The bytes a serialized PSI request adds to {@link PSI_ENCODED_ELEMENT_BYTES}
+ * per element, whatever its element count: its reveal-intersection field.
+ * Its response adds none, so a response is 2 bytes shorter than its request.
+ */
+export const PSI_REQUEST_FRAMING_BYTES = 2;
+
+/**
  * Length of the BinaryPack frame a byte array of `payloadBytes` bytes packs
  * to: the payload plus the `fixraw`, `bin16`, or `bin32` header its length
  * selects.

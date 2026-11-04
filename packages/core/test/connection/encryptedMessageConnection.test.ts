@@ -8,6 +8,8 @@ import {
   AEAD_ENVELOPE_OVERHEAD_BYTES,
   AEAD_ENVELOPE_VERSION,
   IV_SEQ_OFFSET,
+  MAX_AEAD_FRAME_BYTES,
+  MAX_AEAD_PLAINTEXT_BYTES,
   TYPE_JSON,
 } from "../../src/connection/encryptedMessageConnection";
 import {
@@ -358,6 +360,36 @@ describe("under a lowered inbound frame-size bound", () => {
       await expectSecurity(encB.receive(), /exceeds the maximum frame size/),
     ).toBe(latched);
   });
+
+  test("a cap set above the bound opens an envelope up to the cap", async () => {
+    const [encA, encB] = await makeEncryptedPair();
+    encB.setInboundFrameCap(LOWERED_BOUND + 10);
+    await encA.send(new Uint8Array(payloadAtBound + 10).fill(3));
+    expect(((await encB.receive()) as Uint8Array).byteLength).toBe(
+      payloadAtBound + 10,
+    );
+    await encA.send(new Uint8Array(payloadAtBound + 11));
+    await expectSecurity(encB.receive(), /exceeds the maximum frame size/);
+  });
+
+  test("a cap set below the bound holds the envelope to it", async () => {
+    const [encA, encB] = await makeEncryptedPair();
+    encB.setInboundFrameCap(LOWERED_BOUND - 1);
+    await encA.send(new Uint8Array(payloadAtBound));
+    await expectSecurity(encB.receive(), /exceeds the maximum frame size/);
+  });
+});
+
+test("the frame ceiling is the largest plaintext the AEAD seals, less the type tag", async () => {
+  const [, rawLocal] = createMessagePipe();
+  const conn = await EncryptedMessageConnection.create(
+    rawLocal,
+    SESSION_KEY,
+    "initiator",
+  );
+  expect(conn.frameCeilingBytes()).toBe(MAX_AEAD_PLAINTEXT_BYTES - 1);
+  expect(MAX_AEAD_FRAME_BYTES).toBe(MAX_AEAD_PLAINTEXT_BYTES - 1);
+  await conn.close();
 });
 
 test("an envelope with an unsupported version byte is rejected as a security failure", async () => {
@@ -1274,10 +1306,9 @@ test.each(aeadVectors.vectors)(
 );
 
 test("setInboundFrameCap reaches the inner transport's read gate", async () => {
-  // The decorator keeps its own static MAX_FRAME_SIZE_BYTES check and relies on
-  // the inner read gate to refuse an over-cap frame before it is read into
+  // The inner read gate refuses an over-cap frame before it is read into
   // memory, so the per-exchange cap must arrive there rather than stopping at
-  // this layer.
+  // this layer's own check.
   const [, rawLocal] = createMessagePipe();
   const caps: Array<number | undefined> = [];
   const inner: MessageConnection = {

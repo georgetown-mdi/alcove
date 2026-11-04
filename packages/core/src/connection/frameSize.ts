@@ -1,12 +1,26 @@
 import { FAN_OUT_CANDIDATES_PER_ELEMENT } from "../fanOutFunctions";
+import {
+  PSI_ENCODED_ELEMENT_BYTES,
+  PSI_REQUEST_FRAMING_BYTES,
+} from "./webrtcOutboundBound";
 
 /**
  * Maximum size, in bytes, of a single inbound frame the transport reads into
- * memory, and the upper clamp for the single-pass cap below
- * (docs/spec/TRANSPORT_BOUNDS.md, Inbound frame-size bound). A literal rather than
- * `buffer.constants`, so the AEAD decorator importing it needs no Node `buffer`.
+ * memory, except a single-pass request or reply, which is held to the cap the
+ * counts derive for it (docs/spec/TRANSPORT_BOUNDS.md, Inbound frame-size
+ * bound). A literal rather than `buffer.constants`, so the AEAD decorator
+ * importing it needs no Node `buffer`.
  */
 export const MAX_FRAME_SIZE_BYTES = 536_870_888;
+
+/**
+ * The most a per-exchange cap raises the file-sync read gate to: the largest
+ * exact integer, which is also Node's `buffer.constants.MAX_LENGTH` on a 64-bit
+ * host. Nothing in the transport bounds a frame below it; memory is checked
+ * before each read, and an encrypted connection holds a frame to the AEAD's
+ * own limit.
+ */
+export const MAX_DERIVED_FRAME_BYTES = Number.MAX_SAFE_INTEGER;
 
 /**
  * The most encrypted elements one PSI set may contain. A sender refuses its own
@@ -28,12 +42,13 @@ export const BROWSER_PSI_SET_MAX_ELEMENTS = 8_388_608;
 /**
  * The single-pass dataset ceiling over WebRTC, a per-party budget on value slots
  * (`effectiveKeyCount * recordCount`, not rows), so the derived reply stays under
- * `MAX_WEBRTC_FRAME_BYTES`. File-sync has no such budget: it has
- * {@link MAX_FRAME_SIZE_BYTES}, {@link MAX_PSI_DECODE_ELEMENTS} and the check at
- * the terms exchange. Fixed, not configurable: a configurable maximum reopens the
- * memory-exhaustion denial of service. Raise it
- * only by re-deriving it from a fresh measurement (docs/spec/PROTOCOL.md, The
- * single-pass dataset ceiling: receiver memory and masking compute).
+ * `MAX_WEBRTC_FRAME_BYTES`. File-sync has no such budget: it has the caps the
+ * counts derive for its two frames, the AEAD's limit on one frame,
+ * {@link MAX_PSI_DECODE_ELEMENTS} and the memory checks. Fixed, not
+ * configurable: a configurable maximum reopens the memory-exhaustion denial of
+ * service. Raise it only by re-deriving it from a fresh measurement
+ * (docs/spec/PROTOCOL.md, The single-pass dataset ceiling: receiver memory and
+ * masking compute).
  */
 export const MAX_SINGLE_PASS_CELLS = 3_000_000;
 
@@ -156,33 +171,39 @@ export function singlePassExchangeExceedsCap(
  * The accepted byte size of the single-pass reply, identical on both parties:
  * the receiver's read gate and the sender's send-time check. Its terms and integer
  * arithmetic are fixed in docs/spec/PROTOCOL.md (The single-pass dataset ceiling).
- * Over WebRTC call only for an in-cap exchange. Over file-sync the sum can round
+ * `responseBytes` is the response term: the bytes of the request the receiver
+ * sent, which both parties hold once it is sent, or before then a bound on it.
+ * Without it the term is the receiver's slots at the per-value figure. Over
+ * WebRTC call only for an in-cap exchange. Over file-sync the sum can round
  * above 2^53, which leaves it past the clamp the read gate applies.
  */
 export function singlePassReplyByteCap(
   keyCount: number,
   sender: SinglePassPartySize,
   receiver: SinglePassPartySize,
+  responseBytes: number = SINGLE_PASS_BYTES_PER_MASKED_VALUE *
+    valueSlots(receiver),
 ): number {
   return (
     (SINGLE_PASS_BYTES_PER_MASKED_VALUE + SINGLE_PASS_BYTES_PER_INDEX_WORD) *
       valueSlots(sender) +
-    SINGLE_PASS_BYTES_PER_MASKED_VALUE * valueSlots(receiver) +
+    responseBytes +
     SINGLE_PASS_BYTES_PER_INDEX_WORD * keyCount * sender.recordCount +
     SINGLE_PASS_REPLY_OVERHEAD_BYTES
   );
 }
 
 /**
- * The most bytes a single-pass request from this receiver can take: one masked
- * value a slot, at the per-value figure the reply cap weighs its response at.
+ * The most bytes a single-pass request from this receiver can take: one
+ * encoded element a value slot, plus the request's own field. The sender's
+ * read gate for the request, and before the request is built the bound on the
+ * reply's response term.
  */
-export function singlePassRequestByteBound(
+export function singlePassRequestByteCap(
   receiver: SinglePassPartySize,
 ): number {
   return (
-    SINGLE_PASS_BYTES_PER_MASKED_VALUE * valueSlots(receiver) +
-    SINGLE_PASS_REPLY_OVERHEAD_BYTES
+    PSI_ENCODED_ELEMENT_BYTES * valueSlots(receiver) + PSI_REQUEST_FRAMING_BYTES
   );
 }
 

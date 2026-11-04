@@ -32,11 +32,13 @@ import {
   type MessageConnection,
 } from "../connection/messageConnection";
 import {
+  MAX_PSI_DECODE_ELEMENTS,
   MAX_SINGLE_PASS_CELLS,
   partyFansOut,
   SINGLE_PASS_LOCAL_REMEDY,
   singlePassCeilingBreach,
   singlePassReplyByteCap,
+  singlePassRequestByteCap,
   valueSlots,
   type SinglePassCeilingBreach,
   type SinglePassPartySize,
@@ -69,6 +71,7 @@ import {
 import {
   InternalConsistencyError,
   PartnerProtocolRefusalError,
+  RoundSetLimitError,
   UsageError,
   ConnectionError,
   markStatesItsOwnNextStep,
@@ -1859,22 +1862,19 @@ function singlePassOverCapMessage(
 
 // Over file-sync a frame's real size is known only after masking, and the
 // counts bound it from above without deciding it: a run can fit where its counts
-// would not. So a frame too large for one message file is refused here, ahead of
-// the write, and the partner parked on it is told. The reply includes the
-// receiver's re-encrypted request, so its remedy is addressed to both parties.
-async function refuseSinglePassFrameOverFileBound(
+// would not. So a frame larger than one message can be on this connection (the
+// AEAD's limit) is refused here, ahead of the write, and the partner parked on it
+// is told. The reply includes the receiver's re-encrypted request, so its remedy
+// is addressed to both parties.
+async function refuseSinglePassFrameOverCeiling(
   conn: MessageConnection,
   id: string,
   frame: "reply" | "request",
   frameBytes: number,
 ): Promise<void> {
-  const fileBound = conn.outboundFileSyncFrameBound?.();
-  if (fileBound === undefined) return;
-  const fileBytes = fileSyncMessageFileBytes(
-    frameBytes,
-    conn.outboundFrameOverheadBytes?.() ?? 0,
-  );
-  if (fileBytes <= fileBound) return;
+  if (conn.outboundFileSyncFrameBound?.() === undefined) return;
+  const ceiling = conn.frameCeilingBytes?.();
+  if (ceiling === undefined || frameBytes <= ceiling) return;
   await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
   const remedy =
     frame === "reply"
@@ -1883,9 +1883,9 @@ async function refuseSinglePassFrameOverFileBound(
         "terms with fewer linkage keys."
       : SINGLE_PASS_LOCAL_REMEDY;
   throw new UsageError(
-    `${id}: the single-pass ${frame} came to ${fileBytes} byte(s), above the ` +
-      `${fileBound} byte(s) one exchange file can hold, so the exchange stopped ` +
-      `and your partner was told. ${remedy}`,
+    `${id}: the single-pass ${frame} came to ${frameBytes} byte(s), above the ` +
+      `${ceiling} byte(s) one encrypted message can hold, so the exchange ` +
+      `stopped and your partner was told. ${remedy}`,
   );
 }
 
@@ -2161,8 +2161,19 @@ export async function linkViaSinglePassPSI(
     partyFansOut(numLinkageKeys, { effectiveKeyCount }) ||
     localFanOutFactor > 1;
 
-  const { distinctValues, columns, numRecords, slotCount } =
-    getDistinctValuesAndIndices(data, localFansOut, localCellWidths);
+  let ownValues: ReturnType<typeof getDistinctValuesAndIndices>;
+  try {
+    ownValues = getDistinctValuesAndIndices(
+      data,
+      localFansOut,
+      localCellWidths,
+    );
+  } catch (error) {
+    if (error instanceof RoundSetLimitError)
+      await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
+    throw error;
+  }
+  const { distinctValues, columns, numRecords, slotCount } = ownValues;
   await checkOwnValues?.(distinctValues.length);
 
   // Map (own count, partner count, role) -> (sender size, receiver size). Both
@@ -2214,8 +2225,9 @@ export async function linkViaSinglePassPSI(
   // guidance shown is oriented to this party and does not recommend cascade.
   // The prepareForExchange pre-flight is the coarse one-party shadow of this;
   // this is the precise two-party check. File-sync has no such budget: its
-  // limits are the frame bound and the set maximum, which a frame's real size
-  // meets after masking (refuseSinglePassFrameOverFileBound).
+  // limits are the set maximum, met before masking, and the AEAD's limit on
+  // one frame, which a frame's real size meets after it
+  // (refuseSinglePassFrameOverCeiling).
   if (conn.outboundFileSyncFrameBound?.() === undefined) {
     const ceilingBreach = singlePassCeilingBreach(localSize, partnerSize);
     if (ceilingBreach !== undefined) {
@@ -2237,15 +2249,36 @@ export async function linkViaSinglePassPSI(
     // - this party's values, encrypted with own key ("setup" message)
     // - partner's data re-encrypted ("response")
     // - distinctValueIndexTable so partner knows how to reconstruct data
-    stage(SINGLE_PASS_STAGE_IDS.encryptingOwnData);
-    const { setup, permutation } =
-      await participant.createServerSetup(distinctValues);
 
-    const request = await receivePsiBinaryFrame(
-      conn,
-      participant.id,
-      "request",
+    // The read gate is set to the request cap the counts derive before the
+    // setup is masked, and cleared once the request is read: a request over
+    // the static cap waits unread until the receive below asks for it, and a
+    // request read ahead under the static cap is held to the cap after.
+    const requestCap = singlePassRequestByteCap(receiverSize);
+    conn.setInboundFrameCap?.(
+      fileSyncMessageFileBytes(
+        requestCap,
+        conn.outboundFrameOverheadBytes?.() ?? 0,
+      ),
     );
+    let setup: Uint8Array;
+    let permutation: Array<number>;
+    let request: Uint8Array;
+    try {
+      stage(SINGLE_PASS_STAGE_IDS.encryptingOwnData);
+      ({ setup, permutation } =
+        await participant.createServerSetup(distinctValues));
+      request = await receivePsiBinaryFrame(conn, participant.id, "request");
+    } finally {
+      conn.setInboundFrameCap?.(undefined);
+    }
+    if (request.byteLength > requestCap) {
+      throw partnerProtocolError(
+        participant.id,
+        `the single-pass request is ${request.byteLength} byte(s), above the ` +
+          `${requestCap} byte(s) both parties derive from their declared sizes`,
+      );
+    }
     // Collect the setup-masking transients before the re-encryption masking.
     relieveTransientMemory();
     stage(SINGLE_PASS_STAGE_IDS.encryptingPartnerData);
@@ -2271,11 +2304,13 @@ export async function linkViaSinglePassPSI(
     // unexpectedly large serialized element), since the derived cap
     // upper-bounds any legitimate reply. Its diagnosis is the
     // builder-versus-derivation one rather than the over-ceiling guidance,
-    // which the gate above has already ruled out.
+    // which the gate above has already ruled out. The response term is the
+    // request received, the bytes the receiver sent.
     const replyCap = singlePassReplyByteCap(
       numLinkageKeys,
       senderSize,
       receiverSize,
+      request.byteLength,
     );
     if (reply.byteLength > replyCap) {
       throw markStatesItsOwnNextStep(
@@ -2289,7 +2324,7 @@ export async function linkViaSinglePassPSI(
       );
     }
 
-    await refuseSinglePassFrameOverFileBound(
+    await refuseSinglePassFrameOverCeiling(
       conn,
       participant.id,
       "reply",
@@ -2389,25 +2424,34 @@ export async function linkViaSinglePassPSI(
     return [table[0], table[1]];
   }
 
-  // Tighten the read gate to the per-exchange derived cap before the request is
-  // built, then clear it so the later payload read uses the default. Masking the
-  // request can take minutes and a peer can write its next frame at any point in
-  // that window, so the gate is set before it opens. A transport that bounds its
-  // inbound path another way (the WebRTC data channel, fixed at
-  // MAX_WEBRTC_FRAME_BYTES) no-ops setInboundFrameCap, and a frame one read
-  // before the set is not covered by it: the length check after the read
-  // holds the cap for both.
-  const replyCap = singlePassReplyByteCap(
-    numLinkageKeys,
-    senderSize,
-    receiverSize,
+  // Set the read gate to the reply cap the counts derive before the request is
+  // built, tighten it to the request built, then clear it so the later payload
+  // read uses the default. Masking the request can take minutes and a peer can
+  // write its next frame at any point in that window, so the gate is set before
+  // it opens. A transport that bounds its inbound path another way (the WebRTC
+  // data channel, fixed at MAX_WEBRTC_FRAME_BYTES) no-ops setInboundFrameCap:
+  // the length check after the read holds the cap there.
+  conn.setInboundFrameCap?.(
+    singlePassReplyByteCap(
+      numLinkageKeys,
+      senderSize,
+      receiverSize,
+      singlePassRequestByteCap(receiverSize),
+    ),
   );
-  conn.setInboundFrameCap?.(replyCap);
+  let replyCap: number;
   let replyFrame: Uint8Array;
   try {
     stage(SINGLE_PASS_STAGE_IDS.encryptingOwnData);
     const request = await participant.createClientRequest(distinctValues);
-    await refuseSinglePassFrameOverFileBound(
+    replyCap = singlePassReplyByteCap(
+      numLinkageKeys,
+      senderSize,
+      receiverSize,
+      request.byteLength,
+    );
+    conn.setInboundFrameCap?.(replyCap);
+    await refuseSinglePassFrameOverCeiling(
       conn,
       participant.id,
       "request",
@@ -2725,11 +2769,16 @@ function localKeyCells(column: LocalKeyColumn): KeyCells {
 // -- which the partner's element bounds, read gate, and decode all rest on --
 // cannot be outgrown by the data. Values stay pooled across keys with no per-key
 // tag, exactly as they are without fan-out, and the replay compares them only
-// within one key's round.
-function getDistinctValuesAndIndices(
+// within one key's round. `maxDistinctValues` is lowered only by tests.
+/** @internal */
+export function getDistinctValuesAndIndices(
   data: Array<IndexableIterable<KeyCandidates>>,
   fansOut: boolean,
   cellWidths: ReadonlyArray<number>,
+  maxDistinctValues: number = Math.min(
+    MAX_PSI_DECODE_ELEMENTS,
+    MAX_MAP_SHARD_ENTRIES,
+  ),
 ): {
   distinctValues: Array<string>;
   columns: Array<LocalKeyColumn>;
@@ -2744,6 +2793,15 @@ function getDistinctValuesAndIndices(
   const idOf = (value: string): number => {
     let id = valueId.get(value);
     if (id === undefined) {
+      // valueId is one V8 Map, which holds MAX_MAP_SHARD_ENTRIES at most.
+      if (distinctValues.length === maxDistinctValues)
+        throw new RoundSetLimitError(
+          "Too large to send: your records give more than " +
+            `${maxDistinctValues} distinct linkage key values, the most ` +
+            "one single-pass set can hold, so the exchange stopped before " +
+            `masking them and told your partner. ${SINGLE_PASS_LOCAL_REMEDY}`,
+          "over-set-maximum",
+        );
       id = distinctValues.length;
       valueId.set(value, id);
       distinctValues.push(value);

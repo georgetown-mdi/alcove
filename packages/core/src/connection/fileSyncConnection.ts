@@ -485,10 +485,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     return this.abortMarker.armed;
   }
 
-  // Caps inbound frames at min(maxBytes, MAX_FRAME_SIZE_BYTES) until cleared
-  // with undefined, so it can only tighten the static cap. Single-pass sets it
-  // one peer round trip before the reply it governs; a lost race with the poll
-  // loop's read-ahead falls back to the static cap. See
+  // Caps inbound frames at maxBytes until cleared with undefined. A cap above
+  // MAX_FRAME_SIZE_BYTES applies only to the frame a parked receive waits on,
+  // and a file over the read gate waits unread until then. See
   // docs/spec/TRANSPORT_BOUNDS.md#single-pass-per-exchange-cap.
   setInboundFrameCap(maxBytes: number | undefined): void {
     this.messageLoop.setInboundFrameCap(maxBytes);
@@ -515,8 +514,11 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
 
   /** Implements `Connection.setInboundQueueReader`. */
-  setInboundQueueReader(queuedMessages: () => number): void {
-    this.messageLoop.setInboundQueueReader(queuedMessages);
+  setInboundQueueReader(
+    queuedMessages: () => number,
+    receiveWaiting?: () => boolean,
+  ): void {
+    this.messageLoop.setInboundQueueReader(queuedMessages, receiveWaiting);
   }
 
   /** Implements `Connection.markLastSentUnread`. */

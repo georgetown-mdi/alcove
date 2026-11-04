@@ -1850,10 +1850,34 @@ test("setInboundFrameCap tightens the poll-loop read gate; an over-cap frame is 
   );
 });
 
-test("setInboundFrameCap clamps to MAX_FRAME_SIZE_BYTES and delivers an in-cap frame", async () => {
-  // The cap can only tighten, never widen, the static cap: a value above
-  // MAX_FRAME_SIZE_BYTES is clamped down, and a frame within the (clamped)
-  // per-exchange cap is delivered normally.
+test("behind a message queue, a file over the read gate waits unread until a receive parks", async () => {
+  const peerId = "peer-test";
+  const { client, files } = makeMockClient();
+  const conn = await makeConnectedConn(client, {
+    pollingFrequency: 10,
+    inactivityTimeoutMs: 2_000,
+  });
+  conn.peerId = peerId;
+  const mc = fromEventConnection(conn);
+
+  const frame = binaryMessage(new Uint8Array(400).fill(7));
+  const name = `/test/${peerId}-${frame.length}.json`;
+  files.set(name, frame);
+  mc.setInboundFrameCap?.(200);
+  conn.start();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(files.has(name)).toBe(true);
+
+  const received = await mc.receive().catch((e: unknown) => e);
+  conn.stop();
+  expect(received).toBeInstanceOf(ConnectionError);
+  expect((received as ConnectionError).cause ?? received).toBeInstanceOf(
+    FrameSizeExceededError,
+  );
+  await mc.close();
+});
+
+test("setInboundFrameCap above MAX_FRAME_SIZE_BYTES delivers an in-cap frame", async () => {
   const peerId = "peer-test";
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, {
@@ -1865,7 +1889,7 @@ test("setInboundFrameCap clamps to MAX_FRAME_SIZE_BYTES and delivers an in-cap f
   const payload = new Uint8Array(300).fill(9);
   const frame = binaryMessage(payload);
   files.set(`/test/${peerId}-${frame.length}.json`, frame);
-  conn.setInboundFrameCap(MAX_FRAME_SIZE_BYTES * 4); // clamped to the static cap
+  conn.setInboundFrameCap(MAX_FRAME_SIZE_BYTES * 4);
 
   const delivered = new Promise<unknown>((resolve) => conn.on("data", resolve));
   conn.start();

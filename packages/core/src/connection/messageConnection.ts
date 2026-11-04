@@ -47,17 +47,24 @@ export interface MessageConnection {
    */
   terminated?(): Promise<ConnectionError>;
   /**
-   * Optional: bound the next inbound frame the underlying transport reads into
+   * Optional: bound the inbound frames the underlying transport reads into
    * memory to `maxBytes`, replacing its static frame-size cap for subsequent
    * reads until cleared (`undefined` restores the default). Threaded straight
-   * through any decorator to the transport read gate. The single-pass receiver
-   * sets it to the per-exchange derived cap ({@link singlePassReplyByteCap})
-   * before reading the reply, so the read gate refuses a frame larger than the
-   * exchanged record counts imply. Absent on a transport that bounds its inbound
-   * path another way (the WebRTC data channel, fixed at `MAX_WEBRTC_FRAME_BYTES`),
-   * where the call is a no-op. See docs/spec/TRANSPORT_BOUNDS.md.
+   * through any decorator to the transport read gate. A cap above the static
+   * one applies only to the frame a parked {@link receive} waits on. Single-pass
+   * sets it to the cap the exchanged counts derive for the frame it reads next
+   * ({@link singlePassReplyByteCap}, {@link singlePassRequestByteCap}). Absent
+   * on a transport that bounds its inbound path another way (the WebRTC data
+   * channel, fixed at `MAX_WEBRTC_FRAME_BYTES`), where the call is a no-op.
+   * See docs/spec/TRANSPORT_BOUNDS.md.
    */
   setInboundFrameCap?(maxBytes: number | undefined): void;
+  /**
+   * Optional: the largest frame this connection can send or open whole, or
+   * `undefined` where nothing below the runtime's own limits bounds it. The
+   * encryption layer states the AEAD's limit.
+   */
+  frameCeilingBytes?(): number | undefined;
   /**
    * Optional: the interval at which the underlying transport polls for inbound
    * frames, or `undefined` for a transport that pushes them. A frame the peer
@@ -160,6 +167,12 @@ export interface TransportControls {
    * on its own schedule holds off reading while they hold too much.
    */
   queuedMessages: () => number;
+  /**
+   * Whether a {@link MessageConnection.receive} is parked waiting for the
+   * next message, so a transport reading on its own schedule can tell the
+   * frame the consumer waits on from one it reads ahead.
+   */
+  receiveWaiting: () => boolean;
 }
 
 /** The transport-specific operations the queue drives. */
@@ -381,6 +394,7 @@ export class QueuedMessageConnection implements MessageConnection {
       fail: (error) => this.fail(error),
       finish: (error) => this.finish(error),
       queuedMessages: () => this.queue.length,
+      receiveWaiting: () => this.waiters.length > 0,
     });
     this.hooks.start?.();
   }
@@ -784,7 +798,10 @@ export function fromEventConnection(
         controls.fail(asConnectionError(err, "transport"));
       conn.on("data", onData);
       conn.on("error", onError);
-      conn.setInboundQueueReader?.(controls.queuedMessages);
+      conn.setInboundQueueReader?.(
+        controls.queuedMessages,
+        controls.receiveWaiting,
+      );
       return {
         send: (data) => conn.send(data),
         close: () => {
