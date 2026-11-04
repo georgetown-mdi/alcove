@@ -24,7 +24,7 @@ import {
 } from "./uint32ListParts";
 
 import type { MessageConnection } from "../connection/messageConnection";
-import type { MatchedListBound, WordListSource } from "./matchedListParts";
+import type { MatchedListBound, BinaryListSource } from "./matchedListParts";
 import type { RoundGroupingBounds, RoundGroupingField } from "./roundGrouping";
 
 /** Sends one index list of a round's position-naming frame, in parts. */
@@ -65,7 +65,7 @@ export async function receiveRoundIndexList(
 /** @internal exported for the part tests, which send a grouping in many parts. */
 export function roundGroupingSource(
   field: RoundGroupingField | undefined,
-): WordListSource {
+): BinaryListSource {
   if (field === undefined)
     return wordListSource(OMITTED_GROUPING_LAYOUT, {
       entries: 0,

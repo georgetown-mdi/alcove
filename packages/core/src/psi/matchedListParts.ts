@@ -3,7 +3,8 @@
 // single-pass resolved table, and the payload rows -- is sent as one or more
 // parts, each a binary frame within the partner's per-frame receive bound and
 // each holding a body that reads on its own: 32-bit words
-// (uint32ListParts.ts), or JSON for the payload rows. Every part begins with
+// (uint32ListParts.ts), or length-prefixed values for the payload rows
+// (payloadRowParts.ts). Every part begins with
 // the header a PSI set part begins with, its third field counting the list's
 // entries rather than bytes, so a missing, repeated, or inconsistent part, and
 // a list declaring more entries than the receiver admits, is refused from the
@@ -14,10 +15,6 @@
 import { ConnectionError, UsageError, chainDetailCauses } from "../errors";
 import { PSI_SET_REFUSED_ABORT_REASON } from "../partnerAbortFrame";
 import { sendAbort } from "../protocolSetup";
-import {
-  MAX_JSON_ARRAY_ELEMENTS,
-  parseBoundedJson,
-} from "../utils/boundedJson";
 import { receiveBinaryFrame } from "./psiBinaryFrame";
 import {
   PSI_SET_PART_HEADER_BYTES,
@@ -34,12 +31,6 @@ import type { MessageConnection } from "../connection/messageConnection";
 export const MATCHED_LIST_PART_HEADER_BYTES = PSI_SET_PART_HEADER_BYTES;
 
 /**
- * The most entries one part of a JSON list holds: its body is parsed as one
- * JSON message, whose arrays the receiver holds to this many elements.
- */
-export const MAX_MATCHED_LIST_PART_ENTRIES = MAX_JSON_ARRAY_ELEMENTS;
-
-/**
  * Bytes a word-list part's body holds before its entries: the layout tag and
  * the part's entry count (uint32ListParts.ts).
  */
@@ -47,8 +38,8 @@ export const WORD_LIST_BODY_PREFIX_BYTES = 8;
 
 const MAX_PART_COUNT = 0xffff_ffff;
 
-// The most entries one part of a word list holds: its entry count is a uint32.
-const MAX_WORD_LIST_PART_ENTRIES = 0xffff_ffff;
+// The most entries one part holds: its body states its entry count as a uint32.
+const MAX_PART_ENTRIES = 0xffff_ffff;
 
 /**
  * What a receiver admits of one list, derived from the agreed terms and this
@@ -107,10 +98,15 @@ export function matchedListPartByteBound(
   );
 }
 
-/** A list to send in parts whose bodies are 32-bit words, one entry at a time. */
-export interface WordListSource {
+/** A list to send in parts with binary bodies, one entry at a time. */
+export interface BinaryListSource {
   /** How many entries the list holds. */
   readonly entries: number;
+  /**
+   * The bytes every part's body holds before its entries:
+   * {@link WORD_LIST_BODY_PREFIX_BYTES} where absent.
+   */
+  readonly prefixBytes?: number;
   /** The bytes entry `index` adds to a part's body. */
   entryBytes(index: number): number;
   /**
@@ -119,19 +115,6 @@ export interface WordListSource {
    * prefix take.
    */
   writeBody(start: number, end: number, body: DataView): void;
-}
-
-/** A list to send in parts whose bodies are JSON, one entry at a time. */
-export interface MatchedListSource {
-  /** How many entries the list holds. */
-  readonly entries: number;
-  /**
-   * The most UTF-8 bytes entry `index` adds to a part's body, its separators
-   * included.
-   */
-  entryBytes(index: number): number;
-  /** The JSON value a part holding entries `start` to `end` (exclusive) sends. */
-  body(start: number, end: number): unknown;
 }
 
 /** The UTF-8 length of `text`, as `TextEncoder` encodes it. */
@@ -155,23 +138,15 @@ export function utf8Length(text: string): number {
   return bytes;
 }
 
-function isWordListSource(
-  source: MatchedListSource | WordListSource,
-): source is WordListSource {
-  return "writeBody" in source;
-}
-
 // The bytes a part's body holds before its entries.
-function fixedBodyBytes(source: MatchedListSource | WordListSource): number {
-  return isWordListSource(source)
-    ? WORD_LIST_BODY_PREFIX_BYTES
-    : utf8Length(JSON.stringify(source.body(0, 0)));
+function fixedBodyBytes(source: BinaryListSource): number {
+  return source.prefixBytes ?? WORD_LIST_BODY_PREFIX_BYTES;
 }
 
 // The entry index each part after the first starts at, cut so each part's body
 // fits `payloadBytes` and holds at most `maxPartEntries` entries.
 function partStarts(
-  source: MatchedListSource | WordListSource,
+  source: BinaryListSource,
   payloadBytes: number,
   maxPartEntries: number,
 ): number[] {
@@ -213,10 +188,7 @@ export class MatchedListOverBoundError extends Error {
 
 // The bytes of all `count` parts together: each part's header and body prefix,
 // and every entry once.
-function totalListBytes(
-  source: MatchedListSource | WordListSource,
-  count: number,
-): number {
+function totalListBytes(source: BinaryListSource, count: number): number {
   let bytes = count * (MATCHED_LIST_PART_HEADER_BYTES + fixedBodyBytes(source));
   for (let index = 0; index < source.entries; index++)
     bytes += source.entryBytes(index);
@@ -228,20 +200,16 @@ function totalListBytes(
  * `payloadBytes` bytes each, in order, built one at a time. An empty list is
  * one part holding no entries.
  *
- * @param maxPartEntries - The most entries one part holds: for a JSON list
- *   {@link MAX_MATCHED_LIST_PART_ENTRIES} unless a test lowers it, and for a
- *   word list the most its uint32 entry count states.
+ * @param maxPartEntries - The most entries one part holds: the most its uint32
+ *   entry count states, unless a test lowers it.
  * @param maxListBytes - The most bytes all the parts hold together, headers
  *   included. A list over it throws a {@link MatchedListOverBoundError}
- *   before the first part is yielded. A JSON list is measured by its entries'
- *   longest lengths, so the figure it is held to is an upper bound.
+ *   before the first part is yielded.
  */
 export function* matchedListParts(
-  source: MatchedListSource | WordListSource,
+  source: BinaryListSource,
   payloadBytes: number,
-  maxPartEntries: number = isWordListSource(source)
-    ? MAX_WORD_LIST_PART_ENTRIES
-    : MAX_MATCHED_LIST_PART_ENTRIES,
+  maxPartEntries: number = MAX_PART_ENTRIES,
   maxListBytes?: number,
 ): Generator<Uint8Array> {
   const starts = partStarts(source, payloadBytes, maxPartEntries);
@@ -258,9 +226,7 @@ export function* matchedListParts(
   for (let index = 0; index < count; index++) {
     const start = index === 0 ? 0 : starts[index - 1];
     const end = index === count - 1 ? source.entries : starts[index];
-    const part = isWordListSource(source)
-      ? wordListPart(source, start, end)
-      : jsonListPart(source, start, end);
+    const part = binaryListPart(source, start, end);
     const bodyBytes = part.byteLength - MATCHED_LIST_PART_HEADER_BYTES;
     if (bodyBytes > payloadBytes)
       throw new Error(
@@ -275,30 +241,13 @@ export function* matchedListParts(
   }
 }
 
-// A part holding entries `start` to `end` of a JSON list, its header unset.
-function jsonListPart(
-  source: MatchedListSource,
+// A part holding entries `start` to `end` of `source`, its header unset.
+function binaryListPart(
+  source: BinaryListSource,
   start: number,
   end: number,
 ): Uint8Array {
-  const json = JSON.stringify(source.body(start, end));
-  const part = new Uint8Array(
-    MATCHED_LIST_PART_HEADER_BYTES + utf8Length(json),
-  );
-  new TextEncoder().encodeInto(
-    json,
-    part.subarray(MATCHED_LIST_PART_HEADER_BYTES),
-  );
-  return part;
-}
-
-// A part holding entries `start` to `end` of a word list, its header unset.
-function wordListPart(
-  source: WordListSource,
-  start: number,
-  end: number,
-): Uint8Array {
-  let bodyBytes = WORD_LIST_BODY_PREFIX_BYTES;
+  let bodyBytes = fixedBodyBytes(source);
   for (let index = start; index < end; index++)
     bodyBytes += source.entryBytes(index);
   const part = new Uint8Array(MATCHED_LIST_PART_HEADER_BYTES + bodyBytes);
@@ -318,7 +267,7 @@ function wordListPart(
  */
 export async function sendMatchedList(
   conn: MessageConnection,
-  source: MatchedListSource | WordListSource,
+  source: BinaryListSource,
   onPartSent?: () => void,
   maxListBytes?: number,
 ): Promise<void> {
@@ -346,7 +295,7 @@ const TOO_MANY_MATCHES_REMEDY =
  */
 export async function sendMatchedListWithin(
   conn: MessageConnection,
-  source: MatchedListSource | WordListSource,
+  source: BinaryListSource,
   maxListBytes: number,
   refusal: string,
 ): Promise<void> {
@@ -492,27 +441,4 @@ export async function receiveListParts<T>(
   if (filled !== entries)
     throw refuse("ends short of the list's declared entries");
   return parts;
-}
-
-/**
- * {@link receiveListParts} for a list whose parts are JSON: each body is
- * parsed through {@link parseBoundedJson}, a body that is not JSON refused,
- * and then validated by `parsePart`.
- */
-export async function receiveMatchedListParts<T>(
-  conn: MessageConnection,
-  participantId: string,
-  what: string,
-  bound: MatchedListBound,
-  parsePart: (value: unknown) => { readonly part: T; readonly entries: number },
-): Promise<Array<T>> {
-  return receiveListParts(conn, participantId, what, bound, (body, part) => {
-    let value: unknown;
-    try {
-      value = parseBoundedJson(body);
-    } catch {
-      throw part.refuse("is not a JSON message");
-    }
-    return parsePart(value);
-  });
 }

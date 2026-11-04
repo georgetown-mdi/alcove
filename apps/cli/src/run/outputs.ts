@@ -4,13 +4,13 @@ import {
   getLogger,
   runExchange,
   countIsPartnerReported,
-  buildOutputTable,
+  buildOutputTableRows,
   resultCsvDelimiter,
   undeclaredColumnsForOwnResult,
   describeEntityClusters,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
-import type { PreparedExchange } from "@alcove/core";
+import type { OutputTableRows, PreparedExchange } from "@alcove/core";
 
 import type { RecordDelivery, ResultDelivery } from "../exchangeOutcome";
 import type { FileSyncRuntimeOptions, SigningPersist } from "../protocol";
@@ -128,20 +128,20 @@ export async function writeExchangeOutputs(params: {
         "agreed terms you receive no result, so no result file was written.",
     );
   } else {
-    // buildOutputTable is outside the stamp below on purpose: its
+    // buildOutputTableRows is outside the stamp below on purpose: its
     // integrity throws (duplicate partner row indices, rows missing for
     // association indices) are partner-shaped faults, and 73's
     // published meaning is that what failed is a local write on this
     // machine. They are core's ProtocolRefusalError, exit 76, and the
     // terminal event's `output` category covers the whole stage.
-    // One delimiter for the escaping and the join: buildOutputTable quotes
+    // One delimiter for the escaping and the join: buildOutputTableRows quotes
     // each field against it and writeOutput joins the fields with it, so the
     // file reads back through the delimiter this party chose. A party that
     // named none, or chose detection, gets a comma-separated result.
     const resultDelimiter = resultCsvDelimiter(csvDelimiter);
-    let table: ReturnType<typeof buildOutputTable> | undefined;
+    let table: OutputTableRows | undefined;
     try {
-      table = buildOutputTable(
+      table = buildOutputTableRows(
         associationTable,
         prepared.rawRows,
         prepared.metadata,
@@ -171,10 +171,10 @@ export async function writeExchangeOutputs(params: {
         );
         result =
           resultPath === undefined
-            ? { kind: "stdout", matchedRows: table.rows.length }
+            ? { kind: "stdout", matchedRows: table.rowCount }
             : {
                 kind: "file",
-                matchedRows: table.rows.length,
+                matchedRows: table.rowCount,
                 path: path.resolve(resultPath),
               };
       }

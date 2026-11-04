@@ -235,6 +235,36 @@ describe("buildRunOutputs", () => {
     );
   });
 
+  test("a result longer than one encoded piece is written whole", async () => {
+    // 3,000 rows of 500 two-byte characters: the CSV is built and encoded in
+    // pieces, and the file must be the rows in order, whatever the cuts. Only
+    // row 0 is one of this party's rows, so the others are named by index.
+    const count = 3_000;
+    const value = (row: number) => `${row}:${"é".repeat(500)}`;
+    const indices = Array.from({ length: count }, (_unused, row) => row);
+    const { urls, blobs } = recordingUrls();
+    buildRunOutputs(
+      minimalExchangeResult({
+        associationTable: [indices, indices],
+        partnerTerms: PARTNER_TERMS,
+        partnerPayload: {
+          columns: ["program"],
+          rowIndices: indices,
+          rows: indices.map((row) => [value(row)]),
+        },
+      }),
+      prepared,
+      urls,
+    );
+
+    expect(await blobs[0].text()).toBe(
+      "client_id,row_id,program\n" +
+        indices
+          .map((row) => `${row === 0 ? 17 : row},${row},${value(row)}\n`)
+          .join(""),
+    );
+  });
+
   test("the result is written with the delimiter the input was read by", async () => {
     const { urls, blobs } = recordingUrls();
     buildRunOutputs(receivedResult(false), prepared, urls, "|");

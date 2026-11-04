@@ -6,7 +6,8 @@
 // numbers, owner lists as an array of arrays, an omitted grouping as `null`, a
 // mapped-element list as `{theirIndex, iteration}` entries whose one position
 // is a bare number, the returned list as `{theirIndex}` entries, and the
-// single-pass resolved table as its two halves. The words are written
+// single-pass resolved table as its two halves, and a payload part as a
+// payload message `{hasData, columns, rowIndices, rows}`. The words are written
 // here with DataView rather than by the module under test, and a value a word
 // cannot hold is written as `setUint32` truncates it.
 
@@ -110,17 +111,67 @@ function words(values: ReadonlyArray<number>): Uint8Array {
   return bytes;
 }
 
+/** A payload message as a test writes one: the rows of one part. */
+export interface PayloadMessage {
+  readonly hasData: boolean;
+  readonly columns?: ReadonlyArray<string>;
+  readonly rowIndices?: ReadonlyArray<number>;
+  readonly rows?: ReadonlyArray<ReadonlyArray<string | null>>;
+}
+
+function isPayloadMessage(body: unknown): body is PayloadMessage {
+  return typeof body === "object" && body !== null && "hasData" in body;
+}
+
+/**
+ * The body of a payload part holding `message`: the tag 8, the row count and
+ * the column count, then each column name, each row index, and each row's
+ * values, every text value after its UTF-8 byte length and a null value as
+ * the length 2^32 - 1.
+ */
+export function payloadBody(message: PayloadMessage): Uint8Array {
+  const columns = message.columns ?? [];
+  const rowIndices = message.rowIndices ?? [];
+  const rows = message.rows ?? [];
+  const pieces: Array<Uint8Array> = [words([8, rows.length, columns.length])];
+  const text = (value: string | null): void => {
+    if (value === null) {
+      pieces.push(words([0xffff_ffff]));
+      return;
+    }
+    const bytes = new TextEncoder().encode(value);
+    pieces.push(words([bytes.length]), bytes);
+  };
+  columns.forEach(text);
+  pieces.push(words(rowIndices));
+  for (const row of rows) row.forEach(text);
+  const body = new Uint8Array(
+    pieces.reduce((sum, piece) => sum + piece.length, 0),
+  );
+  let at = 0;
+  for (const piece of pieces) {
+    body.set(piece, at);
+    at += piece.length;
+  }
+  return body;
+}
+
 /**
  * A part frame holding `body` under the stated header, in `layout` or, where
- * none is given, the word-list layout `body`'s shape names, or JSON for a
- * payload message; the header defaults to the only part of a list of
- * `entriesOf(body)` entries.
+ * none is given, the word-list layout `body`'s shape names, the payload
+ * layout for a payload message, or JSON for anything else; the header
+ * defaults to the only part of a list of `entriesOf(body)` entries.
  */
 export function partFrame(
   body: unknown,
   header: Partial<PartHeader> = {},
   layout: WordListLayout | undefined = layoutOf(body),
 ): Uint8Array {
+  if (layout === undefined && isPayloadMessage(body))
+    return frameOf(payloadBody(body), {
+      ...header,
+      entries: header.entries ?? entriesOf(body),
+    });
   if (layout === undefined) return jsonPartFrame(body, header);
   return frameOf(wordListBody(body, layout), {
     ...header,
@@ -133,8 +184,8 @@ export function partFrame(
 }
 
 /**
- * A part frame holding `body` as JSON, as a payload message's part does,
- * whatever its shape; the header defaults as {@link partFrame}'s does.
+ * A part frame holding `body` as JSON, whatever its shape, which no list's
+ * part holds; the header defaults as {@link partFrame}'s does.
  */
 export function jsonPartFrame(
   body: unknown,
@@ -213,10 +264,51 @@ function readWordListBody(
   return { value: column(0), layout };
 }
 
+// The payload message a payload part's body holds, `{hasData: false}` for one
+// naming no column and holding no row, or undefined for a body that is not a
+// payload part's whole.
+function readPayloadBody(body: Uint8Array): PayloadMessage | undefined {
+  if (body.byteLength < 12) return undefined;
+  const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
+  if (view.getUint32(0, true) !== 8) return undefined;
+  const rowCount = view.getUint32(4, true);
+  const width = view.getUint32(8, true);
+  let at = 12;
+  const word = (): number => {
+    if (at + 4 > body.byteLength) throw new RangeError("past the body");
+    const value = view.getUint32(at, true);
+    at += 4;
+    return value;
+  };
+  const text = (): string | null => {
+    const length = word();
+    if (length === 0xffff_ffff) return null;
+    if (at + length > body.byteLength) throw new RangeError("past the body");
+    const value = new TextDecoder("utf-8", {
+      fatal: true,
+      ignoreBOM: true,
+    }).decode(body.subarray(at, at + length));
+    at += length;
+    return value;
+  };
+  try {
+    const columns = Array.from({ length: width }, () => text() as string);
+    const rowIndices = Array.from({ length: rowCount }, word);
+    const rows = Array.from({ length: rowCount }, () =>
+      Array.from({ length: width }, text),
+    );
+    if (at !== body.byteLength) return undefined;
+    if (width === 0 && rowCount === 0) return { hasData: false };
+    return { hasData: true, columns, rowIndices, rows };
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The header and plain body of a part frame, and the word-list layout its body
- * is in (undefined for a JSON body), or undefined for a frame that is not one:
- * not binary, or a body that is neither (a PSI set part).
+ * is in (undefined for a payload or JSON body), or undefined for a frame that
+ * is not one: not binary, or a body that is none of these (a PSI set part).
  */
 export function readPartFrame(
   frame: unknown,
@@ -233,6 +325,8 @@ export function readPartFrame(
     entries: Number(view.getBigUint64(8)),
   };
   const bodyBytes = frame.subarray(MATCHED_LIST_PART_HEADER_BYTES);
+  const payload = readPayloadBody(bodyBytes);
+  if (payload !== undefined) return { header, body: payload };
   const words = readWordListBody(bodyBytes);
   if (words !== undefined)
     return { header, body: words.value, layout: words.layout };

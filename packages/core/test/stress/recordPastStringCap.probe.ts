@@ -112,10 +112,12 @@ const rows =
     ? Math.floor((constants.MAX_STRING_LENGTH - emptyLength + 1) / perRowLength)
     : PAST_ROWS;
 
-const payload: CommittedPayload = {
+const payload = {
   columns: ["id"],
-  rows: Array.from({ length: rows }, (_unused, row) => [cell(row)]),
-};
+  rows: Array.from({ length: rows }, (_unused, row): Array<string | null> => [
+    cell(row),
+  ]),
+} satisfies CommittedPayload;
 const empty: CommittedPayload = { columns: [], rows: [] };
 const own = Array.from({ length: rows }, (_unused, at) => at);
 const partner = Array.from({ length: rows }, (_unused, at) => at >> 3);

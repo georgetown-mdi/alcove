@@ -357,7 +357,9 @@ vi.mock("@alcove/core", async (importActual) => {
     exchangeRecordFromFailure: vi.fn().mockReturnValue(undefined),
     exchangeRecordOwedButUnbuilt: vi.fn().mockReturnValue(false),
     describeExchangeStages: vi.fn().mockReturnValue([]),
-    buildOutputTable: vi.fn().mockReturnValue({ headers: [], rows: [] }),
+    buildOutputTableRows: vi
+      .fn()
+      .mockReturnValue({ headers: [], rowCount: 0, rows: [] }),
     assertFirstRoundWithinSetMaximum: vi.fn(
       actual.assertFirstRoundWithinSetMaximum,
     ),
@@ -421,7 +423,7 @@ vi.mock("../../src/connection/ssh2SftpAdapter", () => {
 });
 
 import {
-  buildOutputTable,
+  buildOutputTableRows,
   DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   parseDualSignedRecord,
   parseExchangeRecord,
@@ -554,7 +556,7 @@ const signingIdentityFixture = await generateSigningIdentity("test-party", {
   },
 });
 
-// Values unused because runExchange and buildOutputTable are mocked.
+// Values unused because runExchange and buildOutputTableRows are mocked.
 const minimalPrepared = minimalPreparedExchange();
 
 // PEER_WAIT_HANG_BACKSTOP_MS bounds every peer wait a two-party case makes,
@@ -1071,8 +1073,8 @@ test("authentication=null runs the exchange without authentication and without e
 test("the local own-columns selection reaches the result formatter", async () => {
   // The config key changes only what this party writes for itself, so the one
   // thing the CLI owes it is the hand-off: the selection prepareForExchange
-  // returned must reach buildOutputTable, which composes the file.
-  vi.mocked(buildOutputTable).mockClear();
+  // returned must reach buildOutputTableRows, which composes the file.
+  vi.mocked(buildOutputTableRows).mockClear();
   const carrying = minimalPreparedExchange({ includeOwnColumns: "all" });
   await Promise.all([
     runProtocol({
@@ -1101,7 +1103,7 @@ test("the local own-columns selection reaches the result formatter", async () =>
     }),
   ]);
   const selections = vi
-    .mocked(buildOutputTable)
+    .mocked(buildOutputTableRows)
     .mock.calls.map((call) => call[4]);
   // One party set the key and the other did not, and neither answer is the
   // other's: an absent key composes the result the partner's values alone make.
@@ -1915,7 +1917,7 @@ test("a result file that could not be written fails with the persistence-loss ex
 }, 20_000);
 
 test("a partner-shaped output-phase fault exits 76, not the local write-loss code", async () => {
-  // The other half of the same boundary. buildOutputTable's integrity checks run
+  // The other half of the same boundary. buildOutputTableRows's integrity checks run
   // in the output phase but refuse PARTNER-controlled shapes -- here a payload
   // holding no row for a record the association table matched, thrown by the
   // real core function -- and 73's published meaning is that what failed is a
@@ -1923,7 +1925,7 @@ test("a partner-shaped output-phase fault exits 76, not the local write-loss cod
   // result file failing to reach disk is stamped. The terminal event's `output`
   // category still covers it, since the exchange did complete and must not be
   // re-run.
-  const { buildOutputTable: coreBuildOutputTable } =
+  const { buildOutputTableRows: coreBuildOutputTable } =
     await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
   const payloadMissingAMatchedRow: PartnerPayload = {
     columns: ["dob"],
@@ -1931,7 +1933,7 @@ test("a partner-shaped output-phase fault exits 76, not the local write-loss cod
     rows: [["1990-01-02"]],
   };
   const associationNamingAnotherRow: AssociationTable = [[0], [7]];
-  vi.mocked(buildOutputTable).mockImplementation(() =>
+  vi.mocked(buildOutputTableRows).mockImplementation(() =>
     coreBuildOutputTable(
       associationNamingAnotherRow,
       [],
@@ -1972,7 +1974,11 @@ test("a partner-shaped output-phase fault exits 76, not the local write-loss cod
     ]);
   } finally {
     vi.mocked(fs.fstatSync).mockRestore();
-    vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
+    vi.mocked(buildOutputTableRows).mockReturnValue({
+      headers: [],
+      rowCount: 0,
+      rows: [],
+    });
   }
 
   expect(outcome.status).toBe("rejected");
@@ -1996,9 +2002,9 @@ test("a partner-shaped output-phase fault reports the post-exchange persistence 
   // A --save or online invite/accept run whose result table cannot be built
   // never writes its configuration or key, and the partner may have saved
   // theirs, so the skipped step is named on fd 3 before the terminal error.
-  const { buildOutputTable: coreBuildOutputTable } =
+  const { buildOutputTableRows: coreBuildOutputTable } =
     await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
-  vi.mocked(buildOutputTable).mockImplementation(() =>
+  vi.mocked(buildOutputTableRows).mockImplementation(() =>
     coreBuildOutputTable([[0], [7]], [], [], {
       columns: ["dob"],
       rowIndices: [5],
@@ -2039,7 +2045,11 @@ test("a partner-shaped output-phase fault reports the post-exchange persistence 
     ]);
   } finally {
     vi.mocked(fs.fstatSync).mockRestore();
-    vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
+    vi.mocked(buildOutputTableRows).mockReturnValue({
+      headers: [],
+      rowCount: 0,
+      rows: [],
+    });
   }
 
   expect(outcome.status).toBe("rejected");
@@ -2070,9 +2080,9 @@ test("a result-delivery failure on a relay-registering run does not report a loc
   // The relay key registration writes nothing to this party's disk, so the
   // skipped-persistence notice a failed result raises for a local write does
   // not apply to it; the exchange command registers on its failure path.
-  const { buildOutputTable: coreBuildOutputTable } =
+  const { buildOutputTableRows: coreBuildOutputTable } =
     await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
-  vi.mocked(buildOutputTable).mockImplementation(() =>
+  vi.mocked(buildOutputTableRows).mockImplementation(() =>
     coreBuildOutputTable([[0], [7]], [], [], {
       columns: ["dob"],
       rowIndices: [5],
@@ -2121,7 +2131,11 @@ test("a result-delivery failure on a relay-registering run does not report a loc
     ]);
   } finally {
     vi.mocked(fs.fstatSync).mockRestore();
-    vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
+    vi.mocked(buildOutputTableRows).mockReturnValue({
+      headers: [],
+      rowCount: 0,
+      rows: [],
+    });
   }
 
   expect(outcome.status).toBe("rejected");
@@ -2145,9 +2159,9 @@ test("a partner payload missing a matched row still leaves the record and the re
   // runExchange completed and returned its audit and the signed receipt,
   // so the disclosure happened; the partner payload then fails the real core
   // table build. The failure is raised only after both artifacts are on disk.
-  const { buildOutputTable: coreBuildOutputTable } =
+  const { buildOutputTableRows: coreBuildOutputTable } =
     await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
-  vi.mocked(buildOutputTable).mockImplementation(() =>
+  vi.mocked(buildOutputTableRows).mockImplementation(() =>
     coreBuildOutputTable([[0], [7]], [], [], {
       columns: ["dob"],
       rowIndices: [5],
@@ -2182,7 +2196,11 @@ test("a partner payload missing a matched row still leaves the record and the re
       parties.map((p) => runSigningParty(p.keyFile, p.name, p.folder)),
     );
   } finally {
-    vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
+    vi.mocked(buildOutputTableRows).mockReturnValue({
+      headers: [],
+      rowCount: 0,
+      rows: [],
+    });
   }
 
   for (const [i, p] of parties.entries()) {
@@ -2325,7 +2343,7 @@ test("writes no result file for a non-receiving party when the exchange withhold
   // it is the PSI sender/helper), runProtocol must write no result CSV -- it
   // contributed to the match but is not entitled to the result. Both parties model
   // a withheld result here, so neither writes an output file and the table
-  // formatter (buildOutputTable) is never reached.
+  // formatter (buildOutputTableRows) is never reached.
   async function runExchangeWithheld(): Promise<unknown> {
     // Drain the drop dir exactly as the default mock does, so neither party's
     // cleanup races the other's poller, then return a withheld result.
@@ -2337,10 +2355,10 @@ test("writes no result file for a non-receiving party when the exchange withhold
     };
   }
   vi.mocked(runExchange).mockImplementation(runExchangeWithheld as never);
-  // Other tests in this file call buildOutputTable through runProtocol's normal
+  // Other tests in this file call buildOutputTableRows through runProtocol's normal
   // (non-withheld) path, so clear its accumulated calls before asserting it is not
   // reached here.
-  vi.mocked(buildOutputTable).mockClear();
+  vi.mocked(buildOutputTableRows).mockClear();
 
   const outputA = path.join(tmpDir, "out-a");
   const outputB = path.join(tmpDir, "out-b");
@@ -2377,7 +2395,7 @@ test("writes no result file for a non-receiving party when the exchange withhold
   expect(resultFilesIn(outputB)).toEqual([]);
   // ...and the table-formatting step is never reached, so there is nothing in
   // memory to write either.
-  expect(vi.mocked(buildOutputTable)).not.toHaveBeenCalled();
+  expect(vi.mocked(buildOutputTableRows)).not.toHaveBeenCalled();
 }, 20_000);
 
 // Mock a count-only run for the given PSI seat: the receiver computed the count
@@ -2394,7 +2412,7 @@ function mockCountOnlyRun(resolvedRole: "receiver" | "sender") {
     };
   }
   vi.mocked(runExchange).mockImplementation(runExchangeCountOnly as never);
-  vi.mocked(buildOutputTable).mockClear();
+  vi.mocked(buildOutputTableRows).mockClear();
 }
 
 // Drive both halves of a filedrop run, writing this party's result to `output`.
@@ -2437,7 +2455,7 @@ test("reports a count-only exchange's count instead of treating it as withheld",
   await runBothHalves(output);
 
   expect(resultFilesIn(output)).toEqual([]);
-  expect(vi.mocked(buildOutputTable)).not.toHaveBeenCalled();
+  expect(vi.mocked(buildOutputTableRows)).not.toHaveBeenCalled();
   const countLines = mockState.infos.filter((line) =>
     line.includes("7 records in common"),
   );
@@ -3259,8 +3277,9 @@ test("a completed run ends with one outcome line naming the count, the paths and
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
   vi.mocked(runExchange).mockImplementation(runExchangeWithAudit as never);
-  vi.mocked(buildOutputTable).mockReturnValue({
+  vi.mocked(buildOutputTableRows).mockReturnValue({
     headers: ["id"],
+    rowCount: 2,
     rows: [["1"], ["2"]],
   });
   const folderA = path.join(tmpDir, "out-a");
@@ -3318,7 +3337,11 @@ test("a completed run ends with one outcome line naming the count, the paths and
       }),
     ]);
   } finally {
-    vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
+    vi.mocked(buildOutputTableRows).mockReturnValue({
+      headers: [],
+      rowCount: 0,
+      rows: [],
+    });
   }
 
   expect(linesA).toEqual([
@@ -3345,8 +3368,9 @@ test("a run with no record stamps a folder result from the output stage's start"
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
-  vi.mocked(buildOutputTable).mockReturnValue({
+  vi.mocked(buildOutputTableRows).mockReturnValue({
     headers: ["id"],
+    rowCount: 1,
     rows: [["1"]],
   });
   const resultsDir = path.join(tmpDir, "results");
@@ -3380,7 +3404,11 @@ test("a run with no record stamps a folder result from the output stage's start"
       }),
     ]);
   } finally {
-    vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
+    vi.mocked(buildOutputTableRows).mockReturnValue({
+      headers: [],
+      rowCount: 0,
+      rows: [],
+    });
   }
   const after = Date.now();
 

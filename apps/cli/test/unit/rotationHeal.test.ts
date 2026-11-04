@@ -97,7 +97,9 @@ vi.mock("@alcove/core", async (importActual) => {
     exchangeRecordFromFailure: vi.fn().mockReturnValue(undefined),
     exchangeRecordOwedButUnbuilt: vi.fn().mockReturnValue(false),
     describeExchangeStages: vi.fn().mockReturnValue([]),
-    buildOutputTable: vi.fn().mockReturnValue({ headers: [], rows: [] }),
+    buildOutputTableRows: vi
+      .fn()
+      .mockReturnValue({ headers: [], rowCount: 0, rows: [] }),
   };
 });
 

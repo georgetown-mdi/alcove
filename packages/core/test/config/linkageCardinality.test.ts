@@ -47,6 +47,7 @@ import type {
 } from "../../src/config/linkageTermsSchema";
 import type { CSVRow } from "../../src/file";
 import type { Metadata } from "../../src/config/metadata";
+import { plainPayload } from "../utils/plainPayload";
 import { prepared } from "../utils/support";
 
 // The cardinality runExchange passes to the linkage strategies comes from the
@@ -1564,13 +1565,14 @@ test("the accepting party's declared setting is false yet more of its records ma
   // drops out of the round, so the accepting party's row 0 goes unmatched and
   // its payload row never leaves. Under the deduplicating run that value matches,
   // and the row's membership and payload column go to the inviting party.
-  expect(oneToOne.inviter.partnerPayload.rowIndices).toStrictEqual([1]);
-  expect(deduplicating.inviter.partnerPayload.rowIndices).toStrictEqual([0, 1]);
-  expect(oneToOne.inviter.partnerPayload.rows).toStrictEqual([["b-1"]]);
-  expect(deduplicating.inviter.partnerPayload.rows).toStrictEqual([
-    ["b-0"],
-    ["b-1"],
-  ]);
+  const oneToOnePayload = plainPayload(oneToOne.inviter.partnerPayload);
+  const deduplicatingPayload = plainPayload(
+    deduplicating.inviter.partnerPayload,
+  );
+  expect(oneToOnePayload.rowIndices).toStrictEqual([1]);
+  expect(deduplicatingPayload.rowIndices).toStrictEqual([0, 1]);
+  expect(oneToOnePayload.rows).toStrictEqual([["b-1"]]);
+  expect(deduplicatingPayload.rows).toStrictEqual([["b-0"], ["b-1"]]);
 
   // Both runs derive the accepting party's own side as false, so the widening is
   // not that party taking the "many" side: its records are never grouped.

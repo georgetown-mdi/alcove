@@ -79,7 +79,7 @@ import {
   WORD_LIST_BODY_PREFIX_BYTES,
   sendMatchedList,
   sendMatchedListWithin,
-  type WordListSource,
+  type BinaryListSource,
 } from "./matchedListParts";
 import { psiSetPartPayloadBytes, statedFrameBound } from "./psiSetParts";
 import {
@@ -132,7 +132,7 @@ interface MappedElementEntry {
 /** @internal exported for the mapped-element wire-message tests. */
 export function mappedElementSource(
   list: ReadonlyArray<MappedElementEntry>,
-): WordListSource {
+): BinaryListSource {
   return wordListSource(MAPPED_ELEMENT_LAYOUT, {
     entries: list.length,
     column: (_column, index) => list[index].iteration,
@@ -151,7 +151,7 @@ export function mappedElementSource(
 /** @internal exported for the mapped-element wire-message tests. */
 export function returnedElementSource(
   list: ReadonlyArray<IndexIterationPair>,
-): WordListSource {
+): BinaryListSource {
   return wordListSource(RETURNED_ELEMENT_LAYOUT, {
     entries: list.length,
     column: (_column, index) => list[index].theirIndex,
@@ -2618,7 +2618,7 @@ export async function sendResolvedTable(
 // Single-pass message 3, the resolved table for the sender's side: per entry
 // the sender's row, then the receiver's (RESOLVED_TABLE_LAYOUT).
 /** @internal exported for the single-pass wire-message tests. */
-export function resolvedTableSource(table: AssociationTable): WordListSource {
+export function resolvedTableSource(table: AssociationTable): BinaryListSource {
   return wordListSource(RESOLVED_TABLE_LAYOUT, {
     entries: table[0].length,
     column: (column, index) => table[column][index],
@@ -3450,7 +3450,7 @@ export async function exchangeMappedElements<T>(
     debug: (...msg: Array<unknown>) => void;
   },
   sendFirst: boolean,
-  values: WordListSource,
+  values: BinaryListSource,
   // Receives the partner's list, refusing it as a `protocol` failure.
   receive: () => Promise<T>,
 ): Promise<T> {

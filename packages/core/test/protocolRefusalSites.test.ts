@@ -37,7 +37,7 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
     [PARTNER],
   // The partner's payload frame: not arrays, wrong cell shape, lengths that
   // disagree, repeated indices, rows missing.
-  "packages/core/src/payloadExchange.ts :: buildOutputTable": [
+  "packages/core/src/payloadExchange.ts :: buildOutputTableRows": [
     PARTNER,
     PARTNER,
     PARTNER,

@@ -11,7 +11,7 @@ import {
   WORD_LIST_BODY_PREFIX_BYTES,
   type ListPartContext,
   type MatchedListBound,
-  type WordListSource,
+  type BinaryListSource,
 } from "./matchedListParts";
 
 import type { MessageConnection } from "../connection/messageConnection";
@@ -129,13 +129,13 @@ export function wordListEntryBytes(
 }
 
 /**
- * `list` as a {@link WordListSource} of `layout`. A value that is not an
+ * `list` as a {@link BinaryListSource} of `layout`. A value that is not an
  * unsigned 32-bit whole number is refused before the first part is built.
  */
 export function wordListSource(
   layout: WordListLayout,
   list: WordListEntries,
-): WordListSource {
+): BinaryListSource {
   const valuesOf = (index: number): ArrayLike<number> =>
     layout.ragged ? (list.ragged?.(index) ?? NO_VALUES) : NO_VALUES;
   return {

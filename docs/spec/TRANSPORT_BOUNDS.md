@@ -140,12 +140,14 @@ The bounds that hold over partner content across the whole list:
   The transport has read the part whole by then, so this bounds what is made from the part, not what the transport reads; a payload part has no such bound.
 - **A word-list body is checked against its own length first.**
   Its tag, entry count and count words are checked against the words the body holds before any array is made from it, so no array read from a part is longer than the part's own words ([What the receiver refuses, reading the parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+- **A payload body is checked against its own length first.**
+  Its row and column counts and every byte length are checked against the bytes the body holds, and every name and value checked as UTF-8, before any array or string is made from it; the values are then kept as one copy of their bytes ([What the receiver refuses, reading the parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
 - **The receiver holds one unread part at a time.**
   Each part's header is checked and its body read as the part arrives, before the next part is read (`receiveListParts`, `packages/core/src/psi/matchedListParts.ts`).
   The unread bytes a list holds at any moment are therefore at most one per-frame bound, whatever its part count, and a part refused on its header or its body ends the receive at that part.
 - **The read list is held to the declared entry count.**
   The first part's declared entry count is held to the bound PROTOCOL.md derives from the agreed terms and this party's own result, and the part count to at most that entry count (1 for an empty list).
-  Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the read parts hold at most that many entries between them, each payload part parsed under the [application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
+  Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the read parts hold at most that many entries between them.
 
 Frames the transport has delivered but the receive has not yet read sit in the inbound queue, which bounds them by count, as the [WebRTC data-channel inbound bound](#webrtc-data-channel-inbound-bound) states for every frame.
 `packages/core/test/psi/matchedListParts.test.ts` drives a refused part ending the receive before the next is read, and a part parsed before the next one arrives; `packages/core/test/psi/uint32ListParts.test.ts` drives each word-list body refused with no array made.

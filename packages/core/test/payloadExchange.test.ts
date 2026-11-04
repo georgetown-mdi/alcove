@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vitest";
-import * as z from "zod";
 
 import {
   preparePayload,
@@ -9,6 +8,7 @@ import {
   assertNoPayloadReceived,
   termsStatingDeclaredPayloadSend,
   joinPayloadParts,
+  payloadRow,
 } from "../src/payloadExchange";
 import { prepareForExchange } from "../src/exchange";
 import { deriveAcceptedLinkageTerms } from "../src/linkageTermsNegotiation";
@@ -34,7 +34,9 @@ import type { PartnerPayload } from "../src/payloadExchange";
 
 import { createMessagePipe } from "../src/connection/messageConnection";
 import type { MessageConnection } from "../src/connection/messageConnection";
-import { partFrame } from "./utils/matchedListPartFrames";
+import { partFrame, payloadBody } from "./utils/matchedListPartFrames";
+import { plainPayload } from "./utils/plainPayload";
+import { readPayloadPartBody } from "../src/psi/payloadRowParts";
 import { MESSAGE_HEADER_BYTES } from "../src/connection/fileSyncFraming";
 import { MATCHED_LIST_PART_HEADER_BYTES } from "../src/psi/matchedListParts";
 
@@ -890,16 +892,50 @@ test("exchangePayloads: each party receives the other's payload", async () => {
     payloadB,
   );
 
-  expect(receivedByB.columns).toEqual(["patient_id", "diagnosis"]);
-  expect(receivedByB.rowIndices).toEqual([0, 2]);
-  expect(receivedByB.rows).toEqual([
-    ["P0", "A"],
-    ["P2", "C"],
-  ]);
+  expect(plainPayload(receivedByB)).toEqual({
+    columns: ["patient_id", "diagnosis"],
+    rowIndices: [0, 2],
+    rows: [
+      ["P0", "A"],
+      ["P2", "C"],
+    ],
+  });
+  expect(plainPayload(receivedByA)).toEqual({
+    columns: ["diagnosis"],
+    rowIndices: [1, 3],
+    rows: [["B"], ["D"]],
+  });
+});
 
-  expect(receivedByA.columns).toEqual(["diagnosis"]);
-  expect(receivedByA.rowIndices).toEqual([1, 3]);
-  expect(receivedByA.rows).toEqual([["B"], ["D"]]);
+test("exchangePayloads: empty values, nulls and multi-byte UTF-8 cross unchanged", async () => {
+  const values = [
+    "",
+    "é",
+    "€uro",
+    "😀",
+    "\ufeffleading byte-order mark",
+    "a\u0000b",
+    "line\r\nbreak",
+  ];
+  const payload = {
+    hasData: true as const,
+    columns: ["näme", "😀col"],
+    rowIndices: values.map((_, i) => 2 ** 32 - 1 - i),
+    rows: values.map((value, i): Array<string | null> => [
+      value,
+      i % 2 === 0 ? null : value,
+    ]),
+  };
+  const [connA, connB] = createMessagePipe();
+  const [, received] = await Promise.all([
+    exchangePayloads(connA, "initiator", payload, values.length),
+    exchangePayloads(connB, "responder", { hasData: false }, values.length),
+  ]);
+  expect(plainPayload(received)).toEqual({
+    columns: payload.columns,
+    rowIndices: payload.rowIndices,
+    rows: payload.rows,
+  });
 });
 
 test("exchangePayloads: hasData:false from both parties yields empty PartnerPayload on both sides", async () => {
@@ -1096,7 +1132,11 @@ test.each([
     );
 
     expect(raised).toBeInstanceOf(TransportWriteIndeterminateError);
-    expect(reported).toEqual([expectedReport]);
+    expect(
+      reported.map((report) =>
+        report === undefined ? undefined : plainPayload(report),
+      ),
+    ).toEqual([expectedReport]);
   },
 );
 
@@ -1121,9 +1161,9 @@ test("exchangePayloads: an indeterminate write the connection wrapped is reporte
   expect(reported).toEqual(["reported"]);
 });
 
-test("exchangePayloads: a frame failing length parity is refused on parity alone, not the repeat scan", async () => {
-  // Parity is checked before distinctness, so a mismatched frame is refused
-  // without walking its indices -- the refusal names only the parity fault.
+test("exchangePayloads: a part holding more row indices than rows is refused on its length", async () => {
+  // A part states one row count for its indices and its rows, so an index
+  // with no row leaves bytes its lengths do not account for.
   const [connA, connB] = createMessagePipe();
   const initiatorPromise = exchangePayloads(
     connA,
@@ -1145,20 +1185,18 @@ test("exchangePayloads: a frame failing length parity is refused on parity alone
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
-  expect(String((err as ConnectionError).cause)).toMatch(
-    /rowIndices and rows must have the same length/,
-  );
-  expect(String((err as ConnectionError).cause)).not.toMatch(
-    /must not repeat a row index/,
+  expect((err as Error).message).toBe(
+    "protocol error: inbound payload part 0 is not the length its value " +
+      "lengths state",
   );
 });
 
-test("exchangePayloads: a repeated row index is refused at parse, as a protocol fault", async () => {
+test("exchangePayloads: a repeated row index is refused on receipt, as a protocol fault", async () => {
   // `rowIndices` pairs one of the sender's rows with the payload row at the same
-  // position, so a repeat names two rows for one record. The wire schema refuses
-  // it where the message is parsed, with the classification every other malformed
-  // partner frame gets, so the receive rejects rather than returning a payload for
-  // a later stage to refuse.
+  // position, so a repeat names two rows for one record. It is refused where
+  // the payload is received, with the classification every other malformed
+  // partner part gets, so the receive rejects rather than returning a payload
+  // for a later stage to refuse.
   const [connA, connB] = createMessagePipe();
   const initiatorPromise = exchangePayloads(
     connA,
@@ -1180,15 +1218,15 @@ test("exchangePayloads: a repeated row index is refused at parse, as a protocol 
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
-  expect(String((err as ConnectionError).cause)).toMatch(
-    /rowIndices must not repeat a row index/,
+  expect((err as Error).message).toBe(
+    "protocol error: inbound payload repeats a row index",
   );
 });
 
-test("exchangePayloads: distinct row indices parse whatever order they arrive in", async () => {
-  // The other half of the refusal above: only repetition is refused, so an honest
-  // message still parses -- including one whose indices do not ascend, which the
-  // schema has never required.
+test("exchangePayloads: distinct row indices are read whatever order they arrive in", async () => {
+  // The other half of the refusal above: only repetition is refused, so an
+  // honest payload is still read -- including one whose indices do not
+  // ascend, which the receiver has never required.
   const [connA, connB] = createMessagePipe();
   const initiatorPromise = exchangePayloads(
     connA,
@@ -1207,20 +1245,19 @@ test("exchangePayloads: distinct row indices parse whatever order they arrive in
       rows: [["P2"], ["P0"]],
     }),
   );
-  await expect(initiatorPromise).resolves.toEqual({
+  expect(plainPayload(await initiatorPromise)).toEqual({
     columns: ["patient_id"],
     rowIndices: [2, 0],
     rows: [["P2"], ["P0"]],
   });
 });
 
-test("exchangePayloads: a frame declaring no columns but holding rows is refused at parse, as a protocol fault", async () => {
-  // The starkest width fault: every value in the frame's rows belongs to a
-  // column the frame does not name. Accepting it would commit those values to
+test("exchangePayloads: a part declaring no columns but holding rows is refused on receipt, as a protocol fault", async () => {
+  // The starkest width fault: every value in the part's rows belongs to a
+  // column the part does not name. Accepting it would commit those values to
   // this party's exchange record while the record's readable received-column
-  // list said none were received. The wire schema refuses it at parse, with
-  // the classification every other malformed partner frame gets, so the
-  // receive rejects before any output or record stage reads the payload.
+  // list said none were received. It is refused where the part is read, so
+  // the receive rejects before any output or record stage reads the payload.
   const [connA, connB] = createMessagePipe();
   const initiatorPromise = exchangePayloads(
     connA,
@@ -1242,12 +1279,12 @@ test("exchangePayloads: a frame declaring no columns but holding rows is refused
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
-  expect(String((err as ConnectionError).cause)).toMatch(
-    /each payload row must have one value per declared column/,
+  expect((err as Error).message).toBe(
+    "protocol error: inbound payload part 0 names no column",
   );
 });
 
-test("exchangePayloads: a row holding more values than the frame names columns is refused", async () => {
+test("exchangePayloads: a row holding more values than the part names columns is refused", async () => {
   const [connA, connB] = createMessagePipe();
   const initiatorPromise = exchangePayloads(
     connA,
@@ -1269,12 +1306,13 @@ test("exchangePayloads: a row holding more values than the frame names columns i
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
-  expect(String((err as ConnectionError).cause)).toMatch(
-    /each payload row must have one value per declared column/,
+  expect((err as Error).message).toBe(
+    "protocol error: inbound payload part 0 is not the length its value " +
+      "lengths state",
   );
 });
 
-test("exchangePayloads: a row holding fewer values than the frame names columns is refused", async () => {
+test("exchangePayloads: a row holding fewer values than the part names columns is refused", async () => {
   // The other width direction, refused by the same rule: a named column with no
   // value for the record would otherwise be committed as an absent cell the
   // record's column list still claims was received.
@@ -1299,8 +1337,9 @@ test("exchangePayloads: a row holding fewer values than the frame names columns 
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
-  expect(String((err as ConnectionError).cause)).toMatch(
-    /each payload row must have one value per declared column/,
+  expect((err as Error).message).toBe(
+    "protocol error: inbound payload part 0 is not the length its value " +
+      "lengths state",
   );
 });
 
@@ -1329,7 +1368,7 @@ test("exchangePayloads: an ordinary output party's multi-column frame parses", a
       ],
     }),
   );
-  await expect(initiatorPromise).resolves.toEqual({
+  expect(plainPayload(await initiatorPromise)).toEqual({
     columns: ["patient_id", "diagnosis"],
     rowIndices: [0, 2],
     rows: [
@@ -1397,171 +1436,6 @@ test("exchangePayloads: a columnless frame holding no rows parses, committing no
   });
 });
 
-// --- the wire schema's element predicates against the schemas they replace ------
-
-// `columns`, `rowIndices` and `rows` are validated by predicates inside a
-// single-issue array (utils/singleIssueArray.ts) rather than by element
-// schemas, which caps issue accumulation on a hostile frame without changing
-// which frames parse. This corpus checks that second half by comparing the
-// real receive path against a plain reference schema on every frame, each
-// round-tripped through JSON first, so only a JSON body's shapes are in scope.
-// The well-formedness half of the rule, read from an independent oracle:
-// String.prototype.isWellFormed, which the package's own scan cannot use (it
-// compiles against the ES2022 lib) and which is therefore not the
-// implementation restated. Declared here because the same lib setting hides it
-// from the type checker.
-const isWellFormed = (value: string): boolean =>
-  (value as unknown as { isWellFormed: () => boolean }).isWellFormed();
-
-const wellFormed = (schema: z.ZodString) => schema.refine(isWellFormed);
-
-// The length rule spelled out rather than taken from Zod's `.max()`, which
-// counts code points: the rule the wire holds is at most MAX_NAME_LENGTH UTF-16
-// code units, so the oracle states that and the astral corpus entry below
-// separates the two.
-const withinNameLength = (schema: z.ZodString) =>
-  schema.refine((value) => value.length <= MAX_NAME_LENGTH);
-
-const referenceFrameSchema = z.object({
-  hasData: z.literal(true),
-  columns: z.array(withinNameLength(wellFormed(z.string().min(1)))),
-  rowIndices: z.array(z.number().int().nonnegative()),
-  rows: z.array(z.array(wellFormed(z.string()).nullable())),
-});
-
-// One column, one matched row, one cell. Every frame below keeps its collections
-// in agreement whenever its elements are well shaped, so the schema's parity,
-// width and distinctness rules never decide a verdict and the comparison is about
-// element shape alone.
-const frameWith = (overrides: Record<string, unknown>): unknown => ({
-  hasData: true,
-  columns: ["diagnosis"],
-  rowIndices: [0],
-  rows: [["A"]],
-  ...overrides,
-});
-
-const elementShapeCorpus: Array<{ label: string; frame: unknown }> = [
-  { label: "an honest one-column frame", frame: frameWith({}) },
-  { label: "a null cell", frame: frameWith({ rows: [[null]] }) },
-  {
-    label: "a frame carrying nothing",
-    frame: frameWith({ columns: [], rowIndices: [], rows: [] }),
-  },
-  {
-    label: "a column name at the length ceiling",
-    frame: frameWith({ columns: ["x".repeat(MAX_NAME_LENGTH)] }),
-  },
-  { label: "an empty column name", frame: frameWith({ columns: [""] }) },
-  {
-    label: "an overlong column name",
-    frame: frameWith({ columns: ["x".repeat(MAX_NAME_LENGTH + 1)] }),
-  },
-  {
-    label:
-      "a column name over the ceiling in code units, under it in code points",
-    frame: frameWith({
-      columns: ["\u{1F600}".repeat(MAX_NAME_LENGTH / 2 + 1)],
-    }),
-  },
-  { label: "a numeric column name", frame: frameWith({ columns: [1] }) },
-  {
-    label: "a column name holding a lone high surrogate",
-    frame: frameWith({ columns: ["diagnosis\ud800"] }),
-  },
-  {
-    label: "a column name holding a lone low surrogate",
-    frame: frameWith({ columns: ["\udc00diagnosis"] }),
-  },
-  {
-    label: "a column name holding a surrogate pair",
-    frame: frameWith({ columns: ["diagnosis😀"] }),
-  },
-  { label: "a null column name", frame: frameWith({ columns: [null] }) },
-  {
-    label: "a columns collection that is not an array",
-    frame: frameWith({ columns: "diagnosis" }),
-  },
-  { label: "a fractional row index", frame: frameWith({ rowIndices: [0.5] }) },
-  { label: "a negative row index", frame: frameWith({ rowIndices: [-1] }) },
-  {
-    label: "a row index past the safe-integer ceiling",
-    frame: frameWith({ rowIndices: [2 ** 53] }),
-  },
-  { label: "a stringified row index", frame: frameWith({ rowIndices: ["0"] }) },
-  {
-    label: "a rowIndices collection that is not an array",
-    frame: frameWith({ rowIndices: 0 }),
-  },
-  { label: "a numeric cell", frame: frameWith({ rows: [[5]] }) },
-  {
-    label: "a cell holding a lone high surrogate",
-    frame: frameWith({ rows: [["P-1\ud800"]] }),
-  },
-  {
-    label: "a cell holding a lone low surrogate",
-    frame: frameWith({ rows: [["\udfffP-1"]] }),
-  },
-  {
-    label: "a cell holding a surrogate pair",
-    frame: frameWith({ rows: [["P-1😀"]] }),
-  },
-  { label: "a boolean cell", frame: frameWith({ rows: [[true]] }) },
-  { label: "an object cell", frame: frameWith({ rows: [[{}]] }) },
-  { label: "an array cell", frame: frameWith({ rows: [[["A"]]] }) },
-  { label: "a string row", frame: frameWith({ rows: ["A"] }) },
-  { label: "a numeric row", frame: frameWith({ rows: [0] }) },
-  { label: "a null row", frame: frameWith({ rows: [null] }) },
-  {
-    label: "an array-like object row",
-    frame: frameWith({ rows: [{ 0: "A", length: 1 }] }),
-  },
-  {
-    label: "a rows collection that is not an array",
-    frame: frameWith({ rows: "A" }),
-  },
-];
-
-/** Whether the receive path accepts `frame` as the partner's payload message. */
-async function parsesOnTheWire(frame: unknown): Promise<boolean> {
-  const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(
-    connA,
-    "initiator",
-    {
-      hasData: false,
-    },
-    PAYLOAD_ROWS_ADMITTED,
-  );
-  await connB.receive();
-  await connB.send(partFrame(frame));
-  return initiatorPromise.then(
-    () => true,
-    () => false,
-  );
-}
-
-test("the wire schema's element predicates accept exactly what the element schemas they replace accept", async () => {
-  const accepted: string[] = [];
-  const refused: string[] = [];
-  for (const { label, frame } of elementShapeCorpus) {
-    const asDelivered: unknown = JSON.parse(JSON.stringify(frame));
-    const wireVerdict = await parsesOnTheWire(asDelivered);
-    const referenceVerdict =
-      referenceFrameSchema.safeParse(asDelivered).success;
-    // Labelled so a divergence names the frame that diverged rather than
-    // reporting a bare boolean mismatch.
-    expect(`${label}: ${String(wireVerdict)}`).toBe(
-      `${label}: ${String(referenceVerdict)}`,
-    );
-    (wireVerdict ? accepted : refused).push(label);
-  }
-  // A corpus that drifted to all-accepting or all-refusing would agree with any
-  // predicate at all, so both verdicts have to be represented.
-  expect(accepted.length).toBeGreaterThan(0);
-  expect(refused.length).toBeGreaterThan(0);
-});
-
 test("exchangePayloads: send rejection rejects the initiator", async () => {
   const sendError = new Error("send failed");
   const conn: MessageConnection = {
@@ -1597,44 +1471,13 @@ test("exchangePayloads: send rejection rejects the responder", async () => {
   ).rejects.toThrow("send failed");
 });
 
-test("exchangePayloads: a pathological-count partner row fails cleanly, not with a RangeError", async () => {
-  // A single row of ~300k invalid inner cells: the count that overflowed Zod's
-  // call stack on the unbounded `z.array(z.array(z.string().nullable()))` schema
-  // (RangeError). The single-issue row validator must turn it into a clean
-  // protocol rejection. receiveParsed wraps either outcome as a
-  // ConnectionError("protocol"); the improvement under test is that the cause is a
-  // bounded validation error, not the RangeError.
-  const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(
-    connA,
-    "initiator",
-    {
-      hasData: false,
-    },
-    PAYLOAD_ROWS_ADMITTED,
-  );
-  await connB.receive(); // consume the initiator's hasData:false frame
-  await connB.send(
-    partFrame({
-      hasData: true,
-      columns: ["c"],
-      rowIndices: [0],
-      rows: [Array.from({ length: 300_000 }, () => 1)],
-    }),
-  );
-  const err = await initiatorPromise.catch((e: unknown) => e);
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
-});
-
 test("exchangePayloads: an empty partner column name is rejected as a protocol error", async () => {
-  // The wire `columns` predicate floors each name at .min(1): a partner that
-  // hand-crafts a `""` column -- to drive this party's record build into the
-  // non-fatal guard that drops the audit record while the exchange still completes
-  // -- is rejected as a clean ConnectionError("protocol"). Honest senders never
-  // emit an empty name (inferMetadata rejects it at intake), so this floor cannot
-  // regress them.
+  // Each received name is held to 1 to MAX_NAME_LENGTH characters: a partner
+  // that hand-crafts a `""` column -- to drive this party's record build into
+  // the non-fatal guard that drops the audit record while the exchange still
+  // completes -- is rejected as a clean ConnectionError("protocol"). Honest
+  // senders never emit an empty name (inferMetadata rejects it at intake), so
+  // this floor cannot regress them.
   const [connA, connB] = createMessagePipe();
   const initiatorPromise = exchangePayloads(
     connA,
@@ -1656,101 +1499,15 @@ test("exchangePayloads: an empty partner column name is rejected as a protocol e
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
+  expect((err as Error).message).toBe(
+    "protocol error: inbound payload part 0 names a column outside 1 to " +
+      `${MAX_NAME_LENGTH} characters`,
+  );
 });
 
-test("exchangePayloads: a pathological-count columns array fails cleanly, not with a RangeError", async () => {
-  // ~4M invalid (non-string) column names, past the ~3.3M `Invalid string
-  // length` threshold the unbounded `z.array(z.string())` schema hit (a ~4.5s
-  // CPU burn then a RangeError). The single-issue validator caps that at one
-  // clean issue; receiveParsed wraps it as ConnectionError("protocol").
-  const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(
-    connA,
-    "initiator",
-    {
-      hasData: false,
-    },
-    PAYLOAD_ROWS_ADMITTED,
-  );
-  await connB.receive();
-  await connB.send(
-    partFrame({
-      hasData: true,
-      columns: Array.from({ length: 4_000_000 }, () => 1),
-      rowIndices: [0],
-      rows: [["v"]],
-    }),
-  );
-  const err = await initiatorPromise.catch((e: unknown) => e);
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
-});
-
-test("exchangePayloads: a pathological-count rowIndices array fails cleanly, not with a RangeError", async () => {
-  // ~4M invalid (negative) row indices, past the same threshold. rowIndices is
-  // one per matched record, legitimately in the millions, so a count `.max()` is
-  // unusable; the single-issue validator caps accumulation regardless of the
-  // length mismatch with `rows`.
-  const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(
-    connA,
-    "initiator",
-    {
-      hasData: false,
-    },
-    Number.MAX_SAFE_INTEGER,
-  );
-  await connB.receive();
-  await connB.send(
-    partFrame({
-      hasData: true,
-      columns: ["c"],
-      rowIndices: Array.from({ length: 4_000_000 }, () => -1),
-      rows: [["v"]],
-    }),
-  );
-  const err = await initiatorPromise.catch((e: unknown) => e);
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
-});
-
-test("exchangePayloads: a pathological-count rows array fails cleanly, not with a RangeError", async () => {
-  // ~4M invalid (non-array) ROWS. Each ROW is single-issue (capping a row of
-  // millions of invalid cells), but an unbounded outer row COUNT would let
-  // millions of invalid rows accumulate one issue per row and burn the event
-  // loop (`Invalid string length` at the top). The outer `rows` is a
-  // single-issue validator too, so the whole 2-D structure yields one issue.
-  const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(
-    connA,
-    "initiator",
-    {
-      hasData: false,
-    },
-    Number.MAX_SAFE_INTEGER,
-  );
-  await connB.receive();
-  await connB.send(
-    partFrame({
-      hasData: true,
-      columns: ["c"],
-      rowIndices: [0],
-      rows: Array.from({ length: 4_000_000 }, () => 0),
-    }),
-  );
-  const err = await initiatorPromise.catch((e: unknown) => e);
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
-});
-
-test("exchangePayloads: a legitimately large partner payload parses", async () => {
+test("exchangePayloads: a legitimately large partner payload is read", async () => {
   // rows and rowIndices are one entry per matched record, legitimately in the
-  // millions; a count `.max()` low enough to forestall the overflow would reject
-  // this, the single-issue validators do not. 200k clears the ~130k overflow
-  // threshold, so this also proves a VALID large message never trips the bound.
+  // millions.
   const n = 200_000;
   const [connA, connB] = createMessagePipe();
   const initiatorPromise = exchangePayloads(
@@ -1772,6 +1529,7 @@ test("exchangePayloads: a legitimately large partner payload parses", async () =
   );
   const received = await initiatorPromise;
   expect(received.rows).toHaveLength(n);
+  expect(payloadRow(received.rows, n - 1)).toEqual(["v"]);
 });
 
 // --- exchangePayloads: a payload in parts ------------------------------------
@@ -1815,7 +1573,7 @@ test("exchangePayloads: a payload past one part is sent in parts and joined", as
     exchangePayloads(connB, "responder", { hasData: false }, 30),
   ]);
   expect(sent.length).toBeGreaterThan(1);
-  expect(receivedByB).toEqual({
+  expect(plainPayload(receivedByB)).toEqual({
     columns: manyRows.columns,
     rowIndices: manyRows.rowIndices,
     rows: manyRows.rows,
@@ -1868,25 +1626,53 @@ test("exchangePayloads: parts naming different columns are refused", async () =>
   );
 });
 
-test("joinPayloadParts: a part of several holding no rows is refused", () => {
-  // receiveMatchedListParts refuses this list before the join, so the join is
-  // reached here with the parsed parts directly.
-  let caught: unknown;
-  try {
-    joinPayloadParts([
+test("exchangePayloads: a part of several naming no column is refused", async () => {
+  const [connA, connB] = createMessagePipe();
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    { hasData: false },
+    PAYLOAD_ROWS_ADMITTED,
+  );
+  await connB.receive();
+  const header = { count: 2, entries: 2 };
+  await connB.send(
+    partFrame(
       { hasData: true, columns: ["a"], rowIndices: [0], rows: [["x"]] },
-      { hasData: false },
-    ]);
-  } catch (error) {
-    caught = error;
-  }
-  expect(caught).toEqual(
+      { ...header, index: 0 },
+    ),
+  );
+  await connB.send(
+    partFrame(
+      { hasData: true, columns: [], rowIndices: [1], rows: [[]] },
+      { ...header, index: 1 },
+    ),
+  );
+  await expect(initiatorPromise).rejects.toThrow(
     new ConnectionError(
-      "protocol error: inbound payload part 1 holds no rows",
+      "protocol error: inbound payload part 1 names no column",
       "protocol",
     ),
   );
-  expect((caught as ConnectionError).kind).toBe("protocol");
+});
+
+test("joinPayloadParts: rows of several parts are read in order", () => {
+  const [first, second] = [0, 1].map((index) =>
+    readPayloadPartBody(
+      payloadBody({
+        hasData: true,
+        columns: ["a"],
+        rowIndices: [index * 10],
+        rows: [[`row ${index}`]],
+      }),
+      { remainingEntries: 1, refuse: (detail) => new Error(detail) as never },
+    ),
+  );
+  expect(plainPayload(joinPayloadParts([first, second]))).toEqual({
+    columns: ["a"],
+    rowIndices: [0, 10],
+    rows: [["row 0"], ["row 1"]],
+  });
 });
 
 test("exchangePayloads: a row index repeated across parts is refused", async () => {
@@ -1907,7 +1693,7 @@ test("exchangePayloads: a row index repeated across parts is refused", async () 
       ),
     );
   await expect(initiatorPromise).rejects.toThrow(
-    /inbound payload repeats a row index across its parts/,
+    /inbound payload repeats a row index/,
   );
 });
 
@@ -2471,21 +2257,25 @@ test("preparePayload: a repeated local row is transmitted exactly once", () => {
   ]);
 });
 
-test("exchangePayloads: a deduplicated frame survives the wire schema's distinctness rule", async () => {
-  // One payload row per PAIR would repeat row index 1 and the receiver's parse
-  // would refuse the whole frame; the round trip is what pins that it does not.
+test("exchangePayloads: a deduplicated payload survives the receiver's distinctness rule", async () => {
+  // One payload row per PAIR would repeat row index 1 and the receiver would
+  // refuse the whole payload; the round trip is what pins that it does not.
   const [receivedByOneSide, receivedByManySide] = await runExchangePayloads(
     preparePayload(rawRows, metaWithId, ONE_SIDE_TABLE),
     preparePayload(rawRows, metaNoId, MANY_SIDE_TABLE),
   );
 
-  expect(receivedByManySide.rowIndices).toEqual([1, 3]);
-  expect(receivedByManySide.rows).toEqual([
-    ["P1", "B"],
-    ["P3", "D"],
-  ]);
-  expect(receivedByOneSide.rowIndices).toEqual([0, 1, 2]);
-  expect(receivedByOneSide.rows).toEqual([["A"], ["B"], ["C"]]);
+  expect(plainPayload(receivedByManySide)).toMatchObject({
+    rowIndices: [1, 3],
+    rows: [
+      ["P1", "B"],
+      ["P3", "D"],
+    ],
+  });
+  expect(plainPayload(receivedByOneSide)).toMatchObject({
+    rowIndices: [0, 1, 2],
+    rows: [["A"], ["B"], ["C"]],
+  });
 });
 
 test("buildOutputTable: the 'one' side writes one row per pair, its identifier repeating", async () => {

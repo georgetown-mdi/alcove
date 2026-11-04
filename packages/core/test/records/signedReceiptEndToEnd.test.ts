@@ -36,7 +36,7 @@ import {
   generateSigningIdentity,
 } from "../../src/records/signingIdentity";
 import { COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH } from "../../src/utils/sanitizeForDisplay";
-import { canonicalString } from "../../src/utils/canonical";
+import { canonicalBytesPastStringCap } from "../../src/utils/canonicalHmac";
 import { safeParseLinkageTerms } from "../../src/config/linkageTermsSchema";
 import { toCommittedPayload } from "../../src/payloadExchange";
 
@@ -2054,27 +2054,32 @@ describe("partner terms holding a lone surrogate end the run before disclosure",
   });
 });
 
-describe("a partner payload holding a lone surrogate is refused at the wire schema", () => {
+describe("a partner payload value that is not UTF-8 text is refused where its part is read", () => {
   // The received column names and cells go verbatim into the committed payload
   // the receipt MACs and the record's payload commitments are computed over, and
-  // the canonical encoder terminates on an unpaired UTF-16 surrogate. JSON
-  // escapes one on the way out and restores it on the way in, so it crosses the
-  // wire intact -- the payload wire schema therefore refuses it where the frame
-  // is parsed, ahead of an encode that only runs once the exchange has
-  // disclosed. See docs/spec/CANONICAL_ENCODING.md, "Strings".
-  const LONE_SURROGATE = "\ud800";
+  // the canonical encoder terminates on an unpaired UTF-16 surrogate. The bytes
+  // ED A0 80 would decode leniently to one, so the part reader refuses any value
+  // that is not well-formed UTF-8, ahead of an encode that only runs once the
+  // exchange has disclosed. See docs/spec/CANONICAL_ENCODING.md, "Strings".
+  const MARKER = [0x01, 0x02, 0x03];
+  const SURROGATE_BYTES = [0xed, 0xa0, 0x80];
 
-  /** Append a lone surrogate to the first cell of this party's outbound payload
-   * frame, leaving every other message of the exchange -- and every other field
-   * of that frame -- exactly as the honest run sends it. */
+  /** End the first cell of this party's outbound payload frame with the bytes
+   * ED A0 80, leaving every other message of the exchange -- and every other
+   * field of that frame -- exactly as the honest run sends it. */
   function withTaintedPayload(conn: MessageConnection): MessageConnection {
     const taint = (data: unknown): unknown => {
       const frame = payloadPartBody(data);
       if (frame === undefined || !frame.hasData || frame.rows === undefined)
         return data;
       const rows = frame.rows.map((row) => [...row]);
-      rows[0][0] = `${String(rows[0][0])}${LONE_SURROGATE}`;
-      return partFrame({ ...frame, rows });
+      rows[0][0] = `${String(rows[0][0])}${String.fromCharCode(...MARKER)}`;
+      const tainted = partFrame({ ...frame, rows });
+      const at = tainted.findIndex((_byte, index) =>
+        MARKER.every((byte, k) => tainted[index + k] === byte),
+      );
+      tainted.set(SURROGATE_BYTES, at);
+      return tainted;
     };
     return {
       send: (data: unknown) => conn.send(taint(data)),
@@ -2119,8 +2124,8 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
 
     expect(raised).toBeInstanceOf(ConnectionError);
     expect((raised as ConnectionError).kind).toBe("protocol");
-    expect(String((raised as ConnectionError).cause)).toMatch(
-      /unpaired UTF-16 surrogate/,
+    expect((raised as ConnectionError).message).toBe(
+      "protocol error: inbound payload part 0 holds a value that is not UTF-8 text",
     );
     // No payload frame and no receipt frame went out, so there is no disclosure
     // for a record to attest and none is reported lost.
@@ -2170,8 +2175,8 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
 
     expect(raised).toBeInstanceOf(ConnectionError);
     expect((raised as ConnectionError).kind).toBe("protocol");
-    expect(String((raised as ConnectionError).cause)).toMatch(
-      /unpaired UTF-16 surrogate/,
+    expect((raised as ConnectionError).message).toBe(
+      "protocol error: inbound payload part 0 holds a value that is not UTF-8 text",
     );
     // The refused frame never becomes a committed payload: this party keeps the
     // record its own crossed payload owes it, committing to nothing received.
@@ -2218,10 +2223,14 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
       ),
     ]);
 
-    expect(canonicalString(toCommittedPayload(resInit.partnerPayload))).toBe(
+    const committedText = (payload: ExchangeResult["partnerPayload"]) =>
+      new TextDecoder().decode(
+        canonicalBytesPastStringCap(toCommittedPayload(payload)),
+      );
+    expect(committedText(resInit.partnerPayload)).toBe(
       '{"columns":["note"],"rows":[["s-c"],["s-e"]]}',
     );
-    expect(canonicalString(toCommittedPayload(resResp.partnerPayload))).toBe(
+    expect(committedText(resResp.partnerPayload)).toBe(
       '{"columns":["note"],"rows":[["c-c"],["c-e"]]}',
     );
     const receipt = resInit.signedReceipt!;

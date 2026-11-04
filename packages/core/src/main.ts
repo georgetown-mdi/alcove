@@ -937,10 +937,12 @@ export {
   assertDisclosedNamesCarriable,
   assertPayloadSendDisclosed,
   buildOutputTable,
+  buildOutputTableRows,
   MATCHED_KEY_COLUMN,
   termsStatingDeclaredPayloadSend,
   termsAsTheRunStatedThem,
 } from "./payloadExchange";
+export type { OutputTableRows } from "./payloadExchange";
 export {
   authenticateConnection,
   assertSharedSecretReadyForHandshake,

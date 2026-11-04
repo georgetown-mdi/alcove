@@ -36,7 +36,10 @@ import { AGREED_TERMS_VERSION } from "./agreedTerms.js";
 
 import type { AgreedTerms } from "./agreedTerms.js";
 import type { FormatMigrations } from "../config/formatMigration.js";
-import type { CanonicalValue } from "../utils/canonical.js";
+import type {
+  CanonicalArraySource,
+  CanonicalValue,
+} from "../utils/canonical.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import type { ResolvedMatching } from "../linkageTermsPolicy.js";
 import type { Algorithm, AssociationTable } from "../types.js";
@@ -458,11 +461,12 @@ const VerificationKeysSchema: z.ZodType<VerificationKeys> = z.object({
  * matched-row order, never row indices. Both the sent and the received
  * payload map into it, so the two parties commit over identical data. A
  * `type`, not an `interface`, so it is assignable to {@link CanonicalValue}.
- * See docs/spec/EXCHANGE_RECORD.md#commitment-scheme.
+ * Received rows are given as a {@link CanonicalArraySource}, which encodes as
+ * the array of its rows. See docs/spec/EXCHANGE_RECORD.md#commitment-scheme.
  */
 export type CommittedPayload = {
   columns: string[];
-  rows: Array<Array<string | null>>;
+  rows: Array<Array<string | null>> | CanonicalArraySource;
 };
 
 /** The inputs to {@link buildExchangeRecord}, gathered once the exchange has

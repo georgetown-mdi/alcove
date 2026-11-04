@@ -14,6 +14,7 @@ import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { PreparedExchange } from "../../src/exchange";
 import type { Metadata } from "../../src/config/metadata";
 import { partFrame, payloadPartBody } from "../utils/matchedListPartFrames";
+import { plainPayload } from "../utils/plainPayload";
 import { prepared } from "../utils/support";
 
 // A payload row must supply exactly one value per named column, or the
@@ -103,7 +104,7 @@ test("a run receiving an honest payload frame records the columns whose values i
 
   const received = receiverOutcome.value.partnerPayload;
   expect(received.columns).toEqual(["diagnosis"]);
-  expect(received.rows).toEqual([["C-diabetes"], ["E-asthma"]]);
+  expect(plainPayload(received).rows).toEqual([["C-diabetes"], ["E-asthma"]]);
 
   // The two halves of the record agree: every value the committed payload binds
   // sits under a column the readable list names.
@@ -152,8 +153,8 @@ test("a run receiving a columnless frame that holds rows is refused before its o
     receiverOutcome.status === "rejected" ? receiverOutcome.reason : undefined;
   expect(refusal).toBeInstanceOf(ConnectionError);
   expect((refusal as ConnectionError).kind).toBe("protocol");
-  expect(String((refusal as ConnectionError).cause)).toMatch(
-    /each payload row must have one value per declared column/,
+  expect((refusal as ConnectionError).message).toBe(
+    "protocol error: inbound payload part 0 names no column",
   );
 
   // What it does keep is the record of its own disclosure: this party is the
