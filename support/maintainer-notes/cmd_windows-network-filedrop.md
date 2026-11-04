@@ -53,20 +53,30 @@ three of which were found in this script's own guidance text.
 
 ## State
 
-**The `uid=1000,gid=1000` mount options this script now creates the volume with
-are unverified against a real share**, exactly as the PowerShell script's are;
-the reasoning, what would settle it, and why the earlier passing runs are not
-evidence are recorded once, under "The CIFS volume pins `uid=1000,gid=1000`" in
-[`windows-network-filedrop.md`](windows-network-filedrop.md). The measurement on
-this side is `alcove doctor mount`, which runs inside the published image and so
-writes as the unprivileged account the mapping is for.
+**The `uid=1000,gid=1000` mount options this script creates the volume with
+were measured against a native Windows server on 17 September 2026**, by this
+script's own volume check as well as the PowerShell routes; the reasoning and
+that measurement are recorded once, under "The CIFS volume pins
+`uid=1000,gid=1000`" in [`windows-network-filedrop.md`](windows-network-filedrop.md).
+The measurement on this side is `alcove doctor mount`, which runs inside the
+image and so writes as the unprivileged account the mapping is for.
 
-The most recent full pass covers both scripts together and is written up once,
-under "Verification pass on staging, 30 July 2026" in
-[`windows-network-filedrop.md`](windows-network-filedrop.md). It confirms this
-script end to end against the Alcove image, records that the rewritten closing
-block emits no redirection character, and states what it does not cover. What
-follows here is the older, script-specific record.
+On the 3 November 2026 pass, `doctor mount` over the volume this script created
+on a folder of the mapped share reported the mount readable, the mount and the
+network checks agreeing on the folder, a file written and renamed into place, a
+second exclusive create refused, and a rename onto an existing file, then "ALL
+CHECKS PASSED". The pass's record shows neither the volume's mount options nor
+the account the checks ran as, and the image was built from staging rather than
+published, so it shows the volume taking those operations, not the mapping
+itself.
+
+The most recent pass is written up under "Verification pass on staging, 3
+November 2026" in [`windows-network-filedrop.md`](windows-network-filedrop.md).
+It ran this script end to end from a folder on a mapped drive, its engine
+messages under Docker Desktop and Podman, and an interrupted check, and states
+what it does not cover. The 17 September and 30 July 2026 passes are written up
+beside it; the 30 July one records that the rewritten closing block emits no
+redirection character. What follows here is the older, script-specific record.
 
 **Verified end to end against a real Samba server**, driven from `cmd.exe` on
 Windows 11 with Docker Desktop 28.3.2, against a Samba 4.21.9 container on the
@@ -304,8 +314,12 @@ from one that does not answer, which is what picks the screen a run with
 neither ends on. The two engines are reached without `call`, so each must be a
 program: a `docker.cmd` or `podman.cmd` on the PATH would take over the run
 and never return to it. `cmd_Setup-AlcoveFileDrop.Tests.ps1` drives the choice
-against compiled stand-ins in the CI test job; no pass has run this script
-against a real Podman.
+against compiled stand-ins in the CI test job. Against Podman 6.1.4, the 3
+November 2026 pass (`windows-network-filedrop.md`) ran it as far as the engine
+choice: with the Podman machine running it printed "Podman is running." both
+with docker off the PATH and with Docker Desktop stopped, where docker did not
+answer; with the machine stopped it printed "Podman is installed but is not
+answering." and exited 1. No container ran under Podman on that pass.
 
 **The password is not masked out of Docker's error text; the line is dropped.**
 The PowerShell script does a string substitution to mask it. `cmd` cannot

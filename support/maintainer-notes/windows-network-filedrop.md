@@ -327,6 +327,21 @@ The folder picker, its typed fallback, the credential prompt itself and the
 paths that need a real engine and a real share were executed by the 17 September
 2026 pass below, against the launcher as it then stood.
 
+The 3 November 2026 pass below drove all three scripts again with an image
+built from staging, on Docker Desktop and Podman, against a real share, their
+prompts answered by a stand-in or typed as console input rather than by a
+person:
+
+- a quick exchange between two containers over the share's CIFS volumes;
+- the engine missing, stopped, and stopped mid-run;
+- an interrupted check, which left no container behind;
+- the engine choice under Podman;
+- a DFS namespace path, which passed the checks and failed at the mount.
+  #2651 stops the checks on a followed DFS link; that stop has not been run on
+  Windows.
+
+What it leaves unmeasured is listed at the end of that section.
+
 **Constrained language mode is driven in CI by a policy, measured on 27 October
 2026 (run 40505959607) to take effect.** `ConstrainedLanguage.Tests.ps1`,
 run alone by the workflow's `clm` job, sets the machine environment variable
@@ -355,6 +370,11 @@ the launcher's prompt under constrained language each start the console, with
 the typed path passed as a bind mount (`--volume Y:\drop:/rendezvous`, and
 `--volume \\localhost\<share>\drop:/rendezvous`) and no network-share volume
 created (`volume_create=false`).
+
+Against Docker Desktop on the 3 November 2026 pass below, outside constrained
+language, the same two binds of a real share did not reach it: a `-v` of a
+folder on a mapped letter ran (exit 0) and listed an empty folder, and the UNC
+form was refused (exit 125, "is not a valid Windows path").
 
 **The web app's Task Scheduler lines are driven in CI under two cultures.**
 `ScheduleLines.Tests.ps1`, run alone by the workflow's `schedule` job, reads
@@ -454,14 +474,18 @@ otherwise, since some operators have no Docker access and use Podman.
 - An engine counts only when it answers. The launcher asks each a bare
   `version`; the setup script asks docker the `{{.Server.Os}}` question its
   Windows-containers check reads, and podman a bare `version`, since podman's
-  template fields have not been tried here.
+  `{{.Server.Os}}` field has not been tried here.
 - Every later engine command each script runs goes through the engine chosen,
   and every message naming an engine names that one, with one shared line per
   engine saying how to start it.
-- Covered against stubs only: the launcher's suite drives the choice in each
+- Covered against stubs: the launcher's suite drives the choice in each
   order and the screen when neither answers; the setup suite drives its choice
   and a whole run through a stub podman behind a docker that does not answer.
-  No pass has run either script against a real Podman.
+- Run against Podman 6.1.4 by the 3 November 2026 pass below, as far as the
+  engine choice: with docker off the PATH and the machine running, the
+  launcher printed "Using podman." and the setup script "Podman is running.";
+  with the machine stopped, each printed "Podman is installed but is not
+  answering." and exited 1. No container ran under Podman on that pass.
 - The Command Prompt script chooses as the setup script does; its notes say
   how, and what its suite covers.
 
@@ -767,6 +791,188 @@ console: nothing in this container runs Windows PowerShell or `cmd`, so the next
 pass should re-read the four screens they change -- the elevated-window refusal,
 a failed battery's SKIP block, a pair on two shares of one server, and the
 Command Prompt script's closing console command.
+
+## Verification pass on staging, 3 November 2026
+
+Run from two lab VMs against staging
+`d279bd1f722977973694fd6ceaa6fb3f9a10f161`, cloned with `core.autocrlf=false`
+and built into an image on the workstation. A Claude Code session in the
+operator's RDP session ran `windows-vm-pass/Invoke-VmPass.ps1` one lap at a
+time, from 21:18 to 21:57 UTC. Each lap prints one JSON line with its verdict and
+saves its screen with the share password removed. The PowerShell scripts'
+prompts were answered by `ReadHostStandIn.ps1`; the Command Prompt script's
+were typed into its console window by `ConsoleInput.ps1`.
+
+An attempt on 2 November stopped before its first lap: `Z:` was Disconnected
+and refused its saved credentials ("The user name or password is incorrect").
+That was the rig: on 3 November `Z:` reported Status OK, and a file was written
+through it and removed before any lap ran.
+
+### The rig
+
+- **Workstation:** build 26200.9457, version 25H2, the build the 17 September
+  pass records as Windows 11 Pro (the registry's ProductName reads "Windows 10
+  Pro"); Windows PowerShell 5.1.26100.9444; Docker Desktop 4.91.0 (engine
+  29.8.0) on Linux containers; Podman 6.1.4, its machine stopped except where
+  a lap started it. The operator account was a standard user in
+  FullLanguage, on a machine joined to no domain.
+- **File server:** a separate machine serving the share mapped as `Z:` (the
+  mapping signs in through a Credential Manager entry for that server), and a
+  standalone DFS namespace on the same server whose link `drop` targets a
+  folder on that share.
+- **Image:** built with `docker build --platform linux/amd64 --load` in 303 s,
+  id `sha256:05b321f9ea76cb0a6d845f4bf7a0deeb5bd592578526e393c3f4d619af1c044b`,
+  tagged `ghcr.io/georgetown-mdi/alcove:latest` (the tag the setup scripts and
+  the driver run), and pushed to a registry container on the workstation at
+  `localhost:5000` for the digest the launcher copy was stamped with. That copy
+  also had its Docker Hub repository line rewritten to
+  `localhost:5000/alcove`, so, as on 17 September, the repository half of a
+  release's stamp is unexercised. The image id was unchanged at clean-up, so
+  every container a lap ran was this build.
+
+### What held
+
+- **The setup script** (V1.1, V1.3) on a folder on `Z:`: exit 0, "Ready to run
+  an exchange", and a `local` `cifs` volume, twice.
+- **A wrong password** (V1.2): exit 78 and no volume, with
+  `FAIL: NT_STATUS_LOGON_FAILURE`, its MEANING, and an ACTION naming both the
+  Domain prompt and `SMB_DOMAIN`. Each of the seven checks after it prints
+  `SKIP: <what it would have asked> -- not run.`, with one shared MEANING under
+  the last. This is the staging image's failure text, which the 17 September
+  pass read from the published image only, and one of the four screens it asked
+  the next pass to re-read.
+- **An exchange** (V1.4): two containers, each on its own CIFS volume over the
+  same folder on `Z:`, ran a quick exchange over `file:///sync` in about 66 s
+  (log times 21:31:19 to 21:32:25 UTC). Both exited 0, both logs read
+  `exchange complete: 10 records matched`, and each result file had 10 rows.
+- **The launcher** (V1.5) on one folder: "Using docker.", then "Using
+  localhost:5000/alcove@sha256:05b3..., already on this PC.", the console's
+  report configured on that folder with the stamped digest, "The console is at
+  http://127.0.0.1:3000", "The console has stopped.", exit 0. The report names
+  `docker.io` for any registry other than `docker.io` and `ghcr.io`, so only its
+  digest half was measured.
+- **The launcher on a pair** (V1.6), two folders on one share: one new volume,
+  the console reporting the split (folder `partner-writes`, outbound
+  `operator-writes`), exit 0.
+- **The Command Prompt script** (V1.7) in its own console window: exit 0, "Ready
+  to run an exchange", and a printed console line with
+  `JOB_RENDEZVOUS_NAME=alcove-vm-3`. That line, run detached, started a console
+  that reported the folder. The closing console command is another of the four
+  screens the 17 September pass asked to have re-read.
+- **No engine** (V2.1), all three scripts: with `docker` and `podman` off the
+  PATH, "Neither docker nor podman is installed on this PC."; with Docker
+  Desktop and the Podman machine stopped, "Docker is installed but is not
+  answering."; exit 1 each time, before Part 1.
+- **The engine stopping mid-run** (V2.2), Docker Desktop stopped at the
+  Username prompt: the launcher and the setup script each printed "Docker
+  stopped during the checks." and exited 1, without the text either prints for
+  an exit code it does not know. `docker run` with the engine stopped exited 1,
+  naming `npipe:////./pipe/dockerDesktopLinuxEngine`: P4b's exit code, on
+  Docker Desktop as on the hosted runner. Read off the screens rather than
+  asked of an operator: these name the engine, while a check that ran and
+  failed ends `NOT READY YET` under its FAIL line (V1.2), so a run that never
+  reached the share can be told from one that did.
+- **An interrupted check** (V2.3): the Command Prompt script, held at the doctor
+  by a listener that accepts port 445 and never speaks SMB, was interrupted by
+  one Ctrl+C answered `Y`, by two Ctrl+C, and by closing its window, and the
+  PowerShell setup script by one Ctrl+C. Forty seconds later no container of the
+  image was left in any of the four cases; after the window was closed one was
+  still running ("Up 4 seconds") and was gone by 40 s. A container left behind
+  by an interrupted `docker run --rm` did not reproduce, so there was no
+  container to read `/tmp/alcove-doctor-` files off, and the passwords page
+  needs no line for it.
+- **Podman** (the Podman lap), with `docker` off the PATH and the machine
+  running:
+  - The launcher printed "Using podman.", then failed to download the stamped
+    image from the local registry ("server gave HTTP response to HTTPS
+    client") and from ghcr.io ("manifest unknown"), exit 1, as the pass
+    expected of a local build's digest.
+  - The setup script printed "Podman is running.", downloaded the published
+    image into Podman's store, and stopped when declined at its first
+    question, exit 0.
+  - With the machine stopped, the launcher, the setup script and the Command
+    Prompt script each printed "Podman is installed but is not answering." and
+    exited 1 before Part 1.
+
+  No container ran under Podman.
+- **The Command Prompt script's engine choice with the Podman machine running**
+  (CMD-engine): with `docker` off the PATH, and again with Docker Desktop
+  stopped first, it printed "Podman is running." and stopped when declined at
+  its first question, exit 0. In the second run `docker` (context
+  `desktop-linux`) did not answer through the Podman machine; it failed on
+  `dockerDesktopLinuxEngine`. Starting the machine while Docker Desktop ran
+  printed "Another process was listening on the default Docker API pipe
+  address".
+- **A DFS namespace path at the launcher** (V3.3), declined at the confirmation:
+  the screen pointed at the DFS tab ("read the DFS tab") and `-RendezvousDir`,
+  exit 1, no volume. Given the link's target instead (V3.4), the launcher showed
+  that server, share and subfolder, and the console reported configured, exit 0.
+- **Docker Desktop's binds** (V4.1): `--mount`, `--mount ... readonly` and `-v`
+  of a local folder named `it's a dir` each listed the marker in it, and a write
+  through the read-only bind failed with "Read-only file system".
+- **Binds of the share** (V4.2): neither reached it. `-v` of a folder on `Z:`
+  started the container, exit 0, and listed an empty folder rather than the
+  marker; the same by UNC path was refused, exit 125, "is not a valid Windows
+  path". The drive-letter form is the bind the launcher passes in constrained
+  language mode (see State), so a console started that way would, by inference,
+  see an empty folder rather than the share. That branch was not run here.
+- **Clean-up:** the closing listing of containers, volumes, images, share
+  entries, the DFS target and accept sheets equalled the one taken before the
+  run, and a scan of the 79 files the pass saved found the share password in
+  none.
+
+### The findings
+
+Six, none of them a wrong outcome for a working share:
+
+- **A DFS namespace path passed every check and then failed at the mount**
+  (V3.2, the standalone namespace). The setup script resolved share `AlcoveDfs`
+  and subfolder `drop`, every check passed ("ALL CHECKS PASSED"), the volume was
+  created, and the mount check's `docker run` failed with "failed to mount local
+  volume: mount //<server address>/AlcoveDfs/drop:...: no such file or
+  directory" and "FAIL  The volume could not be mounted.", exit 9, with no DFS
+  finding and the volume left in place. Fixed by #2651, merged 4 November 2026:
+  after the subfolder lists, the probe asks `smbclient` (`showconnect`) which
+  server and share it reached, and a different one fails the subfolder check
+  as a DFS link, exit 78, before the write checks. CI drives that against a
+  Samba DFS link; it has not run against a Windows namespace.
+- **The DFS tab could not be read** (V3.1). UI Automation found the namespace
+  folder's Properties window but no tab of any name in it, on two runs, and the
+  capture of that window's bounds showed Docker Desktop rather than the sheet.
+  #2651 removed the lap and its helper, `Read-DfsTab.ps1`; V3.4 uses the link
+  target the rig was built with.
+- **Three driver defects**, each repaired on the VM with the lap run once more,
+  and each taken into the driver by #2651. V1.4 read the CLI's `matches.csv`,
+  which is a results folder, as a file. V2.3 read the listener's address from
+  `.NetworkSettings.IPAddress`, which engine 29.8.0 does not have, so its first
+  run started the script with no server and tested nothing. V1.2 looked for a
+  line containing both `FAIL` and `authentication`, which the doctor's
+  `FAIL: NT_STATUS_LOGON_FAILURE` line does not.
+- **The rig:** the mapping's saved user value in the registry reads `0` rather
+  than empty. Nothing depended on it.
+
+None of the six is open.
+
+### What this pass does not cover
+
+- A person at the console. The PowerShell scripts' prompts were answered by the
+  `Read-Host` stand-in, so the masked `-AsSecureString` entry was not typed,
+  and the Command Prompt script's were typed as console input by the driver.
+  The 17 September pass's typed runs remain the record of a real console.
+- The DFS tab, and #2651's stop against a Windows namespace; the next pass's
+  V3.2 lap measures the second.
+- `Get-SmbConnection` in an ordinary operator's window.
+- An invitation, an accept kit, or a partner accepting from one: no lap minted
+  an invitation, and the exchange ran between two containers on one
+  workstation, not through the console.
+- Constrained language mode, through the launcher's branch or a real WDAC or
+  AppLocker policy: V4.2 measured the binds alone.
+- An elevated window, and two of the four screens the 17 September pass asked
+  to have re-read: the elevated-window refusal and a pair on two shares of one
+  server.
+- A release copy of the launcher, and the registry half of its image report.
+- A container run under Podman, and Docker Desktop in Windows containers mode.
+- A domain-joined workstation or a domain account.
 
 ## Decisions worth not relitigating
 
