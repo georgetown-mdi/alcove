@@ -1,5 +1,5 @@
 import {
-  buildOutputTable,
+  buildOutputTableRows,
   countIsPartnerReported,
   recordFileStamp,
   resultCsvDelimiter,
@@ -11,6 +11,7 @@ import {
 import type {
   BuiltExchangeRecord,
   ExchangeResult,
+  OutputTableRows,
   PreparedExchange,
 } from "@alcove/core";
 import type { ExchangeOutputs, RecordDownloads } from "./exchangeLifecycle";
@@ -103,7 +104,7 @@ export function buildRunOutputs(
         : result.associationTable === undefined
           ? { kind: "withheld" }
           : (() => {
-              const { headers, rows } = buildOutputTable(
+              const table = buildOutputTableRows(
                 result.associationTable,
                 prepared.rawRows,
                 prepared.metadata,
@@ -113,14 +114,14 @@ export function buildRunOutputs(
                 writeDelimiter,
                 result.matchedKeyOfPair,
               );
-              const csv =
-                headers.join(writeDelimiter) +
-                "\n" +
-                rows.map((r) => r.join(writeDelimiter) + "\n").join("");
               return {
                 kind: "matched" as const,
-                resultsUrl: trackedUrl(new Blob([csv], { type: "text/csv" })),
-                matchedRecordCount: rows.length,
+                resultsUrl: trackedUrl(
+                  new Blob(resultCsvChunks(table, writeDelimiter), {
+                    type: "text/csv",
+                  }),
+                ),
+                matchedRecordCount: table.rowCount,
                 // How the closure grouped those pairs, carried through from
                 // the run rather than recomputed from the table: core hands
                 // one to a party that ran the closure over a many-to-many
@@ -142,6 +143,29 @@ export function buildRunOutputs(
     for (const url of created) urls.revoke(url);
     throw error;
   }
+}
+
+// The bytes a result's CSV is built from: lines of about CSV_CHUNK_CODE_UNITS
+// at a time encoded as UTF-8, so the result is held as bytes rather than as
+// one string per row.
+const CSV_CHUNK_CODE_UNITS = 1 << 20;
+const csvEncoder = new TextEncoder();
+
+function resultCsvChunks(
+  table: OutputTableRows,
+  delimiter: string,
+): Array<Uint8Array<ArrayBuffer>> {
+  const chunks: Array<Uint8Array<ArrayBuffer>> = [];
+  let text = table.headers.join(delimiter) + "\n";
+  for (const row of table.rows) {
+    text += row.join(delimiter) + "\n";
+    if (text.length >= CSV_CHUNK_CODE_UNITS) {
+      chunks.push(csvEncoder.encode(text));
+      text = "";
+    }
+  }
+  chunks.push(csvEncoder.encode(text));
+  return chunks;
 }
 
 /** The record pair's two downloads, each body created through `jsonUrl`. */

@@ -32,7 +32,7 @@ import {
 import { makeRendezvousPair } from "../utils/fileSyncConnectionFixture";
 
 import type { FileSyncConnection } from "../../src/connection/fileSyncConnection";
-import type { WordListSource } from "../../src/psi/matchedListParts";
+import type { BinaryListSource } from "../../src/psi/matchedListParts";
 
 export const PROBE_CASES = ["mappedElements", "payload"] as const;
 export type ProbeCase = (typeof PROBE_CASES)[number];
@@ -120,7 +120,7 @@ async function mappedElements(pair: Pair, entries: number): Promise<void> {
   const exchange = (
     sendFirst: boolean,
     conn: MessageConnection,
-    source: WordListSource,
+    source: BinaryListSource,
     layout: WordListLayout,
     entryBytes: number,
   ) =>

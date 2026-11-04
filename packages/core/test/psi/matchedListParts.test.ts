@@ -11,11 +11,11 @@ import {
   matchedListPartByteBound,
   matchedListParts,
   receiveListParts,
-  receiveMatchedListParts,
   sendMatchedList,
   utf8Length,
+  type BinaryListSource,
+  type ListPartContext,
   type MatchedListBound,
-  type MatchedListSource,
 } from "../../src/psi/matchedListParts";
 import {
   INDEX_LIST_LAYOUT,
@@ -24,56 +24,44 @@ import {
   wordListEntryBytes,
   wordListSource,
 } from "../../src/psi/uint32ListParts";
-import {
-  jsonPartFrame,
-  partFrame,
-  readPartFrame,
-} from "../utils/matchedListPartFrames";
+import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
 
 // The parts a matched-record list is sent in, and every part sequence a
 // receiver refuses, each at the part that draws the refusal
 // (docs/spec/PROTOCOL.md, A list of matched records is sent in parts).
 
-const entries = Array.from({ length: 40 }, (_, i) => ({
-  theirIndex: i * 7,
-  iteration: i % 3,
-}));
+const entries = Array.from({ length: 40 }, (_, i) => i * 7);
 
-const asArray = (value: unknown): Array<unknown> => {
-  if (!Array.isArray(value)) throw new Error("not an array");
-  return value;
-};
-
-// A JSON array sent in parts the way the payload rows are: the JSON part path
-// the payload takes, driven with a plain array so a test reads its entries
-// directly.
-function arraySource(list: ReadonlyArray<unknown>): MatchedListSource {
-  return {
+// A round's index list, the simplest list of words, so a test reads its
+// entries directly.
+function arraySource(list: ReadonlyArray<number>): BinaryListSource {
+  return wordListSource(INDEX_LIST_LAYOUT, {
     entries: list.length,
-    entryBytes: (index) => utf8Length(JSON.stringify(list[index])) + 1,
-    body: (start, end) => list.slice(start, end),
-  };
+    column: (_column, index) => list[index],
+  });
 }
 
-const arrayPart =
-  (parsePart: (value: unknown) => Array<unknown>) => (value: unknown) => {
-    const part = parsePart(value);
-    return { part, entries: part.length };
-  };
+function readIndexPart(
+  body: Uint8Array,
+  part: ListPartContext,
+): { part: Array<number>; entries: number } {
+  const list = readWordListBody(body, [INDEX_LIST_LAYOUT], part);
+  return { part: Array.from(list.columns[0]), entries: list.entries };
+}
 
 async function receiveMatchedArray(
   conn: MessageConnection,
   participantId: string,
   what: string,
   bound: MatchedListBound,
-  parsePart: (value: unknown) => Array<unknown>,
-): Promise<Array<unknown>> {
-  const parts = await receiveMatchedListParts(
+  readPart: typeof readIndexPart = readIndexPart,
+): Promise<Array<number>> {
+  const parts = await receiveListParts(
     conn,
     participantId,
     what,
     bound,
-    arrayPart(parsePart),
+    readPart,
   );
   return parts.flat();
 }
@@ -107,7 +95,7 @@ async function refusalOf(
   frames: Array<unknown>,
   maxEntries = 100,
 ): Promise<unknown> {
-  const parsePart = vi.fn(asArray);
+  const parsePart = vi.fn(readIndexPart);
   const conn = await deliver(frames);
   const outcome = await receiveMatchedArray(
     conn,
@@ -126,21 +114,26 @@ describe("sending", () => {
     expect(readPartFrame(parts[0])).toEqual({
       header: { index: 0, count: 1, entries: entries.length },
       body: entries,
+      layout: INDEX_LIST_LAYOUT,
     });
   });
 
   test("an empty list is one part holding an empty array", () => {
     const parts = [...matchedListParts(arraySource([]), 64)];
     expect(parts.map(readPartFrame)).toEqual([
-      { header: { index: 0, count: 1, entries: 0 }, body: [] },
+      {
+        header: { index: 0, count: 1, entries: 0 },
+        body: [],
+        layout: INDEX_LIST_LAYOUT,
+      },
     ]);
   });
 
   test("a list past one part's bytes is cut into parts each within them", () => {
-    const bodyBytes = 200;
+    const bodyBytes = 40;
     const parts = [...matchedListParts(arraySource(entries), bodyBytes)];
     expect(parts.length).toBeGreaterThan(1);
-    const joined: Array<unknown> = [];
+    const joined: Array<number> = [];
     parts.forEach((part, index) => {
       expect(
         part.byteLength - MATCHED_LIST_PART_HEADER_BYTES,
@@ -151,7 +144,7 @@ describe("sending", () => {
         count: parts.length,
         entries: entries.length,
       });
-      joined.push(...asArray(read.body));
+      joined.push(...(read.body as Array<number>));
     });
     expect(joined).toEqual(entries);
   });
@@ -159,14 +152,37 @@ describe("sending", () => {
   test("a list past one part's entries is cut at the entry bound", () => {
     const parts = [...matchedListParts(arraySource(entries), 1 << 20, 16)];
     expect(
-      parts.map((part) => asArray(readPartFrame(part)!.body).length),
+      parts.map((part) => (readPartFrame(part)!.body as Array<number>).length),
     ).toEqual([16, 16, 8]);
   });
 
   test("an entry no part can hold is refused before any part is built", () => {
-    expect(() => [
-      ...matchedListParts(arraySource(["x".repeat(64)]), 32),
-    ]).toThrow(/does not fit one part/);
+    const writeBody = vi.fn();
+    const oversized: BinaryListSource = {
+      entries: 1,
+      entryBytes: () => 64,
+      writeBody,
+    };
+    expect(() => [...matchedListParts(oversized, 32)]).toThrow(
+      /does not fit one part/,
+    );
+    expect(writeBody).not.toHaveBeenCalled();
+  });
+
+  test("a part's body opens with the bytes the source states before its entries", () => {
+    const source: BinaryListSource = {
+      entries: 2,
+      prefixBytes: 3,
+      entryBytes: () => 1,
+      writeBody: (_start, end, body) => {
+        for (let k = 0; k < body.byteLength; k++) body.setUint8(k, end);
+      },
+    };
+    const parts = [...matchedListParts(source, 4)];
+    expect(parts.map((part) => part.byteLength)).toEqual([
+      MATCHED_LIST_PART_HEADER_BYTES + 4,
+      MATCHED_LIST_PART_HEADER_BYTES + 4,
+    ]);
   });
 
   test("an entry is measured in UTF-8 bytes", () => {
@@ -175,14 +191,14 @@ describe("sending", () => {
   });
 
   test("a list sent on a connection is sized to its stated bound and received whole", async () => {
-    const [sender, receiver] = pipeWithPartBody(150);
+    const [sender, receiver] = pipeWithPartBody(40);
     const sending = sendMatchedList(sender, arraySource(entries));
-    const received = await receiveMatchedListParts(
+    const received = await receiveListParts(
       receiver,
       "client",
       "mapped-element list",
       { entries: entries.length },
-      arrayPart(asArray),
+      readIndexPart,
     );
     await sending;
     expect(received.length).toBeGreaterThan(1);
@@ -207,22 +223,22 @@ describe("what a receiver refuses from a part's header", () => {
     ],
     [
       "a part count of zero",
-      [jsonPartFrame([1], { count: 0, entries: 1 })],
+      [partFrame([1], { count: 0, entries: 1 })],
       "declares 0 parts for a list of 1 entry",
     ],
     [
       "more parts than entries",
-      [jsonPartFrame([1], { count: 2, entries: 1 })],
+      [partFrame([1], { count: 2, entries: 1 })],
       "declares 2 parts for a list of 1 entry",
     ],
     [
       "a later part declaring another count",
-      [first, jsonPartFrame([1], { index: 1, count: 4, entries: 40 })],
+      [first, partFrame([1], { index: 1, count: 4, entries: 40 })],
       "part 1 declares a different list than part 0",
     ],
     [
       "a later part declaring other entries",
-      [first, jsonPartFrame([1], { index: 1, count: 3, entries: 41 })],
+      [first, partFrame([1], { index: 1, count: 3, entries: 41 })],
       "part 1 declares a different list than part 0",
     ],
     [
@@ -267,32 +283,24 @@ describe("what a receiver refuses from a part's header", () => {
 describe("each part is parsed as it arrives", () => {
   test("a part whose body is refused ends the receive before the next part is read", async () => {
     const [sender, receiver] = createMessagePipe();
-    const unparseable = jsonPartFrame([1], { count: 3, entries: 3 });
-    unparseable[MATCHED_LIST_PART_HEADER_BYTES] = 0x7b;
-    await sender.send(unparseable);
-    const outcome = await receiveMatchedArray(
-      receiver,
-      "client",
-      "list",
-      { entries: 100 },
-      asArray,
-    ).catch((error: unknown) => error);
+    const unreadable = partFrame([1], { count: 3, entries: 3 });
+    unreadable[MATCHED_LIST_PART_HEADER_BYTES] = 0x7b;
+    await sender.send(unreadable);
+    const outcome = await receiveMatchedArray(receiver, "client", "list", {
+      entries: 100,
+    }).catch((error: unknown) => error);
     expect(outcome).toBeInstanceOf(ConnectionError);
     expect((outcome as Error).message).toBe(
-      "client protocol error: inbound list part 0 is not a JSON message",
+      "client protocol error: inbound list part 0 is not a list of the kind awaited",
     );
   });
 
   test("a part running past the declared entries ends the receive at that part", async () => {
     const [sender, receiver] = createMessagePipe();
-    await sender.send(jsonPartFrame([1, 2, 3], { count: 2, entries: 2 }));
-    const outcome = await receiveMatchedArray(
-      receiver,
-      "client",
-      "list",
-      { entries: 100 },
-      asArray,
-    ).catch((error: unknown) => error);
+    await sender.send(partFrame([1, 2, 3], { count: 2, entries: 2 }));
+    const outcome = await receiveMatchedArray(receiver, "client", "list", {
+      entries: 100,
+    }).catch((error: unknown) => error);
     expect((outcome as Error).message).toBe(
       "client protocol error: inbound list part 0 runs past the list's declared entries",
     );
@@ -302,7 +310,7 @@ describe("each part is parsed as it arrives", () => {
     const [first, second] = [
       ...matchedListParts(arraySource(entries), 1 << 20, 20),
     ];
-    const parsePart = vi.fn(asArray);
+    const parsePart = vi.fn(readIndexPart);
     const [sender, receiver] = createMessagePipe();
     await sender.send(first);
     let settled = false;
@@ -324,7 +332,7 @@ describe("each part is parsed as it arrives", () => {
 });
 
 describe("a part's byte bound", () => {
-  const indices = entries.map((entry) => entry.theirIndex);
+  const indices = entries;
   const source = wordListSource(INDEX_LIST_LAYOUT, {
     entries: indices.length,
     column: (_column, index) => indices[index],
@@ -410,43 +418,39 @@ describe("a part's byte bound", () => {
 describe("what a receiver refuses parsing a part's body", () => {
   async function joined(frames: Array<unknown>): Promise<unknown> {
     const conn = await deliver(frames);
-    return receiveMatchedArray(
-      conn,
-      "client",
-      "list",
-      { entries: 100 },
-      asArray,
-    ).catch((error: unknown) => error);
+    return receiveMatchedArray(conn, "client", "list", {
+      entries: 100,
+    }).catch((error: unknown) => error);
   }
 
   test.each([
     [
-      "a body that is not JSON",
+      "a body of another kind",
       [
         (() => {
-          const frame = jsonPartFrame([1]);
+          const frame = partFrame([1]);
           frame[MATCHED_LIST_PART_HEADER_BYTES] = 0x7b;
           return frame;
         })(),
       ],
-      "part 0 is not a JSON message",
+      "part 0 is not a list of the kind awaited",
     ],
     [
       "a part holding no entries in a list that is not empty",
       [
-        jsonPartFrame([], { index: 0, count: 2, entries: 2 }),
-        jsonPartFrame([1, 2], { index: 1, count: 2, entries: 2 }),
+        partFrame([], { index: 0, count: 2, entries: 2 }),
+        partFrame([1, 2], { index: 1, count: 2, entries: 2 }),
       ],
       "part 0 holds no entries",
     ],
     [
       "a part running past the declared entries",
-      [jsonPartFrame([1, 2, 3], { entries: 2 })],
+      [partFrame([1, 2, 3], { entries: 2 })],
       "part 0 runs past the list's declared entries",
     ],
     [
       "parts ending short of the declared entries",
-      [jsonPartFrame([1], { entries: 2 })],
+      [partFrame([1], { entries: 2 })],
       "ends short of the list's declared entries",
     ],
   ] as Array<[string, Array<unknown>, string]>)(
@@ -460,30 +464,12 @@ describe("what a receiver refuses parsing a part's body", () => {
     },
   );
 
-  test("a body's parse error names no partner byte", async () => {
-    const frame = jsonPartFrame(["secret-value"]);
-    frame[frame.length - 1] = 0x2c;
-    const outcome = await joined([frame]);
-    expect(outcome).toBeInstanceOf(ConnectionError);
-    expect(String(outcome)).not.toContain("secret-value");
-    expect((outcome as Error).cause).toBeUndefined();
-  });
-
-  test("each part is validated by the caller's parse", async () => {
-    const conn = await deliver([jsonPartFrame([1, "two"])]);
+  test("each part is validated by the caller's read", async () => {
+    const conn = await deliver([partFrame([1, 2])]);
     await expect(
-      receiveMatchedListParts(
-        conn,
-        "client",
-        "list",
-        { entries: 100 },
-        (value) => {
-          const part = asArray(value);
-          if (!part.every(Number.isFinite))
-            throw new Error("not a number list");
-          return { part, entries: part.length };
-        },
-      ),
-    ).rejects.toThrow("not a number list");
+      receiveListParts(conn, "client", "list", { entries: 100 }, () => {
+        throw new Error("not a list this caller reads");
+      }),
+    ).rejects.toThrow("not a list this caller reads");
   });
 });

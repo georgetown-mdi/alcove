@@ -13,8 +13,15 @@ import {
 import {
   MATCHED_LIST_PART_HEADER_BYTES,
   matchedListParts,
-  type WordListSource,
+  receiveListParts,
+  type BinaryListSource,
 } from "../../src/psi/matchedListParts";
+import { joinPayloadParts } from "../../src/payloadExchange";
+import {
+  payloadRowsSource,
+  readPayloadPartBody,
+} from "../../src/psi/payloadRowParts";
+import { plainPayload } from "../utils/plainPayload";
 import {
   INDEX_LIST_LAYOUT,
   MAPPED_ELEMENT_LAYOUT,
@@ -32,8 +39,9 @@ type MappedElementEntry = Parameters<typeof mappedElementSource>[0][number];
 
 // Replays matched-list-part-vectors.json
 // (generate-matched-list-part-vectors.mjs): the parts a list of matched
-// records is cut into, byte for byte, in every word-list layout, and the part
-// sequences a receiver refuses, with the refusal's whole message.
+// records is cut into, byte for byte, in every word-list layout and as payload
+// rows, and the part sequences a receiver refuses, with the refusal's whole
+// message.
 
 interface LayoutVector {
   name: string;
@@ -58,6 +66,19 @@ interface ListPartVectors {
     name: string;
     partsHex: Array<string>;
     maxEntries: number;
+    refusal: string;
+  }>;
+  payloads: Array<{
+    name: string;
+    columns: Array<string>;
+    rowIndices: Array<number>;
+    rows: Array<Array<string | null>>;
+    partPayloadBytes: number;
+    partsHex: Array<string>;
+  }>;
+  payloadRefusals: Array<{
+    name: string;
+    partsHex: Array<string>;
     refusal: string;
   }>;
 }
@@ -136,7 +157,7 @@ const LAYOUT_OF_TAG = new Map(
 // The source a build sends a layout's list from: the returned list's and the
 // resolved table's own, and the plain columns for the round lists, which
 // roundTableParts.ts writes through wordListSource the same way.
-function layoutSource(vector: LayoutVector): WordListSource {
+function layoutSource(vector: LayoutVector): BinaryListSource {
   const layout = LAYOUT_OF_TAG.get(vector.tag)!;
   const { columns, lists } = vector;
   if (layout === RETURNED_ELEMENT_LAYOUT)
@@ -173,6 +194,54 @@ test.each(vectors.layouts.map((v) => [v.name, v] as const))(
     expect(list.columns.map((column) => [...column])).toEqual(vector.columns);
     expect([...list.counts]).toEqual(vector.lists.map((v) => v.length));
     expect([...list.values]).toEqual(vector.lists.flat());
+  },
+);
+
+async function receivedPayload(partsHex: Array<string>) {
+  const [a, b] = createMessagePipe();
+  for (const part of partsHex) await a.send(fromHex(part));
+  const parts = await receiveListParts(
+    b,
+    "client",
+    "payload",
+    { entries: 16 },
+    (body, part) => {
+      const read = readPayloadPartBody(body, part);
+      return { part: read, entries: read.rows.length };
+    },
+  );
+  return plainPayload(joinPayloadParts(parts));
+}
+
+test.each(vectors.payloads.map((v) => [v.name, v] as const))(
+  "%s",
+  async (_name, vector) => {
+    const { columns, rowIndices, rows } = vector;
+    expect(
+      [
+        ...matchedListParts(
+          payloadRowsSource({ columns, rowIndices, rows }),
+          vector.partPayloadBytes,
+        ),
+      ].map(toHex),
+    ).toEqual(vector.partsHex);
+    expect(await receivedPayload(vector.partsHex)).toEqual({
+      columns,
+      rowIndices,
+      rows,
+    });
+  },
+);
+
+test.each(vectors.payloadRefusals.map((v) => [v.name, v] as const))(
+  "%s is refused",
+  async (_name, vector) => {
+    await expect(receivedPayload(vector.partsHex)).rejects.toThrow(
+      new ConnectionError(
+        `client protocol error: inbound payload ${vector.refusal}`,
+        "protocol",
+      ),
+    );
   },
 );
 

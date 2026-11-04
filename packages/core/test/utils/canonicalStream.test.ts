@@ -2,6 +2,19 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "vitest";
 
+import { ConnectionError } from "../../src/errors";
+import {
+  joinPayloadParts,
+  toCommittedPayload,
+} from "../../src/payloadExchange";
+import {
+  MATCHED_LIST_PART_HEADER_BYTES,
+  matchedListParts,
+} from "../../src/psi/matchedListParts";
+import {
+  payloadRowsSource,
+  readPayloadPartBody,
+} from "../../src/psi/payloadRowParts";
 import {
   computeCommitment,
   type CommitmentName,
@@ -9,6 +22,7 @@ import {
 } from "../../src/records/exchangeRecord";
 import { buildReceiptContent } from "../../src/records/signedReceipt";
 import {
+  CanonicalArraySource,
   canonicalBytes,
   canonicalString,
   CanonicalEncodingError,
@@ -488,5 +502,81 @@ describe("the record commitments and receipt payload MACs keep their values", ()
     expect(content.responderToInitiatorPayload).toBe(
       await expectedMac("responder-to-initiator", received),
     );
+  });
+});
+
+describe("an array source encodes as the array it stands for", () => {
+  // Rows received in payload parts reach the commitment and the receipt MAC
+  // as a CanonicalArraySource, so each must give the bytes of the plain rows.
+  const plain = payloadOf(3_000, (row) =>
+    row % 5 === 0 ? "" : `名前${row}\u{1f600}`,
+  );
+  const sourceOf = (rows: ReadonlyArray<unknown>) =>
+    new CanonicalArraySource(rows.length, (index) => rows[index]);
+
+  test("the chunked encoding of a source equals the plain encoding", () => {
+    expect(
+      concatenated(
+        chunksOf({ columns: plain.columns, rows: sourceOf(plain.rows) }),
+      ),
+    ).toEqual(canonicalBytes(plain));
+    expect(concatenated(chunksOf(sourceOf([])))).toEqual(canonicalBytes([]));
+  });
+
+  test("the one-shot encoders refuse a source", () => {
+    const value = { rows: sourceOf([["a"]]) };
+    expect(() => canonicalString(value)).toThrow(CanonicalEncodingError);
+    expect(() => canonicalBytes(value)).toThrow(CanonicalEncodingError);
+  });
+
+  test("an element that is not canonical is refused", () => {
+    expect(() => chunksOf(sourceOf([["a"], ["\ud800"]]))).toThrow(
+      CanonicalEncodingError,
+    );
+    expect(() => chunksOf(sourceOf([sourceOf([])]))).toThrow(
+      CanonicalEncodingError,
+    );
+  });
+
+  test("received rows give the commitment and MAC of the plain rows", async () => {
+    const sent = {
+      columns: plain.columns,
+      rowIndices: plain.rows.map((_row, index) => index),
+      rows: plain.rows,
+    };
+    let remaining = sent.rows.length;
+    const parts = [...matchedListParts(payloadRowsSource(sent), 4_096)].map(
+      (frame) => {
+        const part = readPayloadPartBody(
+          frame.subarray(MATCHED_LIST_PART_HEADER_BYTES),
+          {
+            remainingEntries: remaining,
+            refuse: (detail) => new ConnectionError(detail, "protocol"),
+          },
+        );
+        remaining -= part.rows.length;
+        return part;
+      },
+    );
+    expect(parts.length).toBeGreaterThan(1);
+    const received = toCommittedPayload(joinPayloadParts(parts));
+    expect(received.rows).toBeInstanceOf(CanonicalArraySource);
+
+    const salt = new Uint8Array(32).fill(7);
+    expect(
+      await computeCommitment("partnerPayloadReceived", salt, received),
+    ).toEqual(await computeCommitment("partnerPayloadReceived", salt, plain));
+
+    const sessionKey = new Uint8Array(32).fill(9);
+    const receipt = (data: CommittedPayload) =>
+      buildReceiptContent(
+        "initiator",
+        "dGVybXM",
+        plain,
+        data,
+        "YmluZGVy",
+        sessionKey,
+      );
+    expect(await receipt(received)).toEqual(await receipt(plain));
   });
 });

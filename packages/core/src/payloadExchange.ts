@@ -1,5 +1,3 @@
-import * as z from "zod";
-
 import type { HandshakeRole, AssociationTable } from "./types.js";
 import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
 import {
@@ -26,16 +24,17 @@ import { readRowColumn } from "./file.js";
 import type { CSVRow } from "./file.js";
 import type { CommittedPayload } from "./records/exchangeRecord.js";
 import type { MessageConnection } from "./connection/messageConnection.js";
-import { parseOrProtocolError } from "./connection/messageConnection.js";
+import { receiveListParts, sendMatchedList } from "./psi/matchedListParts.js";
 import {
-  receiveMatchedListParts,
-  sendMatchedList,
-  utf8Length,
-} from "./psi/matchedListParts.js";
-import type { MatchedListSource } from "./psi/matchedListParts.js";
+  ReceivedPayloadRows,
+  payloadRowsSource,
+  readPayloadPartBody,
+  type PayloadPart,
+  type PayloadRowsToSend,
+} from "./psi/payloadRowParts.js";
 import { ShardedMap } from "./psi/shardedMap.js";
+import { CanonicalArraySource } from "./utils/canonical.js";
 import { redactPrivateKeyMaterial } from "./utils/sanitizeErrorForDisplay.js";
-import { singleIssueArray } from "./utils/singleIssueArray.js";
 import { loneSurrogateIndex } from "./utils/wellFormedString.js";
 import {
   InternalConsistencyError,
@@ -45,6 +44,15 @@ import {
   ConnectionError,
 } from "./errors.js";
 
+/**
+ * A payload's rows: plain arrays, as this party builds them, or as received
+ * from the partner, held as bytes until each row is read
+ * ({@link ReceivedPayloadRows}). Read either with {@link payloadRowCount} and
+ * {@link payloadRow}.
+ */
+export type PayloadRows =
+  ReadonlyArray<ReadonlyArray<string | null>> | ReceivedPayloadRows;
+
 /** The payload received from the exchange partner after PSI linkage. */
 export interface PartnerPayload {
   /**
@@ -52,180 +60,69 @@ export interface PartnerPayload {
    */
   columns: string[];
   /**
-   * The sender's original row indices, one per entry in {@link rows}.
-   * `rowIndices[i]` is the sender's row index for the record in `rows[i]`. As a
+   * The sender's original row indices, one per row of {@link rows}.
+   * `rowIndices[i]` is the sender's row index for row `i`. As a
    * lookup key, these values correspond to element `[1]` of the receiver's
    * local {@link AssociationTable} (the partner indices stored there are the
    * sender's row indices). Distinct: one entry addresses one of the sender's
-   * rows, so a received message repeating an index is refused at parse.
+   * rows, so a received payload repeating an index is refused.
    * Several of the receiver's association entries may address ONE of these --
    * what a deduplicating cardinality groups -- and the receiver joins them all
    * back to the single row it was sent. Empty when partner had no data.
    */
-  rowIndices: number[];
+  rowIndices: ReadonlyArray<number> | Uint32Array;
   /**
    * Payload rows, one per DISTINCT matched record of the sender. Positional
-   * against {@link columns}: `rows[i][j]` is the value the column named at
-   * `columns[j]` contributed, so every row has exactly one cell per column
-   * and a received message whose rows do not is refused at parse. Empty when
+   * against {@link columns}: value `j` of row `i` is the value the column
+   * named at `columns[j]` contributed, so every row has exactly one value per
+   * column and a received payload whose rows do not is refused. Empty when
    * partner had no data.
    */
-  rows: Array<Array<string | null>>;
+  rows: PayloadRows;
 }
 
-// `rows` is a 2-D partner-controlled collection, bounded as ONE single-issue
-// validator (utils/singleIssueArray.ts) over the whole structure rather than
-// `z.array(z.array(z.string().nullable()))`. It is exposed to BOTH Zod
-// RangeError classes on Zod 4.5.4: a single row of hundreds of thousands of
-// invalid inner cells overflows the call stack spreading one issue per cell up
-// through the inner-array and outer-`rows` frames (`Maximum call stack size
-// exceeded`, ~300k), and a payload of millions of invalid ROWS throws `Invalid
-// string length` building the error string from one issue per row (~3.3M).
-// `isPayloadRow` validates a whole row (is-array, every cell string-or-null)
-// INSIDE the outer single-issue `every`, so the entire structure yields at
-// most one issue regardless of row OR cell count. A `.max()` is unsafe on
-// either axis: a real exchange has one row per matched record, each as wide as
-// the payload, both legitimately in the millions (MAX_FRAME_SIZE_BYTES bounds
-// them). Each predicate stands in for the element schema it replaces --
-// `z.string().nullable()` for a cell, the inner `z.array(...)` for a row --
-// and the differential in test/payloadExchange.test.ts holds the two to the
-// same accepted set.
-// A received cell and column name go verbatim into the CommittedPayload the
-// receipt MAC and the record commitments are canonically encoded over
-// (toCommittedPayload), and that encoder terminates on an unpaired UTF-16
-// surrogate -- which JSON escapes on the way out and restores on the way in,
-// so one crosses the wire intact. Both are held to the shared well-formedness
-// rule here, at the parse, rather than at an encode that runs after the
-// exchange has disclosed. See docs/spec/CANONICAL_ENCODING.md, "Strings".
+/** How many rows `rows` holds. */
+export function payloadRowCount(rows: PayloadRows): number {
+  return rows.length;
+}
+
+/** The values of row `index` of `rows`. */
+export function payloadRow(
+  rows: PayloadRows,
+  index: number,
+): ReadonlyArray<string | null> {
+  return rows instanceof ReceivedPayloadRows ? rows.row(index) : rows[index];
+}
+
+// A value of a row given as plain arrays, held to the well-formedness the
+// canonical encoder requires of what a record commits to; a received value is
+// well-formed by its read as UTF-8 (docs/spec/CANONICAL_ENCODING.md,
+// "Strings").
 const isPayloadCell = (cell: unknown): boolean =>
   cell === null || (typeof cell === "string" && loneSurrogateIndex(cell) < 0);
-const isPayloadRow = (row: unknown): boolean =>
-  Array.isArray(row) && row.every(isPayloadCell);
 
-// `rowIndices` is the lookup key the receiver reads the message by: each entry
-// names one of the sender's rows and pairs it with the row of `rows` at the
-// same position, so a repeat names two payload rows for one record and the
-// message does not say which is the record's. A structural property of the
-// frame, refused here alongside every other malformed shape rather than
-// downstream. The scan runs only on a frame that already passed length parity,
-// stops at the first repeat, and its map is sized by the entries the frame
-// already materialized, not by any bound the partner names.
-const hasDistinctRowIndices = (rowIndices: ReadonlyArray<number>): boolean => {
+// `rowIndices` is the lookup key the receiver reads the payload by: each
+// entry names one of the sender's rows and pairs it with the row at the same
+// position, so a repeat names two payload rows for one record and the payload
+// does not say which is the record's. The scan stops at the first repeat, and
+// its map is sized by the entries already read.
+const hasDistinctRowIndices = (rowIndices: ArrayLike<number>): boolean => {
   const seen = new ShardedMap<number, true>();
-  for (const rowIndex of rowIndices)
-    if (seen.setIfAbsent(rowIndex, true) !== undefined) return false;
+  for (let index = 0; index < rowIndices.length; index++)
+    if (seen.setIfAbsent(rowIndices[index], true) !== undefined) return false;
   return true;
 };
 
-// A payload row is positional against `columns`: its cell at each offset is
-// the value of the column named at that offset, so a row of any other width
-// has a value no column names or leaves a named column without one -- and
-// a frame naming NO column while holding rows is the whole of one row's
-// values against none. The record commits the column names and the row
-// VALUES together (toCommittedPayload) while its readable governance list is
-// the names alone, so the two halves of one exchange record describe the same
-// disclosure only while the widths agree. A structural property of the frame,
-// refused here alongside every other malformed shape rather than at the
-// record or output stage that reads it. preparePayload emits exactly one cell
-// per transmitted column, so no honest frame is narrowed by this. The scan
-// reads only the row lengths the frame already materialized and stops at the
-// first offender.
-//
-// Each row is held to being an array before its width is read: a string
-// has a `length` of its own, so one spelling the declared count would
-// pass a width comparison alone and hand out its characters as the row's
-// cells. The wire schema refuses a non-array row at parse, but this guard
-// also stands behind an exported entry point whose PartnerPayload argument no
-// type ties to a parsed frame.
+// A payload row is positional against `columns`, so a row of any other width
+// has a value no column names or leaves a named column without one. Each row
+// is held to being an array before its width is read: a string has a `length`
+// of its own. This guards an exported entry point whose PartnerPayload
+// argument no type ties to a received payload.
 const hasOneCellPerColumn = (
   columnCount: number,
   rows: ReadonlyArray<ReadonlyArray<string | null>>,
 ): boolean =>
   rows.every((row) => Array.isArray(row) && row.length === columnCount);
-
-const payloadWireSchema = z.discriminatedUnion("hasData", [
-  z.object({ hasData: z.literal(false) }),
-  z
-    .object({
-      hasData: z.literal(true),
-      // `columns` and `rowIndices` are flat arrays one object-frame below this
-      // object, so a pathological count cannot drive the ~130k STACK overflow
-      // `rows` faces -- but a far larger count (~millions of invalid elements,
-      // within the frame cap) makes Zod throw a DIFFERENT RangeError ("Invalid
-      // string length", ~3.3M on Zod 4.5.4) building its error string from one
-      // issue per element. receiveParsed reports that as a clean
-      // ConnectionError("protocol"); on 4.5.4 the ZodError's message is built
-      // lazily, so the wrap sees only the ZodError, and the RangeError, if it
-      // fires at all, does so later when something reads the cause's message.
-      // The single-issue validators below cap issue accumulation at one
-      // regardless of count
-      // (utils/singleIssueArray.ts), which payloadExchange.test.ts drives at a
-      // count that would otherwise build that string. A count `.max()` is
-      // wrong for `rowIndices` (one per matched record, legitimately in the
-      // millions like `rows`) and unnecessary for `columns`; both predicates
-      // stand in for the element schema they replace -- typeof-string for
-      // `z.string()`, Number.isSafeInteger and `>= 0` for
-      // `z.number().int().nonnegative()` -- under the same differential that
-      // covers the `rows` predicates.
-      //
-      // `columns` additionally bounds each NAME's LENGTH to the same
-      // MAX_NAME_LENGTH ceiling the operator's own `terms.payload.receive`
-      // names have: a received column name flows verbatim into this party's
-      // local exchange-record file (via governance.payloadReceived), so it
-      // has the same bound those names do. Both the `.min(1)` floor and
-      // the MAX_NAME_LENGTH ceiling are enforced here, as a per-ELEMENT length
-      // check folded into the same single `every` pass (not a count `.max()`),
-      // so it caps accumulation at one issue regardless of element count. The
-      // floor is safe against an honest sender: inferMetadata rejects an empty
-      // name at intake, so an honest sender never emits a `""` column (e.g.
-      // from a trailing-comma CSV header); it instead refuses a partner who
-      // hand-crafts `[""]` to suppress this party's record (the
-      // exchange-record `.min(1)` remains the on-disk safety check). The
-      // well-formedness scan stated at `isPayloadCell` rides in the same pass,
-      // a name being committed exactly as a cell is.
-      columns: singleIssueArray<string>(
-        (value) =>
-          typeof value === "string" &&
-          value.length >= 1 &&
-          value.length <= MAX_NAME_LENGTH &&
-          loneSurrogateIndex(value) < 0,
-        `each column name must be a string of 1 to ${MAX_NAME_LENGTH} characters with no unpaired UTF-16 surrogate`,
-      ),
-      rowIndices: singleIssueArray<number>(
-        (value) => Number.isSafeInteger(value) && (value as number) >= 0,
-        "each row index must be a non-negative integer",
-      ),
-      rows: singleIssueArray<Array<string | null>>(
-        isPayloadRow,
-        "each payload row must be an array of strings or nulls with no unpaired UTF-16 surrogate",
-      ),
-    })
-    .superRefine((v, ctx) => {
-      // Ordered by cost, so a frame refused on one check never pays the next:
-      // parity is a length comparison, the width scan reads lengths and allocates
-      // nothing, and only the distinctness scan builds a Set over the entries.
-      if (v.rowIndices.length !== v.rows.length) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "rowIndices and rows must have the same length",
-        });
-        return;
-      }
-      if (!hasOneCellPerColumn(v.columns.length, v.rows)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "each payload row must have one value per declared column",
-        });
-        return;
-      }
-      if (!hasDistinctRowIndices(v.rowIndices)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "rowIndices must not repeat a row index",
-        });
-      }
-    }),
-]);
 
 /**
  * Wire format sent over the connection during payload exchange.
@@ -236,7 +133,14 @@ const payloadWireSchema = z.discriminatedUnion("hasData", [
  *
  * @internal
  */
-export type PayloadWireMessage = z.infer<typeof payloadWireSchema>;
+export type PayloadWireMessage =
+  | { hasData: false }
+  | {
+      hasData: true;
+      columns: string[];
+      rowIndices: number[];
+      rows: Array<Array<string | null>>;
+    };
 
 /**
  * The local rows a payload frame holds for a matched table: each distinct
@@ -629,11 +533,6 @@ export function assertPayloadMatchesAgreedSend(
   );
 }
 
-function toPartnerPayload(msg: PayloadWireMessage): PartnerPayload {
-  if (!msg.hasData) return { columns: [], rowIndices: [], rows: [] };
-  return { columns: msg.columns, rowIndices: msg.rowIndices, rows: msg.rows };
-}
-
 /**
  * Map either payload representation -- the wire message this party sent, or
  * the {@link PartnerPayload} it received -- into the record's canonical
@@ -652,18 +551,23 @@ function toPartnerPayload(msg: PayloadWireMessage): PartnerPayload {
  * {@link CommittedPayload} and docs/spec/EXCHANGE_RECORD.md). The committed
  * shape is owned by the record module (`CommittedPayload`), not this
  * wire/transport layer; the explicit field-by-field construction here means
- * a future change to `PartnerPayload` or the wire schema cannot silently
- * alter the on-disk record format.
+ * a future change to `PartnerPayload` or the wire format cannot silently
+ * alter the on-disk record format. Received rows are committed through a
+ * {@link CanonicalArraySource}, each row read as the encoding reaches it, so
+ * they are not all held as strings at once.
  */
 export function toCommittedPayload(
   payload: PayloadWireMessage | PartnerPayload,
 ): CommittedPayload {
   if ("hasData" in payload && !payload.hasData)
     return { columns: [], rows: [] };
-  return {
-    columns: payload.columns,
-    rows: payload.rows,
-  };
+  const { columns, rows } = payload;
+  if (rows instanceof ReceivedPayloadRows)
+    return {
+      columns,
+      rows: new CanonicalArraySource(rows.length, (index) => rows.row(index)),
+    };
+  return { columns, rows: rows as Array<Array<string | null>> };
 }
 
 /**
@@ -731,84 +635,77 @@ export async function exchangePayloads(
 
 const PAYLOAD_WHAT = "payload";
 
-// The payload message as a list of its rows: each part holds the columns and
-// the rows and row indices of its slice, so a part is a payload message of its
-// own and a list of one part is the whole message.
-function payloadSource(payload: PayloadWireMessage): MatchedListSource {
-  if (!payload.hasData)
-    return { entries: 0, entryBytes: () => 0, body: () => payload };
-  const { columns, rowIndices, rows } = payload;
-  return {
-    entries: rows.length,
-    entryBytes: (index) =>
-      utf8Length(String(rowIndices[index])) +
-      utf8Length(JSON.stringify(rows[index])) +
-      2,
-    body: (start, end) => ({
-      hasData: true,
-      columns,
-      rowIndices: rowIndices.slice(start, end),
-      rows: rows.slice(start, end),
-    }),
-  };
-}
+const NO_PAYLOAD_ROWS: PayloadRowsToSend = {
+  columns: [],
+  rowIndices: [],
+  rows: [],
+};
 
-// Receives the partner's payload parts, each a payload message of its own.
+// Receives the partner's payload parts, each read as it arrives.
 async function receivePayload(
   conn: MessageConnection,
   maxPartnerRows: number,
 ): Promise<PartnerPayload> {
-  const participantId = "";
-  const parts = await receiveMatchedListParts(
+  const parts = await receiveListParts(
     conn,
-    participantId,
+    "",
     PAYLOAD_WHAT,
     { entries: maxPartnerRows },
-    (value) => {
-      const part = parseOrProtocolError(payloadWireSchema, value);
-      return { part, entries: part.hasData ? part.rows.length : 0 };
+    (body, part) => {
+      const read = readPayloadPartBody(body, part);
+      return { part: read, entries: read.rows.length };
     },
   );
   return joinPayloadParts(parts);
 }
 
-// Joins the partner's parsed payload parts: every part after the first names
-// the first part's columns, the row indices stay distinct across parts, and a
-// list of several parts holds rows in every part.
-/** @internal */
+/**
+ * Joins the partner's payload parts, read in order: every part after the
+ * first names the first part's columns, and no row index repeats.
+ *
+ * @internal
+ */
 export function joinPayloadParts(
-  parts: ReadonlyArray<PayloadWireMessage>,
+  parts: ReadonlyArray<PayloadPart>,
 ): PartnerPayload {
-  if (parts.length === 1) return toPartnerPayload(parts[0]);
-  const joined: PartnerPayload = { columns: [], rowIndices: [], rows: [] };
+  const columns = parts[0].columns;
   parts.forEach((part, index) => {
-    if (!part.hasData)
-      throw new ConnectionError(
-        `protocol error: inbound ${PAYLOAD_WHAT} part ${index} holds no rows`,
-        "protocol",
-      );
-    if (index === 0) joined.columns = part.columns;
-    else if (
-      part.columns.length !== joined.columns.length ||
-      part.columns.some((column, i) => column !== joined.columns[i])
+    if (
+      part.columns.length !== columns.length ||
+      part.columns.some((column, i) => column !== columns[i])
     )
       throw new ConnectionError(
         `protocol error: inbound ${PAYLOAD_WHAT} part ${index} names ` +
           "different columns than part 0",
         "protocol",
       );
-    for (let i = 0; i < part.rows.length; i++) {
-      joined.rowIndices.push(part.rowIndices[i]);
-      joined.rows.push(part.rows[i]);
-    }
   });
-  if (!hasDistinctRowIndices(joined.rowIndices))
+  let rowIndices = parts[0].rowIndices;
+  if (parts.length > 1) {
+    rowIndices = new Uint32Array(
+      parts.reduce((sum, part) => sum + part.rowIndices.length, 0),
+    );
+    let at = 0;
+    for (const part of parts) {
+      rowIndices.set(part.rowIndices, at);
+      at += part.rowIndices.length;
+    }
+  }
+  if (!hasDistinctRowIndices(rowIndices))
     throw new ConnectionError(
-      `protocol error: inbound ${PAYLOAD_WHAT} repeats a row index across ` +
-        "its parts",
+      `protocol error: inbound ${PAYLOAD_WHAT} repeats a row index`,
       "protocol",
     );
-  return joined;
+  if (rowIndices.length === 0)
+    return { columns: [...columns], rowIndices: [], rows: [] };
+  return {
+    columns: [...columns],
+    rowIndices,
+    rows: ReceivedPayloadRows.join(
+      columns.length,
+      parts.map((part) => part.rows),
+    ),
+  };
 }
 
 /**
@@ -833,7 +730,10 @@ async function sendPayloadReportingHandOff(
 ): Promise<void> {
   let partSent = false;
   try {
-    await sendMatchedList(conn, payloadSource(localPayload), () => {
+    const source = payloadRowsSource(
+      localPayload.hasData ? localPayload : NO_PAYLOAD_ROWS,
+    );
+    await sendMatchedList(conn, source, () => {
       partSent = true;
     });
   } catch (error) {
@@ -940,6 +840,9 @@ function uniqueColumnName(
  * partner row-index column.
  * A name already taken falls back to a prefixed then numbered variant --
  * `their_` for one of the partner's columns, `own_` for one of ours.
+ *
+ * The rows are built all at once; a writer reads them one at a time from
+ * {@link buildOutputTableRows}.
  */
 export function buildOutputTable(
   associationTable: AssociationTable,
@@ -951,6 +854,47 @@ export function buildOutputTable(
   delimiter: string = DEFAULT_CSV_DELIMITER,
   matchedKeyOfPair?: ReadonlyArray<string>,
 ): { headers: string[]; rows: Array<Array<string>> } {
+  const table = buildOutputTableRows(
+    associationTable,
+    rawRows,
+    metadata,
+    partnerPayload,
+    includeOwnColumns,
+    undeclaredColumns,
+    delimiter,
+    matchedKeyOfPair,
+  );
+  return { headers: table.headers, rows: Array.from(table.rows) };
+}
+
+/** A result table whose rows are built as they are read. */
+export interface OutputTableRows {
+  /** The header fields, escaped. */
+  readonly headers: string[];
+  /** How many rows {@link rows} yields: one per association pair. */
+  readonly rowCount: number;
+  /**
+   * Each row's fields, escaped, built when the row is reached; iterable more
+   * than once.
+   */
+  readonly rows: Iterable<Array<string>>;
+}
+
+/**
+ * {@link buildOutputTable}'s table, its rows built one at a time as they are
+ * read, so a writer holds one row of strings at a time rather than the table.
+ * Every check {@link buildOutputTable} makes runs here, before the first row.
+ */
+export function buildOutputTableRows(
+  associationTable: AssociationTable,
+  rawRows: Array<CSVRow>,
+  metadata: Metadata,
+  partnerPayload: PartnerPayload,
+  includeOwnColumns?: OwnColumnSelection,
+  undeclaredColumns: ReadonlyArray<string> = [],
+  delimiter: string = DEFAULT_CSV_DELIMITER,
+  matchedKeyOfPair?: ReadonlyArray<string>,
+): OutputTableRows {
   // The escaping holds only against a single character: a caller that passed a
   // party's choice unresolved -- the reserved detect word above all -- would
   // quote every cell against a string no join could split back on.
@@ -976,17 +920,23 @@ export function buildOutputTable(
     );
   }
 
-  // Each collection is held to being an array before anything is read from it, so
+  // Each collection is held to its shape before anything is read from it, so
   // a caller past the type -- this is an exported entry point whose
-  // PartnerPayload argument no type ties to a parsed frame -- gets the same shape
-  // refusal the malformed rows below get rather than a TypeError from the first
-  // array method that misses.
-  for (const [field, collection] of [
-    ["columns", partnerPayload.columns],
-    ["rowIndices", partnerPayload.rowIndices],
-    ["rows", partnerPayload.rows],
+  // PartnerPayload argument no type ties to a received payload -- gets the same
+  // shape refusal the malformed rows below get rather than a TypeError from
+  // the first array method that misses. Received rows and row indices were
+  // checked as they were read.
+  const { rows: payloadRows, rowIndices } = partnerPayload;
+  const receivedRows = payloadRows instanceof ReceivedPayloadRows;
+  for (const [field, isCollection] of [
+    ["columns", Array.isArray(partnerPayload.columns)],
+    [
+      "rowIndices",
+      Array.isArray(rowIndices) || rowIndices instanceof Uint32Array,
+    ],
+    ["rows", receivedRows || Array.isArray(payloadRows)],
   ] as const) {
-    if (!Array.isArray(collection)) {
+    if (!isCollection) {
       throw new PartnerProtocolRefusalError(
         `partner payload ${field} is not an array: ` +
           "refusing to read entries from a value that holds none",
@@ -1001,40 +951,44 @@ export function buildOutputTable(
     );
   }
 
-  if (partnerPayload.rowIndices.length !== partnerPayload.rows.length) {
+  const rowCount = payloadRowCount(payloadRows);
+  if (rowIndices.length !== rowCount) {
     throw new PartnerProtocolRefusalError(
       "partner payload rowIndices and rows have different lengths: " +
-        `${partnerPayload.rowIndices.length} vs ${partnerPayload.rows.length}`,
+        `${rowIndices.length} vs ${rowCount}`,
     );
-  }
-
-  // One pass, refusing a row that is not a row and a cell that is not a cell. The
-  // cell half is what keeps a value of another shape out of the CSV: quoteCsvField
-  // looks for the characters RFC 4180 escapes with `includes`, which an ARRAY
-  // answers by element rather than by substring, so an array cell holding a
-  // separator reports none and would reach the result unquoted, breaking the row's
-  // framing. isPayloadCell is the wire schema's own cell predicate.
-  for (const row of partnerPayload.rows) {
-    if (!Array.isArray(row)) {
-      throw new PartnerProtocolRefusalError(
-        "a partner payload row is not an array of cells: " +
-          "refusing to read cell values from a non-row value",
-      );
-    }
-    if (!row.every(isPayloadCell)) {
-      throw new PartnerProtocolRefusalError(
-        "a partner payload cell is neither a string nor null: " +
-          "refusing to write a value of another shape into the result",
-      );
-    }
   }
 
   const columnCount = partnerPayload.columns.length;
-  if (!hasOneCellPerColumn(columnCount, partnerPayload.rows)) {
-    throw new PartnerProtocolRefusalError(
-      "partner payload rows do not have one cell per declared column: " +
-        `expected ${columnCount} cell${columnCount === 1 ? "" : "s"} per row`,
-    );
+  const rowWidthRefusal = new PartnerProtocolRefusalError(
+    "partner payload rows do not have one cell per declared column: " +
+      `expected ${columnCount} cell${columnCount === 1 ? "" : "s"} per row`,
+  );
+  if (receivedRows) {
+    if (rowCount > 0 && payloadRows.width !== columnCount)
+      throw rowWidthRefusal;
+  } else {
+    // One pass, refusing a row that is not a row and a cell that is not a
+    // cell. The cell half is what keeps a value of another shape out of the
+    // CSV: quoteCsvField looks for the characters RFC 4180 escapes with
+    // `includes`, which an ARRAY answers by element rather than by substring,
+    // so an array cell holding a separator reports none and would reach the
+    // result unquoted, breaking the row's framing.
+    for (const row of payloadRows) {
+      if (!Array.isArray(row)) {
+        throw new PartnerProtocolRefusalError(
+          "a partner payload row is not an array of cells: " +
+            "refusing to read cell values from a non-row value",
+        );
+      }
+      if (!row.every(isPayloadCell)) {
+        throw new PartnerProtocolRefusalError(
+          "a partner payload cell is neither a string nor null: " +
+            "refusing to write a value of another shape into the result",
+        );
+      }
+    }
+    if (!hasOneCellPerColumn(columnCount, payloadRows)) throw rowWidthRefusal;
   }
 
   const ourIdCol = metadata.find((col) => col.role === "identifier") ?? null;
@@ -1078,20 +1032,19 @@ export function buildOutputTable(
   ];
 
   const theirIdxToPayloadPos = new ShardedMap<number, number>();
-  partnerPayload.rowIndices.forEach((rowIdx, pos) => {
-    theirIdxToPayloadPos.setIfAbsent(rowIdx, pos);
-  });
+  for (let pos = 0; pos < rowIndices.length; pos++)
+    theirIdxToPayloadPos.setIfAbsent(rowIndices[pos], pos);
 
   // A repeated index is a MALFORMED payload -- a sender emitting a row it
-  // should have sent once -- refused under every cardinality: the frame
-  // names two payload rows for one of the sender's records without saying
+  // should have sent once -- refused under every cardinality: the payload
+  // names two rows for one of the sender's records without saying
   // which is the record's. Multiplicity is held on the association
-  // table's side of the join, never here. The wire schema refuses the
-  // repeat at parse, but this is an exported entry point taking a plain
-  // PartnerPayload whose argument no type ties to a parsed frame, so the
+  // table's side of the join, never here. The receive refuses the
+  // repeat, but this is an exported entry point taking a plain
+  // PartnerPayload whose argument no type ties to a received payload, so the
   // invariant keeps a check of its own rather than resting on that call
   // path.
-  if (theirIdxToPayloadPos.size !== partnerPayload.rowIndices.length) {
+  if (theirIdxToPayloadPos.size !== rowIndices.length) {
     throw new PartnerProtocolRefusalError(
       "partner payload rowIndices contains duplicate indices",
     );
@@ -1114,7 +1067,8 @@ export function buildOutputTable(
     }
   }
 
-  const rows = associationTable[0].map((ourIdx, i) => {
+  const resultRow = (i: number): Array<string> => {
+    const ourIdx = associationTable[0][i];
     const theirIdx = associationTable[1][i];
     const ourRow = rawRows[ourIdx];
     const ourIdValue =
@@ -1133,7 +1087,10 @@ export function buildOutputTable(
       return [ourId, partnerIndexCell, ...ownValues, ...matchedKeyValues];
     }
 
-    const partnerRow = partnerPayload.rows[theirIdxToPayloadPos.get(theirIdx)!];
+    const partnerRow = payloadRow(
+      payloadRows,
+      theirIdxToPayloadPos.get(theirIdx)!,
+    );
     const theirValues = partnerPayload.columns.map((_, colIdx) =>
       quote(partnerRow[colIdx] ?? ""),
     );
@@ -1145,7 +1102,16 @@ export function buildOutputTable(
       ...ownValues,
       ...matchedKeyValues,
     ];
-  });
+  };
 
-  return { headers, rows };
+  const pairCount = associationTable[0].length;
+  return {
+    headers,
+    rowCount: pairCount,
+    rows: {
+      *[Symbol.iterator]() {
+        for (let i = 0; i < pairCount; i++) yield resultRow(i);
+      },
+    },
+  };
 }

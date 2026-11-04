@@ -247,8 +247,8 @@ export function resetStdoutErrorGuard(): void {
  * A drain that finished leaves nothing queued and removes its listener.
  */
 async function writeResultToStdout(
-  headers: string[],
-  rows: Array<Array<string>>,
+  headers: ReadonlyArray<string>,
+  rows: Iterable<ReadonlyArray<string>>,
   idleCeilingMs: number,
   delimiter: string,
 ): Promise<void> {
@@ -257,6 +257,8 @@ async function writeResultToStdout(
   let rejectDrain!: (err: unknown) => void;
   let onDrain!: () => void;
   let outcome: CeilingOutcome;
+  // A row that fails to build is the row's own error, not a lost stdout.
+  const rowErrors: Array<unknown> = [];
   try {
     outcome = await settleWithinCeiling(
       idleCeilingMs,
@@ -268,15 +270,23 @@ async function writeResultToStdout(
             if (err === undefined || err === null) resolve();
             else reject(err);
           };
-          let next = 0;
+          const lines = resultLines(headers, rows, delimiter);
+          const step = (): IteratorResult<string, void> | undefined => {
+            try {
+              return lines.next();
+            } catch (err) {
+              rowErrors.push(err);
+              reject(err);
+              return undefined;
+            }
+          };
+          let current = step();
           const pump = (): void => {
-            while (next <= rows.length) {
-              const isLast = next === rows.length;
-              const line =
-                next === 0
-                  ? headers.join(delimiter) + "\n"
-                  : rows[next - 1].join(delimiter) + "\n";
-              next += 1;
+            while (current !== undefined && current.done !== true) {
+              const line = current.value;
+              current = step();
+              if (current === undefined) return;
+              const isLast = current.done === true;
               const accepted = process.stdout.write(
                 line,
                 isLast ? flushed : undefined,
@@ -298,6 +308,7 @@ async function writeResultToStdout(
     );
   } catch (err) {
     ignoreLaterStdoutErrors();
+    if (rowErrors.length > 0) throw rowErrors[0];
     throw new Error(stdoutWriteFailedNotice(), { cause: err });
   } finally {
     // The pump is parked on a drain that never came where the wait expired,
@@ -365,8 +376,8 @@ async function writeResultToStdout(
  */
 export function writeOutput(
   output: string | undefined,
-  headers: string[],
-  rows: Array<Array<string>>,
+  headers: ReadonlyArray<string>,
+  rows: Iterable<ReadonlyArray<string>>,
   log: { error: (message: string) => void },
   idleCeilingMs: number = STDOUT_RESULT_IDLE_CEILING_MS,
   delimiter: string = DEFAULT_CSV_DELIMITER,
@@ -388,10 +399,44 @@ export function writeOutput(
     // (a missing parent dir, the fchmod/icacls refusal) rejects the promise too,
     // rather than throwing past it -- the caller sees one failure channel.
     const out = createOwnerOnlyWriteStream(output);
-    out.on("error", reject);
+    let failed = false;
+    out.on("error", (err) => {
+      failed = true;
+      reject(err);
+    });
     out.on("close", () => resolve());
-    out.write(headers.join(delimiter) + "\n");
-    for (const row of rows) out.write(row.join(delimiter) + "\n");
-    out.end();
+    // Written under backpressure, each line built as it is reached, so the
+    // stream never queues the whole result.
+    const lines = resultLines(headers, rows, delimiter);
+    const pump = (): void => {
+      try {
+        while (!failed) {
+          const next = lines.next();
+          if (next.done === true) {
+            out.end();
+            return;
+          }
+          if (!out.write(next.value)) {
+            out.once("drain", pump);
+            return;
+          }
+        }
+      } catch (err) {
+        failed = true;
+        out.destroy();
+        reject(err);
+      }
+    };
+    pump();
   });
+}
+
+// The result's lines: the header, then each row, every line ending in LF.
+function* resultLines(
+  headers: ReadonlyArray<string>,
+  rows: Iterable<ReadonlyArray<string>>,
+  delimiter: string,
+): Generator<string, void, undefined> {
+  yield headers.join(delimiter) + "\n";
+  for (const row of rows) yield row.join(delimiter) + "\n";
 }

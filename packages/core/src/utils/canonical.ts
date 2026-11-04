@@ -38,7 +38,23 @@ export type CanonicalValue =
   | boolean
   | null
   | readonly CanonicalValue[]
+  | CanonicalArraySource
   | { readonly [key: string]: CanonicalValue };
+
+/**
+ * An array whose elements are made one at a time while
+ * {@link writeCanonicalBytes} encodes it, so a long array held in another form
+ * is never held as JS values all at once. It encodes exactly as the plain
+ * array of its elements does. Each element is validated as it is made, and
+ * `element` must return the same value every time it is called with an index.
+ * {@link canonicalString} and {@link canonicalBytes} refuse it.
+ */
+export class CanonicalArraySource {
+  constructor(
+    readonly length: number,
+    readonly element: (index: number) => unknown,
+  ) {}
+}
 
 /**
  * Thrown when a value cannot be canonically encoded because it falls outside
@@ -189,8 +205,11 @@ function assertOnlyElementKeys(value: readonly unknown[], path: string): void {
  * Absent vs null: an absent field is a key that is not present; `null` is a
  * distinct, permitted value. A property explicitly set to `undefined` is
  * rejected -- callers omit the key instead.
+ *
+ * A {@link CanonicalArraySource} passes where `sources` is true, its elements
+ * left to be validated as the encoder makes them, and is refused otherwise.
  */
-function assertCanonical(value: unknown, path: string): void {
+function assertCanonical(value: unknown, path: string, sources: boolean): void {
   switch (typeof value) {
     case "string":
       assertWellFormedString(value, path, "string");
@@ -209,6 +228,14 @@ function assertCanonical(value: unknown, path: string): void {
       return;
     case "object": {
       if (value === null) return;
+      if (value instanceof CanonicalArraySource) {
+        if (!sources)
+          fail(
+            "an array source encodes only in chunks (writeCanonicalBytes)",
+            path,
+          );
+        return;
+      }
       if (Array.isArray(value)) {
         if (Object.getPrototypeOf(value) !== Array.prototype)
           fail(
@@ -233,6 +260,7 @@ function assertCanonical(value: unknown, path: string): void {
           assertCanonical(
             dataPropertyValue(value, String(index), elementPath),
             elementPath,
+            sources,
           );
         }
         return;
@@ -269,7 +297,11 @@ function assertCanonical(value: unknown, path: string): void {
         assertWellFormedString(key, childPath, "object key");
         if (!Object.prototype.propertyIsEnumerable.call(value, key))
           fail("non-enumerable property", childPath);
-        assertCanonical(dataPropertyValue(value, key, childPath), childPath);
+        assertCanonical(
+          dataPropertyValue(value, key, childPath),
+          childPath,
+          sources,
+        );
       }
       return;
     }
@@ -324,8 +356,8 @@ export function canonicalString(value: unknown): string {
  * is written through its toJSON -- so the pre-validator, not canonicalize,
  * holds the domain.
  */
-function assertCanonicalForEncoding(value: unknown): void {
-  assertCanonical(value, "$");
+function assertCanonicalForEncoding(value: unknown, sources = false): void {
+  assertCanonical(value, "$", sources);
   installIsWellFormedIfAbsent();
 }
 
@@ -391,10 +423,11 @@ const CHUNK_CODE_UNITS = 1 << 16;
  * about 64 Ki UTF-16 code units of text, longer when one primitive's encoding
  * is, and the last may be shorter.
  *
- * `value` is validated in full before the first write, and the whole encoding
- * runs within this call, so `value` cannot change between its validation and
- * its encoding except through `write` itself. An error `write` throws reaches
- * the caller unchanged.
+ * `value` is validated in full before the first write, but for the elements
+ * of a {@link CanonicalArraySource}, each validated as it is made, and the
+ * whole encoding runs within this call, so `value` cannot change between its
+ * validation and its encoding except through `write` itself. An error `write`
+ * throws reaches the caller unchanged.
  *
  * @throws {CanonicalEncodingError} if `value` contains anything outside the
  *   canonical domain.
@@ -403,7 +436,7 @@ export function writeCanonicalBytes(
   value: unknown,
   write: (chunk: Uint8Array<ArrayBuffer>) => void,
 ): void {
-  underEncodingContract(() => assertCanonicalForEncoding(value));
+  underEncodingContract(() => assertCanonicalForEncoding(value, true));
   const texts = canonicalTexts(value);
   for (;;) {
     const step = underEncodingContract(() => texts.next());
@@ -439,6 +472,10 @@ function* appendCanonical(
     buffer.text += canonicalizeValidated(node);
     return;
   }
+  if (node instanceof CanonicalArraySource) {
+    yield* appendArraySource(node, buffer);
+    return;
+  }
   const elements = Array.isArray(node) ? (node as readonly unknown[]) : null;
   const members = node as Readonly<Record<string, unknown>>;
   // RFC 8785 orders members by their names' UTF-16 code units, which is the
@@ -464,6 +501,28 @@ function* appendCanonical(
     }
   }
   buffer.text += elements === null ? "}" : "]";
+}
+
+// The canonical text of `source`, as appendCanonical writes the plain array of
+// its elements, each element validated as it is made.
+function* appendArraySource(
+  source: CanonicalArraySource,
+  buffer: TextBuffer,
+): Generator<string, void, undefined> {
+  buffer.text += "[";
+  for (let at = 0; at < source.length; at++) {
+    if (at > 0) buffer.text += ",";
+    const child = source.element(at);
+    assertCanonical(child, `array source[${String(at)}]`, false);
+    if (child !== null && typeof child === "object")
+      yield* appendCanonical(child, buffer);
+    else buffer.text += canonicalizeValidated(child);
+    if (buffer.text.length >= CHUNK_CODE_UNITS) {
+      yield buffer.text;
+      buffer.text = "";
+    }
+  }
+  buffer.text += "]";
 }
 
 /**

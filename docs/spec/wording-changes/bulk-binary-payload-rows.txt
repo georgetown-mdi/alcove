@@ -1,0 +1,56 @@
+# Payload rows sent as values after their byte lengths, not JSON.
+- A received payload frame MUST be well-formed UTF-16 the same way -- every column name and every cell -- and the payload wire schema (`packages/core/src/payloadExchange.ts`) refuses one that is not where the frame is parsed. -> A received payload frame MUST be well-formed the same way -- every column name and every cell.
+- - -> The frame holds them as UTF-8, and the payload part reader (`packages/core/src/psi/payloadRowParts.ts`) refuses a part whose bytes are not well-formed UTF-8 where the part is read, so no name or value it yields holds an unpaired surrogate.
+- - -> A received payload's rows reach that writer as a `CanonicalArraySource`, a length and a function giving each element, which it encodes as the array of those elements, checking each as it is made; `canonicalString` and `canonicalBytes` refuse one.
+- Each round's association table, original-index list and groupings, and after the last round each party's mapped-element list, the list it returns with the partner's rows, and its payload rows go in parts whose message files are filled to the same bound, so no list is bounded by one message file or, for the payload, by the 2^24 entries one JSON array holds ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)). -> Each round's association table, original-index list and groupings, and after the last round each party's mapped-element list, the list it returns with the partner's rows, and its payload rows go in parts whose message files are filled to the same bound, so no list is bounded by one message file ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+- The widest legitimate object is the `transform.params` record at `MAX_PARAMS_ENTRIES` = 256; the longest legitimate array is a payload's row list, one entry per matched record; a payload that can pass this cap is sent in parts, each a message of its own held to it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)). -> The widest legitimate object is the `transform.params` record at `MAX_PARAMS_ENTRIES` = 256.
+- - -> No list of matched records, a payload's rows included, is JSON: each is sent in binary parts ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+- A payload's part is one JSON message, which holds at most `MAX_JSON_ARRAY_ELEMENTS` = 16,777,216 entries in any array (`packages/core/src/utils/boundedJson.ts`), and on SFTP or a synced folder one message file at most `MAX_FRAME_SIZE_BYTES` = 536,870,888 bytes ([PARSED_INPUT_BOUNDS.md, Application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds)). -> On SFTP or a synced folder a part is one message file of at most `MAX_FRAME_SIZE_BYTES` = 536,870,888 bytes ([PARSED_INPUT_BOUNDS.md, Application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds)), and that bound does not bound a list.
+- On Node 26.10 that byte figure is V8's longest string (`buffer.constants.MAX_STRING_LENGTH`, and `"a".repeat` throws `Invalid string length` one past it), so no one message could hold a longer list. -> -
+- Each part is held to both bounds, so neither bounds a list. -> -
+- The other lists' parts are 32-bit words, held to the message file's bytes alone. -> Every list's part is binary: 32-bit words, or for the payload rows each value after its byte length ([The payload part body](#a-list-of-matched-records-is-sent-in-parts)).
+- one payload of one 24-character column, and the partner's empty one | 3 | 536,870,855 bytes | 35 s | 6.0 GiB -> one payload of one 24-character column, and the partner's empty one, measured on 2026-11-04 | 3 | 536,870,860 bytes | 19 s | 5.7 GiB
+- A payload's part body is JSON, and every other list's part body is 32-bit words. -> A payload's part body is its values, each after its byte length, and every other list's part body is 32-bit words.
+- A payload's part is a payload message (`hasData`, `columns`, `rowIndices`, `rows`) as UTF-8 JSON, holding the part's rows and their row indices, every part naming the same columns; each row is one entry. -> A payload's part holds the part's rows and their row indices, each row one entry (`packages/core/src/psi/payloadRowParts.ts`).
+- - -> **The payload part body.**
+- - -> Every number in it is an unsigned 32-bit integer, little-endian.
+- - -> In order, it contains:
+- - -> the tag 8;
+- - -> `n`, the number of rows in this part;
+- - -> `c`, the number of columns;
+- - -> each column name, as a byte length and then that many bytes of UTF-8;
+- - -> `n` row indices;
+- - -> each row's `c` values in turn, each as a byte length and then that many bytes of UTF-8, or the length 2^32 - 1 alone for a null value.
+- - -> Every part of a payload names the same columns.
+- A payload with no data (`{"hasData": false}`) is one part of no entries. -> A payload with no data is one part with `c` = 0 and `n` = 0.
+- - -> A row index is at most 2^32 - 1, a value at most 2^32 - 2 bytes, far past any part's bytes, and `c` at most 4,096 (`MAX_PAYLOAD_ENTRIES`).
+- - -> A column name is 1 to 256 characters (`MAX_NAME_LENGTH`), so at most 768 bytes of UTF-8.
+- - -> A value is well-formed UTF-8: an empty value is the length 0, and a value is read back with no byte-order mark removed and no character replaced.
+- - -> A sender refuses, before it sends the first part, a payload with more than 4,096 columns, a row index outside 0 to 2^32 - 1, a row whose width is not `c`, and a value or name holding an unpaired UTF-16 surrogate, which has no UTF-8 form.
+- - -> **What a received payload holds.**
+- - -> A receiver keeps each part's values as one byte array, with the offset where each row starts, and turns a row into strings only when it is read: by the result writer, one row at a time, and by the commitment and receipt MAC encodings ([CANONICAL_ENCODING.md, Implementation note](CANONICAL_ENCODING.md#implementation-note-non-normative)).
+- - -> Measured on 2026-11-04 in a 10-core aarch64 Linux container with 23 GB of memory, Node 26.13, `--expose-gc`: one payload part as large as a message file holds, read by the receiver from an in-memory connection.
+- - -> The figure is the memory the received payload holds (`heapUsed` plus `arrayBuffers` after two collections, the part itself released), divided by the part's bytes.
+- - -> Rows of | Rows, part bytes, held
+- - -> one 24-character column | 16,777,186, 536,869,986, 1.12 times the part
+- - -> 16 columns of 1 to 6 characters | 3,639,172, 536,869,982, 1.03 times the part
+- - -> one empty column | 67,108,747, 536,870,010, 1.50 times the part
+- - -> Each row adds 8 bytes to what the part holds: its row index, and the offset where it starts.
+- A payload row is measured as its UTF-8 JSON with its separator, and a payload part holds at most `MAX_JSON_ARRAY_ELEMENTS` rows. -> A payload row takes 4 bytes for its row index and, for each value, 4 bytes and its UTF-8 bytes, and every payload part also holds 12 bytes and its column names.
+- A receiver requires no part size: each part's frame is held to that receiver's own per-frame bound at its transport, a payload body to the JSON structure bounds, and a word-list part to the byte bounds below. -> A receiver requires no part size: each part's frame is held to that receiver's own per-frame bound at its transport, and a word-list part to the byte bounds below.
+- A payload body is parsed through `parseBoundedJson` and the payload schema, and refused where it is not JSON, the refusal naming no byte of it, or where the schema refuses it. -> A payload body is checked against its own length in one pass before any array or string is made from it, and refused where:
+- - -> it is shorter than 12 bytes;
+- - -> its tag is not 8;
+- - -> its `n` is more than the rows the payload has still to send;
+- - -> its `c` is more than 4,096, or 0 while `n` is not;
+- - -> a byte length runs past the body's end, or the body holds bytes past its last value;
+- - -> a column name is null, empty, or longer than 768 bytes, or, once read, longer than 256 characters;
+- - -> a column name or value is not well-formed UTF-8.
+- - -> None of these refusals names a byte of the body.
+- Sending a round's association table, original-index list and groupings in parts is a delta of the same kind, and so is sending these lists as 32-bit words. -> Sending a round's association table, original-index list and groupings in parts is a delta of the same kind, and so are sending these lists as 32-bit words and sending the payload rows as values after their byte lengths.
+- The reference implementation is the payload wire schema in `packages/core/src/payloadExchange.ts`. -> The reference implementation is the payload part reader in `packages/core/src/psi/payloadRowParts.ts`: its layout holds one value per column in every row, and it refuses a part of rows that names no column.
+- - -> **A payload body is checked against its own length first.**
+- - -> Its row and column counts and every byte length are checked against the bytes the body holds, and every name and value checked as UTF-8, before any array or string is made from it; the values are then kept as one copy of their bytes ([What the receiver refuses, reading the parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+- Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the read parts hold at most that many entries between them, each payload part parsed under the [application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds). -> Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the read parts hold at most that many entries between them.
+- One part's body holds at most 267,532,635 bytes, what one part of a PSI set holds at `MAX_WEBRTC_FRAME_BYTES` with the application envelope ([PROTOCOL.md, The part size](PROTOCOL.md#a-psi-set-is-sent-in-parts)), and a payload part at most `MAX_JSON_ARRAY_ELEMENTS` rows. -> One part's body holds at most 267,532,635 bytes, what one part of a PSI set holds at `MAX_WEBRTC_FRAME_BYTES` with the application envelope ([PROTOCOL.md, The part size](PROTOCOL.md#a-psi-set-is-sent-in-parts)).
+- A part of any other list is refused past the byte bound PROTOCOL.md derives from the agreed terms and this party's own round, before its body is read; the data channel has reassembled the part by then, up to `MAX_WEBRTC_FRAME_BYTES`, since no receive on this transport reads a frame under a tighter bound. -> A part of any list but the payload rows is refused past the byte bound PROTOCOL.md derives from the agreed terms and this party's own round, before its body is read; the data channel has reassembled the part by then, up to `MAX_WEBRTC_FRAME_BYTES`, since no receive on this transport reads a frame under a tighter bound.

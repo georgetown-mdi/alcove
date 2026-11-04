@@ -34,6 +34,7 @@ import {
   withSentNote,
 } from "./utils/support";
 import { readPartFrame } from "./utils/matchedListPartFrames";
+import { plainPayload } from "./utils/plainPayload";
 import { RESOLVED_TABLE_LAYOUT } from "../src/psi/uint32ListParts";
 
 // Single-pass message 3, the resolved table a helper is or is not sent.
@@ -95,10 +96,12 @@ function built(result: ExchangeResult): BuiltExchangeRecord {
   return result.audit!;
 }
 
-const sortByIndex = (p: ExchangeResult["partnerPayload"]) =>
-  p.rowIndices
-    .map((idx, i) => ({ idx, row: p.rows[i] }))
+const sortByIndex = (payload: ExchangeResult["partnerPayload"]) => {
+  const { rowIndices, rows } = plainPayload(payload);
+  return rowIndices
+    .map((idx, i) => ({ idx, row: rows[i] }))
     .sort((a, b) => a.idx - b.idx);
+};
 
 const both: Output = { expectsOutput: true, shareWithPartner: true };
 

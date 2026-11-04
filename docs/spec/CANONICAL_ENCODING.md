@@ -303,12 +303,13 @@ every parse path, so an exchange refuses such a document where the partner's
 terms are read rather than at the agreed-terms hash, which is computed after
 the exchange has disclosed.
 
-A received payload frame MUST be well-formed UTF-16 the same way -- every
-column name and every cell -- and the payload wire schema
-(`packages/core/src/payloadExchange.ts`) refuses one that is not where the
-frame is parsed. Those names and values are committed verbatim by the receipt
-MACs and by the record's payload commitments, which are likewise computed after
-the exchange has disclosed.
+A received payload frame MUST be well-formed the same way -- every column name
+and every cell. The frame holds them as UTF-8, and the payload part reader
+(`packages/core/src/psi/payloadRowParts.ts`) refuses a part whose bytes are not
+well-formed UTF-8 where the part is read, so no name or value it yields holds
+an unpaired surrogate. Those names and values are committed verbatim by the
+receipt MACs and by the record's payload commitments, which are likewise
+computed after the exchange has disclosed.
 
 ### Absent versus null
 
@@ -429,7 +430,11 @@ primitive's encoding from `canonicalize`, so a chunk ends only between two
 whole tokens. For the exchange record's commitments and the receipt's payload
 MACs, `packages/core/src/utils/canonicalHmac.ts` copies these chunks into one
 byte array and computes HMAC-SHA-256 over it with one `crypto.subtle` call, so
-the encoding is never held as one string, whose length V8 caps. The chunked writer descends one call per nesting level where `canonicalize` keeps its own stack, so a value nested more deeply than a few thousand levels exhausts the call stack and throws `CanonicalEncodingError` there while `canonicalBytes` still encodes it (measured on Node 26.10: depth 3000 encodes both ways, depth 5000 only through `canonicalBytes`). The record and receipt values nest at most 3 levels.
+the encoding is never held as one string, whose length V8 caps. A received
+payload's rows reach that writer as a `CanonicalArraySource`, a length and a
+function giving each element, which it encodes as the array of those elements,
+checking each as it is made; `canonicalString` and `canonicalBytes` refuse one.
+The chunked writer descends one call per nesting level where `canonicalize` keeps its own stack, so a value nested more deeply than a few thousand levels exhausts the call stack and throws `CanonicalEncodingError` there while `canonicalBytes` still encodes it (measured on Node 26.10: depth 3000 encodes both ways, depth 5000 only through `canonicalBytes`). The record and receipt values nest at most 3 levels.
 
 The `canonicalize` package is inlined into `@alcove/core`'s built artifacts
 rather than resolved at runtime; why, and what that costs when an advisory

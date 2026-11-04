@@ -78,7 +78,7 @@ export const COVERED_VECTORS = [
   {
     vectors: "matched-list-part-vectors.json",
     reason:
-      "the header every part of a cascade's matched-record lists -- the mapped-element lists and the payload rows -- begins with and how a list is cut into parts, which a partner reads to join the list before parsing it.",
+      "the header every part of a cascade's matched-record lists -- the mapped-element lists and the payload rows -- begins with, how a list is cut into parts, and the body of each word-list layout and of a payload part, which a partner reads to join the list and read its values.",
   },
   {
     vectors: "psi-engine-wire-vectors.json",

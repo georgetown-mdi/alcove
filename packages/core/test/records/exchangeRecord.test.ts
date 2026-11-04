@@ -75,14 +75,14 @@ const fixedRandomness: ExchangeRecordRandomness = {
 // Both payloads are in the record's canonical committed form (no transport
 // `hasData` tag); a sender and receiver commit over byte-identical data for the
 // same logical payload.
-const localPayloadSent: CommittedPayload = {
+const localPayloadSent = {
   columns: ["dose"],
   rows: [["10mg"], ["20mg"]],
-};
-const partnerPayloadReceived: CommittedPayload = {
+} satisfies CommittedPayload;
+const partnerPayloadReceived = {
   columns: ["status"],
   rows: [["active"], [null]],
-};
+} satisfies CommittedPayload;
 
 // The linkage fields a party whose input supplies every declared field
 // contributes -- what the build checks the matching basis against.

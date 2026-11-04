@@ -1,6 +1,7 @@
 // Regenerates matched-list-part-vectors.json: the wire layout of the parts a
 // matched-record list is sent in, for a mapped-element list and for each
-// other word-list layout. From the repo root:
+// other word-list layout, and of the parts payload rows are sent in. From the
+// repo root:
 //
 //   node packages/core/test/vectors/generate-matched-list-part-vectors.mjs > \
 //     packages/core/test/vectors/matched-list-part-vectors.json
@@ -204,6 +205,170 @@ const layouts = [
   };
 });
 
+// Payload rows (tag 8): the row count n and column count c, each column name,
+// n row indices, then each row's c values in turn, every name and value a
+// uint32 byte length then its UTF-8 bytes, and a null value the length
+// 2^32 - 1 alone. Each part repeats the column names; a row takes 4 bytes for
+// its index and 4 plus its bytes per value.
+const PAYLOAD_TAG = 8;
+const PAYLOAD_PREFIX_BYTES = 12;
+const NULL_LENGTH = 0xffff_ffff;
+
+const word = (value) => {
+  const bytes = Buffer.alloc(4);
+  bytes.writeUInt32LE(value, 0);
+  return bytes;
+};
+const text = (value) => {
+  if (value === null) return word(NULL_LENGTH);
+  const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8");
+  return Buffer.concat([word(bytes.length), bytes]);
+};
+
+function payloadBody(columns, rowIndices, rows) {
+  return Buffer.concat([
+    word(PAYLOAD_TAG),
+    word(rows.length),
+    word(columns.length),
+    ...columns.map(text),
+    ...rowIndices.map(word),
+    ...rows.flat().map(text),
+  ]);
+}
+
+function payloadParts({ columns, rowIndices, rows }, payloadBytes) {
+  const names = Buffer.concat(columns.map(text));
+  const room = payloadBytes - PAYLOAD_PREFIX_BYTES - names.length;
+  const starts = [0];
+  let used = 0;
+  rows.forEach((row, index) => {
+    const bytes = 4 + row.reduce((sum, value) => sum + text(value).length, 0);
+    if (used > 0 && used + bytes > room) {
+      starts.push(index);
+      used = 0;
+    }
+    used += bytes;
+  });
+  return starts.map((start, index) => {
+    const end = index + 1 < starts.length ? starts[index + 1] : rows.length;
+    const header = Buffer.alloc(HEADER_BYTES);
+    header.writeUInt32BE(index, 0);
+    header.writeUInt32BE(starts.length, 4);
+    header.writeBigUInt64BE(BigInt(rows.length), 8);
+    return Buffer.concat([
+      header,
+      payloadBody(
+        columns,
+        rowIndices.slice(start, end),
+        rows.slice(start, end),
+      ),
+    ]);
+  });
+}
+
+const payloads = [
+  {
+    name: "a payload that sends no data is one part of no column and no row",
+    columns: [],
+    rowIndices: [],
+    rows: [],
+    partPayloadBytes: 64,
+  },
+  {
+    name: "a payload of empty, null and multi-byte values in one part",
+    columns: ["name", "note"],
+    rowIndices: [4, 0xffff_fffe],
+    rows: [
+      ["", null],
+      ["名前", "\u{1f600}\r\n"],
+    ],
+    partPayloadBytes: 256,
+  },
+  {
+    name: "a payload of three parts, each naming the columns",
+    columns: ["id"],
+    rowIndices: [0, 1, 2, 3, 4],
+    rows: [["a"], ["bb"], ["ccc"], [""], [null]],
+    partPayloadBytes: 40,
+  },
+].map((vector) => ({
+  ...vector,
+  partsHex: payloadParts(vector, vector.partPayloadBytes).map((part) =>
+    part.toString("hex"),
+  ),
+}));
+
+// The only part of a list of `rows` rows holding `body`.
+function onlyPart(rows, body) {
+  const header = Buffer.alloc(HEADER_BYTES);
+  header.writeUInt32BE(0, 0);
+  header.writeUInt32BE(1, 4);
+  header.writeBigUInt64BE(BigInt(rows), 8);
+  return Buffer.concat([header, body]);
+}
+const withLength = (body, at, length) => {
+  const edited = Buffer.from(body);
+  edited.writeUInt32LE(length, at);
+  return edited;
+};
+const twoRows = payloadBody(["name"], [0, 1], [["a"], ["b"]]);
+const payloadRefusals = [
+  {
+    name: "a value length past the part's end",
+    // The second value's length, after the prefix, the name and two indices.
+    partsHex: [onlyPart(2, withLength(twoRows, 12 + 8 + 8 + 5, 0xffff_fffe))],
+    refusal: "part 0 is not the length its value lengths state",
+  },
+  {
+    name: "a part one byte short of its last value",
+    partsHex: [onlyPart(2, twoRows.subarray(0, twoRows.length - 1))],
+    refusal: "part 0 is not the length its value lengths state",
+  },
+  {
+    name: "a part with a byte past its last value",
+    partsHex: [onlyPart(2, Buffer.concat([twoRows, Buffer.from([0])]))],
+    refusal: "part 0 is not the length its value lengths state",
+  },
+  {
+    name: "a value that is not UTF-8 text",
+    partsHex: [
+      onlyPart(
+        1,
+        payloadBody(["name"], [0], [[Buffer.from([0xed, 0xa0, 0x80])]]),
+      ),
+    ],
+    refusal: "part 0 holds a value that is not UTF-8 text",
+  },
+  {
+    name: "a part of rows that names no column",
+    partsHex: [onlyPart(1, payloadBody([], [0], [[]]))],
+    refusal: "part 0 names no column",
+  },
+  {
+    name: "a part naming more than 4096 columns",
+    partsHex: [
+      onlyPart(
+        1,
+        Buffer.concat([word(PAYLOAD_TAG), word(1), word(4097), word(0)]),
+      ),
+    ],
+    refusal: "part 0 names more than 4096 columns",
+  },
+  {
+    name: "an empty column name",
+    partsHex: [onlyPart(0, payloadBody([""], [], []))],
+    refusal: "part 0 names a column outside 1 to 256 characters",
+  },
+  {
+    name: "a column name of 257 characters",
+    partsHex: [onlyPart(0, payloadBody(["n".repeat(257)], [], []))],
+    refusal: "part 0 names a column outside 1 to 256 characters",
+  },
+].map((refusal) => ({
+  ...refusal,
+  partsHex: refusal.partsHex.map((part) => part.toString("hex")),
+}));
+
 const [first, second, third, fourth] = parts(mapped(7), 40);
 
 function withHeader(part, edit) {
@@ -302,13 +467,20 @@ const vectors = {
     "`refusals` are part sequences a receiver refuses, from their headers " +
     "or from a body whose words are not the ones its counts state, before " +
     "the body is read into arrays, with the refusal's whole fixed tail, " +
-    "which holds no body bytes. Replayed by " +
+    "which holds no body bytes. " +
+    "`payloads` are payload rows (tag 8): the row count n and column count " +
+    "c, each column name, n row indices, then each row's c values, every " +
+    "name and value a uint32 byte length then its UTF-8 bytes and a null " +
+    "value the length 4294967295 alone; `payloadRefusals` are payload parts " +
+    "a receiver refuses before it reads a value. Replayed by " +
     "packages/core/test/psi/matchedListPartVectors.test.ts; regenerate with " +
     "generate-matched-list-part-vectors.mjs in this directory.",
   headerBytes: HEADER_BYTES,
   lists,
   layouts,
   refusals,
+  payloads,
+  payloadRefusals,
 };
 
 process.stdout.write(`${JSON.stringify(vectors, null, 2)}\n`);

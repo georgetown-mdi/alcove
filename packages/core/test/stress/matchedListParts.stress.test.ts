@@ -9,10 +9,9 @@ import type { ProbeCase, ProbeResult } from "./matchedListParts.probe";
 import { stressMemory } from "./stressMemory";
 
 // The lists naming matched records, exchanged over file-sync past 2^24
-// entries, the most one JSON message holds (docs/spec/PROTOCOL.md, A list of
-// matched records is sent in parts). Both parties run in one process, which is
-// what the memory figure in the spec counts. Several GB resident, which is why
-// it is the opt-in tier.
+// entries (docs/spec/PROTOCOL.md, A list of matched records is sent in
+// parts). Both parties run in one process, which is what the memory figure in
+// the spec counts. Several GB resident, which is why it is the opt-in tier.
 
 const PROBE = fileURLToPath(
   new URL("./matchedListParts.probe.ts", import.meta.url),

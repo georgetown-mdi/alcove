@@ -11,12 +11,12 @@ import {
   buildOutputTable,
 } from "../src/payloadExchange";
 import type { PartnerPayload } from "../src/payloadExchange";
-import { PSI_SET_PART_HEADER_BYTES } from "../src/psi/psiSetParts";
 import { sanitizeErrorForDisplay } from "../src/utils/sanitizeErrorForDisplay";
 
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 import type { Metadata } from "../src/config/metadata";
 import type { MessageConnection } from "../src/connection/messageConnection";
+import { partFrame, readPartFrame } from "./utils/matchedListPartFrames";
 
 // Both parties run the full exchange over an in-process pipe; one party's
 // outbound payload frame is rewritten before the other reads it, so the
@@ -87,24 +87,12 @@ function rewritePayloadFrame(
   conn: MessageConnection,
   rewrite: Rewrite,
 ): MessageConnection {
-  const header = PSI_SET_PART_HEADER_BYTES;
   return {
     send: async (data) => {
-      if (data instanceof Uint8Array && data.length > header) {
-        let body: unknown;
-        try {
-          body = JSON.parse(new TextDecoder().decode(data.subarray(header)));
-        } catch {
-          body = undefined;
-        }
-        if (isPayloadBody(body)) {
-          rewrite(body);
-          const json = new TextEncoder().encode(JSON.stringify(body));
-          const out = new Uint8Array(header + json.length);
-          out.set(data.subarray(0, header));
-          out.set(json, header);
-          return conn.send(out);
-        }
+      const read = readPartFrame(data);
+      if (read !== undefined && isPayloadBody(read.body)) {
+        rewrite(read.body);
+        return conn.send(partFrame(read.body, read.header));
       }
       return conn.send(data);
     },

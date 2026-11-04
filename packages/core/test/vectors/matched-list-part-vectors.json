@@ -1,5 +1,5 @@
 {
-  "description": "Known-answer vectors for the parts a cascade sends a mapped-element list in. Each part is a 16-byte header -- the part's index and the list's part count as big-endian uint32, then the list's entry count as a big-endian uint64 -- followed by a body of little-endian uint32 words: the layout tag 5, the part's entry count n, n rounds, n position counts, then the positions, the body at most partPayloadBytes long. `layouts` covers every other layout by its tag: the fixed columns, each n words in turn, then for a layout with a list per entry n count words and the values. `refusals` are part sequences a receiver refuses, from their headers or from a body whose words are not the ones its counts state, before the body is read into arrays, with the refusal's whole fixed tail, which holds no body bytes. Replayed by packages/core/test/psi/matchedListPartVectors.test.ts; regenerate with generate-matched-list-part-vectors.mjs in this directory.",
+  "description": "Known-answer vectors for the parts a cascade sends a mapped-element list in. Each part is a 16-byte header -- the part's index and the list's part count as big-endian uint32, then the list's entry count as a big-endian uint64 -- followed by a body of little-endian uint32 words: the layout tag 5, the part's entry count n, n rounds, n position counts, then the positions, the body at most partPayloadBytes long. `layouts` covers every other layout by its tag: the fixed columns, each n words in turn, then for a layout with a list per entry n count words and the values. `refusals` are part sequences a receiver refuses, from their headers or from a body whose words are not the ones its counts state, before the body is read into arrays, with the refusal's whole fixed tail, which holds no body bytes. `payloads` are payload rows (tag 8): the row count n and column count c, each column name, n row indices, then each row's c values, every name and value a uint32 byte length then its UTF-8 bytes and a null value the length 4294967295 alone; `payloadRefusals` are payload parts a receiver refuses before it reads a value. Replayed by packages/core/test/psi/matchedListPartVectors.test.ts; regenerate with generate-matched-list-part-vectors.mjs in this directory.",
   "headerBytes": 16,
   "lists": [
     {
@@ -237,6 +237,99 @@
       ],
       "maxEntries": 7,
       "refusal": "part 3 runs past the list's declared entries"
+    }
+  ],
+  "payloads": [
+    {
+      "name": "a payload that sends no data is one part of no column and no row",
+      "columns": [],
+      "rowIndices": [],
+      "rows": [],
+      "partPayloadBytes": 64,
+      "partsHex": ["00000000000000010000000000000000080000000000000000000000"]
+    },
+    {
+      "name": "a payload of empty, null and multi-byte values in one part",
+      "columns": ["name", "note"],
+      "rowIndices": [4, 4294967294],
+      "rows": [
+        ["", null],
+        ["名前", "😀\r\n"]
+      ],
+      "partPayloadBytes": 256,
+      "partsHex": [
+        "00000000000000010000000000000002080000000200000002000000040000006e616d65040000006e6f746504000000feffffff00000000ffffffff06000000e5908de5898d06000000f09f98800d0a"
+      ]
+    },
+    {
+      "name": "a payload of three parts, each naming the columns",
+      "columns": ["id"],
+      "rowIndices": [0, 1, 2, 3, 4],
+      "rows": [["a"], ["bb"], ["ccc"], [""], [null]],
+      "partPayloadBytes": 40,
+      "partsHex": [
+        "0000000000000003000000000000000508000000020000000100000002000000696400000000010000000100000061020000006262",
+        "0000000100000003000000000000000508000000020000000100000002000000696402000000030000000300000063636300000000",
+        "0000000200000003000000000000000508000000010000000100000002000000696404000000ffffffff"
+      ]
+    }
+  ],
+  "payloadRefusals": [
+    {
+      "name": "a value length past the part's end",
+      "partsHex": [
+        "00000000000000010000000000000002080000000200000001000000040000006e616d6500000000010000000100000061feffffff62"
+      ],
+      "refusal": "part 0 is not the length its value lengths state"
+    },
+    {
+      "name": "a part one byte short of its last value",
+      "partsHex": [
+        "00000000000000010000000000000002080000000200000001000000040000006e616d650000000001000000010000006101000000"
+      ],
+      "refusal": "part 0 is not the length its value lengths state"
+    },
+    {
+      "name": "a part with a byte past its last value",
+      "partsHex": [
+        "00000000000000010000000000000002080000000200000001000000040000006e616d6500000000010000000100000061010000006200"
+      ],
+      "refusal": "part 0 is not the length its value lengths state"
+    },
+    {
+      "name": "a value that is not UTF-8 text",
+      "partsHex": [
+        "00000000000000010000000000000001080000000100000001000000040000006e616d650000000003000000eda080"
+      ],
+      "refusal": "part 0 holds a value that is not UTF-8 text"
+    },
+    {
+      "name": "a part of rows that names no column",
+      "partsHex": [
+        "0000000000000001000000000000000108000000010000000000000000000000"
+      ],
+      "refusal": "part 0 names no column"
+    },
+    {
+      "name": "a part naming more than 4096 columns",
+      "partsHex": [
+        "0000000000000001000000000000000108000000010000000110000000000000"
+      ],
+      "refusal": "part 0 names more than 4096 columns"
+    },
+    {
+      "name": "an empty column name",
+      "partsHex": [
+        "0000000000000001000000000000000008000000000000000100000000000000"
+      ],
+      "refusal": "part 0 names a column outside 1 to 256 characters"
+    },
+    {
+      "name": "a column name of 257 characters",
+      "partsHex": [
+        "00000000000000010000000000000000080000000000000001000000010100006e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e"
+      ],
+      "refusal": "part 0 names a column outside 1 to 256 characters"
     }
   ]
 }
