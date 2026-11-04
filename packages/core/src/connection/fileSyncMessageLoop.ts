@@ -76,6 +76,11 @@ const CLEAN_DIRECTORY_RESTART_REMEDY =
   "Re-run the exchange in a clean directory; both parties must start the new " +
   "exchange fresh.";
 
+const ACKNOWLEDGE_NEXT_STEP =
+  "In retain mode each message read is acknowledged by writing a file, so " +
+  "the account must be allowed to create files in the exchange directory. " +
+  "Grant that permission.";
+
 // A JSON message on a channel the encryption layer has taken over: a
 // `security` failure, as the encryption layer reports any frame that is not
 // binary, and terminal, since re-reading the file cannot change it.
@@ -464,11 +469,16 @@ export class FileSyncMessageLoop {
       await consume();
     } catch (err: unknown) {
       if (!this.pollerActive) throw err;
+      const detail = redactAndSanitizeForDisplay(errorMessage(err));
+      const nextStep =
+        failedAction === "acknowledge"
+          ? `${detail.endsWith(".") ? "" : "."} ${ACKNOWLEDGE_NEXT_STEP}`
+          : "";
       this.deps
         .log()
         .warn(
           `[${this.deps.role()}] could not ${failedAction} the refused ` +
-            `message file: ${redactAndSanitizeForDisplay(errorMessage(err))}`,
+            `message file: ${detail}${nextStep}`,
         );
     }
   }

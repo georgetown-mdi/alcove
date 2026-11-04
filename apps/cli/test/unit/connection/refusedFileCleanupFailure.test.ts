@@ -82,7 +82,8 @@ const MODES = [
       locklessRendezvous: true,
     },
     arm: (client: FaultingClient) => (client.failPuts = true),
-    warning: /could not acknowledge the refused message file: EACCES/,
+    warning:
+      /could not acknowledge the refused message file: EACCES: permission denied\. In retain mode each message read is acknowledged by writing a file, so the account must be allowed to create files in the exchange directory\. Grant that permission\.$/,
   },
 ];
 
