@@ -5,6 +5,7 @@ import {
   WARM_ROUTES_MESSAGE,
   appShellUpdateReady,
   applyAppShellUpdate,
+  checkForAppShellUpdate,
   registerAppShell,
   resetAppShellUpdate,
   subscribeAppShellUpdate,
@@ -52,11 +53,18 @@ function fakeContainer(options: {
 }) {
   const updateFound: Array<() => void> = [];
   const controllerChange: Array<() => void> = [];
+  const checks = { count: 0, fail: false };
   const registration = {
     installing: null as ShellWorker | null,
     waiting: options.waiting ?? null,
     addEventListener: (_type: "updatefound", listener: () => void) =>
       updateFound.push(listener),
+    update: () => {
+      checks.count += 1;
+      return checks.fail
+        ? Promise.reject(new TypeError("Failed to update a ServiceWorker"))
+        : Promise.resolve();
+    },
   };
   const container: ShellContainer = {
     controller: options.controller ?? null,
@@ -67,6 +75,9 @@ function fakeContainer(options: {
   return {
     container,
     registration,
+    /** How many times the browser was asked to look for a new deployment, and
+     * whether the next look fails as an offline one does. */
+    checks,
     /** Announce a newly installing worker, as the browser does when it finds a
      * redeployed script. */
     findUpdate(worker: ShellWorker) {
@@ -415,6 +426,44 @@ describe("registration", () => {
     applyAppShellUpdate();
     fake.changeController();
     expect(reloads).toBe(0);
+  });
+});
+
+describe("a look for a new deployment", () => {
+  test("asks the registration to fetch the worker script, and does nothing before there is one", async () => {
+    const fake = fakeContainer({ controller: fakeWorker("activated").worker });
+
+    await checkForAppShellUpdate();
+    expect(fake.checks.count).toBe(0);
+
+    await registerAppShell(fake.container);
+    await checkForAppShellUpdate();
+    expect(fake.checks.count).toBe(1);
+  });
+
+  test("that fails, as an offline one does, resolves and leaves nothing announced", async () => {
+    const fake = fakeContainer({ controller: fakeWorker("activated").worker });
+    await registerAppShell(fake.container);
+    fake.checks.fail = true;
+
+    await expect(checkForAppShellUpdate()).resolves.toBeUndefined();
+    expect(fake.checks.count).toBe(1);
+    expect(appShellUpdateReady()).toBe(false);
+  });
+
+  test("that finds a redeployed worker announces it as an update", async () => {
+    const fake = fakeContainer({ controller: fakeWorker("activated").worker });
+    await registerAppShell(fake.container);
+    const found = fakeWorker();
+    fake.registration.update = () => {
+      fake.findUpdate(found.worker);
+      return Promise.resolve();
+    };
+
+    await checkForAppShellUpdate();
+    found.advanceTo("installed");
+
+    expect(appShellUpdateReady()).toBe(true);
   });
 });
 

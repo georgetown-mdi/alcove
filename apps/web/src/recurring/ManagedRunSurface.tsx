@@ -5,6 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { describeResolvedMatching } from "@alcove/core";
 
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 import { useOnlineStatus } from "@components/useOnlineStatus";
 
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
@@ -144,6 +145,15 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const clearStandingFailed = recovery.standing.clear.kind === "failed";
   const reinvite = recovery.reinvite.composed;
   const reinviteSource = recovery.reinvite.site;
+
+  // A finished run's downloads, a failure's detail, a minted re-invitation and
+  // a chosen input file are held only in this page.
+  useAppShellUpdateHold(
+    runCompletion !== undefined ||
+      liveFailure !== undefined ||
+      reinvite !== undefined ||
+      reselected !== undefined,
+  );
 
   // The re-invite result panel, scrolled into view when the detail section (far below
   // the panel) triggered the mint, so the operator lands on the artifacts they need.

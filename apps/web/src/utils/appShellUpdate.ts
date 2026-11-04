@@ -16,6 +16,11 @@
  * the browser's own confirmation therefore costs nothing -- the page keeps its
  * code, the update keeps waiting, and the banner's Reload applies it whenever
  * the operator is ready.
+ *
+ * The installed app's scheduled runner also applies a waiting update, through
+ * the same path, between runs when nothing would be lost
+ * (`apps/web/src/psi/managed/managedAppUpdate.ts`), and asks the browser to
+ * look for a new deployment through {@link checkForAppShellUpdate}.
  */
 
 /** The worker's URL. It is served from `public/`, so its scope is the origin
@@ -50,6 +55,7 @@ interface ShellRegistration {
     type: "updatefound",
     listener: () => void,
   ) => void;
+  readonly update: () => Promise<unknown>;
 }
 
 /** The subset of `ServiceWorkerContainer` this module drives. */
@@ -207,6 +213,28 @@ export async function registerAppShell(
  */
 export function applyAppShellUpdate(): void {
   applyUpdate?.();
+}
+
+/**
+ * Ask the browser to fetch the worker script now and compare it with the one
+ * installed. A redeployed script installs and is announced as an update the way
+ * one found on a navigation is.
+ *
+ * Chromium checks at a navigation and not for a page that makes requests but
+ * no navigation, so an installed app left open to run its schedule would
+ * otherwise not see a new deployment
+ * (`apps/web/test/integration/serviceWorkerUpdateCheck.test.ts`, which does
+ * not wait out the browser's longer timers).
+ *
+ * Never rejects: a failed check, offline included, leaves things as they were.
+ * Does nothing before `registerAppShell` has a registration.
+ */
+export async function checkForAppShellUpdate(): Promise<void> {
+  try {
+    await registration?.update();
+  } catch {
+    // Offline, or the origin failed; the next check or navigation tries again.
+  }
 }
 
 /** @internal */

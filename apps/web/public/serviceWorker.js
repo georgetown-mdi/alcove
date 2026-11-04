@@ -34,8 +34,9 @@
  *     URLs, which miss the cache and are fetched.
  *   - A new worker does NOT call skipWaiting() on install. It waits, and takes
  *     over when the last client controlled by the old worker goes away (the next
- *     cold start), or when a client that has told its operator an update is
- *     ready posts SKIP_WAITING_MESSAGE as it unloads. Swapping under a live
+ *     cold start), or when a client applying it posts SKIP_WAITING_MESSAGE as it
+ *     unloads -- on its operator's Reload, or on the installed app's own reload
+ *     between scheduled runs. Swapping under a live
  *     client would purge, on activate, the very asset cache that client's
  *     already-loaded code lazily fetches from -- during an exchange, on an app
  *     whose exchanges are long-running and interactive. The waiting worker is
@@ -129,7 +130,7 @@ const ASSET_CONTENT_TYPES = new Map([
 ]);
 
 /** The message a client posts to make a waiting worker take over now, having
- * told its operator an update is ready and reached the unload that applies it.
+ * reached the unload of the reload that applies it.
  * Mirrored by the client registration in `apps/web/src/utils/appShellUpdate.ts`.
  */
 const SKIP_WAITING_MESSAGE = "alcove-skip-waiting";

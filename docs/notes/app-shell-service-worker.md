@@ -57,6 +57,17 @@ A takeover is origin-wide while the banner is per tab, and an installed PWA hold
 
 The waiting worker is therefore the accurate form of "an update is available", not a way to defer one indefinitely: the network-first document means an online client already renders the current deployment's HTML.
 
+### Applying an update between scheduled runs
+
+An installed app left open to run its schedule may go weeks without a navigation. Measured in Chromium, a page that makes requests but no navigation is not told of a redeployed worker, while a navigation or `registration.update()` finds it at once (`apps/web/test/integration/serviceWorkerUpdateCheck.test.ts`; the browser's longer timers, such as its 24-hour staleness rule, are not measured). Such an app would otherwise run one deployment's code for as long as it stays open. The scheduled runner closes that gap itself: it asks for a look once an hour, and applies a waiting version through the banner's own reload just before an attempt. The rule, what holds it back, and how long an app can trail a deployment are in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#applying-a-waiting-app-version-between-windows).
+
+Two choices shaped it:
+
+- **Before an attempt, not at any idle moment.** The runner's window reloads only when a run would start anyway, which is when it is acting with nobody present, rather than in front of an operator working in it right after a deployment.
+- **Two reaches for a hold.** The reload loses only its own window's state, so a view showing what the page holds only in memory holds the apply back in that window alone; a view in another tab is not lost by it. The takeover reaches every window, so a run, a re-invite, or an armed leave-page prompt anywhere holds it back, read through Web Locks across windows.
+
+The update banner's Reload is unchanged and ignores both holds: the operator's own choice is the operator's.
+
 One load lags a worker-logic change, by construction: the confirming reload's own navigation is dispatched while the outgoing worker is still the controller -- the takeover message posts at `pagehide`, after that navigation has begun -- so the first page after a confirmation is fetched under the old worker's rules until the new one activates and claims it. The network-first document and content-hashed assets make that invisible for content; only a change to the worker's own fetch handling arrives one step late, governing from the claim onward and fully at the next load. No in-page ordering removes this: posting before the reload is what re-created the declined-reload harm this path exists to avoid.
 
 ## Hand-written, not generated

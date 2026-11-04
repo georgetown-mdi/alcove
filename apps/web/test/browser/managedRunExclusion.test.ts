@@ -112,6 +112,7 @@ function scheduleTickSeams(
     persistAdvance: persistManagedExchangeScheduleAdvance,
     delay,
     stopped: () => false,
+    applyWaitingAppUpdate: () => Promise.resolve(false),
     runAttempt: (scheduled) =>
       runManagedRerun(
         scheduled.record,

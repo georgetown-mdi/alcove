@@ -28,6 +28,7 @@ import {
 } from "@psi/managed/managedRelayRegistration";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { stopWaitingManagedWindowRun } from "@psi/managed/managedWindowRuns";
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 
 import styles from "@styles/app.module.css";
 
@@ -122,6 +123,11 @@ export function ManagedRelayRegistration({
 
   const enrolled = record.relayRegistrar;
   const pendingLine = relayRegistrationPendingLine(record);
+  useAppShellUpdateHold(
+    url !== (enrolled?.url ?? "") ||
+      exchangeId !== (enrolled?.exchangeId ?? "") ||
+      ownerToken !== "",
+  );
 
   const changeOwnerToken = (value: string) => {
     setOwnerToken(value);

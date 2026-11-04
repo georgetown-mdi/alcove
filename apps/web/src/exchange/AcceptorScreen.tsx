@@ -56,6 +56,7 @@ import {
 } from "@components/csvDelimiterChoice";
 
 import { deploymentProfile, isConsoleBuild } from "@utils/clientConfig";
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 import {
@@ -290,6 +291,9 @@ function AcceptorInvitationScreen({
   encoded: string | undefined;
 }) {
   const consoleBuild = isConsoleBuild();
+  // Only the invitation outlives a reload; the review, the consent, the file,
+  // a run and its results are held only in this page.
+  useAppShellUpdateHold(encoded !== undefined && encoded !== "");
   const [screenState, dispatch] = useReducer(
     acceptorScreenReducer,
     ACCEPTOR_SCREEN_INITIAL,

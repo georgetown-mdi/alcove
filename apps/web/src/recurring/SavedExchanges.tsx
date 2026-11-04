@@ -11,6 +11,7 @@ import {
 import { Link, useNavigate } from "@tanstack/react-router";
 
 import { alertRoleFor } from "@theme";
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 
 import {
   MAX_IMPORT_FILE_BYTES,
@@ -945,6 +946,9 @@ function useImportFile({
   const navigate = useNavigate();
   const [outcome, setOutcome] = useState<ImportOutcome>({});
   const [importing, setImporting] = useState(false);
+  useAppShellUpdateHold(
+    outcome.liveCopy !== undefined || outcome.storedCopy !== undefined,
+  );
   // The state renders the withheld control; the ref refuses a pick that lands
   // before that render does.
   const inFlight = useRef(false);

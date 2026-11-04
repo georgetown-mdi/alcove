@@ -11,6 +11,7 @@ import {
 import { DEFAULT_RELAY_SWITCH_LABEL } from "@psi/transport/defaultRelaySwitch";
 import { defaultRelayBuild } from "@utils/clientConfig";
 import styles from "@styles/app.module.css";
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 
 import {
   connectionSettingsEdits,
@@ -54,9 +55,12 @@ export function ManagedConnectionSettings({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [edited, setEdited] = useState(false);
+  useAppShellUpdateHold(edited && !saved);
 
   function edit(fields: Partial<ConnectionSettingsText>) {
     setText((current) => ({ ...current, ...fields }));
+    setEdited(true);
     setSaved(false);
   }
 

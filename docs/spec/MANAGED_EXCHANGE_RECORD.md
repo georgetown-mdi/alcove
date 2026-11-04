@@ -1289,6 +1289,50 @@ the browser host that wakes them, and the installed-runtime gate that decides
 whether it runs at all, are `apps/web/src/psi/managed/managedScheduleRuntime.ts` and
 `apps/web/src/components/ScheduledExchangeRunner.tsx`.
 
+#### Applying a waiting app version between windows
+
+The hosted app is deployed continuously, and a new deployment's service worker
+waits behind a running page rather than taking it over (see
+[MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#how-a-new-version-reaches-an-installed-app)).
+An installed app left open to run its schedule may see no navigation for
+weeks, so the runner applies a waiting version itself:
+
+- **When.** Just before each attempt at a due window, so a version found
+  during an attempt is applied before the next one. The apply reloads the
+  runner's own window by the path the update notice's Reload takes. The
+  attempt is not made, the window is left with no disposition and no
+  bookkeeping, and the reloaded page's first wake occupies the still-open
+  window on the new code.
+- **What holds it back.** Nothing is applied while any same-origin window
+  holds or has queued for a record's single-writer lock (a run, a re-invite,
+  relay enrollment, an import replace), or has its leave-page prompt armed (a
+  live exchange, or an invite or accept form with a file loaded and not yet
+  sent). Nothing is applied either while a view in the runner's own window
+  shows what that page holds only in memory: a finished run's downloads or
+  failure, a minted re-invitation, an unsaved edit to a saved exchange's
+  settings, an import waiting on the operator's answer, a one-off exchange from
+  its file onward, or a receipt check with anything loaded. A view in another
+  window does not hold it back, since only the runner's window is reloaded. A
+  hold lasts as long as its run or view does, and a lock state the runner
+  cannot read holds it back too.
+- **How a new version is found.** Chromium looks for a redeployed worker at
+  a navigation and when asked, and not for an open page that makes requests
+  but no navigation (`apps/web/test/integration/serviceWorkerUpdateCheck.test.ts`,
+  which does not wait out the browser's longer timers). The runner
+  asks once an hour while it runs, starting an hour after its launch, whose
+  own navigation is the first look.
+
+An installed app running its schedule therefore trails a deployment by up to
+an hour to find it, then its install, then until the first attempt after that
+with nothing holding the apply back. A page running no schedule -- an ordinary
+tab, or an installed app whose runner is not running -- is never asked to
+look: it finds a deployment at its next navigation, and trails it for as long
+as it stays open without one. Its update notice applies a version it has
+found.
+
+The apply is implemented in `apps/web/src/psi/managed/managedAppUpdate.ts`,
+and what holds it back in `apps/web/src/utils/appShellUpdateHold.ts`.
+
 #### A due window under the operator's compromise response
 
 A window that falls due while the record's standing condition holds the

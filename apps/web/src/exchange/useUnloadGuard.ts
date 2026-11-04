@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 
+import { holdAppShellUpdateAcrossWindows } from "@utils/appShellUpdateHold";
+
 import { unloadGuardArmed } from "./stepHistory";
 
 /**
@@ -31,6 +33,9 @@ export function useUnloadGuard({
  * console seats -- arms this primitive for the run's length, since an unload
  * (a tab close, typed URL, or the app-shell's Reload button) would otherwise
  * end it for both parties unnoticed. Disarming is the effect's own cleanup.
+ *
+ * While armed, the page also holds back the scheduled runner's apply of a
+ * waiting app update, in every window ({@link holdAppShellUpdateAcrossWindows}).
  */
 export function useBeforeUnloadPrompt(armed: boolean): void {
   useEffect(() => {
@@ -43,6 +48,10 @@ export function useBeforeUnloadPrompt(armed: boolean): void {
       event.returnValue = "";
     }
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    const releaseUpdateHold = holdAppShellUpdateAcrossWindows();
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      releaseUpdateHold();
+    };
   }, [armed]);
 }

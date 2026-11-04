@@ -185,7 +185,13 @@ traffic passes through it, and no exchange work happens in it.
   When one is ready while the app is open, the app offers a reload. During a run
   the browser asks you to confirm the reload, and declining keeps the run and
   leaves the offer standing.
-- A scheduled run never applies a waiting version.
+- An installed app running its schedule looks for a new version once an hour,
+  and reloads onto a waiting one just before a scheduled run starts, so that
+  run uses it. It waits while any window is running an exchange or has an
+  unsent invitation or acceptance open, and while its own window shows
+  something a reload would lose, such as a finished run's downloads or an
+  unsaved change. The rule and how long an app can run an older version:
+  [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#applying-a-waiting-app-version-between-windows).
 - An update replaces the app's cached code, not the browser's storage: the
   recurring exchanges, their secrets, and the accounting stay. A new version
   reads what an earlier one stored, and saves it in its own format the next

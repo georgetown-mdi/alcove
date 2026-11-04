@@ -32,6 +32,7 @@ import { DisclosureSection } from "@components/DisclosureSection";
 import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
 import { importLinkageTermsDocument } from "@psi/linkageTermsIO";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
+import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 import { useRequestGeneration } from "@utils/requestGeneration";
 
 import styles from "@styles/app.module.css";
@@ -392,6 +393,22 @@ export function VerifyReceiptScreen() {
   const [signedVerdict, setSignedVerdict] = useState<SignedVerdictViewModel>();
   const [verifyError, setVerifyError] = useState<string>();
   const [verifying, setVerifying] = useState(false);
+  // The loaded files, the pasted terms and the verdicts are held only in this
+  // page.
+  useAppShellUpdateHold(
+    [
+      record,
+      keys,
+      inputCsv,
+      resultCsv,
+      localTerms,
+      partnerTerms,
+      signedRecord,
+      certificate,
+      verdict,
+      signedVerdict,
+    ].some((held) => held !== undefined) || pinnedFingerprint !== "",
+  );
 
   // Which exchange the loaded inputs belong to: bumped when the record or keys
   // change, and used as the terms inputs' key so their paste buffers are the

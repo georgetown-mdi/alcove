@@ -412,6 +412,7 @@ describe("a scheduled attempt stopped for a re-invite", () => {
       persistAdvance: persistManagedExchangeScheduleAdvance,
       delay: () => Promise.resolve(),
       stopped: () => false,
+      applyWaitingAppUpdate: () => Promise.resolve(false),
       runAttempt: (scheduled) => {
         // Each attempt has its own stop, as the run driver gives it.
         const stop = new AbortController();
@@ -489,6 +490,7 @@ function tickSeams(
     persistAdvance: persistManagedExchangeScheduleAdvance,
     delay: () => Promise.resolve(),
     stopped,
+    applyWaitingAppUpdate: () => Promise.resolve(false),
     runAttempt,
   };
 }

@@ -17,6 +17,11 @@ export function managedExchangeLockName(id: string): string {
   return `${MANAGED_EXCHANGE_LOCK_PREFIX}${id}`;
 }
 
+/** Whether a Web Locks name is some managed record's run+rotate lock. */
+export function isManagedExchangeLockName(name: string): boolean {
+  return name.startsWith(MANAGED_EXCHANGE_LOCK_PREFIX);
+}
+
 /**
  * Whether any same-origin context, this one included, holds the run+rotate lock
  * for `id`. A point-in-time reading with no change event, so a surface polls it.
