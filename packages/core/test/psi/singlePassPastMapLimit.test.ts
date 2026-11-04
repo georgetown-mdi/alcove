@@ -247,6 +247,7 @@ describe("the receiver's matched-value lookup", () => {
     expect(matched.get(2)).toBeUndefined();
     expect(matched.get(4)).toBeUndefined();
     expect(matched.get(2 ** 31 - 1)).toBeUndefined();
+    expect(matched.get(-1)).toBeUndefined();
     expect(MatchedValues.of([], []).get(0)).toBeUndefined();
   });
 });

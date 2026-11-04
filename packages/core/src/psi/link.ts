@@ -3232,10 +3232,14 @@ export class MatchedValues implements MatchedValueLookup {
   }
 
   get(senderValue: number): number | undefined {
+    if (
+      !Number.isInteger(senderValue) ||
+      senderValue < 0 ||
+      senderValue >= this.receiverValueOf.length
+    )
+      return undefined;
     const receiverValue = this.receiverValueOf[senderValue];
-    return receiverValue === undefined || receiverValue < 0
-      ? undefined
-      : receiverValue;
+    return receiverValue < 0 ? undefined : receiverValue;
   }
 }
 
