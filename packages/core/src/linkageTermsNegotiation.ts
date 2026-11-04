@@ -41,7 +41,7 @@ import type {
 /**
  * Derive the {@link LinkageTerms} an ACCEPTOR runs from the inviter's terms
  * decoded from an invitation. The acceptor adopts the inviter's shared,
- * agreed fields verbatim -- `version`, `algorithm`, `linkageFields`,
+ * agreed fields verbatim -- `algorithm`, `linkageFields`,
  * `linkageKeys`, `legalAgreement`, and so on are cross-checked for equality
  * at exchange time -- but four facets are the acceptor's own perspective and
  * are derived, not copied:
@@ -381,9 +381,14 @@ function namedEntryDifferences(
 }
 
 /** The fields of {@link LinkageTerms} a partner's copy may differ in without
- * refusing the exchange: `identity` is each party's own name, and a `date`
- * mismatch only warns ({@link validateCompatibility}). */
-export const TERMS_FIELDS_PARTNER_DOES_NOT_BIND = ["identity", "date"] as const;
+ * refusing the exchange: `identity` is each party's own name, a `date`
+ * mismatch only warns ({@link validateCompatibility}), and `version` is
+ * retired. */
+export const TERMS_FIELDS_PARTNER_DOES_NOT_BIND = [
+  "identity",
+  "date",
+  "version",
+] as const;
 
 /** The part of a party's {@link LinkageTerms} its partner refuses an exchange
  * over when its own copy differs ({@link partnerBoundTerms}). */
@@ -402,7 +407,12 @@ export type PartnerBoundTerms = Omit<
  * exchange/termsRefusals.ts).
  */
 export function partnerBoundTerms(terms: LinkageTerms): PartnerBoundTerms {
-  const { identity: _identity, date: _date, ...bound } = terms;
+  const {
+    identity: _identity,
+    date: _date,
+    version: _version,
+    ...bound
+  } = terms;
   return {
     ...bound,
     linkageFields: [...terms.linkageFields].sort(linkageFieldsByName),
@@ -535,7 +545,6 @@ interface CompatibilityResult {
  * against the value the refusing party holds it to.
  */
 export type TermsDifferenceKind =
-  | "version"
   | "algorithm"
   | "linkage-strategy"
   | "output"
@@ -548,7 +557,6 @@ export type TermsDifferenceKind =
 const TERMS_DIFFERENCE_NAMES: Readonly<
   Record<TermsDifferenceKind, CompatibilityMessageFragment>
 > = {
-  version: compatibilityMessage`version`,
   algorithm: compatibilityMessage`algorithm`,
   "linkage-strategy": compatibilityMessage`linkage strategy`,
   output: compatibilityMessage`output`,
@@ -752,14 +760,6 @@ export function compareTerms(
   // The equality CHECKS always compare the RAW values either way -- both
   // transforms are display-only and the escape is lossy, so comparing
   // transformed forms could mask a genuine mismatch.
-  if (local.version !== partner.version) {
-    // TODO: implement migration when new versions exist
-    differ(
-      "version",
-      compatibilityMessage`version mismatch: yours is ${bareTermsValue(local.version)}, your partner's is ${bareTermsValue(partner.version)}`,
-    );
-  }
-
   if (local.algorithm !== partner.algorithm) {
     differ(
       "algorithm",

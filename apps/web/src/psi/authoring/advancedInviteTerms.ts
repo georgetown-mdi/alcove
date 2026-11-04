@@ -212,8 +212,8 @@ function payloadWithHeldSettings(
 }
 
 /**
- * Build the {@link LinkageTerms} a draft represents. `version` and `date`
- * come from the seed unchanged (the editor exposes no control for them);
+ * Build the {@link LinkageTerms} a draft represents. `date` comes from the
+ * seed unchanged (the editor exposes no control for it);
  * `algorithm`, `deduplicate`, `linkageStrategy`, `identity`, the `output`
  * direction, and the optional legal agreement come from the draft (free
  * text NFC-normalized and trimmed); linkage keys are the enabled ones in draft
@@ -232,7 +232,7 @@ function payloadWithHeldSettings(
 export function buildAdvancedTerms(draft: AdvancedInviteDraft): LinkageTerms {
   // The recommended terms for the draft's CURRENT metadata, so a column type edit
   // re-derives the offerable fields/keys in lockstep with the grid. The base
-  // contains the non-authored shape (version/date/algorithm/deduplicate); the draft
+  // contains the non-authored shape (date/algorithm/deduplicate); the draft
   // overrides identity, the output direction, the enabled keys, and the legal
   // agreement.
   const baseTerms = getDefaultLinkageTerms(draft.identity, draft.metadata);

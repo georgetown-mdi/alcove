@@ -1018,16 +1018,14 @@ export const LinkageStrategySchema: z.ZodType<LinkageStrategy> = z.enum([
  * every `swap` target an element of its key, the two with the same
  * `generateFuzzyComparisons` and `transform`; every key `condition` admitted
  * (`keyConditionRefusal`). A repeated payload name collapses.
- *
- * TODO: versioning compatibility rules (migration paths between semver
- * versions).
  */
 export interface LinkageTerms {
   /**
-   * Semver string identifying the schema version. Compatibility is checked at
-   * exchange time.
+   * Retired. No writer states it, and it is never compared; terms that state
+   * it keep it as written, since the agreed-terms hash covers every field.
+   * Consistency: none.
    */
-  version: string;
+  version?: string;
   /**
    * Free text identifying the holding party, included verbatim in the exchange
    * record. Absent when the party supplied no name; Alcove invents none
@@ -1074,7 +1072,8 @@ const linkageTermsBaseSchema = (options: TransformParamRefusalOptions) =>
     version: z
       .string()
       .check(maxCodeUnits(MAX_NAME_LENGTH))
-      .regex(/^\d+\.\d+\.\d+$/, "version must be a valid semver string"),
+      .regex(/^\d+\.\d+\.\d+$/, "version must be a valid semver string")
+      .optional(),
     // Optional, and bounded where it is present: a party that names itself is held
     // to a non-empty, length-capped label with no control or text-direction
     // character in it and no private-key material, and a party that supplies none

@@ -38,8 +38,10 @@ import {
   MAX_NAME_LENGTH,
   MAX_PAYLOAD_ENTRIES,
   MAX_TEXT_LENGTH,
+  parseLinkageTerms,
 } from "../../src/config/linkageTermsSchema";
 import { getDefaultLinkageTerms } from "../../src/defaults/builtInLinkageTerms";
+import { verifyExchangeRecord } from "../../src/records/recordVerification";
 
 // --- Fixtures ----------------------------------------------------------------
 
@@ -1336,6 +1338,24 @@ describe("exchange-record-vectors.json", () => {
         associationTable: vector.inputs.associationTable,
       });
       expect(allValid).toBe(true);
+    },
+  );
+
+  test.each(vectors)(
+    "$name: a stored record whose terms state the retired version still verifies",
+    async (vector) => {
+      const localTerms = parseLinkageTerms(vector.inputs.localTerms);
+      const partnerTerms = parseLinkageTerms(vector.inputs.partnerTerms);
+      expect([localTerms.version, partnerTerms.version]).toEqual([
+        "1.0.0",
+        "1.0.0",
+      ]);
+      const report = await verifyExchangeRecord(
+        parseExchangeRecord(vector.record),
+        parseVerificationKeys(vector.keys),
+        { localTerms, partnerTerms },
+      );
+      expect(report.termsHash).toBe("verified");
     },
   );
 });

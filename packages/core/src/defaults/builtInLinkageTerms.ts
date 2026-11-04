@@ -511,7 +511,6 @@ export function linkageTermsFromRuleSet(
   );
 
   return {
-    version: "1.0.0",
     // Omitted rather than emptied when the caller has no label: `identity` is
     // optional in the terms, and a party that supplied none sends none.
     ...(identity !== undefined && { identity }),

@@ -423,6 +423,23 @@ test.each([
   expect(result.success).toBe(valid);
 });
 
+test("terms without the retired version parse, and none is added", () => {
+  const { version: _version, ...withoutVersion } = base;
+  const parsed = parseLinkageTerms(withoutVersion);
+  expect(Object.hasOwn(parsed, "version")).toBe(false);
+  expect(canonicalString(parsed)).toBe(
+    canonicalString({ ...withoutVersion, linkageStrategy: "cascade" }),
+  );
+});
+
+test("terms holding the retired version keep it byte-identical in canonical form", () => {
+  const parsed = parseLinkageTerms(base);
+  expect(parsed.version).toBe("1.0.0");
+  expect(canonicalString(parsed)).toBe(
+    canonicalString({ ...base, linkageStrategy: "cascade" }),
+  );
+});
+
 // --- uniqueness constraints ---------------------------------------------------
 
 test("duplicate linkage field names are rejected", () => {

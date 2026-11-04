@@ -80,6 +80,20 @@ test("date mismatch produces a warning, not an error", () => {
   expect(warnings[0]).toMatch(/date mismatch/);
 });
 
+test("terms that differ only in the retired version agree", () => {
+  const { version: _version, ...withoutVersion } = termsB;
+  const baselines = { partnerDeduplicate: termsB.deduplicate };
+  for (const partner of [{ ...termsB, version: "2.0.0" }, withoutVersion]) {
+    const { errors, warnings } = validateCompatibility(termsA, partner);
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(
+      termsDeltaIsEmpty(compareTerms(termsA, partner, baselines).delta),
+    ).toBe(true);
+    expect(changedPartnerBoundTerms(termsA, partner)).toEqual([]);
+  }
+});
+
 // --- partnerBoundTerms ---------------------------------------------------------
 
 const everyFieldStated: LinkageTerms = {
@@ -112,7 +126,6 @@ const boundFieldEdits: Record<
   keyof PartnerBoundTerms,
   (terms: LinkageTerms) => LinkageTerms
 > = {
-  version: (terms) => ({ ...terms, version: "2.0.0" }),
   algorithm: (terms) => ({ ...terms, algorithm: "psi-c" }),
   linkageStrategy: (terms) => ({ ...terms, linkageStrategy: "single-pass" }),
   output: (terms) => ({
@@ -321,14 +334,6 @@ test("every value a warning can hold is already escape-stable", () => {
       false,
     );
   }
-});
-
-test("version mismatch is an error", () => {
-  const { errors } = validateCompatibility(termsA, {
-    ...termsB,
-    version: "2.0.0",
-  });
-  expect(errors.some((e) => e.includes("version mismatch"))).toBe(true);
 });
 
 test("algorithm mismatch is an error", () => {

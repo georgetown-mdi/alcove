@@ -139,7 +139,7 @@ const UNATTENDED_REFUSAL =
 
 const NOT_CONTINUABLE_REFUSAL =
   "your partner's linkage terms change the linkage fields, keys, algorithm, " +
-  "strategy, output direction, or version, which this run was prepared " +
+  "strategy, or output direction, which this run was prepared " +
   "under, or your partner's deduplicate, which only alcove apply takes on, " +
   "so it stopped before any linkage key or data moved.";
 

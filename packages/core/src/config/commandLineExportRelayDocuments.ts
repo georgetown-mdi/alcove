@@ -72,7 +72,6 @@ export const COMMAND_LINE_EXPORT_INVITATION_RELAY: RelayLocator = {
 
 /** @internal */
 export const COMMAND_LINE_EXPORT_LINKAGE_TERMS: LinkageTerms = {
-  version: "1.0.0",
   identity: "County Services Agency",
   date: "2025-01-01",
   algorithm: "psi",
@@ -110,7 +109,6 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       "    url: https://relay.example.org:8443",
       "    exchange_id: riverbend-q3",
       "linkage_terms:",
-      "  version: 1.0.0",
       "  identity: County Services Agency",
       "  date: 2025-01-01",
       "  algorithm: psi",
@@ -157,7 +155,6 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       "      - turns:default-relay.example.org:443?transport=tcp",
       "    registrar: https://default-relay.example.org",
       "linkage_terms:",
-      "  version: 1.0.0",
       "  identity: County Services Agency",
       "  date: 2025-01-01",
       "  algorithm: psi",
