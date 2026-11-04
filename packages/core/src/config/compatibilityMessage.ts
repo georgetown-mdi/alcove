@@ -27,7 +27,7 @@ export const TERMS_VALUE_DELIMITER = '"';
 
 /**
  * Longest value {@link bareTermsValue} renders undelimited, so an enormous
- * delimiter-free value (a 250-digit semver major) is visibly one value.
+ * delimiter-free value (a 250-digit run of digits) is visibly one value.
  */
 export const MAX_BARE_TERMS_VALUE_LENGTH = 64;
 
@@ -53,7 +53,7 @@ export function quoteTermsValue(value: string): CompatibilityMessageFragment {
 }
 
 /**
- * Render a semver string or ISO date without delimiters, re-checking the shape
+ * Render an ISO date without delimiters, re-checking the shape
  * since `validateCompatibility`'s inputs need not be schema-parsed; any other
  * value takes {@link quoteTermsValue}.
  */

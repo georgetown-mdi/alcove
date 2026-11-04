@@ -105,7 +105,7 @@ The built-in keys' validation, the criticisms recorded against them, and what a 
 *Required:* no  
 *Consistency:* none
 
-Retired. Alcove does not write it and never compares it, so two parties' terms agree whatever each states here. Older terms may state it, such as `version: 1.0.0`. Alcove reads them and keeps the value as written. Leave it out of new terms.
+Retired. Alcove does not write it and never compares it, so two parties' terms agree whatever each states here. Older terms may state it, such as `version: 1.0.0`. Alcove accepts them. Leave it out of new terms.
 
 ### `linkage_terms.identity`
 
