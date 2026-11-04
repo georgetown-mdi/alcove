@@ -526,6 +526,20 @@ describe("a rerun after a bilateral-mode mismatch", () => {
     expect([...files.keys()].sort()).toEqual(leftovers.sort());
   });
 
+  test("the bare sweep flag in delete mode is refused by the partner hello", async () => {
+    const { rerun, files, leftovers } = await rerunAfterMismatch(
+      0,
+      { sweepExchangeFiles: true },
+      { retainFiles: false },
+    );
+    for (const err of rerun) {
+      expect(err).toBeInstanceOf(UsageError);
+      expect((err as Error).message).toContain("advertises retain_files=true");
+      expect((err as Error).message).toContain("--force-retain-sweep");
+    }
+    expect([...files.keys()].sort()).toEqual(leftovers.sort());
+  });
+
   test("a rerun once both hellos are older than the window ignores them", async () => {
     const { rerun } = await rerunAfterMismatch(3_600_000);
     expect(rerun).toEqual([undefined, undefined]);
