@@ -21,9 +21,25 @@
 // matched string is the one shown where the guide says. A label that matches
 // any string passes, a log line or an internal key included, so this
 // is a safety check against drift, not proof the label is on screen.
+//
+// INCLUDES. Every `<!--@include: path#region-->` in a Markdown file under
+// docs/ must resolve, because VitePress builds the site without a word when
+// one does not: an include naming a missing file is dropped, and one naming a
+// region the file does not define pulls in the whole file. The grammar below
+// is what a real VitePress build resolved, tried case by case (the tests pin
+// it): `<!--`, optional whitespace, `@include:` in that case with no space
+// before the colon, optional whitespace, a path, optional whitespace, `-->`.
+// It is read anywhere in a file, code fences and code spans included, since
+// VitePress expands it there too. The path is relative to the file holding the
+// directive, or to the site's source directory (the repository root) when it
+// starts with `/` or `@/`; it may end in `#name` (letters, digits, `_`, `-`)
+// and then in `{from,to}` (each bound optional digits), and the range is not
+// checked. A region is a pair of whole lines `<!-- #region name -->` and
+// `<!-- #endregion name -->` (the `#` optional in both), with the name's case
+// and single spaces exact and nothing else on either line.
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
@@ -280,6 +296,74 @@ export function guideLabelFailures(guides, index, notLabels = NOT_LABELS) {
   return failures;
 }
 
+/** The pages whose includes are held. */
+export const DOCS_DIR = "docs";
+
+const INCLUDE = /<!--\s*@include:\s*(.*?)\s*-->/g;
+const INCLUDE_TARGET = /^(.*?)(?:#([\w-]+))?(?:\{\d*,\d*\})?$/;
+
+/**
+ * The includes of a Markdown source, as `{written, target, region, line}` in
+ * source order: `written` is the directive as it appears, `target` the path
+ * with any region and line range taken off, `region` the name or null.
+ */
+export function includeDirectives(markdown) {
+  return [...markdown.matchAll(INCLUDE)].map((match) => {
+    const [, target, region] = INCLUDE_TARGET.exec(match[1]);
+    return {
+      written: match[0],
+      target,
+      region: region ?? null,
+      line: lineOf(markdown, match.index),
+    };
+  });
+}
+
+/** Whether `markdown` holds a closed region `name` on lines of their own. */
+export function definesRegion(markdown, name) {
+  const marker = (word) =>
+    new RegExp(`^\\s*<!-- #?${word} ${escapeRegExp(name)} -->\\s*$`);
+  const start = marker("region");
+  const end = marker("endregion");
+  const lines = markdown.split("\n");
+  const opens = lines.findIndex((line) => start.test(line));
+  return opens !== -1 && lines.slice(opens + 1).some((line) => end.test(line));
+}
+
+/**
+ * The failures for the includes of `pages` (`{file, text}` pairs, `file`
+ * relative to `root`): one per include whose file is missing, and one per
+ * include whose region the file does not define.
+ */
+export function includeFailures(root, pages) {
+  const failures = [];
+  for (const { file, text } of pages)
+    for (const include of includeDirectives(text)) {
+      const where = `${file}:${include.line}: ${include.written}`;
+      const base = /^@?\//.test(include.target)
+        ? root
+        : dirname(resolve(root, file));
+      const target = resolve(base, include.target.replace(/^@?\//, ""));
+      const shown = target.startsWith(`${root}/`)
+        ? target.slice(root.length + 1)
+        : target;
+      if (!existsSync(target) || !statSync(target).isFile()) {
+        failures.push(
+          `${where} names ${shown}, which does not exist, so VitePress leaves the include out without a warning. Correct the path.`,
+        );
+        continue;
+      }
+      if (
+        include.region !== null &&
+        !definesRegion(readFileSync(target, "utf8"), include.region)
+      )
+        failures.push(
+          `${where} names region ${include.region}, which ${shown} does not define, so VitePress includes the whole file without a warning. Mark the region with <!-- #region ${include.region} --> and <!-- #endregion ${include.region} --> on lines of their own, or correct the name.`,
+        );
+    }
+  return failures;
+}
+
 /** Read the guides and label sources under `root` and return the failures. */
 export function checkTree(root, notLabels = NOT_LABELS) {
   const guides = filesUnder(resolve(root, GUIDES_DIR))
@@ -296,7 +380,23 @@ export function checkTree(root, notLabels = NOT_LABELS) {
     (sum, { file, text }) => sum + boldLabels(text, file).length,
     0,
   );
-  const failures = guideLabelFailures(guides, index, notLabels);
+  const pages = filesUnder(resolve(root, DOCS_DIR))
+    .filter(
+      (file) =>
+        file.endsWith(".md") && !/\/(node_modules|\.vitepress)\//.test(file),
+    )
+    .map((file) => ({
+      file: file.slice(root.length + 1),
+      text: readFileSync(file, "utf8"),
+    }));
+  const includes = pages.reduce(
+    (sum, { text }) => sum + includeDirectives(text).length,
+    0,
+  );
+  const failures = [
+    ...guideLabelFailures(guides, index, notLabels),
+    ...includeFailures(root, pages),
+  ];
   if (labels === 0)
     failures.push(
       `No bold label was found under ${GUIDES_DIR}, so scripts/check-guide-labels.mjs checks nothing. If the guides moved or mark labels another way, update the check to match.`,
@@ -305,18 +405,24 @@ export function checkTree(root, notLabels = NOT_LABELS) {
     failures.push(
       `No string was read from ${LABEL_SOURCE_DIRS.join(", ")}, so every label would fail. Update LABEL_SOURCE_DIRS in scripts/check-guide-labels.mjs.`,
     );
-  return { failures, guides: guides.length, labels, strings: index.size };
+  return {
+    failures,
+    guides: guides.length,
+    includes,
+    labels,
+    strings: index.size,
+  };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const rootFlag = process.argv.indexOf("--root");
   const root = rootFlag === -1 ? repoRoot : resolve(process.argv[rootFlag + 1]);
-  const { failures, guides, labels, strings } = checkTree(root);
+  const { failures, guides, includes, labels, strings } = checkTree(root);
   if (failures.length > 0) {
     for (const failure of failures) console.error(failure);
     process.exit(1);
   }
   console.log(
-    `Guide label check passed: ${labels} bold label(s) across ${guides} guide(s), matched against ${strings} app string(s); ${NOT_LABELS.length} listed as not labels.`,
+    `Guide label check passed: ${labels} bold label(s) across ${guides} guide(s), matched against ${strings} app string(s); ${NOT_LABELS.length} listed as not labels; ${includes} include(s) under ${DOCS_DIR} resolve.`,
   );
 }
