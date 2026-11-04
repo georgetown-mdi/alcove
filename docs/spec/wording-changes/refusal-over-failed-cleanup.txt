@@ -1,0 +1,1 @@
+- If that delete or acknowledgement fails, the run ends with that failure instead. -> If that delete or acknowledgement fails, the run logs a warning naming that failure and still ends with the refusal.
