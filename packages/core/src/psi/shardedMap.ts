@@ -42,6 +42,11 @@ export class ShardedMap<K, V extends NonNullable<unknown>> {
     return undefined;
   }
 
+  /** Whether a value is held against `key`. */
+  has(key: K): boolean {
+    return this.get(key) !== undefined;
+  }
+
   /**
    * The value already held against `key`; where there is none, holds `value`
    * against it in the last shard, opening a new one when the last is full,

@@ -67,6 +67,7 @@ import {
   sendHandPlayedOriginalIndexList,
 } from "../utils/matchedListPartFrames";
 import { RETURNED_ELEMENT_LAYOUT } from "../../src/psi/uint32ListParts";
+import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
 import {
   deviatingInbound,
   makeParticipant,
@@ -1087,4 +1088,39 @@ test("the cluster callback is handed the summary the check returned", async () =
   expect(joiner).not.toBeInstanceOf(Error);
   expect(closureCheck.calls).toBe(1);
   expect(joinerClusters).toBe(closureCheck.returned);
+});
+
+test("a sender whose rows times the partner's declared count pass 2^53 holds the table to the exact product", async () => {
+  // Three rows against a declared 2^52 records: the product, 3 * 2^52, has no
+  // exact double. Over file-sync no dataset ceiling bounds the declared count,
+  // so the sender reaches the pair-count bound with it.
+  const declared = 2 ** 52;
+  expect(Number.isSafeInteger(spStarterKeys[0].length * declared)).toBe(false);
+  const [starterConn, joinerConn] = createMessagePipe();
+  const starter = linkViaSinglePassPSI(
+    { cardinality: "many-to-many" },
+    makeParticipant(psiLibrary, "starter"),
+    Object.assign(starterConn, {
+      outboundFileSyncFrameBound: () => MAX_FRAME_SIZE_BYTES,
+    }),
+    spStarterKeys,
+    fanOutFreeBounds(1, declared),
+    false,
+    -1,
+  );
+  const joiner = linkViaSinglePassPSI(
+    { cardinality: "many-to-many" },
+    makeParticipant(psiLibrary, "joiner"),
+    joinerConn,
+    spJoinerKeys,
+    fanOutFreeBounds(1, spStarterKeys[0].length),
+    false,
+    -1,
+  );
+  const table = await joiner;
+  expect(await starter).toStrictEqual([
+    [0, 0, 1, 1],
+    [0, 1, 0, 1],
+  ]);
+  expect(table).toStrictEqual(await starter);
 });

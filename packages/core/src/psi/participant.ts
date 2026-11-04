@@ -4,6 +4,7 @@ import type { AssociationTable, Config } from "../types";
 import type { MessageConnection } from "../connection/messageConnection";
 import {
   MAX_PSI_DECODE_ELEMENTS,
+  MAX_SINGLE_PASS_SET_ELEMENTS,
   type PsiElementBounds,
 } from "../connection/frameSize";
 import {
@@ -204,8 +205,10 @@ export interface PsiSetCeilings {
   readonly partner: number;
 }
 
+// A round's sets are held to MAX_PSI_DECODE_ELEMENTS whatever `local` is, so
+// it binds only a single-pass setup or request.
 const PROTOCOL_SET_CEILINGS: PsiSetCeilings = {
-  local: MAX_PSI_DECODE_ELEMENTS,
+  local: MAX_SINGLE_PASS_SET_ELEMENTS,
   partner: MAX_PSI_DECODE_ELEMENTS,
 };
 
@@ -256,8 +259,8 @@ export class PSIParticipant {
     // caller rendering a progress display. Omitted, no report is composed at
     // all, so a caller that shows nothing pays nothing.
     onProgress?: PsiProgressReporter,
-    // The two parties' receive ceilings. Omitted, both are the protocol's
-    // per-set maximum, which every set is held to whatever is given.
+    // The two parties' receive ceilings. Omitted, the partner's is the
+    // protocol's per-set maximum and this party's the single-pass set maximum.
     setCeilings: PsiSetCeilings = PROTOCOL_SET_CEILINGS,
   ) {
     this.id = id;
@@ -421,6 +424,8 @@ export class PSIParticipant {
     return this.sentRequest;
   }
 
+  // A response is held to the request this party sent, which this party held
+  // to its own set maximum before building it.
   private assertResponseWithinRequest(responseBytes: Uint8Array): number {
     const request = this.requestAnswered();
     this.sentRequest = undefined;
@@ -430,10 +435,31 @@ export class PSIParticipant {
           `${responseBytes.byteLength} bytes, over the ${request.bytes} bytes ` +
           "of the request this party sent",
       );
-    return this.assertInboundElementBound(
-      "response",
-      responseBytes,
-      request.elements,
+    return this.assertScanWithinCeiling("response", request.elements, () =>
+      countDeclaredPsiElements(
+        responseBytes,
+        "response",
+        request.elements,
+        PSI_ELEMENT_BYTES,
+      ),
+    );
+  }
+
+  // A single-pass setup or request arrives whole in its message and is held
+  // to the authenticated bound, the single-pass set maximum and this party's
+  // receive ceiling (docs/spec/PROTOCOL.md, The limits over file-sync).
+  private assertSinglePassElementBound(
+    kind: "serverSetup" | "request",
+    bytes: Uint8Array,
+    authenticatedBound: number,
+  ): number {
+    const ceiling = Math.min(
+      authenticatedBound,
+      MAX_SINGLE_PASS_SET_ELEMENTS,
+      this.setCeilings.local,
+    );
+    return this.assertScanWithinCeiling(kind, ceiling, () =>
+      countDeclaredPsiElements(bytes, kind, ceiling, PSI_ELEMENT_BYTES),
     );
   }
 
@@ -654,11 +680,18 @@ export class PSIParticipant {
   public async processClientRequest(
     requestBytes: Uint8Array,
   ): Promise<Uint8Array> {
-    const elements = this.assertInboundElementBound(
+    const elements = this.assertSinglePassElementBound(
       "request",
       requestBytes,
       this.elementBounds.request,
     );
+    return this.answerClientRequest(requestBytes, elements);
+  }
+
+  private answerClientRequest(
+    requestBytes: Uint8Array,
+    elements: number,
+  ): Promise<Uint8Array> {
     return this.reportProgress("processClientRequest", elements, () =>
       decodePsiBinaryFrame(this.id, "request", () =>
         this.engine.processClientRequest(requestBytes),
@@ -719,7 +752,7 @@ export class PSIParticipant {
   // it. The guard runs here, above the engine boundary, so the engine only
   // ever reads an already-bounded frame.
   private receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
-    this.assertInboundElementBound(
+    this.assertSinglePassElementBound(
       "serverSetup",
       setupBytes,
       this.elementBounds.setup,
@@ -904,7 +937,14 @@ export class PSIParticipant {
       const clientRequest = await this.receiveRoundSet(conn, "request");
       this.log.debug(`${this.id}: received client data encrypted by client`);
 
-      const serverResponse = await this.processClientRequest(clientRequest);
+      const serverResponse = await this.answerClientRequest(
+        clientRequest,
+        this.assertInboundElementBound(
+          "request",
+          clientRequest,
+          this.elementBounds.request,
+        ),
+      );
 
       this.log.debug(
         `${this.id}: sending client data encrypted by both server and client`,

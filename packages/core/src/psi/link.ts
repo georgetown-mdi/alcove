@@ -34,6 +34,8 @@ import {
 import {
   MAX_PSI_DECODE_ELEMENTS,
   MAX_SINGLE_PASS_CELLS,
+  MAX_SINGLE_PASS_SET_ELEMENTS,
+  MAX_UINT32,
   partyFansOut,
   SINGLE_PASS_LOCAL_REMEDY,
   singlePassCeilingBreach,
@@ -103,7 +105,7 @@ import {
   runPaced,
   type PaceableSteps,
 } from "../utils/eventLoop";
-import { MAX_MAP_SHARD_ENTRIES } from "./shardedMap";
+import { MAX_MAP_SHARD_ENTRIES, ShardedMap } from "./shardedMap";
 import {
   receiveCountReport,
   sendAbort,
@@ -2179,12 +2181,16 @@ export async function linkViaSinglePassPSI(
     partyFansOut(numLinkageKeys, { effectiveKeyCount }) ||
     localFanOutFactor > 1;
 
+  // Over file-sync a set is held to what the reply's uint32 lengths state;
+  // over WebRTC the dataset ceiling below is far under the protocol's maximum.
+  const fileSync = conn.outboundFileSyncFrameBound?.() !== undefined;
   let ownValues: ReturnType<typeof getDistinctValuesAndIndices>;
   try {
     ownValues = getDistinctValuesAndIndices(
       data,
       localFansOut,
       localCellWidths,
+      fileSync ? MAX_SINGLE_PASS_SET_ELEMENTS : MAX_PSI_DECODE_ELEMENTS,
     );
   } catch (error) {
     if (error instanceof RoundSetLimitError)
@@ -2246,7 +2252,7 @@ export async function linkViaSinglePassPSI(
   // limits are the set maximum, met before masking, and the AEAD's limit on
   // one frame, which a frame's real size meets after it
   // (refuseSinglePassFrameOverCeiling).
-  if (conn.outboundFileSyncFrameBound?.() === undefined) {
+  if (!fileSync) {
     const ceilingBreach = singlePassCeilingBreach(localSize, partnerSize);
     if (ceilingBreach !== undefined) {
       throw new UsageError(
@@ -2386,12 +2392,14 @@ export async function linkViaSinglePassPSI(
     // entry per record the many side matched -- is the anchor. Under a
     // both-sided one neither half is distinct and the bound is passed in.
     // Each pair has a row of a half that keeps its distinctness, or, where
-    // neither does, the table is held to the pair-count bound below.
+    // neither does, the table is held to the pair-count bound below, exact
+    // past 2^53.
+    const maxPairs = BigInt(numRecords) * BigInt(partnerRecordCount);
     const table = await receiveResolvedTable(
       conn,
       participant.id,
       sides.localKeepsDuplicates && sides.partnerKeepsDuplicates
-        ? numRecords * partnerRecordCount
+        ? maxPairs
         : sides.partnerKeepsDuplicates
           ? partnerRecordCount
           : numRecords,
@@ -2413,16 +2421,8 @@ export async function linkViaSinglePassPSI(
       // party's rows times the record count the partner declared on the terms
       // exchange, the most pairs an honest run of these two datasets can hold
       // (docs/spec/PROTOCOL.md, The both-sided table's bound under
-      // single-pass). Both factors are authenticated session state. Over
-      // WebRTC the over-ceiling gate above bounded each by
-      // MAX_SINGLE_PASS_CELLS; over file-sync a set maximum bounds any honest
-      // run's rows, and rounding above 2^53 only widens this bound.
-      assertPartnerPairTable(
-        participant.id,
-        localHalf,
-        partnerHalf,
-        numRecords * partnerRecordCount,
-      );
+      // single-pass). Both factors are authenticated session state.
+      assertPartnerPairTable(participant.id, localHalf, partnerHalf, maxPairs);
     else if (sides.partnerKeepsDuplicates)
       assertPartnerIndexTable(participant.id, partnerHalf, {
         ...localHalf,
@@ -2572,13 +2572,10 @@ export async function linkViaSinglePassPSI(
   // a bijection over the matched values -- each party's values are distinct, and
   // two of them pair only when their plaintexts are equal -- so either direction
   // gives the same information.
-  const senderToReceiverDistinctValue = new Map<number, number>();
-  for (let k = 0; k < senderDistinctValueIds.length; ++k) {
-    senderToReceiverDistinctValue.set(
-      senderDistinctValueIds[k],
-      receiverDistinctValueIds[k],
-    );
-  }
+  const senderToReceiverDistinctValue = MatchedValues.of(
+    senderDistinctValueIds,
+    receiverDistinctValueIds,
+  );
 
   // Collect the match-masking transients (the library's boundary marshalling and
   // the consumed id arrays) before replaying the cascade.
@@ -2692,7 +2689,7 @@ export function resolvedTableSource(table: AssociationTable): BinaryListSource {
 export async function receiveResolvedTable(
   conn: MessageConnection,
   participantId: string,
-  maxEntries: number,
+  maxEntries: number | bigint,
 ): Promise<AssociationTable> {
   const list = await receiveWordList(
     conn,
@@ -2711,6 +2708,9 @@ export async function receiveResolvedTable(
 }
 
 // --- the distinct-value index table ------------------------------------------
+
+// The largest value of an Int32 word of message 2's index table.
+const MAX_INT32 = 2 ** 31 - 1;
 
 // One linkage key's cells for one party: the distinct-value indices each record
 // contributes to that key's round. Read through this interface so the resolution
@@ -2742,7 +2742,7 @@ class FixedWidthKeyCells implements KeyCells {
 // slice rather than a marker value.
 class RaggedKeyCells implements KeyCells {
   constructor(
-    private readonly starts: Int32Array,
+    private readonly starts: Int32Array | Float64Array,
     private readonly values: Int32Array,
   ) {}
   count(row: number): number {
@@ -2783,43 +2783,38 @@ function localKeyCells(column: LocalKeyColumn): KeyCells {
 // -- which the partner's element bounds, read gate, and decode all rest on --
 // cannot be outgrown by the data. Values stay pooled across keys with no per-key
 // tag, exactly as they are without fan-out, and the replay compares them only
-// within one key's round. `maxDistinctValues` is lowered only by tests.
+// within one key's round. A set over `maxDistinctValues` is refused before any
+// value is masked. `shardEntries` is lowered only by tests.
 /** @internal */
 export function getDistinctValuesAndIndices(
   data: Array<IndexableIterable<KeyCandidates>>,
   fansOut: boolean,
   cellWidths: ReadonlyArray<number>,
-  maxDistinctValues: number = Math.min(
-    MAX_PSI_DECODE_ELEMENTS,
-    MAX_MAP_SHARD_ENTRIES,
-  ),
+  maxDistinctValues: number,
+  shardEntries: number = MAX_MAP_SHARD_ENTRIES,
 ): {
   distinctValues: Array<string>;
   columns: Array<LocalKeyColumn>;
   numRecords: number;
   slotCount: number;
 } {
-  const valueId = new Map<string, number>();
-  const distinctValues: Array<string> = [];
+  // Looked up by hash, as no Map or Set is asked about the value itself
+  // (docs/spec/FILE_SYNC.md, The practical input bound).
+  const valueIds = new DistinctValues({ shardEntries });
+  const distinctValues = valueIds.values;
   const columns: Array<LocalKeyColumn> = [];
   let numRecords = 0;
   let slotCount = 0;
   const idOf = (value: string): number => {
-    let id = valueId.get(value);
-    if (id === undefined) {
-      // valueId is one V8 Map, which holds MAX_MAP_SHARD_ENTRIES at most.
-      if (distinctValues.length === maxDistinctValues)
-        throw new RoundSetLimitError(
-          "Too large to send: your records give more than " +
-            `${maxDistinctValues} distinct linkage key values, the most ` +
-            "one single-pass set can hold, so the exchange stopped before " +
-            `masking them and told your partner. ${SINGLE_PASS_LOCAL_REMEDY}`,
-          "over-set-maximum",
-        );
-      id = distinctValues.length;
-      valueId.set(value, id);
-      distinctValues.push(value);
-    }
+    const id = valueIds.add(value);
+    if (id === maxDistinctValues)
+      throw new RoundSetLimitError(
+        "Too large to send: your records give more than " +
+          `${maxDistinctValues} distinct linkage key values, the most ` +
+          "one single-pass set can hold, so the exchange stopped before " +
+          `masking them and told your partner. ${SINGLE_PASS_LOCAL_REMEDY}`,
+        "over-set-maximum",
+      );
     return id;
   };
   for (let j = 0; j < data.length; ++j) {
@@ -2903,27 +2898,35 @@ export function getSortedDistinctValueIndices(
   columns: Array<LocalKeyColumn>,
   permutation: Array<number>,
   numRecords: number,
-): Array<number> {
+): Int32Array {
   const sortedPosOf = new Array<number>(permutation.length);
   for (let sortedPos = 0; sortedPos < permutation.length; ++sortedPos) {
     sortedPosOf[permutation[sortedPos]] = sortedPos;
   }
-  const result: Array<number> = [];
+  // Typed and sized up front: across keys the words can outnumber the
+  // elements a JS Array holds.
+  let words = 0;
+  for (const column of columns)
+    words += column.ragged
+      ? numRecords + column.values.length
+      : column.indices.length;
+  const result = new Int32Array(words);
+  let at = 0;
   const cell: Array<number> = [];
   for (const column of columns) {
     if (!column.ragged) {
       for (const index of column.indices)
-        result.push(index >= 0 ? sortedPosOf[index] : -1);
+        result[at++] = index >= 0 ? sortedPosOf[index] : -1;
       continue;
     }
     for (let row = 0; row < numRecords; ++row) {
       const from = column.starts[row];
       const to = column.starts[row + 1];
-      result.push(to - from);
+      result[at++] = to - from;
       cell.length = 0;
       for (let k = from; k < to; ++k) cell.push(sortedPosOf[column.values[k]]);
       cell.sort((a, b) => a - b);
-      for (const index of cell) result.push(index);
+      for (const index of cell) result[at++] = index;
     }
   }
   return result;
@@ -2977,7 +2980,7 @@ export function decodeFixedWidthIndexTable(
  * declared width, the counts totalling no more than the slot bound, each
  * cell's indices strictly ascending (which also rejects a repeat) and
  * inside the value bound, and the words ending exactly at the last index
- * word.
+ * word. `maxInt32Offset` is lowered only by tests.
  *
  * @internal exported for the malformed-frame wire-message tests.
  */
@@ -2987,6 +2990,7 @@ export function decodeRaggedIndexTable(
   keyWidths: ReadonlyArray<number>,
   numRecords: number,
   slotBound: number,
+  maxInt32Offset: number = MAX_INT32,
 ): Array<KeyCells> {
   const refuse = (detail: string): never => {
     throw partnerProtocolError(
@@ -3006,11 +3010,14 @@ export function decodeRaggedIndexTable(
     refuse("has more candidate values than the sender's declared width");
 
   const values = new Int32Array(totalIndexWords);
-  const starts: Array<Int32Array> = [];
+  // Each key's cell offsets run to totalIndexWords: Int32 slots while that
+  // fits one, else Float64, exact to 2^53.
+  const Offsets = totalIndexWords > maxInt32Offset ? Float64Array : Int32Array;
+  const starts: Array<Int32Array | Float64Array> = [];
   let read = 0;
   let written = 0;
   for (let j = 0; j < keyCount; ++j) {
-    const keyStarts = new Int32Array(numRecords + 1);
+    const keyStarts = new Offsets(numRecords + 1);
     keyStarts[0] = written;
     for (let row = 0; row < numRecords; ++row) {
       const width = words[read++];
@@ -3060,44 +3067,63 @@ export function decodeRaggedIndexTable(
 // off its own candidate rows, which singlePassRoundValueParticipation.test.ts pins.
 
 // The first pass both forms share: the first candidate row holding each of the
-// round's values, and the values more than one candidate row holds.
+// round's values, and the values more than one candidate row holds. Sharded: a
+// round holds one entry per distinct value, which can be more than one V8 Map
+// holds.
 /** @internal exported for the round-value participation differential test. */
 export function roundValueFirstRows(
   cells: KeyCells,
   numRecords: number,
   outOfCandidacy: Uint8Array,
-): { firstRow: Map<number, number>; recurring: Set<number> } {
-  const firstRow = new Map<number, number>();
-  const recurring = new Set<number>();
+  shardEntries: number = MAX_MAP_SHARD_ENTRIES,
+): {
+  firstRow: ShardedMap<number, number>;
+  recurring: ShardedMap<number, true>;
+} {
+  const firstRow = new ShardedMap<number, number>(shardEntries);
+  const recurring = new ShardedMap<number, true>(shardEntries);
   for (let row = 0; row < numRecords; ++row) {
     if (outOfCandidacy[row]) continue;
     const width = cells.count(row);
     for (let k = 0; k < width; ++k) {
       const value = cells.valueAt(row, k);
-      if (firstRow.has(value)) recurring.add(value);
-      else firstRow.set(value, row);
+      if (firstRow.setIfAbsent(value, row) !== undefined)
+        recurring.setIfAbsent(value, true);
     }
   }
   return { firstRow, recurring };
+}
+
+// What a dropping party's first-row map holds for a value more than one of its
+// candidate rows holds, which the round drops: no row, as no entry is deleted.
+const DROPPED_FROM_ROUND = -1;
+
+function dropRecurring(
+  firstRow: ShardedMap<number, number>,
+  recurring: ShardedMap<number, true>,
+): void {
+  recurring.forEach((_held, value) => firstRow.set(value, DROPPED_FROM_ROUND));
 }
 
 // The sender's form on a party that DROPS its duplicates: the values the round
 // keeps, each against the one candidate row holding it.
 /** @internal exported for the round-value participation differential test. */
 export class RoundValueParticipation {
-  private constructor(private readonly firstRow: Map<number, number>) {}
+  private constructor(private readonly firstRow: ShardedMap<number, number>) {}
 
   static forRound(
     cells: KeyCells,
     numRecords: number,
     outOfCandidacy: Uint8Array,
+    shardEntries: number = MAX_MAP_SHARD_ENTRIES,
   ): RoundValueParticipation {
     const { firstRow, recurring } = roundValueFirstRows(
       cells,
       numRecords,
       outOfCandidacy,
+      shardEntries,
     );
-    for (const value of recurring) firstRow.delete(value);
+    dropRecurring(firstRow, recurring);
     return new RoundValueParticipation(firstRow);
   }
 
@@ -3114,8 +3140,8 @@ class RoundValueOwners {
   // its candidate rows contributed, which is the only case that allocates past the
   // single-owner map.
   private constructor(
-    private readonly firstRow: Map<number, number>,
-    private readonly groups: Map<number, Array<number>> | undefined,
+    private readonly firstRow: ShardedMap<number, number>,
+    private readonly groups: ShardedMap<number, Array<number>> | undefined,
   ) {}
 
   static forRound(
@@ -3123,18 +3149,20 @@ class RoundValueOwners {
     numRecords: number,
     outOfCandidacy: Uint8Array,
     keepsDuplicates: boolean,
+    shardEntries: number = MAX_MAP_SHARD_ENTRIES,
   ): RoundValueOwners {
     const { firstRow, recurring } = roundValueFirstRows(
       cells,
       numRecords,
       outOfCandidacy,
+      shardEntries,
     );
     if (!keepsDuplicates) {
-      for (const value of recurring) firstRow.delete(value);
+      dropRecurring(firstRow, recurring);
       return new RoundValueOwners(firstRow, undefined);
     }
-    const groups = new Map<number, Array<number>>();
-    for (const value of recurring) groups.set(value, []);
+    const groups = new ShardedMap<number, Array<number>>(shardEntries);
+    recurring.forEach((_held, value) => groups.setIfAbsent(value, []));
     // A second pass over the recurring values alone, in row order, so each group
     // ascends -- which is what makes the sweep's candidate order reproducible. A
     // row holding one value twice (a candidate producer whose set did not collapse
@@ -3154,10 +3182,49 @@ class RoundValueOwners {
   /** Appends every candidate row `value` stands for, ascending, to `into`. */
   appendOwners(value: number, into: Array<number>): void {
     const first = this.firstRow.get(value);
-    if (first === undefined) return;
+    if (first === undefined || first === DROPPED_FROM_ROUND) return;
     const group = this.groups?.get(value);
     if (group === undefined) into.push(first);
     else for (const row of group) into.push(row);
+  }
+}
+
+/**
+ * The receiver's value each matched sender value pairs with, looked up by the
+ * sender's value id; `undefined` where it matched none.
+ *
+ * @internal the lookup {@link replaySinglePassCascade} reads.
+ */
+export interface MatchedValueLookup {
+  get(senderValue: number): number | undefined;
+}
+
+// One Int32 slot per sender value id up to the highest matched, -1 where none
+// matched: an id indexes the sender's setup and a slot holds a receiver value
+// id, each under MAX_SINGLE_PASS_SET_ELEMENTS. An id past the slots, as a
+// partner's index table can name, reads as no match.
+/** @internal exported for the past-the-Map-limit tests. */
+export class MatchedValues implements MatchedValueLookup {
+  private constructor(private readonly receiverValueOf: Int32Array) {}
+
+  static of(
+    senderValueIds: ArrayLike<number>,
+    receiverValueIds: ArrayLike<number>,
+  ): MatchedValues {
+    let highest = -1;
+    for (let k = 0; k < senderValueIds.length; ++k)
+      highest = Math.max(highest, senderValueIds[k]);
+    const receiverValueOf = new Int32Array(highest + 1).fill(-1);
+    for (let k = 0; k < senderValueIds.length; ++k)
+      receiverValueOf[senderValueIds[k]] = receiverValueIds[k];
+    return new MatchedValues(receiverValueOf);
+  }
+
+  get(senderValue: number): number | undefined {
+    const receiverValue = this.receiverValueOf[senderValue];
+    return receiverValue === undefined || receiverValue < 0
+      ? undefined
+      : receiverValue;
   }
 }
 
@@ -3227,10 +3294,11 @@ export interface SinglePassReplay {
 export function replaySinglePassCascade(
   receiverCells: Array<KeyCells>,
   senderCells: Array<KeyCells>,
-  senderToReceiverDistinctValue: ReadonlyMap<number, number>,
+  senderToReceiverDistinctValue: MatchedValueLookup,
   numReceiverRecords: number,
   numSenderRecords: number,
   sides: MultiplicitySides,
+  shardEntries: number = MAX_MAP_SHARD_ENTRIES,
 ): SinglePassReplay {
   const receiverKeepsDuplicates = sides.localKeepsDuplicates;
   const senderKeepsDuplicates = sides.partnerKeepsDuplicates;
@@ -3249,7 +3317,7 @@ export function replaySinglePassCascade(
   // leaves the second-pair path unreachable from those cardinalities rather than
   // guarded within one.
   const furtherSenderRows = senderKeepsDuplicates
-    ? new Map<number, Array<number>>()
+    ? new ShardedMap<number, Array<number>>(shardEntries)
     : undefined;
   const acceptPair =
     furtherSenderRows === undefined
@@ -3287,6 +3355,7 @@ export function replaySinglePassCascade(
       numReceiverRecords,
       receiverOut,
       receiverKeepsDuplicates,
+      shardEntries,
     );
     // Absent on a sender that keeps its duplicates: the loop below reads each
     // value off the candidate row it has reached, and such a sender keeps every
@@ -3298,6 +3367,7 @@ export function replaySinglePassCascade(
           senderCells[j],
           numSenderRecords,
           senderOut,
+          shardEntries,
         );
     // The round's record-level candidate pairs, emitted in the canonical
     // order the shared sweep resolves them in: the ascending sender-row loop
@@ -3309,10 +3379,10 @@ export function replaySinglePassCascade(
     // index: the pairing between the two parties' value indices is a bijection
     // over the matched values, so either side's index names one block.
     const blockOfValue = bothSided
-      ? new Map<
+      ? new ShardedMap<
           number,
           { senderRows: Array<number>; receiverRows: ReadonlyArray<number> }
-        >()
+        >(shardEntries)
       : undefined;
 
     for (let senderRow = 0; senderRow < numSenderRecords; ++senderRow) {
@@ -3368,11 +3438,12 @@ export function replaySinglePassCascade(
       if (roundOfReceiverRow !== undefined) roundOfReceiverRow[receiverRow] = j;
     }
     if (blocks !== undefined && blockOfValue !== undefined)
-      for (const block of blockOfValue.values())
+      blockOfValue.forEach((block) =>
         blocks.push({
           localRows: block.receiverRows,
           partnerRows: block.senderRows,
-        });
+        }),
+      );
 
     for (const row of resolved.touchedReceiverRanks) receiverOut[row] = 1;
     for (const row of resolved.touchedSenderRanks) senderOut[row] = 1;
@@ -3408,11 +3479,42 @@ export function replaySinglePassCascade(
 // byte-for-byte identical across machines; Int32 covers the -1 marker and every
 // value index.
 /** @internal exported for the wire-message test. */
-export function encodeInt32LE(values: ReadonlyArray<number>): Uint8Array {
+export function encodeInt32LE(values: ArrayLike<number>): Uint8Array {
   const bytes = new Uint8Array(values.length * 4);
-  const view = new DataView(bytes.buffer);
-  for (let i = 0; i < values.length; ++i) view.setInt32(i * 4, values[i], true);
+  writeInt32LE(new DataView(bytes.buffer), 0, values);
   return bytes;
+}
+
+// DataView.setInt32 wraps a value past the word, so one is refused instead.
+// No value this party builds is past it: a value index is under
+// MAX_SINGLE_PASS_SET_ELEMENTS, which the set is held to before masking, and a
+// count is under the declared width.
+function writeInt32LE(
+  view: DataView,
+  offset: number,
+  values: ArrayLike<number>,
+): void {
+  for (let i = 0; i < values.length; ++i) {
+    const value = values[i];
+    if (!Number.isInteger(value) || value < -1 - MAX_INT32 || value > MAX_INT32)
+      throw new InternalConsistencyError(
+        `single-pass: an index-table word of ${value} is not a signed 32-bit ` +
+          "whole number",
+      );
+    view.setInt32(offset + i * 4, value, true);
+  }
+}
+
+// DataView.setUint32 wraps a value past the field, so one is refused instead.
+// The set's own bound before masking keeps both lengths within it, and the
+// rows a party holds in arrays are fewer than 2^32.
+function uint32Field(what: string, value: number): number {
+  if (!Number.isInteger(value) || value < 0 || value > MAX_UINT32)
+    throw new InternalConsistencyError(
+      `single-pass: the reply's ${what} of ${value} does not fit its uint32 ` +
+        "field",
+    );
+  return value;
 }
 
 // Decode a little-endian Int32 frame (see encodeInt32LE). A length that is not a
@@ -3451,25 +3553,27 @@ export function encodeSinglePassReply(
   setup: Uint8Array,
   response: Uint8Array,
   numRecords: number,
-  distinctValueIndices: ReadonlyArray<number>,
+  distinctValueIndices: ArrayLike<number>,
 ): Uint8Array {
-  const indexBytes = encodeInt32LE(distinctValueIndices);
+  const setupLength = uint32Field("setup length", setup.byteLength);
+  const responseLength = uint32Field("response length", response.byteLength);
+  const rows = uint32Field("record count", numRecords);
   const out = new Uint8Array(
-    4 + setup.byteLength + 4 + response.byteLength + 4 + indexBytes.byteLength,
+    4 + setupLength + 4 + responseLength + 4 + 4 * distinctValueIndices.length,
   );
   const view = new DataView(out.buffer);
   let offset = 0;
-  view.setUint32(offset, setup.byteLength, true);
+  view.setUint32(offset, setupLength, true);
   offset += 4;
   out.set(setup, offset);
-  offset += setup.byteLength;
-  view.setUint32(offset, response.byteLength, true);
+  offset += setupLength;
+  view.setUint32(offset, responseLength, true);
   offset += 4;
   out.set(response, offset);
-  offset += response.byteLength;
-  view.setUint32(offset, numRecords, true);
+  offset += responseLength;
+  view.setUint32(offset, rows, true);
   offset += 4;
-  out.set(indexBytes, offset);
+  writeInt32LE(view, offset, distinctValueIndices);
   return out;
 }
 

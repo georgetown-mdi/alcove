@@ -180,10 +180,12 @@ describe("single-pass index-table layout vectors", () => {
     "%s: the sender's remap produces the pinned words",
     (_name, table) => {
       expect(
-        getSortedDistinctValueIndices(
-          localColumns(table),
-          table.permutation,
-          table.recordCount,
+        Array.from(
+          getSortedDistinctValueIndices(
+            localColumns(table),
+            table.permutation,
+            table.recordCount,
+          ),
         ),
       ).toEqual(table.words);
     },

@@ -46,8 +46,11 @@ const MAX_PART_ENTRIES = 0xffff_ffff;
  * party's own result.
  */
 export interface MatchedListBound {
-  /** The most entries the list may declare, checked at its first part. */
-  readonly entries: number;
+  /**
+   * The most entries the list may declare, checked at its first part; a
+   * `bigint` where it is a product of counts that may pass 2^53.
+   */
+  readonly entries: number | bigint;
   /**
    * The most bytes one entry adds to a part's body, for a list whose parts
    * hold words: each part is then held to {@link matchedListPartByteBound}

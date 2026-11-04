@@ -1,0 +1,39 @@
+- `MAX_PSI_DECODE_ELEMENTS` (2^24), as for every set, and every element 33 bytes long, as on every path (below, "Every element is 33 bytes"). -> `MAX_SINGLE_PASS_SET_ELEMENTS`, 122,713,351 distinct values, in place of the `MAX_PSI_DECODE_ELEMENTS` (2^24) a cascade set is held to, and every element 33 bytes long, as on every path (below, "Every element is 33 bytes").
+- The values are gathered in one V8 `Map`, which throws a `RangeError` past 16,777,216 entries (measured 2026-11-04, Node 26.13), so the set maximum stays until that map is sharded. -> A V8 `Map` or `Set` throws a `RangeError` past 16,777,216 entries (measured 2026-11-04, Node 26.13), so no structure on the single-pass path that holds one entry a distinct value or a row is a single one:
+- Under it the setup and the response together are at most 1,174,405,126 bytes, so a reply reaches the AEAD's limit only with an index table of about 973 MB, some 243 million words. -> On an encrypted connection the reply's setup alone reaches `MAX_AEAD_FRAME_BYTES` at about 61.4 million elements, so an encrypted run meets the AEAD's limit on one frame (above) before the set maximum.
+- The limits are the derived caps, the AEAD's limit on one frame on an encrypted connection, the set maximum, and the memory checks, specified [in PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute). -> The limits are the derived caps, the AEAD's limit on one frame on an encrypted connection, the set maximum the reply's `uint32` lengths impose (`MAX_SINGLE_PASS_SET_ELEMENTS`, 122,713,351 distinct values), and the memory checks, specified [in PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
+- On a quick exchange (no encryption) no AEAD limit applies: a single-pass frame is bounded by the count-derived caps and by the memory check, which `--allow-memory-shortfall` turns into a warning. -> On a quick exchange (no encryption) no AEAD limit applies: a single-pass frame is bounded by the count-derived caps, the set maximum and the memory check, which `--allow-memory-shortfall` turns into a warning.
+- - -> A single-pass exchange sends one set a party in one message and is held to the reply's fixed widths instead ([PROTOCOL.md, The limits over file-sync](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
+- - -> The reply states its setup's length as a `uint32`, and a setup takes 35 bytes an element plus at most 6 bytes of framing (`PSI_SET_MAX_FRAMING_BYTES`), so this is the most elements whose setup length that field holds.
+- - -> A response takes 35 bytes an element with no framing, so its own `uint32` length holds it at the same count.
+- - -> A receiver's element scan holds a setup or a request to the same figure.
+- - -> Over WebRTC a single-pass set is held to `MAX_PSI_DECODE_ELEMENTS`, far above the dataset ceiling there.
+- - -> **The AEAD's limit before the set maximum.**
+- - -> A larger encrypted frame needs the AEAD in chunks.
+- - -> **The reply's other fixed widths.**
+- - -> The reply states the sender's row count as a `uint32` and each index-table word as an `Int32`.
+- - -> Neither width is reached: a value index is under the set maximum, a count word is under the declared width, and a party holds its rows in JavaScript arrays, which hold at most 2^27 = 134,217,728 elements (measured 2026-11-04, Node 26.13, Linux arm64).
+- - -> No field is widened on the wire.
+- - -> The reply's encoding refuses a value past its field rather than wrap it (`encodeSinglePassReply`, `packages/core/src/psi/link.ts`).
+- - -> **The structures a set passes through.**
+- - -> A party's own distinct values are gathered by hash in `DistinctValues` (`packages/core/src/utils/distinctValues.ts`), as the cascade's are ([FILE_SYNC.md, The practical input bound](FILE_SYNC.md#the-practical-input-bound)).
+- - -> The replay's first rows, recurring values, groups, blocks and further sender rows are each a `ShardedMap` (`packages/core/src/psi/shardedMap.ts`), shards of 2^24 entries filled in turn.
+- - -> The receiver looks up the value each matched sender value pairs with in an `Int32Array` indexed by the sender's value id.
+- - -> The sender builds its index table as an `Int32Array`.
+- - -> The receiver keeps a ragged table's cell offsets as `Float64` once they pass an `Int32`.
+- - -> The per-value JavaScript arrays, the distinct values, the setup's permutation and the matched value ids, hold up to 2^27 elements, above the set maximum.
+- - -> Each structure was driven to 2^24 + 1 entries on 2026-11-04, one process a case under a 16 GiB heap, in a 10-core arm64 Linux container with 23 GB of memory (Node 26.13), and each completed (`packages/core/test/stress/singlePassPastMapLimit.stress.test.ts`, `npm run test:stress -w packages/core`):
+- - -> Case | What holds 2^24 + 1 entries | Time | Peak RSS
+- - -> A party's distinct values | `DistinctValues` | 9.7 s | 2,724 MiB
+- - -> A round's first rows | first-row and recurring maps | 4.6 s | 968 MiB
+- - -> `one-to-one` replay | both parties' first-row maps | 27.8 s | 3,257 MiB
+- - -> `many-to-many` replay | one block a matched value | 96.2 s | 10,445 MiB
+- - -> A receiver that keeps its duplicates | one group a value | 66.5 s | 7,315 MiB
+- - -> A sender that keeps its duplicates | further sender rows | 49.2 s | 5,890 MiB
+- - -> Not run: an exchange past 2^24 distinct values.
+- - -> A single-pass setup or request is held to `MAX_SINGLE_PASS_SET_ELEMENTS` = 122,713,351 in its place ([The limits over file-sync](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)), and a response to the request alone, which this party held to its own maximum before building it.
+- - -> At the single-pass maximum an honest request takes about 30.5 GiB to decode, which the memory checks over file-sync weigh before it is read.
+- - -> The product is taken as a `bigint`, so a bound past 2^53 is exact: a declared record count up to `MAX_RECORD_COUNT` times a party's rows can pass it over file-sync, which has no dataset ceiling.
+- - -> A set over the maximum is refused before masking, and the partner is told.
+- - -> On an encrypted connection the AEAD's limit binds first: the setup alone reaches it at about 61.4 million elements.
+- - -> A single-pass setup or request is held instead to `MAX_SINGLE_PASS_SET_ELEMENTS`, 122,713,351 elements, the most whose setup length the reply's `uint32` field states ([PROTOCOL.md, The limits over file-sync](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).

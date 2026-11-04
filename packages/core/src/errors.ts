@@ -292,7 +292,8 @@ export class OperatorConfigError extends UsageError {
 
 /**
  * Why a {@link RoundSetLimitError} refused a set: `"over-set-maximum"`, more
- * values than any receiver admits (`MAX_PSI_DECODE_ELEMENTS`);
+ * values than any receiver admits (`MAX_PSI_DECODE_ELEMENTS`, or for a
+ * single-pass set over file-sync `MAX_SINGLE_PASS_SET_ELEMENTS`);
  * `"over-partner-ceiling"`, more than the partner stated on the terms exchange
  * that it can receive; `"uncounted"`, the first-round check could not count
  * the set, the failure being the error's `cause`.

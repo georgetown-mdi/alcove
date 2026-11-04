@@ -624,7 +624,8 @@ interface PartnerPairTableHalf {
  * @param ascendingHalf - The half whose order the table follows.
  * @param pairedHalf - The half whose order within one run is the resolving
  *   party's own and is not read here.
- * @param maxPairs - The most pairs the two parties' record counts admit.
+ * @param maxPairs - The most pairs the two parties' record counts admit, as a
+ *   `bigint` so a product past 2^53 is exact.
  * @throws A `"protocol"` {@link ConnectionError} on a table longer than
  *   `maxPairs`, on a bad entry in either half, on halves of unequal length, on
  *   a descending pair in `ascendingHalf`, or on a repeated pair.
@@ -633,14 +634,14 @@ export function assertPartnerPairTable(
   participantId: string,
   ascendingHalf: PartnerPairTableHalf,
   pairedHalf: PartnerPairTableHalf,
-  maxPairs: number,
+  maxPairs: bigint,
 ): void {
-  if (!Number.isSafeInteger(maxPairs) || maxPairs < 0)
+  if (maxPairs < 0n)
     throw new InternalConsistencyError(
       `${ascendingHalf.what}: a pair-count bound is a whole number of pairs ` +
         `this party's own counts give exactly, given ${maxPairs}`,
     );
-  if (ascendingHalf.indices.length > maxPairs)
+  if (BigInt(ascendingHalf.indices.length) > maxPairs)
     throw partnerProtocolError(
       participantId,
       `${ascendingHalf.what} has ${entryCount(ascendingHalf.indices.length)}, ` +

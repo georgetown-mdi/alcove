@@ -162,10 +162,8 @@ function buildTable(table) {
     return { ragged: true, starts, values: Int32Array.from(values) };
   });
 
-  const words = getSortedDistinctValueIndices(
-    columns,
-    table.permutation,
-    recordCount,
+  const words = Array.from(
+    getSortedDistinctValueIndices(columns, table.permutation, recordCount),
   );
   const wordBytes = encodeInt32LE(words);
 

@@ -464,7 +464,7 @@ Core admits every character in `peer_id`, and the fields fill in digits and hex,
 
 ## Round set size limits
 
-A linkage key round sends its set of values as one PSI message, in as many message files as the set needs ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)). One bound caps how many values the first round's set can hold on the file-sync channels. It is not configurable.
+A linkage key round sends its set of values as one PSI message, in as many message files as the set needs ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)). One bound caps how many values the first round's set can hold on the file-sync channels. It is not configurable. A single-pass exchange sends one set a party in one message and is held to the reply's fixed widths instead ([PROTOCOL.md, The limits over file-sync](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
 
 - **One PSI set: 16,777,216 values.** The protocol's per-set maximum, `MAX_PSI_DECODE_ELEMENTS` = 2^24 ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)). Every sender refuses a set of its own over it before sending any part, and every receiver refuses a set declaring more. A file-sync exchange at the maximum completes with one party on each of two hosts, in about 64 minutes on the hosts measured, the starter peaking at 29.9 GB and the joiner at 22.5 GB or more ([Measured runs at 2^24](#measured-runs-at-224)).
 
