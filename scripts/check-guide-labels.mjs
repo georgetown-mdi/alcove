@@ -32,14 +32,15 @@
 // It is read anywhere in a file, code fences and code spans included, since
 // VitePress expands it there too. The path is relative to the file holding the
 // directive, or to the site's source directory (the repository root) when it
-// starts with `/` or `@/`; it may end in `#name` (letters, digits, `_`, `-`)
-// and then in `{from,to}` (each bound optional digits), and the range is not
-// checked. A region is a pair of whole lines `<!-- #region name -->` and
+// starts with `@` (`@/path` or `@path`); a leading `/` alone is still relative
+// to the file holding the directive. It may end in `#name` (letters, digits,
+// `_`, `-`) and then in `{from,to}` (each bound optional digits), and the
+// range is not checked. A region is a pair of whole lines `<!-- #region name -->` and
 // `<!-- #endregion name -->` (the `#` optional in both), with the name's case
 // and single spaces exact and nothing else on either line.
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
@@ -340,16 +341,22 @@ export function includeFailures(root, pages) {
   for (const { file, text } of pages)
     for (const include of includeDirectives(text)) {
       const where = `${file}:${include.line}: ${include.written}`;
-      const base = /^@?\//.test(include.target)
-        ? root
-        : dirname(resolve(root, file));
-      const target = resolve(base, include.target.replace(/^@?\//, ""));
+      const fromRoot = include.target.startsWith("@");
+      const target = fromRoot
+        ? join(root, include.target.replace(/^@\/?/, ""))
+        : join(dirname(resolve(root, file)), include.target);
       const shown = target.startsWith(`${root}/`)
         ? target.slice(root.length + 1)
         : target;
-      if (!existsSync(target) || !statSync(target).isFile()) {
+      if (!existsSync(target)) {
         failures.push(
           `${where} names ${shown}, which does not exist, so VitePress leaves the include out without a warning. Correct the path.`,
+        );
+        continue;
+      }
+      if (!statSync(target).isFile()) {
+        failures.push(
+          `${where} names ${shown}, which is not a file, so VitePress leaves the include out without a warning. Name a file.`,
         );
         continue;
       }

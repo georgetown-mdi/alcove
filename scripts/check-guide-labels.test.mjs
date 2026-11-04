@@ -257,13 +257,22 @@ describe("includeFailures", () => {
     expect(failuresFor(files)).toEqual([]);
   });
 
-  it("resolves a path from the source directory and from the including file", () => {
+  it("resolves a path from the including file, or from the source directory with an @ prefix", () => {
     const files = {
       "docs/shared/_part.md": PART,
       "docs/guides/page.md":
-        "<!--@include: ../shared/_part.md#app-->\n<!--@include: /docs/shared/_part.md#app-->\n<!--@include: @/docs/shared/_part.md#app-->",
+        "<!--@include: ../shared/_part.md#app-->\n<!--@include: @/docs/shared/_part.md#app-->\n<!--@include: @docs/shared/_part.md#app-->",
     };
     expect(failuresFor(files)).toEqual([]);
+  });
+
+  it("resolves a leading slash from the including file, as VitePress does", () => {
+    const failures = failuresFor({
+      "docs/shared/_part.md": PART,
+      "docs/guides/page.md": "<!--@include: /docs/shared/_part.md#app-->",
+    });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("names docs/guides/docs/shared/_part.md");
   });
 
   it("fails an include naming a missing file, with the page, line and include", () => {
@@ -292,6 +301,7 @@ describe("includeFailures", () => {
       "docs/guides/page.md": "<!--@include: ./sub-->",
     });
     expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("which is not a file");
   });
 });
 
