@@ -77,6 +77,19 @@ const CLEAN_DIRECTORY_RESTART_REMEDY =
   "Re-run the exchange in a clean directory; both parties must start the new " +
   "exchange fresh.";
 
+const DELETE_NEXT_STEP =
+  "In delete mode each message is deleted once read, so the account must be " +
+  "allowed to delete files in the exchange directory. Grant that permission, " +
+  "or have both parties set retain_files: true.";
+
+const PARTNER_MESSAGE_DELETE_FAILED =
+  "could not delete a partner message after reading it (two attempts). " +
+  DELETE_NEXT_STEP;
+
+const ACKNOWLEDGE_NEXT_STEP =
+  "In retain mode each message read is acknowledged by writing a file, so " +
+  "this party must be able to create files in the exchange directory.";
+
 // A JSON message on a channel the encryption layer has taken over: a
 // `security` failure, as the encryption layer reports any frame that is not
 // binary, and terminal, since re-reading the file cannot change it.
@@ -465,6 +478,36 @@ export class FileSyncMessageLoop {
   private warnedUnexpectedFiles = new Set<string>();
 
   constructor(private readonly deps: MessageLoopDeps) {}
+
+  // A failure to consume a refused message's file is only warned of, so the
+  // run still ends with the refusal: it neither replaces the refusal nor, in
+  // retain mode, sends the poller back to retry the ack.
+  private async consumeRefusedFile(
+    consume: () => Promise<void>,
+    failedAction: "delete" | "acknowledge",
+  ): Promise<void> {
+    try {
+      await consume();
+    } catch (err: unknown) {
+      if (!this.pollerActive) throw err;
+      const lead =
+        `[${this.deps.role()}] could not ${failedAction} the refused ` +
+        "message file";
+      if (
+        err instanceof UsageError &&
+        err.message === PARTNER_MESSAGE_DELETE_FAILED
+      ) {
+        this.deps.log().warn(`${lead} (two attempts). ${DELETE_NEXT_STEP}`);
+        return;
+      }
+      const detail = redactAndSanitizeForDisplay(errorMessage(err));
+      const nextStep =
+        failedAction === "acknowledge"
+          ? `${detail.endsWith(".") ? "" : "."} ${ACKNOWLEDGE_NEXT_STEP}`
+          : "";
+      this.deps.log().warn(`${lead}: ${detail}${nextStep}`);
+    }
+  }
 
   // The inbound listing without the files the entry scan ignored, so no check
   // here can read an earlier exchange's message, ack or abort marker.
@@ -1287,7 +1330,8 @@ export class FileSyncMessageLoop {
             // duplicating a file. The per-NNN guard is only an optimization:
             // it skips the re-write when a prior poll already wrote this
             // NNN's ack before emit threw.
-            if (this.lastAckedNNN !== msgNNN) {
+            const acknowledge = async (): Promise<void> => {
+              if (this.lastAckedNNN === msgNNN) return;
               // The ack is a self-write -> outbound (the peer reads it from its
               // inbound, which is this outbound). In shared mode this is `path`.
               const ackName = await deps.writeAck(
@@ -1301,9 +1345,13 @@ export class FileSyncMessageLoop {
                   `[${deps.role()}] wrote ack ${redactAndSanitizeForDisplay(ackName)} for ` +
                     `seq=${validatedMessage.seq}`,
                 );
-            }
+            };
 
-            if (validatedMessage.refusal) throw validatedMessage.refusal;
+            if (validatedMessage.refusal) {
+              await this.consumeRefusedFile(acknowledge, "acknowledge");
+              throw validatedMessage.refusal;
+            }
+            await acknowledge();
             // `data` is already the value to deliver: the parsed object for a
             // JSON control message, or the raw frame bytes for a binary frame.
             this.deliver(validatedMessage.data, declaredSize);
@@ -1333,52 +1381,51 @@ export class FileSyncMessageLoop {
                 `[${deps.role()}] deleting message ` +
                   `${redactAndSanitizeForDisplay(messageFile.name)}`,
               );
-            try {
-              await deps.client().delete(inPath);
-            } catch (err: unknown) {
-              // A terminal UsageError -- e.g. the stall deadline a withheld
-              // delete callback trips -- is not a transient delete failure
-              // and must not be swallowed: re-deleting would re-hit the same
-              // stall, and emit("data") below would deliver a message whose
-              // consume-delete never landed, so the next poll re-emits a
-              // duplicate. Rethrown to poll()'s outer catch. Any other
-              // failure gets one retry below.
-              if (err instanceof UsageError) throw err;
-              // First delete failed (transiently); retry once after a
-              // backoff. On abort (close() mid-poll) this.wait rejects here,
-              // unwinding into poll()'s catch, where the !pollerActive guard
-              // swallows it. The second delete and the emit are both
-              // skipped, so the message is left undelivered for this session
-              // but still on disk, so a fresh connection re-reads it.
-              await deps.wait(deps.options().pollingFrequency);
+            const deleteMessage = async (): Promise<void> => {
               try {
                 await deps.client().delete(inPath);
-              } catch (deleteErr: unknown) {
-                if (deleteErr instanceof UsageError) throw deleteErr;
-                // The first attempt can take effect with its reply lost, so
-                // an absent file on the retry means the message is consumed.
-                if (!isDeleteTargetAbsentError(deleteErr)) {
-                  // Terminal: the delete is the sender's go-ahead, and a
-                  // message left on disk is re-read by the next poll, so
-                  // emitting it here would deliver it again on every cycle.
-                  throw new UsageError(
-                    "could not delete a partner message after reading it " +
-                      "(two attempts). In delete mode each message is deleted " +
-                      "once read, so the account must be allowed to delete " +
-                      "files in the exchange directory. Grant that permission, " +
-                      "or have both parties set retain_files: true.",
-                    {
+              } catch (err: unknown) {
+                // A terminal UsageError -- e.g. the stall deadline a withheld
+                // delete callback trips -- is not a transient delete failure
+                // and must not be swallowed: re-deleting would re-hit the same
+                // stall, and emit("data") below would deliver a message whose
+                // consume-delete never landed, so the next poll re-emits a
+                // duplicate. Rethrown to poll()'s outer catch. Any other
+                // failure gets one retry below.
+                if (err instanceof UsageError) throw err;
+                // First delete failed (transiently); retry once after a
+                // backoff. On abort (close() mid-poll) this.wait rejects here,
+                // unwinding into poll()'s catch, where the !pollerActive guard
+                // swallows it. The second delete and the emit are both
+                // skipped, so the message is left undelivered for this session
+                // but still on disk, so a fresh connection re-reads it.
+                await deps.wait(deps.options().pollingFrequency);
+                try {
+                  await deps.client().delete(inPath);
+                } catch (deleteErr: unknown) {
+                  if (deleteErr instanceof UsageError) throw deleteErr;
+                  // The first attempt can take effect with its reply lost, so
+                  // an absent file on the retry means the message is consumed.
+                  if (!isDeleteTargetAbsentError(deleteErr)) {
+                    // Terminal: the delete is the sender's go-ahead, and a
+                    // message left on disk is re-read by the next poll, so
+                    // emitting it here would deliver it again on every cycle.
+                    throw new UsageError(PARTNER_MESSAGE_DELETE_FAILED, {
                       cause: chainDetailCauses(
                         [`message file: ${messageFile.name}`],
                         deleteErr,
                       ),
-                    },
-                  );
+                    });
+                  }
                 }
               }
-            }
+            };
 
-            if (validatedMessage.refusal) throw validatedMessage.refusal;
+            if (validatedMessage.refusal) {
+              await this.consumeRefusedFile(deleteMessage, "delete");
+              throw validatedMessage.refusal;
+            }
+            await deleteMessage();
             // `data` is already the value to deliver: the parsed object for a
             // JSON control message, or the raw frame bytes for a binary frame.
             this.deliver(validatedMessage.data, declaredSize);
