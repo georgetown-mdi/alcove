@@ -74,8 +74,10 @@ The most recent pass is written up under "Verification pass on staging, 3
 November 2026" in [`windows-network-filedrop.md`](windows-network-filedrop.md).
 It ran this script end to end from a folder on a mapped drive, its engine
 messages under Docker Desktop and Podman, and an interrupted check, and states
-what it does not cover. The 17 September and 30 July 2026 passes are written up
-beside it; the 30 July one records that the rewritten closing block emits no
+what it does not cover. A 4 November pass followed it and ran the DFS-link stop
+against a Windows namespace through the PowerShell setup script only, so this
+script's own run of that stop is unmeasured. The 17 September and 30 July 2026
+passes are written up beside it; the 30 July one records that the rewritten closing block emits no
 redirection character. What follows here is the older, script-specific record.
 
 **Verified end to end against a real Samba server**, driven from `cmd.exe` on

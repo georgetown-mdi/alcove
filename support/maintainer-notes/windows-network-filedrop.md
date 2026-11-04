@@ -337,10 +337,14 @@ person:
 - an interrupted check, which left no container behind;
 - the engine choice under Podman;
 - a DFS namespace path, which passed the checks and failed at the mount.
-  #2651 stops the checks on a followed DFS link; that stop has not been run on
-  Windows.
+  #2651 stops the checks on a followed DFS link; the 4 November 2026 pass
+  below ran that stop against a Windows namespace.
 
 What it leaves unmeasured is listed at the end of that section.
+
+The 4 November 2026 pass below ran the DFS laps again on a build with #2651:
+the setup script stopped on the namespace path, and the launcher accepted the
+link's target.
 
 **Constrained language mode is driven in CI by a policy, measured on 27 October
 2026 (run 40505959607) to take effect.** `ConstrainedLanguage.Tests.ps1`,
@@ -935,7 +939,8 @@ Six, none of them a wrong outcome for a working share:
   after the subfolder lists, the probe asks `smbclient` (`showconnect`) which
   server and share it reached, and a different one fails the subfolder check
   as a DFS link, exit 78, before the write checks. CI drives that against a
-  Samba DFS link; it has not run against a Windows namespace.
+  Samba DFS link, and the 4 November pass ran it against this Windows
+  namespace (see that section).
 - **The DFS tab could not be read** (V3.1). UI Automation found the namespace
   folder's Properties window but no tab of any name in it, on two runs, and the
   capture of that window's bounds showed Docker Desktop rather than the sheet.
@@ -959,8 +964,7 @@ None of the six is open.
   `Read-Host` stand-in, so the masked `-AsSecureString` entry was not typed,
   and the Command Prompt script's were typed as console input by the driver.
   The 17 September pass's typed runs remain the record of a real console.
-- The DFS tab, and #2651's stop against a Windows namespace; the next pass's
-  V3.2 lap measures the second.
+- The DFS tab, which the 3 November rig could not read.
 - `Get-SmbConnection` in an ordinary operator's window.
 - An invitation, an accept kit, or a partner accepting from one: no lap minted
   an invitation, and the exchange ran between two containers on one
@@ -973,6 +977,62 @@ None of the six is open.
 - A release copy of the launcher, and the registry half of its image report.
 - A container run under Podman, and Docker Desktop in Windows containers mode.
 - A domain-joined workstation or a domain account.
+
+## Verification pass on staging, 4 November 2026
+
+A shorter pass than 3 November, run to measure #2651's stop on a Windows
+namespace and nothing else. The same two lab VMs, against staging
+`05d2ae7a8b3a5bb3f333804d828e20754d6eb233` (the commit every lap tested),
+cloned and built into an image on the workstation (413 s, id
+`sha256:1ce19c0975b67e9b7518a4d4b3c055a169d33c69c2c5517ef6265bf2dbb749f4`), from
+18:36 to 18:50 UTC. The rig is the 3 November one: Windows 10 Pro (registry
+ProductName) 25H2, build 26200.9711, Windows PowerShell 5.1.26100.9711, Docker
+Desktop 4.91.0 with engine 29.8.0, Podman 6.1.4, and a standalone DFS
+namespace on the file server whose link `drop` targets a folder on the share
+`AlcoveShare`. The operator account was a standard user in FullLanguage on a
+machine joined to no domain, and the PowerShell scripts' prompts were answered by
+`ReadHostStandIn.ps1`. The setup self-test and the preflight passed, and no
+harness repair was made.
+
+- **V3.2, the setup script given `\\alcove-winfs\AlcoveDfs\drop`:** exit 78 and
+  no volume `alcove-vm-dfs`. Part 1 read server `alcove-winfs`, share
+  `AlcoveDfs` and subdirectory `drop`; the resolve, port, `smbclient`,
+  authentication and "share opened" checks printed OK, then
+  `FAIL: this folder is a DFS link.` with its MEANING ("its files are on
+  another share, and a volume mounted on this path cannot reach them") and an
+  ACTION naming the folder's Properties, DFS tab. The five write and space
+  checks printed `SKIP: ... -- not run.` under one shared MEANING, the run ended
+  `NOT READY YET`, and declining the offer to run the checks again returned
+  exit 78. The same text was read off a picture of the console window, which
+  held no password.
+- **The measurement behind the stop** (`smbclient ... -c showconnect`): on the
+  namespace path, `//alcove-winfs/AlcoveDfs -D drop` answered
+  `//ALCOVE-WINFS/AlcoveShare`, a different share from the one given, with the
+  server name in capitals; on the link's target, `//alcove-winfs/AlcoveShare -D
+  alcove-vm-dfs` answered `//alcove-winfs/AlcoveShare`, the share given. The
+  comparison the doctor makes ignores case.
+- **V3.4, the launcher given the link's target** (`alcove-winfs`, `AlcoveShare`,
+  `alcove-vm-dfs`): the checks ended `ALL CHECKS PASSED` (0 files listed,
+  48254 MB free, a file created, renamed and deleted), the volume checks ended
+  the same way, the console reported configured at `http://127.0.0.1:3000`, and
+  it stopped. A folder that is not a DFS link is accepted.
+- **Clean-up:** the closing listing equalled the one taken before the run, and a
+  scan of 19 saved files found the share password in none.
+
+### What this pass does not cover
+
+- A real host. The namespace is a standalone one on a lab file server, so a
+  domain namespace and a domain-joined workstation are still unmeasured.
+- A share the operator did not set up. The link, its target and the account
+  were all built for the rig.
+- The Command Prompt script's own run of the stop: V3.2 drove the PowerShell
+  setup script only.
+- The DFS tab, which the 3 November rig could not read and this pass did not
+  try.
+- A person at the console, for the reasons given under 3 November.
+- Everything else the 3 November list leaves open (an invitation, constrained
+  language mode, a release copy of the launcher, a container under Podman,
+  Windows containers mode): no lap here touched it.
 
 ## Decisions worth not relitigating
 
@@ -999,8 +1059,9 @@ see a link two ways: the server answers `NT_STATUS_PATH_NOT_COVERED`, or
 than the one given. A standalone Windows namespace on the 2026-11-03 VM pass
 took the second way: every check passed on the namespace path, the marker
 landed in the link's target, and the volume then failed to mount with "no such
-file or directory". CI drives `showconnect` against a Samba DFS link; against
-a Windows namespace it is unmeasured until the VM pass's V3.2 lap runs. The
+file or directory". CI drives `showconnect` against a Samba DFS link, and the
+4 November VM pass measured it against that Windows namespace: the setup script
+stopped on the namespace path, exit 78, "FAIL: this folder is a DFS link." The
 manual route -- Properties, DFS tab,
 then `-Server`/`-Share`/`-SubPath` -- is the primary one for a namespace, and
 the runbook says so.
