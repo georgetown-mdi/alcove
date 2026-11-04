@@ -6,8 +6,10 @@ import {
   getDistinctValuesAndIndices,
   MatchedValues,
   replaySinglePassCascade,
+  singlePassOwnSetMaximum,
   type KeyCells,
 } from "../../src/psi/link";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 import {
   MAX_PSI_DECODE_ELEMENTS,
   MAX_SINGLE_PASS_SET_ELEMENTS,
@@ -59,6 +61,27 @@ describe("the single-pass set maximum over file-sync", () => {
     // The distinct values, the setup's permutation and the matched ids are
     // JS Arrays of one entry a value.
     expect(MAX_SINGLE_PASS_SET_ELEMENTS).toBeLessThan(MAX_JS_ARRAY_LENGTH);
+  });
+});
+
+describe("a single-pass party's own set maximum by channel", () => {
+  test("is the single-pass set maximum on a connection stating a file-sync frame bound", () => {
+    const [conn] = createMessagePipe();
+    expect(
+      singlePassOwnSetMaximum(
+        Object.assign(conn, { outboundFileSyncFrameBound: () => 1_000 }),
+      ),
+    ).toBe(MAX_SINGLE_PASS_SET_ELEMENTS);
+  });
+
+  test("is the protocol's per-set maximum on a connection stating none", () => {
+    const [conn] = createMessagePipe();
+    expect(singlePassOwnSetMaximum(conn)).toBe(MAX_PSI_DECODE_ELEMENTS);
+    expect(
+      singlePassOwnSetMaximum(
+        Object.assign(conn, { outboundFileSyncFrameBound: () => undefined }),
+      ),
+    ).toBe(MAX_PSI_DECODE_ELEMENTS);
   });
 });
 

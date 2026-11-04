@@ -67,7 +67,10 @@ import {
   sendHandPlayedOriginalIndexList,
 } from "../utils/matchedListPartFrames";
 import { RETURNED_ELEMENT_LAYOUT } from "../../src/psi/uint32ListParts";
-import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
+import {
+  MAX_FRAME_SIZE_BYTES,
+  MAX_RECORD_COUNT,
+} from "../../src/connection/frameSize";
 import {
   deviatingInbound,
   makeParticipant,
@@ -1091,11 +1094,13 @@ test("the cluster callback is handed the summary the check returned", async () =
 });
 
 test("a sender whose rows times the partner's declared count pass 2^53 holds the table to the exact product", async () => {
-  // Three rows against a declared 2^52 records: the product, 3 * 2^52, has no
-  // exact double. Over file-sync no dataset ceiling bounds the declared count,
-  // so the sender reaches the pair-count bound with it.
-  const declared = 2 ** 52;
-  expect(Number.isSafeInteger(spStarterKeys[0].length * declared)).toBe(false);
+  // The starter's rows times the most records a partner may declare is past
+  // Number.MAX_SAFE_INTEGER, where a `number` product is no longer exact.
+  const declared = MAX_RECORD_COUNT;
+  const starterKeys: Keys = [
+    [...spStarterKeys[0], ...Array.from({ length: 9_005 }, (_, i) => `F${i}`)],
+  ];
+  expect(Number.isSafeInteger(starterKeys[0].length * declared)).toBe(false);
   const [starterConn, joinerConn] = createMessagePipe();
   const starter = linkViaSinglePassPSI(
     { cardinality: "many-to-many" },
@@ -1103,7 +1108,7 @@ test("a sender whose rows times the partner's declared count pass 2^53 holds the
     Object.assign(starterConn, {
       outboundFileSyncFrameBound: () => MAX_FRAME_SIZE_BYTES,
     }),
-    spStarterKeys,
+    starterKeys,
     fanOutFreeBounds(1, declared),
     false,
     -1,
@@ -1113,7 +1118,7 @@ test("a sender whose rows times the partner's declared count pass 2^53 holds the
     makeParticipant(psiLibrary, "joiner"),
     joinerConn,
     spJoinerKeys,
-    fanOutFreeBounds(1, spStarterKeys[0].length),
+    fanOutFreeBounds(1, starterKeys[0].length),
     false,
     -1,
   );

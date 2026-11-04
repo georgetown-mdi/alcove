@@ -2011,6 +2011,17 @@ export function withholdsSenderAssociationTable(
 }
 
 /**
+ * The most elements a single-pass party's own set may hold on this connection:
+ * over file-sync the single-pass set maximum, which the reply's uint32 lengths
+ * state; elsewhere the protocol's per-set maximum.
+ */
+export function singlePassOwnSetMaximum(conn: MessageConnection): number {
+  return conn.outboundFileSyncFrameBound?.() !== undefined
+    ? MAX_SINGLE_PASS_SET_ELEMENTS
+    : MAX_PSI_DECODE_ELEMENTS;
+}
+
+/**
  * The session state {@link linkViaSinglePassPSI} derives every one of its bounds
  * from: the per-key widths the AGREED terms declare, which both parties derive
  * identically with no advertisement, and the two parties' declared record counts,
@@ -2190,7 +2201,7 @@ export async function linkViaSinglePassPSI(
       data,
       localFansOut,
       localCellWidths,
-      fileSync ? MAX_SINGLE_PASS_SET_ELEMENTS : MAX_PSI_DECODE_ELEMENTS,
+      singlePassOwnSetMaximum(conn),
     );
   } catch (error) {
     if (error instanceof RoundSetLimitError)

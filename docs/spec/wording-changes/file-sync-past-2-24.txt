@@ -37,3 +37,4 @@
 - - -> A set over the maximum is refused before masking, and the partner is told.
 - - -> On an encrypted connection the AEAD's limit binds first: the setup alone reaches it at about 61.4 million elements.
 - - -> A single-pass setup or request is held instead to `MAX_SINGLE_PASS_SET_ELEMENTS`, 122,713,351 elements, the most whose setup length the reply's `uint32` field states ([PROTOCOL.md, The limits over file-sync](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
+- - -> Limit: a single-pass set past 2^24 values over file-sync needs both parties on a build with the single-pass set maximum, since a receiver on an earlier build refuses that setup or request as a protocol error, for declaring more encrypted elements than it admits.
