@@ -11,6 +11,7 @@ import { MESSAGE_HEADER_BYTES } from "../../src/connection/fileSyncFraming";
 import {
   CHUNKED_OPEN_PEAK_BYTES,
   INBOUND_FRAME_MEMORY_MULTIPLES,
+  inboundPsiFramePeakBytes,
 } from "../../src/connection/inboundFrameMemory";
 import {
   CHUNKED_ENVELOPE_VERSION,
@@ -130,6 +131,37 @@ describe("the memory check before each message file is read", () => {
     expect(calls).toEqual([[FILE_BYTES, FILE_BYTES + CHUNKED_OPEN_PEAK_BYTES]]);
     await Promise.all([sender.close(), receiver.close()]);
   });
+
+  // The single-pass check at the terms exchange charges the partner's frame
+  // through inboundPsiFramePeakBytes; for a streamed frame its read is the
+  // larger term, so the two checks charge one file the same.
+  test.each([
+    ["1", SINGLE_CALL_ENVELOPE_VERSION],
+    ["2", CHUNKED_ENVELOPE_VERSION],
+  ])(
+    "under envelope version %s the read gate charges what the terms-exchange check charges",
+    async (_version, envelopeVersion) => {
+      const calls: Array<[number, number]> = [];
+      const { a, b } = await rendezvous((frameBytes, needBytes) => {
+        calls.push([frameBytes, needBytes]);
+      });
+      const sender = fromEventConnection(a);
+      const receiver = fromEventConnection(b);
+      b.useEnvelopeVersion(envelopeVersion);
+      b.requireBinaryFrames();
+      a.start();
+      b.start();
+      await sender.send(parts(1)[0]);
+      await receiver.receive();
+      expect(calls).toEqual([
+        [
+          FILE_BYTES,
+          inboundPsiFramePeakBytes(FILE_BYTES, "stream", true, envelopeVersion),
+        ],
+      ]);
+      await Promise.all([sender.close(), receiver.close()]);
+    },
+  );
 
   test("a version-2 file the aeadOpen multiple would refuse is read", async () => {
     // The smallest frames where the two charges part: above a third of the

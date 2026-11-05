@@ -107,8 +107,36 @@ describe("the measured multiples of an inbound frame", () => {
   });
 
   test("a frame's peak is the larger of its read and of the frame with its hand-off", () => {
-    expect(inboundPsiFramePeakBytes(100, "decode", true)).toBe(965);
-    expect(inboundPsiFramePeakBytes(100, "stream", true)).toBe(400);
-    expect(inboundPsiFramePeakBytes(100, "stream", false)).toBe(300);
+    expect(
+      inboundPsiFramePeakBytes(
+        100,
+        "decode",
+        true,
+        SINGLE_CALL_ENVELOPE_VERSION,
+      ),
+    ).toBe(965);
+    expect(
+      inboundPsiFramePeakBytes(
+        100,
+        "stream",
+        true,
+        SINGLE_CALL_ENVELOPE_VERSION,
+      ),
+    ).toBe(400);
+    expect(inboundPsiFramePeakBytes(100, "stream", false, undefined)).toBe(300);
   });
+
+  test.each([
+    ["version 1", SINGLE_CALL_ENVELOPE_VERSION, 400],
+    ["no negotiated version", undefined, 400],
+    ["version 2", CHUNKED_ENVELOPE_VERSION, 100 + CHUNKED_OPEN_PEAK_BYTES],
+  ])(
+    "a frame's read under %s is charged as the read gate charges it",
+    (_what, envelopeVersion, readBytes) => {
+      expect(
+        inboundPsiFramePeakBytes(100, "stream", true, envelopeVersion),
+      ).toBe(readBytes);
+      expect(inboundFrameReadBytes(100, true, envelopeVersion)).toBe(readBytes);
+    },
+  );
 });

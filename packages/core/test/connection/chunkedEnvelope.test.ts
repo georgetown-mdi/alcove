@@ -625,6 +625,8 @@ describe("the negotiation", () => {
     );
     expect(initiator.negotiated.envelope).toBe(CHUNKED_ENVELOPE_VERSION);
     expect(responder.negotiated.envelope).toBe(CHUNKED_ENVELOPE_VERSION);
+    expect(sending.envelopeVersion).toBe(CHUNKED_ENVELOPE_VERSION);
+    expect(receiving.envelopeVersion).toBe(CHUNKED_ENVELOPE_VERSION);
     expect(sending.frameCeilingBytes()).toBeUndefined();
     const encrypt = vi.spyOn(crypto.subtle, "encrypt");
     await sending.send(new Uint8Array([1, 2, 3]));
@@ -640,6 +642,8 @@ describe("the negotiation", () => {
     ]);
     expect(initiator.negotiated.envelope).toBe(SINGLE_CALL_ENVELOPE_VERSION);
     expect(responder.negotiated.envelope).toBe(SINGLE_CALL_ENVELOPE_VERSION);
+    expect(sending.envelopeVersion).toBe(SINGLE_CALL_ENVELOPE_VERSION);
+    expect(receiving.envelopeVersion).toBe(SINGLE_CALL_ENVELOPE_VERSION);
     expect(sending.frameCeilingBytes()).toBe(MAX_AEAD_FRAME_BYTES);
     const encrypt = vi.spyOn(crypto.subtle, "encrypt");
     await sending.send({ ok: true });

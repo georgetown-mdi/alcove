@@ -10,7 +10,13 @@
 // to a pair-count bound the caller derived. The wire schemas accept any FINITE
 // number, so integrality is checked here too: a fractional index addresses
 // nothing and is `undefined`.
-import { InternalConsistencyError, ConnectionError } from "../errors";
+import {
+  InternalConsistencyError,
+  ConnectionError,
+  UsageError,
+  markStatesItsOwnNextStep,
+} from "../errors";
+import { formatCount } from "./formatCount";
 
 /**
  * A partner-frame violation, tagged `"protocol"` so it is classified exactly like
@@ -589,6 +595,33 @@ export function assertPartnerIndexTable(
   );
 }
 
+/**
+ * The most partner rows a both-sided table can pair with one of this party's
+ * rows: the entries one V8 `Set` holds, 2^24, past which `add` throws a
+ * `RangeError` (docs/spec/PROTOCOL.md, The limits over file-sync).
+ */
+export const MAX_PARTNER_ROWS_OF_ONE_ROW = 2 ** 24;
+
+/**
+ * The refusal for a both-sided table pairing more than
+ * {@link MAX_PARTNER_ROWS_OF_ONE_ROW} partner rows with one of this party's
+ * rows. Composed from fixed text alone, and states its own next step: a retry
+ * on the same data and terms refuses identically.
+ */
+export function partnerRowsOfOneRowError(): UsageError {
+  return markStatesItsOwnNextStep(
+    new UsageError(
+      `one of your records matched more than ` +
+        `${formatCount(MAX_PARTNER_ROWS_OF_ONE_ROW)} of your partner's ` +
+        `records, more than an exchange can pair with one record, so the ` +
+        `exchange stopped. A linkage key that matches almost every record, ` +
+        `such as one on a field with the same value in most rows, causes ` +
+        `this: agree on new terms with your partner that leave that key ` +
+        `out, and run the exchange again.`,
+    ),
+  );
+}
+
 /** One half of a table neither half of which keeps its distinctness. */
 interface PartnerPairTableHalf {
   /** Names the half, for the error message. */
@@ -628,7 +661,10 @@ interface PartnerPairTableHalf {
  *   `bigint` so a product past 2^53 is exact.
  * @throws A `"protocol"` {@link ConnectionError} on a table longer than
  *   `maxPairs`, on a bad entry in either half, on halves of unequal length, on
- *   a descending pair in `ascendingHalf`, or on a repeated pair.
+ *   a descending pair in `ascendingHalf`, or on a repeated pair; the
+ *   {@link partnerRowsOfOneRowError} {@link UsageError} on a row of
+ *   `ascendingHalf` paired with more than {@link MAX_PARTNER_ROWS_OF_ONE_ROW}
+ *   distinct rows of a partner that has more.
  */
 export function assertPartnerPairTable(
   participantId: string,
@@ -668,19 +704,51 @@ export function assertPartnerPairTable(
     pairedHalf.exclusiveBound,
     { repeats: true },
   );
+  const repeatedPartnerRow = () =>
+    partnerProtocolError(
+      participantId,
+      `${pairedHalf.what} names one row twice for one record of the other side`,
+    );
   const partnersOfRun = new Set<number>();
-  let run = -1;
-  for (let entry = 0; entry < ascendingHalf.indices.length; ++entry) {
-    if (ascendingHalf.indices[entry] !== run) {
-      run = ascendingHalf.indices[entry];
-      partnersOfRun.clear();
+  const entries = ascendingHalf.indices.length;
+  for (let runStart = 0, runEnd = 0; runStart < entries; runStart = runEnd) {
+    const row = ascendingHalf.indices[runStart];
+    while (runEnd < entries && ascendingHalf.indices[runEnd] === row) ++runEnd;
+    // A run longer than one Set holds is checked for a repeat in a sorted copy
+    // instead, and refused as a repeat if it has one, else as more distinct
+    // partner rows than the Set holds. Against a partner with no more rows
+    // than that, a longer run repeats one, which the Set finds early.
+    if (
+      runEnd - runStart > MAX_PARTNER_ROWS_OF_ONE_ROW &&
+      pairedHalf.exclusiveBound > MAX_PARTNER_ROWS_OF_ONE_ROW
+    ) {
+      if (runRepeatsARow(pairedHalf, runStart, runEnd))
+        throw repeatedPartnerRow();
+      throw partnerRowsOfOneRowError();
     }
-    if (partnersOfRun.has(pairedHalf.indices[entry]))
-      throw partnerProtocolError(
-        participantId,
-        `${pairedHalf.what} names one row twice for one record of the other ` +
-          "side",
-      );
-    partnersOfRun.add(pairedHalf.indices[entry]);
+    partnersOfRun.clear();
+    for (let entry = runStart; entry < runEnd; ++entry) {
+      if (partnersOfRun.has(pairedHalf.indices[entry]))
+        throw repeatedPartnerRow();
+      partnersOfRun.add(pairedHalf.indices[entry]);
+    }
   }
+}
+
+// The element type holds every index below the half's bound, already checked.
+function runRepeatsARow(
+  half: PartnerPairTableHalf,
+  runStart: number,
+  runEnd: number,
+): boolean {
+  const run =
+    half.exclusiveBound <= 2 ** 32
+      ? new Uint32Array(runEnd - runStart)
+      : new Float64Array(runEnd - runStart);
+  for (let entry = runStart; entry < runEnd; ++entry)
+    run[entry - runStart] = half.indices[entry];
+  run.sort();
+  for (let entry = 1; entry < run.length; ++entry)
+    if (run[entry] === run[entry - 1]) return true;
+  return false;
 }

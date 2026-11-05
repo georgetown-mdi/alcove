@@ -285,11 +285,13 @@ export function checkPsiMemoryBudget(params: {
  * The memory reading the partner's PSI frame in a single-pass run can take, in
  * bytes, from the agreed counts: the larger of the reply's index table, which
  * no choice of values reduces, and the most the frame the counts allow takes
- * to read and hand to the PSI engine at the measured multiples.
+ * to read and hand to the PSI engine at the measured multiples, its read
+ * charged under `envelopeVersion` as the file-sync read gate charges it.
  */
 export function singlePassInboundPeakBytes(
   size: SinglePassPartnerSize,
   encrypted: boolean,
+  envelopeVersion: number | undefined,
 ): number {
   return Math.max(
     size.irreducibleReplyBytes,
@@ -297,6 +299,7 @@ export function singlePassInboundPeakBytes(
       size.inboundFrameBytes,
       size.inboundFrameUse,
       encrypted,
+      envelopeVersion,
     ),
   );
 }
@@ -307,18 +310,24 @@ export function singlePassInboundPeakBytes(
  * than is available now ({@link singlePassInboundPeakBytes}), the run is a
  * {@link RoundCapacityError}, or, with `allowShortfall`, a warning and the run
  * continues. Every run states the partner's value slots and its worst-case
- * memory and time.
+ * memory and time. `envelopeVersion` is the one the key exchange negotiated,
+ * or `undefined` on an unencrypted connection.
  */
 export function checkSinglePassPartnerMemory(params: {
   size: SinglePassPartnerSize;
   encrypted: boolean;
+  envelopeVersion: number | undefined;
   allowShortfall: boolean;
   availableBytes: number;
   log: { warn: (message: string) => void };
   onShortfallWarning: (message: string) => void;
 }): void {
   const { size, availableBytes, log } = params;
-  const needBytes = singlePassInboundPeakBytes(size, params.encrypted);
+  const needBytes = singlePassInboundPeakBytes(
+    size,
+    params.encrypted,
+    params.envelopeVersion,
+  );
   if (needBytes > availableBytes) {
     const sentence =
       `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +
