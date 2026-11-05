@@ -190,7 +190,8 @@ export class EncryptedMessageConnection implements MessageConnection {
     "usage",
   );
 
-  private readonly envelopeVersion: number;
+  /** The envelope version every frame on this channel is written and read under. */
+  readonly envelopeVersion: number;
 
   // The per-exchange inbound frame cap, set by setInboundFrameCap and clamped
   // to the largest envelope this layer opens; undefined holds a frame to

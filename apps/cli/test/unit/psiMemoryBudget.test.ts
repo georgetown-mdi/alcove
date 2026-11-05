@@ -437,6 +437,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       inboundFrameBytes?: number;
       inboundFrameUse?: InboundPsiFrameUse;
       encrypted?: boolean;
+      envelopeVersion?: number;
     },
     availableBytes: number,
     allowShortfall = false,
@@ -453,6 +454,7 @@ describe("the single-pass partner size at the terms exchange", () => {
         inboundFrameUse: params.inboundFrameUse ?? "stream",
       },
       encrypted: params.encrypted ?? true,
+      envelopeVersion: params.envelopeVersion,
       allowShortfall,
       availableBytes,
       log: { warn: (message) => lines.push(message) },
@@ -482,19 +484,95 @@ describe("the single-pass partner size at the terms exchange", () => {
     );
   });
 
-  // 100 MB frames: a reply read with its decryption, a reply read without
-  // it and handed to the worker, and a request the worker decodes.
+  // A reply read with its decryption under each envelope version, a reply
+  // read without it and handed to the worker, and a request the worker
+  // decodes. Version 1 opens a frame in one call, at four times its size;
+  // version 2 one chunk at a time, at its size and the 101,023,744 bytes the
+  // chunked open peaked at, as the file-sync read gate charges it. At 40 MB
+  // the read is the larger charge, and at 100 MB under version 2 the
+  // hand-off is.
+  const SINGLE_CALL_ENVELOPE = 1;
+  const CHUNKED_ENVELOPE = 2;
   it.each([
-    ["an encrypted reply", "stream", true, 400_000_000],
-    ["an unencrypted reply", "stream", false, 300_000_000],
-    ["an encrypted request", "decode", true, 965_000_000],
+    [
+      "a 40 MB encrypted reply under envelope version 1",
+      40_000_000,
+      "stream",
+      true,
+      SINGLE_CALL_ENVELOPE,
+      160_000_000,
+    ],
+    [
+      "a 40 MB encrypted reply under envelope version 2",
+      40_000_000,
+      "stream",
+      true,
+      CHUNKED_ENVELOPE,
+      141_023_744,
+    ],
+    [
+      "a 40 MB encrypted reply before a version is negotiated",
+      40_000_000,
+      "stream",
+      true,
+      undefined,
+      160_000_000,
+    ],
+    [
+      "a 100 MB encrypted reply under envelope version 1",
+      100_000_000,
+      "stream",
+      true,
+      SINGLE_CALL_ENVELOPE,
+      400_000_000,
+    ],
+    [
+      "a 100 MB encrypted reply under envelope version 2",
+      100_000_000,
+      "stream",
+      true,
+      CHUNKED_ENVELOPE,
+      300_000_000,
+    ],
+    [
+      "a 100 MB unencrypted reply",
+      100_000_000,
+      "stream",
+      false,
+      undefined,
+      300_000_000,
+    ],
+    [
+      "a 100 MB encrypted request under envelope version 1",
+      100_000_000,
+      "decode",
+      true,
+      SINGLE_CALL_ENVELOPE,
+      965_000_000,
+    ],
+    [
+      "a 100 MB encrypted request under envelope version 2",
+      100_000_000,
+      "decode",
+      true,
+      CHUNKED_ENVELOPE,
+      965_000_000,
+    ],
   ] as const)(
     "weighs %s the counts allow at the measured multiples",
-    (_what, inboundFrameUse, encrypted, needBytes) => {
+    (
+      _what,
+      inboundFrameBytes,
+      inboundFrameUse,
+      encrypted,
+      envelopeVersion,
+      needBytes,
+    ) => {
       const size = {
-        inboundFrameBytes: 100_000_000,
+        inboundFrameBytes,
         inboundFrameUse,
         encrypted,
+        envelopeVersion,
       };
       expect(() => run(size, needBytes)).not.toThrow();
       expect(() => run(size, needBytes - 1)).toThrow(RoundCapacityError);

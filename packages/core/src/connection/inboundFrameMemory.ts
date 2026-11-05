@@ -63,7 +63,8 @@ export function psiFrameHandlingBytes(
 
 /**
  * The most memory a PSI frame of `frameBytes` takes from its read to the end
- * of its handling: the larger of the read and of the frame held beside its
+ * of its handling: the larger of the read, charged as the file-sync read gate
+ * charges it ({@link inboundFrameReadBytes}), and of the frame held beside its
  * handling. The two do not add, since a collection between them releases
  * the read's copies (docs/spec/FILE_SYNC.md, "Memory an inbound frame takes").
  */
@@ -71,9 +72,10 @@ export function inboundPsiFramePeakBytes(
   frameBytes: number,
   use: InboundPsiFrameUse,
   encrypted: boolean,
+  envelopeVersion: number | undefined,
 ): number {
   return Math.max(
-    inboundFrameReadBytes(frameBytes, encrypted),
+    inboundFrameReadBytes(frameBytes, encrypted, envelopeVersion),
     frameBytes + psiFrameHandlingBytes(frameBytes, use),
   );
 }

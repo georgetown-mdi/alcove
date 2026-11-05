@@ -667,6 +667,7 @@ async function runExchangeStage(params: {
         checkSinglePassPartnerMemory({
           size,
           encrypted: run.secure !== undefined,
+          envelopeVersion: run.secure?.envelopeVersion,
           allowShortfall: allowMemoryShortfall,
           availableBytes: process.availableMemory(),
           log,
