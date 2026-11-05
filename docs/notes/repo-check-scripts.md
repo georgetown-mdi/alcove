@@ -300,7 +300,7 @@ Re-using a previously cycled value mid-development would let an artifact written
 instead of taking the clean version refusal the reader is built to give.
 
 The reset moves the six literals the [Release Checklist](../RELEASES.md#reset-the-exchange-record-format-at-100) names, and two of them change bytes a signature or hash covers.
-`RECEIPT_CONTENT_DOMAIN` is the domain of the signed receipt-content bytes.
+`RECEIPT_CONTENT_DOMAIN` is the domain of the signed receipt-content bytes, and its number tracks the shape of those bytes, so it moves with the receipt format like a discriminant.
 `SIGNING_CERTIFICATE_VERSION` is a discriminant inside the certificate body the fingerprint covers
 ([PROTOCOL.md](../spec/PROTOCOL.md#signing-identity-and-certificate-pinning)),
 so every fingerprint changes and every pin is re-shared.
