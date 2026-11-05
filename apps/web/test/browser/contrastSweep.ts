@@ -192,11 +192,115 @@ function largeTextFloor(style: CSSStyleDeclaration): number {
   return isLarge ? 3 : 4.5;
 }
 
-/** What a sweep found: the below-floor elements, and the text of each element
- * whose background it could not resolve. Either fails the surface. */
+/** What a sweep found: the below-floor elements, each element or control
+ * whose background it could not resolve, and the controls whose boundary is
+ * under 3:1. Any of them fails the surface. */
 export interface SweepResult {
   failures: Array<Failure>;
   unresolved: Array<string>;
+  boundaries: Array<BoundaryFailure>;
+}
+
+/** The WCAG 1.4.11 floor for the visual information that identifies a
+ * control. */
+const NON_TEXT_FLOOR = 3;
+
+/** The controls whose resting boundary is what shows where they are: text
+ * fields, selects, and the box, circle or track of a checkbox, radio or
+ * switch. A button is identified by its label and an icon button by its glyph
+ * (measured by themeContrast.test.ts), so neither needs a boundary. A Mantine
+ * switch hides its input and paints the track beside it. */
+const BOUNDED_CONTROL_SELECTOR =
+  'input:not([type="hidden"]):not([type="file"]), textarea, select, .mantine-Switch-track';
+
+/** One control whose border and fill both fall under 3:1 against the
+ * background behind it. */
+export interface BoundaryFailure {
+  control: string;
+  border: string;
+  fill: string;
+  background: string;
+  ratio: number;
+}
+
+/** The contrast against `behind` of each border side `el` paints. */
+function borderRatios(
+  style: CSSStyleDeclaration,
+  behind: [number, number, number],
+): Array<number> {
+  const ratios: Array<number> = [];
+  for (const side of ["top", "right", "bottom", "left"]) {
+    const width = parseFloat(style.getPropertyValue(`border-${side}-width`));
+    const lineStyle = style.getPropertyValue(`border-${side}-style`);
+    if (width <= 0 || lineStyle === "none" || lineStyle === "hidden") continue;
+    const color = rgba(style.getPropertyValue(`border-${side}-color`));
+    if (color[3] === 0) continue;
+    ratios.push(contrast(composite(color, behind), behind));
+  }
+  return ratios;
+}
+
+function describeControl(el: HTMLElement): string {
+  const name =
+    el.getAttribute("aria-label") ??
+    (el.id === ""
+      ? null
+      : document.querySelector(`label[for="${CSS.escape(el.id)}"]`)
+          ?.textContent) ??
+    el.closest("label")?.textContent ??
+    el.getAttribute("placeholder") ??
+    "";
+  const type = el.getAttribute("type");
+  const kind = type === null ? el.tagName.toLowerCase() : `input ${type}`;
+  return `<${kind}> "${name.trim().slice(0, 50)}"`;
+}
+
+/** What a boundary sweep found: the controls under 3:1, and each control
+ * whose background it could not resolve. */
+export interface BoundarySweep {
+  failures: Array<BoundaryFailure>;
+  unresolved: Array<string>;
+}
+
+/** Measure every painted, enabled control under `rootEl` that a boundary
+ * identifies: its border or its fill must reach 3:1 against the background
+ * behind it (WCAG 1.4.11). A control whose background cannot be resolved is
+ * recorded as unresolved. Where Mantine draws a field's box on a wrapper (a
+ * password field), the wrapper is measured. */
+export function sweepControlBoundaries(rootEl: Element): BoundarySweep {
+  const failures: Array<BoundaryFailure> = [];
+  const unresolved: Array<string> = [];
+  for (const control of rootEl.querySelectorAll<HTMLElement>(
+    BOUNDED_CONTROL_SELECTOR,
+  )) {
+    if (isSkippable(control) || getComputedStyle(control).opacity === "0")
+      continue;
+    const el = control.closest<HTMLElement>(".mantine-Input-input") ?? control;
+    const behind =
+      el.parentElement === null
+        ? pageCanvas()
+        : effectiveBackground(el.parentElement);
+    if (behind === undefined) {
+      unresolved.push(describeControl(control));
+      continue;
+    }
+    const style = getComputedStyle(el);
+    const fill = rgba(style.backgroundColor);
+    const ratio = Math.max(
+      1,
+      ...borderRatios(style, behind),
+      fill[3] === 0 ? 1 : contrast(composite(fill, behind), behind),
+    );
+    if (ratio + 1e-9 < NON_TEXT_FLOOR)
+      failures.push({
+        control: describeControl(control),
+        border: style.borderTopColor,
+        fill: style.backgroundColor,
+        background: `rgb(${behind.map(Math.round).join(", ")})`,
+        ratio: Number(ratio.toFixed(2)),
+      });
+  }
+  return { failures, unresolved };
 }
 
 /** One text element measured against its contrast floor. */
@@ -247,7 +351,12 @@ export function sweepContrast(rootEl: HTMLElement): SweepResult {
     if (measured.ratio + 1e-9 < measured.floor)
       failures.push({ ...measured, ratio: Number(measured.ratio.toFixed(2)) });
   }
-  return { failures, unresolved };
+  const controls = sweepControlBoundaries(rootEl);
+  return {
+    failures,
+    unresolved: [...unresolved, ...controls.unresolved],
+    boundaries: controls.failures,
+  };
 }
 
 /** Light-scheme failures not yet fixed, keyed by `${route}: ${state}`, each the
@@ -260,7 +369,7 @@ const KNOWN_LIGHT_FAILURES: Readonly<Record<string, ReadonlyArray<string>>> =
  * the state's {@link KNOWN_LIGHT_FAILURES}, and no element it could not
  * resolve. */
 export function expectAaClean(
-  { failures, unresolved }: SweepResult,
+  { failures, unresolved, boundaries }: SweepResult,
   scheme: "light" | "dark",
   { route, state }: Pick<RouteState, "route" | "state">,
 ): void {
@@ -276,6 +385,7 @@ export function expectAaClean(
   // not a pass: fail so the sweep is extended rather than the surface quietly
   // under-checked.
   expect(unresolved).toEqual([]);
+  expect(boundaries).toEqual([]);
 }
 
 /** Mount `state` in `scheme`, wait for its page heading and pending updates, un-hover

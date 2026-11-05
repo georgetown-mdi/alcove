@@ -43,9 +43,91 @@ function describeElement(element: Element | null): string {
   return `<${element.tagName.toLowerCase()}> "${accessibleName(element).slice(0, 40)}"`;
 }
 
+const FOCUS_STYLE_PROPERTIES = [
+  "outline-style",
+  "outline-width",
+  "outline-color",
+  "box-shadow",
+  "border-top-color",
+  "border-right-color",
+  "border-bottom-color",
+  "border-left-color",
+  "background-color",
+  "color",
+  "text-decoration-line",
+] as const;
+
+/** The element that may paint `element`'s focus: itself, the element drawing
+ * it on its behalf (a switch's track, the next sibling) and its parent. */
+function focusDrawers(element: Element): Array<Element | null> {
+  return [element, element.nextElementSibling, element.parentElement];
+}
+
+/** How `drawer` paints. A running CSS transition is finished first, so the
+ * reading is the settled state. */
+function appearance(drawer: Element | null): string {
+  if (drawer === null) return "";
+  for (const animation of drawer.getAnimations())
+    if (animation instanceof CSSTransition) animation.finish();
+  const style = getComputedStyle(drawer);
+  return FOCUS_STYLE_PROPERTIES.map((property) =>
+    style.getPropertyValue(property),
+  ).join(";");
+}
+
+/** The elements a Tab press can move focus to. */
+const TABBABLE_SELECTOR =
+  "a[href], area[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]";
+
+/** How each drawer of every element a Tab press could focus paints before the
+ * press: each one's unfocused appearance. */
+function readUnfocused(): Map<Element, string> {
+  const unfocused = new Map<Element, string>();
+  for (const element of document.body.querySelectorAll(TABBABLE_SELECTOR))
+    for (const drawer of focusDrawers(element))
+      if (drawer !== null && !unfocused.has(drawer))
+        unfocused.set(drawer, appearance(drawer));
+  return unfocused;
+}
+
+/** Fails when the element a Tab press just focused paints the same as it did
+ * before the press: it shows no focus indicator (WCAG 2.4.7). A drawer that is
+ * or holds the element the press moved focus from is left out, since its
+ * change is that element losing focus, not this one gaining it. */
+function expectFocusIndicatorShown(
+  previous: Element | null,
+  unfocused: Map<Element, string>,
+): void {
+  const focused = document.activeElement;
+  if (focused === null || focused === document.body) return;
+  if (!unfocused.has(focused))
+    throw new Error(
+      `${describeElement(focused)} was not on the page before the Tab press that focused it, so its focus indicator cannot be compared`,
+    );
+  const changed = focusDrawers(focused).some(
+    (drawer) =>
+      drawer !== null &&
+      (drawer === focused || previous === null || !drawer.contains(previous)) &&
+      unfocused.has(drawer) &&
+      appearance(drawer) !== unfocused.get(drawer),
+  );
+  if (!changed)
+    throw new Error(
+      `${describeElement(focused)} looks the same focused and unfocused: it shows no focus indicator (WCAG 2.4.7)`,
+    );
+}
+
 /**
  * Presses Tab (or Shift+Tab when `backward`) until `target` holds focus, and
  * fails naming the stops it passed when the order never reaches it.
+ *
+ * Every element a press focuses, the target included, must look different
+ * focused from how it looked just before the press: an outline, shadow,
+ * border, background, color or underline that changes with focus. A browser
+ * shows a keyboard focus indicator only for focus the keyboard moved, so only
+ * a press's stops are held to one. Best effort: an element that also changes
+ * for another reason as focus arrives passes, and whether the change is
+ * visible enough is a judgment this does not make.
  */
 export async function tabTo(
   target: FocusTarget,
@@ -61,7 +143,9 @@ export async function tabTo(
     )
       return;
     passed.push(describeElement(focused));
+    const unfocused = readUnfocused();
     await userEvent.tab({ shift: options.backward === true });
+    expectFocusIndicatorShown(focused, unfocused);
   }
   throw new Error(
     `Tab never reached the target; it passed: ${passed.slice(-20).join(", ")}`,

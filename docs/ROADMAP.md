@@ -10,12 +10,11 @@ Targeting is aspirational; the maintainers do not commit to a release date for a
 
 ## Pre-1.0
 
-Work required before the 1.0 release.
-
-- Accessibility assessment against WCAG 2.1 Level AA and Section 508 for the web application; publication of a VPAT
+No work is listed as required before the 1.0 release.
 
 ## Version 1.1
 
+- Screen-reader passes (NVDA, VoiceOver) over the web application, and a Voluntary Product Accessibility Template (VPAT) built on the [accessibility self-assessment](ACCESSIBILITY.md)
 - PSI-Sum
 - Browser SFTP in the public web application, after 1.0 unless there is time before it (the first-party relay it needs is built; the browser client is not)
 - Provisioning of supporting services (peer coordination, STUN/TURN, SFTP, WebSocket-to-TCP proxy)

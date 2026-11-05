@@ -24,7 +24,7 @@ import {
 } from "./keyboardOnly";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
-import { expectNoAccessibilityViolations } from "./accessibilityRules";
+import { expectStepAccessible } from "./stepChecks";
 
 import {
   TEST_RUN_COMPLETION,
@@ -67,7 +67,7 @@ afterEach(async () => {
 async function inviteByKeyboard(): Promise<CapturedLifecycle> {
   app.render(createElement(InviterScreen));
   await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
-  expectNoAccessibilityViolations(app.container, { page: true });
+  await expectStepAccessible(app.container);
 
   await typeInto(control("textbox", "Your name or agency"), "Dana Okafor");
   await tabTo(
@@ -87,19 +87,19 @@ async function inviteByKeyboard(): Promise<CapturedLifecycle> {
     ),
   );
   await expect.element(page.getByText("clients.csv")).toBeInTheDocument();
-  expectNoAccessibilityViolations(app.container, { page: true });
+  await expectStepAccessible(app.container);
   await activate(control("button", "Continue to matching & sharing"));
 
   await expectHeadingFocused("Matching & sharing");
-  expectNoAccessibilityViolations(app.container, { page: true });
+  await expectStepAccessible(app.container);
   await activate(control("button", "Continue to review & create"));
 
   await expectHeadingFocused(/Review/);
-  expectNoAccessibilityViolations(app.container, { page: true });
+  await expectStepAccessible(app.container);
   await activate(control("button", "Create the invitation"));
 
   await expectHeadingFocused("Your invitation is ready");
-  expectNoAccessibilityViolations(app.container, { page: true });
+  await expectStepAccessible(app.container);
   await tabTo(control("button", "Copy invitation as a link"));
   await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
   return lifecycleCall(0);
@@ -126,7 +126,7 @@ test("invite: file, matching, review and the created invitation, then the result
   );
 
   await expectHeadingFocused("Exchange complete");
-  expectNoAccessibilityViolations(app.container, { page: true });
+  await expectStepAccessible(app.container);
   await tabTo(control("link", "Download result: results.csv"));
 });
 
@@ -139,7 +139,7 @@ test("invite: a failed run takes focus and its retry is reachable from the keybo
   await expect
     .poll(() => document.activeElement?.textContent ?? "")
     .toContain("Exchange failed");
-  expectNoAccessibilityViolations(app.container, { page: true });
+  await expectStepAccessible(app.container);
   await activate(control("button", "Try again"));
   await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(2));
   await expectHeadingFocused("Your invitation is ready");

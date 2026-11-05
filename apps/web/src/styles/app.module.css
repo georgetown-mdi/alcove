@@ -446,6 +446,21 @@
   flex-wrap: wrap;
 }
 
+/* A step's continue label, and a long label given .wrapLabel, wraps rather
+   than clipping in a narrow viewport (WCAG 1.4.10); reflow.test.ts and the
+   keyboard journeys measure it at 320 px. */
+.workFoot > :global(.mantine-Button-root),
+:global(.mantine-Button-root).wrapLabel {
+  max-width: 100%;
+  height: auto;
+  min-height: var(--button-height);
+}
+
+.workFoot > :global(.mantine-Button-root) :global(.mantine-Button-label),
+.wrapLabel :global(.mantine-Button-label) {
+  white-space: normal;
+}
+
 .statusLine {
   font-weight: 600;
   margin: 0;
@@ -590,8 +605,11 @@
   margin: 0 0 8px 0;
 }
 
+/* Relative so the visually hidden text inside a wide table is clipped with
+   it, rather than widening the page at 320 px (WCAG 1.4.10). */
 .tableScroll {
   overflow-x: auto;
+  position: relative;
 }
 
 .dataTable {
@@ -1367,6 +1385,20 @@
 .page :global(.mantine-InputWrapper-description) {
   color: var(--app-secondary);
   font-size: 14px;
+}
+
+/* An unchecked checkbox's box and radio's circle take the same token, so
+   their boundary reaches 3:1 (WCAG 1.4.11); Mantine's default borders
+   measured 1.3:1 and 1.49:1. The contrast sweeps measure them. */
+.page
+  :global(
+    .mantine-Checkbox-input:not(:checked):not(:disabled):not(
+        [data-indeterminate]
+      ):not([data-error])
+  ),
+.page
+  :global(.mantine-Radio-radio:not(:checked):not(:disabled):not([data-error])) {
+  border-color: var(--app-field-border);
 }
 
 /* ---------- narrow-viewport information architecture ----------

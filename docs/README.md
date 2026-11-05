@@ -60,6 +60,7 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 - [SECURITY_DESIGN.md](SECURITY_DESIGN.md) - the PSI privacy guarantee, the threat model, authentication, channel security, and key rotation
 - [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md) - what the project is responsible for and what the deploying agency is, per deployment
 - [COMPLIANCE.md](COMPLIANCE.md) - regulatory framings, data classification, and what a reviewer checks
+- [ACCESSIBILITY.md](ACCESSIBILITY.md) - the web application's WCAG 2.1 A and AA self-assessment: each criterion's evidence and the open gaps
 - [SERVICE_FACT_SHEET.md](SERVICE_FACT_SHEET.md) - one page of facts, for counsel, about each service the project runs for the hosted web application
 - [COMMUNICATION.md](COMMUNICATION.md) - how an exchange proceeds: the channels, synchronization, the web invitation and consent screens, message delivery, error handling, and the supporting services
 - [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) - how the maintainer handles a reported vulnerability, behind [SECURITY.md](../SECURITY.md), and the tabletop exercise record

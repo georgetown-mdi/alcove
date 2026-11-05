@@ -1,12 +1,15 @@
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Button,
   Card,
   Checkbox,
   Container,
+  Modal,
   Paper,
   Select,
+  Tooltip,
   createTheme,
   rem,
 } from "@mantine/core";
@@ -138,8 +141,7 @@ export const mantineTheme: MantineThemeOverride = createTheme({
   // test/unit/themeContrast.test.ts.
   //
   // Light is 9 (#0b7285): clears every primary use at 5.59:1 (white-on-fill
-  // and fill-on-white). The filled hover step resolves to cyan-8 (4.35:1),
-  // transient and outside the resting-state AA judgment.
+  // and fill-on-white). Its filled hover is FILLED_PRIMARY_HOVER (7.09:1).
   //
   // Dark is 6 (#15aabf): filled-primary text routes through
   // --mantine-primary-color-contrast (black on cyan-6, 7.53:1); the focus
@@ -208,6 +210,26 @@ export const mantineTheme: MantineThemeOverride = createTheme({
     Alert: Alert.extend({
       defaultProps: {
         role: ALERT_DEFAULT_ROLE,
+      },
+    }),
+    // A link inside a sentence must differ from its text by more than color
+    // (WCAG 1.4.1), so every Anchor is underlined, not only on hover.
+    Anchor: Anchor.extend({
+      defaultProps: {
+        underline: "always",
+      },
+    }),
+    // The close button draws only an icon, so it takes its name here (WCAG
+    // 4.1.2).
+    Modal: Modal.extend({
+      defaultProps: {
+        closeButtonProps: { "aria-label": "Close" },
+      },
+    }),
+    // A tooltip stays open while the pointer moves onto it (WCAG 1.4.13).
+    Tooltip: Tooltip.extend({
+      defaultProps: {
+        interactive: true,
       },
     }),
   },
@@ -294,10 +316,22 @@ const ERROR_TEXT = {
 } as const;
 
 /**
+ * The light filled-primary hover fill, also painted while pressed on a touch
+ * screen. Mantine's cyan-8 hover holds white text at 4.35:1, under 1.4.3's
+ * 4.5:1; cyan-9 darkened by 15% holds it at 7.09:1, 1.27:1 from the resting
+ * fill. Dark keeps Mantine's cyan-7 hover, black text at 6.12:1. Measured in
+ * each state by test/browser/themeContrast.test.ts.
+ */
+const FILLED_PRIMARY_HOVER = {
+  light: "#096171",
+} as const;
+
+/**
  * Raises the `dimmed` and input `placeholder` tokens to {@link MUTED_TEXT} and
  * the `error` token to {@link ERROR_TEXT} in both color schemes, and the
- * yellow/red/green `light`-variant text tokens to {@link STATUS_TEXT} in the
- * light scheme. Mantine deep-merges this over the default resolver, so only the
+ * yellow/red/green `light`-variant text tokens to {@link STATUS_TEXT} and the
+ * primary filled hover to {@link FILLED_PRIMARY_HOVER} in the light scheme.
+ * Mantine deep-merges this over the default resolver, so only the
  * overridden variables need be returned. Passed to `MantineProvider` in the root
  * route.
  */
@@ -310,6 +344,7 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     "--mantine-color-red-light-color": STATUS_TEXT.error,
     "--mantine-color-green-light-color": STATUS_TEXT.success,
     "--mantine-color-error": ERROR_TEXT.light,
+    "--mantine-color-cyan-filled-hover": FILLED_PRIMARY_HOVER.light,
   },
   dark: {
     "--mantine-color-dimmed": MUTED_TEXT.dark,

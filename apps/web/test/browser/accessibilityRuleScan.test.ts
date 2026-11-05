@@ -6,7 +6,9 @@ import { page } from "vitest/browser";
 
 import "@mantine/core/styles.css";
 
+import { Lobby } from "@exchange/Lobby";
 import { clearManagedExchanges } from "@psi/managed/managedExchangeStore";
+import { createElement } from "react";
 
 import { ROUTE_STATES, declaredRoutes } from "./routeStates";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
@@ -14,6 +16,7 @@ import {
   expectNoAccessibilityViolations,
   scanAccessibility,
 } from "./accessibilityRules";
+import { expectNoAxeViolations } from "./axeScan";
 
 // The rule scan (accessibilityRules.ts) over every route the app declares, at the
 // state the route lands in, plus the error states a route can land in instead
@@ -83,12 +86,26 @@ describe("accessibility rule scan", () => {
           "list-children",
           "nested-interactive",
           "page-h1",
+          "page-main",
           "positive-tabindex",
         ].sort(),
       );
     } finally {
       fixture.remove();
     }
+  });
+
+  // The start page's links are one way to each page. The others: a finished
+  // run's record note (RunSurface.tsx) and a recurring exchange's accounting
+  // (ManagedExchangeDetail.tsx) link to the verify page, and the confirmation
+  // after saving an exchange (ManageExchangeOffer.tsx) links to the recurring
+  // exchanges. Every other page is a step of an exchange.
+  test("the start page links to the verify and recurring exchange pages (WCAG 2.4.5)", async () => {
+    app.render(createElement(Lobby));
+    for (const name of ["Verify an exchange record", "Recurring exchanges"])
+      await expect
+        .element(page.getByRole("link", { name, exact: true }))
+        .toBeInTheDocument();
   });
 
   for (const { route, state, heading, node } of ROUTE_STATES)
@@ -99,5 +116,6 @@ describe("accessibility rule scan", () => {
         .toBeInTheDocument();
       await flushPendingUpdates();
       expectNoAccessibilityViolations(app.container, { page: true });
+      await expectNoAxeViolations(app.container);
     });
 });

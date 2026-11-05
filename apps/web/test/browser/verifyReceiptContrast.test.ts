@@ -155,9 +155,10 @@ function measuredText(text: string, { exact = false } = {}) {
 }
 
 function expectSweepClean(): void {
-  const { failures, unresolved } = sweepContrast(app.container);
+  const { failures, unresolved, boundaries } = sweepContrast(app.container);
   expect(failures).toEqual([]);
   expect(unresolved).toEqual([]);
+  expect(boundaries).toEqual([]);
 }
 
 async function loadRecordAndKeys({

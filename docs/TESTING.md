@@ -444,32 +444,47 @@ browser run is one nobody expected.
 
 ### Accessibility checks
 
-Three kinds of browser test hold the web app's accessibility, each covering
-what the others cannot:
+These browser tests hold the web app's accessibility, each covering what the
+others cannot. Which WCAG 2.1 criterion each one is evidence for is mapped in
+[ACCESSIBILITY.md](ACCESSIBILITY.md).
 
 - The contrast sweep (`contrastSweep.ts`, run by `themeContrastSweep.test.ts`
   on the hosted profile and `themeContrastSweepConsole.test.ts` on the
   console's) measures every rendered text element against the WCAG AA floor,
-  in both color schemes. It runs on the same route states as the rule scan
-  (`routeStates.ts`), and the test fails when a declared route has none. A
-  light-scheme failure not yet fixed is listed in `contrastSweep.ts`, and the
-  test fails when a listed one stops failing. A sweep sees each state as it
-  mounts, so the verify screen's states after a file loads are swept by
+  and the resting border or fill of every field, checkbox, radio, and switch
+  against 3:1, in both color schemes. It runs on the same route states as the
+  rule scan (`routeStates.ts`), and the test fails when a declared route has
+  none. A light-scheme failure not yet fixed is listed in `contrastSweep.ts`,
+  and the test fails when a listed one stops failing. A sweep sees each state
+  as it mounts, so the verify screen's states after a file loads are swept by
   `verifyReceiptContrast.test.ts`, which loads them.
 - The rule scan (`accessibilityRules.ts`, run by
   `accessibilityRuleScan.test.ts`) checks a fixed set of DOM-decidable rules --
   unique ids, resolving label and description references, named controls and
-  images, heading order, list structure, a page h1. It runs on a state of every
-  route the router declares, and the test fails when a route has none. It is
-  in-house rather than axe-core, so a clean scan is not a WCAG conformance
-  claim; the file header lists the rules.
+  images, heading order, list structure, a page h1 and one main landmark. It
+  runs on a state of every route the router declares, and the test fails when
+  a route has none; the file header lists the rules.
+- axe-core (`axeScan.ts`) runs its WCAG 2.1 Level A and AA rules wherever the
+  rule scan runs. Its context is the mounted container, so the document-level
+  facts it cannot see there -- each route's title and the page language -- are
+  read from source by `test/unit/wcagSourceChecks.test.ts`.
 - The keyboard-only journeys (`keyboardInviteJourney.test.ts`,
   `keyboardAcceptJourney.test.ts`, `keyboardVerifyJourney.test.ts`) drive the
   invite, accept, verify, and recurring setup flows by Tab, Enter, and Space
   alone through `keyboardOnly.ts`, assert where focus lands on each step
-  change, and run the rule scan on each step and on the result and failure
-  states. A native file chooser cannot be driven, so a journey tabs to the file
-  control and hands the file to its input.
+  change, and run the rule scan, axe, the control boundary sweep, and the
+  layout checks on each step and
+  on the result and failure states (`stepChecks.ts`). Every element a Tab
+  press focuses must look different focused from how it looked before the
+  press, the control a journey then activates included
+  (`focusIndicator.test.ts` holds that check). A native file chooser
+  cannot be driven, so a journey tabs to the file control and hands the file
+  to its input.
+- The layout checks (`reflowChecks.ts`) mount every route state at 320 CSS
+  pixels wide (`reflow.test.ts`) and under the WCAG text-spacing overrides
+  (`textSpacing.test.ts`), and fail on content past the viewport's edge or
+  text an element clips. The keyboard journeys run the same checks on each
+  step they reach, putting the viewport and spacing back after.
 
 ## Cross-runtime interop suite
 
