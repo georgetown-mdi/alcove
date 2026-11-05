@@ -71,8 +71,11 @@ export type InboundOutcome =
   | { kind: "pending" }
   /** The peer's in-band clean close. */
   | { kind: "close" }
-  /** A complete application frame, ready for the message queue. */
-  | { kind: "frame"; value: unknown };
+  /**
+   * A complete application frame, ready for the message queue, and the bytes
+   * it was received at: the datagram's, or the reassembled frame's.
+   */
+  | { kind: "frame"; value: unknown; receivedBytes: number };
 
 /** The limits one {@link BoundedInboundFrames} enforces. */
 export interface InboundFrameLimits {
@@ -177,7 +180,11 @@ export class BoundedInboundFrames {
     const classified = classifyInboundValue(value);
     if (classified.kind === "close") return { kind: "close" };
     if (classified.kind === "data")
-      return { kind: "frame", value: classified.value };
+      return {
+        kind: "frame",
+        value: classified.value,
+        receivedBytes: bytes.byteLength,
+      };
 
     const assembled = this.acceptChunk(
       classified.messageId,
@@ -197,7 +204,11 @@ export class BoundedInboundFrames {
         "its chunks reassemble into another envelope rather than a frame",
       );
     }
-    return { kind: "frame", value: innerKind.value };
+    return {
+      kind: "frame",
+      value: innerKind.value,
+      receivedBytes: assembled.byteLength,
+    };
   }
 
   /** Wire-byte cap, then structural pre-scan, then `unpack`. In that order. */

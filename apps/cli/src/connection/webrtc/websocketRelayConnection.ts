@@ -941,7 +941,7 @@ function relayMessageConnection(
             );
             return;
           }
-          controls.deliver(outcome.value);
+          controls.deliver(outcome.value, outcome.receivedBytes);
         },
       });
 

@@ -59,12 +59,13 @@ function refusal(run: () => unknown): { kind: string; message: string } {
 
 // --- the happy path ---------------------------------------------------------
 
-test("an unchunked frame is delivered whole", () => {
+test("an unchunked frame is delivered whole, with the datagram's length", () => {
   const bounds = new BoundedInboundFrames();
   const [only] = new PeerJsFrameEncoder().encode({ step: 1, ok: true });
   expect(bounds.accept(only)).toEqual({
     kind: "frame",
     value: { step: 1, ok: true },
+    receivedBytes: only.byteLength,
   });
 });
 
@@ -81,7 +82,7 @@ test("a chunked frame is pending until its last slice, then delivered", () => {
   expect(bounds.retainedBytes()).toBe(0);
 });
 
-test("a reassembled frame has the bytes the sender packed", () => {
+test("a reassembled frame has the bytes the sender packed, and their length", () => {
   const bounds = new BoundedInboundFrames();
   const body = new Uint8Array(PEERJS_CHUNK_MTU * 2 + 7);
   for (let i = 0; i < body.length; i += 1) body[i] = i % 251;
@@ -95,9 +96,12 @@ test("a reassembled frame has the bytes the sender packed", () => {
     outcome = bounds.accept(datagram);
   }
   expect(outcome.kind).toBe("frame");
-  const value = (
-    outcome as { kind: "frame"; value: { tag: string; body: unknown } }
-  ).value;
+  const { value, receivedBytes } = outcome as {
+    kind: "frame";
+    value: { tag: string; body: unknown };
+    receivedBytes: number;
+  };
+  expect(receivedBytes).toBe(packValue({ tag: "set", body }).byteLength);
   expect(value.tag).toBe("set");
   expect(Buffer.from(toFrameBytes(value.body)).equals(Buffer.from(body))).toBe(
     true,

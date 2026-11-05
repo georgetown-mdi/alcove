@@ -117,6 +117,16 @@ export { AEAD_ENVELOPE_VERSION } from "./connection/encryptedMessageConnection.j
 // over a transport, and only a test needs a pair with no transport under it.
 export { createMessagePipe } from "./connection/messageConnection.js";
 
+// The inbound queue's byte capacity at a frame size of the caller's and the
+// set part count it is derived from, so a suite can run the crossing behind
+// it at a lowered receive bound. It
+// stays out of the main entry point: a caller meets the capacity, not its
+// derivation.
+export {
+  MAX_PSI_SET_WEBRTC_FRAMES,
+  countOnlyRunAheadBytes,
+} from "./connection/messageConnection.js";
+
 // The first-round refusals over the partner's stated receive ceiling, so each
 // front end's suite can hold its alert to the refusal's text. They stay out of
 // the main entry point: a caller meets the refusal, not its composition.

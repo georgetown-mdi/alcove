@@ -1,5 +1,6 @@
 import {
   BROWSER_PSI_SET_MAX_ELEMENTS,
+  BROWSER_QUEUE_BYTE_CAPACITY,
   ConnectionError,
   MAX_WEBRTC_FRAME_BYTES,
   QueuedMessageConnection,
@@ -57,7 +58,8 @@ const DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
  * sizes the parts of its sets to. It states the browser's receive ceiling
  * (`inboundPsiSetElementCeiling`), which the exchange states to the partner
  * on the terms exchange and holds each partner set to when its first part
- * arrives and at its element scan.
+ * arrives and at its element scan. The inbound queue holds unreceived frames
+ * to `BROWSER_QUEUE_BYTE_CAPACITY`, each charged the length it arrived at.
  *
  * If the channel never opens, the returned promise rejects and the half-open
  * channel is torn down first, since `peer.disconnect()` alone would not
@@ -65,8 +67,8 @@ const DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
  *
  * @param conn     A PeerJS data connection, open or not yet open.
  * @param options  `openTimeoutMs`, `inactivityTimeoutMs`, `maxFrameBytes`,
- *                 `maxConcurrentReassemblies`, and `closeDrainTimeoutMs`
- *                 override the fixed defaults; test-only, none is an
+ *                 `maxConcurrentReassemblies`, `byteCapacity`, and
+ *                 `closeDrainTimeoutMs` override the fixed defaults; test-only, none is an
  *                 operator-facing setting. `onCloseOutcome` reports
  *                 {@link PeerCloseOutcome} once per connection, left unwritten
  *                 to the operator here; a non-flushing close reports nothing.
@@ -82,6 +84,7 @@ export async function openPeerMessageConnection(
     inactivityTimeoutMs?: number;
     maxFrameBytes?: number;
     maxConcurrentReassemblies?: number;
+    byteCapacity?: number;
     closeDrainTimeoutMs?: number;
     onCloseOutcome?: (outcome: PeerCloseOutcome) => void;
     signal?: AbortSignal;
@@ -118,13 +121,18 @@ export async function openPeerMessageConnection(
       // Re-check a fully delivered frame at this stable layer: a safety check
       // for the chunk-layer bound above (which reaches into PeerJS internals)
       // that refuses an over-cap binary frame as delivered, however assembled.
-      const onData = (data: unknown) => {
+      // `receivedBytes` is the frame length the wrap unpacked it from; a data
+      // event without one did not pass the wrap, and the queue refuses it.
+      const onData = (data: unknown, receivedBytes?: unknown) => {
         const overCap = checkDeliveredFrameBound(data, maxFrameBytes);
         if (overCap) {
           controls.fail(overCap);
           return;
         }
-        controls.deliver(data);
+        controls.deliver(
+          data,
+          typeof receivedBytes === "number" ? receivedBytes : Number.NaN,
+        );
       };
       // PeerJS interpolates the remote id (`conn.peer`, a derived rendezvous id)
       // into the errors it emits on a mid-exchange failure; redact it before
@@ -184,6 +192,7 @@ export async function openPeerMessageConnection(
       };
     },
     {
+      byteCapacity: options?.byteCapacity ?? BROWSER_QUEUE_BYTE_CAPACITY,
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
     },

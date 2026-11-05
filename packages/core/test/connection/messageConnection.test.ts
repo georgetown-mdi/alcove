@@ -6,10 +6,30 @@ import {
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
 
+import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
+import { CHUNKED_ENVELOPE_VERSION } from "../../src/connection/chunkedAead";
 import {
+  AEAD_ENVELOPE_OVERHEAD_BYTES,
+  aeadEnvelopeOverheadBytes,
+} from "../../src/connection/encryptedMessageConnection";
+import {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
+  MAX_FRAME_SIZE_BYTES,
+  MAX_PSI_DECODE_ELEMENTS,
+} from "../../src/connection/frameSize";
+import {
+  psiSetByteBound,
+  psiSetPartPayloadBytes,
+} from "../../src/psi/psiSetParts";
+import {
+  BROWSER_PSI_SET_WEBRTC_FRAMES,
+  BROWSER_QUEUE_BYTE_CAPACITY,
   DEFAULT_INACTIVITY_TIMEOUT_MS,
+  DEFAULT_QUEUE_BYTE_CAPACITY,
+  MAX_PSI_SET_WEBRTC_FRAMES,
   QueuedMessageConnection,
   connectionEndReader,
+  countOnlyRunAheadBytes,
   createMessagePipe,
   fromEventConnection,
   isReceiveDeadlineFailure,
@@ -17,7 +37,10 @@ import {
   receiveParsed,
 } from "../../src/connection/messageConnection";
 
-import type { TransportControls } from "../../src/connection/messageConnection";
+import type {
+  MessageConnection,
+  TransportControls,
+} from "../../src/connection/messageConnection";
 import { EVENT_LOOP_HOLD_MS, EventLoopPacer } from "../../src/utils/eventLoop";
 
 import { expectRejectionKind } from "../utils/expectRejection";
@@ -92,10 +115,156 @@ test("exceeding capacity fails the connection as a protocol violation", async ()
   await expectRejectionKind(b.receive(), "protocol");
 });
 
+// --- the byte bound on the inbound queue -------------------------------------
+
+test("frames under the count bound but over the byte bound fail the connection as a protocol violation", async () => {
+  const [a, b] = createMessagePipe({ byteCapacity: 10 });
+  await a.send(new Uint8Array(4));
+  await a.send(new Uint8Array(4));
+  await a.send(new Uint8Array(4)); // 12 bytes queued, over the 10
+  await Promise.resolve();
+  expect(await b.receive()).toHaveLength(4);
+  expect(await b.receive()).toHaveLength(4);
+  const refusal = b.receive();
+  await expectRejectionKind(refusal, "protocol");
+  await expect(refusal).rejects.toThrow(
+    "inbound buffer overflow: over the 10-byte bound on unconsumed messages",
+  );
+});
+
+test("frames within both bounds pass, and a received frame's bytes are released", async () => {
+  const [a, b] = createMessagePipe({ capacity: 4, byteCapacity: 10 });
+  await a.send(new Uint8Array(6));
+  await a.send(new ArrayBuffer(4)); // exactly 10 bytes queued
+  await Promise.resolve();
+  expect(await b.receive()).toHaveLength(6);
+  await a.send(new Uint8Array(6)); // 4 + 6 bytes queued
+  await Promise.resolve();
+  expect((await b.receive()) as ArrayBuffer).toHaveProperty("byteLength", 4);
+  expect(await b.receive()).toHaveLength(6);
+});
+
+test("a frame over the byte bound is queued when it arrives at an empty queue", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  controls.deliver(new Uint8Array(100), 100);
+  expect(await conn.receive()).toHaveLength(100);
+  controls.deliver(new Uint8Array(100), 100);
+  controls.deliver(new Uint8Array(1), 1); // behind a queued frame: refused
+  expect(await conn.receive()).toHaveLength(100);
+  await expectRejectionKind(conn.receive(), "protocol");
+});
+
+test("a frame handed to a parked receive is not counted against the byte bound", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  const parked = conn.receive();
+  controls.deliver(new Uint8Array(100), 100);
+  expect(await parked).toHaveLength(100);
+  controls.deliver(new Uint8Array(5), 5);
+  controls.deliver(new Uint8Array(5), 5);
+  expect(await conn.receive()).toHaveLength(5);
+  expect(await conn.receive()).toHaveLength(5);
+});
+
+test("a structured message is charged the length it was received at, as a binary one is", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  controls.deliver({ type: "hello" }, 4);
+  controls.deliver("text", 4);
+  controls.deliver({ data: new Uint8Array(0) }, 3); // 11 bytes queued
+  expect(await conn.receive()).toEqual({ type: "hello" });
+  expect(await conn.receive()).toBe("text");
+  await expectRejectionKind(conn.receive(), "protocol");
+});
+
+test("a message delivered without its received length fails the connection", async () => {
+  for (const receivedBytes of [Number.NaN, -1, 1.5, undefined]) {
+    const { conn, controls } = makeQueued();
+    controls.deliver({ type: "hello" }, receivedBytes as number);
+    await expect(conn.receive()).rejects.toThrow(
+      "the transport delivered a message without the length it was received at",
+    );
+  }
+});
+
+test("the default byte bound holds the count-only crossing at the per-frame bound", async () => {
+  const { conn, controls } = makeQueued();
+  // The response's parts, the next setup's, and its index table. Views share
+  // one buffer, so the test holds one frame's memory.
+  const crossing = 2 * MAX_PSI_SET_WEBRTC_FRAMES + 1;
+  const frameBuffer = new ArrayBuffer(MAX_WEBRTC_FRAME_BYTES);
+  for (let frame = 0; frame < crossing; frame++)
+    controls.deliver(
+      { part: new Uint8Array(frameBuffer) },
+      MAX_WEBRTC_FRAME_BYTES,
+    );
+  controls.deliver({ late: true }, 1);
+  for (let frame = 0; frame < crossing; frame++)
+    expect(await conn.receive()).toHaveProperty("part");
+  await expectRejectionKind(conn.receive(), "protocol");
+});
+
+// The parts a PSI set of `elements` takes on an encrypted WebRTC connection at
+// the per-frame bound.
+function webRtcSetParts(elements: number, envelopeBytes: number): number {
+  return Math.ceil(
+    psiSetByteBound(elements) /
+      psiSetPartPayloadBytes({
+        outboundWebRtcFrameBound: () => MAX_WEBRTC_FRAME_BYTES,
+        outboundFrameOverheadBytes: () => envelopeBytes,
+      } as unknown as MessageConnection),
+  );
+}
+
+test("the PSI set frame counts are the part counts of the largest sets on an encrypted WebRTC connection", () => {
+  expect(
+    webRtcSetParts(MAX_PSI_DECODE_ELEMENTS, AEAD_ENVELOPE_OVERHEAD_BYTES),
+  ).toBe(MAX_PSI_SET_WEBRTC_FRAMES);
+  expect(
+    webRtcSetParts(BROWSER_PSI_SET_MAX_ELEMENTS, AEAD_ENVELOPE_OVERHEAD_BYTES),
+  ).toBe(BROWSER_PSI_SET_WEBRTC_FRAMES);
+  // The chunked envelope at the per-frame bound, the largest it takes there.
+  const chunkedEnvelopeBytes = aeadEnvelopeOverheadBytes(
+    CHUNKED_ENVELOPE_VERSION,
+    MAX_WEBRTC_FRAME_BYTES,
+  );
+  expect(
+    webRtcSetParts(MAX_PSI_DECODE_ELEMENTS, chunkedEnvelopeBytes),
+  ).toBeLessThanOrEqual(MAX_PSI_SET_WEBRTC_FRAMES);
+  expect(
+    webRtcSetParts(BROWSER_PSI_SET_MAX_ELEMENTS, chunkedEnvelopeBytes),
+  ).toBeLessThanOrEqual(BROWSER_PSI_SET_WEBRTC_FRAMES);
+});
+
+test("the byte capacities are the count-only crossing's frames at the per-frame bound", () => {
+  // Round r's response, at most this party's own request, so up to the
+  // largest set; round r+1's setup, held to the receive ceiling; and the index
+  // table, one frame (countOnlyIndexTableBound.test.ts).
+  expect(DEFAULT_QUEUE_BYTE_CAPACITY).toBe(
+    (MAX_PSI_SET_WEBRTC_FRAMES + MAX_PSI_SET_WEBRTC_FRAMES + 1) *
+      MAX_WEBRTC_FRAME_BYTES,
+  );
+  expect(BROWSER_QUEUE_BYTE_CAPACITY).toBe(
+    (MAX_PSI_SET_WEBRTC_FRAMES + BROWSER_PSI_SET_WEBRTC_FRAMES + 1) *
+      MAX_WEBRTC_FRAME_BYTES,
+  );
+  expect(DEFAULT_QUEUE_BYTE_CAPACITY).toBe(1_879_048_192);
+  expect(BROWSER_QUEUE_BYTE_CAPACITY).toBe(1_610_612_736);
+  // The same frames at a lowered receive bound, as the WebRTC suite runs the
+  // crossing (inboundQueueCapacity.test.ts).
+  expect(countOnlyRunAheadBytes(MAX_PSI_SET_WEBRTC_FRAMES, 16_384)).toBe(
+    7 * 16_384,
+  );
+});
+
+test("file-sync read-ahead stays within the default byte bound", () => {
+  // The poll loop holds what it reads ahead to the static frame cap.
+  expect(MAX_FRAME_SIZE_BYTES).toBeLessThanOrEqual(DEFAULT_QUEUE_BYTE_CAPACITY);
+});
+
 // --- finish (drain-then-fail half-close) -------------------------------------
 
 function makeQueued(options?: {
   capacity?: number;
+  byteCapacity?: number;
   inactivityTimeoutMs?: number;
   inactivityTimeoutSetting?: string;
 }): {
@@ -116,7 +285,7 @@ function makeQueued(options?: {
 
 test("finish drains a buffered frame before reporting the transport error", async () => {
   const { conn, controls, close } = makeQueued();
-  controls.deliver("final"); // buffered, no parked waiter
+  controls.deliver("final", 5); // buffered, no parked waiter
   controls.finish(new ConnectionError("peer closed", "transport"));
   // Teardown runs eagerly, at finish() time - not on the later drain promotion.
   expect(close).toHaveBeenCalledTimes(1);
@@ -142,7 +311,7 @@ async function hasSettled(promise: Promise<unknown>): Promise<boolean> {
 
 test("terminated stays pending while the connection is open", async () => {
   const { conn, controls } = makeQueued();
-  controls.deliver("frame");
+  controls.deliver("frame", 5);
   await conn.receive();
   await conn.send("reply");
   expect(await hasSettled(conn.terminated())).toBe(false);
@@ -159,7 +328,7 @@ test("terminated resolves with the error an abnormal drop latched", async () => 
 
 test("terminated resolves at a half-close, before the buffered frame drains", async () => {
   const { conn, controls } = makeQueued();
-  controls.deliver("tail");
+  controls.deliver("tail", 4);
   const closed = new ConnectionError("peer closed", "transport");
   controls.finish(closed);
   expect(await conn.terminated()).toBe(closed);
@@ -177,7 +346,7 @@ test("a paced step stops at a half-close although a frame remains buffered", asy
     const { conn, controls, close } = makeQueued();
     const pacer = new EventLoopPacer(connectionEndReader(conn));
     await pacer.yieldWhenDue();
-    controls.deliver("tail");
+    controls.deliver("tail", 4);
     const closed = new ConnectionError("peer closed", "transport");
     controls.finish(closed);
     await expect(pacer.yieldWhenDue()).rejects.toBe(closed);
@@ -198,7 +367,7 @@ test("terminated resolves with a closed error on a local close, and the first tr
 
 test("a deferred half-close tears down the transport even if abandoned (F2)", () => {
   const { controls, close } = makeQueued();
-  controls.deliver("buffered"); // queued, no waiter
+  controls.deliver("buffered", 8); // queued, no waiter
   controls.finish(new ConnectionError("peer closed", "transport"));
   // The half-close is never drained and never close()d, yet teardown has
   // already run: an abandoned half-close cannot leak the transport's
@@ -209,7 +378,7 @@ test("a deferred half-close tears down the transport even if abandoned (F2)", ()
 
 test("an abnormal drop drains a buffered frame before the error (deliver->fail)", async () => {
   const { conn, controls } = makeQueued();
-  controls.deliver("tail"); // buffered, no parked waiter
+  controls.deliver("tail", 4); // buffered, no parked waiter
   controls.fail(new ConnectionError("dropped", "transport"));
   // The abnormal-tail rule applies to fail() too: an already-arrived frame is
   // returned before the abnormal error raises.
@@ -219,7 +388,7 @@ test("an abnormal drop drains a buffered frame before the error (deliver->fail)"
 
 test("a fail after a pending half-close still drains the frame (deliver->finish->fail)", async () => {
   const { conn, controls } = makeQueued();
-  controls.deliver("tail");
+  controls.deliver("tail", 4);
   controls.finish(new ConnectionError("peer closed", "transport"));
   controls.fail(new ConnectionError("late drop", "transport")); // no-ops: terminal
   // The buffered frame drains, then the first error to latch (the finish) wins;
@@ -245,16 +414,16 @@ test("finish rejects a parked receive immediately", async () => {
 
 test("inbound after finish is ignored; the drained frame is the last one", async () => {
   const { conn, controls } = makeQueued();
-  controls.deliver("keep");
+  controls.deliver("keep", 4);
   controls.finish(new ConnectionError("peer closed", "transport"));
-  controls.deliver("dropped"); // a half-close is pending: ignored
+  controls.deliver("dropped", 7); // a half-close is pending: ignored
   expect(await conn.receive()).toBe("keep");
   await expectRejectionKind(conn.receive(), "transport");
 });
 
 test("a second finish is ignored; the first deferred error wins", async () => {
   const { conn, controls } = makeQueued();
-  controls.deliver("final");
+  controls.deliver("final", 5);
   controls.finish(new ConnectionError("first", "transport"));
   controls.finish(new ConnectionError("second", "security")); // ignored
 
@@ -265,7 +434,7 @@ test("a second finish is ignored; the first deferred error wins", async () => {
 
 test("send is rejected while a half-close is pending, without writing", async () => {
   const { conn, controls, send } = makeQueued();
-  controls.deliver("final"); // buffered, half-close pending behind it
+  controls.deliver("final", 5); // buffered, half-close pending behind it
   controls.finish(new ConnectionError("peer closed", "transport"));
 
   await expectRejectionKind(conn.send("x"), "transport");
@@ -276,7 +445,7 @@ test("send is rejected while a half-close is pending, without writing", async ()
 
 test("a close racing the final drain still shows the transport error", async () => {
   const { conn, controls } = makeQueued();
-  controls.deliver("final");
+  controls.deliver("final", 5);
   controls.finish(new ConnectionError("peer closed", "transport"));
   await conn.close(); // races ahead of draining the final frame
 
@@ -487,7 +656,8 @@ test("createMessagePipe: receive has no inactivity deadline", async () => {
 //
 // docs/spec/FILE_SYNC.md invariant I8 requires the `data` consumer never throw
 // synchronously; the sole production consumer is deliver() (wired here as
-// fromEventConnection's onData closure `(data) => controls.deliver(data)`).
+// fromEventConnection's onData closure, which hands `controls.deliver` the
+// message and its received length).
 // These tests pin that it absorbs every failure mode through a non-throwing
 // fail() rather than throwing back into emit. The eventB.emit("data", ...)
 // calls below match the call FileSyncConnection.poll() makes at its emit site.
@@ -498,13 +668,13 @@ test("data consumer (deliver): inbound overflow latches without throwing into em
 
   // Fill the inbound buffer to capacity with no parked receive: each delivery
   // enqueues and must not throw.
-  expect(() => eventB.emit("data", "1")).not.toThrow();
-  expect(() => eventB.emit("data", "2")).not.toThrow();
+  expect(() => eventB.emit("data", "1", 1)).not.toThrow();
+  expect(() => eventB.emit("data", "2", 1)).not.toThrow();
 
   // The capacity+1 frame is I8's named overflow mode. The consumer must absorb
   // it as a non-throwing fail(), so emit("data", ...) returns normally rather
   // than throwing back into the retain-mode poll loop.
-  expect(() => eventB.emit("data", "3")).not.toThrow();
+  expect(() => eventB.emit("data", "3", 1)).not.toThrow();
 
   // The frames buffered before the overflow ("1"/"2") drain first under the
   // abnormal-tail rule: receive() returns each already-arrived frame before the
@@ -531,7 +701,7 @@ test("data consumer (deliver): a frame after a terminal latch is a non-throwing 
 
   // A late data frame from a subsequent emit("data", ...) must be silently
   // absorbed by the consumer, never thrown back into the poll loop.
-  expect(() => eventB.emit("data", "late")).not.toThrow();
+  expect(() => eventB.emit("data", "late", 4)).not.toThrow();
 
   // The connection is unchanged: still the original terminal transport error,
   // with the late frame dropped rather than raised.
@@ -620,7 +790,7 @@ test("send: a half-close (finish) draining a buffered frame rejects an in-flight
   // A buffered inbound frame makes finish() take its draining branch (not the
   // empty-queue delegation to fail()), so this exercises the failSends() call on
   // that distinct path specifically.
-  controls.deliver("buffered");
+  controls.deliver("buffered", 8);
   const sending = conn.send("x").catch((e: unknown) => e);
   controls.finish(new ConnectionError("peer closed mid-send", "transport"));
   // The in-flight send rejects with the deferred error rather than hanging: the

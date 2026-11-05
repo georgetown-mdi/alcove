@@ -1,5 +1,6 @@
 import {
   BROWSER_PSI_SET_MAX_ELEMENTS,
+  BROWSER_QUEUE_BYTE_CAPACITY,
   BoundedInboundFrames,
   ConnectionError,
   PeerJsFrameEncoder,
@@ -970,7 +971,7 @@ function forwardingConnection(
           );
           return;
         }
-        controls.deliver(outcome.value);
+        controls.deliver(outcome.value, outcome.receivedBytes);
       };
       onClose = (event) => {
         settleCloseWait?.(
@@ -1040,6 +1041,7 @@ function forwardingConnection(
       };
     },
     {
+      byteCapacity: BROWSER_QUEUE_BYTE_CAPACITY,
       inactivityTimeoutMs:
         options.inactivityTimeoutMs ?? DEFAULT_RELAY_INACTIVITY_TIMEOUT_MS,
     },

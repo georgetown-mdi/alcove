@@ -159,10 +159,17 @@ A file-sync message over its cap is a terminal `UsageError` that leaves the file
 The severity is defense-in-depth, not a live vulnerability: the counterparty is authenticated and can already abort the exchange trivially, and most of these sites already report a clean refusal rather than an ungraceful throw - a `receiveParsed` / `parseOrProtocolError` wrap reports a `ConnectionError("protocol")` from whatever `schema.parse` throws, and the linkage-terms parse-error catch aborts the same way.
 The stack-overflow `RangeError` is what `parse` throws, so the wrap catches it directly; the string-length `RangeError` is not, since the `ZodError` message builds lazily - the wrap sees only the unread `ZodError`, and that `RangeError`, if the issue list is that large, fires only where the cause's message is first read.
 Both read sites already guard that read: `sanitizeErrorForDisplay` reads each link's message inside its own `try`/`catch`, and the linkage-terms parse-error catch reads `issues[0].message` rather than `err.message`.
-So the bound turns an ungraceful internal exception and a one-shot CPU burn into a clean, bounded rejection rather than closing a memory or correctness break.
-The decode-layer chokepoint is the sharper of the set - it forestalls an uncatchable process crash, an availability loss the others do not reach, rather than a recoverable burn - but rests on the same reasoning.
-The crash kills only a session its instigator already controls - the counterparty it is party to, or the transport a hostile server admin already mediates and can disrupt at will - so it too is defense-in-depth against a self-limited adversary, not a live vulnerability.
+So the schema-layer bounds turn an ungraceful internal exception and a one-shot CPU burn into a clean, bounded rejection.
 The set of accepted messages is unchanged: each single-issue predicate mirrors the element schema it replaces, and each count gate's `.pipe` re-runs the original element schema, so a legitimate exchange parses to a byte-identical structure (the cross-party receipt hash is preserved).
+The decode-layer chokepoint refuses a body before `JSON.parse` can reach an engine limit that no `catch` intercepts, so a partner's JSON ends in a clean refusal.
+The memory a partner's message holds once read is bounded on every path, each bound checked before the message is parsed or any array is made from it:
+
+- **JSON messages** are each held to the byte cap of their type, and the table above states the most a body at the cap was measured to hold; only small structured messages travel as JSON.
+- **The matched-record lists and the payload rows** travel as binary parts, each checked against its own length before any array is made from it ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)); a received payload part was measured to hold 1.03 to 1.50 times its bytes, a grouping or a mapped-element list 1.00 times, and a round's index list 2.95 times (there, "What a received payload holds" and "What a received word list holds").
+- **Frames delivered but not yet received** are held to a byte bound: on file-sync the read-ahead, at most `MAX_FRAME_SIZE_BYTES` of message files, and on every transport the inbound queue, at most 1,879,048,192 bytes of frames, 1,610,612,736 in a browser, each charged the length it was received at ([TRANSPORT_BOUNDS.md, WebRTC data-channel inbound bound](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound), "The inbound queue").
+
+One limit remains, stated rather than closed.
+A WebRTC frame that unpacks to a structure rather than to binary holds a stated multiple of its wire bytes, about 208 times, rather than a figure near its length ([TRANSPORT_BOUNDS.md, WebRTC data-channel inbound bound](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound), "The envelope these rules leave").
 
 ## CSV-read single-line byte ceiling
 

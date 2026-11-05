@@ -310,6 +310,18 @@ Every part of a payload names the same columns. A payload with no data is one pa
 
 Each row adds 8 bytes to what the part holds: its row index, and the offset where it starts.
 
+**What a received word list holds.** A receiver reads a word-list part's words into arrays of 32-bit words: one for each fixed column, and for a ragged list one of value counts and one of values (`readWordListBody`, `packages/core/src/psi/uint32ListParts.ts`). A round's index list is then copied into an array of numbers (`receiveRoundIndexList`, `packages/core/src/psi/roundTableParts.ts`). Measured on 2026-11-04 in a 10-core aarch64 Linux container with 23 GB of memory, Node 26.13, `--expose-gc`: one part of each list, sent and read by that list's own send and receive functions over an in-memory connection. The figure is the memory the received list holds (`heapUsed` plus `arrayBuffers` after two collections, the part and the sender's list released), divided by the part's bytes.
+
+| List | Entries, part bytes, held |
+| --- | --- |
+| a round's index list | 16,777,216, 67,108,888, 2.95 times the part |
+| a grouping's run lengths | 16,777,216, 67,108,888, 1.00 times the part |
+| a grouping's owner lists, one owner each | 16,777,216, 134,217,752, 1.00 times the part |
+| a mapped-element list, one-position entries | 14,000,000, 168,000,024, 1.00 times the part |
+| a mapped-element list, one-position entries, a whole message file | 44,739,238, 536,870,880, 1.00 times the part |
+
+The index list holds about 11.8 bytes a position against the part's 4, the array of numbers it is copied into.
+
 **The part size.** A sender fills each part's body to the bytes one part of a PSI set holds on the same connection (`psiSetPartPayloadBytes`): on SFTP or a synced folder, a message file of `MAX_FRAME_SIZE_BYTES` inside the AEAD envelope; on WebRTC, the data-channel bound ([The part size](#a-psi-set-is-sent-in-parts)). It cuts the list before the entry that would take the body past that. A word-list entry takes 4 bytes for each word it adds. A payload row takes 4 bytes for its row index and, for each value, 4 bytes and its UTF-8 bytes, and every payload part also holds 12 bytes and its column names. A receiver requires no part size: each part's frame is held to that receiver's own per-frame bound at its transport, and a word-list part to the byte bounds below.
 
 **The entries a receiver admits.** The first part's declared entry count is held, before any part's body is read, to a bound read from the agreed terms and this party's own result:
