@@ -625,6 +625,26 @@ for (const {
       );
     });
 
+    it("carries NOTICE and the OS-package lists it points at in /app/", () => {
+      // NOTICE holds the notice of each package the CLI loads that ships no
+      // license file of its own in node_modules, and names the OS-package
+      // lists and source terms as sitting beside it.
+      const files = [
+        "NOTICE",
+        "NOTICE-os-packages.md",
+        "NOTICE-os-packages-default.tsv",
+        "NOTICE-os-packages-fips.tsv",
+      ];
+      for (const file of files) {
+        const copy = image.runtimeCopies.find(({ dests }) =>
+          dests.includes(`/app/${file}`),
+        );
+        expect(copy, file).toBeDefined();
+        expect(copy.flags.some((f) => f.startsWith("--from="))).toBe(false);
+        expect(copy.sources, file).toContain(file);
+      }
+    });
+
     it("runs the console server entry, under a copied directory, for the serve role", () => {
       const serveArgv = execArgv((l) => l.includes("console-server"));
       const serverEntry = serveArgv.find((t) => t.includes("console-server"));

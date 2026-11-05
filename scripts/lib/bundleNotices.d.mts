@@ -20,6 +20,13 @@ export function bundleNotices(): {
   banner(chunk: { moduleIds: readonly string[] }): string;
 };
 export const NO_LICENSE_FILE: ReadonlySet<string>;
+export function shipsLicenseFile(dir: string): boolean;
+export function declaredNotice(manifest: {
+  name: string;
+  license?: string;
+  author?: string | { name?: string };
+  repository?: string | { url?: string };
+}): string;
 export const NOTICES_FILE: string;
 export function bundleNoticesFile(): {
   client: import("vite").Plugin;

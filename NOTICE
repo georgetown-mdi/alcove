@@ -98,6 +98,21 @@ text.
 
 ---
 
+The command line application's build keeps its declared dependencies external
+(apps/cli/rollup.config.ts). The container images load them at runtime from
+/app/node_modules, each package there with the license file it ships, and carry
+this file and the OS-package lists below in /app/.
+One package the CLI loads ships no license file, so its notice is the license,
+author, and source its package.json declares:
+
+werift ships no license file. Its package.json declares the MIT license,
+author shinyoshiaki, source https://github.com/shinyoshiaki/werift-webrtc.git.
+
+`npm run check:bundle-notices` fails if a package the CLI loads ships no
+license file and is not listed here.
+
+---
+
 The container images this repository publishes also redistribute their base
 distributions' operating-system packages, which no entry above reaches. Those
 packages are listed beside this file, one list per image, in

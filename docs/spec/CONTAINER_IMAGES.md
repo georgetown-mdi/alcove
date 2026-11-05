@@ -843,7 +843,8 @@ license -- under a commented header stating the image, the base pin in force at
 generation, the query the rows came from, and the architectures compared.
 `NOTICE` covers this repository's npm tree by construction and `npm sbom`
 reaches no OS package, so these two files are where an image's OS layer is
-attributed.
+attributed. Both images carry them, with `NOTICE` and `NOTICE-os-packages.md`,
+in `/app/`.
 
 The relay image `infra/relay/Dockerfile` pins has a third list,
 [`NOTICE-os-packages-relay.tsv`](../../NOTICE-os-packages-relay.tsv): package,

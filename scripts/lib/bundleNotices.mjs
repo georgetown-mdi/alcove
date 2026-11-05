@@ -99,15 +99,20 @@ const readMatching = (dir, pattern) =>
     .sort()
     .map((file) => readFileSync(join(dir, file), "utf8").trim());
 
+/** Whether the package at `dir` ships a license file. */
+export const shipsLicenseFile = (dir) =>
+  readdirSync(dir).some((file) => LICENSE_FILE.test(file));
+
 /**
  * Packages known to ship no license file, checked by hand, whose notice is
  * the license, author, and source their package.json declares. Any other
- * package without a license file fails the build.
+ * package without a license file fails the build, and
+ * scripts/check-bundle-notices.mjs fails one the CLI loads at runtime.
  */
-export const NO_LICENSE_FILE = new Set(["react-remove-scroll-bar"]);
+export const NO_LICENSE_FILE = new Set(["react-remove-scroll-bar", "werift"]);
 
 /** The notice of a package in {@link NO_LICENSE_FILE}, from its package.json. */
-function declaredNotice({ name, license, author, repository }) {
+export function declaredNotice({ name, license, author, repository }) {
   const who = typeof author === "string" ? author : author?.name;
   const source = typeof repository === "string" ? repository : repository?.url;
   return [
