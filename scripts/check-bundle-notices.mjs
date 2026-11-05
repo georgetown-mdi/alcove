@@ -11,10 +11,11 @@
 // build put in that file. A package that ships no license file fails the build
 // itself (scripts/lib/bundleNotices.mjs).
 //
-// The CLI bundles none of its dependencies: the container images ship them in
-// node_modules, each with its own license file. A package the CLI loads that
-// ships none must have its declared notice in NOTICE, and npm's listing of the
-// images' production install names those packages.
+// The CLI build keeps its declared dependencies external
+// (apps/cli/rollup.config.ts); the container images load them from
+// /app/node_modules, each with the license file it ships. A package the CLI
+// loads that ships none must have its declared notice in NOTICE, and npm's
+// listing of the images' production install names those packages.
 //
 // Reads core's dist from disk for the downstream bundles, so a stale dist
 // fails here as a missing notice and a missing one stops it; rebuild core

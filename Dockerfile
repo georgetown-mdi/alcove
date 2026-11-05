@@ -181,9 +181,9 @@ COPY --from=builder /build/apps/cli/dist/index.js apps/cli/dist/index.js
 # loop being free during a round) would not run in the shipped image. Keep its
 # name; it is spawned as a worker, never executed, so no shebang/chmod.
 COPY --from=builder /build/apps/cli/dist/psiWorker.worker.js apps/cli/dist/psiWorker.worker.js
-# The attributions, among them the notice of a package the CLI loads that
-# ships no license file of its own in node_modules.
-COPY NOTICE /app/NOTICE
+# The attributions, among them the notice of a package the CLI loads that ships
+# no license file, and the OS-package lists and source terms NOTICE points at.
+COPY NOTICE NOTICE-os-packages.md NOTICE-os-packages-default.tsv NOTICE-os-packages-fips.tsv /app/
 
 # The web console: its server bundles every dependency it runs, and serves the
 # client from the directory beside its own, so the runtime stage copies only

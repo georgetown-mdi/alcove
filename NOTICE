@@ -98,10 +98,10 @@ text.
 
 ---
 
-The command line application copies no npm package into its build. It loads
-its dependencies at runtime from node_modules (/app/node_modules in the
-container images, which carry this file at /app/NOTICE), and each package
-there carries the license file it ships.
+The command line application's build keeps its declared dependencies external
+(apps/cli/rollup.config.ts). The container images load them at runtime from
+/app/node_modules, each package there with the license file it ships, and carry
+this file and the OS-package lists below in /app/.
 One package the CLI loads ships no license file, so its notice is the license,
 author, and source its package.json declares:
 

@@ -274,9 +274,9 @@ COPY --from=builder /build/apps/cli/dist/index.js apps/cli/dist/index.js
 # resolves it as `<__dirname>/psiWorker.worker.js`, and without it createPsiEngine
 # silently falls back to the in-process engine.
 COPY --from=builder /build/apps/cli/dist/psiWorker.worker.js apps/cli/dist/psiWorker.worker.js
-# The attributions, among them the notice of a package the CLI loads that
-# ships no license file of its own in node_modules.
-COPY NOTICE /app/NOTICE
+# The attributions, among them the notice of a package the CLI loads that ships
+# no license file, and the OS-package lists and source terms NOTICE points at.
+COPY NOTICE NOTICE-os-packages.md NOTICE-os-packages-default.tsv NOTICE-os-packages-fips.tsv /app/
 COPY --from=builder /build/apps/web/dist/console apps/web/dist/console
 COPY --from=builder /build/apps/web/dist/console-server apps/web/dist/console-server
 
