@@ -272,13 +272,6 @@ describe("the rule while it is inert", () => {
     ).toEqual([]);
   });
 
-  it("passes against this repository, which has no release marker", () => {
-    const { status, stdout } = runCheck();
-    expect(status).toBe(0);
-    expect(stdout).toContain(COMPATIBILITY_RELEASE);
-    expect(stdout).toContain("Wire-format deltas");
-  });
-
   it("passes a tree whose wire format moved with no bump", () => {
     const sources = vectorsSources();
     const moved = vectorsSources({
@@ -568,7 +561,19 @@ describe("the check's registration", () => {
     );
   });
 
-  it("starts from an empty ledger, so nothing pre-publication goes stale", () => {
-    expect(JSON.parse(readRoot(PINS_FILE)).pins).toEqual({});
+  it("records the first bound release's pin over every covered file", () => {
+    const pins = JSON.parse(readRoot(PINS_FILE)).pins;
+    expect(Object.keys(pins["1"]).sort()).toEqual(
+      COVERED_VECTORS.map(({ vectors }) => vectors).sort(),
+    );
+  });
+});
+
+describe("the committed tree", () => {
+  it("passes at its release marker, which the policy binds", () => {
+    const { status, stdout } = runCheck();
+    expect(status).toBe(0);
+    expect(stdout).toContain(`at or above ${COMPATIBILITY_RELEASE}`);
+    expect(stdout).toContain("every pinned file matches");
   });
 });
