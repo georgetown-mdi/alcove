@@ -317,7 +317,7 @@ Per-dependency licenses for the npm tree are recorded in the CycloneDX SBOM atta
 
 ## Export Control
 
-Alcove incorporates cryptographic software. Distribution may be subject to U.S. Export Administration Regulations (EAR). Most open-source cryptographic software qualifies for License Exception ENC under ECCN 5D002, but the exception requires a one-time notification to BIS and NSA. This notification is pending and will be completed before the 1.0 release. See [docs/COMPLIANCE.md](docs/COMPLIANCE.md#export-control-ear) for the full regulatory framing.
+Alcove's public source needs no export notification because every cryptographic primitive and protocol it uses is adopted by a standards body or published ([docs/COMPLIANCE.md](docs/COMPLIANCE.md#export-control-ear)). Adding one that is neither would bring back the notification 15 CFR 742.15(b)(2) requires for "non-standard cryptography", so a new primitive goes into the [algorithm inventory](docs/COMPLIANCE.md#cryptographic-algorithm-inventory) with its standard.
 
 ## Reporting Security Issues
 
