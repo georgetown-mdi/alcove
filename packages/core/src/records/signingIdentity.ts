@@ -55,11 +55,11 @@ export type { P256PrivateJwk } from "./signingKeys.js";
  * signature scheme and the public-key representation together: a document
  * written under a different version is refused, not reinterpreted under this
  * one. */
-export const SIGNING_CERTIFICATE_VERSION = "alcove-signing-cert/v3";
+export const SIGNING_CERTIFICATE_VERSION = "alcove-signing-cert/v1";
 
 /** Single recognized version for the on-disk signing identity file (private key
  * + certificate). */
-export const SIGNING_IDENTITY_VERSION = "alcove-signing-identity/v3";
+export const SIGNING_IDENTITY_VERSION = "alcove-signing-identity/v1";
 
 // Domain-separation labels folded into the bytes that are signed and hashed.
 // They keep a certificate self-signature cryptographically distinct from a

@@ -46,7 +46,7 @@ afterEach(() => {
 // A minimal schema-valid signed receipt (the certificates self-verify; these
 // are the checked-in signing-cert vectors' identities, reused for a valid shape).
 const certA = {
-  version: "alcove-signing-cert/v3" as const,
+  version: "alcove-signing-cert/v1" as const,
   algorithm: "ecdsa-p256-sha256" as const,
   identity: "Party A",
   publicKey: {

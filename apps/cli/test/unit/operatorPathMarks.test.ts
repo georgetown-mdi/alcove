@@ -193,7 +193,7 @@ const KEYS: VerificationKeys = {
 };
 
 const CERTIFICATE = {
-  version: "alcove-signing-cert/v3" as const,
+  version: "alcove-signing-cert/v1" as const,
   algorithm: "ecdsa-p256-sha256" as const,
   identity: "Party A",
   publicKey: {

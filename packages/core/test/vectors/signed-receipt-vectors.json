@@ -30,8 +30,8 @@
       },
       "expected": {
         "binder": "vh4E_Jyls4CbRGTMUGyNFGNDlCpVRt-ruU_-JwZIwDM",
-        "fingerprint": "XLVt1REG2cgeneYftvQ9senu45hEFQ0JKD-2BoMoyRQ",
-        "signature": "vYMyu6MZqc7FtZwD8NhhY5CheZska1nYwqeHnoWc_svOVOs_jgxTtQQ_gmSdPoLqPyYUHH5MLrate9ruNfDkGA"
+        "fingerprint": "kcUS6LKZ7A3k-fhBcoKhnrYWiF3qonQ6Rh9sAexI01Q",
+        "signature": "4n8s7TsQTi1aC6wE9y5Kiv10sfxE-ZQy6U9Jt4slHW-xstS9OWYyWFRJ_ImPCwvJOh2mKBwQJxTzPfqidy9aCA"
       }
     },
     {
@@ -55,16 +55,16 @@
       },
       "expected": {
         "binder": "n2Ak2GuaCKmHaK_0VdNopb5DpTGYAQ82OXm54AmqrOE",
-        "fingerprint": "uZisH4oFjTA4f99L2nKQNa2XSQTngX911_Jwj1E5OUA",
-        "signature": "u5_QRKYWQWFiHVlL5MtY6mtxKiZ3A8FL43FhCgiC9w9bEFny6GIGlblHfy-ThqRU0ODmuQdp36qKsnAZz1HiZw"
+        "fingerprint": "4cgDNgs9Tx2itJbBL5vfl2nA2yKWTXAc9uxxOrMcjLU",
+        "signature": "6lOdkv_9fvTDRkJDVM3BnsWa4fWco7Rd7el-iTLs-JIrteculc2ORcQyEAtz81Zbq25s7GYO_O8KPZ92842nzQ"
       }
     }
   ],
   "bundle": {
     "description": "A complete dual-signed record assembled from the two vectors above: both parties sign ONE shared content carrying the initiator-role binder, as a live exchange does. Every signature in it -- each certificate's self-signature and each party's receipt signature -- was produced by the openssl CLI (see externalAnchors), so an implementation that verifies this record is verifying a bundle no part of which it signed. The two fingerprints are the deterministic anchors a verifier pins against.",
     "expected": {
-      "initiatorFingerprint": "XLVt1REG2cgeneYftvQ9senu45hEFQ0JKD-2BoMoyRQ",
-      "responderFingerprint": "uZisH4oFjTA4f99L2nKQNa2XSQTngX911_Jwj1E5OUA",
+      "initiatorFingerprint": "kcUS6LKZ7A3k-fhBcoKhnrYWiF3qonQ6Rh9sAexI01Q",
+      "responderFingerprint": "4cgDNgs9Tx2itJbBL5vfl2nA2yKWTXAc9uxxOrMcjLU",
       "initiatorIdentity": "Party A, Agency A\napartyA@agency-a.gov",
       "responderIdentity": "Party B, Agency B"
     },
@@ -78,7 +78,7 @@
       },
       "initiator": {
         "certificate": {
-          "version": "alcove-signing-cert/v3",
+          "version": "alcove-signing-cert/v1",
           "algorithm": "ecdsa-p256-sha256",
           "identity": "Party A, Agency A\napartyA@agency-a.gov",
           "publicKey": {
@@ -87,13 +87,13 @@
             "x": "HxQBRr-xslH4T03b4NTNz9d6_ZhKlSDjV5QCH4MSu54",
             "y": "7JlaCLH6dwTfPcwLUKlmUmP7dxH5X5-KRJxQluR8iSs"
           },
-          "signature": "sT1zKZ0EmHvO2o_JO30sBMBsNA6MMAAMv1No9AVRHlwPpJMRl2VzAxzIM5BPsYfMldynyE_dJTYzoTVEFGJNZQ"
+          "signature": "iMYZUNJUNETABf4JYidVL4qTonJnlNk9srVA_aXxIOm5Z-WdeRzrkDL9_ODPki6Y0hocV9tNGpUb_zMyKRLgQw"
         },
-        "signature": "mPuXjeJjEnu8yxilxZW6Gyv_am1Vrp3q83ZrRGirSbi8uFr56v5A3ljMCFWyq6mirt3wFDUKkqBvy347agW3gA"
+        "signature": "njzeAJC7AiZgTAYHuNh6E8-fWSBwQFAxeWl7j3jZTJQEfZDRwQlyyR7amzSqmCYWH_jY9XXHILCQNkDD1BphYQ"
       },
       "responder": {
         "certificate": {
-          "version": "alcove-signing-cert/v3",
+          "version": "alcove-signing-cert/v1",
           "algorithm": "ecdsa-p256-sha256",
           "identity": "Party B, Agency B",
           "publicKey": {
@@ -102,9 +102,9 @@
             "x": "QoqCTqfPVq0qZO02i3ExXYDO6EYAfP8dLuosPw-SFTc",
             "y": "MErlmPmN0Q0fECgRpOLRYcP9i7sZPUslvulQrIOcD50"
           },
-          "signature": "PNvzuyXHCVBfPQ77md-j4DZ1OoQ0fLMwaQ9LzArdPJqcEmbIKgtj7fcobR0sUGsGiMqESoj_fuZU1tYtl4yDGQ"
+          "signature": "5NEOjjnQKSuSJhnLbq4Fm6shym98oQrYJQVDQpj1ihQV5aKK6-81waYjgaMlCc5I98MvvPuQ8_RRN20_f-Ovjw"
         },
-        "signature": "G6HErgulTcli9xzJHIsPrmk68vVYNmqMpC7GsXrlCh3lcCuJN61BCtpQmhsz_8VKWbZj3JpyBjlBiMrYNfGLow"
+        "signature": "TomItKp7GdWRNn9-FzWUeeGVTed-xk55UcferVFkuqd6X8ZnmJt3pbnfoU7l0RqwCKdD_2U-kHAQI8xjGkhdMg"
       }
     }
   },

@@ -758,8 +758,8 @@ describe("serialize / parse dual-signed record", () => {
     // A record written under the previous signature scheme holds both the old
     // record version and old certificates (an Ed25519 key in an RFC 8037 OKP
     // JWK). Either discriminant refuses it; neither is reinterpreted.
-    const v1Certificate = {
-      version: "alcove-signing-cert/v1",
+    const ed25519Certificate = {
+      version: "alcove-signing-cert/v0-ed25519",
       algorithm: "ed25519",
       identity: "Party A",
       publicKey: {
@@ -770,23 +770,23 @@ describe("serialize / parse dual-signed record", () => {
       signature:
         "8WKs03xb2bO9IsxziElnQeQ4v6--9DKTCRl5RyasydYD5THhQBBQwUD0nDHK7Lqm8NqgxczxhKX7JjJWlJiyAQ",
     };
-    const v1Party = { certificate: v1Certificate, signature: "AAAA" };
+    const ed25519Party = { certificate: ed25519Certificate, signature: "AAAA" };
     expect(() =>
       parseDualSignedRecord({
         version: "alcove-signed-receipt/v0-ed25519",
         content: content(),
-        initiator: v1Party,
-        responder: v1Party,
+        initiator: ed25519Party,
+        responder: ed25519Party,
       }),
     ).toThrow();
-    // Even relabelled with the current record version, the embedded v1
+    // Even relabelled with the current record version, the embedded Ed25519
     // certificates are refused.
     expect(() =>
       parseDualSignedRecord({
         version: SIGNED_RECEIPT_VERSION,
         content: content(),
-        initiator: v1Party,
-        responder: v1Party,
+        initiator: ed25519Party,
+        responder: ed25519Party,
       }),
     ).toThrow();
   });

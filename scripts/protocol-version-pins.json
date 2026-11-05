@@ -6,7 +6,7 @@
       "psi-engine-wire-vectors.json": "sha256:363948434346d615e11f04320ca354834a5105311dbed203ce476ccd89917e6d",
       "psi-intersection-vectors.json": "sha256:e30ff771314b908845f247309b68dfc1d88202f0453cdccd1a3848574e25f5a7",
       "psi-set-part-vectors.json": "sha256:e473b564da5a79e7e5f266922c3ad516ea9cc624e61385b8aae660066fec594d",
-      "terms-envelope-vectors.json": "sha256:70c3ef7aef42c2e82ea183651fa795766d18367659f7578633a4c69570a3d6d3"
+      "terms-envelope-vectors.json": "sha256:21ae6a398385f8e93f141d86ee0af49f31417c17735af28eb00534e07b57adb5"
     }
   }
 }

@@ -392,8 +392,8 @@ describe("parseSigningIdentity / parseCertificate", () => {
 // RFC 8037 OKP JWK. It must be refused outright, never reinterpreted under the
 // current scheme -- an OKP JWK has no `y`, so a reader that ignored the
 // version would be guessing at a coordinate.
-const V1_CERTIFICATE = {
-  version: "alcove-signing-cert/v1",
+const ED25519_CERTIFICATE = {
+  version: "alcove-signing-cert/v0-ed25519",
   algorithm: "ed25519",
   identity: IDENTITY,
   publicKey: {
@@ -405,24 +405,24 @@ const V1_CERTIFICATE = {
     "8WKs03xb2bO9IsxziElnQeQ4v6--9DKTCRl5RyasydYD5THhQBBQwUD0nDHK7Lqm8NqgxczxhKX7JjJWlJiyAQ",
 };
 
-const V1_IDENTITY_FILE = {
-  version: "alcove-signing-identity/v1",
+const ED25519_IDENTITY_FILE = {
+  version: "alcove-signing-identity/v0-ed25519",
   privateKey: {
     kty: "OKP",
     crv: "Ed25519",
     x: "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
     d: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
   },
-  certificate: V1_CERTIFICATE,
+  certificate: ED25519_CERTIFICATE,
 };
 
 describe("format-version enforcement", () => {
   test("a certificate from the previous format is rejected, not parsed", async () => {
-    await expect(parseCertificate(V1_CERTIFICATE)).rejects.toThrow();
+    await expect(parseCertificate(ED25519_CERTIFICATE)).rejects.toThrow();
   });
 
   test("an identity file from the previous format is rejected, not parsed", async () => {
-    await expect(parseSigningIdentity(V1_IDENTITY_FILE)).rejects.toThrow();
+    await expect(parseSigningIdentity(ED25519_IDENTITY_FILE)).rejects.toThrow();
   });
 
   test("a current-format body holding the previous version is still rejected", async () => {
@@ -431,7 +431,7 @@ describe("format-version enforcement", () => {
     const cert = clone((await freshIdentity()).certificate) as unknown as {
       version: string;
     };
-    cert.version = "alcove-signing-cert/v1";
+    cert.version = "alcove-signing-cert/v0-ed25519";
     await expect(parseCertificate(cert)).rejects.toThrow();
   });
 });

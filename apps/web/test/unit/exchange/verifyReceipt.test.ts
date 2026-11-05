@@ -844,7 +844,7 @@ describe("parseCertificateDocument", () => {
     );
     expect(parsed.kind).toBe("unrecognized-version");
     if (parsed.kind === "unrecognized-version")
-      expect(parsed.message).toContain("alcove-signing-cert/v3");
+      expect(parsed.message).toContain("alcove-signing-cert/v1");
   });
 
   test("a certificate whose self-signature does not verify is malformed", async () => {

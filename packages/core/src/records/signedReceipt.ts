@@ -72,8 +72,8 @@ export const SIGNED_RECEIPT_MIGRATIONS: FormatMigrations<string> =
 
 // The domain label folded into the signed receipt-content bytes. Its version
 // tracks the shape of those bytes, not the signature algorithm; the embedded
-// certificate's own version separates a v1 certificate from a v3 one inside
-// them. See docs/spec/EXCHANGE_RECORD.md ("Receipt signature").
+// certificate's own version separates one certificate format from another
+// inside them. See docs/spec/EXCHANGE_RECORD.md ("Receipt signature").
 const RECEIPT_CONTENT_DOMAIN = "alcove-signed-receipt-content/v1";
 
 // The two HKDF info labels the session-derived receipt values are taken

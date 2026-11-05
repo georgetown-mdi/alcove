@@ -4763,7 +4763,7 @@ test("a completed signed run does not warn about a missing receipt", async () =>
 // signing-cert vectors' identities, reused here for a valid shape -- nothing
 // verifies them on the write path.
 const signedReceiptCertificate = {
-  version: "alcove-signing-cert/v3" as const,
+  version: "alcove-signing-cert/v1" as const,
   algorithm: "ecdsa-p256-sha256" as const,
   identity: "Party A",
   publicKey: {
