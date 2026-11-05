@@ -27,7 +27,7 @@ Two parties upgrade on their own schedules, so no release asks them to upgrade t
 - **Project-run services.** The broker, the TURN relay, the WebSocket relay and the relay's registrar that the project runs follow the tip of `main` through [the host pull](../infra/host-pull/README.md), so a client pinned to a release talks to a service newer than itself, and the handshake's version hellos do not reach them. Each keeps every client-facing protocol version that a supported release speaks, for as long as that release is supported: the current major and the previous major, and no 0.x release once 1.0 ships ([SECURITY.md](../SECURITY.md#supported-versions)). A service keeps a version by accepting what a supported release sends and answering in a form that release reads: the bounds it enforces on that input (frame size, parameter length, id alphabet, body size) and the close or status codes it answers with are part of the version. A new version is added beside the ones kept, no bound is tightened below what a kept release sends, and a version is dropped when the last release that speaks it leaves the support window. Of the hosted web application's builds, the services keep only those of the supported releases. A tab left open on a build from a push to `main` is brought current by the app, not by the services: the app offers the waiting update, and an installed app running its schedule applies it between scheduled runs ([MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#applying-a-waiting-app-version-between-windows)). The rule binds the services the project runs and says nothing of their uptime, which the project does not commit to ([DEPLOYMENT.md](DEPLOYMENT.md#the-projects-hosted-web-deployment)); a relay or registrar a party runs is that party's to update. Each service's spec states what it reads: [the broker](spec/WEBRTC_TRANSPORT.md#compatibility-of-the-broker-socket), [the WebSocket relay](spec/WEBSOCKET_RELAY.md#compatibility), [the registrar](spec/PROTOCOL.md#the-registrar-request-proof) and [the TURN relay's credential](spec/PROTOCOL.md#relay-credential-derivation), and [the SFTP relay](spec/SFTP_RELAY.md#compatibility), which the project does not run.
 - **Protocols no version names.** No client of these services states a version that the service reads, and none negotiates one: each connection to them comes before any hello. So each protocol is kept as the supported releases speak it today, and each service's spec, linked above, states what it reads. The relay key, the exchange id and the proofs have their version only in a derivation label, which comes before any hello, so a label changes only as a retirement does: for a stated reason, announced one MINOR release ahead, and only at a MAJOR.
 
-Releases below 1.0.0 carry no compatibility promise and partners upgrade together; the compatibility policy binds from 1.0.0.
+Releases below 1.0.0 carry no compatibility promise and partners upgrade together; the compatibility policy binds from 1.0.0. The one earlier rule: from 0.9.0, a record-format change bumps its version and adds a migration step ([Reset the exchange-record format at 0.9.0](#reset-the-exchange-record-format-at-090)).
 
 Alcove has one product version, held in `apps/cli/package.json`, the canonical release version:
 
@@ -156,15 +156,15 @@ Every release image is scanned for vulnerable packages before it is published. T
 
 ## A security update opened against main
 
-Every ecosystem block in `.github/dependabot.yml` sets `target-branch: staging`, and `main`'s copy of that file says the same, yet a Dependabot _security_ update can still open a pull request against `main`. This has been observed once, for the js-yaml advisory; treat it as observed behavior rather than a settled rule, and expect a repeat. Merging such a pull request puts a commit on `main` that `staging` does not have, so the next release promotion is no longer a fast-forward from `staging`.
+Every ecosystem block in `.github/dependabot.yml` sets `target-branch: staging`, and `main`'s copy of that file says the same, yet a Dependabot _security_ update can still open a pull request against `main`. This has been observed once, for the js-yaml advisory; treat it as observed behavior rather than a settled rule, and expect a repeat. `main` moves only by promotion, a fast-forward onto a `staging` commit, and never holds a commit `staging` lacks, so such a pull request is never merged.
 
-**The default: close it, and let the promotion carry the fix.**
+**Close it, and let the promotion carry the fix.**
 
 1. Read `staging` for the package the alert names -- `package-lock.json`, or the `FROM` line for a base image pin. `staging` routinely holds the fix already, because the alert is evaluated against `main` (see [step 4](#4-review-and-audit-dependencies)).
 2. If `staging` has it, close the `main` pull request unmerged. The next promotion moves the fix to `main` and clears the alert.
 3. If `staging` does not have it, take the bump on `staging` first -- a branch of your own off `staging` with the same lockfile change, reviewed and merged the ordinary way -- and then close the `main` pull request. Do not retarget the Dependabot branch at `staging`: what Dependabot does with a retargeted branch on its next push is untested.
 
-**When to merge it to `main` instead.** Only when the fix has to sit on `main` ahead of the next promotion, because something built or assessed from the default branch needs it now. Then merge it, and take the same change on `staging` at once by item 3 above if `staging` lacks it. `staging` accepts squash or rebase merges only, so it takes the change and not `main`'s commit, and the next promotion is still not a fast-forward.
+When something built or assessed from the default branch needs the fix sooner, promote `staging` once it holds the fix.
 
 ## Release Checklist
 
@@ -194,7 +194,7 @@ The canonical release version is also what arms the wire-format pin. `npm run ch
 
 #### Reset the exchange-record format at 0.9.0
 
-Six internal literals are development counters until `0.9.0`, cycled freely: a release below `0.9.0` publishes their current values under no compatibility promise: `EXCHANGE_RECORD_VERSION` and `EXCHANGE_KEYS_VERSION` (`packages/core/src/records/exchangeRecord.ts`), `SIGNED_RECEIPT_VERSION` and `RECEIPT_CONTENT_DOMAIN` (`packages/core/src/records/signedReceipt.ts`), and `SIGNING_CERTIFICATE_VERSION` and `SIGNING_IDENTITY_VERSION` (`packages/core/src/records/signingIdentity.ts`). The first release at `0.9.0` or above ships every one of them reset to its own `v1` form -- `alcove-exchange-record/v1`, `alcove-exchange-keys/v1`, `alcove-signed-receipt/v1`, `alcove-signed-receipt-content/v1`, `alcove-signing-cert/v1`, and `alcove-signing-identity/v1` -- and `npm run check:exchange-record-version`, armed from `0.9.0` by the same release version, fails from that release until `EXCHANGE_RECORD_VERSION`'s own reset is taken; the other five literals have no armed check of their own, so this checklist is what holds them to the reset. Each of the six has no migration step, so the reset leaves no step behind. The reset is taken once: the compatibility policy still binds from `1.0.0`, and a format change between `0.9.0` and `1.0.0` is an ordinary bump from `v1`, with no second reset. Take all six as one piece:
+Six internal literals are development counters until `0.9.0`, cycled freely: a release below `0.9.0` publishes their current values under no compatibility promise: `EXCHANGE_RECORD_VERSION` and `EXCHANGE_KEYS_VERSION` (`packages/core/src/records/exchangeRecord.ts`), `SIGNED_RECEIPT_VERSION` and `RECEIPT_CONTENT_DOMAIN` (`packages/core/src/records/signedReceipt.ts`), and `SIGNING_CERTIFICATE_VERSION` and `SIGNING_IDENTITY_VERSION` (`packages/core/src/records/signingIdentity.ts`). The first release at `0.9.0` or above ships every one of them reset to its own `v1` form -- `alcove-exchange-record/v1`, `alcove-exchange-keys/v1`, `alcove-signed-receipt/v1`, `alcove-signed-receipt-content/v1`, `alcove-signing-cert/v1`, and `alcove-signing-identity/v1` -- and `npm run check:exchange-record-version`, armed from `0.9.0` by the same release version, fails from that release until `EXCHANGE_RECORD_VERSION`'s own reset is taken; the other five literals have no armed check of their own, so this checklist is what holds them to the reset. Each of the six has no migration step, so the reset leaves no step behind. The reset is taken once: the wire format's compatibility policy still binds from `1.0.0`, and a record-format change from `0.9.0` on bumps its version from `v1` and adds a migration step, with no second reset. Take all six as one piece:
 
 1. Set each literal to its `v1` form: `EXCHANGE_RECORD_VERSION` and `EXCHANGE_KEYS_VERSION` in `packages/core/src/records/exchangeRecord.ts`; `SIGNED_RECEIPT_VERSION` and `RECEIPT_CONTENT_DOMAIN` in `packages/core/src/records/signedReceipt.ts`; `SIGNING_CERTIFICATE_VERSION` and `SIGNING_IDENTITY_VERSION` in `packages/core/src/records/signingIdentity.ts`.
 2. Regenerate every vectors file the moved literals pin, each through its own generator under `packages/core/test/vectors/`: `generate-exchange-record-vectors.mjs` for the exchange record; `generate-signed-receipt-vectors.mjs`, whose own `RECORD_VERSION`, `CONTENT_DOMAIN`, and `CERTIFICATE_VERSION` constants restate the receipt and certificate literals by design rather than importing them, and so must move with them by hand; `generate-signing-cert-vectors.mjs`, whose `CERTIFICATE_VERSION` and `IDENTITY_VERSION` constants restate the same certificate and identity literals; and `generate-terms-envelope-vectors.mjs`, which captures a real exchange off the built certificate rather than restating it, so it includes the moved literals with no constant of its own to edit. Build core first (`npm run build -w packages/core`), and run `generate-signing-cert-vectors.mjs` before `generate-terms-envelope-vectors.mjs`, which reads `signing-cert-vectors.json`. The terms generator writes to stdout, so redirect it to `terms-envelope-vectors.json`; the other three write their own file. Run `npx prettier --write` over each regenerated file. `npm run check:vectors` holds every vectors file to its generator, so a generator constant left behind fails there.
@@ -241,7 +241,7 @@ Run what CI gates, rather than a copy of it that drifts: `.github/workflows/stat
 
 Open a pull request from `release/vX.Y.Z` into `staging`. The PR title should be `Release vX.Y.Z`. Include a summary of changes (copy from CHANGELOG). Require at least one review, then squash-merge it like any other pull request into `staging`.
 
-Then promote `staging` to `main` as usual: `main` fast-forwards onto the release's squash commit, so `main`'s tip is that commit.
+Then promote the release's squash commit to `main`: `main` fast-forwards onto that commit itself, not onto `staging`'s tip when another pull request has merged into `staging` after it, so `main`'s tip is the release commit.
 
 ### 7. Tag the release
 
@@ -319,16 +319,24 @@ Nothing merges back after a release: `main`'s tip is already a `staging` commit.
 
 ## Hotfix Releases
 
-For security fixes or critical bugs in an already-released version:
+A fix to the latest release ships as the next release: take it on `staging` by an ordinary pull request, then cut the release from `staging` by the [Release Checklist](#release-checklist).
 
-1. Branch from the affected release tag: `git checkout -b hotfix/vX.Y.Z+1 vX.Y.Z`.
+The hotfix flow below is for an older release line only, one whose version is below the highest `vX.Y.Z` tag in the repository, such as the previous major (see [SECURITY.md](../SECURITY.md)). Its fix has to ship without the work `staging` holds beyond that line. If a fix to the latest release affects the previous major as well, that line takes its own hotfix before either is published.
+
+An older-line hotfix never reaches `main`: its tag holds it, and step 11 brings the fix into `staging`.
+
+1. Branch from the older line's release tag: `git checkout -b release/vX.Y.Z+1 vX.Y.Z`.
 2. Apply the fix with a minimal, focused commit.
-3. Follow steps 3 through 11 above, incrementing only the PATCH component.
-4. If the vulnerability affects the previous major version as well (see [SECURITY.md](../SECURITY.md)), apply the fix there too before proceeding.
+3. Take steps 2 through 5 on that branch, incrementing only the PATCH component. Everything step 5 runs must pass before the tag.
+4. In place of steps 6 and 7, tag the branch's tip, signed as step 7 signs, and push the tag: `git tag -s vX.Y.Z+1 -m "Alcove vX.Y.Z+1"` and `git push origin vX.Y.Z+1`.
+5. Take steps 8 through 10, leaving "Set as the latest release" unticked in step 10.
+6. Take step 11.
 
-A hotfix on an older release line, one whose version is below the highest `vX.Y.Z` tag in the repository, publishes its signed `X.Y.Z` and `X.Y` images on both registries, the GitHub Release with its launchers, and the hosted app's signed manifest. It does not move `latest` or `latest-fips` and does not deploy the hosted app, so those tags, production, and the repository's Latest release keep the newest release.
+**What CI runs on the branch.** The pull-request triggers of the gating workflows (`static_checks.yaml`, `cli_build_and_test.yaml`, `web_build_and_test.yaml`, `codeql.yaml`, `dependency_review.yaml`, `native_alpine.yaml`) name `main` and `staging` as the base, and their push triggers name only `main` or `staging`, so none runs on a `release/` branch that has no pull request into either. Step 5's local run is the gate. The tag push runs `release.yaml` on its `v[0-9]+.[0-9]+.[0-9]+` trigger, with its test job and the scans of step 8 ahead of any publish. Its dry run (step 8) can be dispatched from the branch once the branch is pushed.
 
-For a hotfix answering a privately reported vulnerability, this section is the mechanics only. The sequencing around it -- keeping the fix out of public view until the release and the advisory land together, and what publishes alongside them -- is in [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md#4-fix-privately-then-release).
+An older-line hotfix publishes its signed `X.Y.Z` and `X.Y` images on both registries, the GitHub Release with its launchers, and the hosted app's signed manifest. It does not move `latest` or `latest-fips` and does not deploy the hosted app, so those tags, production, and the repository's Latest release keep the newest release.
+
+For a fix answering a privately reported vulnerability, this section is the mechanics only. The sequencing around it -- keeping the fix out of public view until the release and the advisory land together, and what publishes alongside them -- is in [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md#4-fix-privately-then-release).
 
 ## Verifying a Release
 

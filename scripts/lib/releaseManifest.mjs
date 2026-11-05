@@ -20,8 +20,8 @@ export const COMPATIBILITY_RELEASE = "1.0.0";
 // The first release at or above which the six record-format literals ship
 // reset to v1 (docs/RELEASES.md, "Reset the exchange-record format at 0.9.0").
 // Below it they are development counters. It is no later than
-// COMPATIBILITY_RELEASE, and a format change between the two bumps forward
-// from v1.
+// COMPATIBILITY_RELEASE, and a record-format change between the two bumps
+// forward from v1 with a migration step.
 export const RESET_RELEASE = "0.9.0";
 
 /**

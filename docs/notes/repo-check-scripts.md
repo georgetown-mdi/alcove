@@ -296,7 +296,7 @@ They are named functions rather than a surface description: a declaration is a f
 The counter has cycled freely, from the format's first `v1` under the earlier product name on up,
 because releases below 1.0.0 carry no compatibility promise and partners upgrade together.
 The reset is taken at 0.9.0 rather than earlier,
-and only once: the compatibility policy still binds from 1.0.0, and a format change between the two bumps forward from `v1`.
+and only once: the wire format's compatibility policy still binds from 1.0.0, and a record-format change between the two bumps forward from `v1` with a migration step.
 Re-using a previously cycled value mid-development would let an artifact written under it parse as the current version and fail on its field set,
 instead of taking the clean version refusal the reader is built to give.
 

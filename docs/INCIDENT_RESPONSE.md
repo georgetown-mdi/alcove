@@ -1,7 +1,7 @@
 ---
 title: "Security Incident Response Runbook"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-02"
+last_reviewed: "2026-11-05"
 ---
 
 # Security incident response runbook
@@ -76,14 +76,14 @@ Patches cover the current major release and the previous major ([SECURITY.md#sup
 
 ## 4. Fix privately, then release
 
-The release mechanics are [RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases): branch from the affected release tag, one minimal focused commit, then the ordinary release checklist with a PATCH bump. Follow it as written. This step adds the disclosure sequencing around it.
+The release mechanics are [RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases): a fix to the latest release ships as the next release, cut from `staging` by the ordinary release checklist, and a fix to an older release line is a PATCH release branched from that line's tag and tagged without merging. Follow it as written. This step adds the disclosure sequencing around it.
 
 - Develop out of public view: GitHub's temporary private fork from the report thread, or a local branch. Do not push the branch to the public repository.
 - Write a regression test that fails without the fix.
-- **Opening the pull request is the disclosure.** A fix diff on a public repository shows anyone reading it what the flaw was, whatever the PR text says. Open it when you are ready to merge, tag, release, and publish the advisory in one sitting, not days ahead of the release.
+- **Opening the pull request is the disclosure.** A fix diff on a public repository shows anyone reading it what the flaw was, whatever the PR text says. Open it when you are ready to merge, tag, release, and publish the advisory in one sitting, not days ahead of the release. An older-line hotfix opens its pull request only after the release, so for it pushing the tag is the disclosure.
 - Until the advisory publishes, the pull request body and the commit message describe the fix, not the attack.
 - The CHANGELOG entry goes in a `### Security` subsection ([RELEASES.md#3-update-changelogmd](RELEASES.md#3-update-changelogmd)). It names the impact and the fixed version, and it can be written at publication time rather than in the private fork.
-- If a supported previous major is affected, apply the fix there too before publishing anything ([RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases), step 4).
+- If a supported previous major is affected, apply the fix there too, by its own hotfix, before publishing anything ([RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases)).
 - A security release skips none of the ordinary gates: the [image vulnerability scan](RELEASES.md#image-vulnerability-scan) still gates the push, and the release still produces a signed image, a provenance attestation, and an SBOM.
 
 ## 5. Draft the advisory and request a CVE
@@ -149,7 +149,7 @@ I will escalate immediately.
 
 ### Co-owner hotfix
 
-The co-owner can ship a fix without the maintainer when waiting is not viable, as step 5 above defines it. Branch from the affected release tag, apply the fix, and follow [RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases) for the release steps, except that the review before merging is waived on this path: say so in the pull request. Opening that pull request is the disclosure, so merge, tag, release and publish the advisory in one sitting, as [4. Fix privately, then release](#4-fix-privately-then-release) and [5. Draft the advisory and request a CVE](#5-draft-the-advisory-and-request-a-cve) set out. At the tag step, sign the tag with your own SSH key, whose fingerprint is listed in [RELEASES.md#source-integrity](RELEASES.md#source-integrity), with git set to sign with it in that clone (`git config gpg.format ssh` and `git config user.signingkey <path to the key>`), and push it: the release workflow runs on that push and needs no approval from the maintainer.
+The co-owner can ship a fix without the maintainer when waiting is not viable, as step 5 above defines it. Follow [RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases) for the fix and the release steps, except that the review before merging is waived on this path: say so in the pull request. Opening that pull request, or for an older-line hotfix pushing its tag, is the disclosure, so merge, tag, release and publish the advisory in one sitting, as [4. Fix privately, then release](#4-fix-privately-then-release) and [5. Draft the advisory and request a CVE](#5-draft-the-advisory-and-request-a-cve) set out. At the tag step, sign the tag with your own SSH key, whose fingerprint is listed in [RELEASES.md#source-integrity](RELEASES.md#source-integrity), with git set to sign with it in that clone (`git config gpg.format ssh` and `git config user.signingkey <path to the key>`), and push it: the release workflow runs on that push and needs no approval from the maintainer.
 
 ## Exercise record
 

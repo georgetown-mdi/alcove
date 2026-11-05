@@ -70,7 +70,7 @@ names the renamed `v1` form, and `RESET_TAKEN_AT_RELEASE` stays unset. The
 first-publication reset in
 [RELEASES.md](../RELEASES.md#reset-the-exchange-record-format-at-090)
 stands, with its literals renamed, and is still taken once at the first
-published release.
+release at 0.9.0 or above.
 
 Two literals follow the rule to a value no build has sent or written:
 
