@@ -625,6 +625,17 @@ for (const {
       );
     });
 
+    it("carries the repository's NOTICE at /app/NOTICE", () => {
+      // NOTICE holds the notice of each package the CLI loads that ships no
+      // license file of its own in node_modules.
+      const copy = image.runtimeCopies.find(({ dests }) =>
+        dests.includes("/app/NOTICE"),
+      );
+      expect(copy).toBeDefined();
+      expect(copy.flags.some((f) => f.startsWith("--from="))).toBe(false);
+      expect(copy.sources).toEqual(["NOTICE"]);
+    });
+
     it("runs the console server entry, under a copied directory, for the serve role", () => {
       const serveArgv = execArgv((l) => l.includes("console-server"));
       const serverEntry = serveArgv.find((t) => t.includes("console-server"));

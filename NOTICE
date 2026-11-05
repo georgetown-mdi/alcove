@@ -100,7 +100,8 @@ text.
 
 The command line application copies no npm package into its build. It loads
 its dependencies at runtime from node_modules (/app/node_modules in the
-container images), and each package there carries the license file it ships.
+container images, which carry this file at /app/NOTICE), and each package
+there carries the license file it ships.
 One package the CLI loads ships no license file, so its notice is the license,
 author, and source its package.json declares:
 
