@@ -352,8 +352,10 @@ test("a value holding the chosen delimiter survives a write-then-read round trip
     const file =
       headers.join(delimiter) + "\n" + rows[0].join(delimiter) + "\n";
     const readBack = await loadCSVFile(streamOf(file), undefined, delimiter);
-    expect(readBack.meta.fields).toEqual(["pid", "row_id", "note"]);
-    expect(readBack.data).toEqual([{ pid: held, row_id: "0", note: held }]);
+    expect(readBack.meta.fields).toEqual(["pid", "partner_row", "note"]);
+    expect(readBack.data).toEqual([
+      { pid: held, partner_row: "0", note: held },
+    ]);
   }
 });
 

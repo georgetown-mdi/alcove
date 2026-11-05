@@ -178,7 +178,7 @@ test("preparePayload: a dataset whose only isPayload column is ignored has no da
 
 test("buildOutputTable: an ignored column is not treated as the identifier", () => {
   // patient_id is present but marked ignored, so it is not the output identifier;
-  // the header falls back to row_id just as it does with no identifier column.
+  // the header falls back to your_row just as it does with no identifier column.
   const metaIgnoredId: Metadata = [
     { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
     {
@@ -199,7 +199,7 @@ test("buildOutputTable: an ignored column is not treated as the identifier", () 
     metaIgnoredId,
     partnerPayload,
   );
-  expect(headers[0]).toBe("row_id");
+  expect(headers[0]).toBe("your_row");
 });
 
 test("buildOutputTable: a short row omitting a prototype-member identifier column falls back to the row index, not the inherited function", () => {
@@ -1722,7 +1722,7 @@ test("exchangePayloads: a send refused after an earlier part was taken is report
 
 // --- buildOutputTable --------------------------------------------------------
 
-test("buildOutputTable: our header falls back to row_id when no identifier", () => {
+test("buildOutputTable: our header falls back to your_row when no identifier", () => {
   const partnerPayload: PartnerPayload = {
     columns: ["diagnosis"],
     rowIndices: [0],
@@ -1734,10 +1734,26 @@ test("buildOutputTable: our header falls back to row_id when no identifier", () 
     metaNoId,
     partnerPayload,
   );
-  expect(headers[0]).toBe("row_id");
+  expect(headers[0]).toBe("your_row");
 });
 
-test("buildOutputTable: our row_id value is the 0-based row index", () => {
+test("buildOutputTable: with no identifier the leading headers are your_row and partner_row", () => {
+  const partnerPayload: PartnerPayload = {
+    columns: ["your_row"],
+    rowIndices: [3],
+    rows: [["X"]],
+  };
+  const { headers, rows } = buildOutputTable(
+    [[2], [3]],
+    rawRows,
+    metaNoId,
+    partnerPayload,
+  );
+  expect(headers).toEqual(["your_row", "partner_row", "their_your_row"]);
+  expect(rows).toEqual([["2", "3", "X"]]);
+});
+
+test("buildOutputTable: our your_row value is the 0-based row index", () => {
   const partnerPayload: PartnerPayload = {
     columns: [],
     rowIndices: [],
@@ -1774,7 +1790,7 @@ test("buildOutputTable: partner columns use plain names when no collision", () =
     metaWithId,
     partnerPayload,
   );
-  expect(headers).toEqual(["patient_id", "row_id", "partner_id", "notes"]);
+  expect(headers).toEqual(["patient_id", "partner_row", "partner_id", "notes"]);
 });
 
 test("buildOutputTable: their_ prefix disambiguates same-named columns", () => {
@@ -1789,7 +1805,7 @@ test("buildOutputTable: their_ prefix disambiguates same-named columns", () => {
     metaWithId,
     partnerPayload,
   );
-  expect(headers).toEqual(["patient_id", "row_id", "their_patient_id"]);
+  expect(headers).toEqual(["patient_id", "partner_row", "their_patient_id"]);
 });
 
 test("buildOutputTable: both parties sending a record_id identifier keep their own id first", () => {
@@ -1819,17 +1835,18 @@ test("buildOutputTable: both parties sending a record_id identifier keep their o
     sentIdentifier,
     partnerSent,
   );
-  expect(headers).toEqual(["record_id", "row_id", "their_record_id"]);
+  expect(headers).toEqual(["record_id", "partner_row", "their_record_id"]);
   expect(rows).toEqual([["A-101", "7", "B-907"]]);
 });
 
 test("buildOutputTable: partner row-index header falls back past colliding partner columns", () => {
   // Adversarial header collision: the partner sends columns literally named
-  // "row_id" and "their_row_id", both of which the partner row-index column would
-  // otherwise take. uniqueColumnName walks past them to their_row_id_2, so every
-  // header stays distinct rather than silently duplicating.
+  // "partner_row" and "their_partner_row", both of which the partner row-index
+  // column would otherwise take. uniqueColumnName walks past them to
+  // their_partner_row_2, so every header stays distinct rather than silently
+  // duplicating.
   const partnerPayload: PartnerPayload = {
-    columns: ["row_id", "their_row_id"],
+    columns: ["partner_row", "their_partner_row"],
     rowIndices: [3],
     rows: [["A", "B"]],
   };
@@ -1839,13 +1856,13 @@ test("buildOutputTable: partner row-index header falls back past colliding partn
     metaWithId,
     partnerPayload,
   );
-  // ourBaseName is patient_id, so the partner value columns keep their names; the
-  // partner-index column becomes their_row_id_2 (row_id and their_row_id taken).
+  // ourBaseName is patient_id, so the partner value columns keep their names;
+  // the partner-index column becomes their_partner_row_2.
   expect(headers).toEqual([
     "patient_id",
-    "their_row_id_2",
-    "row_id",
-    "their_row_id",
+    "their_partner_row_2",
+    "partner_row",
+    "their_partner_row",
   ]);
   expect(new Set(headers).size).toBe(headers.length);
   expect(rows[0]).toEqual(["P0", "3", "A", "B"]); // partner index in column 2
@@ -1893,7 +1910,7 @@ test("buildOutputTable: empty association table yields no rows", () => {
   expect(rows).toHaveLength(0);
 });
 
-test("buildOutputTable: no partner payload appends row_id with partner index", () => {
+test("buildOutputTable: no partner payload appends partner_row with partner index", () => {
   const partnerPayload: PartnerPayload = {
     columns: [],
     rowIndices: [],
@@ -1908,7 +1925,7 @@ test("buildOutputTable: no partner payload appends row_id with partner index", (
     metaWithId,
     partnerPayload,
   );
-  expect(headers).toEqual(["patient_id", "row_id"]);
+  expect(headers).toEqual(["patient_id", "partner_row"]);
   expect(rows[0]).toEqual(["P0", "0"]);
   expect(rows[1]).toEqual(["P1", "1"]);
 });
@@ -2291,7 +2308,7 @@ test("buildOutputTable: the 'one' side writes one row per pair, its identifier r
     receivedByOneSide,
   );
 
-  expect(headers).toEqual(["patient_id", "row_id", "diagnosis"]);
+  expect(headers).toEqual(["patient_id", "partner_row", "diagnosis"]);
   expect(rows).toEqual([
     ["P1", "0", "A"],
     ["P1", "1", "B"],
@@ -2313,8 +2330,8 @@ test("buildOutputTable: the 'many' side writes the one partner payload row again
   );
 
   expect(headers).toEqual([
-    "row_id",
-    "their_row_id",
+    "your_row",
+    "partner_row",
     "patient_id",
     "diagnosis",
   ]);
@@ -2358,7 +2375,7 @@ test("buildOutputTable: 'disclosed' writes the columns sent to the partner, afte
     "disclosed",
   );
   // patient_id is disclosed too, but the first column already holds it.
-  expect(headers).toEqual(["patient_id", "row_id", "note", "diagnosis"]);
+  expect(headers).toEqual(["patient_id", "partner_row", "note", "diagnosis"]);
   expect(rows).toEqual([
     ["P0", "0", "n-0", "A"],
     ["P1", "1", "n-1", "B"],
@@ -2377,7 +2394,13 @@ test("buildOutputTable: 'all' writes every declared column but the identifier", 
     "all",
   );
   // ssn is matched on and never sent; it reaches the result under "all" alone.
-  expect(headers).toEqual(["patient_id", "row_id", "note", "ssn", "diagnosis"]);
+  expect(headers).toEqual([
+    "patient_id",
+    "partner_row",
+    "note",
+    "ssn",
+    "diagnosis",
+  ]);
   expect(rows).toEqual([
     ["P0", "0", "n-0", "001", "A"],
     ["P1", "1", "n-1", "002", "B"],
@@ -2399,7 +2422,13 @@ test("buildOutputTable: an own column's value repeats once per pair under a dedu
     partnerPayload,
     "all",
   );
-  expect(headers).toEqual(["patient_id", "row_id", "note", "ssn", "diagnosis"]);
+  expect(headers).toEqual([
+    "patient_id",
+    "partner_row",
+    "note",
+    "ssn",
+    "diagnosis",
+  ]);
   expect(rows).toEqual([
     ["P1", "0", "n-0", "002", "B"],
     ["P1", "1", "n-1", "002", "B"],
@@ -2423,7 +2452,7 @@ test("buildOutputTable: a partner column colliding with an own column takes thei
   );
   expect(headers).toEqual([
     "patient_id",
-    "row_id",
+    "partner_row",
     "their_diagnosis",
     "diagnosis",
   ]);
@@ -2448,7 +2477,7 @@ test("buildOutputTable: a partner column falls past a header another partner col
   );
   expect(headers).toEqual([
     "patient_id",
-    "row_id",
+    "partner_row",
     "their_diagnosis",
     "their_their_diagnosis",
     "diagnosis",
@@ -2456,14 +2485,15 @@ test("buildOutputTable: a partner column falls past a header another partner col
   expect(new Set(headers).size).toBe(headers.length);
 });
 
-test("buildOutputTable: an own column named row_id takes own_ against the first column", () => {
-  // With no identifier column the first column is headed row_id, so an input
-  // column of that name cannot keep it. The partner row-index column then falls
-  // past both.
+test("buildOutputTable: own columns named your_row and partner_row push the leading headers aside", () => {
+  // With no identifier column the first column is headed your_row, so an input
+  // column of that name cannot keep it. An own column named partner_row is
+  // headed before the partner row-index column, which then falls past it.
   const meta: Metadata = [
-    { name: "row_id", type: "other", role: "payload", isPayload: true },
+    { name: "your_row", type: "other", role: "payload", isPayload: true },
+    { name: "partner_row", type: "other", role: "payload", isPayload: true },
   ];
-  const rows: Array<CSVRow> = [{ row_id: "local-0" }];
+  const rows: Array<CSVRow> = [{ your_row: "local-0", partner_row: "own-0" }];
   const partnerPayload: PartnerPayload = {
     columns: ["note"],
     rowIndices: [4],
@@ -2471,12 +2501,13 @@ test("buildOutputTable: an own column named row_id takes own_ against the first 
   };
   const table = buildOutputTable([[0], [4]], rows, meta, partnerPayload, "all");
   expect(table.headers).toEqual([
-    "row_id",
-    "their_row_id",
+    "your_row",
+    "their_partner_row",
     "note",
-    "own_row_id",
+    "own_your_row",
+    "partner_row",
   ]);
-  expect(table.rows).toEqual([["0", "4", "n-4", "local-0"]]);
+  expect(table.rows).toEqual([["0", "4", "n-4", "local-0", "own-0"]]);
   expect(new Set(table.headers).size).toBe(table.headers.length);
 });
 
@@ -2489,7 +2520,7 @@ test("buildOutputTable: an own column is written even when the partner sent no p
     empty,
     "all",
   );
-  expect(headers).toEqual(["patient_id", "row_id", "ssn", "diagnosis"]);
+  expect(headers).toEqual(["patient_id", "partner_row", "ssn", "diagnosis"]);
   expect(rows).toEqual([["P2", "0", "003", "C"]]);
 });
 
@@ -2529,9 +2560,9 @@ test("buildOutputTable: an ignored column reaches the result under 'all' but not
   const empty: PartnerPayload = { columns: [], rowIndices: [], rows: [] };
   expect(
     buildOutputTable([[0], [0]], rows, meta, empty, "disclosed").headers,
-  ).toEqual(["pid", "row_id"]);
+  ).toEqual(["pid", "partner_row"]);
   expect(buildOutputTable([[0], [0]], rows, meta, empty, "all")).toEqual({
-    headers: ["pid", "row_id", "internal"],
+    headers: ["pid", "partner_row", "internal"],
     rows: [["P0", "0", "keep"]],
   });
 });
@@ -2550,7 +2581,12 @@ test("buildOutputTable: a partner column repeating a plain name is uniquified fo
     metaWithId,
     partnerPayload,
   );
-  expect(noOwn.headers).toEqual(["patient_id", "row_id", "note", "their_note"]);
+  expect(noOwn.headers).toEqual([
+    "patient_id",
+    "partner_row",
+    "note",
+    "their_note",
+  ]);
   expect(new Set(noOwn.headers).size).toBe(noOwn.headers.length);
   expect(noOwn.rows).toEqual([["P0", "0", "n0", "m0"]]);
 
@@ -2563,7 +2599,7 @@ test("buildOutputTable: a partner column repeating a plain name is uniquified fo
   );
   expect(withOwn.headers).toEqual([
     "patient_id",
-    "row_id",
+    "partner_row",
     "note",
     "their_note",
     "ssn",
@@ -2585,7 +2621,12 @@ test("buildOutputTable: a partner column repeating the local first column's name
     rows: [["Q0", "R0"]],
   };
   const noOwn = buildOutputTable([[0], [0]], rows, meta, partnerPayload);
-  expect(noOwn.headers).toEqual(["pid", "row_id", "their_pid", "their_pid_2"]);
+  expect(noOwn.headers).toEqual([
+    "pid",
+    "partner_row",
+    "their_pid",
+    "their_pid_2",
+  ]);
   expect(new Set(noOwn.headers).size).toBe(noOwn.headers.length);
   expect(noOwn.rows).toEqual([["P0", "0", "Q0", "R0"]]);
 
@@ -2598,7 +2639,7 @@ test("buildOutputTable: a partner column repeating the local first column's name
   );
   expect(withOwn.headers).toEqual([
     "pid",
-    "row_id",
+    "partner_row",
     "their_pid",
     "their_pid_2",
     "diagnosis",
@@ -2607,9 +2648,9 @@ test("buildOutputTable: a partner column repeating the local first column's name
   expect(withOwn.rows).toEqual([["P0", "0", "Q0", "R0", "A"]]);
 });
 
-test("buildOutputTable: a partner column repeating 'row_id' is uniquified for each occurrence", () => {
+test("buildOutputTable: a partner column repeating 'partner_row' is uniquified for each occurrence", () => {
   const partnerPayload: PartnerPayload = {
-    columns: ["row_id", "row_id"],
+    columns: ["partner_row", "partner_row"],
     rowIndices: [3],
     rows: [["A", "B"]],
   };
@@ -2621,9 +2662,9 @@ test("buildOutputTable: a partner column repeating 'row_id' is uniquified for ea
   );
   expect(noOwn.headers).toEqual([
     "patient_id",
-    "their_row_id_2",
-    "row_id",
-    "their_row_id",
+    "their_partner_row_2",
+    "partner_row",
+    "their_partner_row",
   ]);
   expect(new Set(noOwn.headers).size).toBe(noOwn.headers.length);
   expect(noOwn.rows).toEqual([["P0", "3", "A", "B"]]);
@@ -2637,9 +2678,9 @@ test("buildOutputTable: a partner column repeating 'row_id' is uniquified for ea
   );
   expect(withOwn.headers).toEqual([
     "patient_id",
-    "their_row_id_2",
-    "row_id",
-    "their_row_id",
+    "their_partner_row_2",
+    "partner_row",
+    "their_partner_row",
     "ssn",
     "diagnosis",
   ]);

@@ -660,11 +660,11 @@ describe("a partner's terms change, met by a console run of the opened configura
     expectRunSucceeded(rerun.record);
     expectCliSucceeded(rerun.partner, "exchange");
     const rows = resultRows(manager.getJobView(rerun.record.id)!.outputPath!);
-    expect(rows.map((row) => [row.row_id, row.their_row_id])).toEqual(
+    expect(rows.map((row) => [row.your_row, row.partner_row])).toEqual(
       CONSOLE_PAIRS.map(([own, partner]) => [String(own), String(partner)]),
     );
     for (const row of rows)
-      expect(row.county).toBe(COUNTY_BY_CONSOLE_ROW[row.row_id]);
+      expect(row.county).toBe(COUNTY_BY_CONSOLE_ROW[row.your_row]);
   });
 
   test("a declined apply or a run whose terms were edited leaves alcove.yaml unchanged", async () => {

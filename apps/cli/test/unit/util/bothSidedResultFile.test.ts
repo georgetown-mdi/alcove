@@ -82,7 +82,7 @@ const partnerPayload: PartnerPayload = {
 
 // The whole product of the block, in this party's row order, then the single pair
 // beside it. A row per pair and nothing else: no cluster id, no group size.
-const EXPECTED_HEADERS = ["pid", "row_id", "clinic"];
+const EXPECTED_HEADERS = ["pid", "partner_row", "clinic"];
 const EXPECTED_ROWS = [
   ["A1", "0", "north"],
   ["A1", "1", "south"],

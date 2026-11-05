@@ -98,7 +98,7 @@ const associationTable: AssociationTable = [
 ];
 
 const INPUT_CSV = "pid,dose\nP0,10mg\nP1,20mg\n";
-const RESULT_CSV = "pid,their_row_id,clinic\nP0,1,south\nP1,0,north\n";
+const RESULT_CSV = "pid,partner_row,clinic\nP0,1,south\nP1,0,north\n";
 
 // The run binder this fixture's record and the signed receipt below both have,
 // so the two artifacts pair as one run. A caller passes another value to stand in
@@ -133,7 +133,7 @@ const SEMICOLON_PARTNER_TERMS: LinkageTerms = {
   payload: { send: [{ name: SEMICOLON_COLUMN }] },
 };
 const SEMICOLON_RESULT_CSV =
-  `pid,their_row_id,${SEMICOLON_COLUMN}\n` +
+  `pid,partner_row,${SEMICOLON_COLUMN}\n` +
   "P0,1,south;b;2;y\nP1,0,north;a;1;x\n";
 
 async function buildSemicolonFixture(): Promise<{
@@ -652,7 +652,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       3,
       // Our row 0 pairs the partner's row 1 -- the null cell -- so the result
       // holds it as an empty cell.
-      csvFile("result.csv", "pid,their_row_id,clinic\nP0,1,\nP1,0,north\n"),
+      csvFile("result.csv", "pid,partner_row,clinic\nP0,1,\nP1,0,north\n"),
     );
     await userEvent.click(
       page.getByRole("button", { name: "Verify with these files" }),
@@ -700,7 +700,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       // Our row 0 pairs the partner's row 1, whose committed value was "south";
       // re-supplying a different non-empty value mismatches without an empty
       // cell anywhere in the re-supplied payload.
-      csvFile("result.csv", "pid,their_row_id,clinic\nP0,1,east\nP1,0,north\n"),
+      csvFile("result.csv", "pid,partner_row,clinic\nP0,1,east\nP1,0,north\n"),
     );
     await userEvent.click(
       page.getByRole("button", { name: "Verify with these files" }),

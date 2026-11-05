@@ -53,7 +53,7 @@ const LOCAL_CONFIG = {
   ],
 };
 const INPUT_CSV = "pid,dose\nP0,10mg\nP1,20mg\n";
-const RESULT_CSV = "pid,their_row_id,clinic\nP0,1,south\nP1,0,north\n";
+const RESULT_CSV = "pid,partner_row,clinic\nP0,1,south\nP1,0,north\n";
 
 async function exchangeRecord() {
   return buildExchangeRecord({

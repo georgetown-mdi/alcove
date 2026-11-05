@@ -1007,11 +1007,23 @@ describe("the config's signing block", () => {
 describe("deriveOurIdColumn", () => {
   test("returns the first header when the input has that column (identifier)", () => {
     expect(
-      deriveOurIdColumn(["pid", "row_id", "note"], new Set(["pid", "dose"])),
+      deriveOurIdColumn(
+        ["pid", "partner_row", "note"],
+        new Set(["pid", "dose"]),
+      ),
     ).toBe("pid");
   });
 
   test("returns undefined when the first header is not an input column (row index)", () => {
+    expect(
+      deriveOurIdColumn(["your_row", "partner_row"], new Set(["dose"])),
+    ).toBeUndefined();
+  });
+
+  test("reads a result an earlier version headed with row_id the same way", () => {
+    expect(
+      deriveOurIdColumn(["pid", "row_id", "note"], new Set(["pid", "dose"])),
+    ).toBe("pid");
     expect(
       deriveOurIdColumn(["row_id", "their_row_id"], new Set(["dose"])),
     ).toBeUndefined();
@@ -1021,13 +1033,13 @@ describe("deriveOurIdColumn", () => {
 describe("toRetainedResult", () => {
   test("converts header-keyed rows into positional headers and rows", () => {
     const result = toRetainedResult({
-      meta: { fields: ["pid", "row_id", "note"] },
+      meta: { fields: ["pid", "partner_row", "note"] },
       data: [
-        { pid: "P0", row_id: "2", note: "x" },
-        { pid: "P2", row_id: "0", note: "" },
+        { pid: "P0", partner_row: "2", note: "x" },
+        { pid: "P2", partner_row: "0", note: "" },
       ],
     });
-    expect(result.headers).toEqual(["pid", "row_id", "note"]);
+    expect(result.headers).toEqual(["pid", "partner_row", "note"]);
     expect(result.rows).toEqual([
       ["P0", "2", "x"],
       ["P2", "0", ""],
@@ -1500,7 +1512,7 @@ describe("handler", () => {
       const inputPath = join(dir, "input.csv");
       writeFileSync(inputPath, "ssn,dose\n123-45-6789,10mg\n");
       const resultPath = join(dir, "result.csv");
-      writeFileSync(resultPath, "ssn,row_id,status\n");
+      writeFileSync(resultPath, "ssn,partner_row,status\n");
       const { stdout, exits } = await runVerify({
         record: path,
         "config-file": writeYaml(
@@ -1779,7 +1791,7 @@ describe("handler", () => {
       const inputPath = join(dir, "input.csv");
       writeFileSync(inputPath, "pid,dose\nP0,10mg\n");
       const resultPath = join(dir, "result.csv");
-      writeFileSync(resultPath, "pid,row_id,status\nP0,0,inactive\n");
+      writeFileSync(resultPath, "pid,partner_row,status\nP0,0,inactive\n");
       const args = {
         record: recordPath,
         "input-file": inputPath,
@@ -1851,7 +1863,7 @@ describe("handler", () => {
     const inputPath = join(dir, "input.csv");
     writeFileSync(inputPath, "pid,dose\nP0,10mg\n");
     const resultPath = join(dir, "result.csv");
-    writeFileSync(resultPath, "pid,row_id,status\nP0,0,\n");
+    writeFileSync(resultPath, "pid,partner_row,status\nP0,0,\n");
 
     const { stdout, exits, exitCode } = await runVerify({
       record: recordPath,
@@ -1891,7 +1903,7 @@ describe("handler", () => {
     const inputPath = join(dir, "input.csv");
     writeFileSync(inputPath, "pid,dose\nP0,10mg\n");
     const resultPath = join(dir, "result.csv");
-    writeFileSync(resultPath, "pid,row_id,status\nP0,0,inactive\n");
+    writeFileSync(resultPath, "pid,partner_row,status\nP0,0,inactive\n");
 
     const { stdout, exits, exitCode } = await runVerify({
       record: recordPath,
@@ -1921,7 +1933,7 @@ describe("handler", () => {
     const inputPath = join(dir, "input.csv");
     writeFileSync(inputPath, "pid,dose\nP0,10mg\n");
     const resultPath = join(dir, "result.csv");
-    writeFileSync(resultPath, "pid,row_id,status\nP0,0,inactive\n");
+    writeFileSync(resultPath, "pid,partner_row,status\nP0,0,inactive\n");
 
     const { stdout, exits, exitCode } = await runVerify({
       record: recordPath,
@@ -1948,7 +1960,7 @@ describe("handler", () => {
     const inputPath = join(dir, "input.csv");
     writeFileSync(inputPath, "pid,dose\nP0,10mg\n");
     const resultPath = join(dir, "result.csv");
-    writeFileSync(resultPath, "pid,row_id,status\nP0,0,inactive\n");
+    writeFileSync(resultPath, "pid,partner_row,status\nP0,0,inactive\n");
 
     const { stdout, exits, exitCode } = await runVerify({
       record: recordPath,
@@ -2013,7 +2025,7 @@ describe("handler", () => {
     const inputPath = join(dir, "input.csv");
     writeFileSync(inputPath, "pid,dose\nP0,10mg\n");
     const resultPath = join(dir, "result.csv");
-    writeFileSync(resultPath, "pid,row_id,status\nP0,0,active\n");
+    writeFileSync(resultPath, "pid,partner_row,status\nP0,0,active\n");
     const { stdout, exits, exitCode } = await runVerify({
       record: recordPath,
       "input-file": inputPath,
@@ -2047,6 +2059,34 @@ describe("handler", () => {
     expect(exitCode).toBe(0);
   });
 
+  test("a result file an earlier version headed with row_id opens every commitment", async () => {
+    const { recordPath } = await exchangeArtifacts({
+      associationTable: [[0], [0]],
+      resultSize: 1,
+      partnerPayloadReceived: { columns: ["status"], rows: [["active"]] },
+    });
+    const dir = tmp();
+    const inputPath = join(dir, "input.csv");
+    writeFileSync(inputPath, "pid,dose\nP0,10mg\n");
+    const resultPath = join(dir, "result.csv");
+    writeFileSync(resultPath, "pid,row_id,status\nP0,0,active\n");
+    const { stdout, exits } = await runVerify({
+      record: recordPath,
+      "input-file": inputPath,
+      "result-file": resultPath,
+      "config-file": writeYaml(
+        YAML.stringify({ linkage_terms: baseInputs.localTerms }),
+      ),
+    });
+    expect(exits).toEqual([]);
+    for (const commitment of [
+      "localPayloadSent",
+      "partnerPayloadReceived",
+      "associationTable",
+    ])
+      expect(stdout).toContain(`commitment ${commitment}: opened and matches`);
+  });
+
   // --- the delimiter the retained files are re-read by ------------------------
   // The files a verification re-reads are the ones an exchange wrote, so the
   // configuration that ran it names how to read them back.
@@ -2069,7 +2109,7 @@ describe("handler", () => {
     const resultPath = join(dir, "result.csv");
     writeFileSync(
       resultPath,
-      `pid${delimiter}row_id${delimiter}status\n` +
+      `pid${delimiter}partner_row${delimiter}status\n` +
         `P0${delimiter}0${delimiter}active\n`,
     );
     return { recordPath, inputPath, resultPath };

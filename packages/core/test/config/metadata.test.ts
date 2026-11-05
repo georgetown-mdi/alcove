@@ -1460,7 +1460,7 @@ test("ownResultColumnNames: 'all' writes the undeclared columns after the declar
 // --- inferredRecordIdentifierStatement ---------------------------------------
 
 const NO_IDENTIFIER_STATEMENT =
-  "none found; the result's row_id column identifies your rows by their " +
+  "none found; the result's your_row column identifies your rows by their " +
   "position in the file, counting from 0";
 
 /** The first header and first-column cells of the result for `metadata`, with
@@ -1533,7 +1533,7 @@ test("inferredRecordIdentifierStatement with no id column says the result number
   const rows = [0, 1, 2].map((index) =>
     Object.fromEntries(columns.map((name) => [name, `${name}-${index}`])),
   );
-  expect(resultFirstColumn(metadata, rows)).toEqual(["row_id", "1", "2"]);
+  expect(resultFirstColumn(metadata, rows)).toEqual(["your_row", "1", "2"]);
 });
 
 test("inferredRecordIdentifierStatement escapes a control or text-direction character in the name", () => {

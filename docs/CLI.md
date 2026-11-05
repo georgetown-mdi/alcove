@@ -628,7 +628,7 @@ An exchange prints what it will disclose before any credential, terms, or data a
 - whether several of your records may match one of your partner's, and what that grouping tells your partner;
 - the fields matched on, each with its column in parentheses where the names differ (`date of birth (dob)`, or `date of birth (dob; only whether it is present)` for a missing-field condition), and the linkage keys. A key built only from first name, last name, and date of birth is marked `(less certain)`, with how to leave such keys out: on `alcove exchange`, delete them from `linkage_keys`, run [`alcove update`](#changing-the-terms-of-an-established-partnership), and have your partner apply it; a quick exchange always uses them ([Rules marked less certain](EXCHANGE_REFERENCE.md#rules-marked-less-certain));
 - the input columns neither sent nor matched on, as held back, in input order;
-- on a quick exchange, the record identifier: the first column whose name reads as an identifier (such as `id`, `client_id`, or `Client ID`), a record number such as `case_number` only when no id column of another kind follows it, or, where there is none, a `row_id` numbering your rows from 0 ([The result file](#the-result-file));
+- on a quick exchange, the record identifier: the first column whose name reads as an identifier (such as `id`, `client_id`, or `Client ID`), a record number such as `case_number` only when no id column of another kind follows it, or, where there is none, a `your_row` column numbering your rows from 0 ([The result file](#the-result-file));
 - on a quick exchange, the rules selected, `broader matching` ([Choosing the built-in rules](EXCHANGE_REFERENCE.md#choosing-the-built-in-rules));
 - last, on an `sftp` or `filedrop` run with [`--write-without-renaming`](#a-server-that-does-not-allow-renames) on, a line saying so.
 
@@ -827,10 +827,10 @@ An `sftp` or `filedrop` exchange writes each file under a temporary name and ren
 An exchange writes its matched records to a file in the `OUTPUT_FOLDER` it was given, or to `stdout` when it was given none, on `alcove exchange`, the quick exchange form, an online `alcove invite`, and an [acceptance that runs its own exchange](#accepting-and-running-a-webrtc-exchange). Its columns, left to right:
 
 - **Your own matched record** -- the identifier value of the record that matched, under the name of your identifier column.
-- **`row_id`** -- your partner's 0-based row index for that match, on every run.
+- **`partner_row`** -- your partner's row number for that match, counting from 0, on every run.
 - **The partner's payload columns**, then any of your own columns [`include_own_columns`](EXCHANGE_REFERENCE.md#include_own_columns) selects. A name already taken is written as `their_<name>` or `own_<name>`, then numbered.
 - **`matched_on_key`**, last, with [`--include-matching-key`](#naming-the-key-each-match-was-made-on).
-- **With no identifier column declared**, the first column is `row_id` holding your own 0-based row index, and your partner's index moves to `their_row_id`.
+- **With no identifier column declared**, the first column is `your_row`, your own row number for that match, counting from 0.
 - **One row per matched pair**: one per matched record under `one-to-one`, more under a deduplicating cardinality.
 
 Header derivation, column order, and row count: [PROTOCOL.md](spec/PROTOCOL.md#output).

@@ -21,6 +21,7 @@ import {
   toCommittedPayload,
 } from "../../src/payloadExchange";
 import {
+  deriveOurIdColumn,
   reconstructCommittedData,
   toRetainedResult,
   verifyExchangeRecord,
@@ -85,6 +86,12 @@ async function roundTrip(opts: {
   // a retained result file edited after the exchange wrote it, reaching the
   // re-supply path exactly as an unedited one does.
   editRetainedResult?: (rows: string[][]) => void;
+  // Replaces the header row before the file is written, for a result file
+  // whose columns an earlier version named.
+  writtenHeaders?: string[];
+  // Reads the identifier column off the read-back result the way the CLI and
+  // the web app do, rather than taking ourIdColumn.
+  deriveIdColumnFromResult?: boolean;
   shardEntries?: number;
 }) {
   const localPayloadSent = toCommittedPayload(
@@ -107,21 +114,29 @@ async function roundTrip(opts: {
     partnerPayloadReceived,
     createdAt: "2026-01-02T03:04:05.000Z",
   });
-  const result = await writeAndReadBack(
-    buildOutputTable(
-      opts.associationTable,
-      opts.rawRows,
-      opts.metadata,
-      opts.partnerPayload,
-      opts.includeOwnColumns,
-    ),
+  const table = buildOutputTable(
+    opts.associationTable,
+    opts.rawRows,
+    opts.metadata,
+    opts.partnerPayload,
+    opts.includeOwnColumns,
   );
+  const result = await writeAndReadBack({
+    headers: opts.writtenHeaders ?? table.headers,
+    rows: table.rows,
+  });
   opts.editRetainedResult?.(result.rows);
+  const ourIdColumn = opts.deriveIdColumnFromResult
+    ? deriveOurIdColumn(
+        result.headers,
+        new Set(opts.rawRows.flatMap((row) => Object.keys(row))),
+      )
+    : opts.ourIdColumn;
   const { data, warnings } = reconstructCommittedData({
     record,
     inputRows: opts.rawRows,
     result,
-    ourIdColumn: opts.ourIdColumn,
+    ourIdColumn,
     shardEntries: opts.shardEntries,
   });
   const report = await verifyExchangeRecord(record, keys, {
@@ -185,7 +200,7 @@ describe("reconstructCommittedData round-trips through the real build path", () 
     });
     // The reader's own verdict first, so an escaping fault localizes to the hop
     // rather than showing only as an opaque commitment mismatch.
-    expect(result.headers).toEqual(["pid", "row_id", "note", "blank"]);
+    expect(result.headers).toEqual(["pid", "partner_row", "note", "blank"]);
     expect(result.rows).toEqual([
       [COMMA_VALUE, "1", `${QUOTE_VALUE} / ${NEWLINE_VALUE}`, ""],
       [QUOTE_VALUE, "0", COMMA_VALUE, ""],
@@ -426,7 +441,7 @@ describe("reconstructCommittedData round-trips through the real build path", () 
       ourIdColumn: "pid",
       includeOwnColumns: "all",
     });
-    expect(result.headers).toEqual(["pid", "row_id", "note", "dose"]);
+    expect(result.headers).toEqual(["pid", "partner_row", "note", "dose"]);
     expect(result.rows).toEqual([
       ["P0", "1", "q-1", "10mg"],
       ["P2", "0", "q-0", "30mg"],
@@ -471,6 +486,88 @@ describe("reconstructCommittedData round-trips through the real build path", () 
   });
 });
 
+describe("a result file whose leading columns an earlier version named", () => {
+  // An earlier version headed the partner row column row_id, and with no
+  // identifier headed the leading pair row_id and their_row_id. The two
+  // leading columns are read by position, so such a file verifies.
+  const partnerPayload: PartnerPayload = {
+    columns: ["note"],
+    rowIndices: [0, 2],
+    rows: [["s-e"], ["s-c"]],
+  };
+  const associationTable: AssociationTable = [
+    [0, 2],
+    [2, 0],
+  ];
+  const allVerified = {
+    localPayloadSent: "verified",
+    partnerPayloadReceived: "verified",
+    associationTable: "verified",
+  };
+
+  test("with an identifier column: pid,row_id,...", async () => {
+    const { report, result } = await roundTrip({
+      rawRows: idRows,
+      metadata: idMeta,
+      associationTable,
+      partnerPayload,
+      writtenHeaders: ["pid", "row_id", "note"],
+      deriveIdColumnFromResult: true,
+    });
+    expect(result.headers).toEqual(["pid", "row_id", "note"]);
+    expect(report.outcome).toBe("verified");
+    expect(report.commitments).toEqual(allVerified);
+  });
+
+  test("with no identifier column: row_id,their_row_id,...", async () => {
+    const { report, result } = await roundTrip({
+      rawRows: idRows,
+      metadata: rowIndexMeta,
+      associationTable,
+      partnerPayload,
+      writtenHeaders: ["row_id", "their_row_id", "note"],
+      deriveIdColumnFromResult: true,
+    });
+    expect(result.headers).toEqual(["row_id", "their_row_id", "note"]);
+    expect(report.outcome).toBe("verified");
+    expect(report.commitments).toEqual(allVerified);
+  });
+
+  test("the same exchange's file as written verifies too", async () => {
+    const { report, result } = await roundTrip({
+      rawRows: idRows,
+      metadata: rowIndexMeta,
+      associationTable,
+      partnerPayload,
+      deriveIdColumnFromResult: true,
+    });
+    expect(result.headers).toEqual(["your_row", "partner_row", "note"]);
+    expect(report.outcome).toBe("verified");
+    expect(report.commitments).toEqual(allVerified);
+  });
+
+  test.each(["your_row", "row_id"])(
+    "an input column named %s, with no identifier, fails rather than verifying",
+    async (name) => {
+      // The first header names an input column, so it is taken as the
+      // identifier and the row indices under it open nothing.
+      const rawRows = idRows.map((row, index) => ({
+        ...row,
+        [name]: `R${index}`,
+      }));
+      const { report } = await roundTrip({
+        rawRows,
+        metadata: rowIndexMeta,
+        associationTable,
+        partnerPayload,
+        writtenHeaders: [name, "partner_row", "note"],
+        deriveIdColumnFromResult: true,
+      });
+      expect(report.outcome).toBe("failed");
+    },
+  );
+});
+
 describe("the identifier index past one shard", () => {
   // Two entries a shard, so five identifiers fill three shards and a lookup
   // probes each.
@@ -508,7 +605,7 @@ describe("the identifier index past one shard", () => {
   test("an identifier repeated in a later shard resolves to its first row", async () => {
     const repeated: CSVRow[] = [...rows, { pid: "P1", dose: "late" }];
     const result: RetainedResult = {
-      headers: ["pid", "row_id"],
+      headers: ["pid", "partner_row"],
       rows: [
         ["P1", "0"],
         ["P4", "1"],
@@ -562,7 +659,7 @@ describe("the identifier index past one shard", () => {
     const { data, warnings } = reconstructCommittedData({
       record,
       inputRows: rows,
-      result: { headers: ["pid", "row_id"], rows: [["P9", "0"]] },
+      result: { headers: ["pid", "partner_row"], rows: [["P9", "0"]] },
       ourIdColumn: "pid",
       shardEntries: SHARD_ENTRIES,
     });

@@ -295,7 +295,7 @@ More detail: [How host-key pinning works](../CLI.md#sftp-host-key-trust), [Every
 | `invitation.txt` | The invitation, with its one-time secret. | Send to your partner only |
 | `alcove.yaml` | The terms and connection. | Keep; not secret if credentials are `@` file references |
 | `.alcove.key` | The shared secret. It changes after every run. | Keep private |
-| `alcove-results-<time>.csv` | Your matched records: your ID, `row_id` (your partner's row number, counting from 0), then the columns your partner sends. | Keep private |
+| `alcove-results-<time>.csv` | Your matched records: your ID, `partner_row` (your partner's row number for that record, counting from 0), then the columns your partner sends. | Keep private |
 | `alcove-record-<time>.json` | The exchange record of this run. | Keep; not secret |
 | `alcove-record-<time>.keys.json` | The values that open the record's checks. | Keep private |
 | `alcove-record-<time>.terms.json` | Both parties' agreed terms. | Keep; not secret |

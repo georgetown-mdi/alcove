@@ -748,12 +748,13 @@ export function toRetainedResult(parsed: {
 /**
  * Derive the identifier column the exchange keyed on from the result's
  * first header. `buildOutputTable` heads the first result column with the
- * identifier column's name, or `row_id` when the exchange keyed on row
+ * identifier column's name, or `your_row` when the exchange keyed on row
  * indices. When the input has a column of that name it is the identifier;
  * otherwise the first column is the row index itself and this returns
- * `undefined`. The lone ambiguity -- an input with a data column literally
- * named `row_id` while the exchange used no identifier -- would open no
- * commitment (a reported mismatch), never a false verification.
+ * `undefined`, whatever the header says. The lone ambiguity -- an input with a
+ * data column literally named `your_row` while the exchange used no
+ * identifier -- would open no commitment (a reported mismatch), never a false
+ * verification.
  */
 export function deriveOurIdColumn(
   resultHeaders: string[],

@@ -802,7 +802,7 @@ describe("reproductionMismatchCauses", () => {
     // Quoting the result's fields does not resolve the edge: both spellings of an
     // empty cell come back from the shared reader as the same empty string, so no
     // reader-side distinction is available to reconstruct a null from.
-    const csv = 'pid,row_id,status\nP0,1,""\nP2,0,\n';
+    const csv = 'pid,partner_row,status\nP0,1,""\nP2,0,\n';
     const result = toRetainedResult(await loadCSVFile(csvStream(csv)));
     expect(result.rows.map((row) => row[2])).toEqual(["", ""]);
   });

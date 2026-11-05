@@ -49,7 +49,7 @@ Any one of these is a problem the first time it happens:
 
 ## How the session checks a trial
 
-- Columns sent: the columns of Lakeshore's `results.csv` other than `patient_id` (Lakeshore's own ID) and `row_id` (Riverbend's row number), and the disclosed columns each party's record names.
+- Columns sent: the columns of Lakeshore's `results.csv` other than `patient_id` (Lakeshore's own ID) and `partner_row` (Riverbend's row number), and the disclosed columns each party's record names.
 - Who received: which party has a `results.csv`, and what each tester's report says the final screen showed.
 - Consent: the mail in the trial's `mail/` directory and the testers' reports, against the terms of the invitation that ran.
 - Kept: the record (`alcove-record-<time>.json`) and keys (`alcove-record-<time>-keys.json` or `.keys.json`) in each role's `downloads/`.

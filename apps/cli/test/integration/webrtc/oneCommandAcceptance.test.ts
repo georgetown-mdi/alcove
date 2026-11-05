@@ -392,8 +392,8 @@ liveTest(
     // and Carol (row 2) -> invite row 1. Neither non-matcher appears.
     const inviteTable = resultTable(inviteOut);
     const acceptTable = resultTable(acceptOut);
-    expect(inviteTable.header).toBe("row_id,their_row_id");
-    expect(acceptTable.header).toBe("row_id,their_row_id");
+    expect(inviteTable.header).toBe("your_row,partner_row");
+    expect(acceptTable.header).toBe("your_row,partner_row");
     expect(inviteTable.pairs).toEqual(new Set(["0,1", "1,2"]));
     expect(acceptTable.pairs).toEqual(new Set(["1,0", "2,1"]));
 

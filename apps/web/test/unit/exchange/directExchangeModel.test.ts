@@ -313,7 +313,7 @@ describe("previewInferredTerms", () => {
       DIRECT_DEDUPLICATE_DEFAULT,
     );
     expect(directRecordIdentifierNotice(metadata)).toBe(
-      "Record identifier: none found; the result's row_id column identifies " +
+      "Record identifier: none found; the result's your_row column identifies " +
         "your rows by their position in the file, counting from 0.",
     );
   });

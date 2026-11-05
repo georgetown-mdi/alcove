@@ -93,7 +93,7 @@ Each row is what one party can work out about the other's file from the exchange
 | How many records the file holds | Yes | Yes | Yes, both parties |
 | Which of its own records are also in the other's file | Yes | Yes, though Alcove shows it nothing | Sometimes, for the party that computes the count, though Alcove shows it nothing |
 | How many records matched | Yes | Yes, in total and for each key, though Alcove shows it only in a debug log | Only a party that receives the count; the party that computes it, also for each key, though Alcove shows it only the total |
-| The other's row number for each matched record | Yes | No | No |
+| The other's row number for each matched record (the result's `partner_row` column) | Yes | No | No |
 | The columns the other set to send, for matched records | Yes | No | No; none are sent |
 | The other's identifiers, such as names or SSNs | Only those set to a use ending "sent to your partner" | No | No |
 | For each key, how many of the other's records have a value for it | Yes | Yes | No |
