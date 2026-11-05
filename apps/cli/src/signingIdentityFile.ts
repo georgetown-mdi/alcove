@@ -109,7 +109,9 @@ function identityFormatVersionError(
 ): IdentityFormatVersionError {
   const message = messageWithOperatorText`signing identity at ${operatorSuppliedText(
     identityPath,
-  )} was written by another version of Alcove: its format is ${foundVersion}, and this version reads ${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --force' to replace it with a new identity: a new key with a new fingerprint, which every partner must re-pin before your receipts verify again.`;
+  )} was written by another version of Alcove: its format is ${foundVersion}, and this version reads ${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --identity-file ${operatorSuppliedText(
+    identityPath,
+  )} --force --identity NAME' to replace it, with NAME the identity your agreed terms name (linkage_terms.identity); give --config-file for a configuration that holds it in place of --identity. The replacement is a new identity: a new key with a new fingerprint, which every partner must re-pin before your receipts verify again.`;
   return keepOperatorSuppliedText(
     new IdentityFormatVersionError(message.text, foundVersion),
     message,

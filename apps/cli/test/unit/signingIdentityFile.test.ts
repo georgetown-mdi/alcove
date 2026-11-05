@@ -134,9 +134,12 @@ test("both loaders refuse an identity file of another format version by name", a
   const expected =
     `signing identity at ${idPath} was written by another version of ` +
     `Alcove: its format is ${foundVersion}, and this version reads ` +
-    `${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --force' to ` +
-    "replace it with a new identity: a new key with a new fingerprint, " +
-    "which every partner must re-pin before your receipts verify again.";
+    `${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --identity-file ` +
+    `${idPath} --force --identity NAME' to replace it, with NAME the ` +
+    "identity your agreed terms name (linkage_terms.identity); give " +
+    "--config-file for a configuration that holds it in place of " +
+    "--identity. The replacement is a new identity: a new key with a new " +
+    "fingerprint, which every partner must re-pin before your receipts verify again.";
   for (const load of [loadSigningCertificate, loadSigningIdentity]) {
     const err = await load(idPath).then(
       () => undefined,
