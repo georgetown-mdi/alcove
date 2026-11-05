@@ -643,16 +643,13 @@ export function leftBehindConfirm(
   };
 }
 
-/** What the record and its keys are for, and a link to the Verify page. The
- * link opens a new tab: navigating this page away would discard a one-off
- * run's only copy of its downloads. */
+/** Where to check the record and its keys later. The link opens a new tab:
+ * navigating this page away would discard a one-off run's only copy of its
+ * downloads. */
 function RecordPurposeNote() {
   return (
     <p className={styles.small}>
-      The record is a shareable account of what you and your partner agreed to
-      and what matched. The verification keys open it for checking against your
-      files, so keep them private and store them with the record; you or a
-      records officer can check both later on the{" "}
+      Check them later on the{" "}
       <Link to="/verify" target="_blank" rel="noreferrer">
         Verify page
         <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
