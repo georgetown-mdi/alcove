@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
+  SIGNING_IDENTITY_VERSION,
   UsageError,
   computeCertificateFingerprint,
   generateSigningIdentity,
@@ -11,6 +12,7 @@ import {
 } from "@alcove/core";
 import * as signingIdentityFile from "../../src/signingIdentityFile";
 import {
+  IdentityFormatVersionError,
   loadSigningCertificate,
   loadSigningIdentity,
   saveSigningIdentity,
@@ -119,25 +121,98 @@ test("loadSigningCertificate does not import the private key beside it", async (
   expect(await loadSigningCertificate(idPath)).toEqual(id.certificate);
 });
 
-test("both loaders reject an unrecognized identity-file version", async () => {
+test("both loaders refuse an identity file of another format version by name", async () => {
   // The certificate has its own version, but a document that is not a
   // signing identity of a recognized format is not mined for one here while
   // loadSigningIdentity refuses it, so the two refusals are pinned together.
-  const idPath = path.join(dir, "future.json");
+  const idPath = path.join(dir, "other-version.json");
   const id = await generateSigningIdentity("Party A");
+  const foundVersion = "alcove-signing-identity/v0-synthetic";
+  fs.writeFileSync(idPath, JSON.stringify({ ...id, version: foundVersion }), {
+    mode: 0o600,
+  });
+  const expected =
+    `signing identity at ${idPath} was written by another version of ` +
+    `Alcove: its format is ${foundVersion}, and this version reads ` +
+    `${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --identity-file "` +
+    `${idPath}" --force --identity NAME' to replace it, with NAME the ` +
+    "identity your agreed terms name (linkage_terms.identity); give " +
+    "--config-file for a configuration that holds it in place of " +
+    "--identity. The replacement is a new identity: a new key with a new " +
+    "fingerprint, which every partner must re-pin before your receipts verify again.";
+  for (const load of [loadSigningCertificate, loadSigningIdentity]) {
+    const err = await load(idPath).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(err).toBeInstanceOf(UsageError);
+    expect(err).toBeInstanceOf(IdentityFormatVersionError);
+    expect((err as IdentityFormatVersionError).foundVersion).toBe(foundVersion);
+    expect((err as Error).message).toBe(expected);
+    expect(sanitizeErrorForDisplay(err)).toBe(expected);
+  }
+});
+
+test.each([
+  ["a version outside the identity family", "alcove-signing-cert/v3"],
+  [
+    "an identity version with an overlong label",
+    `alcove-signing-identity/${"v".repeat(33)}`,
+  ],
+])(
+  "%s keeps the shape refusal, naming the field and its rule",
+  async (_case, version) => {
+    const idPath = path.join(dir, "not-an-identity.json");
+    const id = await generateSigningIdentity("Party A");
+    fs.writeFileSync(idPath, JSON.stringify({ ...id, version }), {
+      mode: 0o600,
+    });
+    const err = await loadSigningIdentity(idPath).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(err).toBeInstanceOf(UsageError);
+    expect(err).not.toBeInstanceOf(IdentityFormatVersionError);
+    expect((err as Error).message).toBe(
+      `signing identity at ${idPath} is malformed or unsupported: ` +
+        `version: Invalid input: expected "${SIGNING_IDENTITY_VERSION}"`,
+    );
+  },
+);
+
+test("a current-version file missing its fields is refused with one readable issue", async () => {
+  const idPath = path.join(dir, "fields-missing.json");
   fs.writeFileSync(
     idPath,
-    JSON.stringify({ ...id, version: "alcove-signing-identity/v100" }),
+    JSON.stringify({ version: SIGNING_IDENTITY_VERSION }),
     { mode: 0o600 },
   );
-  await expect(loadSigningCertificate(idPath)).rejects.toThrow(UsageError);
-  await expect(loadSigningCertificate(idPath)).rejects.toThrow(
-    /malformed or unsupported/,
+  const err = await loadSigningIdentity(idPath).then(
+    () => undefined,
+    (caught: unknown) => caught,
   );
-  await expect(loadSigningIdentity(idPath)).rejects.toThrow(UsageError);
-  await expect(loadSigningIdentity(idPath)).rejects.toThrow(
-    /malformed or unsupported/,
+  expect(err).toBeInstanceOf(UsageError);
+  expect(err).not.toBeInstanceOf(IdentityFormatVersionError);
+  expect((err as Error).message).toBe(
+    `signing identity at ${idPath} is malformed or unsupported: ` +
+      "privateKey: Invalid input: expected object, received undefined",
   );
+});
+
+test("a document with no version field is not named as another version", async () => {
+  const idPath = path.join(dir, "no-version.json");
+  const id = await generateSigningIdentity("Party A");
+  const { version: _dropped, ...unversioned } = id;
+  fs.writeFileSync(idPath, JSON.stringify(unversioned), { mode: 0o600 });
+  for (const load of [loadSigningCertificate, loadSigningIdentity]) {
+    const err = await load(idPath).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(err).toBeInstanceOf(UsageError);
+    expect(err).not.toBeInstanceOf(IdentityFormatVersionError);
+    expect((err as Error).message).toContain("is malformed or unsupported");
+  }
 });
 
 test("loadSigningCertificate rejects a certificate whose self-signature is broken", async () => {
