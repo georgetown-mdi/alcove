@@ -39,12 +39,20 @@ export function appShellUpdateHoldLockName(
 }
 
 /** The holder a cross-window hold's lock name stands for, or `undefined` for
- * any other name. */
+ * any other name. A hold name this build does not know -- the bare prefix a
+ * page of an earlier build holds, or another suffix -- still holds the update,
+ * and is stated as `"file"`, which leaving that page releases. */
 export function appUpdateHolderOfHoldLock(
   name: string,
 ): AppUpdateHolderAcrossWindows | undefined {
   if (name === appShellUpdateHoldLockName("run")) return "run";
   if (name === appShellUpdateHoldLockName("file")) return "file";
+  if (
+    name === APP_SHELL_UPDATE_HOLD_LOCK_NAME ||
+    name.startsWith(`${APP_SHELL_UPDATE_HOLD_LOCK_NAME}:`)
+  ) {
+    return "file";
+  }
   return undefined;
 }
 

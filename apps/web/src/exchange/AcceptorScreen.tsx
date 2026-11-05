@@ -291,9 +291,6 @@ function AcceptorInvitationScreen({
   encoded: string | undefined;
 }) {
   const consoleBuild = isConsoleBuild();
-  // Only the invitation outlives a reload; the review, the consent, the file,
-  // a run and its results are held only in this page.
-  useAppShellUpdateHold(encoded !== undefined && encoded !== "", "file");
   const [screenState, dispatch] = useReducer(
     acceptorScreenReducer,
     ACCEPTOR_SCREEN_INITIAL,
@@ -1026,6 +1023,13 @@ function AcceptorInvitationScreen({
   } = useAcceptorExchange({
     launch,
   });
+
+  // Only the invitation outlives a reload; the review, the consent, the file,
+  // a run and its results are held only in this page.
+  useAppShellUpdateHold(
+    encoded !== undefined && encoded !== "",
+    outputs === undefined && failure === undefined ? "file" : "results",
+  );
 
   // The unload guard arms once the acceptor's file is chosen -- a browser drop on
   // the hosted build, or a committed mounted-file profile on the console -- and

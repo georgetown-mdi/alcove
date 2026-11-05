@@ -12,7 +12,9 @@ import {
   resetAppShellUpdate,
   takeAutomaticAppShellUpdateNotice,
 } from "@utils/appShellUpdate";
+
 import {
+  APP_SHELL_UPDATE_HOLD_LOCK_NAME,
   appShellUpdateHoldLockName,
   appShellUpdateHoldersHere,
   holdAppShellUpdateAcrossWindows,
@@ -516,6 +518,32 @@ describe("a scheduled run and a waiting app-shell update", () => {
     });
     release();
   });
+
+  test.each([
+    APP_SHELL_UPDATE_HOLD_LOCK_NAME,
+    `${APP_SHELL_UPDATE_HOLD_LOCK_NAME}:later`,
+  ])(
+    "a hold named %s, as an earlier build holds, is reported as a file",
+    async (name) => {
+      await registerShell(true);
+      let release = (): void => undefined;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      void navigator.locks.request(name, { mode: "shared" }, () => released);
+      await vi.waitFor(async () => {
+        expect(await readAppUpdateHolders()).toEqual({
+          holders: ["file"],
+          locksRead: true,
+        });
+      });
+      expect(await applyWaitingAppUpdateBetweenRuns()).toEqual({
+        kind: "held",
+        holders: ["file"],
+      });
+      release();
+    },
+  );
 
   test("held by another window's run is reported as a run", async () => {
     await registerShell(true);
