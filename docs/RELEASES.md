@@ -164,13 +164,15 @@ Every ecosystem block in `.github/dependabot.yml` sets `target-branch: staging`,
 2. If `staging` has it, close the `main` pull request unmerged. The next promotion moves the fix to `main` and clears the alert.
 3. If `staging` does not have it, take the bump on `staging` first -- a branch of your own off `staging` with the same lockfile change, reviewed and merged the ordinary way -- and then close the `main` pull request. Do not retarget the Dependabot branch at `staging`: what Dependabot does with a retargeted branch on its next push is untested.
 
-**When to merge it to `main` instead.** Only when the fix has to sit on `main` ahead of the next promotion, because something built or assessed from the default branch needs it now. Then merge it and reconverge the branches immediately: run [step 11](#11-merge-back-to-staging)'s merge-back outside a release, so `staging` contains `main`'s tip again and the next promotion is a fast-forward.
+**When to merge it to `main` instead.** Only when the fix has to sit on `main` ahead of the next promotion, because something built or assessed from the default branch needs it now. Then merge it, and take the same change on `staging` at once by item 3 above if `staging` lacks it. `staging` accepts squash or rebase merges only, so it takes the change and not `main`'s commit, and the next promotion is still not a fast-forward.
 
 ## Release Checklist
 
 Work through these steps for every release. Steps marked with `[CI]` are automated; the remainder require a maintainer.
 
 ### 1. Prepare the release branch
+
+Cut it from `staging`, which its pull request goes back into (step 6):
 
 ```sh
 git checkout staging
@@ -237,11 +239,13 @@ Run what CI gates, rather than a copy of it that drifts: `.github/workflows/stat
 
 ### 6. Open and merge the release PR
 
-Open a pull request from `release/vX.Y.Z` to `main`. The PR title should be `Release vX.Y.Z`. Include a summary of changes (copy from CHANGELOG). Require at least one review before merging.
+Open a pull request from `release/vX.Y.Z` into `staging`. The PR title should be `Release vX.Y.Z`. Include a summary of changes (copy from CHANGELOG). Require at least one review, then squash-merge it like any other pull request into `staging`.
+
+Then promote `staging` to `main` as usual: `main` fast-forwards onto the release's squash commit, so `main`'s tip is that commit.
 
 ### 7. Tag the release
 
-After the PR merges to `main`:
+Once `main`'s tip is the release commit, tag that tip:
 
 ```sh
 git checkout main
@@ -309,13 +313,9 @@ If the command refuses on a peer conflict, do not use `@cyclonedx/cyclonedx-npm 
 
 Step 8 leaves a draft release for tag `vX.Y.Z` with the stamped launchers. Open it, copy the CHANGELOG section for this version as the release body, attach `alcove-X.Y.Z.cdx.json`, record both Docker image digests from step 8 in the release notes -- the default image's and the FIPS variant's, each beside its tag -- and publish. Publish only once the `dockerhub` job has passed. Each digest is the same on ghcr.io and on Docker Hub, as that job's summary shows, so each is recorded once and names the image at both `ghcr.io/georgetown-mdi/alcove` and `docker.io/gumdi/alcove`. Leave the launcher assets in place: they are the copy an operator downloads. A hotfix on an older release line is published with "Set as the latest release" unticked.
 
-### 11. Merge back to staging
+### 11. Reconverge staging after an older-line hotfix
 
-```sh
-git checkout staging
-git merge main
-git push origin staging
-```
+Nothing merges back after a release: `main`'s tip is already a `staging` commit. The one exception is a hotfix on an older release line ([Hotfix Releases](#hotfix-releases)), whose tagged commit is on neither `main` nor `staging`. Once it is released, bring the fix into `staging` with an ordinary pull request, unless `staging` already has it.
 
 ## Hotfix Releases
 
