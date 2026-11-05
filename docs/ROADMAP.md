@@ -13,7 +13,6 @@ Targeting is aspirational; the maintainers do not commit to a release date for a
 Work required before the 1.0 release.
 
 - Accessibility assessment against WCAG 2.1 Level AA and Section 508 for the web application; publication of a VPAT
-- One-time EAR ENC notification to BIS and NSA before public 1.0 distribution
 
 ## Version 1.1
 
