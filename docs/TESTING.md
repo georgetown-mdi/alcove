@@ -1084,8 +1084,8 @@ npm run test:mutation
 ```
 
 It runs against an installed tree (`npm ci` plus the core build). On the
-nightly's Ubuntu runner, at the 4 test runners Stryker picks there, the three
-files' 413 mutants take about 13 minutes, about 5 of them the initial run of the
+nightly's Ubuntu runner, at the 4 test runners Stryker picks there, the four
+files' 597 mutants take about 24 minutes, about 9 of them the initial run of the
 whole core unit tier, which the configuration caps at 15
 (`dryRunTimeoutMinutes`). Stryker is not a repository dependency by design -- it
 drags in a second copy of Vitest and its own TypeScript -- so
