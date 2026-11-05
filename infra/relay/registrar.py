@@ -126,9 +126,19 @@ TOKENLESS_LIFETIME_SECONDS = 4200
 # Arbitrary working values, raised on request.
 TOKENLESS_ENROLLMENTS_PER_WINDOW = 20
 TOKENLESS_WINDOW_SECONDS = 600
+# The requests one exchange sends: the inviter's and its partner's. Only the
+# first creates a row; the second repeats its key and is answered 200.
+TOKENLESS_ENROLLMENTS_PER_EXCHANGE = 2
 MAX_TRACKED_ADDRESSES = 4096
-# Rows enrolled without a token and not yet lapsed that one client key holds.
-TOKENLESS_ROWS_PER_CLIENT = 10
+# Rows enrolled without a token and not yet lapsed that one client key holds:
+# the exchanges the rate limit admits in one window, times the windows in a
+# row's lifetime. It is the row count an address reaches enrolling at the rate
+# limit for a row's whole life at two requests per exchange. An address whose
+# every request creates a row reaches it sooner and is refused until its
+# oldest rows lapse.
+TOKENLESS_ROWS_PER_CLIENT = (TOKENLESS_ENROLLMENTS_PER_WINDOW // TOKENLESS_ENROLLMENTS_PER_EXCHANGE) * (
+    TOKENLESS_LIFETIME_SECONDS // TOKENLESS_WINDOW_SECONDS
+)
 COUNTERS_WRITE_SECONDS = 10
 PROXY_HEADER_SECONDS = 5
 # The longest PROXY protocol version 1 header, its CRLF included.

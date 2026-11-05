@@ -577,20 +577,34 @@ start: to turn it off, set it to `off` and
   connection the front passes comes from `127.0.0.1` (Where it listens,
   above). For the rate limit, an IPv6 address counts as its /64, which one
   host commonly holds whole; for the cap on each client, below, as its /48.
-- **The cap on each client.** At most 10 rows enrolled without a token and
+- **The cap on each client.** At most 70 rows enrolled without a token and
   not yet lapsed are held for one client address
   (`TOKENLESS_ROWS_PER_CLIENT`), counted inside the enrollment's own write.
   Past it, an enrollment of an id not yet held is answered 429 with
   `Retry-After`, the seconds until the first of that address's rows lapses,
   and nothing is written; an enrollment naming the key an id already holds
   is still answered 200. A row revoked, or lapsed, no longer counts.
-  - **Why 10.** An arbitrary working value, raised on request. A row lives
-    70 minutes whether its exchange relays or not, so the cap is the number
-    of exchanges one address can set up within any 70 minutes. An exchange
-    holds one row whichever of its parties enrolls it, so 10 admits the
-    about ten exchanges set up at once behind a facility's one shared
-    address that the rate limit above is sized for. One address holds at
-    most 10 / 1800 of the ceiling below, about half of one percent.
+  - **Why 70.** It is derived from the rate limit above and the row's
+    lifetime, not measured: (20 enrollments per 600 s window / 2
+    enrollments per exchange) x (4200 s lifetime / 600 s window) = 10 x 7 =
+    70. The 2 counts the requests an exchange sends: the inviter's and its
+    partner's, each a run's one enrollment under the exchange's current
+    secret. The first creates the row and the second repeats its key, is
+    answered 200, and creates none, so an exchange holds one row whichever
+    of its parties enrolls it. A row lives 4200 s (70 minutes) whether its
+    exchange relays or not, which is seven windows. So 70 is the row count
+    an address reaches enrolling at the rate limit for a row's whole life
+    at two requests per exchange: 10 rows in each window, 70 in seven, with
+    none yet lapsed. An address whose every request creates a row, as when
+    each of its exchanges is enrolled from it by one party only, or each
+    request names a new id, creates 20 rows in a window and reaches 70 after
+    3.5 windows, 35 minutes. It is then refused (429) until its oldest rows
+    lapse, though it is within the rate limit. The registrar computes the
+    value from those constants (`TOKENLESS_ENROLLMENTS_PER_WINDOW`,
+    `TOKENLESS_ENROLLMENTS_PER_EXCHANGE`, `TOKENLESS_LIFETIME_SECONDS`,
+    `TOKENLESS_WINDOW_SECONDS`), so it follows them. For the default
+    ceiling below, 1800, one address holds at most 70 / 1800 of it, about
+    3.9 percent.
   - **IPv6.** The cap counts an IPv6 address as its /48, not its /64: a
     site is commonly assigned a /56 or a /48, so counting /64s would give
     one holder 256 to 65,536 caps. A site on IPv6 then shares one cap
@@ -602,7 +616,7 @@ start: to turn it off, set it to `off` and
     registrar's memory, and written nowhere. A row the registrar revokes is
     dropped at once; a lapsed row is dropped only when a later enrollment
     without a token arrives. A restart of the registrar clears it, so after one
-    an address can enroll up to 10 more while its earlier rows still hold;
+    an address can enroll up to 70 more while its earlier rows still hold;
     the ceiling below still bounds them all.
 - **How many addresses.** At most 4096 addresses' windows are held at once
   (`MAX_TRACKED_ADDRESSES`, an arbitrary working value). With all of them
@@ -646,10 +660,10 @@ start: to turn it off, set it to `off` and
     A lapsed row is not counted, and the sweep deletes it within about
     eleven minutes, so a flood holds at most about 1800 x 81 / 70, about
     2100, such rows in the table.
-  - **The limit.** One address holds at most 10 rows (The cap on each
-    client, above), so filling the ceiling takes 180 client addresses, IPv4
-    addresses or IPv6 /48s, fewer by the rows legitimate use holds. Many
-    addresses can still fill it: then an enrollment without a token of a new
+  - **The limit.** One address holds at most 70 rows (The cap on each
+    client, above), so filling the default ceiling takes 26 client
+    addresses, IPv4 addresses or IPv6 /48s (1800 / 70, about 25.7), fewer by
+    the rows legitimate use holds. Many addresses can still fill it: then an enrollment without a token of a new
     id is refused until rows lapse, up to 70 minutes, and a browser run that
     could not enroll dials without the default relay, by STUN alone. A run
     that never relays still holds a row, so legitimate use setting up more
