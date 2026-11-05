@@ -1068,8 +1068,9 @@ changes), never an absolute whole-repo percentage -- and even that stays opt-in.
 
 ## Mutation testing
 
-A nightly leg mutates the three core security-bearing files --
-`packages/core/src/auth.ts`, `src/connection/abortMarker.ts`, and
+A nightly leg mutates the four core security-bearing files --
+`packages/core/src/auth.ts`, `src/connection/abortMarker.ts`,
+`src/connection/chunkedAead.ts`, and
 `src/connection/encryptedMessageConnection.ts` -- and re-runs `packages/core`'s
 unit tier against every mutant. It measures something the coverage report above
 cannot: a line can be executed by a test that passes just as happily when the
