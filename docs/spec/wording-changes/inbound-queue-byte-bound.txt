@@ -23,9 +23,9 @@
 - - -> Each frame is at most `MAX_WEBRTC_FRAME_BYTES`, so the bound is **`DEFAULT_QUEUE_BYTE_CAPACITY` = 7 x 268,435,456 = 1,879,048,192 bytes**, and for a browser party **`BROWSER_QUEUE_BYTE_CAPACITY` = 6 x 268,435,456 = 1,610,612,736 bytes**.
 - - -> Both are computed from those constants (`countOnlyRunAheadBytes`), and `messageConnection.test.ts` holds them to the derivation.
 - - -> The other runs the protocol bounds are shorter: a single PSI set is three frames, and a round's association table, its two index lists and their grouping, comes to at most 402,653,232 bytes.
-- - -> Two streams no agreed term bounds are read as they arrive, by a receive started before the step that would otherwise hold them back.
-- - -> The joiner starts reading the starter's mapped-element list as the last round's frames end, before it resolves that round, since the starter sends the list once it has resolved the round itself.
-- - -> The responder starts reading the initiator's payload rows before it prepares its own payload, since the initiator sends them after its returned list without waiting.
+- - -> Two streams no agreed term bounds are read as they arrive.
+- - -> The joiner reads the starter's mapped-element list before it resolves the last round, since the starter sends the list once it has resolved the round itself.
+- - -> The responder's payload receive is registered in the same synchronous turn as its preparation, so no payload frame waits in the queue behind that preparation.
 - - -> Their parts stay in the queue only while the consumer takes each one more slowly than the channel delivers the next, and a stream that reaches the bound that way is refused as any other run is.
 - - -> A frame that arrives at an empty queue, or that a waiting receive takes, is admitted whatever its size, so the queue refuses no frame the per-frame bound admits.
 - - -> A frame that would take the queue past either bound fails the connection as a terminal `protocol` `ConnectionError`, the same refusal at both bounds; the frames queued before it are still received first.

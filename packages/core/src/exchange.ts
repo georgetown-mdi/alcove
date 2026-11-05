@@ -89,7 +89,6 @@ import type { InboundPsiFrameUse } from "./connection/inboundFrameMemory.js";
 import {
   preparePayload,
   exchangePayloads,
-  startPayloadReceive,
   toCommittedPayload,
   assertDisclosedNamesCarriable,
   assertNoPayloadReceived,
@@ -2012,18 +2011,6 @@ export async function runExchange(
   // its terms declare no payload column in either direction, so it exchanges
   // the empty message -- committed explicitly as empty, never omitted
   // (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c) records).
-  //
-  // The partner sends one payload row per distinct record of its own this
-  // party's table pairs, so at most one per pair.
-  const partnerRowsMatched =
-    associationTable === undefined ? 0 : associationTable[1].length;
-  // The initiator sends its payload without waiting, so the responder starts
-  // reading it before preparing its own, and its parts are read as they
-  // arrive rather than held in the inbound queue.
-  const partnerPayloadReceive =
-    handshakeRole === "responder"
-      ? startPayloadReceive(conn, partnerRowsMatched)
-      : undefined;
   const localPayload: PayloadWireMessage =
     partnerTerms.output.expectsOutput && associationTable !== undefined
       ? preparePayload(prepared.rawRows, prepared.metadata, associationTable)
@@ -2042,6 +2029,10 @@ export async function runExchange(
   // throw also leaves the rest of the guarded region unrun, so no further frame
   // goes to a partner that broke the disclosure contract.
   const receivesNoPayload = countOnly || !linkageTerms.output.expectsOutput;
+  // The partner sends one payload row per distinct record of its own this
+  // party's table pairs, so at most one per pair.
+  const partnerRowsMatched =
+    associationTable === undefined ? 0 : associationTable[1].length;
 
   // resultSize (the intersection size) is bound only when both parties are
   // entitled to output; heldResult gates both the record's committed table and what
@@ -2106,7 +2097,6 @@ export async function runExchange(
           partnerPayloadReceived = true;
         }
       },
-      partnerPayloadReceive,
     );
     partnerPayloadReceived = true;
     if (receivesNoPayload) assertNoPayloadReceived(partnerPayload);
