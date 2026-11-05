@@ -102,8 +102,7 @@ For each entry of TARGETS (or, with none given, for the one branch
 
 1. BRANCH is the ref with any `refs/heads/` prefix stripped. Its artifact key is
    BRANCH with every character outside `A-Za-z0-9._-` replaced by `_` and any
-   leading dots dropped -- branch names contain no `/` by repo convention, so the
-   key is normally BRANCH itself.
+   leading dots dropped, so `release/v0.9.0` keys as `release_v0.9.0`.
 2. TREE is the `worktree` path of the record whose `branch` is that ref, or none
    when no record holds it. A ref with no tree is reviewable by a lens round,
    which only reads; a role round that must RUN code against it has nowhere to

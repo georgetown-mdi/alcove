@@ -49,9 +49,9 @@ export function branchName(ref) {
   return ref.replace(/^refs\/heads\//, "");
 }
 
-// A filename-safe key for a ref. Branch names contain no `/` by repo convention;
-// this sanitizes anyway, and strips leading dots so no key can name a directory
-// component of its own.
+// A filename-safe key for a ref: a `/` in a branch name becomes `_` with every
+// other character outside the filename set, and leading dots are stripped, so
+// no key can name a directory component of its own.
 function refKey(ref) {
   const key = branchName(ref)
     .replace(/[^A-Za-z0-9._-]+/g, "_")
