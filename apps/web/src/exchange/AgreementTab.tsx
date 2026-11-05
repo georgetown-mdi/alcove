@@ -59,6 +59,12 @@ export function AgreementTab({
   // Checking "Attach" reveals the three fields below the checkbox; send a
   // keyboard user into the first one rather than leaving them on the checkbox
   // with no cue the block opened.
+  // A freshly mounted date input holds no partly typed segments, so a flag
+  // left by an earlier visit to this tab no longer describes anything.
+  useEffect(() => {
+    if (agreement?.expirationDateIncomplete === true)
+      set({ expirationDateIncomplete: false });
+  }, []);
   const referenceRef = useRef<HTMLInputElement>(null);
   const wasAttached = useRef(agreement !== undefined);
   useEffect(() => {

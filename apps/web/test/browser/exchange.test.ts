@@ -1769,6 +1769,25 @@ describe("inviter screen", () => {
     await expect
       .element(page.getByRole("button", { name: dateMessage }))
       .toBeInTheDocument();
+    // The partly typed segments live only in the date input, so leaving the
+    // tab and returning shows an empty field with no message and no blocker.
+    await page.getByRole("button", { name: /Back to Review & create/ }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Review & create");
+    await page.getByRole("button", { name: /Legal agreement/ }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Legal agreement");
+    expect((expirationField.element() as HTMLInputElement).value).toBe("");
+    expect(page.getByText(dateMessage).query()).toBeNull();
+    expect(page.getByRole("button", { name: dateMessage }).query()).toBeNull();
+    (expirationField.element() as HTMLInputElement).focus();
+    await userEvent.keyboard("12");
+    await userEvent.click(page.getByRole("heading", { level: 1 }));
+    await expect
+      .element(page.getByRole("button", { name: dateMessage }))
+      .toBeInTheDocument();
     (expirationField.element() as HTMLInputElement).focus();
     await userEvent.keyboard("{Backspace}");
     await userEvent.click(page.getByRole("heading", { level: 1 }));
