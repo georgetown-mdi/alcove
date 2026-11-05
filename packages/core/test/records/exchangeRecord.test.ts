@@ -1225,13 +1225,15 @@ describe("serialize / parse", () => {
   });
 
   test("parseExchangeRecord refuses a record written before the run binder", async () => {
-    // The v1 shape: no receiptBinder, which a reader cannot tell from an exchange
-    // that produced no signed receipt. Refused on the version discriminant rather
-    // than read as unpaired, so a pre-change artifact is a version refusal and not
-    // a pairing failure. Pre-release, no migration is offered.
+    // The pre-binder shape: no receiptBinder, which a reader cannot tell from an
+    // exchange that produced no signed receipt. Refused on the version
+    // discriminant rather than read as unpaired, so a pre-change artifact is a
+    // version refusal and not a pairing failure. No migration is offered.
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
-    const v1 = { ...record, version: "alcove-exchange-record/v1" };
-    expect(() => parseExchangeRecord(v1)).toThrow();
+    const preBinder = { ...record, version: "alcove-exchange-record/v0" };
+    expect(() => parseExchangeRecord(preBinder)).toThrow(
+      /format version alcove-exchange-record\/v0,/,
+    );
   });
 
   test("parseExchangeRecord refuses a record written while it could cite a rule set", async () => {
