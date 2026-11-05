@@ -1,9 +1,11 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
 import { afterEach, expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import { createElement } from "react";
+
+import { WorkShell } from "@exchange/WorkShell";
 
 import { axeViolations } from "./axeScan";
 import { createAppMount } from "./renderApp";
@@ -49,4 +51,30 @@ test("the step checks scan a control the pointer rests on in its resting state",
   ]);
 
   await expectStepAccessible(app.container);
+});
+
+// The work shell reorders its ledger and work column at 320 px; the journey
+// goes on from the control it reached.
+test("the step checks leave focus on the control the journey reached", async () => {
+  app.render(
+    createElement(WorkShell, {
+      ledger: createElement("aside", { "aria-label": "Exchange" }, "Terms"),
+      children: [
+        createElement("h1", { key: "heading" }, "Confirm your columns"),
+        createElement(
+          "button",
+          { key: "start", type: "button" },
+          "Start the exchange",
+        ),
+      ],
+    }),
+  );
+  const button = page.getByRole("button", { name: "Start the exchange" });
+  await expect.element(button).toBeInTheDocument();
+  button.element().focus();
+  await expect.element(button).toHaveFocus();
+
+  await expectStepAccessible(app.container);
+
+  await expect.element(button).toHaveFocus();
 });

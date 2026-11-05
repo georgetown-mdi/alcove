@@ -472,7 +472,8 @@ others cannot. Which WCAG 2.1 criterion each one is evidence for is mapped in
   `keyboardAcceptJourney.test.ts`, `keyboardVerifyJourney.test.ts`) drive the
   invite, accept, verify, and recurring setup flows by Tab, Enter, and Space
   alone through `keyboardOnly.ts`, assert where focus lands on each step
-  change, and run the rule scan, axe, and the layout checks on each step and
+  change, and run the rule scan, axe, the control boundary sweep, and the
+  layout checks on each step and
   on the result and failure states (`stepChecks.ts`). Every element a Tab
   press focuses must look different focused from how it looked before the
   press, the control a journey then activates included

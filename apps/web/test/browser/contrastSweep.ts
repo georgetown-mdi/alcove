@@ -192,7 +192,7 @@ function largeTextFloor(style: CSSStyleDeclaration): number {
   return isLarge ? 3 : 4.5;
 }
 
-/** What a sweep found: the below-floor elements, the text of each element
+/** What a sweep found: the below-floor elements, each element or control
  * whose background it could not resolve, and the controls whose boundary is
  * under 3:1. Any of them fails the surface. */
 export interface SweepResult {
@@ -255,26 +255,35 @@ function describeControl(el: HTMLElement): string {
   return `<${kind}> "${name.trim().slice(0, 50)}"`;
 }
 
+/** What a boundary sweep found: the controls under 3:1, and each control
+ * whose background it could not resolve. */
+export interface BoundarySweep {
+  failures: Array<BoundaryFailure>;
+  unresolved: Array<string>;
+}
+
 /** Measure every painted, enabled control under `rootEl` that a boundary
  * identifies: its border or its fill must reach 3:1 against the background
  * behind it (WCAG 1.4.11). A control whose background cannot be resolved is
- * measured against the page canvas. Where Mantine draws a field's box on a
- * wrapper (a password field), the wrapper is measured. */
-export function sweepControlBoundaries(
-  rootEl: HTMLElement,
-): Array<BoundaryFailure> {
+ * recorded as unresolved. Where Mantine draws a field's box on a wrapper (a
+ * password field), the wrapper is measured. */
+export function sweepControlBoundaries(rootEl: Element): BoundarySweep {
   const failures: Array<BoundaryFailure> = [];
+  const unresolved: Array<string> = [];
   for (const control of rootEl.querySelectorAll<HTMLElement>(
     BOUNDED_CONTROL_SELECTOR,
   )) {
     if (isSkippable(control) || getComputedStyle(control).opacity === "0")
       continue;
     const el = control.closest<HTMLElement>(".mantine-Input-input") ?? control;
-    const parent = el.parentElement;
     const behind =
-      (parent === null ? undefined : effectiveBackground(parent)) ??
-      pageCanvas();
-    if (behind === undefined) continue;
+      el.parentElement === null
+        ? pageCanvas()
+        : effectiveBackground(el.parentElement);
+    if (behind === undefined) {
+      unresolved.push(describeControl(control));
+      continue;
+    }
     const style = getComputedStyle(el);
     const fill = rgba(style.backgroundColor);
     const ratio = Math.max(
@@ -291,7 +300,7 @@ export function sweepControlBoundaries(
         ratio: Number(ratio.toFixed(2)),
       });
   }
-  return failures;
+  return { failures, unresolved };
 }
 
 /** One text element measured against its contrast floor. */
@@ -342,7 +351,12 @@ export function sweepContrast(rootEl: HTMLElement): SweepResult {
     if (measured.ratio + 1e-9 < measured.floor)
       failures.push({ ...measured, ratio: Number(measured.ratio.toFixed(2)) });
   }
-  return { failures, unresolved, boundaries: sweepControlBoundaries(rootEl) };
+  const controls = sweepControlBoundaries(rootEl);
+  return {
+    failures,
+    unresolved: [...unresolved, ...controls.unresolved],
+    boundaries: controls.failures,
+  };
 }
 
 /** Light-scheme failures not yet fixed, keyed by `${route}: ${state}`, each the

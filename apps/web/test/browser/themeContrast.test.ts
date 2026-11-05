@@ -11,6 +11,7 @@ import {
   Alert,
   Button,
   Checkbox,
+  Radio,
   Text,
   TextInput,
 } from "@mantine/core";
@@ -24,6 +25,7 @@ import "@styles/tokens.css";
 import appStyles from "@styles/app.module.css";
 
 import { createAppMount } from "./renderApp";
+import { sweepControlBoundaries } from "./contrastSweep";
 
 import type { ComponentType, ReactNode } from "react";
 
@@ -44,6 +46,9 @@ const LinkRenderedButton = Button as unknown as ComponentType<{
 }>;
 const PrimaryCheckbox = Checkbox as unknown as ComponentType<{
   defaultChecked?: boolean;
+  "aria-label"?: string;
+}>;
+const PlainRadio = Radio as unknown as ComponentType<{
   "aria-label"?: string;
 }>;
 const ColoredText = Text as unknown as ComponentType<{
@@ -643,6 +648,32 @@ describe("rendered app-token surface contrast (WCAG 2.1 AA)", () => {
           getComputedStyle(surface).backgroundColor,
         ),
       ).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  // An unchecked checkbox or radio is drawn by its border alone: its fill
+  // matches the column it sits on.
+  for (const scheme of ["light", "dark"] as const) {
+    test(`unchecked checkbox and radio boundaries reach 3:1 (${scheme})`, async () => {
+      app.render(
+        createElement(
+          "div",
+          { className: appStyles.page },
+          createElement(
+            "div",
+            { className: appStyles.work },
+            createElement(PrimaryCheckbox, { "aria-label": "Unchecked box" }),
+            createElement(PlainRadio, { "aria-label": "Unchecked radio" }),
+          ),
+        ),
+        { forceColorScheme: scheme },
+      );
+      await waitForEl(".mantine-Radio-radio");
+      await waitForEl(".mantine-Checkbox-input");
+      expect(sweepControlBoundaries(app.container)).toEqual({
+        failures: [],
+        unresolved: [],
+      });
     });
   }
 });

@@ -1387,15 +1387,17 @@
   font-size: 14px;
 }
 
-/* An unchecked checkbox's box takes the same token, so its boundary reaches
-   3:1 (WCAG 1.4.11); Mantine's default border measured 1.3:1. The contrast
-   sweeps measure it. */
+/* An unchecked checkbox's box and radio's circle take the same token, so
+   their boundary reaches 3:1 (WCAG 1.4.11); Mantine's default borders
+   measured 1.3:1 and 1.49:1. The contrast sweeps measure them. */
 .page
   :global(
     .mantine-Checkbox-input:not(:checked):not(:disabled):not(
         [data-indeterminate]
       ):not([data-error])
-  ) {
+  ),
+.page
+  :global(.mantine-Radio-radio:not(:checked):not(:disabled):not([data-error])) {
   border-color: var(--app-field-border);
 }
 

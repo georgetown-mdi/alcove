@@ -72,9 +72,28 @@ describe("primary-route contrast sweep (WCAG 2.1 AA)", () => {
     document.body.appendChild(fixture);
     try {
       expect(
-        sweepControlBoundaries(fixture).map(({ control }) => control),
+        sweepControlBoundaries(fixture).failures.map(({ control }) => control),
       ).toEqual(['<input> "Faint"']);
     } finally {
+      fixture.remove();
+    }
+  });
+
+  test("the boundary check records a control it cannot find a background for", () => {
+    const fixture = document.createElement("div");
+    fixture.innerHTML = `<input type="radio" aria-label="Unplaced">`;
+    document.body.appendChild(fixture);
+    document.documentElement.style.setProperty(
+      "--mantine-color-body",
+      "transparent",
+    );
+    try {
+      expect(sweepControlBoundaries(fixture)).toEqual({
+        failures: [],
+        unresolved: ['<input radio> "Unplaced"'],
+      });
+    } finally {
+      document.documentElement.style.removeProperty("--mantine-color-body");
       fixture.remove();
     }
   });

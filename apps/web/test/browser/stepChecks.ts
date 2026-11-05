@@ -5,12 +5,14 @@ import { userEvent } from "vitest/browser";
 import { expectLayoutHolds } from "./reflowChecks";
 import { expectNoAccessibilityViolations } from "./accessibilityRules";
 import { expectNoAxeViolations } from "./axeScan";
+import { sweepControlBoundaries } from "./contrastSweep";
 
 /**
  * Every check a keyboard-only journey runs on a page state it reaches: the
- * rule scan, axe, and the layout checks under the WCAG text spacing and at 320
- * CSS pixels. The route-state suites run the same checks on each route's
- * landing state; this reaches the states only a run or a loaded file shows.
+ * rule scan, axe, the control boundary sweep, and the layout checks under the
+ * WCAG text spacing and at 320 CSS pixels. The route-state suites run the
+ * same checks on each route's landing state; this reaches the states only a
+ * run or a loaded file shows.
  *
  * The checks read a settled page (see {@link settlePage}).
  */
@@ -19,6 +21,10 @@ export async function expectStepAccessible(root: Element): Promise<void> {
   try {
     expectNoAccessibilityViolations(root, { page: true });
     await expectNoAxeViolations(root);
+    expect(sweepControlBoundaries(root)).toEqual({
+      failures: [],
+      unresolved: [],
+    });
     await expectLayoutHolds(root);
   } finally {
     releasePointer();

@@ -10,8 +10,7 @@ Targeting is aspirational; the maintainers do not commit to a release date for a
 
 ## Pre-1.0
 
-Work required before the 1.0 release.
-
+No work is listed as required before the 1.0 release.
 
 ## Version 1.1
 
