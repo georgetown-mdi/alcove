@@ -21,7 +21,7 @@ import {
   expectedResultCount,
   expectedResultPairs,
   nulledPopulationRows,
-  populationSsn,
+  populationRow,
 } from "./completionPopulation";
 import { stressMemory } from "./stressMemory";
 
@@ -106,9 +106,7 @@ export async function writeInput(
   let buffered = "";
   for (let i = 0; i < rows; i++) {
     const k = offset + i;
-    buffered +=
-      `${i + 1},${populationSsn(k)},N${k % 99991},` +
-      `${1 + (k % 12)}/${1 + (k % 28)}/${1940 + (k % 60)}\n`;
+    buffered += `${i + 1},${populationRow(k)}\n`;
     if (buffered.length > 1 << 20) {
       if (!out.write(buffered)) await once(out, "drain");
       buffered = "";
