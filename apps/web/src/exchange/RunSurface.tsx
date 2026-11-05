@@ -649,7 +649,7 @@ export function leftBehindConfirm(
 function RecordPurposeNote() {
   return (
     <p className={styles.small}>
-      Check them later on the{" "}
+      Check the record and keys later on the{" "}
       <Link to="/verify" target="_blank" rel="noreferrer">
         Verify page
         <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
