@@ -507,7 +507,7 @@ export const NO_DEFAULT_RELAY_REFUSAL: ManagedDefaultRelayRefusalNone = {
  * docs/spec/MANAGED_EXCHANGE_RECORD.md for the field-by-field shape.
  */
 export interface ManagedExchangeRecord {
-  /** The v5 literal; a reader migrates an earlier version or refuses it (see
+  /** The v6 literal; a reader migrates an earlier version or refuses it (see
    * {@link MANAGED_EXCHANGE_SCHEMA_VERSION}). */
   schemaVersion: typeof MANAGED_EXCHANGE_SCHEMA_VERSION;
   /** Locally-generated identifier for this managed exchange, distinct from any
