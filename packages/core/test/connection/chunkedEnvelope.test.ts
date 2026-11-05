@@ -15,6 +15,8 @@ import {
   CHUNKED_ENVELOPE_HEADER_BYTES,
   chunkAdditionalData,
   chunkIv,
+  chunkLayout,
+  decryptChunkedInPlace,
 } from "../../src/connection/chunkedAead";
 import {
   createMessagePipe,
@@ -379,6 +381,45 @@ describe("tampered envelopes are refused", () => {
     await peer.send(envelope!.slice());
     await expectRefused(recv.receive(), /replay or out-of-order/);
   });
+});
+
+describe("the chunk layout, given an envelope length directly", () => {
+  test("states the chunk count and plaintext length of each length a sender writes", () => {
+    expect(chunkLayout(9 + 17, 4)).toEqual({ chunks: 1, plaintextBytes: 1 });
+    expect(chunkLayout(9 + 20, 4)).toEqual({ chunks: 1, plaintextBytes: 4 });
+    expect(chunkLayout(9 + 20 + 17, 4)).toEqual({
+      chunks: 2,
+      plaintextBytes: 5,
+    });
+    expect(chunkLayout(9 + 3 * 20, 4)).toEqual({
+      chunks: 3,
+      plaintextBytes: 12,
+    });
+  });
+
+  test.each([
+    ["a header and no chunk", 9],
+    ["a header and a body shorter than one chunk of one byte", 9 + 16],
+  ])(
+    "%s has no layout and decrypts to nothing, before any decryption",
+    async (_, length) => {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        await deriveAeadKey(SESSION_KEY, "initiator-to-responder"),
+        { name: "AES-GCM" },
+        false,
+        ["decrypt"],
+      );
+      const envelope = new Uint8Array(length) as Uint8Array<ArrayBuffer>;
+      envelope[0] = CHUNKED_ENVELOPE_VERSION;
+      const decrypt = vi.spyOn(crypto.subtle, "decrypt");
+      expect(chunkLayout(length, 4)).toBeUndefined();
+      await expect(
+        decryptChunkedInPlace(key, envelope, 0, 4),
+      ).resolves.toBeUndefined();
+      expect(decrypt).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("a frame that fails at chunk k", () => {

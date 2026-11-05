@@ -1,7 +1,8 @@
 name: Nightly Mutation Tests
 
 # Scheduled nightly mutation-testing run over the core security-bearing files --
-# packages/core/src/auth.ts, connection/abortMarker.ts, and
+# packages/core/src/auth.ts, connection/abortMarker.ts,
+# connection/chunkedAead.ts, and
 # connection/encryptedMessageConnection.ts. Stryker mutates each of them and
 # re-runs packages/core's unit tier per mutant, so what this leg reports is
 # whether a test DISTINGUISHES the mutated behavior, not whether a line was
@@ -15,7 +16,7 @@ name: Nightly Mutation Tests
 # committed in apps/cli/stryker.config.mjs; `npm run test:mutation:cli` locally.
 #
 # Nightly rather than per-PR: each mutant costs a suite run, so the corpus takes
-# minutes even at three files, and the merge-time path stays fast. Runs only on
+# minutes even at four files, and the merge-time path stays fast. Runs only on
 # `schedule` and manual `workflow_dispatch` -- never on push or pull_request --
 # so the PR gate is unaffected.
 
@@ -51,11 +52,11 @@ jobs:
     name: Core security-file mutation score
     runs-on: ubuntu-26.04
     # Upper bound on a hung run. The dry run is one serial pass of the whole
-    # core unit suite, about ten minutes; the mutants after it take a few
-    # minutes, since each runs only the tests that cover it. A static mutant
+    # core unit suite, about ten minutes; the mutants after it take about ten
+    # more, since each runs only the tests that cover it. A static mutant
     # (one reached outside any test) runs every test instead, so one that
-    # survives adds a second whole pass to the job.
-    timeout-minutes: 30
+    # survives adds a second whole pass to the job, about ten minutes more.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:

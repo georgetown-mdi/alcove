@@ -4,8 +4,8 @@
 //
 // The runner reads BOTH exports: `scoreFloors` below is the corpus -- its keys
 // are what gets mutated and each value is that file's committed floor -- and the
-// default export is the Stryker configuration itself. Widening the corpus to a
-// fourth file is one line in scoreFloors, whose floor is the score that file
+// default export is the Stryker configuration itself. Widening the corpus to
+// another file is one line in scoreFloors, whose floor is the score that file
 // measures when it is added.
 //
 // Every path here is repository-root-relative: Stryker runs from the repository
@@ -21,6 +21,7 @@
 export const scoreFloors = {
   "packages/core/src/auth.ts": 84,
   "packages/core/src/connection/abortMarker.ts": 94,
+  "packages/core/src/connection/chunkedAead.ts": 100,
   "packages/core/src/connection/encryptedMessageConnection.ts": 99,
 };
 

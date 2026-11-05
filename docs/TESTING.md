@@ -1068,8 +1068,9 @@ changes), never an absolute whole-repo percentage -- and even that stays opt-in.
 
 ## Mutation testing
 
-A nightly leg mutates the three core security-bearing files --
-`packages/core/src/auth.ts`, `src/connection/abortMarker.ts`, and
+A nightly leg mutates the four core security-bearing files --
+`packages/core/src/auth.ts`, `src/connection/abortMarker.ts`,
+`src/connection/chunkedAead.ts`, and
 `src/connection/encryptedMessageConnection.ts` -- and re-runs `packages/core`'s
 unit tier against every mutant. It measures something the coverage report above
 cannot: a line can be executed by a test that passes just as happily when the
@@ -1083,8 +1084,8 @@ npm run test:mutation
 ```
 
 It runs against an installed tree (`npm ci` plus the core build). On the
-nightly's Ubuntu runner, at the 4 test runners Stryker picks there, the three
-files' 413 mutants take about 13 minutes, about 5 of them the initial run of the
+nightly's Ubuntu runner, at the 4 test runners Stryker picks there, the four
+files' 597 mutants take about 24 minutes, about 9 of them the initial run of the
 whole core unit tier, which the configuration caps at 15
 (`dryRunTimeoutMinutes`). Stryker is not a repository dependency by design -- it
 drags in a second copy of Vitest and its own TypeScript -- so
