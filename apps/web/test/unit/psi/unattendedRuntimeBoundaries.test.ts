@@ -6,23 +6,25 @@ import ts from "typescript";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
 import {
-  APP_SHELL_UPDATE_HOLD_LOCK_NAME,
-  appShellUpdateHeldHere,
-  holdAppShellUpdateAcrossWindows,
-  holdAppShellUpdateHere,
-  resetAppShellUpdateHold,
-} from "@utils/appShellUpdateHold";
-import {
   SKIP_WAITING_MESSAGE,
   appShellUpdateReady,
   registerAppShell,
   resetAppShellUpdate,
+  takeAutomaticAppShellUpdateNotice,
 } from "@utils/appShellUpdate";
+import {
+  appShellUpdateHoldLockName,
+  appShellUpdateHoldersHere,
+  holdAppShellUpdateAcrossWindows,
+  holdAppShellUpdateHere,
+  resetAppShellUpdateHold,
+} from "@utils/appShellUpdateHold";
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
   APP_UPDATE_TAKEOVER_WAIT_MS,
   applyWaitingAppUpdateBetweenRuns,
+  readAppUpdateHolders,
 } from "@psi/managed/managedAppUpdate";
 import {
   awaitManagedExchangeLockTurn,
@@ -35,6 +37,7 @@ import {
   readInputFileModifiedAt,
 } from "@psi/managed/managedInputHandle";
 import {
+  NO_HELD_APP_UPDATE,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
@@ -61,7 +64,11 @@ import type { ShellContainer, ShellWorker } from "@utils/appShellUpdate";
 
 import type { HandlePermissionQuery } from "@psi/managed/managedInputHandle";
 
-import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
+import type {
+  ManagedExchangeRecord,
+  ManagedExchangeScheduleAdvance,
+} from "@psi/managed/managedExchangeRecord";
+import type { AppUpdateHolder } from "@utils/appUpdateHolder";
 import type { ManagedLocalState } from "@psi/managed/managedLocalStateShape";
 import type { ManagedScheduleTickSeams } from "@psi/managed/managedScheduleRunner";
 
@@ -408,11 +415,11 @@ describe("a scheduled run and a waiting app-shell update", () => {
     const shell = await registerShell(true);
     const { seams, attempts } = seamsForDueWindow(dueRecord());
 
-    const releasePrompt = holdAppShellUpdateAcrossWindows();
+    const releasePrompt = holdAppShellUpdateAcrossWindows("run");
     await tickManagedSchedules(seams);
     releasePrompt();
 
-    const releaseView = holdAppShellUpdateHere();
+    const releaseView = holdAppShellUpdateHere("results");
     await tickManagedSchedules(seams);
     releaseView();
 
@@ -422,7 +429,7 @@ describe("a scheduled run and a waiting app-shell update", () => {
     await vi.waitFor(async () => {
       const { held } = await navigator.locks.query();
       expect(held?.map((lock) => lock.name)).not.toContain(
-        APP_SHELL_UPDATE_HOLD_LOCK_NAME,
+        appShellUpdateHoldLockName("run"),
       );
     });
     await tickManagedSchedules(seams);
@@ -445,7 +452,7 @@ describe("a scheduled run and a waiting app-shell update", () => {
     let takeovers = 0;
     const answer = await applyWaitingAppUpdateBetweenRuns({
       updateReady: () => true,
-      heldHere: () => false,
+      holdersHere: () => [],
       lockNames: () => Promise.reject(new Error("the lock manager is gone")),
       takeOver: () => {
         takeovers += 1;
@@ -454,7 +461,7 @@ describe("a scheduled run and a waiting app-shell update", () => {
       apply: () => (applied += 1),
     });
 
-    expect(answer).toBe(false);
+    expect(answer).toEqual({ kind: "held", holders: [] });
     expect(takeovers).toBe(0);
     expect(applied).toBe(0);
   });
@@ -464,21 +471,110 @@ describe("a scheduled run and a waiting app-shell update", () => {
     let release = (): void => undefined;
     const seams = {
       updateReady: () => true,
-      heldHere: appShellUpdateHeldHere,
+      holdersHere: appShellUpdateHoldersHere,
       lockNames: () => Promise.resolve([]),
       takeOver: () => {
-        release = holdAppShellUpdateHere();
+        release = holdAppShellUpdateHere("edits");
         return Promise.resolve(true);
       },
       apply: () => (applied += 1),
     };
 
-    expect(await applyWaitingAppUpdateBetweenRuns(seams)).toBe(false);
+    expect(await applyWaitingAppUpdateBetweenRuns(seams)).toEqual({
+      kind: "held",
+      holders: ["edits"],
+    });
     expect(applied).toBe(0);
     release();
     seams.takeOver = () => Promise.resolve(true);
-    expect(await applyWaitingAppUpdateBetweenRuns(seams)).toBe(true);
+    expect(await applyWaitingAppUpdateBetweenRuns(seams)).toEqual({
+      kind: "applying",
+    });
     expect(applied).toBe(1);
+  });
+
+  test.each<[AppUpdateHolder, () => () => void]>([
+    ["run", () => holdAppShellUpdateAcrossWindows("run")],
+    ["file", () => holdAppShellUpdateAcrossWindows("file")],
+    ["run", () => holdAppShellUpdateHere("run")],
+    ["file", () => holdAppShellUpdateHere("file")],
+    ["results", () => holdAppShellUpdateHere("results")],
+    ["edits", () => holdAppShellUpdateHere("edits")],
+  ])("held for %s is reported as that holder", async (holder, hold) => {
+    await registerShell(true);
+    const release = hold();
+    await vi.waitFor(async () => {
+      expect(await readAppUpdateHolders()).toEqual({
+        holders: [holder],
+        locksRead: true,
+      });
+    });
+
+    expect(await applyWaitingAppUpdateBetweenRuns()).toEqual({
+      kind: "held",
+      holders: [holder],
+    });
+    release();
+  });
+
+  test("held by another window's run is reported as a run", async () => {
+    await registerShell(true);
+    const finishOtherRun = await runInAnotherWindow();
+    const releaseEdit = holdAppShellUpdateHere("edits");
+
+    expect(await applyWaitingAppUpdateBetweenRuns()).toEqual({
+      kind: "held",
+      holders: ["run", "edits"],
+    });
+    releaseEdit();
+    finishOtherRun();
+    await awaitManagedExchangeLockTurn("another-exchange");
+  });
+
+  test("an apply leaves the reloaded tab its line, and a held one leaves none", async () => {
+    const items = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    });
+    await registerShell(true);
+    const { seams } = seamsForDueWindow(dueRecord());
+
+    const releaseView = holdAppShellUpdateHere("edits");
+    await tickManagedSchedules(seams);
+    releaseView();
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(false);
+
+    const [entry] = await tickManagedSchedules(seams);
+    expect(entry.skipped).toBe("app-update");
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(true);
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(false);
+  });
+
+  test("a run on held code records what held it, and a run on current code records nothing", async () => {
+    const record = dueRecord();
+    const advances: Array<ManagedExchangeScheduleAdvance> = [];
+    const { seams, attempts } = seamsForDueWindow(record);
+    seams.persistAdvance = (_id, advance) => {
+      advances.push(advance);
+      return Promise.resolve(record);
+    };
+
+    await registerShell(true);
+    const releaseView = holdAppShellUpdateHere("results");
+    await tickManagedSchedules(seams);
+    releaseView();
+
+    resetAppShellUpdate();
+    await registerShell(false);
+    await tickManagedSchedules(seams);
+
+    expect(attempts()).toBe(2);
+    expect(advances.map((advance) => advance.heldAppUpdate)).toEqual([
+      { kind: "held", at: "2026-01-06T14:30:00.000Z", holders: ["results"] },
+      NO_HELD_APP_UPDATE,
+    ]);
   });
 
   test("whose takeover does not land within the wait: the run is made, and the next window reloads onto it", async () => {

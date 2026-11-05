@@ -83,16 +83,62 @@ let takeoverPosted = false;
 /** A takeover this page asked for has landed: the worker controlling the page
  * is a newer deployment than the page's own code. */
 let controllerAheadOfPage = false;
+/** The scheduled runner is waiting for the takeover it posted to land. */
+let takeoverWaiting = false;
 let publishedReady = false;
+let publishedApplying = false;
 let applyUpdate: (() => void) | undefined;
 const listeners = new Set<() => void>();
 const takeoverWaiters = new Set<() => void>();
 
 function publish(): void {
   const ready = appShellUpdateReady();
-  if (publishedReady === ready) return;
+  const applying = appShellUpdateApplying();
+  if (publishedReady === ready && publishedApplying === applying) return;
   publishedReady = ready;
+  publishedApplying = applying;
   for (const listener of listeners) listener();
+}
+
+/** Whether the scheduled runner is applying the update now: it has asked the
+ * waiting worker to take over and is waiting for that to land. */
+export function appShellUpdateApplying(): boolean {
+  return takeoverWaiting;
+}
+
+/** The session-storage key the runner's apply leaves for the reloaded page. */
+const AUTOMATIC_APPLY_NOTICE_KEY = "alcove-app-updated-before-run";
+
+/** This tab's session storage, or `undefined` where it has none. */
+function tabStorage(): Storage | undefined {
+  try {
+    return (globalThis as { sessionStorage?: Storage }).sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Leave a note for the reloaded page that the runner applied the update.
+ * Session storage outlives the reload and stays in this tab. */
+export function noteAutomaticAppShellUpdate(): void {
+  try {
+    tabStorage()?.setItem(AUTOMATIC_APPLY_NOTICE_KEY, "1");
+  } catch {
+    // A full or blocked store loses only the line after the reload.
+  }
+}
+
+/** Whether the runner applied the update before this page loaded, removing the
+ * note so each apply is reported once. */
+export function takeAutomaticAppShellUpdateNotice(): boolean {
+  try {
+    const storage = tabStorage();
+    if (storage?.getItem(AUTOMATIC_APPLY_NOTICE_KEY) == null) return false;
+    storage.removeItem(AUTOMATIC_APPLY_NOTICE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -109,7 +155,8 @@ export function appShellUpdateReady(): boolean {
   return controller !== null && waiting !== null && waiting !== controller;
 }
 
-/** Subscribe to {@link appShellUpdateReady} changes; returns the unsubscribe. */
+/** Subscribe to {@link appShellUpdateReady} and {@link appShellUpdateApplying}
+ * changes; returns the unsubscribe. */
 export function subscribeAppShellUpdate(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -244,14 +291,19 @@ export function takeOverWaitingAppShell(boundMs: number): Promise<boolean> {
     const landed = () => {
       clearTimeout(timer);
       takeoverWaiters.delete(landed);
+      takeoverWaiting = false;
       resolve(true);
     };
     const timer = setTimeout(() => {
       takeoverWaiters.delete(landed);
+      takeoverWaiting = false;
+      publish();
       resolve(false);
     }, boundMs);
     takeoverWaiters.add(landed);
     takeoverPosted = true;
+    takeoverWaiting = true;
+    publish();
     waiting.postMessage(SKIP_WAITING_MESSAGE);
   });
 }
@@ -307,7 +359,9 @@ export function resetAppShellUpdate(): void {
   takeoverArmed = false;
   takeoverPosted = false;
   controllerAheadOfPage = false;
+  takeoverWaiting = false;
   publishedReady = false;
+  publishedApplying = false;
   applyUpdate = undefined;
   listeners.clear();
   takeoverWaiters.clear();

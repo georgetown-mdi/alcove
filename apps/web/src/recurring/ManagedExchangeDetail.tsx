@@ -55,6 +55,7 @@ import {
   SIDE_LABELS,
   completedRunRecorded,
   connectionRows,
+  heldAppUpdateLine,
   lastRunMayHaveSentPayload,
   linkageTermsRows,
   relayRegistrationOffered,
@@ -829,7 +830,7 @@ function ScheduleEntryFieldset({
   // at the field.
   const widthNeedsDecimals = !Number.isInteger(fields.windowHours);
   const [partnerText, setPartnerText] = useState("");
-  useAppShellUpdateHold(partnerText !== "");
+  useAppShellUpdateHold(partnerText !== "", "edits");
   const [partnerTextError, setPartnerTextError] = useState<string | undefined>(
     undefined,
   );
@@ -1140,9 +1141,13 @@ function RunHistory({
   resultSizeWarning: string | undefined;
 }) {
   const entries = runHistoryEntries(record);
+  const heldUpdate = heldAppUpdateLine(record);
   return (
     <div className={styles.callout}>
       <h2 className={styles.eyebrow}>Run history</h2>
+      {heldUpdate !== undefined && (
+        <p className={`${styles.small} ${styles.sub}`}>{heldUpdate}</p>
+      )}
       {resultSizeWarning !== undefined && (
         <Alert
           color="yellow"

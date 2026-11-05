@@ -11,6 +11,7 @@ import {
   SIDE_LABELS,
   completedRunRecorded,
   connectionRows,
+  heldAppUpdateLine,
   lastRunMayHaveSentPayload,
   linkageTermsRows,
   relayRegistrationOffered,
@@ -23,12 +24,14 @@ import {
   parseManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import { RAN_ELSEWHERE_IMPORT_REMEDY } from "@psi/managed/managedFailureCopy";
+import { dateTimeLabel } from "@psi/formatting";
 import { managedExchangeLapsed } from "@psi/managed/managedExpiry";
 
 import type {
   ManagedExchangeLastRun,
   ManagedExchangeSchedule,
   ManagedExchangeSide,
+  ManagedHeldAppUpdate,
   NewManagedExchange,
 } from "@psi/managed/managedExchangeRecord";
 import type { WebRTCExchangeLocator } from "@alcove/core";
@@ -813,5 +816,36 @@ describe("relayRegistrationOffered", () => {
         relayRegistrationPendingSince: "2026-07-01T09:00:00.000Z",
       }),
     ).toBe(true);
+  });
+});
+
+describe("heldAppUpdateLine", () => {
+  const HELD_AT = "2026-07-14T09:00:00.000Z";
+
+  test("is absent where the last scheduled run started on the current code", () => {
+    expect(heldAppUpdateLine({ heldAppUpdate: { kind: "none" } })).toBe(
+      undefined,
+    );
+  });
+
+  test.each<[ManagedHeldAppUpdate["holders"], string]>([
+    [["run"], "an exchange was running"],
+    [["file"], "a page had an invitation or a file open"],
+    [["results"], "a page showed results"],
+    [["edits"], "a change was not saved"],
+    [
+      ["run", "results", "edits"],
+      "an exchange was running, a page showed results, and a change was not saved",
+    ],
+  ])("states what held the update for %j", (holders, reasons) => {
+    expect(
+      heldAppUpdateLine({
+        heldAppUpdate: { kind: "held", at: HELD_AT, holders },
+      }),
+    ).toBe(
+      `The scheduled run on ${dateTimeLabel(new Date(HELD_AT))} used an ` +
+        `earlier version of Alcove because ${reasons}. Alcove updates before ` +
+        "a later run once nothing holds it back.",
+    );
   });
 });

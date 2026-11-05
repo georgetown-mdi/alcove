@@ -195,6 +195,13 @@ traffic passes through it, and no exchange work happens in it.
   something a reload would lose, such as a finished run's downloads or an
   unsaved change. The rule and how long an app can run an older version:
   [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#applying-a-waiting-app-version-between-windows).
+- While a new version waits, the update notice says what is holding it back
+  (a running exchange, an open invitation or file, results on screen, or an
+  unsaved change) and how to clear each. You do not have to answer it: the
+  app still updates before the next scheduled run nothing holds back. After
+  the app updates itself, it says so once. When a scheduled run goes ahead on
+  the older version because something held the update back, the exchange's
+  run history says so and names what held it.
 - An update replaces the app's cached code, not the browser's storage: the
   recurring exchanges, their secrets, and the accounting stay. A new version
   reads what an earlier one stored, and saves it in its own format the next

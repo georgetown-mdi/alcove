@@ -293,7 +293,7 @@ function AcceptorInvitationScreen({
   const consoleBuild = isConsoleBuild();
   // Only the invitation outlives a reload; the review, the consent, the file,
   // a run and its results are held only in this page.
-  useAppShellUpdateHold(encoded !== undefined && encoded !== "");
+  useAppShellUpdateHold(encoded !== undefined && encoded !== "", "file");
   const [screenState, dispatch] = useReducer(
     acceptorScreenReducer,
     ACCEPTOR_SCREEN_INITIAL,

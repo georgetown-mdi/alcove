@@ -151,9 +151,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
   useAppShellUpdateHold(
     runCompletion !== undefined ||
       liveFailure !== undefined ||
-      reinvite !== undefined ||
-      reselected !== undefined,
+      reinvite !== undefined,
+    "results",
   );
+  useAppShellUpdateHold(reselected !== undefined, "file");
 
   // The re-invite result panel, scrolled into view when the detail section (far below
   // the panel) triggered the mint, so the operator lands on the artifacts they need.

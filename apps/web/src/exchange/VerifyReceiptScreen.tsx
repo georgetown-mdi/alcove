@@ -408,6 +408,7 @@ export function VerifyReceiptScreen() {
       verdict,
       signedVerdict,
     ].some((held) => held !== undefined) || pinnedFingerprint !== "",
+    "file",
   );
 
   // Which exchange the loaded inputs belong to: bumped when the record or keys

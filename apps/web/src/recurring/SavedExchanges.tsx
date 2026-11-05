@@ -948,6 +948,7 @@ function useImportFile({
   const [importing, setImporting] = useState(false);
   useAppShellUpdateHold(
     outcome.liveCopy !== undefined || outcome.storedCopy !== undefined,
+    "file",
   );
   // The state renders the withheld control; the ref refuses a pick that lands
   // before that render does.

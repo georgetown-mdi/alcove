@@ -42,6 +42,8 @@ import {
 
 import { z } from "zod";
 
+import { APP_UPDATE_HOLDERS } from "@utils/appUpdateHolder";
+
 import { OwnRelaySchema } from "../transport/ownRelaySetting";
 import { applyDisclosure } from "../metadataEditing";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
@@ -64,11 +66,12 @@ import type {
   WebRTCExchangeLocator,
 } from "@alcove/core";
 import type { OwnRelay, OwnRelayRead } from "../transport/ownRelaySetting";
+import type { AppUpdateHolder } from "@utils/appUpdateHolder";
 import type { DisclosureChoice } from "../metadataEditing";
 import type { ZodType } from "zod";
 
 /**
- * The `schemaVersion` literal this build writes for the v4 record. A reader
+ * The `schemaVersion` literal this build writes for the v5 record. A reader
  * migrates an earlier version {@link MANAGED_EXCHANGE_MIGRATIONS} leads from
  * and refuses any other value. The literal moves for a member a build not
  * knowing it would read past and lose state by, such as the
@@ -77,12 +80,23 @@ import type { ZodType } from "zod";
  * later shape change is a new literal under a new version, never an existing
  * version holding speculative fields.
  */
-export const MANAGED_EXCHANGE_SCHEMA_VERSION = "alcove-managed-exchange/v4";
+export const MANAGED_EXCHANGE_SCHEMA_VERSION = "alcove-managed-exchange/v5";
+
+/** The step from the v4 record, which has no `heldAppUpdate`: a v4 build ran
+ * no window it recorded a held update for, so the step adds the none form. */
+const MANAGED_EXCHANGE_V4_TO_V5 = Object.freeze({
+  from: "alcove-managed-exchange/v4",
+  to: MANAGED_EXCHANGE_SCHEMA_VERSION,
+  migrate: (record: Record<string, unknown>) => ({
+    ...record,
+    heldAppUpdate: NO_HELD_APP_UPDATE,
+  }),
+});
 
 /**
  * The managed record's migrations, run in memory at every read of the store.
  * A migrated record is written at the current version by the next store
- * write that changes it, never by a read. The earlier literals are
+ * write that changes it, never by a read. The literals before v4 are
  * development ones no step leads from.
  */
 export const MANAGED_EXCHANGE_MIGRATIONS: FormatMigrations<string> =
@@ -90,7 +104,7 @@ export const MANAGED_EXCHANGE_MIGRATIONS: FormatMigrations<string> =
     fileName: "A saved exchange",
     versionField: "schemaVersion",
     current: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    steps: Object.freeze([]),
+    steps: Object.freeze([MANAGED_EXCHANGE_V4_TO_V5]),
     unchangedStatement: "The saved exchange was not changed.",
     failureRemedy:
       "Remove it from the list of saved exchanges, then import its backup " +
@@ -416,6 +430,31 @@ export const NO_STANDING_CONDITION: ManagedStandingConditionNone = {
   kind: "none",
 };
 
+/** A scheduled window whose run started on the app version this page loaded
+ * while a newer one was waiting, because something held the update back. Its
+ * normative shape: docs/spec/MANAGED_EXCHANGE_RECORD.md, the `heldAppUpdate`
+ * row. */
+export interface ManagedHeldAppUpdate {
+  kind: "held";
+  /** ISO 8601 UTC instant the window's first attempt was about to start. */
+  at: string;
+  /** What held the update back, in display order, at least one. */
+  holders: ReadonlyArray<AppUpdateHolder>;
+}
+
+/** The `heldAppUpdate` of a record whose last scheduled run held nothing back,
+ * or that has made none. */
+export interface ManagedHeldAppUpdateNone {
+  kind: "none";
+}
+
+/** What the required `heldAppUpdate` field holds. */
+export type ManagedHeldAppUpdateField =
+  ManagedHeldAppUpdate | ManagedHeldAppUpdateNone;
+
+/** The `heldAppUpdate` value of a record holding none. */
+export const NO_HELD_APP_UPDATE: ManagedHeldAppUpdateNone = { kind: "none" };
+
 /**
  * A managed exchange record: the minimal state this party's browser retains so a
  * recurring exchange with the same partner over the same terms can run again. It
@@ -423,7 +462,7 @@ export const NO_STANDING_CONDITION: ManagedStandingConditionNone = {
  * docs/spec/MANAGED_EXCHANGE_RECORD.md for the field-by-field shape.
  */
 export interface ManagedExchangeRecord {
-  /** The v4 literal; a reader migrates an earlier version or refuses it (see
+  /** The v5 literal; a reader migrates an earlier version or refuses it (see
    * {@link MANAGED_EXCHANGE_SCHEMA_VERSION}). */
   schemaVersion: typeof MANAGED_EXCHANGE_SCHEMA_VERSION;
   /** Locally-generated identifier for this managed exchange, distinct from any
@@ -546,6 +585,11 @@ export interface ManagedExchangeRecord {
    * `partner-storage` condition holding no response, and never an `auth`
    * one. */
   standingCondition: ManagedStandingConditionField;
+  /** Whether the last scheduled window that made an attempt started it on this
+   * page's older code while a newer version waited, and what held that version
+   * back; {@link NO_HELD_APP_UPDATE} where it started on the current code or
+   * no window has. Written only by the window's own bookkeeping. */
+  heldAppUpdate: ManagedHeldAppUpdateField;
 }
 
 /**
@@ -650,6 +694,23 @@ export const standingConditionFieldSchema: ZodType<ManagedStandingConditionField
     standingConditionSchema,
     z.object({ kind: z.literal("none") }).strict(),
   ]);
+
+/** The validator for the record's required `heldAppUpdate` field. */
+const heldAppUpdateFieldSchema: ZodType<ManagedHeldAppUpdateField> = z.union([
+  z
+    .object({
+      kind: z.literal("held"),
+      at: z.iso.datetime(),
+      holders: z
+        .array(z.enum(APP_UPDATE_HOLDERS))
+        .min(1)
+        .refine((holders) => new Set(holders).size === holders.length, {
+          message: "heldAppUpdate names each holder once",
+        }),
+    })
+    .strict(),
+  z.object({ kind: z.literal("none") }).strict(),
+]);
 
 /** The canonical `tokenMaxAgeDays` validator, re-exported for the
  * export/import artifact ({@link ../tokenMaxAge}). */
@@ -762,6 +823,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     previousSharedSecret: z.string().regex(SHARED_SECRET_REGEX).optional(),
     previousExpires: z.iso.datetime().optional(),
     standingCondition: standingConditionFieldSchema,
+    heldAppUpdate: heldAppUpdateFieldSchema,
   })
   .refine(
     (record) =>
@@ -794,14 +856,15 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
         record.defaultRelayOn === undefined &&
         record.rotationHistory === undefined &&
         record.previousSharedSecret === undefined &&
+        record.heldAppUpdate.kind === "none" &&
         record.workingDirectoryHandle === undefined),
     {
       message:
         "a record without a sharedSecret is configuration only and must hold " +
         "no expires, schedule, lastRun, recentRuns, rotationInFlightSince, " +
         "relayRegistrar, relayRegistrationPendingSince, ownRelay, " +
-        "defaultRelayOn, rotationHistory, previousSharedSecret, or platform " +
-        "handle",
+        "defaultRelayOn, rotationHistory, previousSharedSecret, held app " +
+        "update, or platform handle",
     },
   )
   .refine(
@@ -844,7 +907,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
  *
  * @param migrations the record's migrations; this build's by default.
  * @throws {FormatMigrationError} if a migration fails, naming its cause.
- * @throws {ZodError} if the value is not a valid v4 record.
+ * @throws {ZodError} if the value is not a valid v5 record.
  */
 export function parseManagedExchangeRecord(
   raw: unknown,
@@ -927,7 +990,7 @@ export function runnableManagedExchangeOrRefuse(
 }
 
 /**
- * A per-entry read of the stored list: the entries that parsed as v4 records, and
+ * A per-entry read of the stored list: the entries that parsed as v5 records, and
  * the stored keys of the entries that did not. The unreadable half is the STORED
  * KEY rather than the entry's own `id`, which a failed parse leaves untrusted --
  * the same reason the diagnostic read's unreadable marker holds the key (see
@@ -1007,7 +1070,7 @@ export interface ManagedExchangeDiagnosticEssentials {
  * {@link parseManagedExchangeRecord} throws here exactly as it would on the
  * strict read; the caller catches that to mark the entry unreadable.
  *
- * @throws {ZodError} if the value is not a valid v4 record.
+ * @throws {ZodError} if the value is not a valid v5 record.
  */
 export function diagnoseManagedExchangeRecord(
   raw: unknown,
@@ -1171,12 +1234,13 @@ export interface NewManagedExchange {
 
 /**
  * Build a complete {@link ManagedExchangeRecord} from the caller's fields: assign
- * a fresh `id` and the v4 `schemaVersion`, then validate the whole record through
+ * a fresh `id` and the v5 `schemaVersion`, then validate the whole record through
  * the schema so the label cap, the credential-free document, and the secret
  * format are enforced at write. The optional local fields are attached only when
  * present, so an absent policy is an omitted key rather than an explicit
  * `undefined`; `standingCondition` is required, so it is always written, holding
- * {@link NO_STANDING_CONDITION} unless an import supplies one to retain.
+ * {@link NO_STANDING_CONDITION} unless an import supplies one to retain, and
+ * `heldAppUpdate` holds {@link NO_HELD_APP_UPDATE}: it is this device's alone.
  *
  * @throws {ZodError} if the assembled record is invalid (an over-long label, a
  *   malformed secret, a document holding an `authentication` block).
@@ -1220,6 +1284,7 @@ export function buildManagedExchangeRecord(
     ...(fields.ownRelay !== undefined ? { ownRelay: fields.ownRelay } : {}),
     ...(fields.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
     standingCondition: fields.standingCondition ?? NO_STANDING_CONDITION,
+    heldAppUpdate: NO_HELD_APP_UPDATE,
   };
   return parseManagedExchangeRecord(record);
 }
@@ -1953,7 +2018,8 @@ function ownRelayAfterPairImport(
  *   relay registration, and rotation history, each absent where the import
  *   states none, and from a backup also its schedule, its own relays, and its
  *   use of this site's relay server.
- * - From `stored`: the `id`, label, and working-folder grant, and from a pair
+ * - From `stored`: the `id`, label, working-folder grant, and held app
+ *   update, and from a pair
  *   import also the schedule and the use of this site's relay server, which a
  *   pair has no field for.
  * - Merged: `lastRun` is the newer of the two, and the run list holds both
@@ -1991,6 +2057,7 @@ export function applyManagedExchangeImportReplace(
     sharedSecret: imported.sharedSecret,
     standingCondition:
       raisedStandingCondition(stored) ?? imported.standingCondition,
+    heldAppUpdate: stored.heldAppUpdate,
     ...(stored.workingDirectoryHandle !== undefined
       ? { workingDirectoryHandle: stored.workingDirectoryHandle }
       : {}),
@@ -2491,6 +2558,11 @@ export interface ManagedExchangeScheduleAdvance {
    * (see {@link ./managedScheduleRunner.ts}). Omitted when the window raised
    * none. */
   standingCondition?: ManagedStandingCondition;
+  /** Whether the window's first attempt started on older code a hold kept in
+   * place. Omitted when the window made no attempt, which leaves the stored
+   * value as it is. Not held to {@link evidenceSharedSecret}: it is about this
+   * page's code, not the secret. */
+  heldAppUpdate?: ManagedHeldAppUpdateField;
   /** The secret the record held when {@link lastRun} and
    * {@link standingCondition} were read: the one the window's last attempt ran
    * under, or the one the wake read. Both land only while the stored record
@@ -2563,6 +2635,9 @@ export function applyManagedExchangeScheduleAdvance(
         )
       : record),
     schedule: advance.schedule,
+    ...(advance.heldAppUpdate !== undefined
+      ? { heldAppUpdate: advance.heldAppUpdate }
+      : {}),
   };
   const storedAtMs =
     record.lastRun === undefined

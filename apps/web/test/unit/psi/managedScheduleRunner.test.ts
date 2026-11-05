@@ -60,6 +60,7 @@ import type {
   ManagedScheduleTickSeams,
 } from "@psi/managed/managedScheduleRunner";
 import type { ManagedLocalState } from "@psi/managed/managedLocalStateShape";
+import type { WaitingAppUpdateOutcome } from "@psi/managed/managedAppUpdate";
 
 const TEST_RETIRED = { verifier: "A".repeat(43), at: 0 };
 
@@ -186,7 +187,7 @@ function harness(options: {
   ) => ManagedExchangeRecord | undefined;
   /** The apply of a waiting app update asked before a window's first attempt;
    * by default no update is waiting. */
-  applyWaitingAppUpdate?: () => Promise<boolean>;
+  applyWaitingAppUpdate?: () => Promise<WaitingAppUpdateOutcome>;
 }): Harness {
   const script = options.script ?? [];
   const stored = new Map(
@@ -283,7 +284,8 @@ function harness(options: {
       options.stopAfterAttempts !== undefined &&
       attempts.length >= options.stopAfterAttempts,
     applyWaitingAppUpdate:
-      options.applyWaitingAppUpdate ?? (() => Promise.resolve(false)),
+      options.applyWaitingAppUpdate ??
+      (() => Promise.resolve({ kind: "none-waiting" as const })),
   };
   return {
     seams,
@@ -506,6 +508,13 @@ describe("a due window in the open runtime", () => {
 });
 
 describe("a due window with a waiting app update", () => {
+  /** The apply's outcome: reloading onto the update, or not. */
+  function applied(reloading: boolean): Promise<WaitingAppUpdateOutcome> {
+    return Promise.resolve(
+      reloading ? { kind: "applying" } : { kind: "none-waiting" },
+    );
+  }
+
   test("whose takeover wait runs out measures the attempt's remaining time and pacing from after the wait", async () => {
     const closesAtMs = at("2026-01-06T17:00:00.000Z");
     const startedAtMs = closesAtMs - ATTEMPT_PEER_WAIT_MS;
@@ -516,7 +525,7 @@ describe("a due window with a waiting app update", () => {
       script: [{ kind: "fail", error: new Error("the channel dropped") }],
       applyWaitingAppUpdate: () => {
         advanceClock(APP_UPDATE_TAKEOVER_WAIT_MS);
-        return Promise.resolve(false);
+        return Promise.resolve({ kind: "not-taken-over" });
       },
     });
     advanceClock = runner.advanceClock;
@@ -540,7 +549,7 @@ describe("a due window with a waiting app update", () => {
       script: [{ kind: "succeed" }],
       applyWaitingAppUpdate: () => {
         asked += 1;
-        return Promise.resolve(true);
+        return applied(true);
       },
     });
 
@@ -590,7 +599,7 @@ describe("a due window with a waiting app update", () => {
         ...options,
         applyWaitingAppUpdate: () => {
           asked += 1;
-          return Promise.resolve(asked > 1);
+          return applied(asked > 1);
         },
       });
       const [entry] = await tickManagedSchedules(withUpdate.seams);
@@ -616,7 +625,7 @@ describe("a due window with a waiting app update", () => {
       applyWaitingAppUpdate: () => {
         const answer = ready;
         ready = true;
-        return Promise.resolve(answer);
+        return applied(answer);
       },
     });
 
@@ -639,7 +648,7 @@ describe("a due window with a waiting app update", () => {
       startAt: "2026-01-07T14:00:00.000Z",
       applyWaitingAppUpdate: () => {
         asked += 1;
-        return Promise.resolve(true);
+        return applied(true);
       },
     });
 

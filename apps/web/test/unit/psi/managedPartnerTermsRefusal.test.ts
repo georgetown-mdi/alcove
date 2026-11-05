@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
+  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
   lastRunSchema,
@@ -131,6 +132,7 @@ function record(
     side: "inviter",
     sharedSecret: generateSharedSecret(),
     standingCondition: NO_STANDING_CONDITION,
+    heldAppUpdate: NO_HELD_APP_UPDATE,
     ...overrides,
   };
 }
@@ -257,12 +259,12 @@ describe("a managed exchange whose partner refused its linkage terms", () => {
     // failure, with no kind of its own. It reads unchanged and keeps the
     // connection state it showed before.
     const earlier = JSON.parse(
-      JSON.stringify(
-        record({
-          schemaVersion: "alcove-managed-exchange/v4",
+      JSON.stringify({
+        ...record({
           lastRun: { at: RUN_AT, outcome: "failed", failureKind: "transport" },
         }),
-      ),
+        schemaVersion: "alcove-managed-exchange/v4",
+      }),
     ) as unknown;
     const loaded = parseManagedExchangeRecord(earlier);
     expect(loaded.lastRun).toEqual({

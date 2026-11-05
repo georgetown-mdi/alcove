@@ -7,6 +7,7 @@ import {
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
+  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
 } from "../../../src/psi/managed/managedExchangeRecord.js";
@@ -75,6 +76,7 @@ function record(
     side: "inviter",
     sharedSecret: generateSharedSecret(),
     standingCondition: NO_STANDING_CONDITION,
+    heldAppUpdate: NO_HELD_APP_UPDATE,
     schedule: schedule(),
     ...overrides,
   };

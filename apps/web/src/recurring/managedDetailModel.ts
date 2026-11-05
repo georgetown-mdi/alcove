@@ -45,6 +45,7 @@ import type {
   ManagedExchangeRecord,
   ManagedExchangeSide,
 } from "@psi/managed/managedExchangeRecord";
+import type { AppUpdateHolder } from "@utils/appUpdateHolder";
 import type { RepeatedMissCoordination } from "./scheduleSurfacingModel";
 
 /** The operator-facing name for each side of the partnership. */
@@ -478,6 +479,35 @@ export function runHistoryEntries(
         : {}),
     };
   });
+}
+
+/** Why the update was held back, as the run history states it. */
+const HELD_UPDATE_REASONS: Readonly<Record<AppUpdateHolder, string>> = {
+  run: "an exchange was running",
+  file: "a page had an invitation or a file open",
+  results: "a page showed results",
+  edits: "a change was not saved",
+};
+
+/**
+ * The run history's line for a scheduled run that started on an earlier
+ * version of the app because something held the waiting update back, or
+ * `undefined` where the record holds none (docs/spec/MANAGED_EXCHANGE_RECORD.md,
+ * the `heldAppUpdate` row).
+ */
+export function heldAppUpdateLine(
+  record: Pick<ManagedExchangeRecord, "heldAppUpdate">,
+): string | undefined {
+  const held = record.heldAppUpdate;
+  if (held.kind !== "held") return undefined;
+  const reasons = new Intl.ListFormat("en", { type: "conjunction" }).format(
+    held.holders.map((holder) => HELD_UPDATE_REASONS[holder]),
+  );
+  return (
+    `The scheduled run on ${dateTimeLabel(new Date(held.at))} used an ` +
+    `earlier version of Alcove because ${reasons}. Alcove updates before a ` +
+    "later run once nothing holds it back."
+  );
 }
 
 /**

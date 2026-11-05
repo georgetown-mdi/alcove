@@ -241,7 +241,10 @@ export function ResumedInvitationRun({
     failure,
   });
   useBeforeUnloadPrompt(outputs === undefined && failure === undefined);
-  useAppShellUpdateHold(true);
+  useAppShellUpdateHold(
+    true,
+    outputs === undefined && failure === undefined ? "run" : "results",
+  );
 
   return (
     <WorkShell
