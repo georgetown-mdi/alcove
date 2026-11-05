@@ -332,6 +332,21 @@ describe("CLI separability", () => {
     ]);
     expect(artifact.artifactVersion).toBe(MANAGED_EXCHANGE_ARTIFACT_VERSION);
   });
+
+  test("a default relay refusal on the record stays out of the export", () => {
+    const record = {
+      ...runnableRecord(newExchange({ schedule })),
+      defaultRelayRefusal: {
+        kind: "refused" as const,
+        at: "2026-01-06T14:30:00.000Z",
+        cause: "relay-full" as const,
+        retryAfterSeconds: 600,
+      },
+    };
+    expect(
+      serializeManagedExchangeArtifact(encodeManagedExchangeArtifact(record)),
+    ).not.toMatch(/defaultRelayRefusal|relay-full/);
+  });
 });
 
 describe("the grants the source held", () => {

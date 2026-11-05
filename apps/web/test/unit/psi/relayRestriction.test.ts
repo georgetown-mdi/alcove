@@ -8,10 +8,10 @@ import {
   parseExchangeAllowedRelayLines,
 } from "@psi/transport/relayRestriction";
 import {
-  DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
   invitationRelayWithDefault,
   relayWithDefaultForRun,
 } from "@psi/transport/defaultRelay";
+import { defaultRelayNotEnrolledNotice } from "@psi/transport/defaultRelayRefusal";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
@@ -200,7 +200,11 @@ describe("relayPlanForRun", () => {
         readOwn,
         setting: () => SITE,
         enroll: vi.fn(() =>
-          Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
+          Promise.resolve({
+            kind: "failed" as const,
+            detail: "HTTP 503",
+            answer: { status: 503 },
+          }),
         ),
         onRunNotice,
       },
@@ -215,7 +219,7 @@ describe("relayPlanForRun", () => {
     });
     expect(onRunNotice.mock.calls).toEqual([
       [allowedRelaysRunNotice([SITE.turnUrl], [OWN_URL, PARTNER_URL])],
-      [DEFAULT_RELAY_NOT_ENROLLED_NOTICE],
+      [defaultRelayNotEnrolledNotice({ cause: "other" })],
     ]);
   });
 
@@ -229,14 +233,18 @@ describe("relayPlanForRun", () => {
         readOwn: () => ({ kind: "none" }),
         setting: () => SITE,
         enroll: vi.fn(() =>
-          Promise.resolve({ kind: "failed" as const, detail: "HTTP 503" }),
+          Promise.resolve({
+            kind: "failed" as const,
+            detail: "HTTP 503",
+            answer: { status: 503 },
+          }),
         ),
         onRunNotice,
       },
     );
     expect(plan).toEqual({ relaysLeftOut: [], websocketRelays: [] });
     expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
-      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+      defaultRelayNotEnrolledNotice({ cause: "other" }),
     );
   });
 });

@@ -25,10 +25,17 @@ import {
 
 import { defaultRelayBuild } from "@utils/clientConfig";
 
+import {
+  defaultRelayNotEnrolledNotice,
+  defaultRelayPreviousNotEnrolledNotice,
+  defaultRelayRefusal,
+} from "./defaultRelayRefusal";
+
 import type {
   DefaultRelayBuild,
   DefaultRelaySetting,
 } from "@utils/clientConfig";
+import type { DefaultRelayRefusal } from "./defaultRelayRefusal";
 import type { RelayLocator } from "./rendezvous";
 import type { RelayUrls } from "./ownRelaySetting";
 
@@ -122,10 +129,14 @@ export interface DefaultRelayDependencies {
   signal?: AbortSignal;
   /** How long a dial waits; {@link DEFAULT_RELAY_DIAL_WAIT_MS} when unset. */
   dialWaitMs?: number;
-  /** Receives {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} when the enrollment
-   * fails, and {@link DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE} when only
+  /** Receives {@link defaultRelayNotEnrolledNotice} when the enrollment
+   * fails, and {@link defaultRelayPreviousNotEnrolledNotice} when only
    * the enrollment under `previousSharedSecret` does. */
   onRunNotice?: (message: string) => void;
+  /** Receives what the enrollment under the current secret came to, once it
+   * ends: the refusal where it failed, `undefined` where it confirmed.
+   * Nothing where it was cancelled. */
+  onDefaultRelayEnrollment?: (refusal: DefaultRelayRefusal | undefined) => void;
   /** A managed acceptor's previous secret, which the run also waits for its
    * partner under: where the run uses the default relay's WebSocket relay
    * url, the key and exchange id it derives are enrolled too, at the same
@@ -186,23 +197,6 @@ function withDefaultWebSocketRelay(
   return { ...relay, websocket };
 }
 
-/**
- * The run notice a run shows, as it connects, when its enrollment at the
- * default relay fails.
- */
-export const DEFAULT_RELAY_NOT_ENROLLED_NOTICE =
-  "The site's relay server could not be set up for this exchange. " +
-  "Connecting without it.";
-
-/**
- * The run notice a run shows when its enrollment at the default relay under
- * its previous secret fails, while the one under its current secret confirmed.
- */
-export const DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE =
-  "The site's relay server could not be set up for the secret from before " +
-  "the run that stopped partway. This run looks for your partner on that " +
-  "server under the current secret only.";
-
 /** What {@link relayWithDefaultForRun} lists once the default relay is added. */
 export interface RelayWithDefault {
   /** The relay the run's peer connection gathers against; none when absent. */
@@ -224,8 +218,9 @@ export interface RelayWithDefault {
  * `allowedRelays` keeps it. A same-key repeat confirms. Otherwise the
  * default relay's TURN url is left out, even where the invitation names it,
  * and the run dials with the rest. A refused, unreachable or unanswered
- * enrollment shows {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} through
- * `onRunNotice`, once, before this returns; a cancelled one shows nothing.
+ * enrollment shows {@link defaultRelayNotEnrolledNotice}, stating why and
+ * the wait the registrar asked for, through `onRunNotice`, once, before this
+ * returns; a cancelled one shows nothing.
  * A default relay neither of whose urls the run uses and `allowedRelays`
  * keeps is not enrolled at (docs/spec/PROTOCOL.md, "Enrolling at a default
  * relay"); unset keeps both.
@@ -234,7 +229,7 @@ export interface RelayWithDefault {
  * that secret's key and exchange id are enrolled in a second request sent at
  * the same time, each request's failure detail repeating neither request's
  * key or id, and its failure beside a confirmed current enrollment shows
- * {@link DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE}. Its confirmation lists
+ * {@link defaultRelayPreviousNotEnrolledNotice}. Its confirmation lists
  * the WebSocket relay url under that secret; the TURN url is listed by the
  * current secret's enrollment alone, since the run's relay credential is
  * minted from that secret.
@@ -286,14 +281,21 @@ export async function relayWithDefaultForRun(
       `the default relay's registrar did not enroll this exchange ` +
         `(${enrollment.detail}), so this run connects without it`,
     );
-    dependencies.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
-  }
+    const refusal = defaultRelayRefusal(enrollment);
+    dependencies.onRunNotice?.(defaultRelayNotEnrolledNotice(refusal));
+    dependencies.onDefaultRelayEnrollment?.(refusal);
+  } else if (enrollment.kind === "enrolled")
+    dependencies.onDefaultRelayEnrollment?.(undefined);
   if (previousEnrollment?.kind === "failed" && enrollment.kind === "enrolled") {
     log.warn(
       `the default relay's registrar did not enroll this exchange under ` +
         `the previous secret (${previousEnrollment.detail})`,
     );
-    dependencies.onRunNotice?.(DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE);
+    dependencies.onRunNotice?.(
+      defaultRelayPreviousNotEnrolledNotice(
+        defaultRelayRefusal(previousEnrollment),
+      ),
+    );
   }
   const enrolled = enrollment.kind === "enrolled";
   const others = (relay?.turn ?? []).filter((url) => url !== turnUrl);

@@ -89,7 +89,11 @@ describe("enrollAtInvitationRelay", () => {
       await enrollAtInvitationRelay(REGISTRAR, SECRET, {
         fetch: registrar.fetch,
       }),
-    ).toEqual({ kind: "failed", detail: "HTTP 409: no" });
+    ).toEqual({
+      kind: "failed",
+      detail: "HTTP 409: no",
+      answer: { status: 409, reason: "no" },
+    });
     expect(registrar.requests).toHaveLength(1);
   });
 

@@ -7,10 +7,15 @@ import {
 import { describe, expect, test } from "vitest";
 
 import {
+  DEFAULT_RELAY_REFUSAL_CAUSES,
+  defaultRelayRefusalReason,
+} from "@psi/transport/defaultRelayRefusal";
+import {
   DELIVERY_NOT_RECORDED,
   SIDE_LABELS,
   completedRunRecorded,
   connectionRows,
+  defaultRelayRefusalLine,
   heldAppUpdateLine,
   lastRunMayHaveSentPayload,
   linkageTermsRows,
@@ -848,4 +853,48 @@ describe("heldAppUpdateLine", () => {
         "a later run once nothing holds it back.",
     );
   });
+});
+
+describe("defaultRelayRefusalLine", () => {
+  const REFUSED_AT = "2026-07-14T09:00:00.000Z";
+
+  test("is absent where the last scheduled run enrolled or did not try", () => {
+    expect(
+      defaultRelayRefusalLine({ defaultRelayRefusal: { kind: "none" } }),
+    ).toBe(undefined);
+  });
+
+  test("states the cause and when the relay server said to try again", () => {
+    expect(
+      defaultRelayRefusalLine({
+        defaultRelayRefusal: {
+          kind: "refused",
+          at: REFUSED_AT,
+          cause: "address-cap",
+          retryAfterSeconds: 1800,
+        },
+      }),
+    ).toBe(
+      `The scheduled run on ${dateTimeLabel(new Date(REFUSED_AT))} ` +
+        "went ahead without the site's relay server. Too many exchanges from " +
+        "your network are already set up on it. It said to try again after " +
+        `${dateTimeLabel(new Date("2026-07-14T09:30:00.000Z"))}. Later runs ` +
+        "try it again.",
+    );
+  });
+
+  test.each(DEFAULT_RELAY_REFUSAL_CAUSES)(
+    "states the %s cause in the app's own sentence, with no wait where none was given",
+    (cause) => {
+      expect(
+        defaultRelayRefusalLine({
+          defaultRelayRefusal: { kind: "refused", at: REFUSED_AT, cause },
+        }),
+      ).toBe(
+        `The scheduled run on ${dateTimeLabel(new Date(REFUSED_AT))} ` +
+          "went ahead without the site's relay server. " +
+          `${defaultRelayRefusalReason({ cause })} Later runs try it again.`,
+      );
+    },
+  );
 });

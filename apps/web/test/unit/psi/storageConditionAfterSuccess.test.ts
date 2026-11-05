@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
+  NO_DEFAULT_RELAY_REFUSAL,
   NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
@@ -56,6 +57,7 @@ function record(): ManagedExchangeRecord {
     sharedSecret: generateSharedSecret(),
     standingCondition: NO_STANDING_CONDITION,
     heldAppUpdate: NO_HELD_APP_UPDATE,
+    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
   };
 }
 

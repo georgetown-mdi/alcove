@@ -64,6 +64,7 @@ import {
   PartnerNoShowError,
 } from "../transport/waitForConnection";
 import {
+  NO_DEFAULT_RELAY_REFUSAL,
   NO_HELD_APP_UPDATE,
   parseStoredInstant,
   runnableManagedExchange,
@@ -84,6 +85,7 @@ import { ManagedSignalingEndpointRefusedError } from "./managedRendezvous";
 import { RotationPersistError } from "./managedRunRotate";
 
 import type {
+  ManagedDefaultRelayRefusalField,
   ManagedExchangeReadableRecords,
   ManagedExchangeRecord,
   ManagedExchangeSchedule,
@@ -97,6 +99,7 @@ import type {
   ManagedScheduleWindow,
   ManagedScheduleWindowDisposition,
 } from "./managedSchedule";
+import type { DefaultRelayRefusal } from "../transport/defaultRelayRefusal";
 import type { ManagedInputSource } from "./managedInputHandle";
 import type { ManagedReadableLocalState } from "./managedLocalStateShape";
 import type { WaitingAppUpdateOutcome } from "./managedAppUpdate";
@@ -149,6 +152,10 @@ export interface ManagedScheduleAttempt {
   /** Called at the run's own data-exchange phase boundary. The runner reads it
    * to refuse a re-attempt once payload flow could have started. */
   onDataExchangeStart: () => void;
+  /** Called once the run's enrollment at the default relay ends, with the
+   * refusal where it failed and `undefined` where it confirmed. The window's
+   * write records the latest call's. */
+  onDefaultRelayEnrollment: (refusal: DefaultRelayRefusal | undefined) => void;
 }
 
 /** The platform boundaries the tick runs on: the clock, the two store reads, the
@@ -422,7 +429,20 @@ async function occupyDueWindow(
     : await seams.applyWaitingAppUpdate();
   if (update?.kind === "applying") return { ...entry, skipped: "app-update" };
   const heldAppUpdate = heldAppUpdateOf(update, seams.now());
-  const occupancy = await occupyWindow(claimed.id, planned, due, seams);
+  let defaultRelayRefusal: ManagedDefaultRelayRefusalField =
+    NO_DEFAULT_RELAY_REFUSAL;
+  const occupancy = await occupyWindow(claimed.id, planned, due, seams, {
+    onDefaultRelayEnrollment: (refusal) => {
+      defaultRelayRefusal =
+        refusal === undefined
+          ? NO_DEFAULT_RELAY_REFUSAL
+          : {
+              kind: "refused",
+              at: new Date(seams.now()).toISOString(),
+              ...refusal,
+            };
+    },
+  });
   entry.attempts = occupancy.attempts;
   if (occupancy.ended !== undefined)
     return { ...entry, skipped: occupancy.ended };
@@ -452,7 +472,7 @@ async function occupyDueWindow(
     ...(occupancy.standingCondition !== undefined
       ? { standingCondition: occupancy.standingCondition }
       : {}),
-    ...(occupancy.attempts > 0 ? { heldAppUpdate } : {}),
+    ...(occupancy.attempts > 0 ? { heldAppUpdate, defaultRelayRefusal } : {}),
     evidenceSharedSecret: occupancy.evidenceSharedSecret,
   });
   return { ...entry };
@@ -545,6 +565,7 @@ async function occupyWindow(
   planned: ManagedExchangeSchedule,
   window: ManagedScheduleWindow,
   seams: ManagedScheduleTickSeams,
+  attemptSinks: Pick<ManagedScheduleAttempt, "onDefaultRelayEnrollment">,
 ): Promise<WindowOccupancy> {
   let attempts = 0;
   let partnerWasAbsent = false;
@@ -592,6 +613,7 @@ async function occupyWindow(
         onDataExchangeStart: () => {
           dataExchangeStarted = true;
         },
+        ...attemptSinks,
       });
       return { attempts, disposition: "succeeded" };
     } catch (error) {

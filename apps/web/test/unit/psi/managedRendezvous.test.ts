@@ -22,9 +22,9 @@ import {
   managedRunRelayPlan,
   managedSignalingEndpoint,
 } from "@psi/managed/managedRendezvous";
-import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
+import { defaultRelayNotEnrolledNotice } from "@psi/transport/defaultRelayRefusal";
 
 import type {
   ExchangeSpec,
@@ -749,7 +749,7 @@ describe("beginManagedRendezvous: relay", () => {
       });
 
       expect(events).toEqual([
-        DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+        defaultRelayNotEnrolledNotice({ cause: "unreachable" }),
         { relay: undefined },
       ]);
     },

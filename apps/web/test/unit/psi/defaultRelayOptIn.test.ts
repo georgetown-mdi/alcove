@@ -3,12 +3,12 @@ import { describe, expect, test, vi } from "vitest";
 import { generateSharedSecret } from "@alcove/core";
 
 import {
-  DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
   defaultRelayForRun,
   defaultRelayInUse,
   invitationRelayWithDefault,
 } from "@psi/transport/defaultRelay";
 import { relayPlanForRun, runListsRelay } from "@psi/transport/runRelayPlan";
+import { defaultRelayNotEnrolledNotice } from "@psi/transport/defaultRelayRefusal";
 
 import type { OwnRelay, RelayUrls } from "@psi/transport/ownRelaySetting";
 import type { DefaultRelayBuild } from "@utils/clientConfig";
@@ -365,7 +365,11 @@ describe("relayPlanForRun with this browser's own relay naming the relay, switch
     ).then((result) => ({ result, enroll, onRunNotice }));
   };
   const refusing: typeof enrollRelayKeyWithinWait = () =>
-    Promise.resolve({ kind: "failed", detail: "HTTP 409" });
+    Promise.resolve({
+      kind: "failed",
+      detail: "HTTP 409",
+      answer: { status: 409 },
+    });
 
   test("the run enrolls at its registrar before it lists the TURN url, and does not say it is off", async () => {
     const { result, enroll } = await ownPlan({
@@ -389,7 +393,9 @@ describe("relayPlanForRun with this browser's own relay naming the relay, switch
     );
     expect(enroll).toHaveBeenCalledOnce();
     expect(result.relay).toBeUndefined();
-    expect(onRunNotice).toHaveBeenCalledWith(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
+    expect(onRunNotice).toHaveBeenCalledWith(
+      defaultRelayNotEnrolledNotice({ cause: "other" }),
+    );
   });
 
   test("naming both of the relay's urls lists both once enrolled", async () => {

@@ -237,7 +237,8 @@ type ManagedRendezvousAcquisition =
  * run's key is enrolled there, right before it connects, each only where the
  * stored connection's
  * `allowedRelays` keep it. A failed enrollment is reported through
- * `onRunNotice` as it happens, and the run goes on without the default relay.
+ * `onRunNotice` as it happens, and the run goes on without the default relay;
+ * `onDefaultRelayEnrollment` receives what the enrollment came to.
  * With `previousSharedSecret` ({@link managedRendezvousPreviousSecret}), the
  * default relay's enrollment and each WebSocket relay dialed under the derived
  * id are made under that secret too. Refuses, before any contact, a record
@@ -249,6 +250,7 @@ export async function managedRunRelayPlan(
     signal?: AbortSignal;
     defaultRelay?: DefaultRelayDependencies;
     onRunNotice?: (message: string) => void;
+    onDefaultRelayEnrollment?: DefaultRelayDependencies["onDefaultRelayEnrollment"];
     previousSharedSecret?: string;
   } = {},
 ): Promise<RunRelayPlan> {
@@ -272,6 +274,9 @@ export async function managedRunRelayPlan(
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
       ...(options.onRunNotice !== undefined
         ? { onRunNotice: options.onRunNotice }
+        : {}),
+      ...(options.onDefaultRelayEnrollment !== undefined
+        ? { onDefaultRelayEnrollment: options.onDefaultRelayEnrollment }
         : {}),
     },
   );

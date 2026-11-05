@@ -4741,7 +4741,7 @@ describe("an exchange's page beside records it does not read", () => {
       ...stored,
       id: "zzz-later-record",
       label: "Newer exchange",
-      schemaVersion: "alcove-managed-exchange/v6",
+      schemaVersion: "alcove-managed-exchange/v7",
     });
     await rawPut({
       ...stored,
