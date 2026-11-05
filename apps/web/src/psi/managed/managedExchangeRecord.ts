@@ -460,7 +460,7 @@ export type ManagedHeldAppUpdateField =
 /** The `heldAppUpdate` value of a record holding none. */
 export const NO_HELD_APP_UPDATE: ManagedHeldAppUpdateNone = { kind: "none" };
 
-/** A scheduled window whose run connected without the default relay because
+/** A scheduled window whose run went ahead without the default relay because
  * its registrar did not enroll it. Its normative shape:
  * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `defaultRelayRefusal` row. */
 export interface ManagedDefaultRelayRefusal {
@@ -623,7 +623,7 @@ export interface ManagedExchangeRecord {
    * back; {@link NO_HELD_APP_UPDATE} where it started on the current code or
    * no window has. Written only by the window's own bookkeeping. */
   heldAppUpdate: ManagedHeldAppUpdateField;
-  /** Why the last scheduled window that made an attempt connected without
+  /** Why the last scheduled window that made an attempt went ahead without
    * the default relay, from its latest attempt that tried to enroll there;
    * {@link NO_DEFAULT_RELAY_REFUSAL} where that attempt enrolled, none tried,
    * or no window has. Written only by the window's own bookkeeping. */
