@@ -79,6 +79,9 @@ export interface DraftLegalAgreement {
   purpose: string;
   /** ISO 8601 date (YYYY-MM-DD). */
   expirationDate: string;
+  /** The date input holds a partly typed date, which it reports as an empty
+   * value; set from the input's `validity.badInput`. */
+  expirationDateIncomplete: boolean;
 }
 
 /** The editor's in-progress state. */

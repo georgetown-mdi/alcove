@@ -384,6 +384,7 @@ describe("seedAdvancedInvite + buildAdvancedTerms", () => {
         reference: "  MOU-1  ",
         purpose: "  Audit  ",
         expirationDate: "2030-01-01",
+        expirationDateIncomplete: false,
       },
     };
     const built = buildAdvancedTerms(edited);
@@ -830,7 +831,12 @@ describe("validateAdvancedInvite", () => {
     const result = validateAdvancedInvite(
       {
         ...draft,
-        legalAgreement: { reference: "", purpose: "", expirationDate: "" },
+        legalAgreement: {
+          reference: "",
+          purpose: "",
+          expirationDate: "",
+          expirationDateIncomplete: false,
+        },
       },
       seed,
       NOW,
@@ -850,6 +856,7 @@ describe("validateAdvancedInvite", () => {
           reference: "MOU-1",
           purpose: "  ",
           expirationDate: "",
+          expirationDateIncomplete: false,
         },
       },
       seed,
@@ -860,17 +867,51 @@ describe("validateAdvancedInvite", () => {
     expect(result.terms?.legalAgreement).toEqual({ reference: "MOU-1" });
   });
 
+  test("blocks Generate on a partly typed expiry, which the date input reports as empty", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const withAgreement = (expirationDateIncomplete: boolean) =>
+      validateAdvancedInvite(
+        {
+          ...draft,
+          legalAgreement: {
+            reference: "MOU-1",
+            purpose: "",
+            expirationDate: "",
+            expirationDateIncomplete,
+          },
+        },
+        seed,
+        NOW,
+      );
+
+    const partial = withAgreement(true);
+    expect(partial.canGenerate).toBe(false);
+    expect(partial.errors.legalExpiration).toBe(
+      "Enter a valid date (YYYY-MM-DD).",
+    );
+
+    const cleared = withAgreement(false);
+    expect(cleared.canGenerate).toBe(true);
+    expect(cleared.errors.legalExpiration).toBeUndefined();
+  });
+
   test("an imported agreement with no purpose or expiry reopens with blank fields", () => {
     const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
     const terms = buildAdvancedTerms({
       ...draft,
-      legalAgreement: { reference: "MOU-1", purpose: "", expirationDate: "" },
+      legalAgreement: {
+        reference: "MOU-1",
+        purpose: "",
+        expirationDate: "",
+        expirationDateIncomplete: false,
+      },
     });
     const reopened = draftFromTerms(terms, seed);
     expect(reopened.legalAgreement).toEqual({
       reference: "MOU-1",
       purpose: "",
       expirationDate: "",
+      expirationDateIncomplete: false,
     });
   });
 
@@ -884,6 +925,7 @@ describe("validateAdvancedInvite", () => {
           purpose: "Audit",
           // The day before NOW -> already expired.
           expirationDate: "2026-06-19",
+          expirationDateIncomplete: false,
         },
       },
       seed,
@@ -906,6 +948,7 @@ describe("validateAdvancedInvite", () => {
           purpose: "Audit",
           // Equal to NOW's date.
           expirationDate: "2026-06-20",
+          expirationDateIncomplete: false,
         },
       },
       seed,
@@ -924,6 +967,7 @@ describe("validateAdvancedInvite", () => {
           reference: "MOU-2025-0042",
           purpose: "Program evaluation",
           expirationDate: "2027-01-01",
+          expirationDateIncomplete: false,
         },
       },
       seed,
@@ -1007,6 +1051,7 @@ describe("controls the editor does not expose stay at their safe defaults", () =
           reference: "MOU-1",
           purpose: "Audit",
           expirationDate: "2030-01-01",
+          expirationDateIncomplete: false,
         },
       },
     ].filter((d) => d.keys.some((k) => k.enabled));

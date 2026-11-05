@@ -1755,7 +1755,27 @@ describe("inviter screen", () => {
       page.getByLabelText("Purpose of the disclosure"),
       "Program evaluation",
     );
-    await userEvent.fill(page.getByLabelText("Expiration date"), "2099-12-31");
+    // A partly typed date reads as an empty value, and blocks Generate; a
+    // cleared one is an omitted expiry.
+    const expirationField = page.getByLabelText("Expiration date");
+    const dateMessage = "Enter a valid date (YYYY-MM-DD).";
+    (expirationField.element() as HTMLInputElement).focus();
+    await userEvent.keyboard("12");
+    expect((expirationField.element() as HTMLInputElement).value).toBe("");
+    await userEvent.click(page.getByRole("heading", { level: 1 }));
+    await expect
+      .element(page.getByRole("alert").getByText(dateMessage))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: dateMessage }))
+      .toBeInTheDocument();
+    (expirationField.element() as HTMLInputElement).focus();
+    await userEvent.keyboard("{Backspace}");
+    await userEvent.click(page.getByRole("heading", { level: 1 }));
+    await expect
+      .element(page.getByRole("button", { name: dateMessage }))
+      .not.toBeInTheDocument();
+    await userEvent.fill(expirationField, "2099-12-31");
     expect(ledgerRow("Agreement")?.querySelector("dd")?.textContent).toBe(
       "MOU-2025-0042",
     );

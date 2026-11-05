@@ -1294,6 +1294,7 @@ export function draftFromTerms(
             reference: terms.legalAgreement.reference,
             purpose: terms.legalAgreement.purpose ?? "",
             expirationDate: terms.legalAgreement.expirationDate ?? "",
+            expirationDateIncomplete: false,
           }
         : undefined,
     metadata: seed.metadata,

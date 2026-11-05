@@ -16,6 +16,7 @@ const EMPTY_AGREEMENT: DraftLegalAgreement = {
   reference: "",
   purpose: "",
   expirationDate: "",
+  expirationDateIncomplete: false,
 };
 
 /** The Attach checkbox's description: what the partner sees of the values. */
@@ -46,6 +47,14 @@ export function AgreementTab({
     if (agreement === undefined) return;
     onAgreement({ ...agreement, ...patch });
   };
+
+  // Chromium fires no change or input event while a date is only partly typed
+  // and the value stays empty, so leaving the field reads it too.
+  const readExpiration = (event: { currentTarget: HTMLInputElement }) =>
+    set({
+      expirationDate: event.currentTarget.value,
+      expirationDateIncomplete: event.currentTarget.validity.badInput,
+    });
 
   // Checking "Attach" reveals the three fields below the checkbox; send a
   // keyboard user into the first one rather than leaving them on the checkbox
@@ -104,9 +113,8 @@ export function AgreementTab({
             value={agreement.expirationDate}
             error={validation.errors.legalExpiration}
             errorProps={{ role: "alert" }}
-            onChange={(event) =>
-              set({ expirationDate: event.currentTarget.value })
-            }
+            onChange={readExpiration}
+            onBlur={readExpiration}
             mt="md"
             maw={220}
           />

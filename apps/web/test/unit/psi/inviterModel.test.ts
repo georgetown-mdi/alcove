@@ -621,6 +621,7 @@ describe("review and create", () => {
       reference: "MOU-2025-0042",
       purpose: "Program evaluation",
       expirationDate: "2027-01-01",
+      expirationDateIncomplete: false,
     });
     const row = rowOf(answersRows(attached, csv, "browser"), "Legal agreement");
     expect(row.value).toBe("MOU-2025-0042");
@@ -1650,6 +1651,7 @@ describe("after the exchange completes", () => {
       reference: "MOU-1",
       purpose: "Eval",
       expirationDate: "2099-12-31",
+      expirationDateIncomplete: false,
     });
     const sealed = sealEditor(authored);
     expect(editorWithLifetime(sealed, 86400)).toBe(sealed);
@@ -2000,6 +2002,7 @@ describe("customize tabs", () => {
         reference: "MOU-1",
         purpose: "Eval",
         expirationDate: "2099-12-31",
+        expirationDateIncomplete: false,
       },
     );
     const exported = mintedTerms(editor);
@@ -2286,6 +2289,7 @@ describe("customize tabs", () => {
       reference: "MOU-2025-0042",
       purpose: "Program evaluation",
       expirationDate: "2099-12-31",
+      expirationDateIncomplete: false,
     });
     const terms = mintedTerms(editor);
     expect(terms.legalAgreement?.reference).toBe("MOU-2025-0042");
@@ -2304,6 +2308,7 @@ describe("customize tabs", () => {
         reference: "x",
         purpose: "y",
         expirationDate: "2099-01-01",
+        expirationDateIncomplete: false,
       }),
     ).toBe(sealed);
     expect(editorWithFieldSteps(sealed, "name", [])).toBe(sealed);
