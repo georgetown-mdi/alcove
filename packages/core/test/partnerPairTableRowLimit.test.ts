@@ -1,8 +1,10 @@
 // A both-sided table's partner rows paired with one of this party's rows are
 // checked in one V8 Set, which holds 2^24 entries (docs/spec/PROTOCOL.md, The
-// limits over file-sync). Driven at the real bound: a run past it is refused
-// before the Set is filled. The run at the bound, which fills one Set to 2^24
-// entries, is in test/stress/partnerPairTableAtBound.stress.test.ts.
+// limits over file-sync). Driven at the real bound: a run past it is checked
+// for a repeat in a sorted copy, not the Set. The run at the bound, which
+// fills one Set to 2^24 entries, and a run past it repeating only its last
+// entry, whose sort takes over a second, are in
+// test/stress/partnerPairTableAtBound.stress.test.ts.
 
 import { describe, expect, test } from "vitest";
 
@@ -80,6 +82,21 @@ describe("the partner rows paired with one row of a both-sided table", () => {
         "such as one on a field with the same value in most rows, causes " +
         "this: agree on new terms with your partner that leave that key " +
         "out, and run the exchange again.",
+    );
+  });
+
+  test("one row paired with the same partner row past the bound is refused as a repeat against a partner with more rows than that", () => {
+    const failure = failureOf(
+      oneRowTable(new Array<number>(MAX_PARTNER_ROWS_OF_ONE_ROW + 1).fill(0), {
+        localRecordCount: 1,
+        partnerRecordCount: MAX_PARTNER_ROWS_OF_ONE_ROW + 1,
+      }),
+    );
+    expect(failure).toBeInstanceOf(ConnectionError);
+    expect(failure).not.toBeInstanceOf(UsageError);
+    expect((failure as ConnectionError).kind).toBe("protocol");
+    expect((failure as Error).message).toMatch(
+      /names one row twice for one record of the other side/,
     );
   });
 

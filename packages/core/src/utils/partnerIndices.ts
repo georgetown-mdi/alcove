@@ -664,7 +664,7 @@ interface PartnerPairTableHalf {
  *   a descending pair in `ascendingHalf`, or on a repeated pair; the
  *   {@link partnerRowsOfOneRowError} {@link UsageError} on a row of
  *   `ascendingHalf` paired with more than {@link MAX_PARTNER_ROWS_OF_ONE_ROW}
- *   rows of a partner that has more.
+ *   distinct rows of a partner that has more.
  */
 export function assertPartnerPairTable(
   participantId: string,
@@ -704,28 +704,51 @@ export function assertPartnerPairTable(
     pairedHalf.exclusiveBound,
     { repeats: true },
   );
+  const repeatedPartnerRow = () =>
+    partnerProtocolError(
+      participantId,
+      `${pairedHalf.what} names one row twice for one record of the other side`,
+    );
   const partnersOfRun = new Set<number>();
   const entries = ascendingHalf.indices.length;
   for (let runStart = 0, runEnd = 0; runStart < entries; runStart = runEnd) {
     const row = ascendingHalf.indices[runStart];
     while (runEnd < entries && ascendingHalf.indices[runEnd] === row) ++runEnd;
-    // A run that can name more distinct partner rows than one Set holds is
-    // refused before the Set is filled. Where the partner has no more rows
-    // than that, a longer run repeats one, which the loop below reports.
+    // A run longer than one Set holds is checked for a repeat in a sorted copy
+    // instead, and refused as a repeat if it has one, else as more distinct
+    // partner rows than the Set holds. Against a partner with no more rows
+    // than that, a longer run repeats one, which the Set finds early.
     if (
       runEnd - runStart > MAX_PARTNER_ROWS_OF_ONE_ROW &&
       pairedHalf.exclusiveBound > MAX_PARTNER_ROWS_OF_ONE_ROW
-    )
+    ) {
+      if (runRepeatsARow(pairedHalf, runStart, runEnd))
+        throw repeatedPartnerRow();
       throw partnerRowsOfOneRowError();
+    }
     partnersOfRun.clear();
     for (let entry = runStart; entry < runEnd; ++entry) {
       if (partnersOfRun.has(pairedHalf.indices[entry]))
-        throw partnerProtocolError(
-          participantId,
-          `${pairedHalf.what} names one row twice for one record of the ` +
-            "other side",
-        );
+        throw repeatedPartnerRow();
       partnersOfRun.add(pairedHalf.indices[entry]);
     }
   }
+}
+
+// The element type holds every index below the half's bound, already checked.
+function runRepeatsARow(
+  half: PartnerPairTableHalf,
+  runStart: number,
+  runEnd: number,
+): boolean {
+  const run =
+    half.exclusiveBound <= 2 ** 32
+      ? new Uint32Array(runEnd - runStart)
+      : new Float64Array(runEnd - runStart);
+  for (let entry = runStart; entry < runEnd; ++entry)
+    run[entry - runStart] = half.indices[entry];
+  run.sort();
+  for (let entry = 1; entry < run.length; ++entry)
+    if (run[entry] === run[entry - 1]) return true;
+  return false;
 }
