@@ -218,6 +218,8 @@ The lifetime is `INVITATION_LIFETIME_SECONDS` (**3600**, one hour) unless the in
 That ceiling binds Alcove's inviters only: `encodeInvitation` checks that `expires` is in the future and nothing more, and `decodeInvitation` does not check the lifetime.
 
 Limit: replacing or discarding an invitation from the inviter's screen stops its link connecting at once, with no confirmation step, as the screen says before the click.
+A partner already holding the old link is not told: their app keeps trying to connect until its wait for the inviter runs out, ten minutes by default (`--peer-timeout` sets it on the CLI), and then reports only that the inviter did not connect.
+The web app's advice is then to have the inviter open their invitation page again and wait on the same link, or to ask for a new invitation if the inviter no longer has it; the CLI's is to check that the inviter has started their side and run again.
 
 ## Decoding
 
