@@ -318,7 +318,7 @@ describe("a run's writes after it released its lock, a re-invite landing first",
       persistAdvance: persistManagedExchangeScheduleAdvance,
       delay: () => Promise.resolve(),
       stopped: () => false,
-      applyWaitingAppUpdate: () => Promise.resolve(false),
+      applyWaitingAppUpdate: () => Promise.resolve({ kind: "none-waiting" }),
       runAttempt: (scheduled) =>
         runManagedRerun(
           scheduled.record,

@@ -30,7 +30,10 @@ declare global {
 window.managedAppUpdatePage = {
   registered: registerAppShell(navigator.serviceWorker),
   updateReady: appShellUpdateReady,
-  applyBetweenRuns: () => applyWaitingAppUpdateBetweenRuns(),
+  applyBetweenRuns: () =>
+    applyWaitingAppUpdateBetweenRuns().then(
+      (outcome) => outcome.kind === "applying",
+    ),
   takeoverWaitMs: APP_UPDATE_TAKEOVER_WAIT_MS,
   loadedAt: performance.timeOrigin,
 };

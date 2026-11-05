@@ -176,7 +176,7 @@ export function useLocalFieldsDraft(
   // Every edit path clears `saved`, so an edit since the last good save is
   // `edited && !saved`; it exists only in this page until saved.
   const [edited, setEdited] = useState(false);
-  useAppShellUpdateHold(edited && !saved);
+  useAppShellUpdateHold(edited && !saved, "edits");
   function noteEdit(): void {
     setEdited(true);
     setSaved(false);

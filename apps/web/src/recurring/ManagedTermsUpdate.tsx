@@ -132,7 +132,7 @@ function SentColumnsEditor({
   const [status, setStatus] = useState<string>();
   const unchanged =
     chosen.size === stored.length && stored.every((name) => chosen.has(name));
-  useAppShellUpdateHold(!unchanged);
+  useAppShellUpdateHold(!unchanged, "edits");
   const shownStatus =
     status ?? (saved && unchanged ? SENT_COLUMNS_SAVED_TEXT : undefined);
 
@@ -274,7 +274,7 @@ function ApplyTermsUpdate({
   onApplied: () => void;
 }) {
   const [pasted, setPasted] = useState("");
-  useAppShellUpdateHold(pasted !== "");
+  useAppShellUpdateHold(pasted !== "", "edits");
   const [reading, setReading] = useState<{
     record: RunnableManagedExchangeRecord;
     pasted: string;

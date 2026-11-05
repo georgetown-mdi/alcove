@@ -14,6 +14,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
+  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
@@ -117,6 +118,7 @@ function record(
     side: "inviter",
     sharedSecret: generateSharedSecret(),
     standingCondition: NO_STANDING_CONDITION,
+    heldAppUpdate: NO_HELD_APP_UPDATE,
     ...overrides,
   };
 }

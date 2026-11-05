@@ -10,6 +10,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
+  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   applyManagedExchangeLastRun,
   applyManagedExchangeReinviteRotation,
@@ -88,6 +89,7 @@ function record(
     sharedSecret: generateSharedSecret(),
     previousSharedSecret: generateSharedSecret(),
     standingCondition: NO_STANDING_CONDITION,
+    heldAppUpdate: NO_HELD_APP_UPDATE,
     ...overrides,
   };
 }

@@ -3,12 +3,15 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   SKIP_WAITING_MESSAGE,
   WARM_ROUTES_MESSAGE,
+  appShellUpdateApplying,
   appShellUpdateReady,
   applyAppShellUpdate,
   checkForAppShellUpdate,
+  noteAutomaticAppShellUpdate,
   registerAppShell,
   resetAppShellUpdate,
   subscribeAppShellUpdate,
+  takeAutomaticAppShellUpdateNotice,
   takeOverWaitingAppShell,
 } from "@utils/appShellUpdate";
 
@@ -453,6 +456,31 @@ describe("a takeover ahead of the reload", () => {
     }
   });
 
+  test("is announced as applying while it waits, and not once it lands or the wait runs out", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fake } = await waitingBehindController();
+      let notified = 0;
+      subscribeAppShellUpdate(() => (notified += 1));
+
+      expect(appShellUpdateApplying()).toBe(false);
+      const timedOut = takeOverWaitingAppShell(BOUND_MS);
+      expect(appShellUpdateApplying()).toBe(true);
+      await vi.advanceTimersByTimeAsync(BOUND_MS);
+      await timedOut;
+      expect(appShellUpdateApplying()).toBe(false);
+
+      const landing = takeOverWaitingAppShell(BOUND_MS);
+      expect(appShellUpdateApplying()).toBe(true);
+      fake.landTakeover();
+      await landing;
+      expect(appShellUpdateApplying()).toBe(false);
+      expect(notified).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("with nothing waiting posts nothing and resolves false", async () => {
     const controller = fakeWorker("activated");
     const fake = fakeContainer({ controller: controller.worker });
@@ -578,5 +606,54 @@ describe("the messages the client and the worker exchange", () => {
     expect(WARM_ROUTES_MESSAGE).toBe(
       serviceWorkerString("WARM_ROUTES_MESSAGE"),
     );
+  });
+});
+
+describe("the line after the scheduled runner applied an update", () => {
+  /** A tab's session storage, which outlives a reload of the tab. */
+  function stubTabStorage(): void {
+    const items = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    });
+  }
+
+  test("is shown once per automatic apply", () => {
+    stubTabStorage();
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(false);
+
+    noteAutomaticAppShellUpdate();
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(true);
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(false);
+
+    noteAutomaticAppShellUpdate();
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(true);
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(false);
+  });
+
+  test("is not left by the operator's own Reload", async () => {
+    stubTabStorage();
+    const controller = fakeWorker("activated");
+    const waiting = fakeWorker("installed");
+    const fake = fakeContainer({
+      controller: controller.worker,
+      waiting: waiting.worker,
+    });
+    await registerAppShell(fake.container, {
+      reload: () => undefined,
+      onPageUnloading: fakePageUnloading().onPageUnloading,
+    });
+
+    applyAppShellUpdate();
+
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(false);
+  });
+
+  test("is not shown where the tab has no session storage", () => {
+    vi.stubGlobal("sessionStorage", undefined);
+    noteAutomaticAppShellUpdate();
+    expect(takeAutomaticAppShellUpdateNotice()).toBe(false);
   });
 });

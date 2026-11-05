@@ -56,7 +56,7 @@ export function ManagedConnectionSettings({
   const [saved, setSaved] = useState(false);
   const [failed, setFailed] = useState(false);
   const [edited, setEdited] = useState(false);
-  useAppShellUpdateHold(edited && !saved);
+  useAppShellUpdateHold(edited && !saved, "edits");
 
   function edit(fields: Partial<ConnectionSettingsText>) {
     setText((current) => ({ ...current, ...fields }));

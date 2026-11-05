@@ -10,8 +10,8 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
-  APP_SHELL_UPDATE_HOLD_LOCK_NAME,
   appShellUpdateHeldHere,
+  appShellUpdateHoldLockName,
 } from "@utils/appShellUpdateHold";
 import {
   buildManagedExchangeRecord,
@@ -35,7 +35,8 @@ afterEach(app.unmount);
 async function heldAcrossWindows(): Promise<boolean> {
   const { held } = await navigator.locks.query();
   return (
-    held?.some((lock) => lock.name === APP_SHELL_UPDATE_HOLD_LOCK_NAME) === true
+    held?.some((lock) => lock.name === appShellUpdateHoldLockName("run")) ===
+    true
   );
 }
 

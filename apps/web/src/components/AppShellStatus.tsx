@@ -1,14 +1,24 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { Alert, Button, VisuallyHidden } from "@mantine/core";
 
 import {
+  appShellUpdateApplying,
   appShellUpdateReady,
   applyAppShellUpdate,
   subscribeAppShellUpdate,
+  takeAutomaticAppShellUpdateNotice,
 } from "@utils/appShellUpdate";
+import { readAppUpdateHolders } from "@psi/managed/managedAppUpdate";
+
+import {
+  AUTOMATIC_UPDATE_APPLIED_TEXT,
+  updateReadyText,
+} from "./appShellUpdateCopy";
 import { useDeferredAnnouncement } from "./useDeferredAnnouncement";
 import { useOnlineStatus } from "./useOnlineStatus";
+
+import type { AppUpdateHolder } from "@utils/appUpdateHolder";
 
 /** The offline strip's title, and what the shell's polite region announces for
  * it -- the strip's body stays in reading order. */
@@ -16,6 +26,13 @@ const OFFLINE_TITLE = "You are offline";
 
 /** The waiting-update strip's title, announced the same way. */
 const UPDATE_READY_TITLE = "A new version of Alcove is ready";
+
+/** The strip's title while the scheduled runner applies the update. */
+const UPDATE_APPLYING_TITLE = "Alcove is updating";
+
+/** How often the strip reads what holds the update back, which another window
+ * can change with no event here. An arbitrary working value. */
+const UPDATE_HOLD_REFRESH_MS = 5_000;
 
 /** Whether a newer app version is installed and waiting. Always `false` on the
  * server, which registers no worker. */
@@ -25,6 +42,55 @@ function useAppShellUpdateReady(): boolean {
     appShellUpdateReady,
     () => false,
   );
+}
+
+/** Whether the scheduled runner is applying the update now. */
+function useAppShellUpdateApplying(): boolean {
+  return useSyncExternalStore(
+    subscribeAppShellUpdate,
+    appShellUpdateApplying,
+    () => false,
+  );
+}
+
+/** What holds the waiting update back, read again every
+ * {@link UPDATE_HOLD_REFRESH_MS} while `reading`. */
+function useAppUpdateHolders(reading: boolean): ReadonlyArray<AppUpdateHolder> {
+  const [holders, setHolders] = useState<ReadonlyArray<AppUpdateHolder>>([]);
+  useEffect(() => {
+    if (!reading) return;
+    let current = true;
+    const read = () => {
+      void readAppUpdateHolders().then((found) => {
+        if (current) setHolders(found.holders);
+      });
+    };
+    read();
+    const timer = setInterval(read, UPDATE_HOLD_REFRESH_MS);
+    return () => {
+      current = false;
+      clearInterval(timer);
+    };
+  }, [reading]);
+  return reading ? holders : [];
+}
+
+/** Whether the scheduled runner applied an update just before this page
+ * loaded. Read once per page, after hydration. */
+let automaticApplyNotice: boolean | undefined;
+function useAutomaticApplyNotice(): [boolean, () => void] {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    automaticApplyNotice ??= takeAutomaticAppShellUpdateNotice();
+    setShown(automaticApplyNotice);
+  }, []);
+  return [
+    shown,
+    () => {
+      automaticApplyNotice = false;
+      setShown(false);
+    },
+  ];
 }
 
 /**
@@ -39,8 +105,12 @@ function useAppShellUpdateReady(): boolean {
  * operator presses it.
  *
  * UPDATE READY. A new deployment's worker waits rather than swapping code under
- * a running page, so applying it is an explicit reload. See
+ * a running page, so applying it is an explicit reload, or the scheduled
+ * runner's own apply. The strip names what holds the update back and how to
+ * release it, and states when the runner is applying it. See
  * `apps/web/src/utils/appShellUpdate.ts`.
+ *
+ * UPDATED. A page the runner reloaded onto an update states that once.
  *
  * ANNOUNCING. The polite region lives as long as the shell, holding nothing in
  * the ordinary case, so a strip that appears mid-session reaches an assistive
@@ -55,8 +125,16 @@ function useAppShellUpdateReady(): boolean {
 export function AppShellStatus() {
   const online = useOnlineStatus();
   const updateReady = useAppShellUpdateReady();
+  const applying = useAppShellUpdateApplying();
+  const holders = useAppUpdateHolders(updateReady && !applying);
+  const [updated, dismissUpdated] = useAutomaticApplyNotice();
+  const updateTitle = applying ? UPDATE_APPLYING_TITLE : UPDATE_READY_TITLE;
   const announcement = useDeferredAnnouncement(
-    [online ? "" : OFFLINE_TITLE, updateReady ? UPDATE_READY_TITLE : ""]
+    [
+      online ? "" : OFFLINE_TITLE,
+      updateReady || applying ? updateTitle : "",
+      updated ? AUTOMATIC_UPDATE_APPLIED_TEXT : "",
+    ]
       .filter((sentence) => sentence !== "")
       .join(". "),
   );
@@ -79,7 +157,18 @@ export function AppShellStatus() {
           takes you and your partner online at the same time.
         </Alert>
       )}
-      {updateReady && (
+      {applying && (
+        <Alert
+          color="blue"
+          variant="light"
+          radius={0}
+          role="presentation"
+          title={UPDATE_APPLYING_TITLE}
+        >
+          The page reloads in a moment.
+        </Alert>
+      )}
+      {updateReady && !applying && (
         <Alert
           color="blue"
           variant="light"
@@ -87,8 +176,7 @@ export function AppShellStatus() {
           role="presentation"
           title={UPDATE_READY_TITLE}
         >
-          Reload to use it. It replaces the app&apos;s code; your saved
-          exchanges stay in this browser.{" "}
+          {updateReadyText(holders)}{" "}
           <Button
             size="compact-sm"
             variant="default"
@@ -97,6 +185,18 @@ export function AppShellStatus() {
             Reload
           </Button>
         </Alert>
+      )}
+      {updated && (
+        <Alert
+          color="blue"
+          variant="light"
+          radius={0}
+          role="presentation"
+          withCloseButton
+          closeButtonLabel="Dismiss"
+          onClose={dismissUpdated}
+          title={AUTOMATIC_UPDATE_APPLIED_TEXT}
+        />
       )}
     </>
   );

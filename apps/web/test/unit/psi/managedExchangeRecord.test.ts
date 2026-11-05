@@ -22,6 +22,7 @@ import {
   MAX_LABEL_LENGTH,
   MAX_RECENT_RUNS,
   MAX_SCHEDULE_INTERVAL_DAYS,
+  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeImportReplace,
@@ -73,6 +74,7 @@ import type {
   ManagedExchangeRecord,
   ManagedExchangeSchedule,
   ManagedExchangeScheduleAdvance,
+  ManagedHeldAppUpdate,
   ManagedStandingCondition,
   NewManagedExchange,
   RunnableManagedExchangeRecord,
@@ -293,6 +295,7 @@ describe("no-input-content invariant", () => {
     // pointer, the terms' column shape, the connection, and the secret.
     expect(Object.keys(record).sort()).toEqual([
       "exchangeFile",
+      "heldAppUpdate",
       "id",
       "label",
       "schemaVersion",
@@ -393,7 +396,7 @@ describe("a record an earlier version stored", () => {
 describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
   test("rejects an unrecognized schemaVersion rather than migrating", () => {
     const record = buildManagedExchangeRecord(newExchange());
-    const future = { ...record, schemaVersion: "alcove-managed-exchange/v5" };
+    const future = { ...record, schemaVersion: "alcove-managed-exchange/v6" };
     const result = safeParseManagedExchangeRecord(future);
     expect(result.success).toBe(false);
     expect(() => parseManagedExchangeRecord(future)).toThrow();
@@ -404,7 +407,7 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     expect(
       storedRecordAheadOfThisBuild({
         ...record,
-        schemaVersion: "alcove-managed-exchange/v5",
+        schemaVersion: "alcove-managed-exchange/v6",
       }),
     ).toBe(true);
     for (const schemaVersion of [
@@ -419,9 +422,42 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     expect(storedRecordAheadOfThisBuild({ ...record, label: 7 })).toBe(false);
   });
 
-  test("accepts the recognized v4 schemaVersion", () => {
+  test("accepts the recognized v5 schemaVersion", () => {
     const record = buildManagedExchangeRecord(newExchange());
     expect(safeParseManagedExchangeRecord(record).success).toBe(true);
+  });
+
+  test("migrates a v4 record in memory, adding no held app update", () => {
+    const record = buildManagedExchangeRecord(newExchange({ schedule }));
+    const { heldAppUpdate: _absent, ...rest } = record;
+    const stored = { ...rest, schemaVersion: "alcove-managed-exchange/v4" };
+    const kept = structuredClone(stored);
+
+    expect(parseManagedExchangeRecord(stored)).toEqual({
+      ...record,
+      heldAppUpdate: NO_HELD_APP_UPDATE,
+    });
+    expect(stored).toEqual(kept);
+  });
+
+  test("rejects a record with no heldAppUpdate: the field is required", () => {
+    const stored: Record<string, unknown> = {
+      ...buildManagedExchangeRecord(newExchange()),
+    };
+    delete stored.heldAppUpdate;
+    expect(safeParseManagedExchangeRecord(stored).success).toBe(false);
+  });
+
+  test.each([
+    ["no holder", []],
+    ["a holder twice", ["run", "run"]],
+    ["an unknown holder", ["tab"]],
+  ])("rejects a held app update naming %s", (_name, holders) => {
+    const stored = {
+      ...buildManagedExchangeRecord(newExchange()),
+      heldAppUpdate: { kind: "held", at: "2026-01-06T14:30:00.000Z", holders },
+    };
+    expect(safeParseManagedExchangeRecord(stored).success).toBe(false);
   });
 
   test("refuses a record stored under the v2 literal by name", () => {
@@ -1639,6 +1675,38 @@ describe("applyManagedExchangeScheduleAdvance", () => {
     expect(record.schedule).toEqual(schedule);
   });
 
+  test("records a held app update, replaces it with none, and leaves it where the advance carries none", () => {
+    const record = scheduled();
+    const held: ManagedHeldAppUpdate = {
+      kind: "held",
+      at: "2026-01-13T14:00:00.000Z",
+      holders: ["run", "edits"],
+    };
+    const step = {
+      schedule: advancedSchedule,
+      fromNextWindow: schedule.nextWindow,
+      fromConsecutiveMisses: schedule.consecutiveMisses,
+      // A re-invite's secret: the held update lands all the same.
+      evidenceSharedSecret: generateSharedSecret(),
+    };
+    const recorded = applyManagedExchangeScheduleAdvance(record, {
+      ...step,
+      heldAppUpdate: held,
+    });
+    expect(recorded.heldAppUpdate).toEqual(held);
+
+    const back = { ...recorded, schedule };
+    expect(
+      applyManagedExchangeScheduleAdvance(back, step).heldAppUpdate,
+    ).toEqual(held);
+    expect(
+      applyManagedExchangeScheduleAdvance(back, {
+        ...step,
+        heldAppUpdate: NO_HELD_APP_UPDATE,
+      }).heldAppUpdate,
+    ).toEqual(NO_HELD_APP_UPDATE);
+  });
+
   test("lands its entry over a stored one stamped after the writer's clock", () => {
     const record = parseManagedExchangeRecord({
       ...scheduled(),
@@ -2111,7 +2179,7 @@ describe("diagnoseManagedExchangeRecord", () => {
     expect(() =>
       diagnoseManagedExchangeRecord({
         ...record,
-        schemaVersion: "alcove-managed-exchange/v5",
+        schemaVersion: "alcove-managed-exchange/v6",
       }),
     ).toThrow();
   });
@@ -2169,7 +2237,7 @@ describe("partitionReadableManagedExchanges", () => {
     const good = buildManagedExchangeRecord(newExchange({ label: "Good" }));
     const read = partitionReadableManagedExchanges(
       ["future", good.id],
-      [{ ...good, schemaVersion: "alcove-managed-exchange/v5" }, good],
+      [{ ...good, schemaVersion: "alcove-managed-exchange/v6" }, good],
     );
 
     expect(read.records.map((record) => record.id)).toEqual([good.id]);

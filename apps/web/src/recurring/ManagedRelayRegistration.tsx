@@ -127,6 +127,7 @@ export function ManagedRelayRegistration({
     url !== (enrolled?.url ?? "") ||
       exchangeId !== (enrolled?.exchangeId ?? "") ||
       ownerToken !== "",
+    "edits",
   );
 
   const changeOwnerToken = (value: string) => {

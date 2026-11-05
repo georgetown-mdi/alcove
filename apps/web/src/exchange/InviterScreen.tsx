@@ -1035,6 +1035,7 @@ export function InviterScreen() {
     acquired !== undefined ||
       invitation !== undefined ||
       savedExchange !== undefined,
+    outputs === undefined && failure === undefined ? "file" : "results",
   );
 
   // A hosted browser run keeps its invitation in this tab's session storage

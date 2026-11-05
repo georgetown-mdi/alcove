@@ -17,6 +17,7 @@ import {
 } from "@psi/jobClient/serverJobExchangeDriver";
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
+  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
   safeParseManagedExchangeRecord,
@@ -101,6 +102,7 @@ function storedRecord(columns: Metadata): unknown {
     side: "inviter",
     sharedSecret: generateSharedSecret(),
     standingCondition: NO_STANDING_CONDITION,
+    heldAppUpdate: NO_HELD_APP_UPDATE,
   };
 }
 

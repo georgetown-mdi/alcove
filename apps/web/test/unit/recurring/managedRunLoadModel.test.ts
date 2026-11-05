@@ -3,6 +3,7 @@ import { getDefaultLinkageTerms } from "@alcove/core";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
+  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
@@ -36,6 +37,7 @@ function runnableRecord(sharedSecret: string): RunnableManagedExchangeRecord {
     side: "inviter",
     sharedSecret,
     standingCondition: NO_STANDING_CONDITION,
+    heldAppUpdate: NO_HELD_APP_UPDATE,
   };
 }
 

@@ -4,6 +4,8 @@ import { holdAppShellUpdateAcrossWindows } from "@utils/appShellUpdateHold";
 
 import { unloadGuardArmed } from "./stepHistory";
 
+import type { AppUpdateHolderAcrossWindows } from "@utils/appShellUpdateHold";
+
 /**
  * Arm a browser `beforeunload` confirmation prompt while a real participant file
  * is loaded and the exchange has not been created/sent (see
@@ -22,7 +24,10 @@ export function useUnloadGuard({
   finalized: boolean;
   demoActive?: boolean;
 }): void {
-  useBeforeUnloadPrompt(unloadGuardArmed({ hasFile, finalized, demoActive }));
+  useBeforeUnloadPrompt(
+    unloadGuardArmed({ hasFile, finalized, demoActive }),
+    "file",
+  );
 }
 
 /**
@@ -35,9 +40,13 @@ export function useUnloadGuard({
  * end it for both parties unnoticed. Disarming is the effect's own cleanup.
  *
  * While armed, the page also holds back the scheduled runner's apply of a
- * waiting app update, in every window ({@link holdAppShellUpdateAcrossWindows}).
+ * waiting app update, in every window, for `holder`: a live exchange unless
+ * the caller names a loaded file ({@link holdAppShellUpdateAcrossWindows}).
  */
-export function useBeforeUnloadPrompt(armed: boolean): void {
+export function useBeforeUnloadPrompt(
+  armed: boolean,
+  holder: AppUpdateHolderAcrossWindows = "run",
+): void {
   useEffect(() => {
     if (!armed) return;
     function handleBeforeUnload(event: BeforeUnloadEvent) {
@@ -48,10 +57,10 @@ export function useBeforeUnloadPrompt(armed: boolean): void {
       event.returnValue = "";
     }
     window.addEventListener("beforeunload", handleBeforeUnload);
-    const releaseUpdateHold = holdAppShellUpdateAcrossWindows();
+    const releaseUpdateHold = holdAppShellUpdateAcrossWindows(holder);
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       releaseUpdateHold();
     };
-  }, [armed]);
+  }, [armed, holder]);
 }

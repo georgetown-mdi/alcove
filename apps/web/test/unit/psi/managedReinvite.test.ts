@@ -10,6 +10,7 @@ import {
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
+  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   applyManagedExchangeLocalEdits,
   applyManagedExchangeReinviteRotation,
@@ -110,6 +111,7 @@ function inviterRecord(
     side: "inviter",
     sharedSecret: STORED_SECRET,
     standingCondition: NO_STANDING_CONDITION,
+    heldAppUpdate: NO_HELD_APP_UPDATE,
     ...overrides,
   });
 }
