@@ -12,6 +12,7 @@ import { openWebRtcMessageConnection } from "../../../src/connection/webrtc/webr
 import type { BrokerProcess } from "../../signaling/brokerProcess";
 import type { RefusingStunServer } from "./refusingStunServer";
 import type {
+  BoundedInboundFrames,
   ExchangeResult,
   LinkageTerms,
   MessageConnection,
@@ -47,7 +48,28 @@ export interface Pacing {
   afterSendMs?: number;
   /** The side waits this long after each frame it receives. */
   afterReceiveMs?: number;
+  /**
+   * The side starts each read only once every frame either side sent has
+   * arrived and its partner is waiting on a read of its own or has finished,
+   * so a run the partner sends ahead is queued whole before any of it is read.
+   */
+  readWhenPartnerWaits?: boolean;
 }
+
+// One side's transport traffic, counted below the AEAD wrap.
+interface Traffic {
+  sent: number;
+  arrived: number;
+  pendingReads: number;
+  settled: boolean;
+}
+
+const newTraffic = (): Traffic => ({
+  sent: 0,
+  arrived: 0,
+  pendingReads: 0,
+  settled: false,
+});
 
 export interface QueueRunOutcome {
   inviter: PromiseSettledResult<ExchangeResult>;
@@ -155,33 +177,102 @@ function prepared(run: QueueRun, side: "inviter" | "acceptor") {
 const pause = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// `conn`, recording each frame sent into `sent` and pausing after each send
-// and receive as `pacing` sets.
-function paced(
+// `conn` with its `send` and `receive` replaced, every other member bound to it.
+function wrapped(
   conn: MessageConnection,
-  pacing: Pacing | undefined,
-  sent: Array<unknown>,
+  send: (data: unknown) => Promise<void>,
+  receive: (timeoutMs?: number) => Promise<unknown>,
 ): MessageConnection {
   return new Proxy(conn, {
     get: (target, prop) => {
-      if (prop === "send")
-        return async (data: unknown) => {
-          sent.push(data);
-          await target.send(data);
-          if (pacing?.afterSendMs) await pause(pacing.afterSendMs);
-        };
-      if (prop === "receive")
-        return async (timeoutMs?: number) => {
-          const value = await target.receive(timeoutMs);
-          if (pacing?.afterReceiveMs) await pause(pacing.afterReceiveMs);
-          return value;
-        };
+      if (prop === "send") return send;
+      if (prop === "receive") return receive;
       const value = Reflect.get(target, prop, target) as unknown;
       return typeof value === "function"
         ? (value as (...args: Array<unknown>) => unknown).bind(target)
         : value;
     },
   });
+}
+
+// The transport connection `conn`, counting its sends and pending reads into
+// `traffic`.
+function counted(conn: MessageConnection, traffic: Traffic): MessageConnection {
+  return wrapped(
+    conn,
+    (data) => {
+      traffic.sent += 1;
+      return conn.send(data);
+    },
+    async (timeoutMs) => {
+      traffic.pendingReads += 1;
+      try {
+        return await conn.receive(timeoutMs);
+      } finally {
+        traffic.pendingReads -= 1;
+      }
+    },
+  );
+}
+
+// Resolves once every frame each side sent has arrived and `partner` is
+// blocked on a transport read or has finished. The read is the transport's,
+// below the AEAD wrap: a partner decrypting the frame it just read is still
+// pending a read one layer up.
+async function untilPartnerWaits(
+  own: Traffic,
+  partner: Traffic,
+): Promise<void> {
+  while (
+    !partner.settled &&
+    !(
+      own.sent === partner.arrived &&
+      partner.sent === own.arrived &&
+      partner.pendingReads > 0
+    )
+  )
+    await pause(5);
+}
+
+// `conn`, recording each frame sent into `sent`, pausing after each send and
+// receive as `pacing` sets, and running `beforeRead` ahead of each read when
+// `pacing` sets `readWhenPartnerWaits`.
+function paced(
+  conn: MessageConnection,
+  pacing: Pacing | undefined,
+  sent: Array<unknown>,
+  beforeRead: () => Promise<void>,
+): MessageConnection {
+  return wrapped(
+    conn,
+    async (data) => {
+      sent.push(data);
+      await conn.send(data);
+      if (pacing?.afterSendMs) await pause(pacing.afterSendMs);
+    },
+    async (timeoutMs) => {
+      if (pacing?.readWhenPartnerWaits) await beforeRead();
+      const value = await conn.receive(timeoutMs);
+      if (pacing?.afterReceiveMs) await pause(pacing.afterReceiveMs);
+      return value;
+    },
+  );
+}
+
+// An inbound reassembler at `frameBytes` that counts each frame it completes
+// into `traffic`.
+function countingInboundFrames(
+  frameBytes: number,
+  traffic: Traffic,
+): BoundedInboundFrames {
+  const bounds = boundedInboundFramesWithBounds({ maxFrameBytes: frameBytes });
+  const accept = bounds.accept.bind(bounds);
+  bounds.accept = (bytes) => {
+    const outcome = accept(bytes);
+    if (outcome.kind === "frame") traffic.arrived += 1;
+    return outcome;
+  };
+  return bounds;
 }
 
 export async function runOverQueue(
@@ -204,35 +295,60 @@ export async function runOverQueue(
     rendezvousTimeoutMs: 60_000,
     channelOpenTimeoutMs: 30_000,
     closeFlushTimeoutMs: 10_000,
-    inboundFrames: () =>
-      boundedInboundFramesWithBounds({ maxFrameBytes: run.frameBytes }),
     inboundQueueByteCapacity: run.queueByteCapacity,
   };
+  const inviterTraffic = newTraffic();
+  const acceptorTraffic = newTraffic();
   const [inviter, acceptor] = await Promise.all([
-    openWebRtcMessageConnection({ ...common, role: "inviter" }),
-    openWebRtcMessageConnection({ ...common, role: "acceptor" }),
+    openWebRtcMessageConnection({
+      ...common,
+      role: "inviter",
+      inboundFrames: () =>
+        countingInboundFrames(run.frameBytes, inviterTraffic),
+    }),
+    openWebRtcMessageConnection({
+      ...common,
+      role: "acceptor",
+      inboundFrames: () =>
+        countingInboundFrames(run.frameBytes, acceptorTraffic),
+    }),
   ]);
   openConnections.push(inviter, acceptor);
   const [inviterConn, acceptorConn] = await Promise.all([
-    EncryptedMessageConnection.create(inviter, SESSION_KEY, "initiator"),
-    EncryptedMessageConnection.create(acceptor, SESSION_KEY, "responder"),
+    EncryptedMessageConnection.create(
+      counted(inviter, inviterTraffic),
+      SESSION_KEY,
+      "initiator",
+    ),
+    EncryptedMessageConnection.create(
+      counted(acceptor, acceptorTraffic),
+      SESSION_KEY,
+      "responder",
+    ),
   ]);
   const options = { psiLibrary, verbosity: -1 };
   const inviterSent: Array<unknown> = [];
   const acceptorSent: Array<unknown> = [];
+  const settle = (traffic: Traffic) => () => {
+    traffic.settled = true;
+  };
   const [inviterResult, acceptorResult] = await Promise.allSettled([
     runExchange(
-      paced(inviterConn, run.inviterPacing, inviterSent),
+      paced(inviterConn, run.inviterPacing, inviterSent, () =>
+        untilPartnerWaits(inviterTraffic, acceptorTraffic),
+      ),
       "initiator",
       prepared(run, "inviter"),
       options,
-    ),
+    ).finally(settle(inviterTraffic)),
     runExchange(
-      paced(acceptorConn, run.acceptorPacing, acceptorSent),
+      paced(acceptorConn, run.acceptorPacing, acceptorSent, () =>
+        untilPartnerWaits(acceptorTraffic, inviterTraffic),
+      ),
       "responder",
       prepared(run, "acceptor"),
       options,
-    ),
+    ).finally(settle(acceptorTraffic)),
   ]);
   return {
     inviter: inviterResult,

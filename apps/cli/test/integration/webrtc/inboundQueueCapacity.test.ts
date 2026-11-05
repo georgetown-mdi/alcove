@@ -52,9 +52,9 @@ afterAll(async () => {
   await stunServer?.stop();
 });
 
-// The inviter, the receiver of a count-only run, waits after each frame it
-// sends, so the acceptor's response to round 1 and its round 2 setup and
-// index table all arrive before the inviter reads the first of them.
+// The inviter, the receiver of a count-only run, reads only once the acceptor
+// is waiting on a read, so the acceptor's response to round 1 and its round 2
+// setup and index table all arrive before the inviter reads the first of them.
 const crossing = (queueByteCapacity: number): QueueRun => ({
   algorithm: "psi-c",
   rows: ROWS,
@@ -62,7 +62,7 @@ const crossing = (queueByteCapacity: number): QueueRun => ({
   payload: false,
   frameBytes: FRAME_BYTES,
   queueByteCapacity,
-  inviterPacing: { afterSendMs: 1_500 },
+  inviterPacing: { readWhenPartnerWaits: true },
 });
 
 test("the count-only crossing at a lowered receive bound fits the capacity derived at it", async () => {
