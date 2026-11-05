@@ -12,7 +12,6 @@ import {
   relayForRun,
   webSocketRelaysForRun,
 } from "@psi/transport/ownRelaySetting";
-import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import type { RelayLocator } from "@psi/transport/rendezvous";
@@ -422,12 +421,9 @@ describe("the WebSocket relays a run's plan lists", () => {
     ]);
     const leftOut = [...OWN.turn, SITE.turnUrl, WEBSOCKET];
     expect(plan.relaysLeftOut).toEqual(leftOut);
-    expect(onRunNotice).toHaveBeenCalledWith(
+    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
       `Your allowed relays keep ${site.websocketUrl} and leave out ` +
         `${leftOut.join(", ")} for this run.`,
-    );
-    expect(onRunNotice).not.toHaveBeenCalledWith(
-      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
     );
   });
 

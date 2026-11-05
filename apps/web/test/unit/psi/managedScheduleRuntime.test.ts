@@ -44,9 +44,12 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "../../../src/psi/managed/managedExchangeRecord.js";
+import type {
+  ManagedScheduleAttempt,
+  ManagedScheduleTickSeams,
+} from "../../../src/psi/managed/managedScheduleRunner.js";
 import type { ManagedExchangeRunResult } from "../../../src/psi/managed/managedExchangeRun.js";
 import type { ManagedRunDriverConfig } from "../../../src/psi/managed/managedRunDriver.js";
-import type { ManagedScheduleTickSeams } from "../../../src/psi/managed/managedScheduleRunner.js";
 import type { RunOutputs } from "../../../src/psi/runOutputs.js";
 
 const log = getLogger("managedScheduleRuntime");
@@ -169,12 +172,17 @@ const SOURCE = {
   attendance: "unattended" as const,
 };
 
-function attempt(onDataExchangeStart = () => undefined) {
+function attempt(
+  onDataExchangeStart = () => undefined,
+  onDefaultRelayEnrollment: ManagedScheduleAttempt["onDefaultRelayEnrollment"] = () =>
+    undefined,
+) {
   return {
     record: RECORD,
     source: SOURCE,
     peerWaitTimeoutMs: 42_000,
     onDataExchangeStart,
+    onDefaultRelayEnrollment,
   };
 }
 
@@ -257,9 +265,10 @@ describe("what a scheduled attempt hands the run driver", () => {
     mockedRun.mockResolvedValue(completedRun());
     const controller = new AbortController();
     const onDataExchangeStart = vi.fn();
+    const onDefaultRelayEnrollment = vi.fn();
 
     await browserScheduleTickSeams(controller.signal).runAttempt(
-      attempt(onDataExchangeStart),
+      attempt(onDataExchangeStart, onDefaultRelayEnrollment),
     );
 
     expect(mockedRun).toHaveBeenCalledTimes(1);
@@ -273,6 +282,10 @@ describe("what a scheduled attempt hands the run driver", () => {
     expect(config.options?.lock).toEqual({ ifAvailable: true });
     config.options?.onDataExchangeStart?.();
     expect(onDataExchangeStart).toHaveBeenCalledTimes(1);
+    config.onDefaultRelayEnrollment?.({ cause: "relay-full" });
+    expect(onDefaultRelayEnrollment).toHaveBeenCalledExactlyOnceWith({
+      cause: "relay-full",
+    });
   });
 
   test("revokes the object URLs the run's outputs were built into, however it settles", async () => {

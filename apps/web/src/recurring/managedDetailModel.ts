@@ -23,6 +23,7 @@ import {
 } from "@alcove/core";
 
 import { dateTimeLabel } from "@psi/formatting";
+import { defaultRelayRefusalReason } from "@psi/transport/defaultRelayRefusal";
 import { recentRunsOf } from "@psi/managed/managedExchangeRecord";
 import { recordedHealNote } from "@psi/managed/managedHealNote";
 import { tooLargeFailureClause } from "@psi/managed/managedFailureCopy";
@@ -508,6 +509,34 @@ export function heldAppUpdateLine(
     `earlier version of Alcove because ${reasons}. Alcove updates before a ` +
     "later run once nothing holds it back."
   );
+}
+
+/**
+ * The run history's line for a scheduled run that connected without the
+ * site's relay server because its registrar did not enroll the exchange, or
+ * `undefined` where the record holds none (docs/spec/MANAGED_EXCHANGE_RECORD.md,
+ * the `defaultRelayRefusal` row).
+ */
+export function defaultRelayRefusalLine(
+  record: Pick<ManagedExchangeRecord, "defaultRelayRefusal">,
+): string | undefined {
+  const refusal = record.defaultRelayRefusal;
+  if (refusal.kind !== "refused") return undefined;
+  const at = new Date(refusal.at);
+  const wait =
+    refusal.retryAfterSeconds === undefined
+      ? []
+      : [
+          "It said to try again after " +
+            `${dateTimeLabel(new Date(at.getTime() + refusal.retryAfterSeconds * 1000))}.`,
+        ];
+  return [
+    `The scheduled run on ${dateTimeLabel(at)} connected without the site's ` +
+      "relay server.",
+    defaultRelayRefusalReason(refusal),
+    ...wait,
+    "Later runs try it again.",
+  ].join(" ");
 }
 
 /**

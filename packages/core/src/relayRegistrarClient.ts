@@ -37,6 +37,22 @@ const MAX_REGISTRAR_ANSWER_BYTES = 4096;
 // How much of the registrar's own `error` text a message repeats.
 const MAX_REGISTRAR_REASON_LENGTH = 300;
 
+/**
+ * The longest `Retry-After` wait read off an answer, in seconds; a longer one
+ * is not read. An arbitrary working value, raised on request: the registrar's
+ * longest wait is a row's 70-minute lifetime (infra/relay/README.md,
+ * Enrollment without a token).
+ */
+export const MAX_REGISTRAR_RETRY_AFTER_SECONDS = 86_400;
+
+// A `Retry-After` header in its delay-seconds form. The HTTP-date form, which
+// the registrar does not send, is not read.
+function retryAfterSeconds(header: string | null): number | undefined {
+  if (header === null || !/^[0-9]{1,9}$/.test(header.trim())) return undefined;
+  const seconds = Number(header.trim());
+  return seconds <= MAX_REGISTRAR_RETRY_AFTER_SECONDS ? seconds : undefined;
+}
+
 /** What stands in a message for the credential a request carried. */
 export const REMOVED_CREDENTIAL_TEXT = "[credential removed]";
 
@@ -256,12 +272,15 @@ export type RelayRegistrarAnswer =
   /**
    * No answer, one a later attempt may not repeat (408, 429, or 5xx), or a
    * 2xx that does not state the registration. `unreachable` is set when the
-   * request failed with no answer for a reason it names.
+   * request failed with no answer for a reason it names. `retryAfterSeconds`
+   * is the answer's `Retry-After` wait, where it states one in seconds, at
+   * most {@link MAX_REGISTRAR_RETRY_AFTER_SECONDS}.
    */
   | {
       kind: "unavailable";
       status?: number;
       reason: string;
+      retryAfterSeconds?: number;
       unreachable?: FailureCauseOfKind<"relay-registrar-unreachable">;
     };
 
@@ -474,12 +493,15 @@ export async function sendRelayRegistration(
         status,
         ...(body.error !== undefined && { reason: body.error }),
       };
-    if (status === 408 || status === 429 || status >= 500)
+    if (status === 408 || status === 429 || status >= 500) {
+      const wait = retryAfterSeconds(response.headers.get("Retry-After"));
       return {
         kind: "unavailable",
         status,
         reason: body.error ?? "the registrar did not take the request",
+        ...(wait !== undefined && { retryAfterSeconds: wait }),
       };
+    }
     return {
       kind: "rejected",
       status,
@@ -752,15 +774,40 @@ export type RelayEnrollmentWithinWait =
    * Refused, unreachable, or unanswered within the wait;
    * `detail` says which ({@link relayRegistrationOutcomeDetail}).
    */
-  | { kind: "failed"; detail: string }
+  | { kind: "failed"; detail: string; answer?: RelayEnrollmentAnswer }
   | { kind: "cancelled" };
+
+/** The HTTP answer a failed enrollment got, absent where it got none. */
+export interface RelayEnrollmentAnswer {
+  status: number;
+  /** The registrar's `error` text, as {@link sendRelayRegistration} keeps it:
+   * cut short, with the values the request sent removed. */
+  reason?: string;
+  /** The answer's `Retry-After` wait in seconds, where it states one. */
+  retryAfterSeconds?: number;
+}
+
+function enrollmentAnswer(
+  outcome: Exclude<RelayRegistrationOutcome, { kind: "registered" }>,
+): RelayEnrollmentAnswer | undefined {
+  if (outcome.status === undefined) return undefined;
+  return {
+    status: outcome.status,
+    ...(outcome.reason !== undefined && { reason: outcome.reason }),
+    ...(outcome.kind === "unavailable" &&
+      outcome.retryAfterSeconds !== undefined && {
+        retryAfterSeconds: outcome.retryAfterSeconds,
+      }),
+  };
+}
 
 /**
  * One {@link enrollRelayKeyWithoutToken} attempt, with no retry, whose request
  * is cut once `waitMs` pass: the request's own timeout is the wait, so no
  * second timer races it. `cancelled` once `signal` aborts, before or during
  * the attempt; a same-key repeat is `enrolled`. Never throws. `otherSecrets`
- * is passed on: `detail` repeats no exchange id or relay key derived from them.
+ * is passed on: `detail` repeats no exchange id or relay key derived from them,
+ * and neither does `answer`, which a failure the registrar answered states.
  */
 export async function enrollRelayKeyWithinWait(
   params: {
@@ -789,7 +836,12 @@ export async function enrollRelayKeyWithinWait(
     outcome = { kind: "unavailable", reason: "it could not be reached" };
   }
   if (cancelled()) return { kind: "cancelled" };
-  return outcome.kind === "registered"
-    ? { kind: "enrolled", lapsesAt: outcome.lapsesAt }
-    : { kind: "failed", detail: relayRegistrationOutcomeDetail(outcome) };
+  if (outcome.kind === "registered")
+    return { kind: "enrolled", lapsesAt: outcome.lapsesAt };
+  const answer = enrollmentAnswer(outcome);
+  return {
+    kind: "failed",
+    detail: relayRegistrationOutcomeDetail(outcome),
+    ...(answer !== undefined && { answer }),
+  };
 }

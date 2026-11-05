@@ -13,13 +13,23 @@ import {
 
 import {
   DEFAULT_RELAY_DIAL_WAIT_MS,
-  DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
-  DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE,
   invitationRelayWithDefault,
   relayWithDefaultForRun,
 } from "../../../src/psi/transport/defaultRelay.js";
+import {
+  defaultRelayNotEnrolledNotice,
+  defaultRelayPreviousNotEnrolledNotice,
+} from "../../../src/psi/transport/defaultRelayRefusal.js";
 
 import type { RelayEnrollmentWithinWait } from "@alcove/core";
+
+const REFUSED_NOTICE = defaultRelayNotEnrolledNotice({ cause: "other" });
+const UNANSWERED_NOTICE = defaultRelayNotEnrolledNotice({
+  cause: "unreachable",
+});
+const PREVIOUS_REFUSED_NOTICE = defaultRelayPreviousNotEnrolledNotice({
+  cause: "other",
+});
 
 // The enrollment each browser run makes right before it connects. The first
 // block mocks core's bounded enrollment; the dial's wait runs it over a
@@ -186,14 +196,61 @@ describe("relayWithDefaultForRun", () => {
       NO_RESTRICTION,
       {
         setting: () => DEFAULT_RELAY,
-        enroll: answering({ kind: "failed", detail: "HTTP 409: held" }),
+        enroll: answering({
+          kind: "failed",
+          detail: "HTTP 409: held",
+          answer: { status: 409, reason: "held" },
+        }),
         onRunNotice,
       },
     );
     expect(run).toEqual(WITHOUT_DEFAULT);
-    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
-      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(REFUSED_NOTICE);
+  });
+
+  test("a refusal states the registrar's cause and wait, and hands the refusal on", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error:
+              "this address holds 70 exchanges enrolled without a token " +
+              "that have not lapsed; try again in 700 s, or run the exchange " +
+              "without this relay",
+          }),
+          { status: 429, headers: { "Retry-After": "700" } },
+        ),
+      ),
     );
+    const onRunNotice = vi.fn();
+    const onDefaultRelayEnrollment = vi.fn();
+    await relayWithDefaultForRun(generateSharedSecret(), OWN, NO_RESTRICTION, {
+      setting: () => DEFAULT_RELAY,
+      enroll: enrollingThrough(fetch),
+      onRunNotice,
+      onDefaultRelayEnrollment,
+    });
+    const refusal = { cause: "address-cap", retryAfterSeconds: 700 } as const;
+    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
+      defaultRelayNotEnrolledNotice(refusal),
+    );
+    expect(onDefaultRelayEnrollment).toHaveBeenCalledExactlyOnceWith(refusal);
+  });
+
+  test("a confirmed enrollment hands on no refusal, and a cancelled one nothing", async () => {
+    const onDefaultRelayEnrollment = vi.fn();
+    for (const enrollment of [ENROLLED, { kind: "cancelled" } as const])
+      await relayWithDefaultForRun(
+        generateSharedSecret(),
+        OWN,
+        NO_RESTRICTION,
+        {
+          setting: () => DEFAULT_RELAY,
+          enroll: answering(enrollment),
+          onDefaultRelayEnrollment,
+        },
+      );
+    expect(onDefaultRelayEnrollment.mock.calls).toEqual([[undefined]]);
   });
 
   test("a registrar repeating the exchange id and relay key gets neither into the log", async () => {
@@ -337,14 +394,16 @@ describe("relayWithDefaultForRun", () => {
         NO_RESTRICTION,
         {
           setting: withWebSocket,
-          enroll: answering({ kind: "failed", detail: "HTTP 503" }),
+          enroll: answering({
+            kind: "failed",
+            detail: "HTTP 503",
+            answer: { status: 503 },
+          }),
           onRunNotice,
         },
       );
       expect(run).toEqual(WITHOUT_DEFAULT);
-      expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
-        DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
-      );
+      expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(REFUSED_NOTICE);
     });
 
     test("is not enrolled for where the allowed relays leave out both its urls", async () => {
@@ -397,7 +456,7 @@ describe("relayWithDefaultForRun", () => {
         enroll: vi.fn<typeof enrollRelayKeyWithinWait>((params) =>
           Promise.resolve(
             params.sharedSecret === previous
-              ? { kind: "failed", detail: "HTTP 503" }
+              ? { kind: "failed", detail: "HTTP 503", answer: { status: 503 } }
               : ENROLLED,
           ),
         ),
@@ -409,7 +468,7 @@ describe("relayWithDefaultForRun", () => {
         defaultWebSocketRelay: WEBSOCKET,
       });
       expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
-        DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE,
+        PREVIOUS_REFUSED_NOTICE,
       );
     });
 
@@ -421,7 +480,7 @@ describe("relayWithDefaultForRun", () => {
         enroll: vi.fn<typeof enrollRelayKeyWithinWait>((params) =>
           Promise.resolve(
             params.sharedSecret === current
-              ? { kind: "failed", detail: "HTTP 503" }
+              ? { kind: "failed", detail: "HTTP 503", answer: { status: 503 } }
               : ENROLLED,
           ),
         ),
@@ -441,15 +500,17 @@ describe("relayWithDefaultForRun", () => {
         NO_RESTRICTION,
         {
           setting: withWebSocket,
-          enroll: answering({ kind: "failed", detail: "HTTP 503" }),
+          enroll: answering({
+            kind: "failed",
+            detail: "HTTP 503",
+            answer: { status: 503 },
+          }),
           previousSharedSecret: generateSharedSecret(),
           onRunNotice,
         },
       );
       expect(run).toEqual(WITHOUT_DEFAULT);
-      expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
-        DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
-      );
+      expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(REFUSED_NOTICE);
     });
 
     test.each([
@@ -546,9 +607,7 @@ describe("the dial's wait for the enrollment", () => {
     );
     expect(fetch).toHaveBeenCalledOnce();
     expect(run).toEqual(WITHOUT_DEFAULT);
-    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
-      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
-    );
+    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(UNANSWERED_NOTICE);
   });
 
   test("by default a dial waits DEFAULT_RELAY_DIAL_WAIT_MS and no longer", async () => {
@@ -575,9 +634,7 @@ describe("the dial's wait for the enrollment", () => {
     expect(onRunNotice).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     await expect(pending).resolves.toEqual(WITHOUT_DEFAULT);
-    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
-      DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
-    );
+    expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(UNANSWERED_NOTICE);
   });
 
   test("a cancelled run stops waiting and says nothing", async () => {

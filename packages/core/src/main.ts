@@ -1058,6 +1058,7 @@ export {
   enrollRelayKey,
   enrollRelayKeyWithinWait,
   enrollRelayKeyWithoutToken,
+  MAX_REGISTRAR_RETRY_AFTER_SECONDS,
   registerRelayKey,
   RELAY_REGISTRAR_REQUEST_TIMEOUT_MS,
   RELAY_REGISTRATION_RETRY_DELAYS_MS,
@@ -1072,6 +1073,7 @@ export {
 } from "./relayRegistrarClient";
 export type {
   OtherRegistrarRequest,
+  RelayEnrollmentAnswer,
   RelayEnrollmentWithinWait,
   RelayRegistrarAnswer,
   RelayRegistrarTransport,

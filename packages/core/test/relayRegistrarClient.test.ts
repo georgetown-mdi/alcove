@@ -8,6 +8,7 @@ import {
   enrollRelayKey,
   enrollRelayKeyWithinWait,
   enrollRelayKeyWithoutToken,
+  MAX_REGISTRAR_RETRY_AFTER_SECONDS,
   registerRelayKey,
   relayRegistrationOutcomeDetail,
   sendRelayRegistration,
@@ -693,8 +694,64 @@ describe("enrollRelayKeyWithinWait", () => {
       [status, { error: "held" }],
       [200, { maxAgeDays: null, lapsesAt: null }],
     ]);
-    expect(await enrollWith(fetch)).toEqual({ kind: "failed", detail });
+    expect(await enrollWith(fetch)).toEqual({
+      kind: "failed",
+      detail,
+      answer: { status, reason: "held" },
+    });
     expect(fetch.authorizations).toEqual([null]);
+  });
+
+  /** A fetch answering once with `status`, `{ error }` and `Retry-After`. */
+  function answeringWithRetryAfter(
+    status: number,
+    retryAfter: string,
+  ): typeof globalThis.fetch {
+    return (() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: "try again" }), {
+          status,
+          headers: { "Retry-After": retryAfter },
+        }),
+      )) as typeof globalThis.fetch;
+  }
+
+  test.each([429, 503])(
+    "a %i states the answer's Retry-After wait in seconds",
+    async (status) => {
+      expect(
+        await enrollWith(answeringWithRetryAfter(status, " 3600 ")),
+      ).toEqual({
+        kind: "failed",
+        detail: `HTTP ${status}: try again`,
+        answer: { status, reason: "try again", retryAfterSeconds: 3600 },
+      });
+    },
+  );
+
+  test.each([
+    ["an HTTP date", "Wed, 21 Oct 2026 07:28:00 GMT"],
+    ["a negative number", "-5"],
+    ["a fraction", "1.5"],
+    ["a wait past the bound", String(MAX_REGISTRAR_RETRY_AFTER_SECONDS + 1)],
+  ])("a Retry-After holding %s states no wait", async (_, retryAfter) => {
+    const enrollment = await enrollWith(
+      answeringWithRetryAfter(429, retryAfter),
+    );
+    expect(enrollment).toEqual({
+      kind: "failed",
+      detail: "HTTP 429: try again",
+      answer: { status: 429, reason: "try again" },
+    });
+  });
+
+  test("a wait at the bound is read", async () => {
+    const enrollment = await enrollWith(
+      answeringWithRetryAfter(429, String(MAX_REGISTRAR_RETRY_AFTER_SECONDS)),
+    );
+    expect(enrollment).toMatchObject({
+      answer: { retryAfterSeconds: MAX_REGISTRAR_RETRY_AFTER_SECONDS },
+    });
   });
 
   test("an unreachable registrar fails, stating it", async () => {
@@ -793,16 +850,13 @@ describe("enrollRelayKeyWithinWait", () => {
           ),
         ),
       );
-      expect(enrollments).toEqual([
-        {
-          kind: "failed",
-          detail: `HTTP 409: held by ${REMOVED_EXCHANGE_ID_TEXT} under ${REMOVED_RELAY_KEY_TEXT}`,
-        },
-        {
-          kind: "failed",
-          detail: `HTTP 409: held by ${REMOVED_EXCHANGE_ID_TEXT} under ${REMOVED_RELAY_KEY_TEXT}`,
-        },
-      ]);
+      const reason = `held by ${REMOVED_EXCHANGE_ID_TEXT} under ${REMOVED_RELAY_KEY_TEXT}`;
+      const failed = {
+        kind: "failed",
+        detail: `HTTP 409: ${reason}`,
+        answer: { status: 409, reason },
+      };
+      expect(enrollments).toEqual([failed, failed]);
     },
   );
 });

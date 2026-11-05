@@ -24,6 +24,7 @@ import {
   ExchangeSpecSchema,
   InternalConsistencyError,
   KEY_FILE_FIELD_SCHEMAS,
+  MAX_REGISTRAR_RETRY_AFTER_SECONDS,
   ROTATION_HISTORY_MAX_ENTRIES,
   RelayRegistrarSchema,
   SHARED_SECRET_REGEX,
@@ -44,6 +45,7 @@ import { z } from "zod";
 
 import { APP_UPDATE_HOLDERS } from "@utils/appUpdateHolder";
 
+import { DEFAULT_RELAY_REFUSAL_CAUSES } from "../transport/defaultRelayRefusal";
 import { OwnRelaySchema } from "../transport/ownRelaySetting";
 import { applyDisclosure } from "../metadataEditing";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
@@ -67,6 +69,7 @@ import type {
 } from "@alcove/core";
 import type { OwnRelay, OwnRelayRead } from "../transport/ownRelaySetting";
 import type { AppUpdateHolder } from "@utils/appUpdateHolder";
+import type { DefaultRelayRefusalCause } from "../transport/defaultRelayRefusal";
 import type { DisclosureChoice } from "../metadataEditing";
 import type { ZodType } from "zod";
 
@@ -82,14 +85,16 @@ import type { ZodType } from "zod";
  */
 export const MANAGED_EXCHANGE_SCHEMA_VERSION = "alcove-managed-exchange/v5";
 
-/** The step from the v4 record, which has no `heldAppUpdate`: a v4 build ran
- * no window it recorded a held update for, so the step adds the none form. */
+/** The step from the v4 record, which has no `heldAppUpdate` or
+ * `defaultRelayRefusal`: a v4 build recorded neither for any window, so the
+ * step adds the none form of each. */
 const MANAGED_EXCHANGE_V4_TO_V5 = Object.freeze({
   from: "alcove-managed-exchange/v4",
   to: MANAGED_EXCHANGE_SCHEMA_VERSION,
   migrate: (record: Record<string, unknown>) => ({
     ...record,
     heldAppUpdate: NO_HELD_APP_UPDATE,
+    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
   }),
 });
 
@@ -455,6 +460,34 @@ export type ManagedHeldAppUpdateField =
 /** The `heldAppUpdate` value of a record holding none. */
 export const NO_HELD_APP_UPDATE: ManagedHeldAppUpdateNone = { kind: "none" };
 
+/** A scheduled window whose run connected without the default relay because
+ * its registrar did not enroll it. Its normative shape:
+ * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `defaultRelayRefusal` row. */
+export interface ManagedDefaultRelayRefusal {
+  kind: "refused";
+  /** ISO 8601 UTC instant the enrollment failed. */
+  at: string;
+  cause: DefaultRelayRefusalCause;
+  /** The registrar's `Retry-After` wait, counted from `at`, where it stated
+   * one. */
+  retryAfterSeconds?: number;
+}
+
+/** The `defaultRelayRefusal` of a record whose last scheduled run enrolled at
+ * the default relay, or did not try to. */
+export interface ManagedDefaultRelayRefusalNone {
+  kind: "none";
+}
+
+/** What the required `defaultRelayRefusal` field holds. */
+export type ManagedDefaultRelayRefusalField =
+  ManagedDefaultRelayRefusal | ManagedDefaultRelayRefusalNone;
+
+/** The `defaultRelayRefusal` value of a record holding none. */
+export const NO_DEFAULT_RELAY_REFUSAL: ManagedDefaultRelayRefusalNone = {
+  kind: "none",
+};
+
 /**
  * A managed exchange record: the minimal state this party's browser retains so a
  * recurring exchange with the same partner over the same terms can run again. It
@@ -590,6 +623,11 @@ export interface ManagedExchangeRecord {
    * back; {@link NO_HELD_APP_UPDATE} where it started on the current code or
    * no window has. Written only by the window's own bookkeeping. */
   heldAppUpdate: ManagedHeldAppUpdateField;
+  /** Why the last scheduled window that made an attempt connected without
+   * the default relay, from its latest attempt that tried to enroll there;
+   * {@link NO_DEFAULT_RELAY_REFUSAL} where that attempt enrolled, none tried,
+   * or no window has. Written only by the window's own bookkeeping. */
+  defaultRelayRefusal: ManagedDefaultRelayRefusalField;
 }
 
 /**
@@ -712,6 +750,25 @@ const heldAppUpdateFieldSchema: ZodType<ManagedHeldAppUpdateField> = z.union([
   z.object({ kind: z.literal("none") }).strict(),
 ]);
 
+/** The validator for the record's required `defaultRelayRefusal` field. */
+const defaultRelayRefusalFieldSchema: ZodType<ManagedDefaultRelayRefusalField> =
+  z.union([
+    z
+      .object({
+        kind: z.literal("refused"),
+        at: z.iso.datetime(),
+        cause: z.enum(DEFAULT_RELAY_REFUSAL_CAUSES),
+        retryAfterSeconds: z
+          .number()
+          .int()
+          .min(0)
+          .max(MAX_REGISTRAR_RETRY_AFTER_SECONDS)
+          .optional(),
+      })
+      .strict(),
+    z.object({ kind: z.literal("none") }).strict(),
+  ]);
+
 /** The canonical `tokenMaxAgeDays` validator, re-exported for the
  * export/import artifact ({@link ../tokenMaxAge}). */
 export { tokenMaxAgeDaysSchema };
@@ -824,6 +881,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     previousExpires: z.iso.datetime().optional(),
     standingCondition: standingConditionFieldSchema,
     heldAppUpdate: heldAppUpdateFieldSchema,
+    defaultRelayRefusal: defaultRelayRefusalFieldSchema,
   })
   .refine(
     (record) =>
@@ -857,6 +915,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
         record.rotationHistory === undefined &&
         record.previousSharedSecret === undefined &&
         record.heldAppUpdate.kind === "none" &&
+        record.defaultRelayRefusal.kind === "none" &&
         record.workingDirectoryHandle === undefined),
     {
       message:
@@ -864,7 +923,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
         "no expires, schedule, lastRun, recentRuns, rotationInFlightSince, " +
         "relayRegistrar, relayRegistrationPendingSince, ownRelay, " +
         "defaultRelayOn, rotationHistory, previousSharedSecret, held app " +
-        "update, or platform handle",
+        "update, default relay refusal, or platform handle",
     },
   )
   .refine(
@@ -1240,7 +1299,8 @@ export interface NewManagedExchange {
  * present, so an absent policy is an omitted key rather than an explicit
  * `undefined`; `standingCondition` is required, so it is always written, holding
  * {@link NO_STANDING_CONDITION} unless an import supplies one to retain, and
- * `heldAppUpdate` holds {@link NO_HELD_APP_UPDATE}: it is this device's alone.
+ * `heldAppUpdate` and `defaultRelayRefusal` hold {@link NO_HELD_APP_UPDATE}
+ * and {@link NO_DEFAULT_RELAY_REFUSAL}: each is this device's alone.
  *
  * @throws {ZodError} if the assembled record is invalid (an over-long label, a
  *   malformed secret, a document holding an `authentication` block).
@@ -1285,6 +1345,7 @@ export function buildManagedExchangeRecord(
     ...(fields.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
     standingCondition: fields.standingCondition ?? NO_STANDING_CONDITION,
     heldAppUpdate: NO_HELD_APP_UPDATE,
+    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
   };
   return parseManagedExchangeRecord(record);
 }
@@ -2018,8 +2079,8 @@ function ownRelayAfterPairImport(
  *   relay registration, and rotation history, each absent where the import
  *   states none, and from a backup also its schedule, its own relays, and its
  *   use of this site's relay server.
- * - From `stored`: the `id`, label, working-folder grant, and held app
- *   update, and from a pair
+ * - From `stored`: the `id`, label, working-folder grant, held app update,
+ *   and default relay refusal, and from a pair
  *   import also the schedule and the use of this site's relay server, which a
  *   pair has no field for.
  * - Merged: `lastRun` is the newer of the two, and the run list holds both
@@ -2058,6 +2119,7 @@ export function applyManagedExchangeImportReplace(
     standingCondition:
       raisedStandingCondition(stored) ?? imported.standingCondition,
     heldAppUpdate: stored.heldAppUpdate,
+    defaultRelayRefusal: stored.defaultRelayRefusal,
     ...(stored.workingDirectoryHandle !== undefined
       ? { workingDirectoryHandle: stored.workingDirectoryHandle }
       : {}),
@@ -2563,6 +2625,11 @@ export interface ManagedExchangeScheduleAdvance {
    * value as it is. Not held to {@link evidenceSharedSecret}: it is about this
    * page's code, not the secret. */
   heldAppUpdate?: ManagedHeldAppUpdateField;
+  /** Why the window's latest attempt to enroll at the default relay failed,
+   * or none. Omitted when the window made no attempt, as
+   * {@link heldAppUpdate} is, and not held to {@link evidenceSharedSecret}:
+   * it is about the relay, not the secret. */
+  defaultRelayRefusal?: ManagedDefaultRelayRefusalField;
   /** The secret the record held when {@link lastRun} and
    * {@link standingCondition} were read: the one the window's last attempt ran
    * under, or the one the wake read. Both land only while the stored record
@@ -2637,6 +2704,9 @@ export function applyManagedExchangeScheduleAdvance(
     schedule: advance.schedule,
     ...(advance.heldAppUpdate !== undefined
       ? { heldAppUpdate: advance.heldAppUpdate }
+      : {}),
+    ...(advance.defaultRelayRefusal !== undefined
+      ? { defaultRelayRefusal: advance.defaultRelayRefusal }
       : {}),
   };
   const storedAtMs =

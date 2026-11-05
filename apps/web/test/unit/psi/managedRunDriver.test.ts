@@ -55,10 +55,10 @@ import {
   registerRotatedManagedRelayKey,
   retryPendingManagedRelayRegistration,
 } from "../../../src/psi/managed/managedRelayRegistration.js";
-import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "../../../src/psi/transport/defaultRelay.js";
 import { appendDisclosureRecordToStore } from "../../../src/psi/disclosureAccountingStore.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { buildRunOutputs } from "../../../src/psi/runOutputs.js";
+import { defaultRelayNotEnrolledNotice } from "../../../src/psi/transport/defaultRelayRefusal.js";
 import { disclosureRecord } from "../../utils/disclosureFixtures.js";
 import { noteUnfiledDisclosureRun } from "../../../src/psi/unfiledDisclosureStore.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
@@ -329,6 +329,11 @@ const mockedRunExchange = vi.mocked(runExchange);
 storeRotationFirst(mockedRunExchange);
 const mockedOpen = vi.mocked(openPeerMessageConnection);
 const mockedWaitForIncoming = vi.mocked(waitForIncomingConnection);
+
+const RELAY_FULL_NOTICE = defaultRelayNotEnrolledNotice({
+  cause: "relay-full",
+  retryAfterSeconds: 600,
+});
 
 /** The side-to-handshake-role pairing both applications are held to, read from
  * the shared cross-application fixture. */
@@ -943,7 +948,7 @@ describe("runManagedExchangeInBrowser", () => {
       acquireResources(side);
       vi.mocked(managedRunRelayPlan).mockImplementationOnce(
         (_record, options) => {
-          options?.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
+          options?.onRunNotice?.(RELAY_FULL_NOTICE);
           return Promise.resolve({ relaysLeftOut: [], websocketRelays: [] });
         },
       );
@@ -958,11 +963,37 @@ describe("runManagedExchangeInBrowser", () => {
       ).catch((error: unknown) => error);
 
       expect(rejection).toBe(failure);
-      expect(onWarning.mock.calls).toEqual([
-        [DEFAULT_RELAY_NOT_ENROLLED_NOTICE],
-      ]);
+      expect(onWarning.mock.calls).toEqual([[RELAY_FULL_NOTICE]]);
     },
   );
+
+  test("hands the relay plan the caller's sink for what the default relay's enrollment came to", async () => {
+    acquireResources("acceptor");
+    vi.mocked(managedRunRelayPlan).mockImplementationOnce(
+      (_record, options) => {
+        options?.onDefaultRelayEnrollment?.({
+          cause: "relay-full",
+          retryAfterSeconds: 600,
+        });
+        return Promise.resolve({ relaysLeftOut: [], websocketRelays: [] });
+      },
+    );
+    mockedOpen.mockRejectedValue(new Error("the data channel did not open"));
+    const onDefaultRelayEnrollment = vi.fn();
+
+    await runManagedExchangeInBrowser({
+      record: recordForSide("acceptor"),
+      source: SOURCE,
+      signal: new AbortController().signal,
+      urls: URLS,
+      onDefaultRelayEnrollment,
+    }).catch(() => undefined);
+
+    expect(onDefaultRelayEnrollment).toHaveBeenCalledExactlyOnceWith({
+      cause: "relay-full",
+      retryAfterSeconds: 600,
+    });
+  });
 
   test("records a receive list the terms exchange fills, then says which columns were taken", async () => {
     const { mc } = makeParkedCloseMc();

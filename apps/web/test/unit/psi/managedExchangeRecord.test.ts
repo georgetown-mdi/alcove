@@ -3,6 +3,7 @@ import {
   FormatMigrationError,
   InternalConsistencyError,
   KeyFileSchema,
+  MAX_REGISTRAR_RETRY_AFTER_SECONDS,
   ROTATION_HISTORY_MAX_ENTRIES,
   assembleExchangeSpec,
   connectionFromLocator,
@@ -14,6 +15,7 @@ import { describe, expect, test } from "vitest";
 import { ZodError } from "zod";
 import { computeTermsHash } from "@alcove/core/testing";
 
+import { DEFAULT_RELAY_REFUSAL_CAUSES } from "@psi/transport/defaultRelayRefusal";
 import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
 
 import {
@@ -22,6 +24,7 @@ import {
   MAX_LABEL_LENGTH,
   MAX_RECENT_RUNS,
   MAX_SCHEDULE_INTERVAL_DAYS,
+  NO_DEFAULT_RELAY_REFUSAL,
   NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
@@ -294,6 +297,7 @@ describe("no-input-content invariant", () => {
     // The record's own fields hold no row value or file content: only the
     // pointer, the terms' column shape, the connection, and the secret.
     expect(Object.keys(record).sort()).toEqual([
+      "defaultRelayRefusal",
       "exchangeFile",
       "heldAppUpdate",
       "id",
@@ -427,24 +431,74 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     expect(safeParseManagedExchangeRecord(record).success).toBe(true);
   });
 
-  test("migrates a v4 record in memory, adding no held app update", () => {
+  test("migrates a v4 record in memory, adding no held app update and no default relay refusal", () => {
     const record = buildManagedExchangeRecord(newExchange({ schedule }));
-    const { heldAppUpdate: _absent, ...rest } = record;
+    const {
+      heldAppUpdate: _absent,
+      defaultRelayRefusal: _alsoAbsent,
+      ...rest
+    } = record;
     const stored = { ...rest, schemaVersion: "alcove-managed-exchange/v4" };
     const kept = structuredClone(stored);
 
     expect(parseManagedExchangeRecord(stored)).toEqual({
       ...record,
       heldAppUpdate: NO_HELD_APP_UPDATE,
+      defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
     });
     expect(stored).toEqual(kept);
   });
 
-  test("rejects a record with no heldAppUpdate: the field is required", () => {
-    const stored: Record<string, unknown> = {
+  test.each(["heldAppUpdate", "defaultRelayRefusal"])(
+    "rejects a record with no %s: the field is required",
+    (field) => {
+      const stored: Record<string, unknown> = {
+        ...buildManagedExchangeRecord(newExchange()),
+      };
+      delete stored[field];
+      expect(safeParseManagedExchangeRecord(stored).success).toBe(false);
+    },
+  );
+
+  test("reads a default relay refusal naming each cause, with or without a wait", () => {
+    for (const cause of DEFAULT_RELAY_REFUSAL_CAUSES)
+      for (const wait of [{}, { retryAfterSeconds: 4200 }]) {
+        const defaultRelayRefusal = {
+          kind: "refused",
+          at: "2026-01-06T14:30:00.000Z",
+          cause,
+          ...wait,
+        };
+        expect(
+          parseManagedExchangeRecord({
+            ...buildManagedExchangeRecord(newExchange()),
+            defaultRelayRefusal,
+          }).defaultRelayRefusal,
+        ).toEqual(defaultRelayRefusal);
+      }
+  });
+
+  test.each([
+    ["an unknown cause", { cause: "busy" }],
+    ["the registrar's own text", { cause: "other", reason: "held" }],
+    ["a negative wait", { cause: "other", retryAfterSeconds: -1 }],
+    ["a fractional wait", { cause: "other", retryAfterSeconds: 1.5 }],
+    [
+      "a wait past the bound",
+      {
+        cause: "other",
+        retryAfterSeconds: MAX_REGISTRAR_RETRY_AFTER_SECONDS + 1,
+      },
+    ],
+  ])("rejects a default relay refusal holding %s", (_name, fields) => {
+    const stored = {
       ...buildManagedExchangeRecord(newExchange()),
+      defaultRelayRefusal: {
+        kind: "refused",
+        at: "2026-01-06T14:30:00.000Z",
+        ...fields,
+      },
     };
-    delete stored.heldAppUpdate;
     expect(safeParseManagedExchangeRecord(stored).success).toBe(false);
   });
 
@@ -1705,6 +1759,38 @@ describe("applyManagedExchangeScheduleAdvance", () => {
         heldAppUpdate: NO_HELD_APP_UPDATE,
       }).heldAppUpdate,
     ).toEqual(NO_HELD_APP_UPDATE);
+  });
+
+  test("records a default relay refusal, replaces it with none, and leaves it where the advance carries none", () => {
+    const refused = {
+      kind: "refused" as const,
+      at: "2026-01-13T14:00:00.000Z",
+      cause: "address-cap" as const,
+      retryAfterSeconds: 1200,
+    };
+    const step = {
+      schedule: advancedSchedule,
+      fromNextWindow: schedule.nextWindow,
+      fromConsecutiveMisses: schedule.consecutiveMisses,
+      // A re-invite's secret: the refusal lands all the same.
+      evidenceSharedSecret: generateSharedSecret(),
+    };
+    const recorded = applyManagedExchangeScheduleAdvance(scheduled(), {
+      ...step,
+      defaultRelayRefusal: refused,
+    });
+    expect(recorded.defaultRelayRefusal).toEqual(refused);
+
+    const back = { ...recorded, schedule };
+    expect(
+      applyManagedExchangeScheduleAdvance(back, step).defaultRelayRefusal,
+    ).toEqual(refused);
+    expect(
+      applyManagedExchangeScheduleAdvance(back, {
+        ...step,
+        defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
+      }).defaultRelayRefusal,
+    ).toEqual(NO_DEFAULT_RELAY_REFUSAL);
   });
 
   test("lands its entry over a stored one stamped after the writer's clock", () => {
@@ -3104,6 +3190,19 @@ describe("the configuration-only record", () => {
     expect(parseManagedExchangeRecord(record)).toEqual(record);
   });
 
+  test("holds no default relay refusal", () => {
+    expect(() =>
+      parseManagedExchangeRecord({
+        ...buildManagedExchangeRecord(configurationFields()),
+        defaultRelayRefusal: {
+          kind: "refused",
+          at: "2026-01-06T14:30:00.000Z",
+          cause: "other",
+        },
+      }),
+    ).toThrow(/configuration only/);
+  });
+
   test("the narrowing refuses it rather than composing an empty secret", () => {
     expect(() =>
       runnableManagedExchangeOrRefuse(
@@ -3456,6 +3555,20 @@ describe("applyManagedExchangeImportReplace", () => {
     expect(replaced.exchangeFile).toEqual(imported.exchangeFile);
     expect(replaced.tokenMaxAgeDays).toBe(30);
     expect(replaced.schedule).toEqual(otherSchedule);
+  });
+
+  test("keeps the stored default relay refusal, which is this device's alone", () => {
+    const defaultRelayRefusal = {
+      kind: "refused" as const,
+      at: "2026-07-01T09:00:00.000Z",
+      cause: "relay-full" as const,
+    };
+    const stored = { ...runnableRecord({ schedule }), defaultRelayRefusal };
+    for (const source of ["backup", "command-line"] as const)
+      expect(
+        applyManagedExchangeImportReplace(stored, runnableRecord(), source)
+          .defaultRelayRefusal,
+      ).toEqual(defaultRelayRefusal);
   });
 
   test("a pair import keeps the stored schedule, which a pair has no field for", () => {

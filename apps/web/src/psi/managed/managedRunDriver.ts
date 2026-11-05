@@ -104,6 +104,7 @@ import type {
   ManagedExchangeRunResult,
   ManagedRunSecretUsed,
 } from "./managedExchangeRun";
+import type { DefaultRelayRefusal } from "../transport/defaultRelayRefusal";
 import type { ManagedInputSource } from "./managedInputHandle";
 import type { ManagedRerunOptions } from "./managedRun";
 import type { ManagedRunRecordExpectation } from "./managedExchangeStore";
@@ -219,6 +220,11 @@ export interface ManagedRunDriverConfig {
    * produce ({@link ../resultSizeProjection.ts}). Optional: an attended run has the
    * operator present when its own result arrives and omits it. */
   onPairTableFactors?: (factors: PairTableFactors) => void;
+  /** What the run's enrollment at the default relay came to, once it ends:
+   * the refusal where it failed, `undefined` where it confirmed. Optional: an
+   * attended run shows the refusal as a notice and omits it, and a scheduled
+   * run keeps it on the record. */
+  onDefaultRelayEnrollment?: (refusal: DefaultRelayRefusal | undefined) => void;
   /** Asks the operator whether to take on the partner's changed linkage terms
    * the terms exchange met, before any linkage key or data moves: true takes
    * them on, false declines. An attended run supplies it. Omitted -- a
@@ -266,6 +272,7 @@ export function runManagedExchangeInBrowser(
     onWarning,
     onResolvedMatching,
     onPairTableFactors,
+    onDefaultRelayEnrollment,
     peerWaitTimeoutMs,
     decideTermsChange,
   } = config;
@@ -369,6 +376,9 @@ export function runManagedExchangeInBrowser(
         const relayPlan = await managedRunRelayPlan(current, {
           signal,
           onRunNotice: emitRunNotice,
+          ...(onDefaultRelayEnrollment !== undefined && {
+            onDefaultRelayEnrollment,
+          }),
           ...previousOption,
         });
         const runConnection = await openRunConnectionWithRelayFallback({

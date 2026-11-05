@@ -55,6 +55,7 @@ import {
   SIDE_LABELS,
   completedRunRecorded,
   connectionRows,
+  defaultRelayRefusalLine,
   heldAppUpdateLine,
   lastRunMayHaveSentPayload,
   linkageTermsRows,
@@ -1142,11 +1143,15 @@ function RunHistory({
 }) {
   const entries = runHistoryEntries(record);
   const heldUpdate = heldAppUpdateLine(record);
+  const relayRefusal = defaultRelayRefusalLine(record);
   return (
     <div className={styles.callout}>
       <h2 className={styles.eyebrow}>Run history</h2>
       {heldUpdate !== undefined && (
         <p className={`${styles.small} ${styles.sub}`}>{heldUpdate}</p>
+      )}
+      {relayRefusal !== undefined && (
+        <p className={`${styles.small} ${styles.sub}`}>{relayRefusal}</p>
       )}
       {resultSizeWarning !== undefined && (
         <Alert

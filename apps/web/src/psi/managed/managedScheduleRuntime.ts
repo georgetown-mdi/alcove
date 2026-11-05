@@ -406,13 +406,15 @@ async function runUnattendedAttempt(
       onPairTableFactors: (factors) => {
         pairTableFactors = factors;
       },
+      onDefaultRelayEnrollment: attempt.onDefaultRelayEnrollment,
       onWarning: (message) => {
         // The close-outcome notice speaks to an operator watching the run and
         // is dropped. Every other notice goes to the diagnostic log, folded
         // through the same display boundary a seat's surface uses so each is
         // escaped exactly once. A relay key registration the registrar did
         // not confirm is also kept on the record, which the recurring list
-        // shows.
+        // shows, and so is a default relay enrollment that failed, which the
+        // exchange's run history shows.
         if (droppableUnattendedNotice(message)) return;
         for (const notice of appendSanitizedRunWarning([], message))
           log.warn(UNATTENDED_RUN_NOTICE_PREFIX, notice);

@@ -19,6 +19,7 @@ import {
   partitionReadableManagedLocalState,
 } from "@psi/managed/managedLocalStateShape";
 import {
+  NO_DEFAULT_RELAY_REFUSAL,
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeLastRun,
@@ -59,6 +60,7 @@ import type {
   ManagedScheduleAttempt,
   ManagedScheduleTickSeams,
 } from "@psi/managed/managedScheduleRunner";
+import type { DefaultRelayRefusal } from "@psi/transport/defaultRelayRefusal";
 import type { ManagedLocalState } from "@psi/managed/managedLocalStateShape";
 import type { WaitingAppUpdateOutcome } from "@psi/managed/managedAppUpdate";
 
@@ -132,15 +134,20 @@ interface RecordedAttempt {
  * attempt. A `"hang"` never settles until the harness releases it, which is how
  * a test holds one record inside its window while it drives another wake. */
 type AttemptScript = Array<
-  | { kind: "succeed"; spendsMs?: number }
+  | { kind: "succeed"; spendsMs?: number; defaultRelay?: DefaultRelayOutcome }
   | { kind: "hang" }
   | {
       kind: "fail";
       error: unknown;
       spendsMs?: number;
       startsDataExchange?: true;
+      defaultRelay?: DefaultRelayOutcome;
     }
 >;
+
+/** What a scripted attempt's enrollment at the default relay came to, reported
+ * as the attempt starts; an attempt naming none does not reach it. */
+type DefaultRelayOutcome = DefaultRelayRefusal | "enrolled";
 
 interface Harness {
   seams: ManagedScheduleTickSeams;
@@ -271,6 +278,10 @@ function harness(options: {
             resolve(undefined);
           });
         });
+      if (step.defaultRelay !== undefined)
+        attempt.onDefaultRelayEnrollment(
+          step.defaultRelay === "enrolled" ? undefined : step.defaultRelay,
+        );
       clockMs += step.spendsMs ?? 0;
       if (step.kind === "succeed") return Promise.resolve(undefined);
       if (step.startsDataExchange === true) attempt.onDataExchangeStart();
@@ -656,6 +667,105 @@ describe("a due window with a waiting app update", () => {
 
     expect(entry.skipped).toBe("not-due");
     expect(asked).toBe(0);
+  });
+});
+
+describe("a window whose run could not enroll at the default relay", () => {
+  const refusal: DefaultRelayRefusal = {
+    cause: "address-cap",
+    retryAfterSeconds: 1200,
+  };
+
+  test("records the refusal, the instant it came, and the wait", async () => {
+    const record = recordWith();
+    const runner = harness({
+      records: [record],
+      startAt: "2026-01-06T14:30:00.000Z",
+      script: [{ kind: "succeed", defaultRelay: refusal }],
+    });
+
+    await tickManagedSchedules(runner.seams);
+
+    expect(
+      runner.advances.map(({ advance }) => advance.defaultRelayRefusal),
+    ).toEqual([
+      { kind: "refused", at: "2026-01-06T14:30:00.000Z", ...refusal },
+    ]);
+    expect(runner.stored.get(record.id)?.defaultRelayRefusal).toEqual({
+      kind: "refused",
+      at: "2026-01-06T14:30:00.000Z",
+      ...refusal,
+    });
+  });
+
+  test("keeps the latest attempt's outcome where the next attempt does not reach the relay, and clears it where one enrolls", async () => {
+    const transient = new Error("the channel dropped");
+    const unreached = harness({
+      records: [recordWith()],
+      startAt: "2026-01-06T14:30:00.000Z",
+      script: [
+        { kind: "fail", error: transient, defaultRelay: refusal },
+        { kind: "succeed" },
+      ],
+    });
+    await tickManagedSchedules(unreached.seams);
+    expect(unreached.advances[0]?.advance.defaultRelayRefusal).toMatchObject({
+      kind: "refused",
+      at: "2026-01-06T14:30:00.000Z",
+    });
+
+    const enrolled = harness({
+      records: [recordWith()],
+      startAt: "2026-01-06T14:30:00.000Z",
+      script: [
+        { kind: "fail", error: transient, defaultRelay: refusal },
+        { kind: "succeed", defaultRelay: "enrolled" },
+      ],
+    });
+    await tickManagedSchedules(enrolled.seams);
+    expect(enrolled.advances[0]?.advance.defaultRelayRefusal).toEqual(
+      NO_DEFAULT_RELAY_REFUSAL,
+    );
+  });
+
+  test("records none for a window whose attempts never reached the relay", async () => {
+    const runner = harness({
+      records: [recordWith()],
+      startAt: "2026-01-06T14:30:00.000Z",
+      script: [{ kind: "succeed" }],
+    });
+
+    await tickManagedSchedules(runner.seams);
+
+    expect(runner.advances[0]?.advance.defaultRelayRefusal).toEqual(
+      NO_DEFAULT_RELAY_REFUSAL,
+    );
+  });
+
+  test("leaves the stored refusal where the window made no attempt", async () => {
+    const runner = harness({
+      records: [
+        applyManagedExchangeCompromiseResponse(
+          parseManagedExchangeRecord({
+            ...recordWith(),
+            standingCondition: {
+              since: "2026-01-05T14:30:00.000Z",
+              kind: "auth",
+            },
+          }),
+          "2026-01-05T15:00:00.000Z",
+        ),
+      ],
+      startAt: "2026-01-06T14:30:00.000Z",
+    });
+
+    await tickManagedSchedules(runner.seams);
+
+    expect(runner.attempts).toEqual([]);
+    expect(runner.advances).toHaveLength(1);
+    expect(runner.advances[0]?.advance).not.toHaveProperty(
+      "defaultRelayRefusal",
+    );
   });
 });
 
