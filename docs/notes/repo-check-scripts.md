@@ -296,12 +296,19 @@ They are named functions rather than a surface description: a declaration is a f
 The counter has cycled freely, from the format's first `v1` under the earlier product name on up,
 because releases below 1.0.0 carry no compatibility promise and partners upgrade together.
 The reset is taken at 1.0.0 rather than earlier.
-Re-using a previously cycled value mid-development would let an artifact written under the old `v1` parse as the current version and fail on its field set,
+Re-using a previously cycled value mid-development would let an artifact written under it parse as the current version and fail on its field set,
 instead of taking the clean version refusal the reader is built to give.
 
-The reset moves format discriminants only, and the domains a hash or signature is computed under keep their numbers.
-A domain's number is a label rather than a counter a reader orders, so moving it buys no clean refusal:
-it changes every value the domain separates, and moving it back to `v1` reuses a value an earlier development build computed over other bytes.
+The reset moves the six literals the [Release Checklist](../RELEASES.md#reset-the-exchange-record-format-at-100) names, and two of them change bytes a signature or hash covers.
+`RECEIPT_CONTENT_DOMAIN` is the domain of the signed receipt-content bytes.
+`SIGNING_CERTIFICATE_VERSION` is a discriminant inside the certificate body the fingerprint covers
+([PROTOCOL.md](../spec/PROTOCOL.md#signing-identity-and-certificate-pinning)),
+so every fingerprint changes and every pin is re-shared.
+Every other domain keeps its number.
+A domain's number is a label rather than a counter a reader orders, so moving it buys no clean refusal and changes every value the domain separates.
+None of the six was at `v1` under the `alcove-` prefix, since the rename moved each to the next number on its counter
+([rename-to-alcove.md](rename-to-alcove.md)),
+so the reset reuses no value an earlier build wrote or computed.
 
 The release marker is `apps/cli/package.json`'s version, the same marker and 1.0.0 floor `check-protocol-version-bump.mjs` arms on,
 so the point the compatibility policy binds has one definition.
