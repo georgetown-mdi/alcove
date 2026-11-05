@@ -298,8 +298,11 @@ The copy runs in its own job, so a failure there leaves both images published, s
 From the workspace root:
 
 ```sh
-npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev -w packages/core -w apps/cli -w apps/web > alcove-X.Y.Z.cdx.json
+npm ci
+npm sbom --sbom-format cyclonedx --omit=dev -w packages/core -w apps/cli -w apps/web > alcove-X.Y.Z.cdx.json
 ```
+
+`npm ci` comes first because `npm sbom` reads each package's licence from the installed tree, which `npm ci` installs exactly as the committed lockfile states. Do not add `--package-lock-only`: the lockfile records a licence only where a package declares a plain `license` string, so `ssh2`, `cpu-features` and `buildcheck`, which declare MIT in the older `licenses` array, would be listed with none. `scripts/release-sbom.test.mjs` runs this block on a fixture to check it.
 
 `--omit=dev` stays: `apps/web`'s build tools are `devDependencies` and are not shipped. See [SBOM](#software-bill-of-materials-sbom) for the scoping.
 
@@ -504,7 +507,7 @@ An SBOM in CycloneDX format is generated as part of the release checklist (step 
 
 - One BOM covers both published images: they resolve the same committed lockfile through the same production install, so their npm trees are identical and only their OS packages differ.
 - The `--omit=dev -w packages/core -w apps/cli -w apps/web` scoping covers the npm tree of everything a shipped image runs: the CLI role's production tree (`packages/core` and `apps/cli`, which the Dockerfile installs as `npm ci --omit=dev --omit=optional -w packages/core -w apps/cli`, so this scoping is a superset of it by the optional edges) plus the web console's runtime dependencies, which ship bundled into the console server and client builds the image copies (`apps/web/dist/console-server` and `apps/web/dist/console`). `--omit=dev` excludes devDependencies, which the image does not ship. Because those builds are tree-shaken, the `apps/web` entry is a superset of what actually ships.
-- Because the SBOM and the image resolve from the same committed lockfile, every dependency it lists appears at the exact resolved version the image runs.
+- The SBOM is read from the tree `npm ci` installs from the committed lockfile, and the image installs from that same lockfile, so every dependency it lists appears at the exact resolved version the image runs. Each component's licence is the one its installed `package.json` declares.
 - The one known residual: `npm sbom` omits a small number of packages that are hoisted to a single `node_modules` entry shared with a dev-only consumer elsewhere in the workspace (for example `yaml` and `tslib`, both installed in the shipped tree and absent from the step 9 command's component list; a copy of the same name nested under another package can still be listed, so check the version as well as the name; the measured versions are in [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md#the-release-sboms-hoisting-residual)). Confirm against `npm ls <pkg> --omit=dev -w packages/core -w apps/cli -w apps/web` if a specific package's presence in the image needs checking and it is missing from the SBOM.
 - The superset also runs the other way: a devDependency of a source-only workspace that hoists to the root `node_modules` and satisfies another package's optional peer flips to `devOptional` and enters this graph without shipping. None does against the committed lockfile: measured 2026-10-06, `tsx`, hoisted by `packages/peerjs-broker`, is flagged `dev` and absent from the step 9 BOM.
 - The Node.js runtime is outside both this BOM and the OS attribution lists: the default image takes it from its `node:26-alpine` base and the FIPS variant from the `nodejs.org` tarball its Dockerfile names, so it arrives as neither an npm nor an OS package. What each image pins it to is in [CONTAINER_IMAGES.md](spec/CONTAINER_IMAGES.md).
