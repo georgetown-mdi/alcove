@@ -3618,6 +3618,52 @@ describe.skipIf(runningAsRoot)(
       expect(log.stderr).not.toContain("198.51.100.9");
     });
 
+    it("derives the cap on one address's rows as 70 from the rate limit and the row lifetime", () => {
+      const derived = python(
+        `import json, registrar
+print(json.dumps({
+    "cap": registrar.TOKENLESS_ROWS_PER_CLIENT,
+    "perWindow": registrar.TOKENLESS_ENROLLMENTS_PER_WINDOW,
+    "window": registrar.TOKENLESS_WINDOW_SECONDS,
+    "perExchange": registrar.TOKENLESS_ENROLLMENTS_PER_EXCHANGE,
+    "lifetime": registrar.TOKENLESS_LIFETIME_SECONDS,
+}))`,
+      );
+      expect(derived).toEqual({
+        cap: 70,
+        perWindow: 20,
+        window: 600,
+        perExchange: 2,
+        lifetime: 4200,
+      });
+      expect(derived.cap).toBe(
+        (derived.perWindow / derived.perExchange) *
+          (derived.lifetime / derived.window),
+      );
+    });
+
+    it("accepts the 70th row of one address and refuses the 71st", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(host, {
+        TOKENLESS_ENROLLMENTS_PER_WINDOW: 1000,
+      });
+      const keyFor = (index) => index.toString(16).padStart(64, "0");
+      for (let index = 1; index <= 70; index += 1) {
+        const response = await enrollWithoutToken(
+          port,
+          `exchange-${index}`,
+          keyFor(index),
+        );
+        expect(response.status, `row ${index}: ${response.text}`).toBe(200);
+      }
+      const refused = await enrollWithoutToken(port, "exchange-71", keyFor(71));
+      expect(refused.status, refused.text).toBe(429);
+      expect(JSON.parse(refused.text).error).toMatch(
+        /^this address holds 70 exchanges enrolled without a token that have not lapsed;/,
+      );
+      expect(host.mapping()).toHaveLength(70);
+    });
+
     it("frees a slot under an address's cap once one of its rows is revoked or lapses", async () => {
       const host = fixtureHost();
       const { port } = await startOpenRegistrar(host, {
