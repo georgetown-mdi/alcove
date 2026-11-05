@@ -25,6 +25,8 @@ import {
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
+  LEGAL_AGREEMENT_EXPIRY_NOT_STATED,
+  LEGAL_AGREEMENT_PURPOSE_NOT_STATED,
   LESS_CERTAIN_KEY_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,
@@ -1427,14 +1429,18 @@ export function InvitationTerms({
                 -- the same provenance-marking the allowed-character constraint
                 uses. */}
             <Text size="sm">
-              Stated purpose: {summary.legalAgreement.purpose}
+              Stated purpose:{" "}
+              {summary.legalAgreement.purpose ??
+                LEGAL_AGREEMENT_PURPOSE_NOT_STATED}
             </Text>
             {/* Name the subject ("Agreement valid through ...") rather than a bare
                 "Valid through <date>": it sits on the same screen as the separate
                 invitation-expiry line below, and at a glance the two same-weight
                 dates are otherwise easy to conflate. */}
             <Text size="xs" c="dimmed">
-              Agreement valid through {summary.legalAgreement.expirationDate}
+              {summary.legalAgreement.expirationDate === undefined
+                ? `Agreement valid through: ${LEGAL_AGREEMENT_EXPIRY_NOT_STATED}`
+                : `Agreement valid through ${summary.legalAgreement.expirationDate}`}
             </Text>
           </Stack>
         </TermsTier>

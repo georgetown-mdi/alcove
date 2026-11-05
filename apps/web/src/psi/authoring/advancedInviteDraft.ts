@@ -1292,8 +1292,8 @@ export function draftFromTerms(
       terms.legalAgreement !== undefined
         ? {
             reference: terms.legalAgreement.reference,
-            purpose: terms.legalAgreement.purpose,
-            expirationDate: terms.legalAgreement.expirationDate,
+            purpose: terms.legalAgreement.purpose ?? "",
+            expirationDate: terms.legalAgreement.expirationDate ?? "",
           }
         : undefined,
     metadata: seed.metadata,

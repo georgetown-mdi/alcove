@@ -1341,6 +1341,17 @@ describe("InvitationTerms: always-visible egress and legal-agreement facts, tier
     expect(panel.textContent).not.toContain("Audit and evaluation");
   });
 
+  test("an agreement stating no purpose or expiry says so on each line", async () => {
+    await render({ ...terms, legalAgreement: { reference: "MOU-2025-0042" } });
+    const el = group("Legal agreement").element();
+    expect(el.textContent).toContain("Reference: MOU-2025-0042");
+    expect(el.textContent).toContain("Stated purpose: Not stated");
+    expect(el.textContent).toContain(
+      "Agreement valid through: No expiration date stated",
+    );
+    expect(el.textContent).not.toContain("undefined");
+  });
+
   test("no legal-agreement block when the invitation attaches none", async () => {
     await render({ ...terms, legalAgreement: undefined });
     await expect.element(toggle("Other details")).toBeInTheDocument();

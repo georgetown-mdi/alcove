@@ -613,6 +613,7 @@ export function validateAdvancedInvite(
   const expiration = draft.legalAgreement?.expirationDate.trim();
   if (
     expiration !== undefined &&
+    expiration !== "" &&
     errors.legalExpiration === undefined &&
     expiration < todayIso(now)
   ) {

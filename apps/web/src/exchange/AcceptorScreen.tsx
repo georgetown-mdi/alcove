@@ -21,6 +21,8 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import { alertRoleFor } from "@theme";
 
 import {
+  LEGAL_AGREEMENT_EXPIRY_NOT_STATED,
+  LEGAL_AGREEMENT_PURPOSE_NOT_STATED,
   deriveAcceptedLinkageTerms,
   getLogger,
   sanitizeErrorForDisplay,
@@ -1591,13 +1593,18 @@ function AcceptorInvitationScreen({
                 </Text>
                 <Text size="sm">
                   Stated purpose of the disclosure:{" "}
-                  {legalAgreementDisplay.purpose}
+                  {legalAgreementDisplay.purpose ??
+                    LEGAL_AGREEMENT_PURPOSE_NOT_STATED}
                 </Text>
                 <Text size="sm">
                   Expiration date:{" "}
-                  <span className={styles.mono}>
-                    {legalAgreementDisplay.expirationDate}
-                  </span>
+                  {legalAgreementDisplay.expirationDate === undefined ? (
+                    LEGAL_AGREEMENT_EXPIRY_NOT_STATED
+                  ) : (
+                    <span className={styles.mono}>
+                      {legalAgreementDisplay.expirationDate}
+                    </span>
+                  )}
                 </Text>
                 {legalAgreementDisplay.alteredForDisplay && (
                   <p className={`${styles.small} ${styles.sub}`}>

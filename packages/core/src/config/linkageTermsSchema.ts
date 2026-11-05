@@ -966,8 +966,8 @@ const PayloadSchema: z.ZodType<Payload> = z.object({
 
 /**
  * The legal agreement authorizing this exchange. Both parties' fields are
- * cross-checked; a mismatch or a passed `expirationDate` fails the exchange
- * before any data is sent.
+ * cross-checked, an absent field matching only an absent one; a mismatch or a
+ * passed `expirationDate` fails the exchange before any data is sent.
  */
 interface LegalAgreement {
   /** Identifier of the legal agreement (e.g. "MOU-2025-0042"). */
@@ -975,19 +975,23 @@ interface LegalAgreement {
   /**
    * The purpose or authority for this disclosure, recorded in cleartext so the
    * exchange record serves alone as a HIPAA 164.528 / FERPA 99.32 disclosure
-   * log entry. Never a protected, linkage-field or payload value.
+   * log entry. Never a protected, linkage-field or payload value. Omitted, not
+   * empty, when the agreement states none.
    */
-  purpose: string;
-  /** Date after which the exchange will be refused (ISO 8601, YYYY-MM-DD). */
-  expirationDate: string;
+  purpose?: string;
+  /**
+   * Date after which the exchange will be refused (ISO 8601, YYYY-MM-DD).
+   * Omitted when the agreement states none; nothing then expires.
+   */
+  expirationDate?: string;
 }
 
 const LegalAgreementSchema: z.ZodType<LegalAgreement> = z.object({
   reference: nameValue(z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH))),
   purpose: recordedFreeTextValue(
     z.string().min(1).check(maxCodeUnits(MAX_TEXT_LENGTH)),
-  ),
-  expirationDate: z.iso.date(),
+  ).optional(),
+  expirationDate: z.iso.date().optional(),
 });
 
 // --- Linkage strategy --------------------------------------------------------

@@ -145,6 +145,19 @@ describe("a disclosure's facts", () => {
     ]);
   });
 
+  test("say an agreement stated no purpose, apart from a missing agreement", async () => {
+    const record = await disclosureRecord({
+      legalAgreement: { reference: "MOU-2025-0042" },
+    });
+
+    const facts = disclosureFacts(record);
+
+    expect(factValues(facts, "Agreement")).toEqual(["MOU-2025-0042"]);
+    expect(factValues(facts, "Purpose of the disclosure")).toEqual([
+      "Not stated",
+    ]);
+  });
+
   test("read a count-only run as the count-only disclosure it was", async () => {
     const record = await disclosureRecord({ algorithm: "psi-c" });
 

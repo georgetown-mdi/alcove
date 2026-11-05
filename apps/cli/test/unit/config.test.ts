@@ -9,6 +9,8 @@ import {
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   getDefaultLinkageTerms,
+  LEGAL_AGREEMENT_EXPIRY_NOT_STATED,
+  LEGAL_AGREEMENT_PURPOSE_NOT_STATED,
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_NESTING_DEPTH,
@@ -2328,6 +2330,36 @@ describe("diffLinkageTerms", () => {
       // away to the marker alone.
       for (const side of sides) expect(side.startsWith('"')).toBe(true);
     }
+  });
+
+  test("a legal-agreement purpose or expiry one side omits shows as not stated", () => {
+    const existing = cloneTerms(getDefaultLinkageTerms("Org"));
+    const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
+    existing.legalAgreement = { reference: "MOU-1" };
+    incoming.legalAgreement = {
+      reference: "MOU-1",
+      purpose: "Program evaluation",
+      expirationDate: "2030-01-01",
+    };
+    const { conflicts } = diffLinkageTerms(existing, incoming);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].existing).toBe(
+      `"MOU-1" (expires ${LEGAL_AGREEMENT_EXPIRY_NOT_STATED}, purpose ${LEGAL_AGREEMENT_PURPOSE_NOT_STATED})`,
+    );
+    expect(conflicts[0].incoming).toBe(
+      '"MOU-1" (expires 2030-01-01, purpose "Program evaluation")',
+    );
+
+    // Purpose the same on both sides: only the expiry is shown.
+    incoming.legalAgreement = {
+      reference: "MOU-1",
+      expirationDate: "2030-01-01",
+    };
+    const expiryOnly = diffLinkageTerms(existing, incoming).conflicts;
+    expect(expiryOnly[0].existing).toBe(
+      `"MOU-1" (expires ${LEGAL_AGREEMENT_EXPIRY_NOT_STATED})`,
+    );
+    expect(expiryOnly[0].incoming).toBe('"MOU-1" (expires 2030-01-01)');
   });
 
   test("two references the fit cannot tell apart are reported as read alike", () => {

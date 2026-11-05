@@ -3750,6 +3750,29 @@ test("rejects an over-long legal agreement purpose", () => {
   ).toThrow(ZodError);
 });
 
+test("accepts a legal agreement naming only its reference, and keeps the omissions", () => {
+  const result = parseLinkageTerms({
+    ...base,
+    legal_agreement: { reference: "MOU-1" },
+  });
+  expect(result.legalAgreement).toEqual({ reference: "MOU-1" });
+});
+
+test.each([
+  ["an empty purpose", { purpose: "" }],
+  ["an empty expiration date", { expirationDate: "" }],
+])(
+  "rejects a legal agreement stating %s rather than omitting it",
+  (_name, field) => {
+    expect(() =>
+      parseLinkageTerms({
+        ...base,
+        legalAgreement: { reference: "MOU-1", ...field },
+      }),
+    ).toThrow(ZodError);
+  },
+);
+
 describe("referencedLinkageFieldNames", () => {
   test("returns the union of element fields across keys, deduplicated", () => {
     const keys: LinkageKey[] = [

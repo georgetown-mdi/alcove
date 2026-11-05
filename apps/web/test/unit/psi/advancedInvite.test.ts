@@ -825,7 +825,7 @@ describe("validateAdvancedInvite", () => {
     expect(result.errors.keys).not.toContain("map a column to");
   });
 
-  test("(c) blocks Generate on an incomplete legal agreement, per field", () => {
+  test("(c) blocks Generate on a legal agreement with no reference, and on the reference alone", () => {
     const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
     const result = validateAdvancedInvite(
       {
@@ -837,8 +837,41 @@ describe("validateAdvancedInvite", () => {
     );
     expect(result.canGenerate).toBe(false);
     expect(result.errors.legalReference).toBeDefined();
-    expect(result.errors.legalPurpose).toBeDefined();
-    expect(result.errors.legalExpiration).toBeDefined();
+    expect(result.errors.legalPurpose).toBeUndefined();
+    expect(result.errors.legalExpiration).toBeUndefined();
+  });
+
+  test("accepts a legal agreement naming only its reference, omitting the blank fields", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const result = validateAdvancedInvite(
+      {
+        ...draft,
+        legalAgreement: {
+          reference: "MOU-1",
+          purpose: "  ",
+          expirationDate: "",
+        },
+      },
+      seed,
+      NOW,
+    );
+    expect(result.errors).toEqual({});
+    expect(result.canGenerate).toBe(true);
+    expect(result.terms?.legalAgreement).toEqual({ reference: "MOU-1" });
+  });
+
+  test("an imported agreement with no purpose or expiry reopens with blank fields", () => {
+    const { draft, seed } = seedAdvancedInvite("Org", ALL_COLUMNS);
+    const terms = buildAdvancedTerms({
+      ...draft,
+      legalAgreement: { reference: "MOU-1", purpose: "", expirationDate: "" },
+    });
+    const reopened = draftFromTerms(terms, seed);
+    expect(reopened.legalAgreement).toEqual({
+      reference: "MOU-1",
+      purpose: "",
+      expirationDate: "",
+    });
   });
 
   test("(c) blocks Generate on a past legal-agreement expiry", () => {

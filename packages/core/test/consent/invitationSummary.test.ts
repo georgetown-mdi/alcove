@@ -69,6 +69,42 @@ const DISCLOSING_METADATA: Metadata = [
   },
 ];
 
+describe("the consent summary's legal agreement", () => {
+  const terms = getDefaultLinkageTerms(
+    "Inviter",
+    inferMetadata(LINKAGE_ONLY_COLUMNS, []),
+  );
+
+  test("leaves an omitted purpose and expiry undefined, never a value", () => {
+    const summary = summarizeInvitation({
+      linkageTerms: { ...terms, legalAgreement: { reference: "MOU-1" } },
+    });
+    expect(summary.legalAgreement).toEqual({
+      reference: "MOU-1",
+      purpose: undefined,
+      expirationDate: undefined,
+    });
+  });
+
+  test("keeps a stated purpose and expiry", () => {
+    const summary = summarizeInvitation({
+      linkageTerms: {
+        ...terms,
+        legalAgreement: {
+          reference: "MOU-1",
+          purpose: "Program evaluation",
+          expirationDate: "2030-01-01",
+        },
+      },
+    });
+    expect(summary.legalAgreement).toEqual({
+      reference: "MOU-1",
+      purpose: "Program evaluation",
+      expirationDate: "2030-01-01",
+    });
+  });
+});
+
 describe("the consent summary's payload block", () => {
   test("derives the received set from the payload.send a mint states", () => {
     // A mint states payload.send from the metadata the wire transmits on, so

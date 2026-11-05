@@ -937,6 +937,23 @@ describe("acceptor screen: consent-step legal-agreement display", () => {
     );
   });
 
+  test("an agreement stating no purpose or expiry says so on each line", async () => {
+    await reachConsentWith({
+      ...agreementTerms,
+      legalAgreement: { reference: "MOU-2025-0042" },
+    });
+    const fieldset = document.querySelector("fieldset");
+    expect(fieldset).not.toBeNull();
+    expect(fieldset?.textContent).toContain(
+      "Stated purpose of the disclosure: Not stated",
+    );
+    expect(fieldset?.textContent).toContain(
+      "Expiration date: No expiration date stated",
+    );
+    expect(fieldset?.textContent).not.toContain("undefined");
+    expect(fieldset?.textContent).not.toContain("shown as escape codes");
+  });
+
   test("an agreement-less invitation shows no legal-agreement fieldset", async () => {
     await reachConsentWith(acceptorTerms);
     expect(document.querySelector("fieldset")).toBeNull();

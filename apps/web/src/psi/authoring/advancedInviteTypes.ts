@@ -71,8 +71,9 @@ export function directionForOutput(output: Output): OutputDirection {
 }
 
 /** The optional legal-agreement block before validation. Free text is
- * NFC-normalized and trimmed by {@link buildAdvancedTerms}; the expiry check is in
- * {@link validateAdvancedInvite}, not the core schema. */
+ * NFC-normalized and trimmed by {@link buildAdvancedTerms}, which omits a blank
+ * purpose or expiry; the expiry check is in {@link validateAdvancedInvite}, not
+ * the core schema. */
 export interface DraftLegalAgreement {
   reference: string;
   purpose: string;

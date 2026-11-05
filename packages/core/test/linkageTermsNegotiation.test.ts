@@ -646,6 +646,66 @@ test("expired legal agreement is an error", () => {
   expect(errors.some((e) => e.includes("expired"))).toBe(true);
 });
 
+test("a legal agreement both sides state by reference alone is compatible", () => {
+  const agreement = { reference: "MOU-001" };
+  const { errors, warnings } = validateCompatibility(
+    { ...termsA, legalAgreement: agreement },
+    { ...termsB, legalAgreement: { ...agreement } },
+  );
+  expect(errors).toEqual([]);
+  expect(warnings).toEqual([]);
+});
+
+const agreementStated = {
+  reference: "MOU-001",
+  purpose: "Care coordination",
+  expirationDate: "2030-01-01",
+};
+
+test.each([
+  {
+    field: "purpose",
+    omitted: { reference: "MOU-001", expirationDate: "2030-01-01" },
+    omittedLocally:
+      'legal agreement purpose mismatch: yours is not stated, your partner\'s is "Care coordination"',
+    omittedByPartner:
+      'legal agreement purpose mismatch: yours is "Care coordination", your partner\'s is not stated',
+  },
+  {
+    field: "expiration date",
+    omitted: { reference: "MOU-001", purpose: "Care coordination" },
+    omittedLocally:
+      "legal agreement expiration date mismatch: yours is not stated, your partner's is 2030-01-01",
+    omittedByPartner:
+      "legal agreement expiration date mismatch: yours is 2030-01-01, your partner's is not stated",
+  },
+])(
+  "a legal agreement $field one side omits and the other states is a mismatch, either way round",
+  ({ omitted, omittedLocally, omittedByPartner }) => {
+    expect(
+      validateCompatibility(
+        { ...termsA, legalAgreement: omitted },
+        { ...termsB, legalAgreement: agreementStated },
+      ).errors,
+    ).toEqual([omittedLocally]);
+    expect(
+      validateCompatibility(
+        { ...termsA, legalAgreement: agreementStated },
+        { ...termsB, legalAgreement: omitted },
+      ).errors,
+    ).toEqual([omittedByPartner]);
+  },
+);
+
+test("a legal agreement with no expiration date never expires", () => {
+  const agreement = { reference: "MOU-001", purpose: "Care coordination" };
+  const { errors } = validateCompatibility(
+    { ...termsA, legalAgreement: agreement },
+    { ...termsB, legalAgreement: { ...agreement } },
+  );
+  expect(errors).toEqual([]);
+});
+
 test("payload send/receive mismatch is an error", () => {
   const { errors } = validateCompatibility(
     {

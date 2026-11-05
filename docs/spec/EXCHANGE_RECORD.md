@@ -169,14 +169,14 @@ The block's own members, and the presence rule for each:
 | Key | Presence | Value |
 | --- | --- | --- |
 | `algorithm` | always | `psi` or `psi-c` |
-| `legalAgreement` | omitted where the agreed terms name no agreement | `reference`, `purpose`, `expirationDate` |
+| `legalAgreement` | omitted where the agreed terms name no agreement | `reference`, and `purpose` and `expirationDate` each omitted where the agreement states none |
 | `matchingBasis` | always, `[]` where the keys reference no field | entries of `name` and `type` |
 | `payloadSent`, `payloadReceived` | always, `[]` where nothing was disclosed | entries of `name` and an optional `description` |
 | `matching` | always | `localDeduplicate`, `partnerDeduplicate`, `cardinality` |
 
-`expirationDate` is a date with no time of day and no zone: `YYYY-MM-DD`, held to the calendar, so `2026-02-30` is refused and so is a datetime such as `2026-02-01T00:00:00Z` -- unlike the record's own `createdAt`, which is a datetime and nothing else. The agreement's three members are copied out of the terms one by one, so the record holds its own values and states the agreement as the run agreed on it.
+`expirationDate` is a date with no time of day and no zone: `YYYY-MM-DD`, held to the calendar, so `2026-02-30` is refused and so is a datetime such as `2026-02-01T00:00:00Z` -- unlike the record's own `createdAt`, which is a datetime and nothing else. The agreement's members are copied out of the terms one by one, so the record holds its own values and states the agreement as the run agreed on it.
 
-**The two absence conventions sit side by side here.** `legalAgreement` states "no agreement was named" by an absent member, while the payload lists and `matchingBasis` state "nothing was disclosed" and "no field was matched on" as an empty array. A reader must not read one convention as the other: an absent `payloadSent` is not an empty one, and it is not a record this format admits.
+**The two absence conventions sit side by side here.** `legalAgreement` states "no agreement was named" by an absent member, and its `purpose` and `expirationDate` state "the agreement states none" the same way, while the payload lists and `matchingBasis` state "nothing was disclosed" and "no field was matched on" as an empty array. A reader must not read one convention as the other: an absent `payloadSent` is not an empty one, and it is not a record this format admits.
 
 ### The matching basis against what the run contributed
 

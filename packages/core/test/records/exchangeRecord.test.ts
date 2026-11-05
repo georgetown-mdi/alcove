@@ -1062,8 +1062,8 @@ describe("serialize / parse", () => {
   test("a record holding a legal-agreement purpose round-trips intact", async () => {
     // baseInputs.localTerms (termsA) has no legalAgreement, so the round-trip
     // above never exercises the parser against a record with a purpose. Build
-    // from the governance-bearing terms so parseExchangeRecord validates the
-    // mandatory purpose -- a regression dropping it from RecordLegalAgreementSchema
+    // from the governance-bearing terms so parseExchangeRecord validates a
+    // stated purpose -- a regression dropping it from RecordLegalAgreementSchema
     // would appear here.
     const { record } = await buildExchangeRecord(
       {
@@ -1080,6 +1080,30 @@ describe("serialize / parse", () => {
     expect(parsed.governance.legalAgreement?.purpose).toBe(
       "Care coordination for co-enrolled patients",
     );
+  });
+
+  test("a legal agreement naming only its reference is recorded without a purpose or expiry", async () => {
+    const referenceOnly = {
+      ...termsWithGovernance,
+      legalAgreement: { reference: "MOU-2025-0042" },
+    };
+    const { record } = await buildExchangeRecord(
+      {
+        ...baseInputs,
+        localTerms: referenceOnly,
+        contributedLinkageFields: everyDeclaredField(referenceOnly),
+      },
+      fixedRandomness,
+    );
+    expect(record.governance.legalAgreement).toEqual({
+      reference: "MOU-2025-0042",
+    });
+    expect(Object.keys(record.governance.legalAgreement!)).toEqual([
+      "reference",
+    ]);
+    expect(
+      parseExchangeRecord(JSON.parse(serializeExchangeRecord(record))),
+    ).toEqual(record);
   });
 
   test("the verification keys round-trip through serialize -> parse", async () => {

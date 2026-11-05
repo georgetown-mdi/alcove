@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { Alert, Checkbox, TextInput } from "@mantine/core";
+import { Checkbox, TextInput } from "@mantine/core";
 
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH } from "@alcove/core";
 
@@ -18,19 +18,14 @@ const EMPTY_AGREEMENT: DraftLegalAgreement = {
   expirationDate: "",
 };
 
-/** The Attach checkbox's description: what attaching asks of each party. */
+/** The Attach checkbox's description: what the partner sees of the values. */
 export const ATTACH_AGREEMENT_DESCRIPTION =
-  "Optional. Your partner sees these values before they accept.";
-
-/** What the tab says once an agreement is attached. */
-export const ATTACHED_AGREEMENT_NOTE =
-  "Enter the reference, purpose, and expiration date as your signed " +
-  "agreement states them. Your partner checks them against their copy " +
-  "before they accept.";
+  "Shown to your partner before they accept";
 
 /**
  * The Legal agreement tab: attach or detach the optional agreement block and
- * author the three values the partner's consent step displays.
+ * author the values the partner's consent step displays: a reference, and a
+ * purpose and expiration date left blank when the agreement states none.
  * Validation errors show inline on the field they belong to.
  */
 export function AgreementTab({
@@ -80,9 +75,6 @@ export function AgreementTab({
       />
       {agreement !== undefined && (
         <>
-          <Alert variant="light" mt="md">
-            {ATTACHED_AGREEMENT_NOTE}
-          </Alert>
           <TextInput
             ref={referenceRef}
             label="Agreement reference"

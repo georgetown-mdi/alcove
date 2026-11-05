@@ -29,10 +29,7 @@ import {
   createdFromSampleInThisBrowser,
 } from "@exchange/sampleInvitationRecord";
 
-import {
-  ATTACHED_AGREEMENT_NOTE,
-  ATTACH_AGREEMENT_DESCRIPTION,
-} from "@exchange/AgreementTab";
+import { ATTACH_AGREEMENT_DESCRIPTION } from "@exchange/AgreementTab";
 import { Lobby } from "@exchange/Lobby";
 
 import { COUNT_ONLY_CHOICE_CAVEAT } from "@psi/formatting";
@@ -1727,14 +1724,20 @@ describe("inviter screen", () => {
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Legal agreement");
-    // What attaching asks of each party: the inviter enters the signed
-    // agreement's values, and the partner only checks them.
+    // The checkbox says only that the partner sees the values, and attaching
+    // opens the fields with no note above them.
+    expect(ATTACH_AGREEMENT_DESCRIPTION).toBe(
+      "Shown to your partner before they accept",
+    );
     const attach = page.getByLabelText("Attach a legal agreement");
     await expect
       .element(attach)
       .toHaveAccessibleDescription(ATTACH_AGREEMENT_DESCRIPTION);
     await attach.click();
-    await expect.element(page.getByText(ATTACHED_AGREEMENT_NOTE)).toBeVisible();
+    await expect
+      .element(page.getByLabelText("Agreement reference"))
+      .toBeVisible();
+    expect(document.querySelector(".mantine-Alert-root")).toBeNull();
     await userEvent.fill(
       page.getByLabelText("Agreement reference"),
       "MOU-2025-0042",
