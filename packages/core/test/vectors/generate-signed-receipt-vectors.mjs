@@ -40,8 +40,8 @@ import {
 } from "../../dist/core.esm.js";
 import { canonicalBytes, deriveReceiptBinder } from "../../dist/testing.esm.js";
 
-const RECORD_VERSION = "alcove-signed-receipt/v4";
-const CONTENT_DOMAIN = "alcove-signed-receipt-content/v3";
+const RECORD_VERSION = "alcove-signed-receipt/v1";
+const CONTENT_DOMAIN = "alcove-signed-receipt-content/v1";
 const CERTIFICATE_VERSION = "alcove-signing-cert/v3";
 const CERTIFICATE_SIGNATURE_DOMAIN = "alcove-signing-cert-signature/v2";
 const ALGORITHM = "ecdsa-p256-sha256";

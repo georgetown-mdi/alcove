@@ -31,7 +31,7 @@
       "expected": {
         "binder": "vh4E_Jyls4CbRGTMUGyNFGNDlCpVRt-ruU_-JwZIwDM",
         "fingerprint": "XLVt1REG2cgeneYftvQ9senu45hEFQ0JKD-2BoMoyRQ",
-        "signature": "ZH-4skTaRnUFuIsa_038eIOaiGPPVoPbcBtAl_IwL6WOToLamPxpihmrl_g00Xn-WfZfysjU0uEHw_v391rZdA"
+        "signature": "vYMyu6MZqc7FtZwD8NhhY5CheZska1nYwqeHnoWc_svOVOs_jgxTtQQ_gmSdPoLqPyYUHH5MLrate9ruNfDkGA"
       }
     },
     {
@@ -56,7 +56,7 @@
       "expected": {
         "binder": "n2Ak2GuaCKmHaK_0VdNopb5DpTGYAQ82OXm54AmqrOE",
         "fingerprint": "uZisH4oFjTA4f99L2nKQNa2XSQTngX911_Jwj1E5OUA",
-        "signature": "k5r2jdGXyNPkDHMN4-cVu2WvJ3-sQRWqLQ29Fx9mxfhgKJ4TdPSG7TauKvo8YIkXMcvmVeSimOyQzgsxFlsqUA"
+        "signature": "u5_QRKYWQWFiHVlL5MtY6mtxKiZ3A8FL43FhCgiC9w9bEFny6GIGlblHfy-ThqRU0ODmuQdp36qKsnAZz1HiZw"
       }
     }
   ],
@@ -69,7 +69,7 @@
       "responderIdentity": "Party B, Agency B"
     },
     "record": {
-      "version": "alcove-signed-receipt/v4",
+      "version": "alcove-signed-receipt/v1",
       "content": {
         "termsHash": "dGVybXNIYXNoVmVjdG9y",
         "initiatorToResponderPayload": "aTJyUGF5bG9hZERpZ2VzdA",
@@ -87,9 +87,9 @@
             "x": "HxQBRr-xslH4T03b4NTNz9d6_ZhKlSDjV5QCH4MSu54",
             "y": "7JlaCLH6dwTfPcwLUKlmUmP7dxH5X5-KRJxQluR8iSs"
           },
-          "signature": "vFTDqJvOpQ_r61ruc5G45X_IsQMoWrS8ACDglmF0C6ioMs8k7_0TCnZFfV3k-ExLPNdnFp14w8tp6hrq7I31_Q"
+          "signature": "sT1zKZ0EmHvO2o_JO30sBMBsNA6MMAAMv1No9AVRHlwPpJMRl2VzAxzIM5BPsYfMldynyE_dJTYzoTVEFGJNZQ"
         },
-        "signature": "Y_YRmF3iiih6POfCEzfEalKWD0XDuKpL4CyFaY2ZX3Sr4ZVKgBksFDKJHI1VrzOq-zUdhrSRncXqW9QbaHcalg"
+        "signature": "mPuXjeJjEnu8yxilxZW6Gyv_am1Vrp3q83ZrRGirSbi8uFr56v5A3ljMCFWyq6mirt3wFDUKkqBvy347agW3gA"
       },
       "responder": {
         "certificate": {
@@ -102,14 +102,14 @@
             "x": "QoqCTqfPVq0qZO02i3ExXYDO6EYAfP8dLuosPw-SFTc",
             "y": "MErlmPmN0Q0fECgRpOLRYcP9i7sZPUslvulQrIOcD50"
           },
-          "signature": "2QIhWr6PAeGAGVKgiUhYArJAeP891cmSFvFTWPka59ZFf8vrQiD70za4Y1y7mNAXlNQ09bdYgpfysxsZjnhCNw"
+          "signature": "PNvzuyXHCVBfPQ77md-j4DZ1OoQ0fLMwaQ9LzArdPJqcEmbIKgtj7fcobR0sUGsGiMqESoj_fuZU1tYtl4yDGQ"
         },
-        "signature": "KHIQP_Evzsh6ZrsAerqxtOjV884HCD2hRfgsfdGrOQuivNUrL45mc-kDr_8cfXuocwJZZct_atYqAAWXCqPJlQ"
+        "signature": "G6HErgulTcli9xzJHIsPrmk68vVYNmqMpC7GsXrlCh3lcCuJN61BCtpQmhsz_8VKWbZj3JpyBjlBiMrYNfGLow"
       }
     }
   },
   "externalAnchors": {
-    "signatureProducer": "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)",
+    "signatureProducer": "OpenSSL 3.0.22 25 Aug 2026 (Library: OpenSSL 3.0.22 25 Aug 2026)",
     "note": "Every checked-in signature was produced by the openssl CLI named above (openssl dgst -sha256 -sign, DER read back through openssl asn1parse and re-encoded as the fixed-length raw r||s), over signed bytes this generator assembles from docs/spec/EXCHANGE_RECORD.md. A suite that verifies them is therefore accepting a signature produced outside this codebase, over a byte layout stated independently of signedReceipt.ts. The same holds for every signature in the assembled bundle."
   }
 }

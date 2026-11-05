@@ -20,7 +20,7 @@ const SINGLE_LABELS: readonly string[] = [
   "alcove-shared-secret-next-v2",
   "alcove-relay-key-v2",
   "alcove-relay-exchange-id-v2",
-  "alcove-signed-receipt-content/v3",
+  "alcove-signed-receipt-content/v1",
   "alcove-signing-cert-signature/v2",
   "alcove-signing-cert-fingerprint/v2",
 ];
@@ -63,11 +63,11 @@ const LABEL_FAMILIES: ReadonlyMap<string, readonly string[]> = new Map<
 const OTHER_ALCOVE_STRINGS: readonly string[] = [
   "alcove-verify-",
   "alcove-kex-v3:NNpsk0_P256_SHA256",
-  "alcove-signed-receipt/v4",
+  "alcove-signed-receipt/v1",
   "alcove-signing-cert/v3",
   "alcove-signing-identity/v3",
-  "alcove-exchange-record/v11",
-  "alcove-exchange-keys/v2",
+  "alcove-exchange-record/v1",
+  "alcove-exchange-keys/v1",
   "alcove-commit-association-table/v2",
   "alcove-commit-payload-sent/v2",
   "alcove-commit-payload-received/v2",

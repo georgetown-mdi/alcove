@@ -51,7 +51,7 @@ import { InternalConsistencyError, ConnectionError } from "../errors.js";
  * from, and refuses any other. It moves with the certificate format the record
  * embeds and with the envelope beside the signed content
  * (docs/spec/EXCHANGE_RECORD.md, "Signed receipt file"). */
-export const SIGNED_RECEIPT_VERSION = "alcove-signed-receipt/v4";
+export const SIGNED_RECEIPT_VERSION = "alcove-signed-receipt/v1";
 
 /**
  * The signed receipt's migrations, run in memory at every read. A receipt is
@@ -74,7 +74,7 @@ export const SIGNED_RECEIPT_MIGRATIONS: FormatMigrations<string> =
 // tracks the shape of those bytes, not the signature algorithm; the embedded
 // certificate's own version separates a v1 certificate from a v3 one inside
 // them. See docs/spec/EXCHANGE_RECORD.md ("Receipt signature").
-const RECEIPT_CONTENT_DOMAIN = "alcove-signed-receipt-content/v3";
+const RECEIPT_CONTENT_DOMAIN = "alcove-signed-receipt-content/v1";
 
 // The two HKDF info labels the session-derived receipt values are taken
 // under -- this one and RECEIPT_BINDER_LABEL below -- sit in the disjoint

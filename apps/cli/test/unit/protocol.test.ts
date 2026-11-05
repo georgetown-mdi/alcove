@@ -1620,7 +1620,7 @@ function recordFilesIn(folder: string): string[] {
 }
 
 const sampleRecord: ExchangeRecord = {
-  version: "alcove-exchange-record/v11",
+  version: "alcove-exchange-record/v1",
   outcome: "completed",
   certificateMismatchObserved: false,
   createdAt: "2026-01-02T03:04:05.000Z",
@@ -1646,7 +1646,7 @@ const sampleRecord: ExchangeRecord = {
   },
 };
 const sampleKeys: VerificationKeys = {
-  version: "alcove-exchange-keys/v2",
+  version: "alcove-exchange-keys/v1",
   salts: {
     localPayloadSent: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
     partnerPayloadReceived: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
@@ -4776,7 +4776,7 @@ const signedReceiptCertificate = {
     "CzgwEmZnlYhLunf5m3CK7WWpHiUlMeRW_hhdJmbaPiwbsuT0LPP0EJGcHskJMB7icXOXfuZ1DPlQlnkpqtVL4g",
 };
 const signedReceiptFixture: DualSignedRecord = {
-  version: "alcove-signed-receipt/v4",
+  version: "alcove-signed-receipt/v1",
   content: {
     termsHash: "dGVybXNIYXNo",
     initiatorToResponderPayload: "aTJyUGF5bG9hZA",

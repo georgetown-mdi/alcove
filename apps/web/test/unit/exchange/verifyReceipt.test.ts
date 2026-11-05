@@ -184,7 +184,7 @@ describe("parseRecordDocument", () => {
     const { record } = await fixtures();
     const bumped = JSON.stringify({
       ...record,
-      version: "alcove-exchange-record/v1",
+      version: "alcove-exchange-record/v0-pre-binder",
     });
     const parsed = parseRecordDocument(bumped);
     expect(parsed.kind).toBe("unrecognized-version");

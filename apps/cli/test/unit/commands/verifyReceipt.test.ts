@@ -1064,12 +1064,15 @@ describe("readExchangeRecordFile / readVerificationKeysFile", () => {
     // whose absent binder leaves a receipt unpaired.
     const dir = tmp();
     const { record } = await buildExchangeRecord(baseInputs);
-    const bumped = { ...record, version: "alcove-exchange-record/v1" };
+    const bumped = {
+      ...record,
+      version: "alcove-exchange-record/v0-pre-binder",
+    };
     const recPath = join(dir, "rec.json");
     writeFileSync(recPath, JSON.stringify(bumped, null, 2));
     expect(() => readExchangeRecordFile(recPath)).toThrow(UsageError);
     expect(() => readExchangeRecordFile(recPath)).toThrow(
-      /unrecognized version \(alcove-exchange-record\/v1\); this build recognizes alcove-exchange-record\/v11/,
+      /unrecognized version \(alcove-exchange-record\/v0-pre-binder\); this build recognizes alcove-exchange-record\/v1\b/,
     );
   });
 
@@ -1082,7 +1085,7 @@ describe("readExchangeRecordFile / readVerificationKeysFile", () => {
     const recPath = join(dir, "rec.json");
     writeFileSync(recPath, JSON.stringify(previous, null, 2));
     expect(() => readExchangeRecordFile(recPath)).toThrow(
-      /unrecognized version \(alcove-exchange-record\/v9\); this build recognizes alcove-exchange-record\/v11/,
+      /unrecognized version \(alcove-exchange-record\/v9\); this build recognizes alcove-exchange-record\/v1\b/,
     );
   });
 

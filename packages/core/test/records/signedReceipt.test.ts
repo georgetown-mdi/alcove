@@ -773,7 +773,7 @@ describe("serialize / parse dual-signed record", () => {
     const v1Party = { certificate: v1Certificate, signature: "AAAA" };
     expect(() =>
       parseDualSignedRecord({
-        version: "alcove-signed-receipt/v1",
+        version: "alcove-signed-receipt/v0-ed25519",
         content: content(),
         initiator: v1Party,
         responder: v1Party,

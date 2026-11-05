@@ -58,10 +58,10 @@ import type { Algorithm, AssociationTable } from "../types.js";
  * from, and refuses any other. It moves with the field set and with the bytes
  * a field is computed over. See docs/spec/EXCHANGE_RECORD.md#record-fields.
  */
-export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v11";
+export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v1";
 
 /** The format version this build writes for {@link VerificationKeys}. */
-export const EXCHANGE_KEYS_VERSION = "alcove-exchange-keys/v2";
+export const EXCHANGE_KEYS_VERSION = "alcove-exchange-keys/v1";
 
 const RECORD_MIGRATION_REMEDY =
   "Verify it with the version of Alcove that wrote it, or report the " +
