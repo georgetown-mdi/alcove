@@ -1,0 +1,2 @@
+- - -> A partner already holding the old link is not told: their app keeps trying to connect until its wait for the inviter runs out, ten minutes by default (`--peer-timeout` sets it on the CLI), and then reports only that the inviter did not connect.
+- - -> The web app's advice is then to have the inviter open their invitation page again and wait on the same link, or to ask for a new invitation if the inviter no longer has it; the CLI's is to check that the inviter has started their side and run again.
