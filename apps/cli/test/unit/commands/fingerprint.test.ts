@@ -1146,8 +1146,8 @@ test("an identity file of another version is refused by name, exit 64", async ()
   expect(stderr).toContain(
     `signing identity at ${idPath} was written by another version of ` +
       `Alcove: its format is ${foundVersion}, and this version reads ` +
-      `${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --identity-file ` +
-      `${idPath} --force --identity NAME' to replace it, with NAME the ` +
+      `${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --identity-file "` +
+      `${idPath}" --force --identity NAME' to replace it, with NAME the ` +
       "identity your agreed terms name (linkage_terms.identity); give " +
       "--config-file for a configuration that holds it in place of " +
       "--identity. The replacement is a new identity: a new key with a new " +
@@ -1158,12 +1158,14 @@ test("an identity file of another version is refused by name, exit 64", async ()
 });
 
 test("the remedy the refusal prints regenerates the identity as printed", async () => {
-  const idPath = path.join(dir, "other-version.json");
+  const idPath = path.join(dir, "other version.json");
   await writeIdentityOfVersion(idPath, "alcove-signing-identity/v0-synthetic");
   const refused = await runFingerprint({ "identity-file": idPath });
   const printed = /'(alcove fingerprint [^']*)'/.exec(refused.stderr)?.[1];
   if (printed === undefined) throw new Error("the refusal prints no command");
-  const words = printed.replace("NAME", "PartyA").split(" ").slice(2);
+  const words = (printed.replace("NAME", "PartyA").match(/"[^"]*"|\S+/g) ?? [])
+    .map((word) => word.replace(/^"(.*)"$/, "$1"))
+    .slice(2);
   const options: Record<string, unknown> = {};
   for (let i = 0; i < words.length; i++) {
     const flag = words[i]?.replace(/^--/, "") ?? "";
