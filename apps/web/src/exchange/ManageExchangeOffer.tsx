@@ -244,6 +244,7 @@ export function ManageExchangeOffer({
       )}
       <Button
         mt="sm"
+        className={styles.wrapLabel}
         loading={depositing}
         disabled={!canManage}
         onClick={() =>

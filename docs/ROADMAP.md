@@ -15,7 +15,7 @@ Work required before the 1.0 release.
 
 ## Version 1.1
 
-- A Voluntary Product Accessibility Template (VPAT) for the web application, built on the [accessibility self-assessment](ACCESSIBILITY.md)
+- Screen-reader passes (NVDA, VoiceOver) over the web application, and a Voluntary Product Accessibility Template (VPAT) built on the [accessibility self-assessment](ACCESSIBILITY.md)
 - PSI-Sum
 - Browser SFTP in the public web application, after 1.0 unless there is time before it (the first-party relay it needs is built; the browser client is not)
 - Provisioning of supporting services (peer coordination, STUN/TURN, SFTP, WebSocket-to-TCP proxy)

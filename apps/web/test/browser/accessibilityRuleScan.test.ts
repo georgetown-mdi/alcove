@@ -95,8 +95,12 @@ describe("accessibility rule scan", () => {
     }
   });
 
-  // Every other page is a step of an exchange, reached from the one before it.
-  test("the landing links to each page no exchange step leads to (WCAG 2.4.5)", async () => {
+  // The start page's links are one way to each page. The others: a finished
+  // run's record note (RunSurface.tsx) and a recurring exchange's accounting
+  // (ManagedExchangeDetail.tsx) link to the verify page, and the confirmation
+  // after saving an exchange (ManageExchangeOffer.tsx) links to the recurring
+  // exchanges. Every other page is a step of an exchange.
+  test("the start page links to the verify and recurring exchange pages (WCAG 2.4.5)", async () => {
     app.render(createElement(Lobby));
     for (const name of ["Verify an exchange record", "Recurring exchanges"])
       await expect

@@ -23,6 +23,7 @@ import { checkWorkingFolder } from "@recurring/readinessCheck";
 
 import { createAppMount } from "./renderApp";
 import { expectNoAccessibilityViolations } from "./accessibilityRules";
+import { expectNoAxeViolations } from "./axeScan";
 
 import type {
   FolderReadiness,
@@ -129,6 +130,7 @@ describe("the install offer", () => {
     expect(offer.defaultPrevented).toBe(true);
     await expect.element(installButton()).toBeInTheDocument();
     expectNoAccessibilityViolations(app.container);
+    await expectNoAxeViolations(app.container);
 
     await installButton().click();
     expect(prompt).toHaveBeenCalledTimes(1);
@@ -257,6 +259,7 @@ describe("the keep-running checklist", () => {
     expect(texts[4]).toContain("input.csv");
     expect(texts[4]).toContain("Not yet.");
     expectNoAccessibilityViolations(app.container);
+    await expectNoAxeViolations(app.container);
   });
 });
 
@@ -287,6 +290,7 @@ describe("the readiness check", () => {
       .toBeInTheDocument();
     expect(page.getByRole("alert").query()).toBeNull();
     expectNoAccessibilityViolations(app.container);
+    await expectNoAxeViolations(app.container);
   });
 
   test("each failing reading names its remedy", async () => {
@@ -324,6 +328,7 @@ describe("the readiness check", () => {
       )
       .toBeInTheDocument();
     expectNoAccessibilityViolations(app.container);
+    await expectNoAxeViolations(app.container);
   });
 
   test("an offline browser is told to connect", async () => {

@@ -17,7 +17,11 @@ import "@mantine/core/styles.css";
 
 import { clearManagedExchanges } from "@psi/managed/managedExchangeStore";
 
-import { WCAG_TEXT_SPACING_CSS, lostContent } from "./reflowChecks";
+import {
+  WCAG_TEXT_SPACING_CSS,
+  expectLayoutHolds,
+  lostContent,
+} from "./reflowChecks";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { ROUTE_STATES } from "./routeStates";
 
@@ -69,6 +73,22 @@ describe("text spacing (WCAG 1.4.12)", () => {
       expect(lostContent(fixture)).toEqual([
         expect.stringContaining("Text spacing pushes"),
       ]);
+    } finally {
+      fixture.remove();
+    }
+  });
+
+  // The check the keyboard journeys run on the states only a run reaches.
+  test("the journey check reports content lost at 320 px and restores the viewport", async () => {
+    const fixture = document.createElement("div");
+    fixture.innerHTML = `<p style="width: 600px">Fits the desktop, not 320 pixels</p>`;
+    document.body.appendChild(fixture);
+    const width = window.innerWidth;
+    try {
+      await expect(expectLayoutHolds(fixture)).rejects.toThrow(
+        /at 320 CSS pixels/,
+      );
+      expect(window.innerWidth).toBe(width);
     } finally {
       fixture.remove();
     }

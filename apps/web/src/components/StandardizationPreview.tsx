@@ -26,6 +26,10 @@ import type {
   StandardizationStep,
 } from "@alcove/core";
 
+/** A badge's detail tooltip opens on focus as well as hover, and the badge is
+ * a Tab stop, so a keyboard user can read it (WCAG 2.1.1, 1.4.13). */
+const BADGE_TOOLTIP_EVENTS = { hover: true, focus: true, touch: true };
+
 /** Render one cleaned value as a chip with any advisory constraint badges
  * beside it. The value is the operator's own data (local CSV), shown sanitized for
  * uniformity with the rest of the app's value display. */
@@ -48,11 +52,13 @@ function CleanedValue({
           label="Cleaned to an empty value, which still takes part in matching as an empty key. Check this field's cleaning steps: a value that should not match should be dropped, not emptied."
           multiline
           w={240}
+          events={BADGE_TOOLTIP_EVENTS}
         >
           <Badge
             variant="light"
             color="orange"
             role="img"
+            tabIndex={0}
             aria-label="Cleaned to an empty value, which still participates in matching"
           >
             empty value
@@ -73,11 +79,13 @@ function CleanedValue({
           label={violation.detail}
           multiline
           w={220}
+          events={BADGE_TOOLTIP_EVENTS}
         >
           <Badge
             variant="light"
             color="yellow"
             role="img"
+            tabIndex={0}
             aria-label={`Constraint warning: ${violation.detail}`}
           >
             {violation.label}

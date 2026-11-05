@@ -95,6 +95,7 @@ import {
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { captureDownloads } from "./captureDownloads";
 import { expectNoAccessibilityViolations } from "./accessibilityRules";
+import { expectNoAxeViolations } from "./axeScan";
 
 import type { FormatMigrations, WebRTCExchangeLocator } from "@alcove/core";
 import type {
@@ -1810,7 +1811,10 @@ describe("managed exchange detail document settings", () => {
         .element()
         .closest("div");
       expect(settings).not.toBeNull();
-      if (settings !== null) expectNoAccessibilityViolations(settings);
+      if (settings !== null) {
+        expectNoAccessibilityViolations(settings);
+        await expectNoAxeViolations(settings);
+      }
     });
   });
 
@@ -1907,7 +1911,10 @@ describe("managed exchange detail document settings", () => {
         .element()
         .closest("div");
       expect(section).not.toBeNull();
-      if (section !== null) expectNoAccessibilityViolations(section);
+      if (section !== null) {
+        expectNoAccessibilityViolations(section);
+        await expectNoAxeViolations(section);
+      }
     });
 
     test("offer the switch where the build offers its relay switched off, and save its state", async () => {
@@ -2096,7 +2103,10 @@ describe("managed exchange detail document settings", () => {
       .element()
       .closest("div");
     expect(settings).not.toBeNull();
-    if (settings !== null) expectNoAccessibilityViolations(settings);
+    if (settings !== null) {
+      expectNoAccessibilityViolations(settings);
+      await expectNoAxeViolations(settings);
+    }
   });
 });
 
@@ -2360,8 +2370,10 @@ describe("managed exchange detail recent runs, partner schedule, and relay secti
         .element()
         .closest("div");
       expect(scheduleSection).not.toBeNull();
-      if (scheduleSection !== null)
+      if (scheduleSection !== null) {
         expectNoAccessibilityViolations(scheduleSection);
+        await expectNoAxeViolations(scheduleSection);
+      }
       const copied = String(writeText.mock.calls[0][0]);
       expect(copied).toMatch(/^Schedule for our recurring Alcove exchange\n/);
       expect(copied).toMatch(

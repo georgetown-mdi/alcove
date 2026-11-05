@@ -79,7 +79,7 @@ describe("what the app does not have", () => {
   });
 
   test("no dialog that Escape does not close (WCAG 2.1.2)", () => {
-    expect(filesMatching(/closeOnEscape=\{false\}|trapFocus=\{true\}/)).toEqual(
+    expect(filesMatching(/closeOnEscape\s*[:=]\s*(?!\{?\s*true\b)/)).toEqual(
       [],
     );
   });

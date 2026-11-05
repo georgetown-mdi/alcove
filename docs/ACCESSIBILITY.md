@@ -32,7 +32,7 @@ Test paths below are relative to `apps/web/test/` unless they start with `apps/`
 ## Screens and states
 
 The browser checks mount every route the router declares, at the states `browser/routeStates.ts` lists, and fail when a declared route has no state.
-The keyboard-only journeys reach the states that need a run, and scan each one.
+The keyboard-only journeys reach the states that need a run or a loaded file, and run the rule scan, axe, and the layout checks on each one (`browser/stepChecks.ts`).
 
 | Screen | States checked | Reached by |
 | --- | --- | --- |
@@ -53,12 +53,12 @@ The keyboard-only journeys reach the states that need a run, and scan each one.
 | --- | --- | --- |
 | axe-core, WCAG 2.1 A and AA rules | the rules axe tags for each criterion, run over the mounted page | `browser/axeScan.ts`, run by `browser/accessibilityRuleScan.test.ts` and the three keyboard journeys |
 | In-house rule scan | unique ids, resolving references, named controls and images, nesting, tab order, heading order, list structure, one h1 and one main landmark per page | `browser/accessibilityRules.ts`, run with axe |
-| Contrast sweep | every rendered text element against the AA floor, light and dark schemes | `browser/contrastSweep.ts`, `browser/themeContrastSweep.test.ts`, `browser/verifyReceiptContrast.test.ts` |
+| Contrast sweep | every rendered text element against the AA floor, and the resting boundary of every field, checkbox, radio, and switch against 3:1, light and dark schemes | `browser/contrastSweep.ts`, `browser/themeContrastSweep.test.ts`, `browser/verifyReceiptContrast.test.ts` |
 | Theme contrast | filled controls, glyphs, checkmark, status tokens, dropzone border | `browser/themeContrast.test.ts`, `unit/themeContrast.test.ts` |
-| Keyboard-only journeys | invite, accept, verify, and recurring setup by Tab, Enter, and Space alone; where focus lands; a focus indicator at every Tab stop | `browser/keyboardInviteJourney.test.ts`, `browser/keyboardAcceptJourney.test.ts`, `browser/keyboardVerifyJourney.test.ts`, `browser/keyboardOnly.ts` |
+| Keyboard-only journeys | invite, accept, verify, and recurring setup by Tab, Enter, and Space alone; where focus lands; a focus indicator at every Tab stop; the rule scan, axe, and the layout checks at each step | `browser/keyboardInviteJourney.test.ts`, `browser/keyboardAcceptJourney.test.ts`, `browser/keyboardVerifyJourney.test.ts`, `browser/keyboardOnly.ts`, `browser/stepChecks.ts` |
 | Focus indicator | the journeys' focus-indicator check against fixtures | `browser/focusIndicator.test.ts` |
-| Reflow and text spacing | no content past the viewport edge and no clipped text, at 320 CSS pixels and under the WCAG text-spacing overrides | `browser/reflowChecks.ts`, `browser/reflow.test.ts`, `browser/textSpacing.test.ts` |
-| Hover and focus content | tooltips dismiss with Escape and take the pointer | `browser/hoverContent.test.ts` |
+| Reflow and text spacing | no content past the viewport edge and no clipped text, at 320 CSS pixels and under the WCAG text-spacing overrides, on every route state and each journey step | `browser/reflowChecks.ts`, `browser/reflow.test.ts`, `browser/textSpacing.test.ts`, the keyboard journeys |
+| Hover and focus content | tooltips dismiss with Escape and stay open while the pointer moves onto them; the cleaning preview's badges open their detail on focus | `browser/hoverContent.test.ts` |
 | Dialogs | a confirm opened from the keyboard holds focus, passes both scans, and closes with Escape back to its trigger | `browser/dialogKeyboard.test.ts` |
 | Source checks | page titles, page language, zoom, and what the app does not have (media, shortcuts, motion input, dialogs Escape cannot close) | `unit/wcagSourceChecks.test.ts` |
 
@@ -85,16 +85,16 @@ The document-level facts axe would check there (title, language, viewport) are r
 | 1.4.3 Contrast (Minimum) | AA | The contrast sweep over every state in both schemes, `browser/verifyReceiptContrast.test.ts` for the verify screen's loaded states, the theme contrast tests, and axe's `color-contrast`. | Test |
 | 1.4.4 Resize Text | AA | `browser/reflow.test.ts` at 320 CSS pixels, the width of a 1280-pixel window zoomed to 400%; `unit/wcagSourceChecks.test.ts` holds a viewport setting that leaves zoom on. | New check |
 | 1.4.5 Images of Text | AA | Judgment: the app shows no images of text. The wordmark is text and the icons are glyphs. | Judgment |
-| 1.4.10 Reflow | AA | `browser/reflow.test.ts`, which found the step buttons clipping their labels at 320 pixels; their labels wrap (`apps/web/src/styles/app.module.css`, `.workFoot`). A code block with a long line scrolls on its own, and is a tab stop so the keyboard can scroll it. | New check |
-| 1.4.11 Non-text Contrast | AA | The theme contrast tests for the checkmark, action-icon glyphs, dropzone border, and the focus ring and focused input border colors. Resting field borders take `--app-field-border` (`apps/web/src/styles/app.module.css`), which no rendered test measures (see [Open gaps](#open-gaps)). | Test |
-| 1.4.12 Text Spacing | AA | `browser/textSpacing.test.ts` applies the WCAG spacing overrides to every state; axe's `avoid-inline-spacing`. | New check |
-| 1.4.13 Content on Hover or Focus | AA | `browser/hoverContent.test.ts`: a tooltip closes on Escape and takes the pointer, from the theme default (`apps/web/src/theme.ts`). | New check |
+| 1.4.10 Reflow | AA | `browser/reflow.test.ts` on every route state and the keyboard journeys at each step (`browser/stepChecks.ts`). They found the step buttons clipping their labels at 320 pixels, the save-as-recurring button running past the edge, and the review table's hidden text widening the page; the labels wrap (`.workFoot`, `.wrapLabel`) and the table's scroll box holds its text (`.tableScroll`, both in `apps/web/src/styles/app.module.css`). A code block with a long line scrolls on its own, and is a tab stop so the keyboard can scroll it. | New check |
+| 1.4.11 Non-text Contrast | AA | The contrast sweeps measure the resting boundary of every field, checkbox, radio, and switch against 3:1 in both schemes (`browser/contrastSweep.ts`, `sweepControlBoundaries`), which found unchecked checkboxes at 1.3:1 (light) and 1.5:1 (dark); they take `--app-field-border` (`apps/web/src/styles/app.module.css`). The theme contrast tests cover the checkmark, action-icon glyphs, dropzone border, and the focus ring and focused input border colors. | New check |
+| 1.4.12 Text Spacing | AA | `browser/textSpacing.test.ts` applies the WCAG spacing overrides to every route state, and the keyboard journeys to each step (`browser/stepChecks.ts`); axe's `avoid-inline-spacing`. | New check |
+| 1.4.13 Content on Hover or Focus | AA | `browser/hoverContent.test.ts`: a tooltip closes on Escape, and stays open while the pointer moves from its trigger onto it, from the theme default (`apps/web/src/theme.ts`); the same move closes a tooltip without that setting. The cleaning preview's badges open their detail on keyboard focus (`apps/web/src/components/StandardizationPreview.tsx`). | New check |
 
 ## Principle 2: Operable
 
 | Criterion | Level | Evidence | Kind |
 | --- | --- | --- | --- |
-| 2.1.1 Keyboard | A | The keyboard-only journeys complete invite, accept, verify, and recurring setup without the pointer; axe's `scrollable-region-focusable`, which found a code block only the pointer could scroll. | Test |
+| 2.1.1 Keyboard | A | The keyboard-only journeys complete invite, accept, verify, and recurring setup without the pointer; axe's `scrollable-region-focusable`, which found a code block only the pointer could scroll. The cleaning preview's badges, whose detail only a tooltip shows, are Tab stops that open it (`browser/hoverContent.test.ts`). | Test |
 | 2.1.2 No Keyboard Trap | A | `browser/dialogKeyboard.test.ts`: Escape leaves a confirm dialog and focus returns to its trigger. `unit/wcagSourceChecks.test.ts` fails on a dialog that turns Escape off. The journeys tab past every stop on each screen. | New check |
 | 2.1.4 Character Key Shortcuts | A | The app defines no keyboard shortcuts (`unit/wcagSourceChecks.test.ts`). | Not applicable |
 | 2.2.1 Timing Adjustable | A | Judgment: the inviter chooses how long an invitation lasts, up to a year, before it is sent. The wait for the partner is bounded at 10 minutes on a live exchange between two parties, and a failed run offers Try again without losing the setup (`browser/keyboardInviteJourney.test.ts`). | Judgment |
@@ -104,9 +104,9 @@ The document-level facts axe would check there (title, language, viewport) are r
 | 2.4.2 Page Titled | A | `unit/wcagSourceChecks.test.ts` requires a title on every route; it found the recurring exchange page without one. | New check |
 | 2.4.3 Focus Order | A | The rule scan's `positive-tabindex` rule; the journeys assert where focus lands at each step; `browser/useOpenCloseFocus.test.ts`; `browser/dialogKeyboard.test.ts`. | Test |
 | 2.4.4 Link Purpose (In Context) | A | The rule scan's `control-name` rule and axe's `link-name`. A link that opens a new tab says so in its name. | Test |
-| 2.4.5 Multiple Ways | AA | `browser/accessibilityRuleScan.test.ts`: the start page links to the verify and recurring exchange pages, which no exchange step leads to. Every other page is a step of an exchange, which the criterion excepts. | New check |
+| 2.4.5 Multiple Ways | AA | Each page outside an exchange's steps has more than one way in. The start page links to the verify and recurring exchange pages (`browser/accessibilityRuleScan.test.ts`). A finished run's record note (`apps/web/src/exchange/RunSurface.tsx`) and a recurring exchange's run accounting (`apps/web/src/recurring/ManagedExchangeDetail.tsx`) also link to the verify page. The confirmation after saving an exchange links to the recurring exchanges (`apps/web/src/exchange/ManageExchangeOffer.tsx`). Every other page is a step of an exchange, which the criterion excepts. | New check |
 | 2.4.6 Headings and Labels | AA | The rule scan's `page-h1`, `heading-skip`, and `control-name` rules. That each heading and label describes its topic is a judgment the review of each screen makes. | Test |
-| 2.4.7 Focus Visible | AA | Every element a Tab press focuses in the journeys must look different while focused (`browser/keyboardOnly.ts`, held against fixtures by `browser/focusIndicator.test.ts`). | New check |
+| 2.4.7 Focus Visible | AA | Every element a Tab press focuses in the journeys, the control a journey then activates included, must look different focused from how it looked before the press (`browser/keyboardOnly.ts`, held against fixtures by `browser/focusIndicator.test.ts`). | New check |
 | 2.5.1 Pointer Gestures | A | Judgment: no control needs a path or multipoint gesture. The file drop target also opens a file chooser, which the journeys reach by Tab. | Judgment |
 | 2.5.2 Pointer Cancellation | A | Judgment: controls act on click, when the pointer is released. The one down-event handler, on the number field's step buttons, only keeps focus in the field (`apps/web/src/components/NamedStepNumberInput.tsx`). | Judgment |
 | 2.5.3 Label in Name | A | axe's `label-content-name-mismatch`, enabled in `browser/axeScan.ts`. | New check |
@@ -139,8 +139,8 @@ The document-level facts axe would check there (title, language, viewport) are r
 
 | Kind | Criteria |
 | --- | --- |
-| Test | 13 |
-| New check | 13 |
+| Test | 12 |
+| New check | 14 |
 | Judgment | 16 |
 | Not applicable | 8 |
 | All A and AA criteria | 50 |
@@ -149,10 +149,6 @@ The document-level facts axe would check there (title, language, viewport) are r
 
 These are known and not yet closed:
 
-- **Hover-only badges.** The cleaning preview's "empty value" and constraint-warning badges show their detail in a tooltip that only the pointer opens. The detail is in each badge's accessible name, so a screen reader reads it, but a sighted keyboard user cannot see it (2.1.1, 1.4.13).
-- **Control boundaries.** No rendered sweep measures every control's boundary, resting field borders included, against its background at 3:1 across the route states (1.4.11).
-- **Text-spacing and reflow states.** The layout checks mount each route's first state; the states a run reaches are not measured at 320 pixels or under text spacing (1.4.10, 1.4.12).
-- **Pointer movement onto a tooltip.** The test runner moves the pointer in one jump, so `browser/hoverContent.test.ts` holds the setting that lets the pointer rest on a tooltip rather than moving the pointer across to it (1.4.13).
 - **Screen-reader passes.** Each criterion above that rests on an accessible name or announcement is checked in the DOM, not heard through NVDA or VoiceOver. Those passes come after 1.0.
 
 ## Keeping this current

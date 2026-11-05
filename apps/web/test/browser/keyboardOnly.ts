@@ -75,37 +75,45 @@ function appearance(drawer: Element | null): string {
   ).join(";");
 }
 
-/** A focused element and how its drawers painted while it held focus. */
-interface FocusReading {
-  element: Element;
-  focused: Array<string>;
+/** The elements a Tab press can move focus to. */
+const TABBABLE_SELECTOR =
+  "a[href], area[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable]";
+
+/** How each drawer of every element a Tab press could focus paints before the
+ * press: each one's unfocused appearance. */
+function readUnfocused(): Map<Element, string> {
+  const unfocused = new Map<Element, string>();
+  for (const element of document.body.querySelectorAll(TABBABLE_SELECTOR))
+    for (const drawer of focusDrawers(element))
+      if (drawer !== null && !unfocused.has(drawer))
+        unfocused.set(drawer, appearance(drawer));
+  return unfocused;
 }
 
-function readFocus(): FocusReading | undefined {
-  const element = document.activeElement;
-  if (element === null || element === document.body) return undefined;
-  return { element, focused: focusDrawers(element).map(appearance) };
-}
-
-/** The last element a Tab press focused. A browser shows a keyboard focus
- * indicator only for focus the keyboard moved, so an element focused another
- * way (a script's `focus()`, a click) is not held to one. */
-let lastTabbed: FocusReading | undefined;
-
-/** Fails when the element a Tab press just left painted the same while it
- * held focus as it does now: it showed no focus indicator (WCAG 2.4.7). A
- * drawer that now holds focus itself is left out, since its change is its own
- * indicator, not the left element's. */
-function expectFocusIndicatorShown(left: FocusReading | undefined): void {
-  if (left === undefined || !left.element.isConnected) return;
-  const changed = focusDrawers(left.element).some(
-    (drawer, index) =>
-      drawer !== document.activeElement &&
-      appearance(drawer) !== left.focused[index],
+/** Fails when the element a Tab press just focused paints the same as it did
+ * before the press: it shows no focus indicator (WCAG 2.4.7). A drawer that is
+ * or holds the element the press moved focus from is left out, since its
+ * change is that element losing focus, not this one gaining it. */
+function expectFocusIndicatorShown(
+  previous: Element | null,
+  unfocused: Map<Element, string>,
+): void {
+  const focused = document.activeElement;
+  if (focused === null || focused === document.body) return;
+  if (!unfocused.has(focused))
+    throw new Error(
+      `${describeElement(focused)} was not on the page before the Tab press that focused it, so its focus indicator cannot be compared`,
+    );
+  const changed = focusDrawers(focused).some(
+    (drawer) =>
+      drawer !== null &&
+      (drawer === focused || previous === null || !drawer.contains(previous)) &&
+      unfocused.has(drawer) &&
+      appearance(drawer) !== unfocused.get(drawer),
   );
   if (!changed)
     throw new Error(
-      `${describeElement(left.element)} looks the same focused and unfocused: it shows no focus indicator (WCAG 2.4.7)`,
+      `${describeElement(focused)} looks the same focused and unfocused: it shows no focus indicator (WCAG 2.4.7)`,
     );
 }
 
@@ -113,19 +121,19 @@ function expectFocusIndicatorShown(left: FocusReading | undefined): void {
  * Presses Tab (or Shift+Tab when `backward`) until `target` holds focus, and
  * fails naming the stops it passed when the order never reaches it.
  *
- * Every element a press focuses must look different, once a later press moves
- * focus on, from how it looked while it held focus: an outline, shadow,
- * border, background, color or underline that changes with focus. Best
- * effort: an element that also changes on blur for another reason passes, and
- * whether the change is visible enough is a judgment this does not make.
+ * Every element a press focuses, the target included, must look different
+ * focused from how it looked just before the press: an outline, shadow,
+ * border, background, color or underline that changes with focus. A browser
+ * shows a keyboard focus indicator only for focus the keyboard moved, so only
+ * a press's stops are held to one. Best effort: an element that also changes
+ * for another reason as focus arrives passes, and whether the change is
+ * visible enough is a judgment this does not make.
  */
 export async function tabTo(
   target: FocusTarget,
   options: { backward?: boolean } = {},
 ): Promise<void> {
   const passed: Array<string> = [];
-  let left =
-    lastTabbed?.element === document.activeElement ? lastTabbed : undefined;
   for (let press = 0; press < MAX_TAB_PRESSES; press += 1) {
     const focused = document.activeElement;
     if (
@@ -135,10 +143,9 @@ export async function tabTo(
     )
       return;
     passed.push(describeElement(focused));
+    const unfocused = readUnfocused();
     await userEvent.tab({ shift: options.backward === true });
-    expectFocusIndicatorShown(left);
-    left = readFocus();
-    lastTabbed = left;
+    expectFocusIndicatorShown(focused, unfocused);
   }
   throw new Error(
     `Tab never reached the target; it passed: ${passed.slice(-20).join(", ")}`,

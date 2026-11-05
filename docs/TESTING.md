@@ -451,11 +451,12 @@ others cannot. Which WCAG 2.1 criterion each one is evidence for is mapped in
 - The contrast sweep (`contrastSweep.ts`, run by `themeContrastSweep.test.ts`
   on the hosted profile and `themeContrastSweepConsole.test.ts` on the
   console's) measures every rendered text element against the WCAG AA floor,
-  in both color schemes. It runs on the same route states as the rule scan
-  (`routeStates.ts`), and the test fails when a declared route has none. A
-  light-scheme failure not yet fixed is listed in `contrastSweep.ts`, and the
-  test fails when a listed one stops failing. A sweep sees each state as it
-  mounts, so the verify screen's states after a file loads are swept by
+  and the resting border or fill of every field, checkbox, radio, and switch
+  against 3:1, in both color schemes. It runs on the same route states as the
+  rule scan (`routeStates.ts`), and the test fails when a declared route has
+  none. A light-scheme failure not yet fixed is listed in `contrastSweep.ts`,
+  and the test fails when a listed one stops failing. A sweep sees each state
+  as it mounts, so the verify screen's states after a file loads are swept by
   `verifyReceiptContrast.test.ts`, which loads them.
 - The rule scan (`accessibilityRules.ts`, run by
   `accessibilityRuleScan.test.ts`) checks a fixed set of DOM-decidable rules --
@@ -471,15 +472,18 @@ others cannot. Which WCAG 2.1 criterion each one is evidence for is mapped in
   `keyboardAcceptJourney.test.ts`, `keyboardVerifyJourney.test.ts`) drive the
   invite, accept, verify, and recurring setup flows by Tab, Enter, and Space
   alone through `keyboardOnly.ts`, assert where focus lands on each step
-  change, and run the rule scan and axe on each step and on the result and
-  failure states. Every element a Tab press focuses must look different while
-  focused (`focusIndicator.test.ts` holds that check). A native file chooser
+  change, and run the rule scan, axe, and the layout checks on each step and
+  on the result and failure states (`stepChecks.ts`). Every element a Tab
+  press focuses must look different focused from how it looked before the
+  press, the control a journey then activates included
+  (`focusIndicator.test.ts` holds that check). A native file chooser
   cannot be driven, so a journey tabs to the file control and hands the file
   to its input.
 - The layout checks (`reflowChecks.ts`) mount every route state at 320 CSS
   pixels wide (`reflow.test.ts`) and under the WCAG text-spacing overrides
   (`textSpacing.test.ts`), and fail on content past the viewport's edge or
-  text an element clips.
+  text an element clips. The keyboard journeys run the same checks on each
+  step they reach, putting the viewport and spacing back after.
 
 ## Cross-runtime interop suite
 

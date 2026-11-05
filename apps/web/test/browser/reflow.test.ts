@@ -17,9 +17,9 @@ import "@mantine/core/styles.css";
 
 import { clearManagedExchanges } from "@psi/managed/managedExchangeStore";
 
+import { REFLOW_HEIGHT, REFLOW_WIDTH, lostContent } from "./reflowChecks";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { ROUTE_STATES } from "./routeStates";
-import { lostContent } from "./reflowChecks";
 
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
@@ -36,7 +36,7 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
 const app = createAppMount();
 
 beforeAll(async () => {
-  await page.viewport(320, 256);
+  await page.viewport(REFLOW_WIDTH, REFLOW_HEIGHT);
 });
 
 afterAll(async () => {

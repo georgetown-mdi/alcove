@@ -34,8 +34,7 @@ import {
   typeInto,
 } from "./keyboardOnly";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
-import { expectNoAccessibilityViolations } from "./accessibilityRules";
-import { expectNoAxeViolations } from "./axeScan";
+import { expectStepAccessible } from "./stepChecks";
 
 import type { InvitationToken, LinkageTerms } from "@alcove/core";
 
@@ -144,13 +143,11 @@ async function acceptByKeyboard(): Promise<void> {
   await expect
     .element(page.getByText("Invitation from County Health Department"))
     .toBeInTheDocument();
-  expectNoAccessibilityViolations(app.container, { page: true });
-  await expectNoAxeViolations(app.container);
+  await expectStepAccessible(app.container);
   await activate(control("button", "Continue: consent & your file"));
 
   await expectHeadingFocused("Consent & your file");
-  expectNoAccessibilityViolations(app.container, { page: true });
-  await expectNoAxeViolations(app.container);
+  await expectStepAccessible(app.container);
   await tabTo(
     (focused) => focused.getAttribute("aria-label") === "Your data file",
   );
@@ -174,8 +171,7 @@ async function acceptByKeyboard(): Promise<void> {
   await expect
     .element(page.getByText("All 2 keys can match"))
     .toBeInTheDocument();
-  expectNoAccessibilityViolations(app.container, { page: true });
-  await expectNoAxeViolations(app.container);
+  await expectStepAccessible(app.container);
   await activate(control("button", "Start the exchange"));
 
   await expect
@@ -189,8 +185,7 @@ test("accept: review, consent, columns and the result, from the keyboard", async
   await expect
     .element(page.getByText(/12.*matched records/))
     .toBeInTheDocument();
-  expectNoAccessibilityViolations(app.container, { page: true });
-  await expectNoAxeViolations(app.container);
+  await expectStepAccessible(app.container);
   await tabTo(control("link", "Download result: results.csv"));
 });
 
@@ -202,8 +197,7 @@ test("recurring setup: save the accepted exchange, then step through its surface
   await expect
     .poll(() => document.activeElement?.textContent ?? "")
     .toContain("Saved as a recurring exchange.");
-  expectNoAccessibilityViolations(app.container, { page: true });
-  await expectNoAxeViolations(app.container);
+  await expectStepAccessible(app.container);
 
   const [saved] = await listManagedExchanges();
   expect(saved.label).toBe("Riverbend quarterly");
@@ -213,8 +207,7 @@ test("recurring setup: save the accepted exchange, then step through its surface
   await expect
     .element(page.getByRole("heading", { level: 1 }))
     .toMatchTextContent("Riverbend quarterly");
-  expectNoAccessibilityViolations(app.container, { page: true });
-  await expectNoAxeViolations(app.container);
+  await expectStepAccessible(app.container);
 
   await activate(control("button", "Download a backup"));
   // No screen of its own: the line in the panel's live region is the feedback,
@@ -223,6 +216,5 @@ test("recurring setup: save the accepted exchange, then step through its surface
     .element(page.getByRole("status").filter({ hasText: "Backed up as of" }))
     .toBeInTheDocument();
   expect(document.activeElement?.textContent).toBe("Download a backup");
-  expectNoAccessibilityViolations(app.container, { page: true });
-  await expectNoAxeViolations(app.container);
+  await expectStepAccessible(app.container);
 });

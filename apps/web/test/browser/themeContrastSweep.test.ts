@@ -11,7 +11,11 @@ import { clearManagedExchanges } from "@psi/managed/managedExchangeStore";
 
 import { ROUTE_STATES, declaredRoutes } from "./routeStates";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
-import { expectAaClean, mountAndSweep } from "./contrastSweep";
+import {
+  expectAaClean,
+  mountAndSweep,
+  sweepControlBoundaries,
+} from "./contrastSweep";
 
 // The contrast sweep (contrastSweep.ts) over every route the app declares on the
 // hosted profile, at each state routeStates.ts lands it in, rendered through
@@ -56,6 +60,23 @@ describe("primary-route contrast sweep (WCAG 2.1 AA)", () => {
   test("every declared route has a swept state", () => {
     const swept = new Set(ROUTE_STATES.map(({ route }) => route));
     expect(declaredRoutes().filter((route) => !swept.has(route))).toEqual([]);
+  });
+
+  test("the boundary check reports a field whose border and fill are under 3:1", () => {
+    const fixture = document.createElement("div");
+    fixture.style.background = "#ffffff";
+    fixture.innerHTML = `
+      <input aria-label="Faint" style="border: 1px solid #dddddd; background: #ffffff">
+      <input aria-label="Bordered" style="border: 1px solid #767676; background: #ffffff">
+      <input type="checkbox" aria-label="Filled" style="appearance: none; width: 16px; height: 16px; border: 0; background: #0b7285">`;
+    document.body.appendChild(fixture);
+    try {
+      expect(
+        sweepControlBoundaries(fixture).map(({ control }) => control),
+      ).toEqual(['<input> "Faint"']);
+    } finally {
+      fixture.remove();
+    }
   });
 
   for (const state of ROUTE_STATES)

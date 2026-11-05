@@ -35,6 +35,9 @@ test("Escape closes a confirm the keyboard opened and returns focus to its trigg
       onConfirm: () => undefined,
     }),
   );
+  await expect
+    .element(page.getByRole("button", { name: "Remove this exchange" }))
+    .toBeInTheDocument();
   await activate(control("button", "Remove this exchange"));
 
   const dialog = page.getByRole("dialog");
