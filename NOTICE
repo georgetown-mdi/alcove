@@ -98,6 +98,20 @@ text.
 
 ---
 
+The command line application copies no npm package into its build. It loads
+its dependencies at runtime from node_modules (/app/node_modules in the
+container images), and each package there carries the license file it ships.
+One package the CLI loads ships no license file, so its notice is the license,
+author, and source its package.json declares:
+
+werift ships no license file. Its package.json declares the MIT license,
+author shinyoshiaki, source https://github.com/shinyoshiaki/werift-webrtc.git.
+
+`npm run check:bundle-notices` fails if a package the CLI loads ships no
+license file and is not listed here.
+
+---
+
 The container images this repository publishes also redistribute their base
 distributions' operating-system packages, which no entry above reaches. Those
 packages are listed beside this file, one list per image, in

@@ -11,6 +11,11 @@
 // build put in that file. A package that ships no license file fails the build
 // itself (scripts/lib/bundleNotices.mjs).
 //
+// The CLI bundles none of its dependencies: the container images ship them in
+// node_modules, each with its own license file. A package the CLI loads that
+// ships none must have its declared notice in NOTICE, and npm's listing of the
+// images' production install names those packages.
+//
 // Reads core's dist from disk for the downstream bundles, so a stale dist
 // fails here as a missing notice and a missing one stops it; rebuild core
 // first. Writes no bundle to disk, though the web builds write
@@ -18,15 +23,19 @@
 // placeholder coordination server when VITE_SIGNALING_SERVER_URL is unset.
 // Exit 0 clean, 1 when a notice is missing, core's dist is, or a build fails.
 
-import { realpathSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { readFileSync, realpathSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   NOTICES_FILE,
+  NO_LICENSE_FILE,
   commentSafe,
+  declaredNotice,
   inlinedPackageDirs,
   packageNotice,
+  shipsLicenseFile,
 } from "./lib/bundleNotices.mjs";
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -195,7 +204,75 @@ export function coreUpstream(chunks) {
   return { upstream };
 }
 
+/**
+ * The third-party package directories the container images install for the
+ * CLI, workspace links left out: `npm ls` with the Dockerfile's production
+ * `npm ci` flags.
+ */
+export function cliRuntimePackageDirs(root = repoRoot) {
+  const listing = execFileSync(
+    "npm",
+    [
+      "ls",
+      "--omit=dev",
+      "--omit=optional",
+      "-w",
+      "packages/core",
+      "-w",
+      "apps/cli",
+      "--all",
+      "--parseable",
+    ],
+    { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  return [...new Set(listing.split("\n").filter(Boolean))].filter((dir) =>
+    relative(root, realpathSync(dir)).split(sep).includes("node_modules"),
+  );
+}
+
+/**
+ * The packages in `dirs` that ship no license file and whose declared notice
+ * `notice`, the text of NOTICE, lacks: one line per gap.
+ */
+export function unattributedPackages(dirs, notice) {
+  const text = flatten(notice);
+  const gaps = [];
+  for (const dir of dirs) {
+    if (shipsLicenseFile(dir)) continue;
+    const manifest = JSON.parse(
+      readFileSync(join(dir, "package.json"), "utf8"),
+    );
+    const pkg = `${manifest.name} ${manifest.version} (${relative(repoRoot, dir)})`;
+    if (!NO_LICENSE_FILE.has(manifest.name)) {
+      gaps.push(
+        `${pkg} ships no license file: check its license by hand, then add it ` +
+          "to NO_LICENSE_FILE in scripts/lib/bundleNotices.mjs and its notice to NOTICE",
+      );
+    } else if (!text.includes(flatten(declaredNotice(manifest)))) {
+      gaps.push(
+        `NOTICE lacks the notice of ${pkg}: ${declaredNotice(manifest)}`,
+      );
+    }
+  }
+  return gaps;
+}
+
 async function main() {
+  const cliDirs = cliRuntimePackageDirs();
+  const cliGaps = unattributedPackages(
+    cliDirs,
+    readFileSync(join(repoRoot, "NOTICE"), "utf8"),
+  );
+  if (cliGaps.length > 0) {
+    console.error(
+      "check:bundle-notices: a package the CLI loads ships no license file and NOTICE lacks its notice.",
+    );
+    for (const gap of cliGaps) console.error(`  ${gap}`);
+    process.exit(1);
+  }
+  console.log(
+    `check:bundle-notices: ${cliDirs.length} package(s) the CLI loads each ship a license file or have their notice in NOTICE`,
+  );
   const core = await rollupChunks("packages/core", "rollup.config.ts");
   const { upstream, missing } = coreUpstream(core);
   if (missing) {

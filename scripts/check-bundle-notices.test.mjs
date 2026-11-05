@@ -1,17 +1,24 @@
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { rollup } from "rollup";
 import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { coreUpstream, missingNotices } from "./check-bundle-notices.mjs";
+import {
+  cliRuntimePackageDirs,
+  coreUpstream,
+  missingNotices,
+  unattributedPackages,
+} from "./check-bundle-notices.mjs";
 import {
   NOTICES_FILE,
   bundleNotices,
@@ -23,6 +30,8 @@ import {
 const MIT_TEXT = "Copyright (c) Fixture Author\n\n    Permission is granted.";
 const ISC_TEXT = "ISC licence of the scoped fixture";
 const WORKER_TEXT = "Licence of a package only a worker inlines";
+
+const repoRoot = realpathSync(fileURLToPath(new URL("..", import.meta.url)));
 
 let root;
 
@@ -221,5 +230,40 @@ describe("coreUpstream", () => {
     expect(coreUpstream([{ path, moduleIds: [id] }]).upstream).toEqual(
       new Map([[path, [join(root, "node_modules/licensed")]]]),
     );
+  });
+});
+
+describe("unattributedPackages", () => {
+  const dirs = () =>
+    ["licensed", "bare", "react-remove-scroll-bar"].map((name) =>
+      join(root, "node_modules", name),
+    );
+  const declared =
+    "react-remove-scroll-bar ships no license file. Its package.json declares the MIT license.";
+
+  it("names a package with no license file outside NO_LICENSE_FILE, and one whose notice NOTICE lacks", () => {
+    expect(unattributedPackages(dirs(), "")).toEqual([
+      expect.stringMatching(/^bare 1\.0\.0 .* ships no license file/),
+      expect.stringMatching(
+        /^NOTICE lacks the notice of react-remove-scroll-bar 1\.0\.0 \(.*\): react-remove-scroll-bar ships no license file\. Its package\.json declares the MIT license\.$/,
+      ),
+    ]);
+  });
+
+  it("passes a listed package whose declared notice NOTICE carries, rewrapped", () => {
+    const notice = declared.replace(" Its ", "\nIts ");
+    expect(unattributedPackages(dirs().slice(2), notice)).toEqual([]);
+  });
+
+  it("holds the CLI's runtime packages against the committed NOTICE", () => {
+    const runtime = cliRuntimePackageDirs();
+    expect(runtime).toContain(join(repoRoot, "node_modules/werift"));
+    expect(runtime).not.toContain(join(repoRoot, "node_modules/@alcove/core"));
+    expect(
+      unattributedPackages(
+        runtime,
+        readFileSync(join(repoRoot, "NOTICE"), "utf8"),
+      ),
+    ).toEqual([]);
   });
 });
