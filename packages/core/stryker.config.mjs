@@ -21,7 +21,7 @@
 export const scoreFloors = {
   "packages/core/src/auth.ts": 84,
   "packages/core/src/connection/abortMarker.ts": 94,
-  "packages/core/src/connection/encryptedMessageConnection.ts": 94,
+  "packages/core/src/connection/encryptedMessageConnection.ts": 99,
 };
 
 export default {

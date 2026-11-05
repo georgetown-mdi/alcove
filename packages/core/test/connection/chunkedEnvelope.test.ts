@@ -358,7 +358,10 @@ describe("tampered envelopes are refused", () => {
   });
 
   test("an envelope shorter than a header and one chunk of one byte", async () => {
-    await refuse(new Uint8Array(9 + 16).fill(2), /too short/);
+    await refuse(
+      new Uint8Array(9 + 16).fill(2),
+      /^EncryptedMessageConnection: envelope is too short$/,
+    );
   });
 
   test("a version-1 envelope byte on a version-2 connection", async () => {

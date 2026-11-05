@@ -216,7 +216,11 @@ test("a replayed frame is rejected as a security failure", async () => {
   await peer.send(envelope);
   await peer.send(envelope);
   expect(await recv.receive()).toEqual({ n: 1 });
-  await expectSecurity(recv.receive(), /replay|out-of-order/i);
+  const refused = await expectSecurity(recv.receive(), /replay|out-of-order/i);
+  expect(refused.message).toBe(
+    "EncryptedMessageConnection: replay or out-of-order message rejected " +
+      "(seq=0, last accepted=0)",
+  );
 });
 
 test("an out-of-order frame (seq <= last accepted) is rejected as a security failure", async () => {
@@ -237,7 +241,14 @@ test("a forward-gap frame (seq skips ahead) is rejected as a security failure", 
   await peer.send(await sealRawBytes("initiator", 0, jsonPlaintext({ n: 0 })));
   await peer.send(await sealRawBytes("initiator", 5, jsonPlaintext({ n: 5 })));
   expect(await recv.receive()).toEqual({ n: 0 });
-  await expectSecurity(recv.receive(), /skipped ahead|dropped or withheld/i);
+  const refused = await expectSecurity(
+    recv.receive(),
+    /skipped ahead|dropped or withheld/i,
+  );
+  expect(refused.message).toBe(
+    "EncryptedMessageConnection: dropped or withheld frame detected; " +
+      "inbound sequence number skipped ahead (seq=5, expected=1)",
+  );
 });
 
 test("a withheld first frame (stream starts past seq 0) is rejected as a gap", async () => {
@@ -642,10 +653,14 @@ test("send(undefined) is rejected at the sender as usage, without latching", asy
   // A value with no JSON representation is caller misuse; it must be caught at
   // the sender with kind "usage", not silently encoded and exposed at the
   // receiver as a misleading "not valid JSON" security failure.
-  await expectRejection(
+  const refused = await expectRejection(
     encA.send(undefined),
     "usage",
     /no JSON representation/i,
+  );
+  expect(refused.message).toBe(
+    "EncryptedMessageConnection: cannot send a value with no JSON " +
+      "representation (undefined, a function, or a symbol)",
   );
 
   // Not latched: the connection stays usable for a subsequent valid send.
@@ -657,11 +672,21 @@ test("send rejects an un-serializable value (BigInt, circular) as usage", async 
   const [encA, encB] = await makeEncryptedPair();
   // JSON.stringify throws (not returns undefined) for these, so this also pins
   // that the thrown TypeError is wrapped as a ConnectionError, not leaked raw.
-  await expectRejection(encA.send(10n), "usage", /not JSON-serializable/i);
+  const bigInt = await expectRejection(
+    encA.send(10n),
+    "usage",
+    /not JSON-serializable/i,
+  );
+  expect(bigInt.cause).toBeInstanceOf(TypeError);
 
   const circular: Record<string, unknown> = {};
   circular.self = circular;
-  await expectRejection(encA.send(circular), "usage", /not JSON-serializable/i);
+  const cyclic = await expectRejection(
+    encA.send(circular),
+    "usage",
+    /not JSON-serializable/i,
+  );
+  expect(cyclic.cause).toBeInstanceOf(TypeError);
 
   // Not latched: a valid send still works afterward, on sequence number 0
   // (the rejected sends consumed none).
@@ -759,6 +784,61 @@ test("a receive-path transport failure latches the wrapper", async () => {
     (e: unknown) => e,
   );
   expect(onSend).toBe(first);
+});
+
+test("a failure to encrypt an outbound frame latches the wrapper as transport, sending nothing", async () => {
+  const [rawPeer, rawLocal] = createMessagePipe();
+  const enc = await EncryptedMessageConnection.create(
+    rawLocal,
+    V1_KEYING,
+    "initiator",
+  );
+  const fault = new Error("crypto subsystem fault");
+  const encrypt = vi
+    .spyOn(crypto.subtle, "encrypt")
+    .mockRejectedValueOnce(fault);
+  try {
+    const first = await expectRejection(
+      enc.send({ x: 1 }),
+      "transport",
+      /failed to encrypt/,
+    );
+    expect(first.message).toBe(
+      "EncryptedMessageConnection: failed to encrypt outbound message " +
+        "(local crypto/runtime fault)",
+    );
+    expect(first.cause).toBe(fault);
+    expect(
+      await expectRejection(enc.send({ x: 2 }), "transport", /encrypt/),
+    ).toBe(first);
+    expect(await expectRejection(enc.receive(), "transport", /encrypt/)).toBe(
+      first,
+    );
+    // No frame reached the transport, which the latch then closed.
+    await expect(rawPeer.receive()).rejects.toThrow(/peer closed/i);
+  } finally {
+    encrypt.mockRestore();
+  }
+});
+
+test("an inner send failure that is not a ConnectionError latches the wrapper as transport", async () => {
+  const { inner, sends, sendReached } = parkingInner();
+  const enc = await EncryptedMessageConnection.create(
+    inner,
+    V1_KEYING,
+    "initiator",
+  );
+  const parked = sendReached();
+  const send = enc.send({ x: 1 });
+  await parked;
+  const failure = new Error("inner send failure");
+  sends[0](failure);
+  const first = await expectRejection(send, "transport", /inner send failure/);
+  expect(first.cause).toBe(failure);
+  expect(
+    await expectRejection(enc.receive(), "transport", /inner send failure/),
+  ).toBe(first);
+  await enc.close();
 });
 
 // --- Key material boundary ----------------------------------------------------
@@ -1333,6 +1413,51 @@ test("setInboundFrameCap reaches the inner transport's read gate", async () => {
   await conn.close();
 });
 
+test("under a cap above the AEAD's limit, the length check admits the largest version-1 envelope and refuses one byte more", async () => {
+  // An envelope of about 2 GiB cannot be allocated here, so a 64-byte one
+  // reports the length under test. Its version byte is wrong, so an envelope
+  // the length check admits is refused by the version check instead.
+  const largestEnvelope = MAX_AEAD_FRAME_BYTES + AEAD_ENVELOPE_OVERHEAD_BYTES;
+  const statingLength = (length: number) => {
+    const bytes = new Uint8Array(64).fill(0x63) as Uint8Array<ArrayBuffer>;
+    Object.defineProperty(bytes, "length", { value: length });
+    return bytes;
+  };
+  for (const [length, refusal] of [
+    [largestEnvelope, /unsupported envelope version 99/],
+    [largestEnvelope + 1, /exceeds the maximum frame size/],
+  ] as const) {
+    const [recv, peer] = await makeInjectable("responder");
+    recv.setInboundFrameCap(5 * 2 ** 30);
+    await peer.send(statingLength(length));
+    await expectSecurity(recv.receive(), refusal);
+  }
+});
+
+test("the inner transport's overhead is charged on the frame with this layer's envelope added", async () => {
+  const [, rawLocal] = createMessagePipe();
+  const charged: number[] = [];
+  const inner: MessageConnection = {
+    send: (data) => rawLocal.send(data),
+    receive: (timeoutMs) => rawLocal.receive(timeoutMs),
+    close: () => rawLocal.close(),
+    outboundFrameOverheadBytes: (frameBytes) => {
+      charged.push(frameBytes);
+      return 7;
+    },
+  };
+  const conn = await EncryptedMessageConnection.create(
+    inner,
+    V1_KEYING,
+    "initiator",
+  );
+  expect(conn.outboundFrameOverheadBytes(1000)).toBe(
+    AEAD_ENVELOPE_OVERHEAD_BYTES + 7,
+  );
+  expect(charged).toEqual([1000 + AEAD_ENVELOPE_OVERHEAD_BYTES]);
+  await conn.close();
+});
+
 test("the envelope a binary payload is sent in is the payload plus the stated overhead", async () => {
   const [rawPeer, rawLocal] = createMessagePipe();
   const conn = await EncryptedMessageConnection.create(
@@ -1394,6 +1519,7 @@ describe("over an inner transport that implements none of the optional members",
   test("setInboundFrameCap does not throw", async () => {
     const conn = await wrapPlain();
     expect(() => conn.setInboundFrameCap(4096)).not.toThrow();
+    expect(() => conn.setInboundFrameCap(undefined)).not.toThrow();
     await conn.close();
   });
 
