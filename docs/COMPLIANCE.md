@@ -1,7 +1,7 @@
 ---
 title: "Alcove Compliance"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-01"
+last_reviewed: "2026-11-05"
 ---
 
 # Alcove compliance
@@ -238,7 +238,7 @@ Alcove does not transmit Protected Health Information (PHI) to any third party: 
 For HIPAA-regulated deployments:
 
 - The Alcove software itself is not a Business Associate. The two covered entities (or business associates) running the exchange remain responsible for any business associate agreement (BAA) between themselves under their data sharing agreement.
-- Any third-party service used to support the exchange (a coordination server, STUN/TURN relay, or shared SFTP server) is operated either by one of the parties or by a third party. If a third party operates such a service, the deploying agency is responsible for assessing whether a BAA is required. Because the PSI protocol does not transmit PHI to those supporting services, most deployments treat them as conduits, but this is a determination the deploying agency must make for itself.
+- Any third-party service used to support the exchange (a coordination server, STUN/TURN relay, or shared SFTP server) is operated either by one of the parties or by a third party. If a third party operates such a service, the deploying agency is responsible for assessing whether a BAA is required.
 - The Security Rule's technical safeguards (access control, audit controls, integrity, transmission security) are addressed by the cryptographic design documented in [SECURITY_DESIGN.md](SECURITY_DESIGN.md). The administrative and physical safeguards remain the deploying agency's responsibility.
 - Each party writes a self-attested exchange record once an exchange has disclosed, whether or not that run went on to finish, and stating which of the two it was. It is a local, unsigned log of what it disclosed -- the partner, the governing data sharing agreement and the purpose of the disclosure under it, the algorithm, the categories of data exchanged, the number of records this party contributed (`recordsExposed`), (when both parties learn it) the result size, and -- when configured -- a self-facing pointer to where this party filed the result and its retention/disposition schedule -- and contains no protected values. See [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md). Where an accounting of disclosures applies (45 CFR 164.528):
   - The record is a per-exchange source an agency can retain for that accounting, and it includes the brief purpose statement 164.528 requires for each disclosure.
