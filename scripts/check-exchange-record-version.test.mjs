@@ -17,12 +17,12 @@ import {
   CHECKLIST_HEADING,
   CHECKLIST_STEP,
   CHECK_SOURCE,
-  COMPATIBILITY_RELEASE,
   RECORD_VERSION_PIN,
   RECORD_VERSION_SOURCE,
   RECOVERY_ENTRY_POINTS,
   RELEASE_MANIFEST,
   RESET_RECORD_VERSION,
+  RESET_RELEASE,
   RESET_TAKEN_AT_RELEASE,
   bumpViolations,
   declaredRecordVersion,
@@ -30,6 +30,11 @@ import {
   resetViolations,
 } from "./check-exchange-record-version.mjs";
 import { COMPATIBILITY_RELEASE as PROTOCOL_CHECK_FLOOR } from "./check-protocol-version-bump.mjs";
+import {
+  COMPATIBILITY_RELEASE,
+  compareReleaseVersions,
+  isResetRelease,
+} from "./lib/releaseManifest.mjs";
 import { CHECKS } from "./run-checks.mjs";
 
 /**
@@ -60,7 +65,7 @@ afterAll(() => {
 });
 
 const DEVELOPMENT_VERSION = "alcove-exchange-record/v11";
-const FIRST_BOUND_RELEASE = "1.0.0";
+const FIRST_RESET_RELEASE = "0.9.0";
 const INERT_RELEASE = "0.1.0";
 
 /** The kinds a set of violations reports, in the order reported. */
@@ -69,7 +74,7 @@ const kindsOf = (violations) => violations.map(({ kind }) => kind);
 /** The state the reset rule reads, with `overrides` applied. */
 function state(overrides = {}) {
   return {
-    bound: false,
+    due: false,
     releaseVersion: INERT_RELEASE,
     declared: DEVELOPMENT_VERSION,
     takenAtRelease: undefined,
@@ -77,11 +82,11 @@ function state(overrides = {}) {
   };
 }
 
-/** The state at a release the compatibility policy binds, with `overrides` applied. */
+/** The state at a release the reset is due at, with `overrides` applied. */
 function publishedState(overrides = {}) {
   return state({
-    bound: true,
-    releaseVersion: FIRST_BOUND_RELEASE,
+    due: true,
+    releaseVersion: FIRST_RESET_RELEASE,
     ...overrides,
   });
 }
@@ -222,10 +227,27 @@ describe("the recovery path rule 1 points at", () => {
 });
 
 describe("the marker rule 2 is dated by", () => {
-  it("is the same floor the wire-format pin arms on", () => {
-    // One definition of the floor rather than two: the reset and the protocol
-    // bump are dated by the same release, so a moved floor moves both.
+  it("is 0.9.0, while the wire-format pin still arms at 1.0.0", () => {
+    expect(RESET_RELEASE).toBe("0.9.0");
+    expect(COMPATIBILITY_RELEASE).toBe("1.0.0");
     expect(COMPATIBILITY_RELEASE).toBe(PROTOCOL_CHECK_FLOOR);
+  });
+
+  it("falls no later than the release the compatibility policy binds from", () => {
+    // A reset after that release would move a format a published, supported
+    // release reads.
+    expect(
+      compareReleaseVersions(RESET_RELEASE, COMPATIBILITY_RELEASE),
+    ).toBeLessThanOrEqual(0);
+  });
+
+  it("is due from 0.9.0, a prerelease of it included, and not before", () => {
+    for (const version of ["0.9.0", "0.9.0-rc.1", "0.9.1", "0.10.0", "1.0.0"])
+      expect(isResetRelease(version)).toBe(true);
+    for (const version of ["0.1.0", "0.8.0", "0.8.99", "0.0.9"])
+      expect(isResetRelease(version)).toBe(false);
+    for (const version of ["", "latest", "v0.9.0", undefined])
+      expect(isResetRelease(version)).toBeUndefined();
   });
 });
 
@@ -278,7 +300,7 @@ describe("at the release that publishes the reset", () => {
 
     expect(kindsOf(violations)).toEqual(["record"]);
     expect(violations[0].message).toContain(
-      `RESET_TAKEN_AT_RELEASE to "${FIRST_BOUND_RELEASE}"`,
+      `RESET_TAKEN_AT_RELEASE to "${FIRST_RESET_RELEASE}"`,
     );
   });
 });
@@ -296,18 +318,48 @@ describe("the recorded reset discharge", () => {
         resetViolations(
           publishedState({
             declared,
-            takenAtRelease: FIRST_BOUND_RELEASE,
+            takenAtRelease: FIRST_RESET_RELEASE,
           }),
         ),
       ).toEqual([]);
     }
   });
 
-  it("refuses a value naming no release the policy binds", () => {
+  it("takes no second reset at 1.0.0 once 0.9.0 recorded the first", () => {
+    // From 0.9.0 the record format bumps forward from v1 like any other
+    // format, so the release the compatibility policy binds from is not held
+    // to v1 again.
+    for (const declared of [
+      RESET_RECORD_VERSION,
+      "alcove-exchange-record/v2",
+    ]) {
+      expect(
+        resetViolations(
+          publishedState({
+            releaseVersion: "1.0.0",
+            declared,
+            takenAtRelease: FIRST_RESET_RELEASE,
+          }),
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it("accepts a reset recorded at any release from 0.9.0 up to the marker", () => {
+    for (const takenAtRelease of ["0.9.0", "0.9.1", "0.10.0", "1.0.0"]) {
+      expect(
+        resetViolations(
+          publishedState({ releaseVersion: "1.0.0", takenAtRelease }),
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it("refuses a value naming no release the reset is due at", () => {
     for (const takenAtRelease of [
       INERT_RELEASE,
-      "0.9.0",
-      "0.99.0",
+      "0.8.0",
+      "0.8.99",
       "0.0.9",
       "someday",
       "v0.2.0",
@@ -323,7 +375,7 @@ describe("the recorded reset discharge", () => {
     // A discharge recorded before the release it names would disarm the rule on
     // the way to publication, which is the whole window it exists to cover.
     const violations = resetViolations(
-      state({ takenAtRelease: FIRST_BOUND_RELEASE }),
+      state({ takenAtRelease: FIRST_RESET_RELEASE }),
     );
 
     expect(kindsOf(violations)).toEqual(["discharge"]);
@@ -356,7 +408,7 @@ describe("the check as CI runs it", () => {
   it("reports both rules on one moved literal, in one run", () => {
     const { status, stderr } = runCheck(
       fixtureTree({
-        releaseVersion: FIRST_BOUND_RELEASE,
+        releaseVersion: FIRST_RESET_RELEASE,
         declared: "alcove-exchange-record/v12",
       }),
     );
@@ -364,7 +416,8 @@ describe("the check as CI runs it", () => {
     expect(status).toBe(1);
     expect(stderr).toContain("Exchange record version check failed");
     expect(stderr).toContain("moved from");
-    expect(stderr).toContain(RESET_RECORD_VERSION);
+    // Quoted, since the development counter's own value can start with it.
+    expect(stderr).toContain(`"${RESET_RECORD_VERSION}"`);
   });
 
   it("reports a deleted recovery source rather than crashing on the read", () => {
@@ -390,8 +443,8 @@ describe("the check as CI runs it", () => {
     expect(stderr).toContain("already");
   });
 
-  it("leaves the development counter alone on every 0.x release", () => {
-    for (const releaseVersion of ["0.1.0", "0.9.0", "0.10.0", "0.99.0"]) {
+  it("leaves the development counter alone on every release below 0.9.0", () => {
+    for (const releaseVersion of ["0.1.0", "0.8.0", "0.8.99"]) {
       const { status, stdout } = runCheck(fixtureTree({ releaseVersion }));
 
       expect(status).toBe(0);
@@ -399,28 +452,28 @@ describe("the check as CI runs it", () => {
     }
   });
 
-  it("fails a reset taken on a 0.x release", () => {
+  it("fails a reset taken on a release below 0.9.0", () => {
     const { status, stderr } = runCheck(
-      fixtureTree({ releaseVersion: "0.99.0", declared: RESET_RECORD_VERSION }),
+      fixtureTree({ releaseVersion: "0.8.99", declared: RESET_RECORD_VERSION }),
     );
 
     expect(status).toBe(1);
     expect(stderr).toContain("already");
   });
 
-  it("asks for the reset at 1.0.0", () => {
-    const { status, stderr } = runCheck(
-      fixtureTree({ releaseVersion: "1.0.0" }),
-    );
+  it("asks for the reset at 0.9.0 and every release above it", () => {
+    for (const releaseVersion of ["0.9.0", "0.10.0", "1.0.0"]) {
+      const { status, stderr } = runCheck(fixtureTree({ releaseVersion }));
 
-    expect(status).toBe(1);
-    expect(stderr).toContain("Take the reset as one piece");
+      expect(status).toBe(1);
+      expect(stderr).toContain("Take the reset as one piece");
+    }
   });
 
   it("fails a taken reset that is not recorded", () => {
     const { status, stderr } = runCheck(
       fixtureTree({
-        releaseVersion: FIRST_BOUND_RELEASE,
+        releaseVersion: FIRST_RESET_RELEASE,
         declared: RESET_RECORD_VERSION,
       }),
     );
@@ -450,7 +503,7 @@ describe("the check as CI runs it", () => {
     const edits = [
       [
         "export const RESET_TAKEN_AT_RELEASE = undefined;",
-        `export const RESET_TAKEN_AT_RELEASE = "${FIRST_BOUND_RELEASE}";`,
+        `export const RESET_TAKEN_AT_RELEASE = "${FIRST_RESET_RELEASE}";`,
       ],
       [
         `export const RECORD_VERSION_PIN = "${RECORD_VERSION_PIN}";`,
@@ -468,14 +521,14 @@ describe("the check as CI runs it", () => {
 
     const { status, stdout } = runCheck(
       fixtureTree({
-        releaseVersion: FIRST_BOUND_RELEASE,
+        releaseVersion: FIRST_RESET_RELEASE,
         declared: moved,
       }),
       staged,
     );
 
     expect(status).toBe(0);
-    expect(stdout).toContain(`taken at release ${FIRST_BOUND_RELEASE}`);
+    expect(stdout).toContain(`taken at release ${FIRST_RESET_RELEASE}`);
   });
 
   it("fails a marker it cannot read rather than treating the reset as not due", () => {
@@ -563,6 +616,7 @@ describe("the check's registration", () => {
     // naming a place that says nothing.
     const releases = readRoot("docs/RELEASES.md");
 
+    expect(CHECKLIST_HEADING).toContain(RESET_RELEASE);
     expect(releases).toContain(`#### ${CHECKLIST_HEADING}`);
     expect(releases).toContain(RESET_RECORD_VERSION);
     expect(releases).toContain("npm run check:exchange-record-version");
