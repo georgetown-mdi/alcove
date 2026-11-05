@@ -876,7 +876,7 @@ describe("defaultRelayRefusalLine", () => {
       }),
     ).toBe(
       `The scheduled run on ${dateTimeLabel(new Date(REFUSED_AT))} ` +
-        "connected without the site's relay server. Too many exchanges from " +
+        "went ahead without the site's relay server. Too many exchanges from " +
         "your network are already set up on it. It said to try again after " +
         `${dateTimeLabel(new Date("2026-07-14T09:30:00.000Z"))}. Later runs ` +
         "try it again.",
@@ -892,7 +892,7 @@ describe("defaultRelayRefusalLine", () => {
         }),
       ).toBe(
         `The scheduled run on ${dateTimeLabel(new Date(REFUSED_AT))} ` +
-          "connected without the site's relay server. " +
+          "went ahead without the site's relay server. " +
           `${defaultRelayRefusalReason({ cause })} Later runs try it again.`,
       );
     },

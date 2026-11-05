@@ -512,7 +512,7 @@ export function heldAppUpdateLine(
 }
 
 /**
- * The run history's line for a scheduled run that connected without the
+ * The run history's line for a scheduled run that went ahead without the
  * site's relay server because its registrar did not enroll the exchange, or
  * `undefined` where the record holds none (docs/spec/MANAGED_EXCHANGE_RECORD.md,
  * the `defaultRelayRefusal` row).
@@ -531,7 +531,7 @@ export function defaultRelayRefusalLine(
             `${dateTimeLabel(new Date(at.getTime() + refusal.retryAfterSeconds * 1000))}.`,
         ];
   return [
-    `The scheduled run on ${dateTimeLabel(at)} connected without the site's ` +
+    `The scheduled run on ${dateTimeLabel(at)} went ahead without the site's ` +
       "relay server.",
     defaultRelayRefusalReason(refusal),
     ...wait,
