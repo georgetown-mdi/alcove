@@ -52,6 +52,14 @@ const WEBRTC_DIR = "test/integration/webrtc";
 // and hardened legs entirely.
 const BACKEND_AGNOSTIC_DIR = "test/integration/backendAgnostic";
 
+/**
+ * The unit project's per-test timeout, above vitest's 5 s default so a
+ * CPU-bound case still finishes when other suites share the machine.
+ * vitest.stryker.config.mts applies it to the mutation leg's run of the same
+ * tests.
+ */
+export const unitTestTimeoutMs = 10_000;
+
 export default defineConfig({
   test: {
     // Run-level, not per-project: vitest reads these once for the run rather
@@ -93,9 +101,7 @@ export default defineConfig({
           name: "unit",
           include: ["test/unit/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
           setupFiles: ["./test/terminalFailureReporter.setup.ts"],
-          // Above the default so a CPU-bound case still finishes when other
-          // suites share the machine.
-          testTimeout: 10_000,
+          testTimeout: unitTestTimeoutMs,
         },
       },
       {

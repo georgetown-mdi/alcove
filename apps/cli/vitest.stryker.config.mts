@@ -1,5 +1,7 @@
 import { configDefaults, defineConfig } from "vitest/config";
 
+import { unitTestTimeoutMs } from "./vitest.config.mts";
+
 // Vitest configuration for mutation testing the CLI (apps/cli/stryker.config.mjs)
 // only. Stryker roots vitest at the sandbox ROOT, so globs are
 // repository-root-relative, and the `projects` array of vitest.config.mts is
@@ -39,6 +41,9 @@ export default defineConfig({
     // Carry every setup file the unit project runs: a reporter one test leaves
     // behind fails the next file's fd 3 assertion.
     setupFiles: ["apps/cli/test/terminalFailureReporter.setup.ts"],
+    // Flattening `projects` drops the unit project's timeout, which would
+    // leave this run at vitest's 5 s default.
+    testTimeout: unitTestTimeoutMs,
     // Stryker's vitest runner forces the threads pool, where process.chdir
     // and process.umask throw and a worker's os.homedir() ignores a changed
     // process.env.HOME. Each file below calls chdir or umask, except

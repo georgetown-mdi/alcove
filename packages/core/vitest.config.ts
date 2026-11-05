@@ -1,5 +1,13 @@
 import { configDefaults, defineConfig } from "vitest/config";
 
+/**
+ * The unit project's per-test timeout, above vitest's 5 s default so a WASM
+ * round or heap measurement still finishes when other suites share the
+ * machine. vitest.stryker.config.ts applies it to the mutation leg's run of
+ * the same tests.
+ */
+export const unitTestTimeoutMs = 15_000;
+
 export default defineConfig({
   test: {
     // Run-level, not per-project: the reporter names every skipped test at the
@@ -42,9 +50,7 @@ export default defineConfig({
           // `npm run test:stress`. Extend (not replace) vitest's defaults so
           // node_modules/dist stay excluded.
           exclude: [...configDefaults.exclude, "test/stress/**"],
-          // Above the default so a WASM round or heap measurement still
-          // finishes when other suites share the machine.
-          testTimeout: 15_000,
+          testTimeout: unitTestTimeoutMs,
         },
       },
       {
