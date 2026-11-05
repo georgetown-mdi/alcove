@@ -400,7 +400,7 @@ describe("a record an earlier version stored", () => {
 describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
   test("rejects an unrecognized schemaVersion rather than migrating", () => {
     const record = buildManagedExchangeRecord(newExchange());
-    const future = { ...record, schemaVersion: "alcove-managed-exchange/v6" };
+    const future = { ...record, schemaVersion: "alcove-managed-exchange/v7" };
     const result = safeParseManagedExchangeRecord(future);
     expect(result.success).toBe(false);
     expect(() => parseManagedExchangeRecord(future)).toThrow();
@@ -411,7 +411,7 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     expect(
       storedRecordAheadOfThisBuild({
         ...record,
-        schemaVersion: "alcove-managed-exchange/v6",
+        schemaVersion: "alcove-managed-exchange/v7",
       }),
     ).toBe(true);
     for (const schemaVersion of [
@@ -426,9 +426,23 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     expect(storedRecordAheadOfThisBuild({ ...record, label: 7 })).toBe(false);
   });
 
-  test("accepts the recognized v5 schemaVersion", () => {
+  test("accepts the recognized v6 schemaVersion", () => {
     const record = buildManagedExchangeRecord(newExchange());
     expect(safeParseManagedExchangeRecord(record).success).toBe(true);
+  });
+
+  test("migrates a v5 record in memory, adding no default relay refusal", () => {
+    const record = buildManagedExchangeRecord(newExchange({ schedule }));
+    const { defaultRelayRefusal: _absent, ...rest } = record;
+    const stored = { ...rest, schemaVersion: "alcove-managed-exchange/v5" };
+    const kept = structuredClone(stored);
+
+    expect(stored).toHaveProperty("heldAppUpdate", NO_HELD_APP_UPDATE);
+    expect(parseManagedExchangeRecord(stored)).toEqual({
+      ...record,
+      defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
+    });
+    expect(stored).toEqual(kept);
   });
 
   test("migrates a v4 record in memory, adding no held app update and no default relay refusal", () => {
@@ -2265,7 +2279,7 @@ describe("diagnoseManagedExchangeRecord", () => {
     expect(() =>
       diagnoseManagedExchangeRecord({
         ...record,
-        schemaVersion: "alcove-managed-exchange/v6",
+        schemaVersion: "alcove-managed-exchange/v7",
       }),
     ).toThrow();
   });
@@ -2323,7 +2337,7 @@ describe("partitionReadableManagedExchanges", () => {
     const good = buildManagedExchangeRecord(newExchange({ label: "Good" }));
     const read = partitionReadableManagedExchanges(
       ["future", good.id],
-      [{ ...good, schemaVersion: "alcove-managed-exchange/v6" }, good],
+      [{ ...good, schemaVersion: "alcove-managed-exchange/v7" }, good],
     );
 
     expect(read.records.map((record) => record.id)).toEqual([good.id]);

@@ -74,7 +74,7 @@ import type { DisclosureChoice } from "../metadataEditing";
 import type { ZodType } from "zod";
 
 /**
- * The `schemaVersion` literal this build writes for the v5 record. A reader
+ * The `schemaVersion` literal this build writes for the v6 record. A reader
  * migrates an earlier version {@link MANAGED_EXCHANGE_MIGRATIONS} leads from
  * and refuses any other value. The literal moves for a member a build not
  * knowing it would read past and lose state by, such as the
@@ -83,17 +83,26 @@ import type { ZodType } from "zod";
  * later shape change is a new literal under a new version, never an existing
  * version holding speculative fields.
  */
-export const MANAGED_EXCHANGE_SCHEMA_VERSION = "alcove-managed-exchange/v5";
+export const MANAGED_EXCHANGE_SCHEMA_VERSION = "alcove-managed-exchange/v6";
 
-/** The step from the v4 record, which has no `heldAppUpdate` or
- * `defaultRelayRefusal`: a v4 build recorded neither for any window, so the
- * step adds the none form of each. */
+/** The step from the v4 record, which has no `heldAppUpdate`: a v4 build ran
+ * no window it recorded a held update for, so the step adds the none form. */
 const MANAGED_EXCHANGE_V4_TO_V5 = Object.freeze({
   from: "alcove-managed-exchange/v4",
-  to: MANAGED_EXCHANGE_SCHEMA_VERSION,
+  to: "alcove-managed-exchange/v5",
   migrate: (record: Record<string, unknown>) => ({
     ...record,
     heldAppUpdate: NO_HELD_APP_UPDATE,
+  }),
+});
+
+/** The step from the v5 record, which has no `defaultRelayRefusal`: a v5
+ * build recorded no refusal for any window, so the step adds the none form. */
+const MANAGED_EXCHANGE_V5_TO_V6 = Object.freeze({
+  from: "alcove-managed-exchange/v5",
+  to: MANAGED_EXCHANGE_SCHEMA_VERSION,
+  migrate: (record: Record<string, unknown>) => ({
+    ...record,
     defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
   }),
 });
@@ -109,7 +118,10 @@ export const MANAGED_EXCHANGE_MIGRATIONS: FormatMigrations<string> =
     fileName: "A saved exchange",
     versionField: "schemaVersion",
     current: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    steps: Object.freeze([MANAGED_EXCHANGE_V4_TO_V5]),
+    steps: Object.freeze([
+      MANAGED_EXCHANGE_V4_TO_V5,
+      MANAGED_EXCHANGE_V5_TO_V6,
+    ]),
     unchangedStatement: "The saved exchange was not changed.",
     failureRemedy:
       "Remove it from the list of saved exchanges, then import its backup " +
@@ -966,7 +978,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
  *
  * @param migrations the record's migrations; this build's by default.
  * @throws {FormatMigrationError} if a migration fails, naming its cause.
- * @throws {ZodError} if the value is not a valid v5 record.
+ * @throws {ZodError} if the value is not a valid v6 record.
  */
 export function parseManagedExchangeRecord(
   raw: unknown,
@@ -1049,7 +1061,7 @@ export function runnableManagedExchangeOrRefuse(
 }
 
 /**
- * A per-entry read of the stored list: the entries that parsed as v5 records, and
+ * A per-entry read of the stored list: the entries that parsed as v6 records, and
  * the stored keys of the entries that did not. The unreadable half is the STORED
  * KEY rather than the entry's own `id`, which a failed parse leaves untrusted --
  * the same reason the diagnostic read's unreadable marker holds the key (see
@@ -1129,7 +1141,7 @@ export interface ManagedExchangeDiagnosticEssentials {
  * {@link parseManagedExchangeRecord} throws here exactly as it would on the
  * strict read; the caller catches that to mark the entry unreadable.
  *
- * @throws {ZodError} if the value is not a valid v5 record.
+ * @throws {ZodError} if the value is not a valid v6 record.
  */
 export function diagnoseManagedExchangeRecord(
   raw: unknown,
@@ -1293,7 +1305,7 @@ export interface NewManagedExchange {
 
 /**
  * Build a complete {@link ManagedExchangeRecord} from the caller's fields: assign
- * a fresh `id` and the v5 `schemaVersion`, then validate the whole record through
+ * a fresh `id` and the v6 `schemaVersion`, then validate the whole record through
  * the schema so the label cap, the credential-free document, and the secret
  * format are enforced at write. The optional local fields are attached only when
  * present, so an absent policy is an omitted key rather than an explicit

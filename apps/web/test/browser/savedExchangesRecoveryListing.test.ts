@@ -278,7 +278,7 @@ describe("read-failed recovery listing", () => {
         page.getByText(
           "A saved exchange is format version alcove-managed-exchange/v3, " +
             "and this version of Alcove could not move it to version " +
-            "alcove-managed-exchange/v5: it has no migration from version " +
+            "alcove-managed-exchange/v6: it has no migration from version " +
             "alcove-managed-exchange/v3. The saved exchange was not changed. " +
             "Remove it from the list of saved exchanges, then import its " +
             "backup file or set the exchange up again with your partner.",
@@ -324,7 +324,7 @@ describe("read-failed recovery listing", () => {
       ...good,
       id: "zzz-later-record",
       label: "Lakeside annual",
-      schemaVersion: "alcove-managed-exchange/v6",
+      schemaVersion: "alcove-managed-exchange/v7",
     };
     await rawPut(later);
 
@@ -359,7 +359,7 @@ describe("read-failed recovery listing", () => {
     await rawPut({
       ...good,
       id: "zzz-later-record",
-      schemaVersion: "alcove-managed-exchange/v6",
+      schemaVersion: "alcove-managed-exchange/v7",
     });
     await rawPut({
       ...good,
@@ -390,7 +390,7 @@ describe("read-failed recovery listing", () => {
       ...first,
       id: "zzz-later-record",
       label: "Hidden newer exchange",
-      schemaVersion: "alcove-managed-exchange/v6",
+      schemaVersion: "alcove-managed-exchange/v7",
     });
     await expect(listManagedExchanges()).rejects.toThrow();
 

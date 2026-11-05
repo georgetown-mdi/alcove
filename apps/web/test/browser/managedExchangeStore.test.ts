@@ -1109,7 +1109,7 @@ describe("deposit persists a managed record of the party's side", () => {
 describe("reader rejects unknown on a store read", () => {
   test("a future schemaVersion in the store rejects rather than loading", async () => {
     const created = await createRunnableExchange(newExchange());
-    await rawPut({ ...created, schemaVersion: "alcove-managed-exchange/v6" });
+    await rawPut({ ...created, schemaVersion: "alcove-managed-exchange/v7" });
     await expect(getManagedExchange(created.id)).rejects.toThrow();
     await expect(listManagedExchanges()).rejects.toThrow();
   });
