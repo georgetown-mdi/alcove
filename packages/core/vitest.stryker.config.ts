@@ -1,5 +1,7 @@
 import { configDefaults, defineConfig } from "vitest/config";
 
+import { unitTestTimeoutMs } from "./vitest.config";
+
 // Vitest configuration for the mutation-testing leg ONLY
 // (scripts/stryker-security.mjs); no other run loads it. Two constraints force
 // a second config rather than a reuse of vitest.config.ts:
@@ -59,5 +61,8 @@ export default defineConfig({
   test: {
     include: ["packages/core/test/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
     exclude: [...configDefaults.exclude, "packages/core/test/stress/**"],
+    // Flattening `projects` drops the unit project's timeout, which would
+    // leave this run at vitest's 5 s default.
+    testTimeout: unitTestTimeoutMs,
   },
 });
