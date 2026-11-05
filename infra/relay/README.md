@@ -587,20 +587,24 @@ start: to turn it off, set it to `off` and
   - **Why 70.** It is derived from the rate limit above and the row's
     lifetime, not measured: (20 enrollments per 600 s window / 2
     enrollments per exchange) x (4200 s lifetime / 600 s window) = 10 x 7 =
-    70. An address at the rate limit sets up at most 10 exchanges in each
-    window, since an exchange costs at most two enrollments, the inviter's
-    and its partner's. A row lives 4200 s (70 minutes) whether its exchange
-    relays or not, which is seven windows, so such an address holds 70
-    unlapsed rows before its first lapses. The cap therefore refuses an
-    address only once it has run at the rate limit's full pace for the
-    whole of a row's life, and the many exchanges a facility sets up behind
-    one shared address are bounded by the rate limit, not by this cap. An
-    exchange holds one row whichever of its parties enrolls it. The
-    registrar computes the value from those constants
-    (`TOKENLESS_ENROLLMENTS_PER_WINDOW`,
+    70. The 2 counts the requests an exchange sends: the inviter's and its
+    partner's, each a run's one enrollment under the exchange's current
+    secret. The first creates the row and the second repeats its key, is
+    answered 200, and creates none, so an exchange holds one row whichever
+    of its parties enrolls it. A row lives 4200 s (70 minutes) whether its
+    exchange relays or not, which is seven windows. So 70 is the row count
+    an address reaches enrolling at the rate limit for a row's whole life
+    at two requests per exchange: 10 rows in each window, 70 in seven, with
+    none yet lapsed. An address whose every request creates a row, as when
+    each of its exchanges is enrolled from it by one party only, or each
+    request names a new id, creates 20 rows in a window and reaches 70 after
+    3.5 windows, 35 minutes. It is then refused (429) until its oldest rows
+    lapse, though it is within the rate limit. The registrar computes the
+    value from those constants (`TOKENLESS_ENROLLMENTS_PER_WINDOW`,
     `TOKENLESS_ENROLLMENTS_PER_EXCHANGE`, `TOKENLESS_LIFETIME_SECONDS`,
-    `TOKENLESS_WINDOW_SECONDS`), so it follows them. One address holds at
-    most 70 / 1800 of the ceiling below, about 3.9 percent.
+    `TOKENLESS_WINDOW_SECONDS`), so it follows them. For the default
+    ceiling below, 1800, one address holds at most 70 / 1800 of it, about
+    3.9 percent.
   - **IPv6.** The cap counts an IPv6 address as its /48, not its /64: a
     site is commonly assigned a /56 or a /48, so counting /64s would give
     one holder 256 to 65,536 caps. A site on IPv6 then shares one cap
@@ -657,10 +661,9 @@ start: to turn it off, set it to `off` and
     eleven minutes, so a flood holds at most about 1800 x 81 / 70, about
     2100, such rows in the table.
   - **The limit.** One address holds at most 70 rows (The cap on each
-    client, above), so filling the ceiling takes 26 client addresses, IPv4
-    addresses or IPv6 /48s (1800 / 70, about 25.7), fewer by the rows
-    legitimate use holds. Many
-    addresses can still fill it: then an enrollment without a token of a new
+    client, above), so filling the default ceiling takes 26 client
+    addresses, IPv4 addresses or IPv6 /48s (1800 / 70, about 25.7), fewer by
+    the rows legitimate use holds. Many addresses can still fill it: then an enrollment without a token of a new
     id is refused until rows lapse, up to 70 minutes, and a browser run that
     could not enroll dials without the default relay, by STUN alone. A run
     that never relays still holds a row, so legitimate use setting up more
