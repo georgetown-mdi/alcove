@@ -93,7 +93,7 @@ When the exchange finishes, the screen shows **Exchange complete** and the numbe
 - **Download record (safe to share)** - `alcove-record-<date>.json`, the exchange record.
 - **Download verification keys (keep private)** - `alcove-record-<date>.keys.json`, the keys that go with the record.
 
-Under the downloads, a note says the record is a shareable account of what you and your partner agreed to and what matched, and that the keys are private and belong with the record. Its **Verify page** link opens the Verify page in a new tab, leaving this page and its downloads in place.
+Under the downloads, a note says to check the record and keys later on the Verify page. Its **Verify page** link opens the Verify page in a new tab, leaving this page and its downloads in place.
 
 **Download what you need before you leave the page.** The results are kept only in this page. Closing the tab, or choosing **Set up another exchange**, discards them. Until you have downloaded each file, the page asks first and names the files you have not downloaded.
 
