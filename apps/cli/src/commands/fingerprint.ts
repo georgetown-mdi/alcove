@@ -17,7 +17,9 @@ import {
   redactAndDisplayPartyIdentity,
   redactAndRenderOperatorSuppliedText,
   sanitizeErrorForDisplay,
+  sanitizeForDisplay,
   serializeCertificate,
+  SIGNING_IDENTITY_VERSION,
   TEXT_CONTROL_CHAR_MESSAGE,
   TEXT_CONTROL_CHAR_PATTERN,
   TEXT_DIRECTION_MESSAGE,
@@ -36,6 +38,7 @@ import { declarePositionals } from "../util/positionals";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { warnOnIdentityDivergence } from "../signingIdentityDivergence";
 import {
+  IdentityFormatVersionError,
   loadSigningIdentity,
   saveSigningIdentity,
 } from "../signingIdentityFile";
@@ -304,12 +307,17 @@ export async function resolveSigningIdentity(
         : await loadSigningIdentity(input.identityPath);
   } catch (err) {
     if (!input.force) throw err;
+    // The refusal's own remedy is this --force run, so it is not repeated.
     input.log.warn(
       `the existing signing identity at ${redactAndRenderOperatorSuppliedText(
         operatorSuppliedText(input.identityPath),
-      )} could not be ` +
-        `read (${sanitizeErrorForDisplay(err)}); --force ` +
-        "regenerates it.",
+      )} ` +
+        (err instanceof IdentityFormatVersionError
+          ? "was written by another version of Alcove (its format is " +
+            `${sanitizeForDisplay(err.foundVersion)}, and this version ` +
+            `reads ${SIGNING_IDENTITY_VERSION}); --force replaces it.`
+          : `could not be read (${sanitizeErrorForDisplay(err)}); --force ` +
+            "regenerates it."),
     );
     replacingUnreadable = true;
   }

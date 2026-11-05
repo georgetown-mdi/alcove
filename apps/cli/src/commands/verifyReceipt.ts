@@ -85,6 +85,7 @@ import {
   exitWithError,
   worseReceiptVerdictExitCode,
 } from "../util/exit";
+import { firstIssue } from "../util/firstIssue";
 import { declarePositionals } from "../util/positionals";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
@@ -368,22 +369,6 @@ export function readVerificationKeysFile(pathValue: string): VerificationKeys {
     )} is not valid: ${firstIssue(err)}`;
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
-}
-
-/** @internal exported for testing */
-export function firstIssue(err: unknown): string {
-  const issues = (
-    err as { issues?: Array<{ path?: unknown[]; message: string }> }
-  ).issues;
-  if (Array.isArray(issues) && issues.length > 0) {
-    const issue = issues[0];
-    const at =
-      Array.isArray(issue.path) && issue.path.length > 0
-        ? `${issue.path.map((segment) => String(segment)).join(".")}: `
-        : "";
-    return `${at}${issue.message}`;
-  }
-  return err instanceof Error ? err.message : String(err);
 }
 
 // toRetainedResult and deriveOurIdColumn are browser-safe shaping helpers that

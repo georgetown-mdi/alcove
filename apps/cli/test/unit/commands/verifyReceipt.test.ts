@@ -49,7 +49,6 @@ import {
 import {
   builder,
   deriveOurIdColumn,
-  firstIssue,
   formatSignedRecordReport,
   formatVerificationReport,
   handler,
@@ -1033,16 +1032,6 @@ describe("toRetainedResult", () => {
       ["P0", "2", "x"],
       ["P2", "0", ""],
     ]);
-  });
-});
-
-describe("firstIssue", () => {
-  test("coerces a symbol path segment instead of throwing", () => {
-    const err = {
-      issues: [{ path: ["a", Symbol("b"), "c"], message: "invalid" }],
-    };
-    expect(() => firstIssue(err)).not.toThrow();
-    expect(firstIssue(err)).toBe("a.Symbol(b).c: invalid");
   });
 });
 

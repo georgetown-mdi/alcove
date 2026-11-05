@@ -15,6 +15,7 @@ import type { SigningCertificate, SigningIdentity } from "@alcove/core";
 
 import { warnIfFileOverPermissive, writeFileOwnerOnly } from "./fileUtils";
 import { parseSensitiveJson } from "./sensitiveFile";
+import { firstIssue } from "./util/firstIssue";
 
 // File custody for the long-lived signing identity (private key + self-signed
 // certificate), kept separate from the rotating key file (`.alcove.key`):
@@ -49,12 +50,70 @@ function readIdentityDocument(
   // JSON or version a loader goes on to reject was still read off disk, and it
   // holds the private key whether or not this process could make sense of it.
   warnIfFileOverPermissive(identityPath, "signing private key");
-  return {
-    document: parseSensitiveJson(
-      source,
-      messageWithOperatorText`signing identity at ${operatorSuppliedText(identityPath)}`,
-    ),
-  };
+  const document = parseSensitiveJson(
+    source,
+    messageWithOperatorText`signing identity at ${operatorSuppliedText(identityPath)}`,
+  );
+  const otherVersion = otherIdentityFormatVersion(document);
+  if (otherVersion !== undefined)
+    throw identityFormatVersionError(identityPath, otherVersion);
+  return { document };
+}
+
+// The identity format's version family, taken from the literal this build
+// reads so the two cannot drift apart.
+const IDENTITY_VERSION_FAMILY = SIGNING_IDENTITY_VERSION.slice(
+  0,
+  SIGNING_IDENTITY_VERSION.lastIndexOf("/") + 1,
+);
+
+// The label after the family that is named back to the operator. A longer or
+// stranger value is not what a release writes, so it takes the shape refusal.
+const VERSION_LABEL = /^[A-Za-z0-9._-]{1,32}$/;
+
+/**
+ * The version of a document that is a signing identity in another format of
+ * this family, or `undefined` for the current format and for anything that is
+ * not an identity file. Version numbers are not compared: the format counter
+ * can move down as well as up, so neither side is called the older.
+ */
+function otherIdentityFormatVersion(document: unknown): string | undefined {
+  if (document === null || typeof document !== "object") return undefined;
+  const version = (document as Record<string, unknown>)["version"];
+  if (typeof version !== "string" || version === SIGNING_IDENTITY_VERSION)
+    return undefined;
+  if (!version.startsWith(IDENTITY_VERSION_FAMILY)) return undefined;
+  return VERSION_LABEL.test(version.slice(IDENTITY_VERSION_FAMILY.length))
+    ? version
+    : undefined;
+}
+
+/**
+ * A signing identity file another version of Alcove wrote, in a format this
+ * build does not read. A usage error, so the CLI exits 64.
+ */
+export class IdentityFormatVersionError extends UsageError {
+  /** The format version the file states. */
+  readonly foundVersion: string;
+
+  constructor(message: string, foundVersion: string) {
+    super(message);
+    this.name = "IdentityFormatVersionError";
+    this.foundVersion = foundVersion;
+  }
+}
+
+function identityFormatVersionError(
+  identityPath: string,
+  foundVersion: string,
+): IdentityFormatVersionError {
+  const message = messageWithOperatorText`signing identity at ${operatorSuppliedText(
+    identityPath,
+  )} was written by another version of Alcove: its format is ${foundVersion}, and this version reads ${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --force' to replace it with a new identity: a new key with a new fingerprint, which every partner must re-pin before your receipts verify again.`;
+  return keepOperatorSuppliedText(
+    new IdentityFormatVersionError(message.text, foundVersion),
+    message,
+  );
 }
 
 function malformedIdentity(identityPath: string, err: unknown): UsageError {
@@ -62,9 +121,7 @@ function malformedIdentity(identityPath: string, err: unknown): UsageError {
   // is kept.
   const message = messageWithOperatorText`signing identity at ${operatorSuppliedText(
     identityPath,
-  )} is malformed or unsupported: ${
-    err instanceof Error ? err.message : String(err)
-  }`;
+  )} is malformed or unsupported: ${firstIssue(err)}`;
   return keepOperatorSuppliedText(new UsageError(message.text), message);
 }
 
@@ -72,7 +129,9 @@ function malformedIdentity(identityPath: string, err: unknown): UsageError {
  * Load and validate the signing identity at `identityPath`. Resolves
  * `undefined` if the file does not exist (so a caller can lazily create it).
  * Rejects with a {@link UsageError} on a malformed, unreadable, or inconsistent
- * file -- the same exit-64 classification a malformed key file gets. Warns
+ * file -- the same exit-64 classification a malformed key file gets -- and
+ * with its {@link IdentityFormatVersionError} subclass on a file another
+ * version of Alcove wrote in a different format. Warns
  * (advisory) if the file is readable by other users. Validation reaches
  * `crypto.subtle`, so the load is asynchronous; the file read itself is not.
  *
