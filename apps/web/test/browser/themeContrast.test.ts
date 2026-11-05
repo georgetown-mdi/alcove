@@ -78,7 +78,8 @@ const PrimaryActionIcon = ActionIcon as unknown as ComponentType<{
 //    primitives routed through --ai-color / --button-color /
 //    --checkbox-icon-color. The ActionIcon glyph is checked filled (4.5:1
 //    text) and variant="light" (1.4.11's 3:1, an uncustomized Mantine color).
-//    The focus ring and input border stay in the unit test.
+//    The focus ring and input border stay in the unit test. The Button label
+//    and ActionIcon glyph are also read hovered and pressed.
 //  - Resolver-owned tokens (theme.ts cssVariablesResolver): dimmed,
 //    placeholder, error, and the yellow/red/green light-variant status text.
 //    Each case pins the exact resolved token color as well as the AA floor,
@@ -116,6 +117,15 @@ const STATUS_TEXT = {
     red: "rgb(255, 245, 245)",
     green: "rgb(235, 251, 238)",
   },
+} as const;
+
+// The filled-primary fill at rest and under the pointer, per scheme. Light rests
+// on cyan-9 and hovers on theme.ts's FILLED_PRIMARY_HOVER (Mantine's own cyan-8
+// hover carries white text at 4.35:1); dark rests on cyan-6 and hovers on
+// Mantine's cyan-7 under black text.
+const FILLED_PRIMARY_FILL = {
+  light: { rest: "rgb(11, 114, 133)", hover: "rgb(9, 97, 113)" },
+  dark: { rest: "rgb(21, 170, 191)", hover: "rgb(16, 152, 173)" },
 } as const;
 
 afterEach(app.unmount);
@@ -300,9 +310,8 @@ describe("rendered filled-primary contrast (WCAG 2.1 AA)", () => {
   }
 
   // Exercises the de-flake mechanism directly: forces the stale-hover state on
-  // the light button, where the hover fill (cyan-8) renders a lower contrast
-  // than the resting fill (cyan-9), then proves restingBackground moves the
-  // pointer off, clears :hover, and reads a resting fill clearing AA.
+  // the light button, then proves restingBackground moves the pointer off,
+  // clears :hover, and reads the resting fill rather than the hover fill.
   test("restingBackground clears a stale hover before measuring", async () => {
     app.render(createElement(FilledButton, null, "Continue"), {
       forceColorScheme: "light",
@@ -313,18 +322,12 @@ describe("rendered filled-primary contrast (WCAG 2.1 AA)", () => {
       .toBe("rgb(255, 255, 255)");
     await userEvent.hover(btn);
     await expect.poll(() => btn.matches(":hover")).toBe(true);
-    const hoverContrast = contrast(
-      getComputedStyle(btn).color,
-      getComputedStyle(btn).backgroundColor,
-    );
+    await expect
+      .poll(() => getComputedStyle(btn).backgroundColor)
+      .toBe(FILLED_PRIMARY_FILL.light.hover);
     const backgroundColor = await restingBackground(btn);
     expect(btn.matches(":hover")).toBe(false);
-    const { color } = getComputedStyle(btn);
-    const restingContrast = contrast(color, backgroundColor);
-    // The hover state is the one the cases above must avoid sampling; resting must
-    // clear the floor and read brighter than the hover fill it replaced.
-    expect(restingContrast).toBeGreaterThanOrEqual(4.5);
-    expect(restingContrast).toBeGreaterThan(hoverContrast);
+    expect(backgroundColor).toBe(FILLED_PRIMARY_FILL.light.rest);
   });
 
   // A filled-primary Button rendered as an anchor (component={Link} in the
@@ -352,6 +355,75 @@ describe("rendered filled-primary contrast (WCAG 2.1 AA)", () => {
     expect(color).not.toBe(backgroundColor);
     expect(contrast(color, backgroundColor)).toBeGreaterThanOrEqual(4.5);
   });
+});
+
+describe("filled-primary contrast in each interaction state (WCAG 2.1 AA)", () => {
+  // WCAG 1.4.3 holds in every state a control shows, so each filled surface the
+  // theme colours is read at rest, under the pointer, held with Space, and held
+  // with Space under the pointer. A held press repaints nothing of its own on a
+  // pointer device: it shows the resting fill, or the hover fill under the
+  // pointer. Mantine's touch-screen press paints the hover fill too, under
+  // `hover: none`, which this runner does not emulate.
+  const surfaces = [
+    {
+      name: "button label",
+      render: () => createElement(FilledButton, null, "Start the exchange"),
+      rootSelector: ".mantine-Button-root",
+      textOf: (root: HTMLElement) => getComputedStyle(root).color,
+    },
+    {
+      name: "action-icon glyph",
+      render: () =>
+        createElement(
+          PrimaryActionIcon,
+          { "aria-label": "copy" },
+          createElement(IconCopy),
+        ),
+      rootSelector: ".mantine-ActionIcon-root",
+      textOf: (root: HTMLElement) => {
+        const glyph = root.querySelector("svg");
+        if (glyph === null) throw new Error("action icon has no glyph");
+        return getComputedStyle(glyph).stroke;
+      },
+    },
+  ];
+  const states = [
+    { name: "at rest", hovered: false, pressed: false },
+    { name: "hovered", hovered: true, pressed: false },
+    { name: "pressed", hovered: false, pressed: true },
+    { name: "pressed under the pointer", hovered: true, pressed: true },
+  ];
+
+  for (const scheme of ["light", "dark"] as const)
+    for (const surface of surfaces)
+      for (const state of states)
+        test(`${surface.name} ${state.name} (${scheme})`, async () => {
+          app.render(surface.render(), { forceColorScheme: scheme });
+          const root = await waitForEl(surface.rootSelector);
+          await restingBackground(root);
+          if (state.hovered) {
+            await userEvent.hover(root);
+            await expect.poll(() => root.matches(":hover")).toBe(true);
+          }
+          if (state.pressed) {
+            root.focus();
+            await userEvent.keyboard("{Space>}");
+            await expect.poll(() => root.matches(":active")).toBe(true);
+          }
+          try {
+            const fill = FILLED_PRIMARY_FILL[scheme];
+            await expect
+              .poll(() => getComputedStyle(root).backgroundColor)
+              .toBe(state.hovered ? fill.hover : fill.rest);
+            const ratio = contrast(
+              surface.textOf(root),
+              getComputedStyle(root).backgroundColor,
+            );
+            expect(ratio, `${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+          } finally {
+            if (state.pressed) await userEvent.keyboard("{/Space}");
+          }
+        });
 });
 
 describe("rendered resolver-owned token contrast (WCAG 2.1 AA)", () => {
