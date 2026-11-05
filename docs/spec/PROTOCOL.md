@@ -696,7 +696,7 @@ Under a declared width a record can hold several values for one key, which falsi
   - The receiver looks up the value each matched sender value pairs with in an `Int32Array` indexed by the sender's value id.
   - The sender builds its index table as an `Int32Array`. The receiver keeps a ragged table's cell offsets as `Float64` once they pass an `Int32`.
   - The per-value JavaScript arrays, the distinct values, the setup's permutation and the matched value ids, hold up to 2^27 elements, above the set maximum.
-  - Limit: the partner rows paired with one row of a both-sided table are held in one `Set` (`assertPartnerPairTable`, `packages/core/src/utils/partnerIndices.ts`), so a table pairing more than 16,777,216 partner rows with one row stops the run with a `RangeError`.
+  - Limit: the partner rows paired with one row of a both-sided table are held in one `Set` (`assertPartnerPairTable`, `packages/core/src/utils/partnerIndices.ts`), so a party refuses a table pairing more than 16,777,216 partner rows with one of its rows (`MAX_PARTNER_ROWS_OF_ONE_ROW`) before it fills the `Set`, with a usage error (exit 64) stating that a linkage key matching almost every record causes this and asking for new terms without that key. Over WebRTC the value-slot budget, `MAX_SINGLE_PASS_CELLS`, holds the partner to fewer rows than that, so only a file-sync run reaches the refusal.
 
   Each structure was driven to 2^24 + 1 entries on 2026-11-04, one process a case under a 16 GiB heap, in a 10-core arm64 Linux container with 23 GB of memory (Node 26.13), and each completed (`packages/core/test/stress/singlePassPastMapLimit.stress.test.ts`, `npm run test:stress -w packages/core`):
 
