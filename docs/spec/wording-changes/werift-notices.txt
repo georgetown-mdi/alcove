@@ -1,0 +1,1 @@
+- - -> Both images carry them, with `NOTICE` and `NOTICE-os-packages.md`, in `/app/`.
