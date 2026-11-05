@@ -257,9 +257,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     });
     expect(out).toContain("    reference: MOU-2026-0001\n");
     expect(out).toContain("    stated purpose: Not stated\n");
-    expect(out).toContain(
-      "    agreement valid through: No expiration date stated\n",
-    );
+    expect(out).toContain("    agreement valid through: Not stated\n");
     expect(out).not.toContain("undefined");
   });
 

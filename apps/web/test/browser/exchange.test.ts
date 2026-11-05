@@ -1738,6 +1738,15 @@ describe("inviter screen", () => {
       .element(page.getByLabelText("Agreement reference"))
       .toBeVisible();
     expect(document.querySelector(".mantine-Alert-root")).toBeNull();
+    await expect
+      .element(page.getByLabelText("Agreement reference"))
+      .toBeRequired();
+    await expect
+      .element(page.getByLabelText("Purpose of the disclosure"))
+      .not.toBeRequired();
+    await expect
+      .element(page.getByLabelText("Expiration date"))
+      .not.toBeRequired();
     await userEvent.fill(
       page.getByLabelText("Agreement reference"),
       "MOU-2025-0042",

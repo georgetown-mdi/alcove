@@ -127,7 +127,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -269,7 +269,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -408,7 +408,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -554,7 +554,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -728,7 +728,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -905,7 +905,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1084,7 +1084,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1263,7 +1263,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1404,7 +1404,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1571,7 +1571,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:06.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": false,
@@ -1755,7 +1755,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:07.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": true,
@@ -1952,7 +1952,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-02-03T14:20:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -2152,7 +2152,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-02-03T14:20:01.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -2352,7 +2352,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-02-04T08:45:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,

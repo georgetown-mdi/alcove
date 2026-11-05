@@ -1331,7 +1331,7 @@ describe("InvitationTerms: always-visible egress and legal-agreement facts, tier
     );
     expect(el.textContent).toContain("Reference: MOU-2025-0042");
     expect(el.textContent).toContain("Stated purpose: Audit and evaluation");
-    expect(el.textContent).toContain("Agreement valid through 2027-12-31");
+    expect(el.textContent).toContain("Agreement valid through: 2027-12-31");
 
     // The promoted block IS the whole of the agreement: it is not also duplicated
     // inside the "Other details" disclosure (structure, not styling).
@@ -1346,9 +1346,7 @@ describe("InvitationTerms: always-visible egress and legal-agreement facts, tier
     const el = group("Legal agreement").element();
     expect(el.textContent).toContain("Reference: MOU-2025-0042");
     expect(el.textContent).toContain("Stated purpose: Not stated");
-    expect(el.textContent).toContain(
-      "Agreement valid through: No expiration date stated",
-    );
+    expect(el.textContent).toContain("Agreement valid through: Not stated");
     expect(el.textContent).not.toContain("undefined");
   });
 

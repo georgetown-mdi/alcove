@@ -193,22 +193,20 @@ export interface InvitationLegalAgreementSummary {
   reference: Displayable;
   /** Stated purpose of the disclosure, sanitized for display; undefined when
    * the agreement states none, which a display shows as
-   * {@link LEGAL_AGREEMENT_PURPOSE_NOT_STATED}. */
+   * {@link LEGAL_AGREEMENT_FIELD_NOT_STATED}. */
   purpose: Displayable | undefined;
   /**
    * ISO 8601 date (YYYY-MM-DD) after which the exchange is refused, sanitized
    * even though the `z.iso` schema already rejects deceptive characters;
    * undefined when the agreement states none, which a display shows as
-   * {@link LEGAL_AGREEMENT_EXPIRY_NOT_STATED}.
+   * {@link LEGAL_AGREEMENT_FIELD_NOT_STATED}.
    */
   expirationDate: Displayable | undefined;
 }
 
-/** What every display shows for a legal agreement that states no purpose. */
-export const LEGAL_AGREEMENT_PURPOSE_NOT_STATED = "Not stated";
-
-/** What every display shows for a legal agreement that states no expiry. */
-export const LEGAL_AGREEMENT_EXPIRY_NOT_STATED = "No expiration date stated";
+/** What every display shows for a purpose or expiry the agreement does not
+ * state. */
+export const LEGAL_AGREEMENT_FIELD_NOT_STATED = "Not stated";
 
 /** The optional data columns the inviter declares, with names sanitized. */
 interface InvitationPayloadSummary {

@@ -540,8 +540,8 @@ export function diffLinkageTerms(
   // a clause: a slot too small divides among the values rather than deleting
   // the expiry. The purpose is shown only where the two sides differ in it, so
   // its width is spent only on a line it explains.
-  // An absent purpose or expiry is fixed copy, the wording every consent
-  // display uses, so the width budget never truncates it.
+  // An absent purpose or expiry is a fixed span of its own, so the width
+  // budget never truncates it.
   const renderAgreement = (
     la: LinkageTerms["legalAgreement"],
     withPurpose: boolean,
@@ -554,15 +554,15 @@ export function diffLinkageTerms(
         : reconcileDiffBareValue(la.expirationDate);
     if (!withPurpose)
       return expiry === undefined
-        ? reconcileClause`${reference} (expires No expiration date stated)`
+        ? reconcileClause`${reference} (no expiration date stated)`
         : reconcileClause`${reference} (expires ${expiry})`;
     if (la.purpose === undefined)
       return expiry === undefined
-        ? reconcileClause`${reference} (expires No expiration date stated, purpose Not stated)`
-        : reconcileClause`${reference} (expires ${expiry}, purpose Not stated)`;
+        ? reconcileClause`${reference} (no expiration date stated, no purpose stated)`
+        : reconcileClause`${reference} (expires ${expiry}, no purpose stated)`;
     const purpose = reconcileDiffValue(la.purpose);
     return expiry === undefined
-      ? reconcileClause`${reference} (expires No expiration date stated, purpose ${purpose})`
+      ? reconcileClause`${reference} (no expiration date stated, purpose ${purpose})`
       : reconcileClause`${reference} (expires ${expiry}, purpose ${purpose})`;
   };
   if (

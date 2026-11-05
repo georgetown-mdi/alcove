@@ -947,9 +947,7 @@ describe("acceptor screen: consent-step legal-agreement display", () => {
     expect(fieldset?.textContent).toContain(
       "Stated purpose of the disclosure: Not stated",
     );
-    expect(fieldset?.textContent).toContain(
-      "Expiration date: No expiration date stated",
-    );
+    expect(fieldset?.textContent).toContain("Expiration date: Not stated");
     expect(fieldset?.textContent).not.toContain("undefined");
     expect(fieldset?.textContent).not.toContain("shown as escape codes");
   });

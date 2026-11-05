@@ -78,6 +78,7 @@ export function AgreementTab({
           <TextInput
             ref={referenceRef}
             label="Agreement reference"
+            required
             placeholder="MOU-2025-0042"
             value={agreement.reference}
             maxLength={MAX_NAME_LENGTH}

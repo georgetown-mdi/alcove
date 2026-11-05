@@ -1139,7 +1139,7 @@ describe("serialize / parse", () => {
 
   test("parseExchangeRecord rejects an unrecognized version", async () => {
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
-    const bumped = { ...record, version: "alcove-exchange-record/v12" };
+    const bumped = { ...record, version: "alcove-exchange-record/v13" };
     expect(() => parseExchangeRecord(bumped)).toThrow();
   });
 
@@ -1269,6 +1269,14 @@ describe("serialize / parse", () => {
     const v10 = { ...record, version: "alcove-exchange-record/v10" };
     expect(() => parseExchangeRecord(v10)).toThrow(
       /format version alcove-exchange-record\/v10,|"version"/,
+    );
+  });
+
+  test("parseExchangeRecord refuses a record written before the agreement's purpose and expiry became omittable", async () => {
+    const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
+    const v11 = { ...record, version: "alcove-exchange-record/v11" };
+    expect(() => parseExchangeRecord(v11)).toThrow(
+      /format version alcove-exchange-record\/v11,|"version"/,
     );
   });
 

@@ -8,8 +8,7 @@ import {
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
   displayText,
   InternalConsistencyError,
-  LEGAL_AGREEMENT_EXPIRY_NOT_STATED,
-  LEGAL_AGREEMENT_PURPOSE_NOT_STATED,
+  LEGAL_AGREEMENT_FIELD_NOT_STATED,
   LESS_CERTAIN_KEY_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   PROPOSED_NOT_APPLIED_NOTES,
@@ -1084,10 +1083,10 @@ export function displayInvitation(params: {
     // sanitized but never vetted -- only byte-compared against this party's own copy
     // at exchange time -- so the label marks it as partner-attested.
     emit(
-      `    stated purpose: ${summary.legalAgreement.purpose ?? LEGAL_AGREEMENT_PURPOSE_NOT_STATED}`,
+      `    stated purpose: ${summary.legalAgreement.purpose ?? LEGAL_AGREEMENT_FIELD_NOT_STATED}`,
     );
     emit(
-      `    agreement valid through: ${summary.legalAgreement.expirationDate ?? LEGAL_AGREEMENT_EXPIRY_NOT_STATED}`,
+      `    agreement valid through: ${summary.legalAgreement.expirationDate ?? LEGAL_AGREEMENT_FIELD_NOT_STATED}`,
     );
   }
 

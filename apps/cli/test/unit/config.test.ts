@@ -9,8 +9,6 @@ import {
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   getDefaultLinkageTerms,
-  LEGAL_AGREEMENT_EXPIRY_NOT_STATED,
-  LEGAL_AGREEMENT_PURPOSE_NOT_STATED,
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_NESTING_DEPTH,
@@ -2344,10 +2342,27 @@ describe("diffLinkageTerms", () => {
     const { conflicts } = diffLinkageTerms(existing, incoming);
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0].existing).toBe(
-      `"MOU-1" (expires ${LEGAL_AGREEMENT_EXPIRY_NOT_STATED}, purpose ${LEGAL_AGREEMENT_PURPOSE_NOT_STATED})`,
+      '"MOU-1" (no expiration date stated, no purpose stated)',
     );
     expect(conflicts[0].incoming).toBe(
       '"MOU-1" (expires 2030-01-01, purpose "Program evaluation")',
+    );
+
+    const purposeDiffers = diffLinkageTerms(
+      {
+        ...existing,
+        legalAgreement: { reference: "MOU-1", expirationDate: "2030-01-01" },
+      },
+      {
+        ...incoming,
+        legalAgreement: { reference: "MOU-1", purpose: "Program evaluation" },
+      },
+    ).conflicts;
+    expect(purposeDiffers[0].existing).toBe(
+      '"MOU-1" (expires 2030-01-01, no purpose stated)',
+    );
+    expect(purposeDiffers[0].incoming).toBe(
+      '"MOU-1" (no expiration date stated, purpose "Program evaluation")',
     );
 
     // Purpose the same on both sides: only the expiry is shown.
@@ -2356,9 +2371,7 @@ describe("diffLinkageTerms", () => {
       expirationDate: "2030-01-01",
     };
     const expiryOnly = diffLinkageTerms(existing, incoming).conflicts;
-    expect(expiryOnly[0].existing).toBe(
-      `"MOU-1" (expires ${LEGAL_AGREEMENT_EXPIRY_NOT_STATED})`,
-    );
+    expect(expiryOnly[0].existing).toBe('"MOU-1" (no expiration date stated)');
     expect(expiryOnly[0].incoming).toBe('"MOU-1" (expires 2030-01-01)');
   });
 
