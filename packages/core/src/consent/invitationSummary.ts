@@ -191,14 +191,22 @@ const AT_LEAST_TWO_CHARACTERS_FILTER_DESCRIPTION = `Keeps only values of ${AT_LE
 export interface InvitationLegalAgreementSummary {
   /** Agreement identifier (e.g. "MOU-2025-0042"), sanitized for display. */
   reference: Displayable;
-  /** Stated purpose of the disclosure, sanitized for display. */
-  purpose: Displayable;
+  /** Stated purpose of the disclosure, sanitized for display; undefined when
+   * the agreement states none, which a display shows as
+   * {@link LEGAL_AGREEMENT_FIELD_NOT_STATED}. */
+  purpose: Displayable | undefined;
   /**
    * ISO 8601 date (YYYY-MM-DD) after which the exchange is refused, sanitized
-   * even though the `z.iso` schema already rejects deceptive characters.
+   * even though the `z.iso` schema already rejects deceptive characters;
+   * undefined when the agreement states none, which a display shows as
+   * {@link LEGAL_AGREEMENT_FIELD_NOT_STATED}.
    */
-  expirationDate: Displayable;
+  expirationDate: Displayable | undefined;
 }
+
+/** What every display shows for a purpose or expiry the agreement does not
+ * state. */
+export const LEGAL_AGREEMENT_FIELD_NOT_STATED = "Not stated";
 
 /** The optional data columns the inviter declares, with names sanitized. */
 interface InvitationPayloadSummary {
@@ -1458,12 +1466,17 @@ export function summarizeInvitation(
     summary.builtInRuleChoice = builtInRuleChoice;
 
   if (terms.legalAgreement !== undefined) {
+    const { reference, purpose, expirationDate } = terms.legalAgreement;
     summary.legalAgreement = {
-      reference: redactAndSanitizeForDisplay(terms.legalAgreement.reference),
-      purpose: redactAndSanitizeForDisplay(terms.legalAgreement.purpose),
-      expirationDate: redactAndSanitizeForDisplay(
-        terms.legalAgreement.expirationDate,
-      ),
+      reference: redactAndSanitizeForDisplay(reference),
+      purpose:
+        purpose === undefined
+          ? undefined
+          : redactAndSanitizeForDisplay(purpose),
+      expirationDate:
+        expirationDate === undefined
+          ? undefined
+          : redactAndSanitizeForDisplay(expirationDate),
     };
   }
 

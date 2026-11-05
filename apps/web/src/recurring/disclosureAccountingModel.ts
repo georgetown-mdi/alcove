@@ -24,6 +24,7 @@
  */
 
 import {
+  LEGAL_AGREEMENT_FIELD_NOT_STATED,
   displayPartyIdentity,
   displayText,
   recordFileStamp,
@@ -287,10 +288,12 @@ export function disclosureFacts(
     ),
     optionalFact(
       "Purpose of the disclosure",
-      governance.legalAgreement === undefined
+      governance.legalAgreement?.purpose === undefined
         ? undefined
         : sanitizeForDisplay(governance.legalAgreement.purpose),
-      NOT_RECORDED,
+      governance.legalAgreement === undefined
+        ? NOT_RECORDED
+        : LEGAL_AGREEMENT_FIELD_NOT_STATED,
     ),
     fact("What was disclosed", ALGORITHM_DISCLOSURE[governance.algorithm]),
     {

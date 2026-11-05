@@ -127,7 +127,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -269,7 +269,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -408,7 +408,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -554,7 +554,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -728,7 +728,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -741,6 +741,181 @@
             "reference": "DUA-2026-0007",
             "purpose": "Audit and evaluation of the State tutoring program",
             "expirationDate": "2031-01-15"
+          },
+          "matchingBasis": [
+            {
+              "name": "dob",
+              "type": "date_of_birth"
+            },
+            {
+              "name": "last",
+              "type": "last_name"
+            },
+            {
+              "name": "ssn4",
+              "type": "ssn4"
+            }
+          ],
+          "payloadSent": [],
+          "payloadReceived": [],
+          "matching": {
+            "localDeduplicate": false,
+            "partnerDeduplicate": false,
+            "cardinality": "one-to-one"
+          }
+        },
+        "recordsExposed": 8,
+        "resultSize": 3,
+        "bindingNonce": "QEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEA",
+        "commitments": {
+          "localPayloadSent": "5_HE4S53vwXtj80S-mc2I01DbK1PG8WPNPd-KrEdNoU",
+          "partnerPayloadReceived": "-EcX5Jw-IhN6XGxEJagYpGCrP60hMDggvHULEsv85gM"
+        }
+      },
+      "keys": {
+        "version": "alcove-exchange-keys/v2",
+        "salts": {
+          "localPayloadSent": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE",
+          "partnerPayloadReceived": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI"
+        }
+      }
+    },
+    {
+      "name": "legal-agreement-reference-only",
+      "description": "The count-only exchange above under a legal agreement that names only its reference, stating no purpose and no expiration date. Pins that the record's legalAgreement holds the reference alone, with purpose and expirationDate omitted rather than written empty, across implementations.",
+      "inputs": {
+        "localTerms": {
+          "version": "1.0.0",
+          "identity": "Party A",
+          "date": "2025-01-01",
+          "algorithm": "psi-c",
+          "linkageStrategy": "cascade",
+          "output": {
+            "expectsOutput": true,
+            "shareWithPartner": true
+          },
+          "deduplicate": false,
+          "linkageFields": [
+            {
+              "name": "last",
+              "type": "last_name"
+            },
+            {
+              "name": "dob",
+              "type": "date_of_birth"
+            },
+            {
+              "name": "ssn4",
+              "type": "ssn4"
+            },
+            {
+              "name": "email",
+              "type": "email_address"
+            }
+          ],
+          "linkageKeys": [
+            {
+              "name": "NAME_DOB_SSN4",
+              "elements": [
+                {
+                  "field": "last"
+                },
+                {
+                  "field": "dob"
+                },
+                {
+                  "field": "ssn4"
+                }
+              ]
+            }
+          ],
+          "legalAgreement": {
+            "reference": "DUA-2026-0007"
+          }
+        },
+        "partnerTerms": {
+          "version": "1.0.0",
+          "identity": "Party B",
+          "date": "2025-01-01",
+          "algorithm": "psi-c",
+          "linkageStrategy": "cascade",
+          "output": {
+            "expectsOutput": true,
+            "shareWithPartner": true
+          },
+          "deduplicate": false,
+          "linkageFields": [
+            {
+              "name": "last",
+              "type": "last_name"
+            },
+            {
+              "name": "dob",
+              "type": "date_of_birth"
+            },
+            {
+              "name": "ssn4",
+              "type": "ssn4"
+            },
+            {
+              "name": "email",
+              "type": "email_address"
+            }
+          ],
+          "linkageKeys": [
+            {
+              "name": "NAME_DOB_SSN4",
+              "elements": [
+                {
+                  "field": "last"
+                },
+                {
+                  "field": "dob"
+                },
+                {
+                  "field": "ssn4"
+                }
+              ]
+            }
+          ],
+          "legalAgreement": {
+            "reference": "DUA-2026-0007"
+          }
+        },
+        "contributedLinkageFields": ["last", "dob", "ssn4", "email"],
+        "resultSize": 3,
+        "localPayloadSent": {
+          "columns": [],
+          "rows": []
+        },
+        "partnerPayloadReceived": {
+          "columns": [],
+          "rows": []
+        },
+        "createdAt": "2026-01-02T03:04:05.000Z",
+        "outcome": "completed",
+        "certificateMismatchObserved": false,
+        "recordsExposed": 8
+      },
+      "randomness": {
+        "bindingNonce": "QEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEA",
+        "salts": {
+          "localPayloadSent": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE",
+          "partnerPayloadReceived": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI"
+        }
+      },
+      "record": {
+        "version": "alcove-exchange-record/v12",
+        "createdAt": "2026-01-02T03:04:05.000Z",
+        "outcome": "completed",
+        "certificateMismatchObserved": false,
+        "termsHash": "jdDGQYzQetTqI7FNgxFnoIGn-_lOq_17pbGSz013GT4",
+        "localIdentity": "Party A",
+        "partnerIdentity": "Party B",
+        "governance": {
+          "algorithm": "psi-c",
+          "legalAgreement": {
+            "reference": "DUA-2026-0007"
           },
           "matchingBasis": [
             {
@@ -909,7 +1084,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1088,7 +1263,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1229,7 +1404,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1396,7 +1571,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:06.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": false,
@@ -1580,7 +1755,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-01-02T03:04:07.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": true,
@@ -1777,7 +1952,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-02-03T14:20:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1977,7 +2152,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-02-03T14:20:01.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -2177,7 +2352,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v11",
+        "version": "alcove-exchange-record/v12",
         "createdAt": "2026-02-04T08:45:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,

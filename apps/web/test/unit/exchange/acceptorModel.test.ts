@@ -721,8 +721,20 @@ describe("acceptor legal-agreement display", () => {
         },
       }),
     );
-    expect(display?.purpose.length).toBeLessThan(1000);
+    expect(display?.purpose?.length).toBeLessThan(1000);
     expect(display?.alteredForDisplay).toBe(true);
+  });
+
+  test("an agreement naming only its reference leaves purpose and expiry undefined", () => {
+    const display = acceptorLegalAgreementDisplay(
+      makeToken({ legalAgreement: { reference: "MOU-2025-0042" } }),
+    );
+    expect(display).toEqual({
+      reference: "MOU-2025-0042",
+      purpose: undefined,
+      expirationDate: undefined,
+      alteredForDisplay: false,
+    });
   });
 
   test("an invitation without an agreement yields no display", () => {

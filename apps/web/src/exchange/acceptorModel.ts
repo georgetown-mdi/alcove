@@ -438,10 +438,12 @@ export function acceptorNameProblem(name: string): string | undefined {
 interface AcceptorLegalAgreementDisplay {
   /** Agreement identifier, sanitized for display. */
   reference: string;
-  /** Stated purpose of the disclosure, sanitized for display. */
-  purpose: string;
-  /** Expiration date (ISO 8601, YYYY-MM-DD), sanitized for display. */
-  expirationDate: string;
+  /** Stated purpose of the disclosure, sanitized for display; undefined when
+   * the agreement states none. */
+  purpose: string | undefined;
+  /** Expiration date (ISO 8601, YYYY-MM-DD), sanitized for display; undefined
+   * when the agreement states none. */
+  expirationDate: string | undefined;
   /**
    * True when the displayed value does not match the authored value exactly:
    * sanitizeForDisplay escaped a code point outside plain ASCII or truncated a

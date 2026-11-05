@@ -1062,8 +1062,8 @@ describe("serialize / parse", () => {
   test("a record holding a legal-agreement purpose round-trips intact", async () => {
     // baseInputs.localTerms (termsA) has no legalAgreement, so the round-trip
     // above never exercises the parser against a record with a purpose. Build
-    // from the governance-bearing terms so parseExchangeRecord validates the
-    // mandatory purpose -- a regression dropping it from RecordLegalAgreementSchema
+    // from the governance-bearing terms so parseExchangeRecord validates a
+    // stated purpose -- a regression dropping it from RecordLegalAgreementSchema
     // would appear here.
     const { record } = await buildExchangeRecord(
       {
@@ -1080,6 +1080,30 @@ describe("serialize / parse", () => {
     expect(parsed.governance.legalAgreement?.purpose).toBe(
       "Care coordination for co-enrolled patients",
     );
+  });
+
+  test("a legal agreement naming only its reference is recorded without a purpose or expiry", async () => {
+    const referenceOnly = {
+      ...termsWithGovernance,
+      legalAgreement: { reference: "MOU-2025-0042" },
+    };
+    const { record } = await buildExchangeRecord(
+      {
+        ...baseInputs,
+        localTerms: referenceOnly,
+        contributedLinkageFields: everyDeclaredField(referenceOnly),
+      },
+      fixedRandomness,
+    );
+    expect(record.governance.legalAgreement).toEqual({
+      reference: "MOU-2025-0042",
+    });
+    expect(Object.keys(record.governance.legalAgreement!)).toEqual([
+      "reference",
+    ]);
+    expect(
+      parseExchangeRecord(JSON.parse(serializeExchangeRecord(record))),
+    ).toEqual(record);
   });
 
   test("the verification keys round-trip through serialize -> parse", async () => {
@@ -1115,7 +1139,7 @@ describe("serialize / parse", () => {
 
   test("parseExchangeRecord rejects an unrecognized version", async () => {
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
-    const bumped = { ...record, version: "alcove-exchange-record/v12" };
+    const bumped = { ...record, version: "alcove-exchange-record/v13" };
     expect(() => parseExchangeRecord(bumped)).toThrow();
   });
 
@@ -1245,6 +1269,14 @@ describe("serialize / parse", () => {
     const v10 = { ...record, version: "alcove-exchange-record/v10" };
     expect(() => parseExchangeRecord(v10)).toThrow(
       /format version alcove-exchange-record\/v10,|"version"/,
+    );
+  });
+
+  test("parseExchangeRecord refuses a record written before the agreement's purpose and expiry became omittable", async () => {
+    const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
+    const v11 = { ...record, version: "alcove-exchange-record/v11" };
+    expect(() => parseExchangeRecord(v11)).toThrow(
+      /format version alcove-exchange-record\/v11,|"version"/,
     );
   });
 

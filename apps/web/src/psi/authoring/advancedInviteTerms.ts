@@ -295,13 +295,16 @@ export function buildAdvancedTerms(draft: AdvancedInviteDraft): LinkageTerms {
   if (payload !== undefined) terms.payload = payload;
 
   if (draft.legalAgreement !== undefined) {
+    const purpose = normalizeLinkageTermsText(draft.legalAgreement.purpose);
+    // The date comes from a date input (YYYY-MM-DD), not free prose, so it is
+    // not NFC-normalized; its format is validated by the schema and that it has
+    // not already passed by validateAdvancedInvite.
+    const expirationDate = draft.legalAgreement.expirationDate.trim();
+    // A blank purpose or expiry is omitted: the agreement states none.
     terms.legalAgreement = {
       reference: normalizeLinkageTermsText(draft.legalAgreement.reference),
-      purpose: normalizeLinkageTermsText(draft.legalAgreement.purpose),
-      // The date comes from a date input (YYYY-MM-DD), not free prose, so it is
-      // not NFC-normalized; its format is validated by the schema and that it has
-      // not already passed by validateAdvancedInvite.
-      expirationDate: draft.legalAgreement.expirationDate.trim(),
+      ...(purpose !== "" ? { purpose } : {}),
+      ...(expirationDate !== "" ? { expirationDate } : {}),
     };
   }
 

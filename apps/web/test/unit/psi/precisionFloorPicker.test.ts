@@ -399,6 +399,7 @@ describe("replacing authored keys with the built-in rules", () => {
         reference: "DUA-7",
         purpose: "Program evaluation",
         expirationDate: "2099-01-01",
+        expirationDateIncomplete: false,
       },
       includeOwnColumns: "all",
       includeMatchingKey: true,

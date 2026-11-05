@@ -928,10 +928,20 @@ export function compareTerms(
           compatibilityMessage`legal agreement reference mismatch: yours is ${quoteTermsValue(local.legalAgreement.reference)}, your partner's is ${quoteTermsValue(partner.legalAgreement.reference)}`,
         );
       }
+      // An absent purpose or expiry matches only an absent one, so neither
+      // party runs under a value the other did not state.
+      const statedPurpose = (purpose: string | undefined) =>
+        purpose === undefined
+          ? compatibilityMessage`not stated`
+          : quoteTermsValue(purpose);
+      const statedExpiry = (expiry: string | undefined) =>
+        expiry === undefined
+          ? compatibilityMessage`not stated`
+          : bareTermsValue(expiry);
       if (local.legalAgreement.purpose !== partner.legalAgreement.purpose) {
         differ(
           "legal-agreement",
-          compatibilityMessage`legal agreement purpose mismatch: yours is ${quoteTermsValue(local.legalAgreement.purpose)}, your partner's is ${quoteTermsValue(partner.legalAgreement.purpose)}`,
+          compatibilityMessage`legal agreement purpose mismatch: yours is ${statedPurpose(local.legalAgreement.purpose)}, your partner's is ${statedPurpose(partner.legalAgreement.purpose)}`,
         );
       }
       if (
@@ -940,14 +950,15 @@ export function compareTerms(
       ) {
         differ(
           "legal-agreement",
-          compatibilityMessage`legal agreement expiration date mismatch: yours is ${bareTermsValue(local.legalAgreement.expirationDate)}, your partner's is ${bareTermsValue(partner.legalAgreement.expirationDate)}`,
+          compatibilityMessage`legal agreement expiration date mismatch: yours is ${statedExpiry(local.legalAgreement.expirationDate)}, your partner's is ${statedExpiry(partner.legalAgreement.expirationDate)}`,
         );
       }
       const today = new Date().toISOString().slice(0, 10);
-      if (local.legalAgreement.expirationDate < today) {
+      const localExpiry = local.legalAgreement.expirationDate;
+      if (localExpiry !== undefined && localExpiry < today) {
         differ(
           "legal-agreement",
-          compatibilityMessage`legal agreement expired on ${bareTermsValue(local.legalAgreement.expirationDate)}`,
+          compatibilityMessage`legal agreement expired on ${bareTermsValue(localExpiry)}`,
         );
       }
     }

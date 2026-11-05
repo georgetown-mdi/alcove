@@ -723,6 +723,7 @@ describe("a free-text value holding a character the terms refuse", () => {
       reference: "MOU-1",
       purpose: "Audit\u0007unrepeatable-purpose",
       expirationDate: "2026-12-31",
+      expirationDateIncomplete: false,
     };
     expect(
       safeParseLinkageTerms(buildAdvancedTerms({ ...draft, legalAgreement }))

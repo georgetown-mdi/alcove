@@ -604,6 +604,14 @@ export function validateAdvancedInvite(
     }
   }
 
+  // A partly typed date reaches the draft as an empty expiry, which is an omitted
+  // one, so the input's own report of it blocks Generate here.
+  if (
+    draft.legalAgreement?.expirationDateIncomplete === true &&
+    errors.legalExpiration === undefined
+  )
+    errors.legalExpiration = messageForField("legalExpiration");
+
   // An already-passed expiry is not a schema rule (it checks only the date
   // format), so add it here, mirroring the exchange, which rejects an
   // expirationDate strictly before today (config/linkageTermsSchema.ts). A
@@ -613,6 +621,7 @@ export function validateAdvancedInvite(
   const expiration = draft.legalAgreement?.expirationDate.trim();
   if (
     expiration !== undefined &&
+    expiration !== "" &&
     errors.legalExpiration === undefined &&
     expiration < todayIso(now)
   ) {

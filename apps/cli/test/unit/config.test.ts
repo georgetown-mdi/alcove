@@ -2330,6 +2330,51 @@ describe("diffLinkageTerms", () => {
     }
   });
 
+  test("a legal-agreement purpose or expiry one side omits shows as not stated", () => {
+    const existing = cloneTerms(getDefaultLinkageTerms("Org"));
+    const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
+    existing.legalAgreement = { reference: "MOU-1" };
+    incoming.legalAgreement = {
+      reference: "MOU-1",
+      purpose: "Program evaluation",
+      expirationDate: "2030-01-01",
+    };
+    const { conflicts } = diffLinkageTerms(existing, incoming);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].existing).toBe(
+      '"MOU-1" (no expiration date stated, no purpose stated)',
+    );
+    expect(conflicts[0].incoming).toBe(
+      '"MOU-1" (expires 2030-01-01, purpose "Program evaluation")',
+    );
+
+    const purposeDiffers = diffLinkageTerms(
+      {
+        ...existing,
+        legalAgreement: { reference: "MOU-1", expirationDate: "2030-01-01" },
+      },
+      {
+        ...incoming,
+        legalAgreement: { reference: "MOU-1", purpose: "Program evaluation" },
+      },
+    ).conflicts;
+    expect(purposeDiffers[0].existing).toBe(
+      '"MOU-1" (expires 2030-01-01, no purpose stated)',
+    );
+    expect(purposeDiffers[0].incoming).toBe(
+      '"MOU-1" (no expiration date stated, purpose "Program evaluation")',
+    );
+
+    // Purpose the same on both sides: only the expiry is shown.
+    incoming.legalAgreement = {
+      reference: "MOU-1",
+      expirationDate: "2030-01-01",
+    };
+    const expiryOnly = diffLinkageTerms(existing, incoming).conflicts;
+    expect(expiryOnly[0].existing).toBe('"MOU-1" (no expiration date stated)');
+    expect(expiryOnly[0].incoming).toBe('"MOU-1" (expires 2030-01-01)');
+  });
+
   test("two references the fit cannot tell apart are reported as read alike", () => {
     // References at the schema's bound differing only past what the fit keeps,
     // under one expiry: the two fitted sides read alike, and the block says so

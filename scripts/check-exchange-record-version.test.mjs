@@ -64,7 +64,7 @@ afterAll(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
-const DEVELOPMENT_VERSION = "alcove-exchange-record/v11";
+const DEVELOPMENT_VERSION = "alcove-exchange-record/v12";
 const FIRST_RESET_RELEASE = "0.9.0";
 const INERT_RELEASE = "0.1.0";
 
@@ -173,7 +173,7 @@ describe("rule 1 fires on a version move and on nothing else", () => {
 
   it("fails a simulated move, naming the obligation rather than only the mismatch", () => {
     const violations = bumpViolations(
-      "alcove-exchange-record/v12",
+      "alcove-exchange-record/v13",
       realSources,
     );
 
@@ -181,7 +181,7 @@ describe("rule 1 fires on a version move and on nothing else", () => {
     const [{ message }] = violations;
     // Both versions, so which of the two is wrong is the maintainer's call.
     expect(message).toContain(RECORD_VERSION_PIN);
-    expect(message).toContain("alcove-exchange-record/v12");
+    expect(message).toContain("alcove-exchange-record/v13");
     // The obligation itself: what a move does to a stored accounting, and what
     // has to be re-taken before the new value is recorded.
     expect(message).toContain("accounting of disclosures");
@@ -255,8 +255,8 @@ describe("before the release that publishes the reset", () => {
   it("leaves the development counter alone wherever it stands", () => {
     for (const declared of [
       DEVELOPMENT_VERSION,
-      "alcove-exchange-record/v12",
       "alcove-exchange-record/v13",
+      "alcove-exchange-record/v14",
     ]) {
       expect(resetViolations(state({ declared }))).toEqual([]);
     }
@@ -409,7 +409,7 @@ describe("the check as CI runs it", () => {
     const { status, stderr } = runCheck(
       fixtureTree({
         releaseVersion: FIRST_RESET_RELEASE,
-        declared: "alcove-exchange-record/v12",
+        declared: "alcove-exchange-record/v13",
       }),
     );
 

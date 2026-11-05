@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { Alert, Checkbox, TextInput } from "@mantine/core";
+import { Checkbox, TextInput } from "@mantine/core";
 
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH } from "@alcove/core";
 
@@ -16,21 +16,17 @@ const EMPTY_AGREEMENT: DraftLegalAgreement = {
   reference: "",
   purpose: "",
   expirationDate: "",
+  expirationDateIncomplete: false,
 };
 
-/** The Attach checkbox's description: what attaching asks of each party. */
+/** The Attach checkbox's description: what the partner sees of the values. */
 export const ATTACH_AGREEMENT_DESCRIPTION =
-  "Optional. Your partner sees these values before they accept.";
-
-/** What the tab says once an agreement is attached. */
-export const ATTACHED_AGREEMENT_NOTE =
-  "Enter the reference, purpose, and expiration date as your signed " +
-  "agreement states them. Your partner checks them against their copy " +
-  "before they accept.";
+  "Shown to your partner before they accept";
 
 /**
  * The Legal agreement tab: attach or detach the optional agreement block and
- * author the three values the partner's consent step displays.
+ * author the values the partner's consent step displays: a reference, and a
+ * purpose and expiration date left blank when the agreement states none.
  * Validation errors show inline on the field they belong to.
  */
 export function AgreementTab({
@@ -52,9 +48,23 @@ export function AgreementTab({
     onAgreement({ ...agreement, ...patch });
   };
 
+  // Chromium fires no change or input event while a date is only partly typed
+  // and the value stays empty, so leaving the field reads it too.
+  const readExpiration = (event: { currentTarget: HTMLInputElement }) =>
+    set({
+      expirationDate: event.currentTarget.value,
+      expirationDateIncomplete: event.currentTarget.validity.badInput,
+    });
+
   // Checking "Attach" reveals the three fields below the checkbox; send a
   // keyboard user into the first one rather than leaving them on the checkbox
   // with no cue the block opened.
+  // A freshly mounted date input holds no partly typed segments, so a flag
+  // left by an earlier visit to this tab no longer describes anything.
+  useEffect(() => {
+    if (agreement?.expirationDateIncomplete === true)
+      set({ expirationDateIncomplete: false });
+  }, []);
   const referenceRef = useRef<HTMLInputElement>(null);
   const wasAttached = useRef(agreement !== undefined);
   useEffect(() => {
@@ -80,12 +90,10 @@ export function AgreementTab({
       />
       {agreement !== undefined && (
         <>
-          <Alert variant="light" mt="md">
-            {ATTACHED_AGREEMENT_NOTE}
-          </Alert>
           <TextInput
             ref={referenceRef}
             label="Agreement reference"
+            required
             placeholder="MOU-2025-0042"
             value={agreement.reference}
             maxLength={MAX_NAME_LENGTH}
@@ -111,9 +119,8 @@ export function AgreementTab({
             value={agreement.expirationDate}
             error={validation.errors.legalExpiration}
             errorProps={{ role: "alert" }}
-            onChange={(event) =>
-              set({ expirationDate: event.currentTarget.value })
-            }
+            onChange={readExpiration}
+            onBlur={readExpiration}
             mt="md"
             maw={220}
           />

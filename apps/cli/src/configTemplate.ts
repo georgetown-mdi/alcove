@@ -413,9 +413,10 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 
 # legal_agreement: the data sharing agreement authorizing this exchange, the
 # purpose of this disclosure under it, and the agreement's expiration date,
-# recorded in both parties' exchange records. Both parties must write identical
-# values or the exchange is cancelled, and it fails once expiration_date has
-# passed. Add it under linkage_terms above:
+# recorded in both parties' exchange records. purpose and expiration_date are
+# optional. Both parties must write identical values, omitting the same ones, or
+# the exchange is cancelled, and it fails once expiration_date has passed. Add it
+# under linkage_terms above:
 # linkage_terms:
 #   legal_agreement:
 #     reference: "MOU-2025-0042"

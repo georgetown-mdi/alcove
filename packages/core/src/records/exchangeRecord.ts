@@ -58,7 +58,7 @@ import type { Algorithm, AssociationTable } from "../types.js";
  * from, and refuses any other. It moves with the field set and with the bytes
  * a field is computed over. See docs/spec/EXCHANGE_RECORD.md#record-fields.
  */
-export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v11";
+export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v12";
 
 /** The format version this build writes for {@link VerificationKeys}. */
 export const EXCHANGE_KEYS_VERSION = "alcove-exchange-keys/v2";
@@ -216,10 +216,12 @@ interface RecordPayloadColumn {
 interface RecordLegalAgreement {
   /** Human-readable agreement identifier (e.g. "MOU-2025-0042"). */
   reference: string;
-  /** The purpose of the disclosure under the agreement. */
-  purpose: string;
-  /** Last date the agreement authorizes an exchange (`YYYY-MM-DD`). */
-  expirationDate: string;
+  /** The purpose of the disclosure under the agreement; omitted when the
+   * agreement states none. */
+  purpose?: string;
+  /** Last date the agreement authorizes an exchange (`YYYY-MM-DD`); omitted
+   * when the agreement states none. */
+  expirationDate?: string;
 }
 
 /** One linkage field in the matching basis: standardized name and semantic
@@ -382,8 +384,8 @@ const RecordPayloadColumnSchema: z.ZodType<RecordPayloadColumn> = z.object({
 
 const RecordLegalAgreementSchema: z.ZodType<RecordLegalAgreement> = z.object({
   reference: z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
-  purpose: z.string().min(1).check(maxCodeUnits(MAX_TEXT_LENGTH)),
-  expirationDate: z.iso.date(),
+  purpose: z.string().min(1).check(maxCodeUnits(MAX_TEXT_LENGTH)).optional(),
+  expirationDate: z.iso.date().optional(),
 });
 
 const RecordLinkageFieldSchema: z.ZodType<RecordLinkageField> = z.object({
@@ -596,8 +598,12 @@ function governanceFromTerms(
       ? {
           legalAgreement: {
             reference: terms.legalAgreement.reference,
-            purpose: terms.legalAgreement.purpose,
-            expirationDate: terms.legalAgreement.expirationDate,
+            ...(terms.legalAgreement.purpose !== undefined
+              ? { purpose: terms.legalAgreement.purpose }
+              : {}),
+            ...(terms.legalAgreement.expirationDate !== undefined
+              ? { expirationDate: terms.legalAgreement.expirationDate }
+              : {}),
           },
         }
       : {}),

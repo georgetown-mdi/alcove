@@ -244,6 +244,23 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     expect(joined).toContain("\\u202e");
   });
 
+  test("displayInvitation: a legal agreement stating no purpose or expiry says so on each line", () => {
+    const log = getLogger("accept-display-agreement-test");
+    log.setLevel("silent");
+    const base = sampleToken(FUTURE());
+    const out = renderDisplayInvitation(log, {
+      ...base,
+      linkageTerms: {
+        ...base.linkageTerms,
+        legalAgreement: { reference: "MOU-2026-0001" },
+      },
+    });
+    expect(out).toContain("    reference: MOU-2026-0001\n");
+    expect(out).toContain("    stated purpose: Not stated\n");
+    expect(out).toContain("    agreement valid through: Not stated\n");
+    expect(out).not.toContain("undefined");
+  });
+
   test("displayInvitation: the declared send shows names, '(none)' when empty, and nothing when unset", () => {
     // The acceptor's "columns you will receive" line is the inviter's
     // payload.send. A declared send is shown (an empty one as "(none)", since
