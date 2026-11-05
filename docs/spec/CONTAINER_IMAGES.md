@@ -29,8 +29,8 @@ dependency and transitive in the image is therefore the exact version in the com
 lockfile: a rebuild without a lockfile change cannot re-resolve a caret range,
 and the image ships the same tree CI tested. The release SBOM covers a wider
 scope than this install -- step 9 in [RELEASES.md](../RELEASES.md) runs
-`npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev -w packages/core -w apps/cli -w apps/web`
--- because the console server build this image copies
+`npm sbom --sbom-format cyclonedx --omit=dev -w packages/core -w apps/cli -w apps/web`
+over the tree `npm ci` installs from the same lockfile -- because the console server build this image copies
 (`apps/web/dist/console-server`) bundles `apps/web`'s runtime dependencies, and
 the console client build (`apps/web/dist/console`) its browser ones, which the
 install scope above does not reach.

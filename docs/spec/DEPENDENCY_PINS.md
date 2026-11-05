@@ -406,10 +406,11 @@ hoist. The measurement behind each is kept so the dead ends are not re-walked.
 
 ### The release SBOM's hoisting residual
 
-Release step 9 in [RELEASES.md](../RELEASES.md#9-generate-and-attach-the-sbom) runs `npm sbom` with no workaround flag, and its BOM omits a few packages the shipped tree holds. Re-driven 2026-10-08 against the lockfile as committed (the figures depend on the npm version, 11.19.1):
+Release step 9 in [RELEASES.md](../RELEASES.md#9-generate-and-attach-the-sbom) runs `npm sbom` with no workaround flag, and its BOM omits a few packages the shipped tree holds. Re-driven 2026-11-05 against the tree `npm ci` installed from the lockfile as committed (the figures depend on the npm version, 11.20.0):
 
-- `npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev -w packages/core -w apps/cli -w apps/web` exits 0 at 131 components, and the same command without `-w apps/web` exits 0 at 85. Every one of those 85 also appears in the 131, by name and version, so the full-scope command closes the web console's runtime set into the BOM rather than dropping it.
-- `npm ls --all --omit=dev --package-lock-only` exits 0, so the tree reports no peer conflict.
+- `npm sbom --sbom-format cyclonedx --omit=dev -w packages/core -w apps/cli -w apps/web` exits 0 at 125 components, and the same command without `-w apps/web` exits 0 at 79. Every one of those 79 also appears in the 125, by name and version, so the full-scope command closes the web console's runtime set into the BOM rather than dropping it.
+- With `--package-lock-only` added, the command lists the same 125 components with the same dependency graph, and no licence for `ssh2`, `cpu-features` and `buildcheck`, which declare theirs only in the older `licenses` array that the lockfile does not record.
+- `npm ls --all --omit=dev` exits 0, so the tree reports no peer conflict.
 - `yaml` 2.9.1 and `tslib` 2.8.1 are installed in the shipped tree, per `npm ls yaml tslib --omit=dev -w packages/core -w apps/cli -w apps/web`, and absent from the step 9 command's component list. That list holds `tslib` 1.14.1, a copy nested under `tsyringe`.
 
 The residual is a property of how `npm sbom` walks a hoisted entry shared with a dev-only consumer, and RELEASES.md states the query that checks one package's presence when the BOM lacks it.

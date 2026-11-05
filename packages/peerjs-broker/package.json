@@ -2,7 +2,7 @@
   "name": "@alcove/peerjs-broker",
   "version": "0.1.0",
   "description": "Alcove's PeerJS-compatible WebSocket signaling broker for WebRTC rendezvous",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "Apache-2.0 AND MIT",
   "author": "Vincent Dorie <vdorie@gmail.com>",
   "private": true,
   "type": "module",
