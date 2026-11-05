@@ -671,7 +671,7 @@ export class QueuedMessageConnection implements MessageConnection {
       this.fail(
         new ConnectionError(
           `inbound buffer overflow: over the ${this.byteCapacity}-byte bound ` +
-            "on unconsumed messages; the peer is sending out of turn",
+            "on unconsumed messages; messages arrived faster than this side read them",
           "protocol",
         ),
       );

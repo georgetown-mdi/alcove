@@ -180,6 +180,32 @@ describe("openPeerMessageConnection", () => {
     },
   );
 
+  test.each([
+    ["a structured frame", () => ({ part: new Uint8Array(400) })],
+    ["a structured frame holding a string", () => ({ text: "a".repeat(400) })],
+    ["a binary frame", () => new Uint8Array(400)],
+  ])(
+    "%s is charged no less than the length it arrived at",
+    async (_kind, frame) => {
+      const { fake, conn } = makeConn();
+      const frameBytes = new PeerJsFrameEncoder().encode(frame())[0].byteLength;
+      const mc = await openPeerMessageConnection(conn, {
+        byteCapacity: 2 * frameBytes - 1,
+      });
+
+      arriveThroughWrap(fake, frame());
+      arriveThroughWrap(fake, frame());
+
+      await mc.receive();
+      const refusal = await mc.receive().catch((e: unknown) => e);
+      expect(refusal).toBeInstanceOf(ConnectionError);
+      expect((refusal as ConnectionError).kind).toBe("protocol");
+      expect((refusal as ConnectionError).message).toContain(
+        `over the ${2 * frameBytes - 1}-byte bound on unconsumed messages`,
+      );
+    },
+  );
+
   test("defaults the queue's byte bound to the browser's", async () => {
     const { fake, conn } = makeConn();
     const mc = await openPeerMessageConnection(conn);

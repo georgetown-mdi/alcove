@@ -478,6 +478,35 @@ test.each([
   },
 );
 
+test.each([
+  ["a structured frame", () => ({ part: new Uint8Array(400) })],
+  ["a structured frame holding a string", () => ({ text: "a".repeat(400) })],
+  ["a chunked structured frame", () => ({ part: new Uint8Array(40_000) })],
+  ["a binary frame", () => new Uint8Array(400)],
+])(
+  "%s is charged no less than the length it arrived at",
+  async (_kind, frame) => {
+    const { channel, session } = harness();
+    const encoder = new PeerJsFrameEncoder();
+    const frameBytes = packValue(frame()).byteLength;
+    const connection = webRtcMessageConnection(session, {
+      inboundQueueByteCapacity: 2 * frameBytes - 1,
+    });
+    for (let sent = 0; sent < 2; sent++)
+      for (const datagram of encoder.encode(frame())) channel.deliver(datagram);
+
+    await connection.receive();
+    const refusal = await connection.receive().then(
+      () => undefined,
+      (err: unknown) => err as ConnectionError,
+    );
+    expect(refusal?.kind).toBe("protocol");
+    expect(refusal?.message).toContain(
+      `over the ${2 * frameBytes - 1}-byte bound on unconsumed messages`,
+    );
+  },
+);
+
 test("a partner that vanishes fails the connection rather than stranding it", async () => {
   // werift raises no channel `close` when the remote peer connection is torn
   // down, so without this hook the exchange would sit on its hour-scale
