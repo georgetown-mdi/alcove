@@ -295,11 +295,12 @@ They are named functions rather than a surface description: a declaration is a f
 
 The counter has cycled freely, from the format's first `v1` under the earlier product name on up,
 because releases below 1.0.0 carry no compatibility promise and partners upgrade together.
-The reset is taken at 1.0.0 rather than earlier.
+The reset is taken at 0.9.0 rather than earlier,
+and only once: the wire format's compatibility policy still binds from 1.0.0, and a record-format change between the two bumps forward from `v1` with a migration step.
 Re-using a previously cycled value mid-development would let an artifact written under it parse as the current version and fail on its field set,
 instead of taking the clean version refusal the reader is built to give.
 
-The reset moves the six literals the [Release Checklist](../RELEASES.md#reset-the-exchange-record-format-at-100) names, and two of them change bytes a signature or hash covers.
+The reset moves the six literals the [Release Checklist](../RELEASES.md#reset-the-exchange-record-format-at-090) names, and two of them change bytes a signature or hash covers.
 `RECEIPT_CONTENT_DOMAIN` is the domain of the signed receipt-content bytes, and its number tracks the shape of those bytes, so it moves with the receipt format like a discriminant.
 `SIGNING_CERTIFICATE_VERSION` is a discriminant inside the certificate body the fingerprint covers
 ([PROTOCOL.md](../spec/PROTOCOL.md#signing-identity-and-certificate-pinning)),
@@ -310,8 +311,9 @@ None of the six was at `v1` under the `alcove-` prefix, since the rename moved e
 ([rename-to-alcove.md](rename-to-alcove.md)),
 so the reset reuses no value an earlier build wrote or computed.
 
-The release marker is `apps/cli/package.json`'s version, the same marker and 1.0.0 floor `check-protocol-version-bump.mjs` arms on,
-so the point the compatibility policy binds has one definition.
+The release marker is `apps/cli/package.json`'s version, the same marker `check-protocol-version-bump.mjs` arms on,
+read against its own 0.9.0 floor, `RESET_RELEASE`, beside the 1.0.0 `COMPATIBILITY_RELEASE` in `scripts/lib/releaseManifest.mjs`,
+so each floor has one definition.
 It is read from the tree rather than a git tag because the gate's checkout has no tags:
 `static_checks.yaml` pins neither `fetch-depth` nor `fetch-tags`, and a marker absent from the checkout would leave the check inert forever.
 

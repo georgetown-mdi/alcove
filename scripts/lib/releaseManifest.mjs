@@ -1,11 +1,12 @@
-// The canonical release version, where it is read from, and when the
-// compatibility policy binds it, shared by the checks that read it:
+// The canonical release version, where it is read from, and the releases the
+// rules reading it are dated by, shared by the checks that read it:
 // check-release-version.mjs holds a pushed release tag to it,
 // check-protocol-version-bump.mjs reads it as the marker deciding whether the
 // wire-format pin binds yet, and check-exchange-record-version.mjs as the marker
 // the record-format reset is dated by. One manifest path, one reader, and one
-// floor, so no two of them can come to disagree about which file holds the
-// release version, what counts as holding one, or when the policy binds.
+// definition of each floor, so no two of them can come to disagree about which
+// file holds the release version, what counts as holding one, or when a rule
+// binds.
 
 /** The manifest holding the canonical release version (docs/RELEASES.md). */
 export const RELEASE_MANIFEST = "apps/cli/package.json";
@@ -13,9 +14,15 @@ export const RELEASE_MANIFEST = "apps/cli/package.json";
 // The release from which the compatibility policy binds (docs/RELEASES.md,
 // Versioning). A 0.x release carries no compatibility promise and partners
 // upgrade together, so below this floor a wire-format delta ships within the
-// current PROTOCOL_VERSION and the format literals stay development counters.
-// Moving this floor moves every rule dated by it.
+// current PROTOCOL_VERSION. Moving this floor moves every rule dated by it.
 export const COMPATIBILITY_RELEASE = "1.0.0";
+
+// The first release at or above which the six record-format literals ship
+// reset to v1 (docs/RELEASES.md, "Reset the exchange-record format at 0.9.0").
+// Below it they are development counters. It is no later than
+// COMPATIBILITY_RELEASE, and a record-format change between the two bumps
+// forward from v1 with a migration step.
+export const RESET_RELEASE = "0.9.0";
 
 /**
  * The release version a package manifest's source contains, or undefined when it
@@ -64,6 +71,19 @@ export function compareReleaseVersions(left, right) {
  * marker fails rather than treating the rule as inert.
  */
 export function isCompatibilityRelease(version) {
-  const compared = compareReleaseVersions(version, COMPATIBILITY_RELEASE);
+  return isAtOrAbove(version, COMPATIBILITY_RELEASE);
+}
+
+/**
+ * Whether the record-format reset is due at the release version (it is
+ * RESET_RELEASE or above), or undefined when the version is not in a shape
+ * this can read, which a caller fails on as above.
+ */
+export function isResetRelease(version) {
+  return isAtOrAbove(version, RESET_RELEASE);
+}
+
+function isAtOrAbove(version, floor) {
+  const compared = compareReleaseVersions(version, floor);
   return compared === undefined ? undefined : compared >= 0;
 }

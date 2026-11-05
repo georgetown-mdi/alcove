@@ -54,7 +54,6 @@ Beyond the conventions in `CONTRIBUTING.md`:
 ### Branches, worktrees and checkouts
 
 - Branches are cut from `staging` and pull requests target `staging` -- the harness's default `main` base does not apply. Never commit to staging or main by yourself; don't attribute yourself on commits or pull requests.
-- Branch names shouldn't use '/'.
 - Rebase and merge in a detached /tmp worktree (`git worktree add --detach`), never in a tree the IDE watches -- /workspace or a tree under `.claude/worktrees/`: the IDE formatter/LSP races a live tree, and no ignore file fences it. Afterwards `git reset --hard` the branch in /workspace and remove the worktree.
 - An orchestrating session writes no branch content, and neither does a checkout it is not working in -- the MAIN worktree always, a sibling worktree from inside a linked one. Only gitignored paths (`scratch/`, briefs, round artifacts) and paths outside the repository are writable. Enforced by `block-primary-checkout-writes.mjs` on `Edit`, `Write`, and `NotebookEdit`; details in its header.
 
