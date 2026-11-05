@@ -1,8 +1,8 @@
 // A both-sided table's partner rows paired with one of this party's rows are
 // checked in one V8 Set, which holds 2^24 entries (docs/spec/PROTOCOL.md, The
 // limits over file-sync). Driven at the real bound: a run past it is refused
-// before the Set is filled, and the run at it fills one Set to 2^24 entries
-// on the running engine, which takes a few seconds and about 0.7 GB.
+// before the Set is filled. The run at the bound, which fills one Set to 2^24
+// entries, is in test/stress/partnerPairTableAtBound.stress.test.ts.
 
 import { describe, expect, test } from "vitest";
 
@@ -81,21 +81,6 @@ describe("the partner rows paired with one row of a both-sided table", () => {
         "this: agree on new terms with your partner that leave that key " +
         "out, and run the exchange again.",
     );
-  });
-
-  test("one row paired with exactly the bound is accepted", () => {
-    const partnerRows = Array.from(
-      { length: MAX_PARTNER_ROWS_OF_ONE_ROW },
-      (_, row) => row,
-    );
-    expect(
-      failureOf(
-        oneRowTable(partnerRows, {
-          localRecordCount: 1,
-          partnerRecordCount: MAX_PARTNER_ROWS_OF_ONE_ROW + 1,
-        }),
-      ),
-    ).toBeUndefined();
   });
 
   test("a run past the bound against a partner with no more rows than that repeats a row, and is refused as one", () => {
