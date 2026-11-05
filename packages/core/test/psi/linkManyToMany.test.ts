@@ -456,7 +456,7 @@ test("a value m and n records hold writes m x n result rows and attests m x n", 
         }
       : { columns: [], rowIndices: [], rows: [] },
   );
-  expect(headers).toStrictEqual(["pid", "row_id", "dose"]);
+  expect(headers).toStrictEqual(["pid", "partner_row", "dose"]);
   // One row per pair: each of this party's two records against each of the
   // partner's three, holding that partner record's own payload row.
   expect(rows).toStrictEqual([

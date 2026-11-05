@@ -197,7 +197,9 @@ describe("buildRunOutputs", () => {
     const { urls, blobs } = recordingUrls();
     buildRunOutputs(receivedResult(false), prepared, urls);
 
-    expect(await blobs[0].text()).toBe("client_id,row_id,program\n17,5,B\n");
+    expect(await blobs[0].text()).toBe(
+      "client_id,partner_row,program\n17,5,B\n",
+    );
   });
 
   test("a selection adds this party's own columns after the partner's", async () => {
@@ -207,7 +209,7 @@ describe("buildRunOutputs", () => {
     // The identifier heads the row already, so `all` adds the two columns after
     // it, and they land after the partner's payload column.
     expect(await blobs[0].text()).toBe(
-      "client_id,row_id,program,case_worker,program_code\n17,5,B,Ng,A\n",
+      "client_id,partner_row,program,case_worker,program_code\n17,5,B,Ng,A\n",
     );
   });
 
@@ -217,7 +219,7 @@ describe("buildRunOutputs", () => {
 
     // case_worker is declared but not sent, so it is outside this selection.
     expect(await blobs[0].text()).toBe(
-      "client_id,row_id,program,program_code\n17,5,B,A\n",
+      "client_id,partner_row,program,program_code\n17,5,B,A\n",
     );
   });
 
@@ -230,7 +232,7 @@ describe("buildRunOutputs", () => {
     );
 
     expect(await blobs[0].text()).toBe(
-      "client_id,row_id,program,case_worker,program_code,matched_on_key\n" +
+      "client_id,partner_row,program,case_worker,program_code,matched_on_key\n" +
         "17,5,B,Ng,A,SSN + LN + DOB\n",
     );
   });
@@ -258,7 +260,7 @@ describe("buildRunOutputs", () => {
     );
 
     expect(await blobs[0].text()).toBe(
-      "client_id,row_id,program\n" +
+      "client_id,partner_row,program\n" +
         indices
           .map((row) => `${row === 0 ? 17 : row},${row},${value(row)}\n`)
           .join(""),
@@ -269,7 +271,9 @@ describe("buildRunOutputs", () => {
     const { urls, blobs } = recordingUrls();
     buildRunOutputs(receivedResult(false), prepared, urls, "|");
 
-    expect(await blobs[0].text()).toBe("client_id|row_id|program\n17|5|B\n");
+    expect(await blobs[0].text()).toBe(
+      "client_id|partner_row|program\n17|5|B\n",
+    );
   });
 
   test("a value holding the chosen delimiter is quoted against it, not the comma", async () => {
@@ -292,7 +296,7 @@ describe("buildRunOutputs", () => {
     // Quoted because it holds the delimiter this file is joined with; a comma
     // in the same cell would not be, since a comma ends no field here.
     expect(await blobs[0].text()).toBe(
-      'client_id|row_id|program\n17|5|"B|C"\n',
+      'client_id|partner_row|program\n17|5|"B|C"\n',
     );
   });
 

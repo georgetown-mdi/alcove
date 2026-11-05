@@ -194,7 +194,7 @@ export function pairsFromResultCsv(
 /** The matched (own row, partner row) pairs a result CSV's text holds. */
 export function pairsFromResultText(text: string): Array<[number, number]> {
   const [header, ...rows] = text.trim().split("\n");
-  if (header !== "row_id,their_row_id")
+  if (header !== "your_row,partner_row")
     throw new Error(`unexpected result header: ${String(header)}`);
   return rows
     .map((row): [number, number] => {

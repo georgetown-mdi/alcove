@@ -549,7 +549,7 @@ test("a quick exchange names the first id column as the record identifier, above
 
 test("a quick exchange with no id column says the result numbers rows by position", () => {
   expect(quickExchangeLines(["first_name", "last_name", "notes"])).toContain(
-    "  record identifier: none found; the result's row_id column identifies " +
+    "  record identifier: none found; the result's your_row column identifies " +
       "your rows by their position in the file, counting from 0",
   );
 });

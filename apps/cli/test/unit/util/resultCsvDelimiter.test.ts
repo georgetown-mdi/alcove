@@ -65,7 +65,7 @@ test("a result written with a chosen delimiter reads back through the same one",
     const readBack = toRetainedResult(
       await loadCSVFile(fs.createReadStream(file), undefined, delimiter),
     );
-    expect(readBack.headers).toEqual(["pid", "row_id", "note"]);
+    expect(readBack.headers).toEqual(["pid", "partner_row", "note"]);
     expect(readBack.rows).toEqual([
       [held, "0", held],
       ["P2", "1", "plain"],
@@ -83,7 +83,7 @@ test("writeOutput given no delimiter writes commas", async () => {
   const file = tempResultPath();
   await writeOutput(file, headers, rows, silentLog());
   expect(fs.readFileSync(file, "utf8")).toBe(
-    "pid,row_id,note\nP1,0,a\nP2,1,b\n",
+    "pid,partner_row,note\nP1,0,a\nP2,1,b\n",
   );
 });
 
@@ -108,5 +108,5 @@ test("each field is quoted once against the chosen delimiter", async () => {
   expect(text).not.toContain('"""a|b"""');
   // A comma is an ordinary character under this delimiter, so it is not quoted.
   expect(text).toContain("|x,y\n");
-  expect(text.startsWith("pid|row_id|note\n")).toBe(true);
+  expect(text.startsWith("pid|partner_row|note\n")).toBe(true);
 });

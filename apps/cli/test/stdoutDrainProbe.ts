@@ -39,7 +39,7 @@ const rowCount = flagValue("--rows");
 /** Padding, so a case reaches a multi-megabyte result in few enough rows. */
 const FILLER = "x".repeat(96);
 
-const headers = ["row_id", "filler"];
+const headers = ["your_row", "filler"];
 const rows = Array.from({ length: rowCount }, (_, index) => [
   String(index),
   FILLER,

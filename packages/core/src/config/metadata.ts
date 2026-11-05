@@ -129,7 +129,7 @@ export function disclosedColumnNames(metadata: Metadata): Array<string> {
  * first column takes its value from ({@link buildOutputTable}); inference gives
  * that role to the first identifier-typed column in header order, passing over
  * a record number while an id named otherwise follows ({@link inferMetadata}).
- * With none, the result heads its first column `row_id` and writes each
+ * With none, the result heads its first column `your_row` and writes each
  * record's 0-based row index there.
  *
  * The column name is redacted and escaped here. Starts lowercase, for use
@@ -141,7 +141,7 @@ export function inferredRecordIdentifierStatement(metadata: Metadata): string {
   );
   if (identifierIndex === -1)
     return (
-      "none found; the result's row_id column identifies your rows by " +
+      "none found; the result's your_row column identifies your rows by " +
       "their position in the file, counting from 0"
     );
   const passedOver = metadata

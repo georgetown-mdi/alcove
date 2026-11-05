@@ -75,7 +75,7 @@ const partnerPayload: PartnerPayload = {
 // The values the reader must yield, row for row: result rows are in our matched
 // order ([0, 2]), so the first holds the partner's row 1 and the second the
 // partner's row 0.
-const EXPECTED_HEADERS = ["pid", "row_id", "note", "blank"];
+const EXPECTED_HEADERS = ["pid", "partner_row", "note", "blank"];
 const EXPECTED_ROWS = [
   [COMMA_VALUE, "1", `${QUOTE_VALUE} and ${NEWLINE_VALUE}`, ""],
   [QUOTE_VALUE, "0", COMMA_VALUE, ""],

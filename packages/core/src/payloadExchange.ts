@@ -797,10 +797,10 @@ function uniqueColumnName(
  * payload row per pair.
  *
  * The first column identifies our matched records, headed by our identifier
- * column name (or `row_id` when no identifier column exists). The second
- * holds the partner's 0-based row index for each matched record, headed
- * `row_id` (disambiguated to `their_row_id`, then `their_row_id_2`, ... on
- * collision). It is emitted in every result -- not only when the partner sent
+ * column name, or `your_row` holding our 0-based row index when no identifier
+ * column exists. The second holds the partner's 0-based row index for each
+ * matched record, headed `partner_row` (disambiguated to `their_partner_row`,
+ * then `their_partner_row_2`, ... on collision). It is emitted in every result -- not only when the partner sent
  * no payload -- so the result stays self-sufficient for later verification:
  * it is the partner side of the association table the record's commitments
  * bind, and (once the payload commitment stopped binding the partner's row
@@ -994,7 +994,7 @@ export function buildOutputTableRows(
   const ourIdCol = metadata.find((col) => col.role === "identifier") ?? null;
 
   const hasPartnerCols = partnerPayload.columns.length > 0;
-  const ourBaseName = ourIdCol ? ourIdCol.name : "row_id";
+  const ourBaseName = ourIdCol ? ourIdCol.name : "your_row";
 
   const ownColumns =
     includeOwnColumns === undefined
@@ -1020,7 +1020,7 @@ export function buildOutputTableRows(
     taken.add(header);
     return header;
   });
-  const partnerIndexHeader = uniqueColumnName("row_id", taken);
+  const partnerIndexHeader = uniqueColumnName("partner_row", taken);
   taken.add(partnerIndexHeader);
 
   const headers = [

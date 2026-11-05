@@ -387,7 +387,7 @@ async function runOnlineRoundTrip(params: {
 
   // -- The PSI intersection is found; both sides learn it (expectsOutput). --
   // The inputs contain only linkage fields (no payload/identifier column), so each
-  // side's output is the association table -- "row_id,their_row_id" -- pairing the
+  // side's output is the association table -- "your_row,partner_row" -- pairing the
   // local matched row index to the partner's. The two matched records (Bob row 0,
   // Carol row 1) appear on both sides; the inviter's extra Dave (row 2) does not.
   // Both files are written concurrently by the two runOnlineBootstrap calls, so
@@ -403,9 +403,9 @@ async function runOnlineRoundTrip(params: {
   };
   const inviteMatched = matched(inviteCsv);
   const acceptMatched = matched(acceptCsv);
-  expect(inviteMatched.header).toBe("row_id,their_row_id");
-  expect(acceptMatched.header).toBe("row_id,their_row_id");
-  // Assert the full association, both columns (local row_id -> partner their_row_id).
+  expect(inviteMatched.header).toBe("your_row,partner_row");
+  expect(acceptMatched.header).toBe("your_row,partner_row");
+  // Assert the full association, both columns (your_row -> partner_row).
   // With the de-symmetrized inputs above the mapping is non-trivial: from the
   // inviter, Bob (row 0) -> accept row 1 and Carol (row 1) -> accept row 2; from
   // the acceptor, Bob (row 1) -> invite row 0 and Carol (row 2) -> invite row 1.

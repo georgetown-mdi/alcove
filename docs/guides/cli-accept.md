@@ -170,7 +170,7 @@ More detail: [Everything the terms display can show](../CLI.md#what-the-display-
 | --- | --- | --- |
 | `alcove.yaml` | The terms you accepted, and your connection. | Keep; not secret if credentials are `@` file references |
 | `.alcove.key` | The shared secret. It changes after every run. | Keep private |
-| `alcove-results-<time>.csv` | Your matched records: your ID, `row_id` (your partner's row number, counting from 0), then the columns your partner sends. | Keep private |
+| `alcove-results-<time>.csv` | Your matched records: your ID, `partner_row` (your partner's row number for that record, counting from 0), then the columns your partner sends. | Keep private |
 | `alcove-record-<time>.json` | The exchange record of this run. | Keep; not secret |
 | `alcove-record-<time>.keys.json` | The values that open the record's checks. | Keep private |
 | `alcove-record-<time>.terms.json` | Both parties' agreed terms. | Keep; not secret |

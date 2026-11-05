@@ -342,7 +342,7 @@ describe("this party's own result file", () => {
     );
     expect(headers).toEqual([
       "id",
-      "row_id",
+      "partner_row",
       "first_name",
       "last_name",
       "dob",
@@ -381,7 +381,13 @@ describe("this party's own result file", () => {
       "all",
       undeclaredColumnsForOwnResult(prepared),
     );
-    expect(headers).toEqual(["id", "row_id", "dob", "first_name", "last_name"]);
+    expect(headers).toEqual([
+      "id",
+      "partner_row",
+      "dob",
+      "first_name",
+      "last_name",
+    ]);
   });
 
   test("`all` writes an ignored column an authored block declares", () => {
@@ -401,7 +407,7 @@ describe("this party's own result file", () => {
     );
     expect(headers).toEqual([
       "id",
-      "row_id",
+      "partner_row",
       "dob",
       "first_name",
       "last_name",
@@ -434,7 +440,7 @@ describe("this party's own result file", () => {
       "disclosed",
       undeclaredColumnsForOwnResult(prepared),
     );
-    expect(headers).toEqual(["id", "row_id"]);
+    expect(headers).toEqual(["id", "partner_row"]);
   });
 
   test("a prepared exchange that does not say its metadata was inferred writes no undeclared column", () => {

@@ -81,7 +81,7 @@ Later runs use `alcove exchange input.csv ./` from the same folder, at a time yo
 
 | File | What it holds | Share or keep |
 | --- | --- | --- |
-| `alcove-results-<time>.csv` | Your matched records: your ID, `row_id` (your partner's row number, counting from 0), then the columns your partner sent. With no ID column, `row_id` is your own row number and `their_row_id` your partner's. In `./results` for a quick exchange. | Keep private |
+| `alcove-results-<time>.csv` | Your matched records: your ID, `partner_row` (your partner's row number for that record, counting from 0), then the columns your partner sent. With no ID column, the first column is `your_row`, your own row number. In `./results` for a quick exchange. | Keep private |
 | `alcove-record-<time>.json` | The exchange record of this run. | Keep; not secret |
 | `alcove-record-<time>.keys.json` | The values that open the record's checks. | Keep private |
 | `alcove-record-<time>.terms.json` | Both parties' terms. | Keep; not secret |

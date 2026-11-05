@@ -297,7 +297,7 @@ function expectArtifactsComplete(outputFolder: string): void {
   const result = fs.readFileSync(resultPath, "utf8");
   const rows = result.trimEnd().split("\n");
   expect(rows).toHaveLength(MATCHED_ROWS + 1);
-  expect(rows[0]).toContain("row_id");
+  expect(rows[0]).toContain("partner_row");
 
   const recordPath = onlyArtifactIn(outputFolder, "alcove-record", ".json");
   expect(path.basename(resultPath).slice("alcove-results-".length, -4)).toBe(
@@ -408,7 +408,7 @@ test(
     expect(probe.stderr).toContain("still held open");
     const rows = probe.stdout.trimEnd().split("\n");
     expect(rows).toHaveLength(MATCHED_ROWS + 1);
-    expect(rows[0]).toContain("row_id");
+    expect(rows[0]).toContain("partner_row");
   },
   CASE_TIMEOUT_MS,
 );
@@ -484,7 +484,7 @@ test(
     expect(probe.stdout.length).toBeGreaterThan(64 * 1024);
     const rows = probe.stdout.trimEnd().split("\n");
     expect(rows).toHaveLength(LARGE_RESULT_RECORDS + 1);
-    expect(rows[0]).toContain("row_id");
+    expect(rows[0]).toContain("partner_row");
   },
   CASE_TIMEOUT_MS,
 );

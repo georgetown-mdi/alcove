@@ -88,7 +88,7 @@ You should see: **Exchange complete** with the downloads below.
 
 | File | What it holds | Share or keep |
 | --- | --- | --- |
-| `results.csv` (**Download result**) | One row per matched record: your ID, `row_id` (your partner's row number, counting from 0, so row 0 is the first data row, row 2 in Excel), and the columns your partner sends. With no ID column set, `row_id` is your own row number and `their_row_id` your partner's. | Keep private |
+| `results.csv` (**Download result**) | One row per matched record: your ID, `partner_row` (your partner's row number for that record, counting from 0, so row 0 is the first data row, row 2 in Excel), and the columns your partner sends. With no ID column set, the first column is `your_row`, your own row number, counted the same way. | Keep private |
 | `alcove-record-<time>.json` (**Download record (safe to share)**) | What you and your partner agreed to and what matched, for your disclosure log | Keep; not secret |
 | `alcove-record-<time>.keys.json` (**Download verification keys**, marked keep private) | The keys that check the record against your files. They cannot be recreated. | Keep private |
 

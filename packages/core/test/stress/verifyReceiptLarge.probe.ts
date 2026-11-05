@@ -96,7 +96,7 @@ try {
   buildMs = Math.round(performance.now() - start);
 
   const result: RetainedResult = {
-    headers: ["pid", "row_id"],
+    headers: ["pid", "partner_row"],
     rows: identifiers.map((pid, at) => [pid, String(partner[at])]),
   };
   const verify = async (ourIdColumn: string | undefined) => {
@@ -119,7 +119,7 @@ try {
   byIdentifier = await verify("pid");
   byIdentifierMs = Math.round(performance.now() - start);
 
-  result.headers[0] = "row_id";
+  result.headers[0] = "your_row";
   result.rows.forEach((row, at) => {
     row[0] = String(at);
   });

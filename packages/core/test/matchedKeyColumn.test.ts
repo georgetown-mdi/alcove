@@ -47,7 +47,7 @@ test("the matching-key column is written last, after the partner's and the own c
   );
   expect(headers).toEqual([
     "patient_id",
-    "row_id",
+    "partner_row",
     "notes",
     "diagnosis",
     MATCHED_KEY_COLUMN,
@@ -69,7 +69,7 @@ test("the matching-key column follows the partner row index when no payload is r
     ",",
     ["SSN only"],
   );
-  expect(headers).toEqual(["patient_id", "row_id", MATCHED_KEY_COLUMN]);
+  expect(headers).toEqual(["patient_id", "partner_row", MATCHED_KEY_COLUMN]);
   expect(rows).toEqual([["P1", "4", "SSN only"]]);
 });
 
@@ -122,7 +122,7 @@ test("a partner column named like the matching-key column is renamed and the key
   );
   expect(headers).toEqual([
     "patient_id",
-    "row_id",
+    "partner_row",
     `their_${MATCHED_KEY_COLUMN}`,
     MATCHED_KEY_COLUMN,
   ]);
@@ -142,7 +142,7 @@ test("an own column named like the matching-key column is renamed and the key co
   );
   expect(headers).toEqual([
     "patient_id",
-    "row_id",
+    "partner_row",
     "diagnosis",
     `own_${MATCHED_KEY_COLUMN}`,
     MATCHED_KEY_COLUMN,
@@ -171,7 +171,7 @@ test("an identifier column named like the matching-key column keeps its name and
   );
   expect(headers).toEqual([
     MATCHED_KEY_COLUMN,
-    "row_id",
+    "partner_row",
     `own_${MATCHED_KEY_COLUMN}`,
   ]);
   expect(rows).toEqual([["P0", "1", "SSN only"]]);
@@ -184,7 +184,11 @@ test("without the matching key, partner and own columns of its name keep that na
     metadata,
     partnerKeyNamedPayload,
   );
-  expect(partner.headers).toEqual(["patient_id", "row_id", MATCHED_KEY_COLUMN]);
+  expect(partner.headers).toEqual([
+    "patient_id",
+    "partner_row",
+    MATCHED_KEY_COLUMN,
+  ]);
   const own = buildOutputTable(
     [[0], [1]],
     ownKeyNamedRows,
@@ -194,7 +198,7 @@ test("without the matching key, partner and own columns of its name keep that na
   );
   expect(own.headers).toEqual([
     "patient_id",
-    "row_id",
+    "partner_row",
     "diagnosis",
     MATCHED_KEY_COLUMN,
   ]);

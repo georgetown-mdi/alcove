@@ -144,10 +144,10 @@ function parseResultCsv(): {
   data: Array<Record<string, string>>;
 } {
   return {
-    meta: { fields: ["pid", "their_row_id", "clinic"] },
+    meta: { fields: ["pid", "partner_row", "clinic"] },
     data: [
-      { pid: "P0", their_row_id: "1", clinic: "south" },
-      { pid: "P1", their_row_id: "0", clinic: "north" },
+      { pid: "P0", partner_row: "1", clinic: "south" },
+      { pid: "P1", partner_row: "0", clinic: "north" },
     ],
   };
 }
