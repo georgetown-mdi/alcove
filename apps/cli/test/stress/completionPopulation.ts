@@ -4,12 +4,69 @@ import {
 } from "@alcove/core";
 
 // The completion run's synthetic population and the result a run with no size
-// limit returns over it.
+// limit returns over it. A row's SSN serial and the first four letters of its
+// last name together name the row, so no two rows agree on any built-in key,
+// the SSN4 keys included, and the only rows that match are the shared ones.
+
+// Row k is serial 1 + k % 9999 of block floor(k / 9999). A block is one SSN
+// area and group, and three letters of the last name: never serial 0000 or
+// group 00, which the built-in standardization drops.
+const SERIALS_PER_BLOCK = 9_999;
+const GROUPS_PER_AREA = 99;
+const FIRST_AREA = 100;
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const BLOCKS = LETTERS.length ** 3;
+
+// Past this many rows, two rows would share a serial and a last name.
+const POPULATION_SIZE = BLOCKS * SERIALS_PER_BLOCK;
+
+function blockOf(k: number): number {
+  if (!Number.isInteger(k) || k < 0 || k >= POPULATION_SIZE)
+    throw new RangeError(
+      `population row ${k} is outside 0 to ${POPULATION_SIZE - 1}`,
+    );
+  return Math.floor(k / SERIALS_PER_BLOCK);
+}
 
 /** The SSN of population row `k`, one distinct value a row. */
 export function populationSsn(k: number): string {
-  const digits = String(100_000_000 + k);
-  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
+  const block = blockOf(k);
+  const area = FIRST_AREA + Math.floor(block / GROUPS_PER_AREA);
+  const group = String(1 + (block % GROUPS_PER_AREA)).padStart(2, "0");
+  const serial = String(1 + (k % SERIALS_PER_BLOCK)).padStart(4, "0");
+  return `${area}-${group}-${serial}`;
+}
+
+/** The population row an SSN of nine digits is, or undefined if none is. */
+function populationRowOfSsn(digits: string): number | undefined {
+  const area = Number(digits.slice(0, 3));
+  const group = Number(digits.slice(3, 5));
+  const serial = Number(digits.slice(5));
+  if (area < FIRST_AREA || group < 1 || serial < 1) return undefined;
+  const block = (area - FIRST_AREA) * GROUPS_PER_AREA + group - 1;
+  const k = block * SERIALS_PER_BLOCK + serial - 1;
+  return k < POPULATION_SIZE ? k : undefined;
+}
+
+// Q followed by the block in three letters: no listed placeholder or affix.
+function populationLastName(k: number): string {
+  const block = blockOf(k);
+  const letter = (place: number) =>
+    LETTERS[Math.floor(block / LETTERS.length ** place) % LETTERS.length];
+  return `Q${letter(2)}${letter(1)}${letter(0)}`;
+}
+
+// The day runs from 2, so no date is 1 January, which no key reads.
+function populationDob(k: number): string {
+  return `${1 + (k % 12)}/${2 + (k % 27)}/${1940 + (k % 60)}`;
+}
+
+/**
+ * Population row `k` as the input's `SSN,LastName,DOB` cells, which a party's
+ * input writes after its own `Person_ID`.
+ */
+export function populationRow(k: number): string {
+  return `${populationSsn(k)},${populationLastName(k)},${populationDob(k)}`;
 }
 
 /**
@@ -43,8 +100,8 @@ export function builtInNulledSsns(): string[] {
 export function nulledPopulationRows(populationSize: number): number[] {
   return builtInNulledSsns()
     .filter((ssn) => /^\d{9}$/.test(ssn))
-    .map((ssn) => Number(ssn) - 100_000_000)
-    .filter((k) => k >= 0 && k < populationSize)
+    .map(populationRowOfSsn)
+    .filter((k): k is number => k !== undefined && k < populationSize)
     .sort((a, b) => a - b);
 }
 
