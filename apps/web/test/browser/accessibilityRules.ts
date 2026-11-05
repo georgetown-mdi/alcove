@@ -3,11 +3,12 @@ import { expect } from "vitest";
 /**
  * An accessibility rule scan over a rendered surface, run in the real browser.
  *
- * In-house, not axe-core, for the reason test/browser/themeContrastSweep.test.ts
- * gives for its contrast math: no new development dependency. The rules are a
- * fixed subset of WCAG 2.1 failures a DOM walk can decide without judgment, so a
- * clean scan is not a WCAG conformance claim. Contrast is measured by that sweep,
- * and keyboard reach by the keyboard-only journeys, not here.
+ * The rules are a fixed subset of WCAG 2.1 failures a DOM walk can decide
+ * without judgment, so a clean scan is not a WCAG conformance claim. axe-core
+ * runs beside it on the same states (axeScan.ts); these rules stay for what
+ * axe files as best practice rather than WCAG and so does not run there (a
+ * page's h1 and main landmark, heading order). Contrast is measured by the
+ * contrast sweep, and keyboard reach by the keyboard-only journeys, not here.
  *
  * The rules:
  *   duplicate-id         two elements share an id (1.3.1, 4.1.1)
@@ -24,6 +25,9 @@ import { expect } from "vitest";
  *   list-children        a <ul> or <ol> with a direct child that is not <li>
  *                        (1.3.1)
  *   page-h1              a page surface with no h1 (2.4.6)
+ *   page-main            a page surface without exactly one rendered <main>,
+ *                        the landmark a screen reader jumps to past the
+ *                        page's header (2.4.1)
  */
 
 /** One rule a scanned element breaks. */
@@ -200,6 +204,13 @@ export function scanAccessibility(
     Array.from(root.querySelectorAll("h1")).every((h1) => !isRendered(h1))
   )
     report("page-h1", root);
+
+  if (
+    options.page === true &&
+    Array.from(root.querySelectorAll('main, [role="main"]')).filter(isRendered)
+      .length !== 1
+  )
+    report("page-main", root);
 
   return violations;
 }

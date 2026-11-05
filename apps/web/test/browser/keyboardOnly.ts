@@ -43,15 +43,89 @@ function describeElement(element: Element | null): string {
   return `<${element.tagName.toLowerCase()}> "${accessibleName(element).slice(0, 40)}"`;
 }
 
+const FOCUS_STYLE_PROPERTIES = [
+  "outline-style",
+  "outline-width",
+  "outline-color",
+  "box-shadow",
+  "border-top-color",
+  "border-right-color",
+  "border-bottom-color",
+  "border-left-color",
+  "background-color",
+  "color",
+  "text-decoration-line",
+] as const;
+
+/** The element that may paint `element`'s focus: itself, the element drawing
+ * it on its behalf (a switch's track, the next sibling) and its parent. */
+function focusDrawers(element: Element): Array<Element | null> {
+  return [element, element.nextElementSibling, element.parentElement];
+}
+
+/** How `drawer` paints. A running CSS transition is finished first, so the
+ * reading is the settled state. */
+function appearance(drawer: Element | null): string {
+  if (drawer === null) return "";
+  for (const animation of drawer.getAnimations())
+    if (animation instanceof CSSTransition) animation.finish();
+  const style = getComputedStyle(drawer);
+  return FOCUS_STYLE_PROPERTIES.map((property) =>
+    style.getPropertyValue(property),
+  ).join(";");
+}
+
+/** A focused element and how its drawers painted while it held focus. */
+interface FocusReading {
+  element: Element;
+  focused: Array<string>;
+}
+
+function readFocus(): FocusReading | undefined {
+  const element = document.activeElement;
+  if (element === null || element === document.body) return undefined;
+  return { element, focused: focusDrawers(element).map(appearance) };
+}
+
+/** The last element a Tab press focused. A browser shows a keyboard focus
+ * indicator only for focus the keyboard moved, so an element focused another
+ * way (a script's `focus()`, a click) is not held to one. */
+let lastTabbed: FocusReading | undefined;
+
+/** Fails when the element a Tab press just left painted the same while it
+ * held focus as it does now: it showed no focus indicator (WCAG 2.4.7). A
+ * drawer that now holds focus itself is left out, since its change is its own
+ * indicator, not the left element's. */
+function expectFocusIndicatorShown(left: FocusReading | undefined): void {
+  if (left === undefined || !left.element.isConnected) return;
+  const changed = focusDrawers(left.element).some(
+    (drawer, index) =>
+      drawer !== document.activeElement &&
+      appearance(drawer) !== left.focused[index],
+  );
+  if (!changed)
+    throw new Error(
+      `${describeElement(left.element)} looks the same focused and unfocused: it shows no focus indicator (WCAG 2.4.7)`,
+    );
+}
+
 /**
  * Presses Tab (or Shift+Tab when `backward`) until `target` holds focus, and
  * fails naming the stops it passed when the order never reaches it.
+ *
+ * Every element a press focuses must look different, once a later press moves
+ * focus on, from how it looked while it held focus: an outline, shadow,
+ * border, background, color or underline that changes with focus. Best
+ * effort: an element that also changes on blur for another reason passes, and
+ * whether the change is visible enough is a judgment this does not make.
  */
 export async function tabTo(
   target: FocusTarget,
   options: { backward?: boolean } = {},
 ): Promise<void> {
   const passed: Array<string> = [];
+  let left =
+    lastTabbed?.element === document.activeElement ? lastTabbed : undefined;
   for (let press = 0; press < MAX_TAB_PRESSES; press += 1) {
     const focused = document.activeElement;
     if (
@@ -62,6 +136,9 @@ export async function tabTo(
       return;
     passed.push(describeElement(focused));
     await userEvent.tab({ shift: options.backward === true });
+    expectFocusIndicatorShown(left);
+    left = readFocus();
+    lastTabbed = left;
   }
   throw new Error(
     `Tab never reached the target; it passed: ${passed.slice(-20).join(", ")}`,

@@ -19,6 +19,7 @@ import { VerifyReceiptScreen } from "@exchange/VerifyReceiptScreen";
 import { activate, control, tabTo, typeInto } from "./keyboardOnly";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { expectNoAccessibilityViolations } from "./accessibilityRules";
+import { expectNoAxeViolations } from "./axeScan";
 
 import type { ExchangeRecord, LinkageTerms } from "@alcove/core";
 
@@ -151,10 +152,12 @@ test("verify: record, keys, re-supplied files and terms to a verified verdict, f
   const { record, keys } = await exchangeRecord();
   await loadRecord(record, serializeVerificationKeys(keys));
   expectNoAccessibilityViolations(app.container, { page: true });
+  await expectNoAxeViolations(app.container);
 
   await activate(control("button", "Verify"));
   await expectVerdictFocused("Incomplete");
   expectNoAccessibilityViolations(app.container, { page: true });
+  await expectNoAxeViolations(app.container);
 
   await resupplyFiles();
   await typeInto(
@@ -171,6 +174,7 @@ test("verify: record, keys, re-supplied files and terms to a verified verdict, f
 
   await expectVerdictFocused("Verified");
   expectNoAccessibilityViolations(app.container, { page: true });
+  await expectNoAxeViolations(app.container);
 }, 100_700);
 
 test("verify: an altered record reaches the failed verdict, from the keyboard", async () => {
@@ -189,4 +193,5 @@ test("verify: an altered record reaches the failed verdict, from the keyboard", 
 
   await expectVerdictFocused("Verification failed");
   expectNoAccessibilityViolations(app.container, { page: true });
+  await expectNoAxeViolations(app.container);
 }, 100_700);

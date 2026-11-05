@@ -176,7 +176,7 @@ Restricting what an SFTP exchange's SSH transport will negotiate to approved alg
 
 ### Section 508 and accessibility
 
-The CLI has no graphical interface and is not subject to Section 508's web or software accessibility requirements. The web application has not been formally evaluated against WCAG 2.1 Level AA or Section 508. A Voluntary Product Accessibility Template (VPAT) is not yet available; an accessibility assessment is targeted ahead of the 1.0 release (see [ROADMAP.md](ROADMAP.md)).
+The CLI has no graphical interface and is not subject to Section 508's web or software accessibility requirements. The web application has a self-assessment against WCAG 2.1 Level A and AA, [ACCESSIBILITY.md](ACCESSIBILITY.md), which maps each success criterion to a test, a check, or a written judgment and lists the gaps still open. It is the project's own record, not a third-party evaluation or a conformance claim. A Voluntary Product Accessibility Template (VPAT) is not yet available; it is planned after the 1.0 release, with screen-reader testing (see [ROADMAP.md](ROADMAP.md)).
 
 ### Export control (EAR)
 

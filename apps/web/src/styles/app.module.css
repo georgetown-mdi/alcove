@@ -446,6 +446,18 @@
   flex-wrap: wrap;
 }
 
+/* A step's continue label wraps rather than clipping in a narrow viewport
+   (WCAG 1.4.10); test/browser/reflow.test.ts measures it at 320 px. */
+.workFoot > :global(.mantine-Button-root) {
+  max-width: 100%;
+  height: auto;
+  min-height: var(--button-height);
+}
+
+.workFoot > :global(.mantine-Button-root) :global(.mantine-Button-label) {
+  white-space: normal;
+}
+
 .statusLine {
   font-weight: 600;
   margin: 0;

@@ -317,6 +317,13 @@ export function Lobby() {
               page.
             </p>
           ))}
+        <p className={`${styles.sub} ${styles.small}`}>
+          Have an exchange record to check? Open it on the{" "}
+          <Anchor inherit component={Link} to="/verify">
+            Verify an exchange record
+          </Anchor>{" "}
+          page.
+        </p>
         {isConsoleBuild() ? (
           <p className={`${styles.sub} ${styles.small}`}>
             {CONSOLE_RELAY_POINTER}

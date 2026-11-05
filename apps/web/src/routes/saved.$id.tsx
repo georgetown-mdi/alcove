@@ -2,6 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { isConsoleBuild } from "@utils/clientConfig";
+import { seo } from "@utils/seo";
 
 export const Route = createFileRoute("/saved/$id")({
   // The recurring run surface exists only in the hosted browser build; a console
@@ -10,6 +11,13 @@ export const Route = createFileRoute("/saved/$id")({
     if (isConsoleBuild()) throw redirect({ to: "/" });
   },
   component: RunRoute,
+  head: () => ({
+    meta: seo({
+      title: "Recurring exchange - Alcove",
+      description:
+        "A recurring exchange saved in this browser, with its runs and settings.",
+    }),
+  }),
 });
 
 function RunRoute() {

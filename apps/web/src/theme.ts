@@ -1,12 +1,15 @@
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Button,
   Card,
   Checkbox,
   Container,
+  Modal,
   Paper,
   Select,
+  Tooltip,
   createTheme,
   rem,
 } from "@mantine/core";
@@ -208,6 +211,26 @@ export const mantineTheme: MantineThemeOverride = createTheme({
     Alert: Alert.extend({
       defaultProps: {
         role: ALERT_DEFAULT_ROLE,
+      },
+    }),
+    // A link inside a sentence must differ from its text by more than color
+    // (WCAG 1.4.1), so every Anchor is underlined, not only on hover.
+    Anchor: Anchor.extend({
+      defaultProps: {
+        underline: "always",
+      },
+    }),
+    // The close button draws only an icon, so it takes its name here (WCAG
+    // 4.1.2).
+    Modal: Modal.extend({
+      defaultProps: {
+        closeButtonProps: { "aria-label": "Close" },
+      },
+    }),
+    // A tooltip stays open while the pointer moves onto it (WCAG 1.4.13).
+    Tooltip: Tooltip.extend({
+      defaultProps: {
+        interactive: true,
       },
     }),
   },

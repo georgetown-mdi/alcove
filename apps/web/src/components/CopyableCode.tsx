@@ -20,7 +20,11 @@ export function CopyableCode({
 }) {
   return (
     <div className={styles.handoffCodeRow}>
-      <pre className={`${styles.handoffCode} ${styles.mono}`}>{code}</pre>
+      {/* A tab stop, so a keyboard user can scroll a line wider than the
+          block (WCAG 2.1.1). */}
+      <pre className={`${styles.handoffCode} ${styles.mono}`} tabIndex={0}>
+        {code}
+      </pre>
       {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         typeof navigator !== "undefined" && navigator.clipboard ? (
