@@ -81,7 +81,11 @@ import type { ZodType } from "zod";
  * {@link ManagedStandingResponse}: such a build refuses the record whole
  * rather than offering a fresh invitation over an answer it cannot see. A
  * later shape change is a new literal under a new version, never an existing
- * version holding speculative fields.
+ * version holding speculative fields; the next one is v7, since staging builds
+ * wrote v5 and v6. `heldAppUpdate` and `defaultRelayRefusal` are the two
+ * exceptions: each holds only what the exchange's page states about the last
+ * scheduled window, so a build that drops them loses nothing a run reads
+ * (docs/spec/MANAGED_EXCHANGE_RECORD.md, Versioning).
  */
 export const MANAGED_EXCHANGE_SCHEMA_VERSION = "alcove-managed-exchange/v4";
 

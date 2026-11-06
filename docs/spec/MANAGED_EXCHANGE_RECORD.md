@@ -503,7 +503,10 @@ invalidate it:
   reload, and offers no remove for it. It also states the case where a reload
   shows the same record: the record opens once the newer version is back.
 - **The table.** It has no step, since every earlier literal is a
-  development one.
+  development one. Staging builds wrote `alcove-managed-exchange/v5` and
+  `alcove-managed-exchange/v6` before the record was folded back to v4, so
+  the next shape change takes `alcove-managed-exchange/v7`, and no later
+  build reads one of those records as its own.
 
 The persisted document inside the record states its own format version and is
 read under the exchange file's policy (see

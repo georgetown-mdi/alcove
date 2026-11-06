@@ -10,3 +10,4 @@
 - - -> **Older build.**
 - - -> A v4 build that predates them reads past both and drops them at its next write of the record.
 - - -> Each holds only what the exchange's page states about the last scheduled window, so the drop loses that statement and nothing a run reads.
+- - -> Staging builds wrote `alcove-managed-exchange/v5` and `alcove-managed-exchange/v6` before the record was folded back to v4, so the next shape change takes `alcove-managed-exchange/v7`, and no later build reads one of those records as its own.
