@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import PSI from "@openmined/psi.js";
 
+import { BROWSER_PSI_SET_MAX_ELEMENTS } from "../../src/connection/frameSize";
 import { RoundSetLimitError } from "../../src/errors";
 import {
   describeExchangeStages,
@@ -176,6 +177,9 @@ describe("count-only terms declaring single-pass under the every-key constructio
       { ...CASCADE_TERMS, linkageStrategy: "single-pass" },
       preparedParty("Receiver Co", FIRST),
       preparedParty("Sender Co", SECOND),
+      undefined,
+      undefined,
+      BROWSER_PSI_SET_MAX_ELEMENTS,
     );
 
     expect(linkViaSinglePassPSI).toHaveBeenCalled();

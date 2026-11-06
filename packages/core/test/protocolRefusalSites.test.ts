@@ -75,11 +75,12 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
     [TERMS_CHANGE, TERMS_CHANGE],
   // The partner's single-pass reply frame cannot be read.
   "packages/core/src/psi/link.ts :: decodeInt32LE": [PARTNER],
-  "packages/core/src/psi/link.ts :: decodeSinglePassReply": [PARTNER, PARTNER],
+  "packages/core/src/psi/link.ts :: decodeSinglePassReply": [PARTNER],
   "packages/core/src/psi/link.ts :: decodeSinglePassReply > readSlice": [
     PARTNER,
     PARTNER,
   ],
+  "packages/core/src/psi/link.ts :: decodeSinglePassReplyTail": [PARTNER],
   // The partner's PSI frames: unreadable, over the ceiling, a response with no
   // request, or larger than the request.
   "packages/core/src/psi/participant.ts :: PSIParticipant.assertResponseWithinRequest":

@@ -568,7 +568,7 @@ Once the terms are exchanged and before any PSI set moves, a cascade or count-on
 
 The partner's figure is an authenticated upper bound for a conforming partner, not the size of the set it sends: duplicate values and empty cells shrink the real set below it, and a sender partner on a swapped key whose cleaning does not fan out sends at most half of it. A command-line party whose memory sits near the bound is therefore refused unless `--allow-memory-shortfall` is passed, though the set it would receive could fit. Under the [PSI-C](PROTOCOL.md#psi-c) construction the figure is the size of the set itself: every round's set has one element for each of the partner's declared records, so one check covers every round.
 
-A single-pass exchange is left to the checks in [Memory an inbound frame takes](#memory-an-inbound-frame-takes), and over WebRTC to its dataset ceiling too. A browser party refuses against a fixed ceiling instead, on the same upper bound, and has no override ([PROTOCOL.md, What a browser tab can match](PROTOCOL.md#what-a-browser-tab-can-match)).
+A single-pass exchange is left to the checks in [Memory an inbound frame takes](#memory-an-inbound-frame-takes), and where a browser is its partner to that partner's ceiling too. A browser party refuses against a fixed ceiling instead, on the same upper bound, and has no override ([PROTOCOL.md, What a browser tab can match](PROTOCOL.md#what-a-browser-tab-can-match)).
 
 ### Memory an inbound frame takes
 
@@ -597,7 +597,7 @@ At the terms exchange of a single-pass run, the PSI worker's heap is set to `298
 
 Once a single-pass party has gathered its own distinct values, and before it masks any, a command-line party refuses a run whose main thread's `heap_size_limit` is under `120,000,000 + 135 * d` bytes, `d` the distinct values (`checkSinglePassOwnValuesHeap`, `apps/cli/src/psiMemoryBudget.ts`), on any channel. The refusal is a usage error (exit 64) naming the need, the limit, and the `NODE_OPTIONS=--max-old-space-size` line to set; the partner is told by the run's abort. `--allow-memory-shortfall` turns it into a warning.
 
-The figure is the line through the first and last rows below, rounded up, which is above the rows between. Measured 2026-11-04 in the development container (aarch64 Linux, Node v26.13.0, native library): the smallest main-thread `--max-old-space-size` under which `linkViaSinglePassPSI` completed with the right match count, bisected to 32 MiB, with the engine in a worker and the input of 14 keys built in the same heap. The sender and the receiver passed at the same limit at every size. The single-pass limit of 3,000,000 value slots a party bounds `d`, so the last row is at that limit.
+The figure is the line through the first and last rows below, rounded up, which is above the rows between. Measured 2026-11-04 in the development container (aarch64 Linux, Node v26.13.0, native library): the smallest main-thread `--max-old-space-size` under which `linkViaSinglePassPSI` completed with the right match count, bisected to 32 MiB, with the engine in a worker and the input of 14 keys built in the same heap. The sender and the receiver passed at the same limit at every size. No run past the last row was measured; past it the figure is the line extended.
 
 | Distinct values | Smallest passing `--max-old-space-size` | Its `heap_size_limit` |
 | --- | --- | --- |

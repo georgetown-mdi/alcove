@@ -152,14 +152,12 @@ test(
   "single-pass completes a larger dataset under the derived cap",
   { timeout: LARGE_DATASET_HANG_BACKSTOP_MS },
   async () => {
-    // A dataset far above the toy examples above, well within the
-    // single-pass ceiling, must flow through the full runExchange path to
-    // completion without the derived frame cap rejecting it -- the
-    // regression the row-count-derived cap is meant to AVOID (single-pass
-    // now handles datasets larger than the old fixed ceiling). 600 rows per
-    // side over one key is 600 (key, record) cells per party, orders of
-    // magnitude below MAX_SINGLE_PASS_CELLS, yet large enough that the
-    // derived byte cap is far tighter than the static frame cap.
+    // A dataset far above the toy examples above must flow through the full
+    // runExchange path to completion without the derived frame cap rejecting
+    // it -- the regression the row-count-derived cap is meant to AVOID. 600
+    // rows per side over one key is 600 (key, record) cells per party, yet
+    // large enough that the derived byte cap is far tighter than the static
+    // frame cap.
     const n = 600;
     const overlap = 200;
     const bigServer = Array.from({ length: n }, (_, i) => ({

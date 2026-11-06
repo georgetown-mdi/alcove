@@ -59,17 +59,22 @@ export const MAX_SINGLE_PASS_SET_ELEMENTS = Math.floor(
 export const BROWSER_PSI_SET_MAX_ELEMENTS = 8_388_608;
 
 /**
- * The single-pass dataset ceiling over WebRTC, a per-party budget on value slots
- * (`effectiveKeyCount * recordCount`, not rows), so the derived reply stays under
- * `MAX_WEBRTC_FRAME_BYTES`. File-sync has no such budget: it has the caps the
- * counts derive for its two frames, the AEAD's limit on one frame,
- * {@link MAX_SINGLE_PASS_SET_ELEMENTS} and the memory checks. Fixed, not
- * configurable: a configurable maximum reopens the memory-exhaustion denial of
- * service. Raise it only by re-deriving it from a fresh measurement
- * (docs/spec/PROTOCOL.md, The single-pass dataset ceiling: receiver memory and
- * masking compute).
+ * The single-pass ceiling on each party's value slots
+ * (`effectiveKeyCount * recordCount`, not rows) over WebRTC: the lesser of the
+ * two parties' stated receive ceilings where it is under
+ * {@link MAX_PSI_DECODE_ELEMENTS}, which only a browser party states, or
+ * `undefined` between two command-line parties, which the memory check at the
+ * terms exchange holds instead. Both parties read it from the terms exchange,
+ * so they reach one verdict (docs/spec/PROTOCOL.md, The single-pass dataset
+ * ceiling: receiver memory and masking compute).
  */
-export const MAX_SINGLE_PASS_CELLS = 3_000_000;
+export function singlePassValueSlotCeiling(
+  localReceiveCeiling: number,
+  partnerReceiveCeiling: number,
+): number | undefined {
+  const ceiling = Math.min(localReceiveCeiling, partnerReceiveCeiling);
+  return ceiling < MAX_PSI_DECODE_ELEMENTS ? ceiling : undefined;
+}
 
 /**
  * Upper bound on a decoded record count, enforced by `recordCountField` in
@@ -124,16 +129,17 @@ export function partyFansOut(
 }
 
 /**
- * Whether one party's own value slots exceed {@link MAX_SINGLE_PASS_CELLS}: the
- * one-party pre-flight in {@link prepareForExchange} on any channel but
- * file-sync, which has no such limit. The two-party gate is
+ * Whether one party's own value slots exceed `ceiling`: the one-party
+ * pre-flight in {@link prepareForExchange} for a browser party, at
+ * {@link BROWSER_PSI_SET_MAX_ELEMENTS}. The two-party gate is
  * {@link singlePassCeilingBreach}.
  */
 export function singlePassDatasetExceedsCap(
   effectiveKeyCount: number,
   recordCount: number,
+  ceiling: number,
 ): boolean {
-  return effectiveKeyCount * recordCount > MAX_SINGLE_PASS_CELLS;
+  return effectiveKeyCount * recordCount > ceiling;
 }
 
 /**
@@ -152,38 +158,30 @@ export const SINGLE_PASS_LOCAL_REMEDY =
 export type SinglePassCeilingBreach = "local" | "partner" | "both";
 
 /**
- * Which side breached the WebRTC single-pass ceiling, from the asking party's
- * view, or `undefined` within it. Computed from authenticated state both parties
- * have, so the two verdicts mirror each other and the abort stays symmetric.
+ * Which side breached the single-pass value slot `ceiling`
+ * ({@link singlePassValueSlotCeiling}), from the asking party's view, or
+ * `undefined` within it. Computed from authenticated state both parties have,
+ * so the two verdicts mirror each other and the abort stays symmetric.
  */
 export function singlePassCeilingBreach(
   local: SinglePassPartySize,
   partner: SinglePassPartySize,
+  ceiling: number,
 ): SinglePassCeilingBreach | undefined {
   const localOver = singlePassDatasetExceedsCap(
     local.effectiveKeyCount,
     local.recordCount,
+    ceiling,
   );
   const partnerOver = singlePassDatasetExceedsCap(
     partner.effectiveKeyCount,
     partner.recordCount,
+    ceiling,
   );
   if (localOver && partnerOver) return "both";
   if (localOver) return "local";
   if (partnerOver) return "partner";
   return undefined;
-}
-
-/**
- * Whether either party's value slots exceed {@link MAX_SINGLE_PASS_CELLS}. Both
- * parties compute it from authenticated session state alone, never from the
- * inbound file, so they abort in lockstep.
- */
-export function singlePassExchangeExceedsCap(
-  sender: SinglePassPartySize,
-  receiver: SinglePassPartySize,
-): boolean {
-  return singlePassCeilingBreach(sender, receiver) !== undefined;
 }
 
 /**

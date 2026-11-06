@@ -33,7 +33,6 @@ import {
 } from "../connection/messageConnection";
 import {
   MAX_PSI_DECODE_ELEMENTS,
-  MAX_SINGLE_PASS_CELLS,
   MAX_SINGLE_PASS_SET_ELEMENTS,
   MAX_UINT32,
   partyFansOut,
@@ -1815,11 +1814,11 @@ const declaredSinglePassSize = (
   `across ${party.recordCount} record(s), which is ${valueSlots(party)} ` +
   "value slot(s)";
 
-// Actionable guidance for an exchange that exceeds the WebRTC single-pass
-// ceiling. By design this does not recommend cascade: linkage_strategy is a
-// mandatory-consistency agreed term that cannot change unilaterally
-// mid-exchange, so pointing at it here would mislead (docs/spec/PROTOCOL.md,
-// the single-pass dataset ceiling).
+// Actionable guidance for an exchange that exceeds the single-pass ceiling a
+// browser party holds both parties to. By design this does not recommend
+// cascade: linkage_strategy is a mandatory-consistency agreed term that cannot
+// change unilaterally mid-exchange, so pointing at it here would mislead
+// (docs/spec/PROTOCOL.md, the single-pass dataset ceiling).
 //
 // That ceiling is a PER-PARTY budget on the value slot count
 // effectiveKeyCount * recordCount, so the guidance is oriented to the party
@@ -1845,6 +1844,7 @@ function singlePassOverCapMessage(
   local: SinglePassPartySize,
   localFansOut: boolean,
   partner: SinglePassPartySize,
+  ceiling: number,
 ): string {
   const cause =
     breach === "local"
@@ -1879,7 +1879,7 @@ function singlePassOverCapMessage(
   return (
     `${id}: this ${breach === "local" ? "dataset" : "exchange"} is too large for ` +
     `single-pass linkage: ${cause}, above the single-pass limit of ` +
-    `${MAX_SINGLE_PASS_CELLS} value slot(s) per party. ` +
+    `${ceiling} value slot(s) per party in an exchange with a browser. ` +
     remedies.join(" ")
   );
 }
@@ -2078,6 +2078,11 @@ export interface SinglePassSessionBounds extends SessionBounds {
    * out but the agreed terms declare no width.
    */
   readonly localFanOutFactor: number;
+  /**
+   * The most value slots either party may declare over WebRTC
+   * ({@link singlePassValueSlotCeiling}), or absent where none applies.
+   */
+  readonly valueSlotCeiling?: number;
 }
 
 /**
@@ -2286,21 +2291,26 @@ export async function linkViaSinglePassPSI(
     );
   }
 
-  // Authoritative, symmetric over-ceiling gate. Both parties compute it
-  // identically from the exchanged counts and effective key counts, BEFORE
-  // exchanging any single-pass frame, so an over-cap exchange aborts on
-  // both sides in lockstep -- neither sends nor waits, so neither hangs to
-  // the inactivity timeout. The verdict is on the per-party budget, so the
-  // two parties' breach labels mirror each other (a "partner" breach here is a
-  // "local" one over there) while the abort decision is the same on both. The
-  // guidance shown is oriented to this party and does not recommend cascade.
-  // The prepareForExchange pre-flight is the coarse one-party shadow of this;
-  // this is the precise two-party check. File-sync has no such budget: its
-  // limits are the set maximum, met before masking, and the AEAD's limit on
-  // one frame, which a frame's real size meets after it
-  // (refuseSinglePassFrameOverCeiling).
-  if (!fileSync) {
-    const ceilingBreach = singlePassCeilingBreach(localSize, partnerSize);
+  // Authoritative, symmetric over-ceiling gate where a browser is a party.
+  // Both parties compute it identically from the exchanged counts, effective
+  // key counts and stated receive ceilings, BEFORE exchanging any single-pass
+  // frame, so an over-ceiling exchange aborts on both sides in lockstep --
+  // neither sends nor waits, so neither hangs to the inactivity timeout. The
+  // verdict is on the per-party budget, so the two parties' breach labels
+  // mirror each other (a "partner" breach here is a "local" one over there)
+  // while the abort decision is the same on both. The guidance shown is
+  // oriented to this party and does not recommend cascade. Between two
+  // command-line parties the memory check at the terms exchange is the gate,
+  // and over file-sync the limits are the set maximum, met before masking,
+  // and the AEAD's limit on one frame, which a frame's real size meets after
+  // it (refuseSinglePassFrameOverCeiling).
+  const ceiling = bounds.valueSlotCeiling;
+  if (!fileSync && ceiling !== undefined) {
+    const ceilingBreach = singlePassCeilingBreach(
+      localSize,
+      partnerSize,
+      ceiling,
+    );
     if (ceilingBreach !== undefined) {
       throw new UsageError(
         singlePassOverCapMessage(
@@ -2310,6 +2320,7 @@ export async function linkViaSinglePassPSI(
           localSize,
           localFansOut,
           partnerSize,
+          ceiling,
         ),
       );
     }

@@ -8,7 +8,7 @@
  * (docs/spec/EXCHANGE_FILE.md, "Terms-binding consent").
  */
 
-import { prepareForExchange } from "@alcove/core";
+import { BROWSER_PSI_SET_MAX_ELEMENTS, prepareForExchange } from "@alcove/core";
 
 import type { CSVRow, ExchangeSpec, PreparedExchange } from "@alcove/core";
 
@@ -44,6 +44,9 @@ export function prepareManagedRerunExchange(
     exchangeFile.linkageTerms.identity,
     rawRows,
     columns,
+    undefined,
+    undefined,
+    BROWSER_PSI_SET_MAX_ELEMENTS,
   );
   // Passed as-is, as the accept path does: an absent declaration binds nothing.
   prepared.expectedPartnerDeduplicate = exchangeFile.expectedPartnerDeduplicate;

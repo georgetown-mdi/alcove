@@ -102,7 +102,9 @@ export type EngineFor = (
  * `terms`, both parties' agreed terms. A party that fails closes its end,
  * so the other is not left waiting. `engineFor` builds each party's engine,
  * by default in process over `psiLibrary`. Given `fileSyncFrameBound`, each
- * party's connection states it as its file-sync frame bound.
+ * party's connection states it as its file-sync frame bound. Given
+ * `valueSlotCeiling`, both parties hold a single-pass run to it, as where a
+ * browser is a party.
  */
 export async function runPsiPhasePair(
   psiLibrary: PSILibrary,
@@ -112,6 +114,7 @@ export async function runPsiPhasePair(
   engineFor: EngineFor = (role, id, mode) =>
     new InProcessPsiEngine(psiLibrary, role, id, mode),
   fileSyncFrameBound?: number,
+  valueSlotCeiling?: number,
 ): Promise<{ receiver: PhaseOutcome; sender: PhaseOutcome }> {
   const [receiverEnd, senderEnd] = createMessagePipe();
   const countOnly = terms.algorithm === "psi-c";
@@ -160,6 +163,7 @@ export async function runPsiPhasePair(
           declaredKeyWidth(key, keyIndex),
         ),
         localFanOutFactor: 1,
+        ...(valueSlotCeiling === undefined ? {} : { valueSlotCeiling }),
       },
       withholdSenderTable: false,
       onStage: (id) => stages.push(id),

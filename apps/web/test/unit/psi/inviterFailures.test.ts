@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
   ConnectionError,
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
@@ -56,13 +57,13 @@ const WORK_FILE: JobInputSource = {
   name: "clients.csv",
 };
 
-// The single-pass ceiling refusal as core raises it: enough declared linkage keys
-// and records that their product crosses the per-party value-slot budget. The
-// budget itself is core's own constant and not on its public surface, so the
-// fixture is sized past it rather than derived from it -- a raised ceiling stops
-// the refusal firing and fails below rather than passing quietly.
+// The single-pass ceiling refusal as core raises it for a browser party: enough
+// declared linkage keys and records that their product crosses the per-party
+// value-slot budget, BROWSER_PSI_SET_MAX_ELEMENTS. The fixture is sized past it
+// rather than derived from it -- a raised ceiling stops the refusal firing and
+// fails below rather than passing quietly.
 const CEILING_KEY_COUNT = 30;
-const CEILING_ROW_COUNT = 100_001;
+const CEILING_ROW_COUNT = 279_621;
 
 const ceilingRefusal = (): unknown => {
   const terms: LinkageTerms = {
@@ -96,10 +97,15 @@ const ceilingRefusal = (): unknown => {
     last_name: "Smith",
   });
   try {
-    prepareForExchange({ linkageTerms: terms, metadata }, "Tester", rows, [
-      "first_name",
-      "last_name",
-    ]);
+    prepareForExchange(
+      { linkageTerms: terms, metadata },
+      "Tester",
+      rows,
+      ["first_name", "last_name"],
+      undefined,
+      undefined,
+      BROWSER_PSI_SET_MAX_ELEMENTS,
+    );
   } catch (err) {
     return err;
   }

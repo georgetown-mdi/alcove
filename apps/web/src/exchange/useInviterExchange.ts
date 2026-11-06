@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
 import {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   PSI_SET_REFUSED_ABORT_REASON,
@@ -1438,6 +1439,9 @@ export function useInviterExchange({
         inviterName,
         minted.rawRows,
         minted.columns,
+        undefined,
+        undefined,
+        BROWSER_PSI_SET_MAX_ELEMENTS,
       );
       await assertFirstRoundWithinSetMaximum(prepared, {
         onProgress: onPsiProgress,

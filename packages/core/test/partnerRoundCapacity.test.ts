@@ -497,12 +497,12 @@ test("a capacity check that passes leaves the run as it was", async () => {
   expect(partner.status).toBe("fulfilled");
 });
 
-test("a single-pass exchange is left to its dataset ceiling", async () => {
+test("a single-pass exchange is left to its value-slot ceiling, not weighed as a round", async () => {
   const seen: Array<number> = [];
   const { local, partner } = await runPair({
     localRows: 5,
     partnerRows: 12,
-    ceiling: 1,
+    ceiling: 12,
     strategy: "single-pass",
     options: { checkPartnerRoundCapacity: (values) => void seen.push(values) },
   });

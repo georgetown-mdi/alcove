@@ -1338,7 +1338,7 @@ What the run has is the least of the matching's heap limit, the machine's memory
 - **Split the input** and run one exchange per file.
 - **Pass `--allow-memory-shortfall`.** A warning names the shortfall on `stderr` and, with `--event-stream`, as `memoryShortfall`; the run may end with exit 134. The flag also covers the input-size check below.
 
-**Over a shared folder or SFTP**, the run also checks the memory available now before it reads each message from your partner, and at the start of a single-pass exchange for the largest message your partner's record count allows. When the machine is short, the run stops (exit 64), and once the exchange is under way your partner is told. Give the run more memory, or pass `--allow-memory-shortfall` to go on with a warning. How the need is computed: [FILE_SYNC.md](spec/FILE_SYNC.md#memory-an-inbound-frame-takes).
+**Over a shared folder or SFTP**, the run also checks the memory available now before it reads each message from your partner. **On any channel**, a single-pass exchange checks at its start for the largest message your partner's record count allows, and over WebRTC for the largest message it sends too. When the machine is short, the run stops (exit 64), and once the exchange is under way your partner is told. Give the run more memory, or pass `--allow-memory-shortfall` to go on with a warning. How the need is computed: [FILE_SYNC.md](spec/FILE_SYNC.md#memory-an-inbound-frame-takes).
 
 **An installed `alcove`** runs its main thread, which reads your input, under the heap limit `node` starts with -- at Node's default, about six million records of a four-column input. Set the container image's larger limit for a large input:
 

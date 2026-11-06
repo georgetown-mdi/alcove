@@ -47,19 +47,12 @@
  * Fixed, not operator-configurable: a configurable cap risks being raised to
  * reintroduce the denial of service.
  *
- * Also the WebRTC half of the single-pass frame cap's per-transport clamp:
- * single-pass derives a per-exchange reply cap from the exchanged record
- * counts (`singlePassReplyByteCap`) and, over WebRTC, aborts an exchange whose
- * `keyCount * rows` exceeds `MAX_SINGLE_PASS_CELLS`, a check both parties run
- * from authenticated counts (`linkViaSinglePassPSI`). WebRTC keeps this fixed
- * envelope at the reassembly read gate rather than threading the derived cap into it (the
- * file-sync transport threads it into its `get()` read gate instead). At the
- * single-pass ceiling the derived reply cap is ~240 MiB, below this 256 MiB
- * envelope, so it never rejects a legitimate single-pass reply the count
- * check already admitted. `MAX_SINGLE_PASS_CELLS` is held below the point
- * where that derived cap would reach this envelope; raising it past that
- * point would require this path to gate on a per-exchange cell budget too.
- * See docs/spec/TRANSPORT_BOUNDS.md and docs/spec/PROTOCOL.md.
+ * Single-pass keeps this fixed envelope at the reassembly read gate rather
+ * than threading its count-derived caps into it (the file-sync transport
+ * threads them into its `get()` read gate instead): a single-pass message
+ * whose cap passes this envelope is sent in parts, each a frame within it
+ * (`singlePassMessageInParts`). See docs/spec/TRANSPORT_BOUNDS.md and
+ * docs/spec/PROTOCOL.md.
  */
 export const MAX_WEBRTC_FRAME_BYTES = 256 * 1024 * 1024;
 

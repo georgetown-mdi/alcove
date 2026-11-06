@@ -23,7 +23,6 @@ import {
   UsageError,
 } from "../../src/errors";
 import {
-  MAX_SINGLE_PASS_CELLS,
   SINGLE_PASS_LOCAL_REMEDY,
   singlePassDatasetExceedsCap,
 } from "../../src/connection/frameSize";
@@ -37,7 +36,7 @@ import { getLogger } from "../../src/utils/logger";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
-import type { ExchangeDataSpec } from "../../src/exchange";
+import type { ExchangeDataSpec, PreparedExchange } from "../../src/exchange";
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { Algorithm } from "../../src/types";
 import type {
@@ -50,6 +49,10 @@ import type { Standardization } from "../../src/config/standardizationSchema";
 import type { CSVRow } from "../../src/file";
 
 // --- Fixtures ----------------------------------------------------------------
+
+// A single-pass value slot ceiling a browser party passes, held low so a
+// dataset over it is small.
+const TEST_CEILING = 1_000;
 
 // A minimal two-field linkage terms; every fixture below shares it so the only
 // variable across the cases is whether (and how) a standardization is authored.
@@ -686,17 +689,29 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
   // rows. One row object shared across the array: both refusals here fire on the
   // counts, before anything reads a row.
   const rowsOverCeiling = (effectiveKeyCount: number): Array<CSVRow> =>
-    new Array<CSVRow>(
-      Math.floor(MAX_SINGLE_PASS_CELLS / effectiveKeyCount) + 1,
-    ).fill(rawRows[0]);
+    new Array<CSVRow>(Math.floor(TEST_CEILING / effectiveKeyCount) + 1).fill(
+      rawRows[0],
+    );
+  // A browser party's preparation, held to the test's ceiling.
+  const prepareInBrowser = (
+    spec: ExchangeDataSpec,
+    rows: Array<CSVRow>,
+  ): PreparedExchange =>
+    prepareForExchange(
+      spec,
+      "Tester",
+      rows,
+      columns,
+      undefined,
+      undefined,
+      TEST_CEILING,
+    );
 
   test("an over-ceiling dataset declaring no fan-out is refused with the remedies that fit it", () => {
     const prepare = () =>
-      prepareForExchange(
+      prepareInBrowser(
         { linkageTerms: singlePassTerms, metadata },
-        "Tester",
         rowsOverCeiling(1),
-        columns,
       );
     // Every remedy the message names is a configuration change, so the class is
     // the one the CLI maps to EX_USAGE rather than to a transport failure -- and,
@@ -725,70 +740,44 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
       singlePassDatasetExceedsCap(
         declaredEffectiveKeyCount(fanOutTerms),
         overCeilingRows.length,
+        TEST_CEILING,
       ),
     ).toBe(true);
     expect(
       singlePassDatasetExceedsCap(
         fanOutTerms.linkageKeys.length,
         overCeilingRows.length,
+        TEST_CEILING,
       ),
     ).toBe(false);
     const prepare = () =>
-      prepareForExchange(
+      prepareInBrowser(
         { linkageTerms: fanOutTerms, metadata },
-        "Tester",
         overCeilingRows,
-        columns,
       );
     expect(prepare).toThrow(OperatorConfigError);
     expect(prepare).toThrow(/exceed the single-pass limit/);
     expect(prepare).toThrow(/Removing a step that splits values/);
   });
 
-  test.each(["sftp", "filedrop"] as const)(
-    "a file-sync %s run has no size refusal",
-    (channel) => {
-      const rows = rowsOverCeiling(declaredEffectiveKeyCount(singlePassTerms));
-      const prepared = prepareForExchange(
-        { linkageTerms: singlePassTerms, metadata },
-        "Tester",
-        rows,
-        columns,
-        undefined,
-        undefined,
-        channel,
-      );
-      expect(prepared.rowCount).toBe(rows.length);
-    },
-  );
-
-  test.each(["webrtc", undefined] as const)(
-    "a run on channel %s keeps the WebRTC budget",
-    (channel) => {
-      const prepare = () =>
-        prepareForExchange(
-          { linkageTerms: singlePassTerms, metadata },
-          "Tester",
-          rowsOverCeiling(declaredEffectiveKeyCount(singlePassTerms)),
-          columns,
-          undefined,
-          undefined,
-          channel,
-        );
-      expect(prepare).toThrow(OperatorConfigError);
-      expect(prepare).toThrow(/exceed the single-pass limit\./);
-    },
-  );
+  test("a command-line party has no size refusal before contact", () => {
+    const rows = rowsOverCeiling(declaredEffectiveKeyCount(singlePassTerms));
+    const prepared = prepareForExchange(
+      { linkageTerms: singlePassTerms, metadata },
+      "Tester",
+      rows,
+      columns,
+    );
+    expect(prepared.rowCount).toBe(rows.length);
+  });
 
   test("a fan-out config inside the ceiling prepares", () => {
     // The pre-flight's other side: the same terms over a dataset the declared
     // width admits reach the built exchange rather than a refusal, so the case
     // above fires on the size and not on the fan-out.
-    const prepared = prepareForExchange(
+    const prepared = prepareInBrowser(
       { linkageTerms: fanOutTerms, metadata },
-      "Tester",
       rawRows,
-      columns,
     );
     expect(declaredEffectiveKeyCount(fanOutTerms)).toBe(
       FAN_OUT_CANDIDATES_PER_ELEMENT,
@@ -812,18 +801,20 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
     // what arrives below is the ordering's doing rather than a fixture that never
     // reached the gate.
     expect(
-      singlePassDatasetExceedsCap(effectiveKeyCount, overCeilingRows.length),
+      singlePassDatasetExceedsCap(
+        effectiveKeyCount,
+        overCeilingRows.length,
+        TEST_CEILING,
+      ),
     ).toBe(true);
     const prepare = () =>
-      prepareForExchange(
+      prepareInBrowser(
         {
           linkageTerms: singlePassTerms,
           metadata,
           standardization: inconsistentStandardization,
         },
-        "Tester",
         overCeilingRows,
-        columns,
       );
     expect(prepare).toThrow(StandardizationTermsError);
     expect(prepare).toThrow(/not_a_field/);
@@ -1248,6 +1239,7 @@ const refusalCases: Array<{
   spec: ExchangeDataSpec;
   rows?: Array<CSVRow>;
   columnNames?: Array<string>;
+  singlePassValueSlotCeiling?: number;
   errorClass: new (message: string) => Error;
   // Whether the operator reads this refusal's own message.
   messageRendered: boolean;
@@ -1367,13 +1359,14 @@ const refusalCases: Array<{
     messageRendered: true,
   },
   {
-    what: "a dataset over the single-pass ceiling",
+    what: "a dataset over a browser party's single-pass ceiling",
     says: /exceed the single-pass limit/,
     spec: {
       linkageTerms: { ...terms, linkageStrategy: "single-pass" },
       metadata,
     },
-    rows: new Array<CSVRow>(MAX_SINGLE_PASS_CELLS + 1).fill(rawRows[0]),
+    rows: new Array<CSVRow>(TEST_CEILING + 1).fill(rawRows[0]),
+    singlePassValueSlotCeiling: TEST_CEILING,
     errorClass: OperatorConfigError,
     messageRendered: true,
   },
@@ -1389,6 +1382,9 @@ describe("prepareForExchange: the class every refusal holds", () => {
           "Tester",
           refusal.rows ?? rawRows,
           refusal.columnNames ?? columns,
+          undefined,
+          undefined,
+          refusal.singlePassValueSlotCeiling,
         );
       } catch (err) {
         thrown = err;

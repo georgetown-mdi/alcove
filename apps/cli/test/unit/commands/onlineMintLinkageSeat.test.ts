@@ -202,7 +202,6 @@ test("the run boundary keeps the agreed seat's words for the same grading", asyn
       buildDataSpec({ terms, identity: "Agency B", rows }),
       "Agency B",
       rows,
-      "sftp",
     );
   } catch (err) {
     thrown = err;
