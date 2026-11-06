@@ -74,43 +74,25 @@ import type { DisclosureChoice } from "../metadataEditing";
 import type { ZodType } from "zod";
 
 /**
- * The `schemaVersion` literal this build writes for the v6 record. A reader
+ * The `schemaVersion` literal this build writes for the v4 record. A reader
  * migrates an earlier version {@link MANAGED_EXCHANGE_MIGRATIONS} leads from
  * and refuses any other value. The literal moves for a member a build not
  * knowing it would read past and lose state by, such as the
  * {@link ManagedStandingResponse}: such a build refuses the record whole
  * rather than offering a fresh invitation over an answer it cannot see. A
  * later shape change is a new literal under a new version, never an existing
- * version holding speculative fields.
+ * version holding speculative fields; the next one is v7, since staging builds
+ * wrote v5 and v6. `heldAppUpdate` and `defaultRelayRefusal` are the two
+ * exceptions: each holds only what the exchange's page states about the last
+ * scheduled window, so a build that drops them loses nothing a run reads
+ * (docs/spec/MANAGED_EXCHANGE_RECORD.md, Versioning).
  */
-export const MANAGED_EXCHANGE_SCHEMA_VERSION = "alcove-managed-exchange/v6";
-
-/** The step from the v4 record, which has no `heldAppUpdate`: a v4 build ran
- * no window it recorded a held update for, so the step adds the none form. */
-const MANAGED_EXCHANGE_V4_TO_V5 = Object.freeze({
-  from: "alcove-managed-exchange/v4",
-  to: "alcove-managed-exchange/v5",
-  migrate: (record: Record<string, unknown>) => ({
-    ...record,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-  }),
-});
-
-/** The step from the v5 record, which has no `defaultRelayRefusal`: a v5
- * build recorded no refusal for any window, so the step adds the none form. */
-const MANAGED_EXCHANGE_V5_TO_V6 = Object.freeze({
-  from: "alcove-managed-exchange/v5",
-  to: MANAGED_EXCHANGE_SCHEMA_VERSION,
-  migrate: (record: Record<string, unknown>) => ({
-    ...record,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-  }),
-});
+export const MANAGED_EXCHANGE_SCHEMA_VERSION = "alcove-managed-exchange/v4";
 
 /**
  * The managed record's migrations, run in memory at every read of the store.
  * A migrated record is written at the current version by the next store
- * write that changes it, never by a read. The literals before v4 are
+ * write that changes it, never by a read. The earlier literals are
  * development ones no step leads from.
  */
 export const MANAGED_EXCHANGE_MIGRATIONS: FormatMigrations<string> =
@@ -118,10 +100,7 @@ export const MANAGED_EXCHANGE_MIGRATIONS: FormatMigrations<string> =
     fileName: "A saved exchange",
     versionField: "schemaVersion",
     current: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    steps: Object.freeze([
-      MANAGED_EXCHANGE_V4_TO_V5,
-      MANAGED_EXCHANGE_V5_TO_V6,
-    ]),
+    steps: Object.freeze([]),
     unchangedStatement: "The saved exchange was not changed.",
     failureRemedy:
       "Remove it from the list of saved exchanges, then import its backup " +
@@ -507,7 +486,7 @@ export const NO_DEFAULT_RELAY_REFUSAL: ManagedDefaultRelayRefusalNone = {
  * docs/spec/MANAGED_EXCHANGE_RECORD.md for the field-by-field shape.
  */
 export interface ManagedExchangeRecord {
-  /** The v6 literal; a reader migrates an earlier version or refuses it (see
+  /** The v4 literal; a reader migrates an earlier version or refuses it (see
    * {@link MANAGED_EXCHANGE_SCHEMA_VERSION}). */
   schemaVersion: typeof MANAGED_EXCHANGE_SCHEMA_VERSION;
   /** Locally-generated identifier for this managed exchange, distinct from any
@@ -892,8 +871,14 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     previousSharedSecret: z.string().regex(SHARED_SECRET_REGEX).optional(),
     previousExpires: z.iso.datetime().optional(),
     standingCondition: standingConditionFieldSchema,
-    heldAppUpdate: heldAppUpdateFieldSchema,
-    defaultRelayRefusal: defaultRelayRefusalFieldSchema,
+    // A v4 record stored before either field existed lacks it, and recorded
+    // nothing it could hold, so the absent field is read as the none form.
+    heldAppUpdate: heldAppUpdateFieldSchema.default(() => ({
+      ...NO_HELD_APP_UPDATE,
+    })),
+    defaultRelayRefusal: defaultRelayRefusalFieldSchema.default(() => ({
+      ...NO_DEFAULT_RELAY_REFUSAL,
+    })),
   })
   .refine(
     (record) =>
@@ -978,7 +963,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
  *
  * @param migrations the record's migrations; this build's by default.
  * @throws {FormatMigrationError} if a migration fails, naming its cause.
- * @throws {ZodError} if the value is not a valid v6 record.
+ * @throws {ZodError} if the value is not a valid v4 record.
  */
 export function parseManagedExchangeRecord(
   raw: unknown,
@@ -1061,7 +1046,7 @@ export function runnableManagedExchangeOrRefuse(
 }
 
 /**
- * A per-entry read of the stored list: the entries that parsed as v6 records, and
+ * A per-entry read of the stored list: the entries that parsed as v4 records, and
  * the stored keys of the entries that did not. The unreadable half is the STORED
  * KEY rather than the entry's own `id`, which a failed parse leaves untrusted --
  * the same reason the diagnostic read's unreadable marker holds the key (see
@@ -1141,7 +1126,7 @@ export interface ManagedExchangeDiagnosticEssentials {
  * {@link parseManagedExchangeRecord} throws here exactly as it would on the
  * strict read; the caller catches that to mark the entry unreadable.
  *
- * @throws {ZodError} if the value is not a valid v6 record.
+ * @throws {ZodError} if the value is not a valid v4 record.
  */
 export function diagnoseManagedExchangeRecord(
   raw: unknown,
@@ -1305,7 +1290,7 @@ export interface NewManagedExchange {
 
 /**
  * Build a complete {@link ManagedExchangeRecord} from the caller's fields: assign
- * a fresh `id` and the v6 `schemaVersion`, then validate the whole record through
+ * a fresh `id` and the v4 `schemaVersion`, then validate the whole record through
  * the schema so the label cap, the credential-free document, and the secret
  * format are enforced at write. The optional local fields are attached only when
  * present, so an absent policy is an omitted key rather than an explicit
