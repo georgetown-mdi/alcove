@@ -17,6 +17,7 @@ import {
   type ExchangeResult,
 } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
+import { UsageError } from "../src/errors";
 import type {
   LinkageStrategy,
   LinkageTerms,
@@ -175,6 +176,97 @@ describe.each<LinkageStrategy>(["cascade", "single-pass"])(
         );
         expect(pairsOf(second)).toEqual(pairsOf(first));
       }
+    });
+  },
+);
+
+// An adjacent-years element behind a transform that strips a leading 1990, so
+// party x's 1990 birth date reaches the element as the four digits 0115 while
+// party y's values stay canonical. Each side holds two rows, so the initiator
+// receives.
+function strippedYearTerms(
+  linkageStrategy: LinkageStrategy,
+  identity: string,
+): LinkageTerms {
+  return {
+    version: "1.0.0",
+    identity,
+    date: "2026-01-01",
+    algorithm: "psi",
+    linkageStrategy,
+    output: { expectsOutput: true, shareWithPartner: true },
+    deduplicate: false,
+    linkageFields: [{ name: "dob", type: "date_of_birth" }],
+    linkageKeys: [
+      {
+        name: "birth date",
+        elements: [
+          {
+            field: "dob",
+            transform: [
+              {
+                function: "replace_regex",
+                params: { pattern: "^1990", replacement: "" },
+              },
+            ],
+            generateFuzzyComparisons: "adjacent_years",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+const STRIPPED_YEAR_X = ["01/15/1990", "01/15/1985"];
+const STRIPPED_YEAR_Y = ["01/15/1985", "06/15/1950"];
+
+/** Party x's outcome, with `initiator` initiating and so the receiver. */
+async function strippedYearExchange(
+  initiator: "x" | "y",
+  strategy: LinkageStrategy,
+): Promise<PromiseSettledResult<ExchangeResult>> {
+  const prepare = (identity: string, rows: ReadonlyArray<string>) =>
+    prepareForExchange(
+      { linkageTerms: strippedYearTerms(strategy, identity) },
+      identity,
+      rows.map((date_of_birth) => ({ date_of_birth })),
+      ["date_of_birth"],
+    );
+  const x = prepare("X Co", STRIPPED_YEAR_X);
+  const y = prepare("Y Co", STRIPPED_YEAR_Y);
+  const [initiatorConn, responderConn] = createMessagePipe();
+  // A failed party closes its connection, as a transport caller does, so the
+  // partner meets the end of the run rather than awaiting a frame.
+  const run = (
+    conn: typeof initiatorConn,
+    role: "initiator" | "responder",
+    party: typeof x,
+  ) =>
+    runExchange(conn, role, party, { psiLibrary }).catch(async (err) => {
+      await conn.close();
+      throw err;
+    });
+  const [initiated, responded] = await Promise.allSettled([
+    run(initiatorConn, "initiator", initiator === "x" ? x : y),
+    run(responderConn, "responder", initiator === "x" ? y : x),
+  ]);
+  return initiator === "x" ? initiated : responded;
+}
+
+describe.each<LinkageStrategy>(["cascade", "single-pass"])(
+  "under %s",
+  (strategy) => {
+    test("a date value that is not eight digits is refused in both roles", async () => {
+      const refusals: string[] = [];
+      for (const initiator of ["x", "y"] as const) {
+        const outcome = await strippedYearExchange(initiator, strategy);
+        expect(outcome.status).toBe("rejected");
+        const reason = (outcome as PromiseRejectedResult).reason as unknown;
+        expect(reason).toBeInstanceOf(UsageError);
+        refusals.push((reason as UsageError).message);
+      }
+      expect(refusals[0]).toMatch(/not a canonical YYYYMMDD date/);
+      expect(refusals[1]).toBe(refusals[0]);
     });
   },
 );

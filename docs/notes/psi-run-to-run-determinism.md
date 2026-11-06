@@ -4,9 +4,10 @@ title: "PSI Results From Run to Run: Where the Table Can Change on Unchanged Dat
 
 # How a psi result can change from run to run on unchanged data
 
-*Status: examined and measured; nothing decided or built.
-The stated limits in [PROTOCOL.md](../spec/PROTOCOL.md) are unchanged.
-The candidate build items at the end are proposals for the maintainer to scope or decline.
+*Status: examined and measured; one rule built.
+The sender's date-shape check (section 4) is built, and its stated limit is retired from [PROTOCOL.md](../spec/PROTOCOL.md).
+The maintainer accepted the equal-count tie-break (section 5, narrow) on the condition that nothing new is exchanged; it is not built, for the reason given in section 5.
+He declined the record-level uniqueness drop, the width bound in both roles, the value-keyed sweep order, and the fixed role, which stay stated limits.
 See [docs/notes/README.md](README.md).*
 
 This note lists each way a `psi` association table, or a `psi-c` count, can differ between two runs over the same records,
@@ -144,9 +145,9 @@ Measure the bound on the would-be expansion in both roles, so a sending party dr
 ## 4. The date-shape refusal on the receiver
 
 **Mechanism.**
-The three date expansions refuse the exchange at the first value that is not eight digits, and only the expanding party reads the value, so only the receiver refuses.
+The three date expansions refuse the exchange at the first value that is not eight digits, and in the build measured only the expanding party read the value, so only the receiver refused.
 Code: `expandFuzzyComparisons` and the date candidate functions (`packages/core/src/fuzzyComparisons.ts`).
-Spec: the stated limit "only the receiver refuses a date value that is not eight digits" in [Which party expands](../spec/PROTOCOL.md#which-party-expands-full-variant-and-deletion-neighbourhood-expansions).
+Spec: the rule "both roles refuse a date value that is not eight digits" in [Which party expands](../spec/PROTOCOL.md#which-party-expands-full-variant-and-deletion-neighbourhood-expansions), which retires the limit this section measured.
 
 **Driven input.**
 An `adjacent_years` element on date of birth behind a `replace_regex` that strips a leading `1990`.
@@ -155,12 +156,21 @@ X's 1990 birth date reaches the element as the four digits `0115`, and Y's value
 X as the receiver: the exchange is refused, 20 of 20.
 X as the sender: the exchange completes with the one pair x1-y0, 20 of 20.
 This changes whether the run completes, not the table of a completed run.
+These figures are from the 2026-11-04 build, which had no check on the sender.
 
-**Deterministic rule.**
-Check the shape in both roles: the sending party applies the same check to its own values before the rounds.
+**Deterministic rule, built.**
+Check the shape in both roles: the sending party applies the receiver's check to each value it builds for a date element, and gives the receiver's refusal
+([Which party expands](../spec/PROTOCOL.md#which-party-expands-full-variant-and-deletion-neighbourhood-expansions); `checksInputWithoutExpanding`, `packages/core/src/fuzzyComparisons.ts`).
+The driven input above is refused in both roles, under both strategies,
+as [`roleSwapDeterminism.test.ts`](../../packages/core/test/roleSwapDeterminism.test.ts) pins.
+- Where: as each round's values are built, not in a pass over every row before the rounds.
+  A cascade round after the first reads only the rows still unmatched, and the receiver checks only those;
+  a sender checking every row up front would refuse a run the receiver role completes, which is the role dependence the rule removes.
 - Disclosure: none; the check is local and the refusal is one the partner already meets from a receiver.
 - Traffic: none.
-- Other cost: an exchange that completes today with that party as the sender is refused in both roles.
+- Other cost: an exchange that completed with that party as the sender is refused in both roles.
+- Mixed builds: the check is local, so a build without it still sends such a value as the sender and the run completes.
+  Until both parties run a build with the check, whether such a run completes depends on which build sends.
 
 ## 5. What moves the role between runs
 
@@ -193,6 +203,20 @@ That removes sources 1 to 4 from run to run, though not from a comparison betwee
 
 A narrower rule breaks only the equal-count tie on such an attribute instead of on the handshake role.
 It costs nothing and removes the file-sync timing dependence; a count change still moves the role.
+
+**Why the narrow rule is not built.**
+At role resolution (`resolveRole`, called from `runExchange` in `packages/core/src/exchange.ts`) each party holds the two resolved terms documents,
+and both already derive one order of the pair from them for the agreed-terms hash (`computeTermsHash`, `packages/core/src/records/exchangeRecord.ts`).
+Ordering the two documents by a hash of each is held by both parties with nothing new exchanged, fixed for the exchange while its terms are, and computed alike on both sides.
+It fails where the two documents are identical, which two parties sharing one configuration with no `identity`, payload or `deduplicate` difference produce.
+The tie-break then needs a second attribute that differs between the parties, and on file-sync and SFTP none is held every run:
+- the shared secret and the host key are the same on both sides;
+- the inviter and acceptor roles are WebRTC configuration only;
+- a party's peer id is a fresh random value each run unless configured, and a configured template can hold the time;
+- a signing certificate is presented only on a run that signs.
+
+The handshake role is the only attribute left, and it is the arrival order the rule removes.
+Building the hash order with the handshake role as its fallback would leave identical documents depending on arrival timing.
 
 ## 6. Row order under a deduplicating cardinality
 
@@ -236,11 +260,11 @@ Each of these was driven or is pinned by a suite, and none changed a table or a 
 
 ## Candidate build items
 
-One line each, named by what they would do:
+One line each, named by what they would do, with where each stands:
 
-- Order each round's resolution sweep by the smallest matched value of each candidate pair rather than by row ranks, so neither the role nor either party's row order decides which largest pairing the table holds (sources 1 and 6).
-- Hold the PSI role fixed for an exchange from an attribute both parties hold every run, rather than from the declared counts (source 5, and so sources 1 to 4 between runs).
-- Break the equal-count role tie on an attribute fixed for the exchange instead of the handshake role, which follows arrival order on file-sync and SFTP (source 5, narrow).
-- Apply the one-sided expansions' uniqueness drop at the record level over the would-be expansion in both roles, so a pair meets in one role exactly when it meets in the other (source 2).
-- Measure the width bound on the would-be expansion in both roles, so a row that splits and expands is dropped or kept the same whichever party receives (source 3).
-- Check the date expansions' eight-digit shape on the sending party too, so whether the exchange completes does not depend on the role (source 4).
+- Order each round's resolution sweep by the smallest matched value of each candidate pair rather than by row ranks, so neither the role nor either party's row order decides which largest pairing the table holds (sources 1 and 6). Declined.
+- Hold the PSI role fixed for an exchange from an attribute both parties hold every run, rather than from the declared counts (source 5, and so sources 1 to 4 between runs). Declined.
+- Break the equal-count role tie on an attribute fixed for the exchange instead of the handshake role, which follows arrival order on file-sync and SFTP (source 5, narrow). Accepted, not built: identical terms documents leave no fixed attribute on file-sync or SFTP (section 5).
+- Apply the one-sided expansions' uniqueness drop at the record level over the would-be expansion in both roles, so a pair meets in one role exactly when it meets in the other (source 2). Declined.
+- Measure the width bound on the would-be expansion in both roles, so a row that splits and expands is dropped or kept the same whichever party receives (source 3). Declined.
+- Check the date expansions' eight-digit shape on the sending party too, so whether the exchange completes does not depend on the role (source 4). Built.

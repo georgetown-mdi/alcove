@@ -76,6 +76,7 @@ import type { CSVRow } from "./file.js";
 import { isCalendarDateValid } from "./utils/calendarDate.js";
 import {
   assertFuzzyExpansionAccepts,
+  checksInputWithoutExpanding,
   expandFuzzyComparisons,
   expandsOnReceiverOnly,
 } from "./fuzzyComparisons.js";
@@ -3621,6 +3622,14 @@ interface KeyReadPlan {
   readonly pair: [number, number] | undefined;
   readonly fuzzyExpansions: ReadonlyArray<GenerateFuzzyComparisons | undefined>;
   /**
+   * Positionally aligned with {@link KeyReadPlan.elements}: the kind whose
+   * input check a position applies to values it builds without expanding (see
+   * {@link planUnexpandedInputChecks}), else `undefined`.
+   */
+  readonly unexpandedInputChecks: ReadonlyArray<
+    GenerateFuzzyComparisons | undefined
+  >;
+  /**
    * Whether this party also assembles the key in the order the terms AUTHOR it,
    * beside the swapped order {@link KeyReadPlan.elements} holds -- the swap's
    * full variant, which is what makes a swapped key match the two elements in
@@ -3667,6 +3676,21 @@ function planFuzzyExpansions(
   });
 }
 
+// On the sender, a receiver-only kind that checks its input without expanding
+// ({@link checksInputWithoutExpanding}), so the sender refuses each value the
+// receiver's expansion would refuse; `undefined` at every other position.
+function planUnexpandedInputChecks(
+  elements: ReadonlyArray<LinkageKeyElement>,
+  isReceiver: boolean,
+): ReadonlyArray<GenerateFuzzyComparisons | undefined> {
+  return elements.map((element) => {
+    const kind = element.generateFuzzyComparisons;
+    if (kind === undefined || isReceiver || !expandsOnReceiverOnly(kind))
+      return undefined;
+    return checksInputWithoutExpanding(kind) ? kind : undefined;
+  });
+}
+
 // The receiver assembles the authored order by exchanging the swap pair's two
 // assembled candidate lists, which is the authored order exactly when the pair's
 // two positions declare the same transform and the same expansion -- the shape
@@ -3709,6 +3733,7 @@ function planKeyRead(
     elements,
     pair,
     fuzzyExpansions: planFuzzyExpansions(elements, isReceiver),
+    unexpandedInputChecks: planUnexpandedInputChecks(elements, isReceiver),
     assemblesSwapVariant,
     fate: keyAccumulationFate(elements, dataset),
     width:
@@ -3861,6 +3886,7 @@ function readRowUnderPlan(
     elements,
     pair,
     fuzzyExpansions,
+    unexpandedInputChecks,
     assemblesSwapVariant,
     fate,
     width,
@@ -4003,9 +4029,14 @@ function readRowUnderPlan(
     //
     // The expansion is the ROLE-KEYED one the plan resolved, not the element's
     // raw designation: a receiver-only kind builds candidates on the receiver
-    // and the exact value alone on the sender (see planFuzzyExpansions).
+    // and the exact value alone on the sender (see planFuzzyExpansions), which
+    // still applies a date kind's input check to it.
     const fuzzy = fuzzyExpansions[elementIndex];
     if (fuzzy === undefined) {
+      const inputCheck = unexpandedInputChecks[elementIndex];
+      if (inputCheck !== undefined)
+        for (const value of candidates)
+          assertFuzzyExpansionAccepts(value, inputCheck);
       elementValues.push(candidates);
       continue;
     }

@@ -480,6 +480,33 @@ describe("buildKeyStrings: the expanding side", () => {
     },
   );
 
+  test.each(["adjacent_years", "adjacent_days", "day_month_swaps"] as const)(
+    "%s refuses a value that is not eight digits in both roles",
+    (kind) => {
+      const key: LinkageKey = {
+        name: "K",
+        elements: [{ field: "date_of_birth", generateFuzzyComparisons: kind }],
+      };
+      const dataset = datasetOf({ date_of_birth: "0115" });
+      const refusalAs = (isReceiver: boolean): unknown => {
+        try {
+          buildKeyStrings(key, dataset, 0, isReceiver);
+        } catch (err) {
+          return err;
+        }
+        return undefined;
+      };
+      const asReceiver = refusalAs(true);
+      expect(asReceiver).toBeInstanceOf(UsageError);
+      expect((asReceiver as UsageError).message).toMatch(
+        /not a canonical YYYYMMDD date/,
+      );
+      expect((refusalAs(false) as UsageError).message).toBe(
+        (asReceiver as UsageError).message,
+      );
+    },
+  );
+
   test.each([
     {
       kind: "transpositions" as const,
