@@ -4,7 +4,7 @@ import {
   EncryptedMessageConnection,
   deriveRendezvousPeerId,
 } from "@alcove/core";
-import { PSIParticipant } from "@alcove/core/testing";
+import { PSIParticipant, linkViaSinglePassPSI } from "@alcove/core/testing";
 
 import { openPeerMessageConnection } from "../../src/psi/transport/peerMessageConnection";
 
@@ -115,6 +115,8 @@ export interface RoundSide {
   readonly ownCeiling: number;
   /** The receive ceiling the partner states, which this party's sets are held to. */
   readonly partnerCeiling: number;
+  /** A cascade round, or a single-pass exchange on one key of width one. */
+  readonly strategy: "cascade" | "single-pass";
 }
 
 /** What one party's round returned: the matched pairs. */
@@ -124,7 +126,8 @@ export interface RoundOutcome {
 
 /**
  * Runs one PSI round of core's participant over `connection`, as a cascade
- * round runs one, with the element bounds the two set sizes give.
+ * round runs one, or a single-pass exchange of one value a record, with the
+ * element bounds the two set sizes give.
  */
 export async function runRound(
   connection: MessageConnection,
@@ -142,10 +145,23 @@ export async function runRound(
     { local: side.ownCeiling, partner: side.partnerCeiling },
   );
   try {
-    const [local, partner] = await participant.identifyIntersection(
-      connection,
-      values,
-    );
+    const [local, partner] =
+      side.strategy === "single-pass"
+        ? await linkViaSinglePassPSI(
+            { cardinality: "one-to-one" },
+            participant,
+            connection,
+            [values],
+            {
+              partnerRecordCount:
+                side.role === "starter"
+                  ? side.joinerElements
+                  : side.starterElements,
+              keyWidths: [1],
+              localFanOutFactor: 1,
+            },
+          )
+        : await participant.identifyIntersection(connection, values);
     return { pairs: local.map((index, pair) => [index, partner[pair]]) };
   } finally {
     participant.dispose();

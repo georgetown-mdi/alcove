@@ -57,3 +57,39 @@
 - - -> The peak is the process's resident set on one aarch64 Linux host; another allocator or platform can hold garbage longer.
 - - -> **A part's multiple, not a message's.**
 - - -> The receiver's peak past the joined message was 2.70 to 4.93 parts' worth at every size, with no trend in the number of parts; no message past four parts was measured.
+- - -> **Single-pass in a browser.**
+- - -> `apps/web/test/bench/browserWrappedRound.ts --strategy single-pass` runs a single-pass exchange through the same wrap in place of the round, on one linkage key with one value a record, so a party's value slots are its set's size.
+- - -> Each message whose cap passes the per-frame bound is sent in parts ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- - -> Each step is recorded as above.
+- - -> The bench forces no collection within a step, so a peak is the unrelieved one a tab reaches.
+- - -> Measured 2026-11-06 in the development container (aarch64 Linux, 10 CPUs, 23 GB of memory) in Playwright's Chrome for Testing 156.0.8078.4 run headless, identifier-revealing, with 1,000 values shared, the partner on the native addon.
+- - -> Every exchange matched the known overlap.
+- - -> At 8,388,608 a side the request and the reply each crossed the channel in parts, and the browser's engine took the setup as the joiner in two parts as they arrived.
+- - -> Browser's role | Value slots a side | Wall time | Page's `usedJSHeapSize` peak | Worker V8 heap peak | Peak renderer RSS
+- - -> Joiner | 2,097,152 | 1,780.8 s | 727 MiB, sending the request | 632 MiB, creating the request in 966.5 s | 1,688 MB
+- - -> Joiner | 8,388,608 | 8,409.4 s | 2,294 MiB, sending the request | 2,561 MiB, creating the request in 4,219.7 s | 5,127 MB
+- - -> Starter | 2,097,152 | 2,031.3 s | 1,138 MiB, sending the reply | 642 MiB creating the setup; 892 MiB answering the request in 898.6 s | 2,110 MB
+- - -> Starter | 8,388,608 | 7,247.0 s | 3,419 MiB, sending the reply | 2,771 MiB creating the setup; 3,456 MiB answering the request in 3,065.7 s | 7,223 MB
+- - -> **Memory per value slot.**
+- - -> From 2,097,152 to 8,388,608 a side the worker's heap in the starter's answer grew by 427 bytes a value slot, and the renderer's peak by 813 bytes a value slot as the starter and 547 as the joiner.
+- - -> **The worker's heap in the answer binds.**
+- - -> At 8,388,608 it peaked at 3,456 MiB, 82% of the 4,192 MiB limit and within 1 MiB of the cascade round's answer at that size through the wrap ([above](#what-a-browser-tab-can-match), "Rounds at the ceiling through the wrap").
+- - -> Extended at 427 bytes a value slot it reaches the limit near 10.2 million value slots a side, the size at which the cascade round's answer failed.
+- - -> **The browser's check.**
+- - -> A browser party therefore holds both parties' value slots to its receive ceiling, `BROWSER_PSI_SET_MAX_ELEMENTS` ([The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)), the largest size measured here in both roles.
+- - -> **The page holds the messages as ArrayBuffers.**
+- - -> The page's V8 heap peaked at 902 MiB at 8,388,608 a side before the first operation, holding the bench's own values.
+- - -> The rest of `usedJSHeapSize` was ArrayBuffers: the messages, their parts and the wrap's copies, which the page's heap limit does not bind ([above](#what-a-browser-tab-can-match), "Rounds at the ceiling through the wrap").
+- - -> **A collection between steps.**
+- - -> To read the worker's heap the bench forces a collection in the worker at each step's start and end, which a tab does not.
+- - -> Garbage from one step can therefore stay in a tab's worker into the next, though V8 collects before it fails an allocation.
+- - -> **One host, one build, one run a size.**
+- - -> Other work ran in the container beside the runs: the one-minute load reached 4.9, 8.1, 13.7 and 8.5 in the table's order, and the container's available memory fell to 8.6 GB at the lowest.
+- - -> A host with less memory, or a tab granted less heap than this build gave its worker, can fall short of what the ceiling admits.
+- - -> **One key of width one.**
+- - -> A party with more keys or a fan-out reaches the same value slots on fewer records.
+- - -> The engine's sets then hold the same number of values, but that was not run.
+- - -> **Steps past the inactivity default.**
+- - -> In the container three steps at 8,388,608 ran past the web application's inactivity default of 3,600 s: creating the setup, creating the request and the joiner's match, which took 3,789.1 s.
+- - -> The bench raises the timeout, as above, so these runs show the memory at the ceiling, not that the web application's run would finish within its default on this host.
+- - -> Limits of the measurement:
