@@ -11,6 +11,7 @@ check off it. Beside them:
 - the release and provenance verifiers;
 - the dependency-drift check `.github/actions/setup` runs after a cache restore;
 - the installed-Chromium check the dev container's `post-create.sh` runs;
+- the Claude settings merge the dev container's `post-create.sh` runs;
 - the OS-layer attribution generator, from which `image_smoke.yaml` regenerates
   each image's list beside `NOTICE`;
 - the container-pair wait that `image_smoke.yaml`'s bind-mount smoke step runs

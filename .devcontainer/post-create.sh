@@ -25,24 +25,23 @@ npm run build -w packages/core
 # The CLI reads @alcove/cli-contract from its built dist/ the same way.
 npm run build -w packages/cli-contract
 
-# Write this container's Claude user settings from the tracked template beside
-# this script, which is their single source of truth: prompt-free operation
-# (`bypassPermissions` -- the container's egress firewall plus the checked-in
-# deny-list and protected-branch push hook are the safety floor, and both deny
-# rules and PreToolUse hooks apply even in that mode), the session model and
-# effort, the editor and TUI preferences, transcript retention, and the
-# statusline, read from the workspace bind-mount so the repository carries
-# the one copy.
+# Apply the tracked Claude user settings template beside this script to this
+# container's settings.json: prompt-free operation (`bypassPermissions` -- the
+# container's egress firewall plus the checked-in deny-list and protected-branch
+# push hook are the safety floor, and both deny rules and PreToolUse hooks apply
+# even in that mode), the session model and effort, the editor and TUI
+# preferences, transcript retention, and the statusline.
 #
-# The copy is wholesale rather than key-by-key: the ~/.claude volume outlives
-# nothing but the container it was created for, and a volume seeded once then
-# hand-edited drifts from the template with no signal at all. An edit that
-# should survive a re-create belongs in the template, in the repository, where
-# it is reviewed like any other change.
+# The template holds defaults. A setting changed inside the container (/model,
+# /config) survives a re-create; a setting never changed follows the template.
+# The template as last applied is kept beside settings.json so the two can be
+# told apart; with no such file the template is written whole. The merge reports
+# the settings it kept from the container, and sets an unreadable settings file
+# aside rather than failing this script.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 mkdir -p "$CONFIG_DIR"
-cp "$SCRIPT_DIR/claude-settings.json" "$CONFIG_DIR/settings.json"
+node "$SCRIPT_DIR/../scripts/merge-claude-settings.mjs" "$SCRIPT_DIR/claude-settings.json" "$CONFIG_DIR"
 
 # Pre-seed Claude Code's interactive first-run state so sessions in this container
 # open at the prompt instead of the theme/welcome onboarding and the per-workspace
