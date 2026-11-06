@@ -199,6 +199,27 @@ export function expandsOnReceiverOnly(kind: GenerateFuzzyComparisons): boolean {
 }
 
 /**
+ * Whether a party that does not expand `kind` still holds each of its own
+ * values to {@link assertFuzzyExpansionAccepts}: true for the three date kinds,
+ * so the sender refuses a value that is not a canonical date as the receiver's
+ * expansion does, and whether a run completes does not depend on which party
+ * receives. See docs/spec/PROTOCOL.md#which-party-expands-full-variant-and-deletion-neighbourhood-expansions.
+ */
+export function checksInputWithoutExpanding(
+  kind: GenerateFuzzyComparisons,
+): boolean {
+  switch (kind) {
+    case "adjacent_years":
+    case "adjacent_days":
+    case "day_month_swaps":
+      return true;
+    case "transpositions":
+    case "edit_distances":
+      return false;
+  }
+}
+
+/**
  * The most candidates `kind` can realize from one value, counting the value
  * itself: the factor a fuzzy element adds to its key's declared width, so it
  * must bound {@link expandFuzzyComparisons}'s result from above.

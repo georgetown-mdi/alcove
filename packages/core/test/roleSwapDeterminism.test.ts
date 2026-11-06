@@ -15,8 +15,10 @@ import {
   prepareForExchange,
   runExchange,
   type ExchangeResult,
+  type PreparedExchange,
 } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
+import { UsageError } from "../src/errors";
 import type {
   LinkageStrategy,
   LinkageTerms,
@@ -175,6 +177,205 @@ describe.each<LinkageStrategy>(["cascade", "single-pass"])(
         );
         expect(pairsOf(second)).toEqual(pairsOf(first));
       }
+    });
+  },
+);
+
+// An adjacent-years element behind a transform that strips a leading 1990, so
+// party x's 1990 birth date reaches the element as the four digits 0115 while
+// party y's values stay canonical. Each side holds two rows, so the initiator
+// receives.
+const STRIPPED_YEAR_ELEMENT = {
+  transform: [
+    {
+      function: "replace_regex" as const,
+      params: { pattern: "^1990", replacement: "" },
+    },
+  ],
+  generateFuzzyComparisons: "adjacent_years" as const,
+};
+
+function strippedYearTerms(
+  linkageStrategy: LinkageStrategy,
+  identity: string,
+): LinkageTerms {
+  return {
+    version: "1.0.0",
+    identity,
+    date: "2026-01-01",
+    algorithm: "psi",
+    linkageStrategy,
+    output: { expectsOutput: true, shareWithPartner: true },
+    deduplicate: false,
+    linkageFields: [{ name: "dob", type: "date_of_birth" }],
+    linkageKeys: [
+      {
+        name: "birth date",
+        elements: [{ field: "dob", ...STRIPPED_YEAR_ELEMENT }],
+      },
+    ],
+  };
+}
+
+const STRIPPED_YEAR_X = ["01/15/1990", "01/15/1985"];
+const STRIPPED_YEAR_Y = ["01/15/1985", "06/15/1950"];
+
+// Two such elements under a swap, over two date columns already in the
+// canonical layout, cleaned only so an empty cell holds no value. The receiver
+// reads the pair in swapped order, dob_b first.
+function swappedStrippedYearTerms(
+  linkageStrategy: LinkageStrategy,
+  identity: string,
+): LinkageTerms {
+  return {
+    ...strippedYearTerms(linkageStrategy, identity),
+    linkageFields: [
+      { name: "dob_a", type: "date_of_birth" },
+      { name: "dob_b", type: "date_of_birth" },
+    ],
+    linkageKeys: [
+      {
+        name: "either birth date",
+        elements: [
+          { field: "dob_a", ...STRIPPED_YEAR_ELEMENT },
+          { field: "dob_b", ...STRIPPED_YEAR_ELEMENT },
+        ],
+        swap: ["dob_a", "dob_b"],
+      },
+    ],
+  };
+}
+
+const SWAPPED_DATE_COLUMNS = ["dob_a", "dob_b"];
+const SWAPPED_DATE_STANDARDIZATION = SWAPPED_DATE_COLUMNS.map((column) => ({
+  output: column,
+  input: column,
+  steps: [{ function: "filter_regex" as const, params: { pattern: "." } }],
+}));
+const SWAPPED_DATE_Y = [
+  ["19850115", "19800220"],
+  ["19500615", "19600704"],
+];
+
+/** Party x's outcome, with `initiator` initiating and so the receiver. */
+async function strippedYearExchange(
+  initiator: "x" | "y",
+  strategy: LinkageStrategy,
+): Promise<PromiseSettledResult<ExchangeResult>> {
+  const prepare = (identity: string, rows: ReadonlyArray<string>) =>
+    prepareForExchange(
+      { linkageTerms: strippedYearTerms(strategy, identity) },
+      identity,
+      rows.map((date_of_birth) => ({ date_of_birth })),
+      ["date_of_birth"],
+    );
+  return settledAs(
+    initiator,
+    prepare("X Co", STRIPPED_YEAR_X),
+    prepare("Y Co", STRIPPED_YEAR_Y),
+  );
+}
+
+/** {@link strippedYearExchange} over the swap key, party x holding `xRows`. */
+async function swappedStrippedYearExchange(
+  initiator: "x" | "y",
+  strategy: LinkageStrategy,
+  xRows: ReadonlyArray<ReadonlyArray<string>>,
+): Promise<PromiseSettledResult<ExchangeResult>> {
+  const prepare = (
+    identity: string,
+    rows: ReadonlyArray<ReadonlyArray<string>>,
+  ) =>
+    prepareForExchange(
+      {
+        linkageTerms: swappedStrippedYearTerms(strategy, identity),
+        standardization: SWAPPED_DATE_STANDARDIZATION,
+      },
+      identity,
+      rows.map(([dob_a, dob_b]) => ({ dob_a, dob_b })),
+      SWAPPED_DATE_COLUMNS,
+    );
+  return settledAs(
+    initiator,
+    prepare("X Co", xRows),
+    prepare("Y Co", SWAPPED_DATE_Y),
+  );
+}
+
+async function settledAs(
+  initiator: "x" | "y",
+  x: PreparedExchange,
+  y: PreparedExchange,
+): Promise<PromiseSettledResult<ExchangeResult>> {
+  const [initiatorConn, responderConn] = createMessagePipe();
+  // A failed party closes its connection, as a transport caller does, so the
+  // partner meets the end of the run rather than awaiting a frame.
+  const run = (
+    conn: typeof initiatorConn,
+    role: "initiator" | "responder",
+    party: PreparedExchange,
+  ) =>
+    runExchange(conn, role, party, { psiLibrary }).catch(async (err) => {
+      await conn.close();
+      throw err;
+    });
+  const [initiated, responded] = await Promise.allSettled([
+    run(initiatorConn, "initiator", initiator === "x" ? x : y),
+    run(responderConn, "responder", initiator === "x" ? y : x),
+  ]);
+  return initiator === "x" ? initiated : responded;
+}
+
+describe.each<LinkageStrategy>(["cascade", "single-pass"])(
+  "under %s",
+  (strategy) => {
+    test("a date value that is not eight digits is refused in both roles", async () => {
+      const refusals: string[] = [];
+      for (const initiator of ["x", "y"] as const) {
+        const outcome = await strippedYearExchange(initiator, strategy);
+        expect(outcome.status).toBe("rejected");
+        const reason = (outcome as PromiseRejectedResult).reason as unknown;
+        expect(reason).toBeInstanceOf(UsageError);
+        refusals.push((reason as UsageError).message);
+      }
+      expect(refusals[0]).toMatch(/not a canonical YYYYMMDD date/);
+      expect(refusals[1]).toBe(refusals[0]);
+    });
+
+    // Each first row holds one empty date and one that reaches the element as
+    // 0115. Read in the receiver's order, dob_b first, the row is refused when
+    // the short date is dob_b's and leaves the round empty when it is dob_a's;
+    // read in the authored order it would take the other outcome.
+    test("a swap key's date is refused in both roles when the receiver's read order reaches it", async () => {
+      const refusals: string[] = [];
+      for (const initiator of ["x", "y"] as const) {
+        const outcome = await swappedStrippedYearExchange(initiator, strategy, [
+          ["", "19900115"],
+          ["19850115", "19800220"],
+        ]);
+        expect(outcome.status).toBe("rejected");
+        const reason = (outcome as PromiseRejectedResult).reason as unknown;
+        expect(reason).toBeInstanceOf(UsageError);
+        refusals.push((reason as UsageError).message);
+      }
+      expect(refusals[0]).toMatch(/not a canonical YYYYMMDD date/);
+      expect(refusals[1]).toBe(refusals[0]);
+    });
+
+    test("a swap key's date completes in both roles when the receiver's read order leaves the row first", async () => {
+      const tables: Array<Array<[number, number]>> = [];
+      for (const initiator of ["x", "y"] as const) {
+        const outcome = await swappedStrippedYearExchange(initiator, strategy, [
+          ["19900115", ""],
+          ["19850115", "19800220"],
+        ]);
+        expect(outcome.status).toBe("fulfilled");
+        tables.push(
+          pairsOf((outcome as PromiseFulfilledResult<ExchangeResult>).value),
+        );
+      }
+      expect(tables[0]).toEqual([[1, 0]]);
+      expect(tables[1]).toEqual(tables[0]);
     });
   },
 );

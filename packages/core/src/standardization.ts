@@ -76,6 +76,7 @@ import type { CSVRow } from "./file.js";
 import { isCalendarDateValid } from "./utils/calendarDate.js";
 import {
   assertFuzzyExpansionAccepts,
+  checksInputWithoutExpanding,
   expandFuzzyComparisons,
   expandsOnReceiverOnly,
 } from "./fuzzyComparisons.js";
@@ -3621,6 +3622,11 @@ interface KeyReadPlan {
   readonly pair: [number, number] | undefined;
   readonly fuzzyExpansions: ReadonlyArray<GenerateFuzzyComparisons | undefined>;
   /**
+   * The positions of {@link KeyReadPlan.elements} in the order this party reads
+   * them: the receiver's order on both parties ({@link receiverReadOrder}).
+   */
+  readonly readOrder: ReadonlyArray<number>;
+  /**
    * Whether this party also assembles the key in the order the terms AUTHOR it,
    * beside the swapped order {@link KeyReadPlan.elements} holds -- the swap's
    * full variant, which is what makes a swapped key match the two elements in
@@ -3667,6 +3673,26 @@ function planFuzzyExpansions(
   });
 }
 
+// The receiver reads its swapped list front to back. The sender reads its
+// authored positions with the swap pair's two exchanged: the same columns under
+// the same transforms in the same order, so an empty value ends a row at the
+// same element in both roles, ahead of the date-shape check or after it alike.
+// The pair agrees on transform and expansion; the receiver refuses the key
+// otherwise (assertSwapPairPositionsAgree).
+function receiverReadOrder(
+  key: LinkageKey,
+  isReceiver: boolean,
+): ReadonlyArray<number> {
+  const order = key.elements.map((_, position) => position);
+  if (isReceiver || key.swap === undefined) return order;
+  const { pair } = swapElements(key.elements, key.swap);
+  if (pair === undefined) return order;
+  const [idA, idB] = pair;
+  order[idA] = idB;
+  order[idB] = idA;
+  return order;
+}
+
 // The receiver assembles the authored order by exchanging the swap pair's two
 // assembled candidate lists, which is the authored order exactly when the pair's
 // two positions declare the same transform and the same expansion -- the shape
@@ -3709,6 +3735,7 @@ function planKeyRead(
     elements,
     pair,
     fuzzyExpansions: planFuzzyExpansions(elements, isReceiver),
+    readOrder: receiverReadOrder(key, isReceiver),
     assemblesSwapVariant,
     fate: keyAccumulationFate(elements, dataset),
     width:
@@ -3861,6 +3888,7 @@ function readRowUnderPlan(
     elements,
     pair,
     fuzzyExpansions,
+    readOrder,
     assemblesSwapVariant,
     fate,
     width,
@@ -3872,6 +3900,8 @@ function readRowUnderPlan(
   keyIndex: number | undefined,
   work: TransformWorkMeter,
 ): DistinctValues | null {
+  // Indexed by position, though filled in read order: the assembly below takes
+  // the positions in the order of `elements`.
   const elementValues: string[][] = [];
   // Whether a fuzzy expansion this party applies actually widened the row, which
   // is what routes the width bound below to its refusal. Measured on the
@@ -3898,7 +3928,8 @@ function readRowUnderPlan(
   // total would let the element count (MAX_KEY_ELEMENTS) multiply the cap.
   let rowCandidateCharacters = 0;
 
-  for (const [elementIndex, element] of elements.entries()) {
+  for (const elementIndex of readOrder) {
+    const element = elements[elementIndex];
     const field = dataset.getField(element.field);
     const raw = dataset.keyValues(element.field, index);
     if (raw.length === 0) return null;
@@ -4006,7 +4037,11 @@ function readRowUnderPlan(
     // and the exact value alone on the sender (see planFuzzyExpansions).
     const fuzzy = fuzzyExpansions[elementIndex];
     if (fuzzy === undefined) {
-      elementValues.push(candidates);
+      const declared = element.generateFuzzyComparisons;
+      if (declared !== undefined && checksInputWithoutExpanding(declared))
+        for (const value of candidates)
+          assertFuzzyExpansionAccepts(value, declared);
+      elementValues[elementIndex] = candidates;
       continue;
     }
     // The element retains the expanded list in place of the candidates charged
@@ -4060,7 +4095,7 @@ function readRowUnderPlan(
       }
     }
     if (expanded.length > candidates.length) fuzzyWidened = true;
-    elementValues.push(expanded);
+    elementValues[elementIndex] = expanded;
   }
 
   // Dropping on exceedance is normative for the DECLARED fan-out producers and
