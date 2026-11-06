@@ -91,9 +91,11 @@ describe("cryptography in core is crypto.subtle", () => {
         'const a = await import("node:crypto");',
         'const b = require("crypto");',
         'const c = process.getBuiltinModule("node:crypto");',
+        'const d = module.require("node:crypto");',
+        'const e = createRequire(import.meta.url)("node:crypto");',
       ].join("\n"),
     });
-    for (const line of [1, 2, 3]) {
+    for (const line of [1, 2, 3, 4, 5]) {
       expect(found).toContainEqual(
         expect.stringContaining(
           `${CORE_FILE}:${line}: packages/core/src loads`,

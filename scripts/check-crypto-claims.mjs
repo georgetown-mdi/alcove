@@ -201,9 +201,14 @@ function isRequireCall(node) {
   if (!ts.isCallExpression(node)) return false;
   const callee = node.expression;
   if (ts.isIdentifier(callee)) return callee.text === "require";
+  if (ts.isPropertyAccessExpression(callee))
+    return (
+      callee.name.text === "getBuiltinModule" || callee.name.text === "require"
+    );
   return (
-    ts.isPropertyAccessExpression(callee) &&
-    callee.name.text === "getBuiltinModule"
+    ts.isCallExpression(callee) &&
+    ts.isIdentifier(callee.expression) &&
+    callee.expression.text === "createRequire"
   );
 }
 
