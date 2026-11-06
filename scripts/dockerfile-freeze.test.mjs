@@ -324,7 +324,7 @@ const SMOKE_SCOPE_STEP =
 // rather than of anything in this repository, which
 // docs/spec/DEPENDENCY_PINS.md records.
 const DEFAULT_BASE =
-  "node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80";
+  "node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216";
 // The variant's base rootfs is coupled to the release snapshot its dnf lines
 // pin: the two are the same Amazon Linux release, not merely compatible ones.
 const FIPS_BASE =
