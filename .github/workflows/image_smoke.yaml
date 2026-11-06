@@ -351,9 +351,9 @@ jobs:
       # linkage key, which is what keeps this to seconds; the strategy is a
       # consented disclosure tradeoff, and these are synthetic inputs.
       #
-      # The default leg's alone because the variant has an end-to-end exchange of
-      # its own below, over the same chowned bind mounts; a second copy of this
-      # one would measure nothing the pair does not.
+      # Only the default leg runs this step. The variant's exchange below is a
+      # quick exchange, with no key exchange and no application AEAD, so the
+      # authenticated exchange here runs in the default image alone.
       - name: Smoke the CLI role over a writable bind mount
         if: matrix.fips == 'false'
         run: |
