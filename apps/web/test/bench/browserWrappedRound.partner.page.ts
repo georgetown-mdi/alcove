@@ -1,5 +1,6 @@
 import { download, upload } from "./benchSetTransfer";
 import { listen, runRound, wrap } from "./wrappedRoundParty";
+import { partyValues } from "./partyValues";
 
 import type { MessageConnection, PsiEngine } from "@alcove/core";
 import type { RoundOutcome, RoundSide } from "./wrappedRoundParty";
@@ -15,7 +16,11 @@ import type { DataConnection } from "peerjs";
 export interface PartnerProbe {
   listen: (brokerPort: number, sharedSecret: string) => Promise<void>;
   accept: (sessionKey: ReadonlyArray<number>) => Promise<void>;
-  run: (side: RoundSide, elements: number) => Promise<RoundOutcome>;
+  run: (
+    side: RoundSide,
+    elements: number,
+    overlap: number,
+  ) => Promise<RoundOutcome>;
 }
 
 // Exposed by the bench before the page loads: runs one operation on the Node
@@ -91,15 +96,18 @@ const probe: PartnerProbe = {
     if (!channel) throw new Error("listen has not run");
     connection = await wrap(await channel, sessionKey, "responder");
   },
-  async run(side, elements) {
+  async run(side, elements, overlap) {
     if (!connection) throw new Error("accept has not run");
-    // The Node engine builds the values from their count, so only the count
-    // is real here.
+    // The Node engine builds the values from their count. A single-pass
+    // exchange counts this party's distinct values before the engine sees
+    // them, so it is handed the same values; a cascade round, only the count.
     return runRound(
       connection,
       nodeEngine(),
       side,
-      new Array<string>(elements).fill(""),
+      side.strategy === "single-pass"
+        ? partyValues(elements, overlap, "node")
+        : new Array<string>(elements).fill(""),
     );
   },
 };

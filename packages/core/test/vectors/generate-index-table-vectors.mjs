@@ -39,6 +39,11 @@
 // the engine draws a fresh key per exchange. What this file pins about them is
 // where they sit in the frame and how their lengths are included, which the
 // synthetic bytes exercise exactly.
+//
+// Each reply is also pinned as it travels in parts, on a connection whose
+// per-frame bound the derived reply cap passes: the setup, the response, and
+// the tail -- the record count and the table -- each cut as a PSI set is
+// (docs/spec/PROTOCOL.md, Single-pass messages in parts).
 
 import {
   FAN_OUT_CANDIDATES_PER_ELEMENT,
@@ -48,7 +53,9 @@ import {
   decodeSinglePassReply,
   encodeInt32LE,
   encodeSinglePassReply,
+  encodeSinglePassReplyTail,
   getSortedDistinctValueIndices,
+  singlePassReplyParts,
 } from "../../dist/testing.esm.js";
 
 const hex = (bytes) => Buffer.from(bytes).toString("hex");
@@ -115,6 +122,9 @@ const replyFrames = [
       "count, then the table as the remaining bytes.",
     setupHex: "0001020304050607",
     responseHex: "f0f1f2f3f4",
+    // In parts, the setup fills two parts exactly and the response one short
+    // of them, so both a full and a short last part are pinned.
+    partPayloadBytes: 4,
   },
   {
     name: "ragged-table-after-empty-setup-and-response",
@@ -126,6 +136,9 @@ const replyFrames = [
       "on different words here.",
     setupHex: "",
     responseHex: "",
+    // In parts, an empty setup and an empty response are each one part of
+    // header alone.
+    partPayloadBytes: 16,
   },
 ];
 
@@ -243,6 +256,28 @@ function buildReplyFrame(entry) {
         "encodeSinglePassReply was given; the frame is not a known answer.",
     );
 
+  // The same reply in parts: the setup, the response, and the tail -- the
+  // frame's bytes after the two length-prefixed parts -- each cut as a PSI set
+  // is, under headers written here with Buffer's own writers rather than by the
+  // module under test.
+  const tail = frame.subarray(8 + setup.byteLength + response.byteLength);
+  const parts = [setup, response, tail].flatMap((set) =>
+    setParts(set, entry.partPayloadBytes),
+  );
+  const moduleParts = [
+    ...singlePassReplyParts(
+      setup,
+      response,
+      encodeSinglePassReplyTail(table.recordCount, table.words),
+      entry.partPayloadBytes,
+    ),
+  ].map(hex);
+  if (moduleParts.join() !== parts.map(hex).join())
+    throw new Error(
+      `${entry.name}: singlePassReplyParts does not cut the reply as the ` +
+        "headers written here do; the parts are not a known answer.",
+    );
+
   return {
     name: entry.name,
     description: entry.description,
@@ -251,7 +286,26 @@ function buildReplyFrame(entry) {
     responseHex: entry.responseHex,
     recordCount: table.recordCount,
     frameHex: hex(frame),
+    partPayloadBytes: entry.partPayloadBytes,
+    partsHex: parts.map(hex),
   };
+}
+
+// The parts one set is sent in: a 16-byte header -- the part's index and the
+// set's part count, big-endian uint32s, then the set's byte length, a
+// big-endian uint64 -- and the next slice of the set.
+function setParts(set, payloadBytes) {
+  const count = Math.max(1, Math.ceil(set.byteLength / payloadBytes));
+  return Array.from({ length: count }, (_unused, index) => {
+    const header = Buffer.alloc(16);
+    header.writeUInt32BE(index, 0);
+    header.writeUInt32BE(count, 4);
+    header.writeBigUInt64BE(BigInt(set.byteLength), 8);
+    return Buffer.concat([
+      header,
+      set.subarray(index * payloadBytes, (index + 1) * payloadBytes),
+    ]);
+  });
 }
 
 const vectors = {
@@ -281,6 +335,13 @@ const vectors = {
     "record count | the index table as the remaining bytes. The two " +
     "length-prefixed parts carry explicit lengths; the table's length is implied " +
     "by the frame size.",
+  replyPartsLayout:
+    "Message 2 in parts: the setup, the response, and the tail (uint32 record " +
+    "count | the index table) as three PSI sets in turn, each cut into parts of " +
+    "at most partPayloadBytes set bytes behind a 16-byte header: the part's " +
+    "index and the set's part count, big-endian uint32s, then the set's byte " +
+    "length, a big-endian uint64. The two length fields of the one frame are " +
+    "not sent; the headers state the lengths.",
   fanOutCandidatesPerElement: FAN_OUT_CANDIDATES_PER_ELEMENT,
   tables: builtTables,
   replyFrames: replyFrames.map(buildReplyFrame),

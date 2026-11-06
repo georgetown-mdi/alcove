@@ -803,16 +803,12 @@ export function prepareForOnlineExchange(
   dataSpec: ResolvedDataSpec,
   identity: string,
   rows: { rawRows: Array<CSVRow>; columns: string[] },
-  channel: ConnectionConfig["channel"],
 ): PreparedExchange {
   return prepareForExchange(
     dataSpec as ExchangeDataSpec,
     identity,
     rows.rawRows,
     rows.columns,
-    undefined,
-    undefined,
-    channel,
   );
 }
 

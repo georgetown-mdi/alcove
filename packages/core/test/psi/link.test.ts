@@ -20,31 +20,25 @@ import {
   decodeSinglePassReply,
   getDistinctValuesAndIndices,
   type LinkageCardinality,
+  type SinglePassSessionBounds,
 } from "../../src/psi/link";
 import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
 import {
   binaryPackByteStringLength,
   webrtcFrameExceedsBound,
 } from "../../src/connection/webrtcOutboundBound";
-import {
-  FAN_OUT_CANDIDATES_PER_ELEMENT,
-  MAX_KEY_CANDIDATE_WIDTH,
-} from "../../src/fanOutFunctions";
-import {
-  MAX_LINKAGE_ENTRIES,
-  type LinkageStrategy,
-} from "../../src/config/linkageTermsSchema";
+import { FAN_OUT_CANDIDATES_PER_ELEMENT } from "../../src/fanOutFunctions";
+import { type LinkageStrategy } from "../../src/config/linkageTermsSchema";
 import {
   candidateSetIsImplementedForStrategy,
   CANDIDATE_SET_IMPLEMENTED_BY_STRATEGY,
 } from "../../src/linkageTermsPolicy";
 import {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
   MAX_FRAME_SIZE_BYTES,
-  MAX_SINGLE_PASS_CELLS,
-  partyFansOut,
   SINGLE_PASS_LOCAL_REMEDY,
+  singlePassCeilingBreach,
   singlePassDatasetExceedsCap,
-  singlePassExchangeExceedsCap,
   singlePassReplyByteCap,
   singlePassRequestByteCap,
 } from "../../src/connection/frameSize";
@@ -925,45 +919,59 @@ test("encodeSinglePassReply / decodeSinglePassReply round-trip, and a truncated 
 });
 
 // --- single-pass dataset ceiling: derived from exchanged counts ---------------
-// The cap is a per-party budget on effectiveKeyCount * recordCount -- the value
-// slot count, the distinct-value upper bound -- with the read-gate/send-time byte
-// cap derived from the same quantity. These pin the deterministic arithmetic both
-// parties compute.
+// A browser party's ceiling is a per-party budget on effectiveKeyCount *
+// recordCount -- the value slot count, the distinct-value upper bound -- with
+// the read-gate/send-time byte cap derived from the same quantity. These pin
+// the deterministic arithmetic both parties compute.
+const CEILING = BROWSER_PSI_SET_MAX_ELEMENTS;
+const inBrowser = (
+  bounds: SinglePassSessionBounds,
+): SinglePassSessionBounds => ({
+  ...bounds,
+  valueSlotCeiling: CEILING,
+});
+
 test("singlePassDatasetExceedsCap fires exactly at slots = the budget", () => {
-  const fits = Math.floor(MAX_SINGLE_PASS_CELLS / 1); // one key
-  expect(singlePassDatasetExceedsCap(1, fits)).toBe(false);
-  expect(singlePassDatasetExceedsCap(1, fits + 1)).toBe(true);
+  const fits = Math.floor(CEILING / 1); // one key
+  expect(singlePassDatasetExceedsCap(1, fits, CEILING)).toBe(false);
+  expect(singlePassDatasetExceedsCap(1, fits + 1, CEILING)).toBe(true);
   // The budget is on slots, so more keys fit proportionally fewer rows.
-  const perKey = Math.floor(MAX_SINGLE_PASS_CELLS / 4);
-  expect(singlePassDatasetExceedsCap(4, perKey)).toBe(false);
-  expect(singlePassDatasetExceedsCap(4, perKey + 1)).toBe(true);
+  const perKey = Math.floor(CEILING / 4);
+  expect(singlePassDatasetExceedsCap(4, perKey, CEILING)).toBe(false);
+  expect(singlePassDatasetExceedsCap(4, perKey + 1, CEILING)).toBe(true);
   // A key that fans out counts its whole declared width toward the same
   // unchanged budget, so it buys its width with rows: four keys of which one fans
   // out is an effective key count of 23.
-  const perSlot = Math.floor(MAX_SINGLE_PASS_CELLS / 23);
-  expect(singlePassDatasetExceedsCap(23, perSlot)).toBe(false);
-  expect(singlePassDatasetExceedsCap(23, perSlot + 1)).toBe(true);
+  const perSlot = Math.floor(CEILING / 23);
+  expect(singlePassDatasetExceedsCap(23, perSlot, CEILING)).toBe(false);
+  expect(singlePassDatasetExceedsCap(23, perSlot + 1, CEILING)).toBe(true);
 });
 
-test("singlePassExchangeExceedsCap fires when EITHER party is over the budget", () => {
-  const fits = MAX_SINGLE_PASS_CELLS; // one key, exactly at the budget
+test("singlePassCeilingBreach fires when EITHER party is over the budget", () => {
+  const fits = CEILING; // one key, exactly at the budget
   const size = (recordCount: number, effectiveKeyCount = 1) => ({
     effectiveKeyCount,
     recordCount,
   });
-  expect(singlePassExchangeExceedsCap(size(fits), size(fits))).toBe(false);
-  // Sender over, receiver under -> over (and vice versa).
-  expect(singlePassExchangeExceedsCap(size(fits + 1), size(1))).toBe(true);
-  expect(singlePassExchangeExceedsCap(size(1), size(fits + 1))).toBe(true);
+  expect(singlePassCeilingBreach(size(fits), size(fits), CEILING)).toBe(
+    undefined,
+  );
+  // One over, the other under -> over, attributed to the one over.
+  expect(singlePassCeilingBreach(size(fits + 1), size(1), CEILING)).toBe(
+    "local",
+  );
+  expect(singlePassCeilingBreach(size(1), size(fits + 1), CEILING)).toBe(
+    "partner",
+  );
   // A fan-out on one side alone takes that side over: the same row count against
   // an effective key count of 20 is 20x the slots.
   const perKey = Math.floor(fits / 20);
-  expect(singlePassExchangeExceedsCap(size(perKey, 20), size(perKey, 20))).toBe(
-    false,
-  );
   expect(
-    singlePassExchangeExceedsCap(size(perKey + 1, 20), size(perKey, 20)),
-  ).toBe(true);
+    singlePassCeilingBreach(size(perKey, 20), size(perKey, 20), CEILING),
+  ).toBe(undefined);
+  expect(
+    singlePassCeilingBreach(size(perKey + 1, 20), size(perKey, 20), CEILING),
+  ).toBe("local");
 });
 
 test("singlePassReplyByteCap weights the sender heavier and charges the ragged table on top", () => {
@@ -998,88 +1006,32 @@ test("singlePassReplyByteCap weights the sender heavier and charges the ragged t
   expect(singlePassReplyByteCap(1, size(10, 1), size(5, 20))).toBe(
     (40 + 4) * (1 * 10) + 40 * (20 * 5) + 4 * (1 * 10) + 256,
   );
-  // At the same slot budget, a wider sender's cap exceeds a narrow one's: its
-  // slots are spread over fewer records, so its cells cost the same while its
-  // count prefixes cost less -- which is why the envelope invariant below is
-  // maximized over the narrow sender rather than assumed.
+  // At the same slot budget, a narrow sender's cap exceeds a wider one's: its
+  // slots are spread over more records, so its cells cost the same while its
+  // count prefixes cost more.
+  const slots = 3_000_000;
   const atCeiling = singlePassReplyByteCap(
     1,
-    { effectiveKeyCount: 1, recordCount: MAX_SINGLE_PASS_CELLS },
-    { effectiveKeyCount: 1, recordCount: MAX_SINGLE_PASS_CELLS },
+    { effectiveKeyCount: 1, recordCount: slots },
+    { effectiveKeyCount: 1, recordCount: slots },
   );
   const atFanOutCeiling = singlePassReplyByteCap(
     1,
     {
       effectiveKeyCount: FAN_OUT_CANDIDATES_PER_ELEMENT,
-      recordCount: MAX_SINGLE_PASS_CELLS / FAN_OUT_CANDIDATES_PER_ELEMENT,
+      recordCount: slots / FAN_OUT_CANDIDATES_PER_ELEMENT,
     },
-    { effectiveKeyCount: 1, recordCount: MAX_SINGLE_PASS_CELLS },
+    { effectiveKeyCount: 1, recordCount: slots },
   );
   expect(atFanOutCeiling).toBeLessThan(atCeiling);
 });
 
-test("singlePassReplyByteCap stays below both transport envelopes at its maximum over the admissible space", () => {
-  // The derived cap must stay below both transports' fixed frame envelopes, so the
-  // per-transport clamp does not bind and a legitimate single-pass reply the slot
-  // budget admits is never rejected mid-exchange. This guards a future raise of
-  // MAX_SINGLE_PASS_CELLS, of MAX_LINKAGE_ENTRIES, or of the per-slot byte weights:
-  // prose in frameSize.ts asserts the invariant, but only a check can keep it true.
-  //
-  // The maximum is SEARCHED rather than hand-picked, so a change to any of those
-  // bounds re-maximizes here instead of leaving the invariant evaluated at an
-  // interior point that still passes. The space searched is the one the terms
-  // admit (declaredKeyWidth, fanOutFunctions.ts): up to MAX_LINKAGE_ENTRIES agreed
-  // keys, an effective key count of keyCount + fanOutKeys * (width - 1) for a
-  // whole number of keys at each declarable per-key width, and -- since the cap
-  // rises with rows -- the largest record count the slot budget leaves that width.
-  const declarableWidths = [
-    FAN_OUT_CANDIDATES_PER_ELEMENT,
-    MAX_KEY_CANDIDATE_WIDTH,
-  ];
-  const partiesAt = (keyCount: number) =>
-    declarableWidths.flatMap((width) =>
-      Array.from({ length: keyCount + 1 }, (_unused, fanOutKeys) => {
-        const effectiveKeyCount = keyCount + fanOutKeys * (width - 1);
-        return {
-          effectiveKeyCount,
-          recordCount: Math.floor(MAX_SINGLE_PASS_CELLS / effectiveKeyCount),
-        };
-      }),
-    );
-  const empty = { effectiveKeyCount: 0, recordCount: 0 };
-  let worst = { bytes: 0, keyCount: 0, sender: empty, receiver: empty };
-  for (let keyCount = 1; keyCount <= MAX_LINKAGE_ENTRIES; keyCount++) {
-    const parties = partiesAt(keyCount);
-    for (const sender of parties)
-      for (const receiver of parties) {
-        const bytes = singlePassReplyByteCap(keyCount, sender, receiver);
-        if (bytes > worst.bytes) worst = { bytes, keyCount, sender, receiver };
-      }
-  }
-  // The maximizing pair is inside the slot budget, so it is a reply the ceiling
-  // admits rather than one the over-ceiling gate would have refused first.
-  expect(singlePassExchangeExceedsCap(worst.sender, worst.receiver)).toBe(
-    false,
-  );
-  // The count-prefix term is charged per (key, sender record), so the maximizing
-  // sender is the NARROWEST admissible one: its slots are spread over the most
-  // records.
-  expect(partyFansOut(worst.keyCount, worst.sender)).toBe(false);
-  // The whole-MiB figure frameSize.ts's own docstring states for the slot
-  // ceiling, derived from the searched maximum rather than restated there.
-  expect(Math.floor(worst.bytes / 1024 / 1024)).toBe(251);
-  // The file-sync ceiling, a core constant.
-  expect(worst.bytes).toBeLessThan(MAX_FRAME_SIZE_BYTES);
-  // The nearer constraint: the WebRTC data channel's fixed browser-tab envelope.
-  // The coupling is bidirectional -- lowering MAX_WEBRTC_FRAME_BYTES below this
-  // maximum would pass every bound's own test yet reject legitimate WebRTC replies,
-  // so the two must move together.
-  expect(worst.bytes).toBeLessThan(MAX_WEBRTC_FRAME_BYTES);
-  // And under it once packed and chunked for the data channel, so the sender's
-  // own frame check never refuses a reply the ceiling admits: the reason the
-  // first-round check leaves single-pass alone.
-  expect(webrtcFrameExceedsBound(binaryPackByteStringLength(worst.bytes))).toBe(
-    false,
+test("a reply a browser party's ceiling admits can pass one frame, so it is sent in parts", () => {
+  const party = { effectiveKeyCount: 1, recordCount: CEILING };
+  const replyCap = singlePassReplyByteCap(1, party, party);
+  expect(replyCap).toBeGreaterThan(MAX_WEBRTC_FRAME_BYTES);
+  expect(webrtcFrameExceedsBound(binaryPackByteStringLength(replyCap))).toBe(
+    true,
   );
 });
 
@@ -1506,7 +1458,7 @@ test("single-pass aborts symmetrically when the exchange exceeds the ceiling", a
     receiver,
     conn,
     [["a", "b"]],
-    fanOutFreeBounds(1, MAX_SINGLE_PASS_CELLS + 1), // partner alone is over
+    inBrowser(fanOutFreeBounds(1, CEILING + 1)), // partner alone is over
     false,
     -1,
   );
@@ -1517,9 +1469,10 @@ test("single-pass aborts symmetrically when the exchange exceeds the ceiling", a
   await expect(run).rejects.toThrow(
     new RegExp(
       `your partner declared 1 effective linkage key\\(s\\) across ` +
-        `${MAX_SINGLE_PASS_CELLS + 1} record\\(s\\), which is ` +
-        `${MAX_SINGLE_PASS_CELLS + 1} value slot\\(s\\), above the ` +
-        `single-pass limit of ${MAX_SINGLE_PASS_CELLS}`,
+        `${CEILING + 1} record\\(s\\), which is ` +
+        `${CEILING + 1} value slot\\(s\\), above the ` +
+        `single-pass limit of ${CEILING} value slot\\(s\\) per party in an ` +
+        `exchange with a browser`,
     ),
   );
   // This party's own size is named as being within the ceiling, and it is not
@@ -1551,7 +1504,7 @@ test("single-pass aborts symmetrically from the starter side too", async () => {
     sender,
     conn,
     [["a", "b"]],
-    fanOutFreeBounds(1, MAX_SINGLE_PASS_CELLS + 1), // partner alone is over
+    inBrowser(fanOutFreeBounds(1, CEILING + 1)), // partner alone is over
     false,
     -1,
   );
@@ -1562,7 +1515,7 @@ test("single-pass aborts symmetrically from the starter side too", async () => {
   await expect(run).rejects.toThrow(
     new RegExp(
       `your partner declared 1 effective linkage key\\(s\\) across ` +
-        `${MAX_SINGLE_PASS_CELLS + 1} record\\(s\\)`,
+        `${CEILING + 1} record\\(s\\)`,
     ),
   );
   await expect(run).rejects.not.toThrow(/Reduce the record count/);
@@ -1577,8 +1530,7 @@ test("a run whose own declared size is over the ceiling keeps the local diagnosi
   // the local one -- the operator's own keys, records, batching, and the fan-out
   // it declared -- with no attribution to the partner, so an operator whose own
   // dataset stops the run is sent to the configuration that can lift it.
-  const localRecords =
-    Math.floor(MAX_SINGLE_PASS_CELLS / FAN_OUT_CANDIDATES_PER_ELEMENT) + 1;
+  const localRecords = Math.floor(CEILING / FAN_OUT_CANDIDATES_PER_ELEMENT) + 1;
   const [conn, peer] = createMessagePipe();
   const receiver = makeParticipant(psiLibrary, "joiner");
   const run = linkViaSinglePassPSI(
@@ -1592,6 +1544,7 @@ test("a run whose own declared size is over the ceiling keeps the local diagnosi
       // advertisement claims, and what multiplies its rows into the budget.
       keyWidths: [FAN_OUT_CANDIDATES_PER_ELEMENT],
       localFanOutFactor: 1,
+      valueSlotCeiling: CEILING,
     },
     false,
     -1,
@@ -1634,14 +1587,14 @@ function asFileSync(
   });
 }
 
-test("a file-sync receiver past the WebRTC budget passes the gate and sends its request", async () => {
+test("a file-sync receiver past a browser party's ceiling passes the gate and sends its request", async () => {
   const [conn, peer] = createMessagePipe();
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
     makeParticipant(psiLibrary, "joiner"),
     asFileSync(conn),
     [["a", "b"]],
-    fanOutFreeBounds(1, MAX_SINGLE_PASS_CELLS + 1),
+    fanOutFreeBounds(1, CEILING + 1),
     false,
     -1,
   );
@@ -1668,7 +1621,9 @@ test("a file-sync request too large for one message stops there, naming its size
     /the single-pass request came to \d+ byte\(s\), above the 64 byte\(s\) one encrypted message can hold/,
   );
   await expect(run).rejects.toThrow(SINGLE_PASS_LOCAL_REMEDY);
-  await expect(run).rejects.not.toThrow(new RegExp(`${MAX_SINGLE_PASS_CELLS}`));
+  await expect(run).rejects.not.toThrow(
+    /per party in an exchange with a browser/,
+  );
   expect(await peer.receive()).toEqual({
     decision: "abort",
     abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON],
@@ -1705,19 +1660,36 @@ test("a file-sync reply too large for one message stops before it is written, an
   await expect(receiver).rejects.toBeInstanceOf(PeerAbortError);
 });
 
-test("a pipe stating no file-sync bound keeps the WebRTC budget at the same counts", async () => {
-  const [conn] = createMessagePipe();
+test("a WebRTC receiver past a browser party's ceiling passes where no ceiling is agreed, and is held where one is", async () => {
+  const [conn, peer] = createMessagePipe();
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
     makeParticipant(psiLibrary, "joiner"),
     conn,
     [["a", "b"]],
-    fanOutFreeBounds(1, MAX_SINGLE_PASS_CELLS + 1),
+    fanOutFreeBounds(1, CEILING + 1),
     false,
     -1,
   );
-  await expect(run).rejects.toThrow(
-    new RegExp(`single-pass limit of ${MAX_SINGLE_PASS_CELLS} value slot`),
+  const settled = run.catch((error: unknown) => error);
+  expect(await peer.receive()).toBeInstanceOf(Uint8Array);
+  await peer.close();
+  await conn.close();
+  await settled;
+
+  const [held] = createMessagePipe();
+  await expect(
+    linkViaSinglePassPSI(
+      { cardinality: "one-to-one" },
+      makeParticipant(psiLibrary, "joiner"),
+      held,
+      [["a", "b"]],
+      inBrowser(fanOutFreeBounds(1, CEILING + 1)),
+      false,
+      -1,
+    ),
+  ).rejects.toThrow(
+    new RegExp(`single-pass limit of ${CEILING} value slot\\(s\\) per party`),
   );
 });
 
@@ -1725,7 +1697,7 @@ test("an exchange over the ceiling on both sides names both declarations", async
   // Neither party can lift this one alone, so the diagnosis states both products
   // and gives each side its own remedy -- rather than attributing the whole
   // breach to whichever side it happened to check first.
-  const localRecords = MAX_SINGLE_PASS_CELLS + 1;
+  const localRecords = CEILING + 1;
   const [conn, peer] = createMessagePipe();
   const receiver = makeParticipant(psiLibrary, "joiner");
   const run = linkViaSinglePassPSI(
@@ -1738,8 +1710,9 @@ test("an exchange over the ceiling on both sides names both declarations", async
     [["a", "b"]],
     {
       partnerRecordCount: localRecords,
-      keyWidths: [MAX_SINGLE_PASS_CELLS],
+      keyWidths: [CEILING],
       localFanOutFactor: 1,
+      valueSlotCeiling: CEILING,
     },
     false,
     -1,
@@ -1750,12 +1723,12 @@ test("an exchange over the ceiling on both sides names both declarations", async
   );
   await expect(run).rejects.toThrow(
     new RegExp(
-      `you declared ${MAX_SINGLE_PASS_CELLS} effective linkage ` +
+      `you declared ${CEILING} effective linkage ` +
         `key\\(s\\) across 2 record\\(s\\), which is ` +
-        `${MAX_SINGLE_PASS_CELLS * 2} value slot\\(s\\), and your partner ` +
-        `declared ${MAX_SINGLE_PASS_CELLS} effective linkage key\\(s\\) ` +
+        `${CEILING * 2} value slot\\(s\\), and your partner ` +
+        `declared ${CEILING} effective linkage key\\(s\\) ` +
         `across ${localRecords} record\\(s\\), which is ` +
-        `${MAX_SINGLE_PASS_CELLS * localRecords} value slot\\(s\\)`,
+        `${CEILING * localRecords} value slot\\(s\\)`,
     ),
   );
   await expect(run).rejects.toThrow(SINGLE_PASS_LOCAL_REMEDY);

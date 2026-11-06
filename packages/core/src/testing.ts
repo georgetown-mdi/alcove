@@ -79,8 +79,11 @@ export {
   decodeSinglePassReply,
   encodeInt32LE,
   encodeSinglePassReply,
+  decodeSinglePassReplyTail,
+  encodeSinglePassReplyTail,
   getSortedDistinctValueIndices,
   linkViaPSI,
+  singlePassReplyParts,
 } from "./psi/link.js";
 export { FAN_OUT_CANDIDATES_PER_ELEMENT } from "./fanOutFunctions.js";
 // The single-pass link a sweep of scripts/single-pass-bench.mjs runs on each
@@ -199,6 +202,7 @@ export type {
 export {
   PSI_SET_PART_HEADER_BYTES,
   psiSetByteBound,
+  psiSetPartPayloadBytes,
 } from "./psi/psiSetParts.js";
 
 // The input bounds a suite drives at their edge: the invitation decode's host,

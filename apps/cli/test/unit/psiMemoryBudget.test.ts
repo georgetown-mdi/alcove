@@ -6,8 +6,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  INBOUND_FRAME_MEMORY_MULTIPLES,
   MAX_PSI_DECODE_ELEMENTS,
   RoundCapacityError,
+  WEBRTC_PART_MEMORY_MULTIPLES,
   UsageError,
   statesItsOwnNextStep,
   type InboundPsiFrameUse,
@@ -438,6 +440,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       inboundFrameUse?: InboundPsiFrameUse;
       encrypted?: boolean;
       envelopeVersion?: number;
+      webRtc?: { partBytes: number; outboundFrameBytes: number };
     },
     availableBytes: number,
     allowShortfall = false,
@@ -452,6 +455,7 @@ describe("the single-pass partner size at the terms exchange", () => {
         irreducibleReplyBytes: params.irreducibleReplyBytes ?? 0,
         inboundFrameBytes: params.inboundFrameBytes ?? 0,
         inboundFrameUse: params.inboundFrameUse ?? "stream",
+        ...(params.webRtc === undefined ? {} : { webRtc: params.webRtc }),
       },
       encrypted: params.encrypted ?? true,
       envelopeVersion: params.envelopeVersion,
@@ -576,6 +580,73 @@ describe("the single-pass partner size at the terms exchange", () => {
       };
       expect(() => run(size, needBytes)).not.toThrow();
       expect(() => run(size, needBytes - 1)).toThrow(RoundCapacityError);
+    },
+  );
+
+  // Over WebRTC a message is read and sent in parts: the message and the
+  // measured multiple of one part, the part being the smaller of the message
+  // and the part size.
+  const PART = 100_000_000;
+  it.each([
+    [
+      "a reply read in parts, past one part",
+      { inboundFrameBytes: 200_000_000, outboundFrameBytes: 1_000 },
+      200_000_000 + WEBRTC_PART_MEMORY_MULTIPLES.read * PART,
+    ],
+    [
+      "a reply read in parts and handed to the worker whole",
+      { inboundFrameBytes: 600_000_000, outboundFrameBytes: 1_000 },
+      600_000_000 +
+        (INBOUND_FRAME_MEMORY_MULTIPLES.workerClone +
+          INBOUND_FRAME_MEMORY_MULTIPLES.streamedSetup) *
+          600_000_000,
+    ],
+    [
+      "a reply read in one part",
+      { inboundFrameBytes: 40_000_000, outboundFrameBytes: 1_000 },
+      Math.max(
+        40_000_000 + WEBRTC_PART_MEMORY_MULTIPLES.read * 40_000_000,
+        40_000_000 +
+          (INBOUND_FRAME_MEMORY_MULTIPLES.workerClone +
+            INBOUND_FRAME_MEMORY_MULTIPLES.streamedSetup) *
+            40_000_000,
+      ),
+    ],
+    [
+      "a reply this party sends in parts",
+      { inboundFrameBytes: 1_000, outboundFrameBytes: 900_000_000 },
+      900_000_000 + WEBRTC_PART_MEMORY_MULTIPLES.send * PART,
+    ],
+  ] as const)(
+    "weighs %s over WebRTC at the measured part multiples",
+    (_what, { inboundFrameBytes, outboundFrameBytes }, needBytes) => {
+      const size = {
+        inboundFrameBytes,
+        inboundFrameUse: "stream" as const,
+        envelopeVersion: 2,
+        webRtc: { partBytes: PART, outboundFrameBytes },
+      };
+      expect(() => run(size, needBytes)).not.toThrow();
+      expect(() => run(size, needBytes - 1)).toThrow(RoundCapacityError);
+    },
+  );
+
+  it.each([
+    ["decode", "sending your reply"],
+    ["stream", "sending your values"],
+  ] as const)(
+    "names what this party sends when sending it is the larger need (%s)",
+    (inboundFrameUse, what) => {
+      expect(() =>
+        run(
+          {
+            inboundFrameBytes: 1_000,
+            inboundFrameUse,
+            webRtc: { partBytes: PART, outboundFrameBytes: 900_000_000 },
+          },
+          1_000_000_000,
+        ),
+      ).toThrow(`declared 150,000 records, and ${what} could take up`);
     },
   );
 

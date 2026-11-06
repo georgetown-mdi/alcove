@@ -73,7 +73,7 @@ export const COVERED_VECTORS = [
   {
     vectors: "index-table-vectors.json",
     reason:
-      "the wire layout of single-pass message 2 -- the four-part frame's boundaries and the distinct-value index table in both the layouts a sender ships (fixed-width and ragged), which a partner reads from session state with no wire flag.",
+      "the wire layout of single-pass message 2 -- the four-part frame's boundaries, the same message sent in parts, and the distinct-value index table in both the layouts a sender ships (fixed-width and ragged), which a partner reads from session state with no wire flag.",
   },
   {
     vectors: "matched-list-part-vectors.json",

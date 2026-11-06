@@ -33,7 +33,6 @@ import {
 } from "../connection/messageConnection";
 import {
   MAX_PSI_DECODE_ELEMENTS,
-  MAX_SINGLE_PASS_CELLS,
   MAX_SINGLE_PASS_SET_ELEMENTS,
   MAX_UINT32,
   partyFansOut,
@@ -89,7 +88,15 @@ import {
   sendMatchedListWithin,
   type BinaryListSource,
 } from "./matchedListParts";
-import { psiSetPartPayloadBytes, statedFrameBound } from "./psiSetParts";
+import {
+  PSI_SET_PART_HEADER_BYTES,
+  psiSetByteBound,
+  psiSetPartPayloadBytes,
+  psiSetParts,
+  receivePsiSet,
+  sendPsiSet,
+  statedFrameBound,
+} from "./psiSetParts";
 import {
   MAPPED_ELEMENT_LAYOUT,
   RESOLVED_TABLE_LAYOUT,
@@ -1807,11 +1814,11 @@ const declaredSinglePassSize = (
   `across ${party.recordCount} record(s), which is ${valueSlots(party)} ` +
   "value slot(s)";
 
-// Actionable guidance for an exchange that exceeds the WebRTC single-pass
-// ceiling. By design this does not recommend cascade: linkage_strategy is a
-// mandatory-consistency agreed term that cannot change unilaterally
-// mid-exchange, so pointing at it here would mislead (docs/spec/PROTOCOL.md,
-// the single-pass dataset ceiling).
+// Actionable guidance for an exchange that exceeds the single-pass ceiling a
+// browser party holds both parties to. By design this does not recommend
+// cascade: linkage_strategy is a mandatory-consistency agreed term that cannot
+// change unilaterally mid-exchange, so pointing at it here would mislead
+// (docs/spec/PROTOCOL.md, the single-pass dataset ceiling).
 //
 // That ceiling is a PER-PARTY budget on the value slot count
 // effectiveKeyCount * recordCount, so the guidance is oriented to the party
@@ -1837,6 +1844,7 @@ function singlePassOverCapMessage(
   local: SinglePassPartySize,
   localFansOut: boolean,
   partner: SinglePassPartySize,
+  ceiling: number,
 ): string {
   const cause =
     breach === "local"
@@ -1871,8 +1879,39 @@ function singlePassOverCapMessage(
   return (
     `${id}: this ${breach === "local" ? "dataset" : "exchange"} is too large for ` +
     `single-pass linkage: ${cause}, above the single-pass limit of ` +
-    `${MAX_SINGLE_PASS_CELLS} value slot(s) per party. ` +
+    `${ceiling} value slot(s) per party in an exchange with a browser. ` +
     remedies.join(" ")
+  );
+}
+
+/**
+ * Refuses a single-pass run whose declared sizes pass `ceiling`, the
+ * value-slot ceiling where a browser is a party, as a {@link UsageError}
+ * naming the remedy. Both parties call it on the same authenticated counts
+ * before either sends a single-pass frame, so both stop and neither waits.
+ * The exchange calls it at the terms exchange, ahead of the memory checks.
+ */
+export function refuseSinglePassOverCeiling(
+  id: string,
+  numLinkageKeys: number,
+  local: SinglePassPartySize,
+  localFansOut: boolean,
+  partner: SinglePassPartySize,
+  ceiling: number | undefined,
+): void {
+  if (ceiling === undefined) return;
+  const breach = singlePassCeilingBreach(local, partner, ceiling);
+  if (breach === undefined) return;
+  throw new UsageError(
+    singlePassOverCapMessage(
+      id,
+      numLinkageKeys,
+      breach,
+      local,
+      localFansOut,
+      partner,
+      ceiling,
+    ),
   );
 }
 
@@ -1905,6 +1944,42 @@ async function refuseSinglePassFrameOverCeiling(
   );
 }
 
+/**
+ * Whether a single-pass message whose cap the counts derive is `capBytes`
+ * travels in parts on `conn`: where the connection states no file-sync bound
+ * and the cap passes the largest frame its per-frame bound admits after the
+ * envelope. Both parties derive it from the same cap and the same stated
+ * bound, so a message within that bound stays one frame
+ * (docs/spec/PROTOCOL.md, Single-pass messages in parts).
+ */
+export function singlePassMessageInParts(
+  conn: MessageConnection,
+  capBytes: number,
+): boolean {
+  if (conn.outboundFileSyncFrameBound?.() !== undefined) return false;
+  return capBytes > psiSetPartPayloadBytes(conn) + PSI_SET_PART_HEADER_BYTES;
+}
+
+/**
+ * The inbound queue bytes a single-pass reply whose cap is `capBytes` can
+ * take on `conn` when it travels in parts, sent back to back with no receive
+ * between: its setup, response and tail each in parts, together at most three
+ * parts more than their bytes fill whole, and the frame in hand, each frame at
+ * the stated per-frame bound (docs/spec/TRANSPORT_BOUNDS.md, "WebRTC
+ * data-channel inbound bound").
+ */
+export function singlePassReplyQueueBytes(
+  conn: MessageConnection,
+  capBytes: number,
+): number {
+  const setBytes = Math.max(
+    0,
+    capBytes - SINGLE_PASS_REPLY_LENGTH_FIELDS_BYTES,
+  );
+  const frames = Math.floor(setBytes / psiSetPartPayloadBytes(conn)) + 3 + 1;
+  return frames * statedFrameBound(conn);
+}
+
 // Sets the read gate to the message file a frame of `frameBytes` is written as,
 // with its header and envelope, and never below the one an abort frame is
 // written as: the partner may send an abort in the frame's place.
@@ -1919,6 +1994,21 @@ function setSinglePassReadGate(
       conn.outboundFrameOverheadBytes?.(gateBytes) ?? 0,
     ),
   );
+}
+
+// Clears the read gate and restores the queue bound the reply was read under.
+// Frames the partner queued past the restored bound are refused once the
+// reply is read; on a run already failing, its own error is the one raised.
+function releaseSinglePassReplyBounds(
+  conn: MessageConnection,
+  replyRead: boolean,
+): void {
+  conn.setInboundFrameCap?.(undefined);
+  try {
+    conn.holdInboundQueueBytes?.(undefined);
+  } catch (error) {
+    if (replyRead) throw error;
+  }
 }
 
 // The diagnosis for the send-time reply-cap safety check below, which is
@@ -2054,6 +2144,11 @@ export interface SinglePassSessionBounds extends SessionBounds {
    * out but the agreed terms declare no width.
    */
   readonly localFanOutFactor: number;
+  /**
+   * The most value slots either party may declare over WebRTC
+   * ({@link singlePassValueSlotCeiling}), or absent where none applies.
+   */
+  readonly valueSlotCeiling?: number;
 }
 
 /**
@@ -2205,7 +2300,7 @@ export async function linkViaSinglePassPSI(
     localFanOutFactor > 1;
 
   // Over file-sync a set is held to what the reply's uint32 lengths state;
-  // over WebRTC the dataset ceiling below is far under the protocol's maximum.
+  // elsewhere, to the protocol's per-set maximum.
   const fileSync = conn.outboundFileSyncFrameBound?.() !== undefined;
   let ownValues: ReturnType<typeof getDistinctValuesAndIndices>;
   try {
@@ -2262,34 +2357,23 @@ export async function linkViaSinglePassPSI(
     );
   }
 
-  // Authoritative, symmetric over-ceiling gate. Both parties compute it
-  // identically from the exchanged counts and effective key counts, BEFORE
-  // exchanging any single-pass frame, so an over-cap exchange aborts on
-  // both sides in lockstep -- neither sends nor waits, so neither hangs to
-  // the inactivity timeout. The verdict is on the per-party budget, so the
-  // two parties' breach labels mirror each other (a "partner" breach here is a
-  // "local" one over there) while the abort decision is the same on both. The
-  // guidance shown is oriented to this party and does not recommend cascade.
-  // The prepareForExchange pre-flight is the coarse one-party shadow of this;
-  // this is the precise two-party check. File-sync has no such budget: its
-  // limits are the set maximum, met before masking, and the AEAD's limit on
-  // one frame, which a frame's real size meets after it
-  // (refuseSinglePassFrameOverCeiling).
-  if (!fileSync) {
-    const ceilingBreach = singlePassCeilingBreach(localSize, partnerSize);
-    if (ceilingBreach !== undefined) {
-      throw new UsageError(
-        singlePassOverCapMessage(
-          participant.id,
-          numLinkageKeys,
-          ceilingBreach,
-          localSize,
-          localFansOut,
-          partnerSize,
-        ),
-      );
-    }
-  }
+  // The over-ceiling gate where a browser is a party, which the exchange
+  // already applied at the terms exchange ahead of the memory checks. The
+  // verdict is on the per-party budget, so the two parties' breach labels
+  // mirror each other while the abort decision is the same on both. Between
+  // two command-line parties the memory check at the terms exchange is the
+  // gate, and over file-sync the limits are the set maximum, met before
+  // masking, and the AEAD's limit on one frame, which a frame's real size
+  // meets after it (refuseSinglePassFrameOverCeiling).
+  if (!fileSync)
+    refuseSinglePassOverCeiling(
+      participant.id,
+      numLinkageKeys,
+      localSize,
+      localFansOut,
+      partnerSize,
+      bounds.valueSlotCeiling,
+    );
 
   if (participant.config.role === "starter") {
     // Need to send:
@@ -2310,7 +2394,14 @@ export async function linkViaSinglePassPSI(
       stage(SINGLE_PASS_STAGE_IDS.encryptingOwnData);
       ({ setup, permutation } =
         await participant.createServerSetup(distinctValues));
-      request = await receivePsiBinaryFrame(conn, participant.id, "request");
+      request = singlePassMessageInParts(conn, requestCap)
+        ? await receivePsiSet(
+            conn,
+            participant.id,
+            "request",
+            Math.min(requestCap, psiSetByteBound(valueSlots(receiverSize))),
+          )
+        : await receivePsiBinaryFrame(conn, participant.id, "request");
     } finally {
       conn.setInboundFrameCap?.(undefined);
     }
@@ -2333,12 +2424,11 @@ export async function linkViaSinglePassPSI(
       numRecords,
     );
 
-    const reply = encodeSinglePassReply(
-      setup,
-      response,
-      numRecords,
-      sortedDistinctValueIndices,
-    );
+    const replyBytes =
+      SINGLE_PASS_REPLY_LENGTH_FIELDS_BYTES +
+      setup.byteLength +
+      response.byteLength +
+      singlePassReplyTailBytes(sortedDistinctValueIndices.length);
     // Send-time check against the SAME derived cap the receiver's read gate
     // enforces (singlePassReplyByteCap), so the two are one computation.
     // The over-ceiling gate above already aborted the common case from the
@@ -2354,14 +2444,10 @@ export async function linkViaSinglePassPSI(
       receiverSize,
       request.byteLength,
     );
-    if (reply.byteLength > replyCap) {
+    if (replyBytes > replyCap) {
       throw markStatesItsOwnNextStep(
         new InternalConsistencyError(
-          singlePassReplyOverCapMessage(
-            participant.id,
-            reply.byteLength,
-            replyCap,
-          ),
+          singlePassReplyOverCapMessage(participant.id, replyBytes, replyCap),
         ),
       );
     }
@@ -2370,11 +2456,28 @@ export async function linkViaSinglePassPSI(
       conn,
       participant.id,
       "reply",
-      reply.byteLength,
+      replyBytes,
     );
 
     log.debug(`${participant.id}: sending combined single-pass reply`);
-    await conn.send(reply);
+    if (singlePassMessageInParts(conn, replyCap)) {
+      for (const part of singlePassReplyParts(
+        setup,
+        response,
+        encodeSinglePassReplyTail(numRecords, sortedDistinctValueIndices),
+        psiSetPartPayloadBytes(conn),
+      ))
+        await conn.send(part);
+    } else {
+      await conn.send(
+        encodeSinglePassReply(
+          setup,
+          response,
+          numRecords,
+          sortedDistinctValueIndices,
+        ),
+      );
+    }
     // Collect the response-masking and reply-build transients before idling on
     // the partner's table.
     relieveTransientMemory();
@@ -2476,12 +2579,13 @@ export async function linkViaSinglePassPSI(
       singlePassRequestByteCap(receiverSize),
     ),
   );
-  let replyCap: number;
-  let replyFrame: Uint8Array;
+  let reply:
+    | { inParts: false; frame: Uint8Array; cap: number }
+    | { inParts: true; response: Uint8Array; tail: Uint8Array };
   try {
     stage(SINGLE_PASS_STAGE_IDS.encryptingOwnData);
     const request = await participant.createClientRequest(distinctValues);
-    replyCap = singlePassReplyByteCap(
+    const replyCap = singlePassReplyByteCap(
       numLinkageKeys,
       senderSize,
       receiverSize,
@@ -2494,29 +2598,58 @@ export async function linkViaSinglePassPSI(
       "request",
       request.byteLength,
     );
-    await conn.send(request);
-    replyFrame = await receivePsiBinaryFrame(
-      conn,
-      participant.id,
-      "single-pass reply",
-    );
-  } finally {
-    conn.setInboundFrameCap?.(undefined);
+    if (singlePassMessageInParts(conn, singlePassRequestByteCap(receiverSize)))
+      await sendPsiSet(conn, request);
+    else await conn.send(request);
+    // The reply's parts queue while its setup streams into the engine. The
+    // sender reads the whole request before it sends any part.
+    if (singlePassMessageInParts(conn, replyCap))
+      conn.holdInboundQueueBytes?.(singlePassReplyQueueBytes(conn, replyCap));
+    reply = singlePassMessageInParts(conn, replyCap)
+      ? {
+          inParts: true,
+          ...(await participant.receiveSinglePassReplyInParts(
+            conn,
+            replyCap,
+            SINGLE_PASS_REPLY_LENGTH_FIELDS_BYTES,
+          )),
+        }
+      : {
+          inParts: false,
+          frame: await receivePsiBinaryFrame(
+            conn,
+            participant.id,
+            "single-pass reply",
+          ),
+          cap: replyCap,
+        };
+  } catch (error) {
+    releaseSinglePassReplyBounds(conn, false);
+    throw error;
   }
-  if (replyFrame.byteLength > replyCap) {
+  releaseSinglePassReplyBounds(conn, true);
+  if (!reply.inParts && reply.frame.byteLength > reply.cap) {
     throw partnerProtocolError(
       participant.id,
-      `the single-pass reply is ${replyFrame.byteLength} byte(s), above the ` +
-        `${replyCap} byte(s) both parties derive from their declared sizes`,
+      `the single-pass reply is ${reply.frame.byteLength} byte(s), above the ` +
+        `${reply.cap} byte(s) both parties derive from their declared sizes`,
     );
   }
 
+  // In parts, the setup is already in the engine and only the response and the
+  // tail are joined.
   const {
     setup: setupBytes,
     response: responseBytes,
     numRecords: numSenderRecords,
     distinctValueIndices: stackedDistinctValueIndices,
-  } = decodeSinglePassReply(replyFrame);
+  } = reply.inParts
+    ? {
+        setup: undefined,
+        response: reply.response,
+        ...decodeSinglePassReplyTail(reply.tail),
+      }
+    : decodeSinglePassReply(reply.frame);
 
   // Validate every count the reply declares against authenticated state,
   // before it drives any allocation. The sender packs the number of rows
@@ -2589,7 +2722,9 @@ export async function linkViaSinglePassPSI(
   relieveTransientMemory();
   stage(SINGLE_PASS_STAGE_IDS.identifyingSharedValues);
   const [receiverDistinctValueIds, senderDistinctValueIds] =
-    await participant.computeValueMatches(setupBytes, responseBytes);
+    setupBytes === undefined
+      ? await participant.matchHeldServerSetup(responseBytes)
+      : await participant.computeValueMatches(setupBytes, responseBytes);
   // Keyed by the SENDER's value id, because the resolution sweep walks the
   // sender's rows in ascending order (see replaySinglePassCascade). The pairing is
   // a bijection over the matched values -- each party's values are distinct, and
@@ -3637,16 +3772,78 @@ export function decodeSinglePassReply(bytes: Uint8Array): {
   };
   const setup = readSlice("setup");
   const response = readSlice("response");
-  if (offset + 4 > bytes.byteLength)
+  return {
+    setup,
+    response,
+    ...decodeSinglePassReplyTail(bytes.subarray(offset)),
+  };
+}
+
+/**
+ * Bytes of the two uint32 length fields a one-frame single-pass reply states
+ * before its setup and its response. A reply in parts states neither, but its
+ * size is counted as the one frame's, so one cap holds both.
+ */
+export const SINGLE_PASS_REPLY_LENGTH_FIELDS_BYTES = 8;
+
+/**
+ * Bytes of the reply's tail, the uint32 record count and an index table of
+ * `indexWords` Int32 words.
+ */
+export function singlePassReplyTailBytes(indexWords: number): number {
+  return 4 + 4 * indexWords;
+}
+
+// The reply's last two fields, the record count and the index table, as a
+// reply in parts sends them: the tail of encodeSinglePassReply's frame.
+/** @internal exported for the wire-message test. */
+export function encodeSinglePassReplyTail(
+  numRecords: number,
+  distinctValueIndices: ArrayLike<number>,
+): Uint8Array {
+  const out = new Uint8Array(
+    singlePassReplyTailBytes(distinctValueIndices.length),
+  );
+  const view = new DataView(out.buffer);
+  view.setUint32(0, uint32Field("record count", numRecords), true);
+  writeInt32LE(view, 4, distinctValueIndices);
+  return out;
+}
+
+// Read a reply's tail (see encodeSinglePassReplyTail): the record count, then
+// the index table as the remainder, which decodeInt32LE refuses unless it is
+// a whole number of int32s.
+/** @internal exported for the wire-message test. */
+export function decodeSinglePassReplyTail(bytes: Uint8Array): {
+  numRecords: number;
+  distinctValueIndices: Int32Array;
+} {
+  if (bytes.byteLength < 4)
     throw new PartnerProtocolRefusalError(
       "protocol error: single-pass reply truncated reading record count",
     );
-  const numRecords = view.getUint32(offset, true);
-  offset += 4;
-  // The distinct-value index table is the remainder; decodeInt32LE rejects a
-  // non-int32 length.
-  const distinctValueIndices = decodeInt32LE(bytes.subarray(offset));
-  return { setup, response, numRecords, distinctValueIndices };
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return {
+    numRecords: view.getUint32(0, true),
+    distinctValueIndices: decodeInt32LE(bytes.subarray(4)),
+  };
+}
+
+/**
+ * The frames of single-pass message 2 in parts, in order: the setup, the
+ * response, and the tail, each sent as a PSI set is, in parts of at most
+ * `payloadBytes` set bytes under the part header (docs/spec/PROTOCOL.md,
+ * Single-pass messages in parts).
+ */
+export function* singlePassReplyParts(
+  setup: Uint8Array,
+  response: Uint8Array,
+  tail: Uint8Array,
+  payloadBytes: number,
+): Generator<Uint8Array> {
+  yield* psiSetParts(setup, payloadBytes);
+  yield* psiSetParts(response, payloadBytes);
+  yield* psiSetParts(tail, payloadBytes);
 }
 
 /** @internal */

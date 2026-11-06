@@ -10,6 +10,7 @@ import {
 } from "../src/connection/frameSize";
 import { sendAbort, sendLocalFaultAbort } from "../src/protocolSetup";
 import { createMessagePipe } from "../src/connection/messageConnection";
+import { psiSetPartPayloadBytes } from "../src/psi/psiSetParts";
 import {
   PeerAbortError,
   RoundCapacityError,
@@ -496,18 +497,42 @@ test("a capacity check that passes leaves the run as it was", async () => {
   expect(partner.status).toBe("fulfilled");
 });
 
-test("a single-pass exchange is left to its dataset ceiling", async () => {
+test("a single-pass exchange is left to its value-slot ceiling, not weighed as a round", async () => {
   const seen: Array<number> = [];
   const { local, partner } = await runPair({
     localRows: 5,
     partnerRows: 12,
-    ceiling: 1,
+    ceiling: 12,
     strategy: "single-pass",
     options: { checkPartnerRoundCapacity: (values) => void seen.push(values) },
   });
   expect(seen).toEqual([]);
   expect(local.status).toBe("fulfilled");
   expect(partner.status).toBe("fulfilled");
+});
+
+test("a single-pass exchange over the value-slot ceiling gets the ceiling refusal ahead of a failing memory check", async () => {
+  const check = vi.fn(() => {
+    throw new RoundCapacityError("cannot fit", "terms-exchange");
+  });
+  const { local, partner, sent, partnerSent } = await runPair({
+    localRows: 5,
+    partnerRows: 12,
+    ceiling: 10,
+    strategy: "single-pass",
+    options: { checkSinglePassPartnerSize: check },
+  });
+  expect(check).not.toHaveBeenCalled();
+  for (const outcome of [local, partner]) {
+    const reason = (outcome as PromiseRejectedResult).reason;
+    expect(reason).toBeInstanceOf(UsageError);
+    expect(String(reason)).toMatch(/too large for single-pass linkage/);
+  }
+  expect(String((local as PromiseRejectedResult).reason)).toContain(
+    "single-pass limit of 10 value slot(s) per party",
+  );
+  expect(binaryFrames(sent)).toEqual([]);
+  expect(binaryFrames(partnerSent)).toEqual([]);
 });
 
 test("a sender partner is weighed at the declared width", async () => {
@@ -679,11 +704,50 @@ describe("single-pass over file-sync, at the terms exchange", () => {
     );
   });
 
-  test("a connection stating no file-sync bound is not checked here", async () => {
-    const check = vi.fn();
-    const { local } = await runSinglePass(false, check);
+  test("a connection stating no file-sync bound is checked too, with the part size and the message this party sends", async () => {
+    const seen: Array<SinglePassPartnerSize> = [];
+    const { local } = await runSinglePass(false, (size) => {
+      seen.push(size);
+    });
     expect(local.status).toBe("fulfilled");
-    expect(check).not.toHaveBeenCalled();
+    const sender = { effectiveKeyCount: 1, recordCount: 12 };
+    const receiver = { effectiveKeyCount: 1, recordCount: 5 };
+    const [conn] = createMessagePipe();
+    expect(seen).toEqual([
+      {
+        partnerValueSlots: 12,
+        localValueSlots: 5,
+        partnerRecordCount: 12,
+        irreducibleReplyBytes: 48,
+        inboundFrameBytes: singlePassReplyByteCap(
+          1,
+          sender,
+          receiver,
+          singlePassRequestByteCap(receiver),
+        ),
+        inboundFrameUse: "stream",
+        webRtc: {
+          partBytes: psiSetPartPayloadBytes(conn),
+          outboundFrameBytes: singlePassRequestByteCap(receiver),
+        },
+      },
+    ]);
+  });
+
+  test("a capacity refusal over WebRTC stops the run before any set moves and tells the partner", async () => {
+    const failure = new RoundCapacityError("cannot fit", "terms-exchange");
+    const { local, partner, sent } = await runSinglePass(false, () => {
+      throw failure;
+    });
+    expect((local as PromiseRejectedResult).reason).toBe(failure);
+    expect(binaryFrames(sent)).toEqual([]);
+    expect(sent.at(-1)).toEqual({
+      decision: "abort",
+      abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
+    });
+    expect((partner as PromiseRejectedResult).reason).toBeInstanceOf(
+      PeerAbortError,
+    );
   });
 
   test("a cascade over file-sync is not checked here", async () => {

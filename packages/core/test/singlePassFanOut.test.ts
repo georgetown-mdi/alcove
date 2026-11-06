@@ -19,7 +19,7 @@ import {
   FAN_OUT_CANDIDATES_PER_ELEMENT,
 } from "../src/fanOutFunctions";
 import {
-  MAX_SINGLE_PASS_CELLS,
+  BROWSER_PSI_SET_MAX_ELEMENTS,
   singlePassReplyByteCap,
   singlePassRequestByteCap,
 } from "../src/connection/frameSize";
@@ -747,8 +747,8 @@ test("an over-ceiling fan-out exchange aborts on both sides before any frame mov
   // The fan-out is the whole reason this exchange is over the budget: the same row
   // count against the plain key count is comfortably inside it. Both parties reach
   // the verdict from the advertisements alone, so neither sends and neither waits.
-  const rowsWithinPlainBudget = MAX_SINGLE_PASS_CELLS;
-  const overWithFanOut = Math.floor(MAX_SINGLE_PASS_CELLS / 20) + 1;
+  const rowsWithinPlainBudget = BROWSER_PSI_SET_MAX_ELEMENTS;
+  const overWithFanOut = Math.floor(BROWSER_PSI_SET_MAX_ELEMENTS / 20) + 1;
   const [conn, peer] = createMessagePipe();
   const roles = ["starter", "joiner"] as const;
   for (const role of roles) {
@@ -757,7 +757,10 @@ test("an over-ceiling fan-out exchange aborts on both sides before any frame mov
       makeParticipant(psiLibrary, role),
       conn,
       [["a", "b"]],
-      boundsFor(overWithFanOut, [FAN_OUT_CANDIDATES_PER_ELEMENT]),
+      {
+        ...boundsFor(overWithFanOut, [FAN_OUT_CANDIDATES_PER_ELEMENT]),
+        valueSlotCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
+      },
       false,
       -1,
     );
@@ -804,11 +807,12 @@ test("a party over the ceiling on its own cleaning alone is offered the fan-out 
   const keyCount = MAX_LINKAGE_ENTRIES;
   const rows =
     Math.floor(
-      MAX_SINGLE_PASS_CELLS / (keyCount * FAN_OUT_CANDIDATES_PER_ELEMENT),
+      BROWSER_PSI_SET_MAX_ELEMENTS /
+        (keyCount * FAN_OUT_CANDIDATES_PER_ELEMENT),
     ) + 1;
   // The same rows without the cleaning fan-out are comfortably inside the
   // budget, so the fan-out is the whole reason this breaches.
-  expect(keyCount * rows).toBeLessThan(MAX_SINGLE_PASS_CELLS);
+  expect(keyCount * rows).toBeLessThan(BROWSER_PSI_SET_MAX_ELEMENTS);
   const column: Column = Array.from({ length: rows }, (_u, i) => `V${i}`);
   const [conn] = createMessagePipe();
   const run = linkViaSinglePassPSI(
@@ -816,11 +820,14 @@ test("a party over the ceiling on its own cleaning alone is offered the fan-out 
     makeParticipant(psiLibrary, "starter"),
     conn,
     new Array<Column>(keyCount).fill(column),
-    boundsFor(
-      2,
-      new Array<number>(keyCount).fill(1),
-      FAN_OUT_CANDIDATES_PER_ELEMENT,
-    ),
+    {
+      ...boundsFor(
+        2,
+        new Array<number>(keyCount).fill(1),
+        FAN_OUT_CANDIDATES_PER_ELEMENT,
+      ),
+      valueSlotCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
+    },
     false,
     -1,
   );

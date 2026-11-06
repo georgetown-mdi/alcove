@@ -962,8 +962,6 @@ export async function prepareDataset(
     rawRows,
     columns,
     sanitizedColumnPositions,
-    undefined,
-    connection.channel,
   );
   warnOnValueConstraints(prepared, log);
   // The terms-side enforcement of an acceptance: the `deduplicate`

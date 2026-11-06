@@ -11,7 +11,7 @@ import {
   describeFrameStructureRefusal,
   scanFrameStructure,
 } from "../../src/connection/binaryPackBounds";
-import { MAX_SINGLE_PASS_CELLS } from "../../src/connection/frameSize";
+import { BROWSER_PSI_SET_MAX_ELEMENTS } from "../../src/connection/frameSize";
 
 import type { FrameStructureRefusal } from "../../src/connection/binaryPackBounds";
 import type { Packable, Unpackable } from "peerjs-js-binarypack";
@@ -229,7 +229,7 @@ describe("scanFrameStructure: the cumulative element rule", () => {
     expect(Array.isArray(decoded) && decoded.length).toBe(700_000);
   });
 
-  test("admits the largest legitimate shapes at the single-pass ceiling", () => {
+  test("admits the largest legitimate shapes at a browser party's single-pass ceiling", () => {
     // Both quantities are affine in the record count, so two builds fix each
     // shape's per-record slope and the ceiling frame follows from them.
     const small = 1_000;
@@ -253,14 +253,14 @@ describe("scanFrameStructure: the cumulative element rule", () => {
         (at.large.frame.byteLength - at.small.frame.byteLength) / span;
       const elementsAtCeiling =
         at.large.declaredElements +
-        elementsPerRecord * (MAX_SINGLE_PASS_CELLS - large);
+        elementsPerRecord * (BROWSER_PSI_SET_MAX_ELEMENTS - large);
       const bytesAtCeiling =
         at.large.frame.byteLength +
-        bytesPerRecord * (MAX_SINGLE_PASS_CELLS - large);
+        bytesPerRecord * (BROWSER_PSI_SET_MAX_ELEMENTS - large);
       const elementsPerWireByte = elementsAtCeiling / bytesAtCeiling;
       expect(
         bytesAtCeiling / elementsAtCeiling,
-        `${label} at ${MAX_SINGLE_PASS_CELLS} records declares ${elementsAtCeiling} elements over ${bytesAtCeiling} wire bytes, ${elementsPerWireByte.toFixed(3)} per byte`,
+        `${label} at ${BROWSER_PSI_SET_MAX_ELEMENTS} records declares ${elementsAtCeiling} elements over ${bytesAtCeiling} wire bytes, ${elementsPerWireByte.toFixed(3)} per byte`,
       ).toBeGreaterThanOrEqual(MIN_CEILING_HEADROOM);
     }
   });

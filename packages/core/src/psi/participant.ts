@@ -49,6 +49,7 @@ import {
   receivePsiSet,
   receivePsiSetInPieces,
   sendPsiSet,
+  type PsiSetByteLimit,
   type PsiSetCapacity,
 } from "./psiSetParts";
 import type { RoundGroupingField } from "./roundGrouping";
@@ -528,12 +529,14 @@ export class PSIParticipant {
 
   // A failure after some parts reached the engine frees the partial setup
   // there; a failure to free it does not replace the original error. Returns
-  // the setup's element count.
+  // the setup's element count and byte length. `maxSetBytes`, where given and
+  // lower, replaces the byte bound the element bound derives.
   private async receiveServerSetupInParts(
     conn: MessageConnection,
-  ): Promise<number> {
+    maxSetBytes?: PsiSetByteLimit,
+  ): Promise<{ elements: number; bytes: number }> {
     try {
-      return await this.receiveServerSetupPieces(conn);
+      return await this.receiveServerSetupPieces(conn, maxSetBytes);
     } catch (error) {
       await this.engine.discardServerSetup().catch(() => undefined);
       throw error;
@@ -547,20 +550,25 @@ export class PSIParticipant {
   // the setup completes only once its last part has passed both.
   private async receiveServerSetupPieces(
     conn: MessageConnection,
-  ): Promise<number> {
+    maxSetBytes: PsiSetByteLimit | undefined,
+  ): Promise<{ elements: number; bytes: number }> {
     const limits = this.partnerSetLimits(this.elementBounds.setup);
     const ceiling = this.inboundElementCeiling(
       "serverSetup",
       this.elementBounds.setup,
     );
     let scan: PsiElementScan | undefined;
+    let bytes = 0;
     await receivePsiSetInPieces(
       conn,
       this.id,
       "serverSetup",
-      limits.maxSetBytes,
+      maxSetBytes !== undefined && maxSetBytes.bytes < limits.maxSetBytes
+        ? maxSetBytes
+        : limits.maxSetBytes,
       limits.capacity,
       async (piece, setBytes) => {
+        bytes = setBytes;
         const setupScan = (scan ??= new PsiElementScan(
           "serverSetup",
           ceiling,
@@ -586,7 +594,7 @@ export class PSIParticipant {
     await decodePsiBinaryFrame(this.id, "serverSetup", () =>
       this.engine.completeServerSetup(),
     );
-    return elements;
+    return { elements, bytes };
   }
 
   // Report one crypto operation's element count and duration around the engine
@@ -747,6 +755,67 @@ export class PSIParticipant {
     return this.computeAssociationTable(responseBytes);
   }
 
+  /**
+   * Receives single-pass message 2 sent in parts (docs/spec/PROTOCOL.md,
+   * Single-pass messages in parts): the setup, whose parts go to the engine
+   * as they arrive, as a cascade round's do, then the response and the
+   * reply's tail, each joined. Each set's declared length is held at its first
+   * part to what `maxReplyBytes`, the reply cap both parties derive, leaves
+   * after the reply's two length fields and the sets before it, and the
+   * response to the request this party sent. A failure frees the setup the
+   * engine holds. {@link matchHeldServerSetup} matches the response. Requires
+   * the `"joiner"` role.
+   */
+  public async receiveSinglePassReplyInParts(
+    conn: MessageConnection,
+    maxReplyBytes: number,
+    lengthFieldsBytes: number,
+  ): Promise<{ response: Uint8Array; tail: Uint8Array }> {
+    const capLeft = (bytes: number): PsiSetByteLimit => ({
+      bytes: Math.max(0, bytes),
+      source: "bytes the single-pass reply cap leaves for it",
+    });
+    let left = maxReplyBytes - lengthFieldsBytes;
+    const setup = await this.receiveServerSetupInParts(conn, capLeft(left));
+    try {
+      left -= setup.bytes;
+      const sent = this.requestAnswered();
+      const response = await receivePsiSet(
+        conn,
+        this.id,
+        "response",
+        sent.bytes <= left
+          ? {
+              bytes: sent.bytes,
+              source: "bytes of the request this party sent",
+            }
+          : capLeft(left),
+      );
+      left -= response.byteLength;
+      const tail = await receivePsiSet(
+        conn,
+        this.id,
+        "reply tail",
+        capLeft(left),
+      );
+      return { response, tail };
+    } catch (error) {
+      await this.engine.discardServerSetup().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /**
+   * Finishes the match against the setup {@link receiveSinglePassReplyInParts}
+   * left in the engine, as {@link computeValueMatches} does against a whole
+   * one. Requires the `"joiner"` role.
+   */
+  public matchHeldServerSetup(
+    responseBytes: Uint8Array,
+  ): Promise<[Array<number>, Array<number>]> {
+    return this.computeAssociationTable(responseBytes);
+  }
+
   // The single-pass setup, which arrives whole inside its message: the
   // host-side element-count guard, then the engine takes, checks and holds
   // it. The guard runs here, above the engine boundary, so the engine only
@@ -856,7 +925,8 @@ export class PSIParticipant {
     declared: CountOnlyDeclaredCounts,
     widths: CountOnlyRoundWidths,
   ): Promise<void> {
-    const setupElements = await this.receiveServerSetupInParts(conn);
+    const { elements: setupElements } =
+      await this.receiveServerSetupInParts(conn);
     try {
       if (setupElements !== declared.senderRecords * widths.senderWidth)
         throw new PartnerProtocolRefusalError(

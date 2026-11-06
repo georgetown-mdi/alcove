@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "vitest";
 
-import { MAX_SINGLE_PASS_CELLS } from "../src/connection/frameSize";
+import { BROWSER_PSI_SET_MAX_ELEMENTS } from "../src/connection/frameSize";
 import {
   ConnectionError,
   statesItsOwnNextStep,
@@ -59,8 +59,10 @@ describe("the partner rows paired with one row of a both-sided table", () => {
     expect(MAX_PARTNER_ROWS_OF_ONE_ROW).toBe(16_777_216);
   });
 
-  test("over WebRTC the value-slot budget holds a partner under the bound", () => {
-    expect(MAX_SINGLE_PASS_CELLS).toBeLessThan(MAX_PARTNER_ROWS_OF_ONE_ROW);
+  test("a browser party's value-slot ceiling holds a partner under the bound", () => {
+    expect(BROWSER_PSI_SET_MAX_ELEMENTS).toBeLessThan(
+      MAX_PARTNER_ROWS_OF_ONE_ROW,
+    );
   });
 
   test("one row paired with one more than the bound is refused in plain words", () => {

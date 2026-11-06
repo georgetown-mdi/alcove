@@ -30,6 +30,11 @@ import type { PsiEngineMode } from "../psi/psiEngine.js";
 import type { StandardizedKeyIterable } from "../standardization.js";
 import type { AssociationTable } from "../types.js";
 
+/** The id a party's PSI participant and its messages name it by. */
+export function psiParticipantId(isReceiver: boolean): "client" | "server" {
+  return isReceiver ? "client" : "server";
+}
+
 /**
  * Run the PSI phase of an exchange over the agreed terms: build this party's
  * crypto engine and participant, run the count-only, single-pass or cascade
@@ -122,7 +127,7 @@ export async function runPsiPhase(p: {
   // worker; only the participant is built inside. The default in-process engine
   // is built from `psiLibrary` too, since it holds the secret key.
   const psiRole = isReceiver ? "joiner" : "starter";
-  const psiId = isReceiver ? "client" : "server";
+  const psiId = psiParticipantId(isReceiver);
   // The disclosure this round is built for, fixed once from the agreed
   // algorithm and generated into the engine's key material rather than
   // chosen when the result is read: a count-only engine returns only the

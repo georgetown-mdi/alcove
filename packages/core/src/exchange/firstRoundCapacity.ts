@@ -157,7 +157,8 @@ const PARTNER_CEILING_REMEDY =
  * built (docs/spec/PROTOCOL.md, "The receive ceiling"). Where the round reads
  * one candidate per record, a record holding a candidate set raises the
  * round's own fan-out refusal rather than this one. A `psi` single-pass
- * exchange is not checked here: its dataset ceiling holds every set it sends
+ * exchange is not checked here: the limits it meets at the terms exchange and
+ * before masking hold every set it sends
  * (docs/spec/PROTOCOL.md, "The single-pass dataset ceiling").
  *
  * Every round of a count-only (`psi-c`) exchange sends one block of this

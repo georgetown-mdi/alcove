@@ -64,10 +64,12 @@ import type { PsiEngineMode } from "@alcove/core";
 //   node apps/web/test/bench/browserWrappedRound.ts \
 //     --role starter --elements 8388608 [--partner-elements 8388608]
 //     [--mode identifier-revealing] [--overlap 1000] [--out results.jsonl]
-//     [--trace-out v8-trace.log]
+//     [--trace-out v8-trace.log] [--strategy single-pass]
 //
 // --elements is the browser's set, --partner-elements the partner's (the
-// same by default). --trace-out keeps the measured browser's output, V8's
+// same by default). --strategy single-pass runs a single-pass exchange of one
+// value a record instead of a cascade round, its messages in parts past the
+// per-frame bound. --trace-out keeps the measured browser's output, V8's
 // collection trace and any fatal message. Above about 6 million a side, run it as
 // `node --max-old-space-size=19075` (the command-line application's heap
 // ceiling, docs/spec/FILE_SYNC.md), as browserSameSizeRound.ts says.
@@ -112,6 +114,7 @@ interface PhasePeaks {
 interface WrappedRoundRecord {
   readonly date: string;
   readonly role: "starter" | "joiner";
+  readonly strategy: RoundSide["strategy"];
   readonly mode: PsiEngineMode;
   readonly elements: number;
   readonly partnerElements: number;
@@ -181,6 +184,7 @@ async function main(): Promise<void> {
   );
   const out = flagValue("out", "");
   const traceOut = flagValue("trace-out", "");
+  const strategy = flagValue("strategy", "cascade") as RoundSide["strategy"];
   const partnerRole = role === "joiner" ? "starter" : "joiner";
   const starterElements = role === "starter" ? elements : partnerElements;
   const joinerElements = role === "joiner" ? elements : partnerElements;
@@ -192,6 +196,7 @@ async function main(): Promise<void> {
     joinerElements,
     ownCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
     partnerCeiling: MAX_PSI_DECODE_ELEMENTS,
+    strategy,
   };
   const partnerSide: RoundSide = {
     id: "partner",
@@ -201,6 +206,7 @@ async function main(): Promise<void> {
     joinerElements,
     ownCeiling: MAX_PSI_DECODE_ELEMENTS,
     partnerCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
+    strategy,
   };
 
   const [workerSource, pageSource, partnerSource] = await Promise.all([
@@ -476,8 +482,9 @@ async function main(): Promise<void> {
       ),
       stopOnFailure(
         partnerPage.evaluate(
-          ([roundSide, count]) => partnerProbe().run(roundSide, count),
-          [partnerSide, partnerElements] as const,
+          ([roundSide, count, shared]) =>
+            partnerProbe().run(roundSide, count, shared),
+          [partnerSide, partnerElements, overlap] as const,
         ),
       ),
     ]);
@@ -508,6 +515,7 @@ async function main(): Promise<void> {
   const record: WrappedRoundRecord = {
     date: new Date().toISOString(),
     role,
+    strategy,
     mode,
     elements,
     partnerElements,

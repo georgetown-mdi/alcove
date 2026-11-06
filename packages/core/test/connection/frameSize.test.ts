@@ -10,6 +10,7 @@ import {
   singlePassReplyByteCap,
   singlePassRequestByteCap,
   singlePassIrreducibleReplyBytes,
+  singlePassValueSlotCeiling,
 } from "../../src/connection/frameSize";
 import {
   psiSetByteBound,
@@ -24,13 +25,34 @@ import { recordCountField } from "../../src/protocolSetup";
 
 // --- MAX_RECORD_COUNT: the slot-count gate's exact-product dependency -------
 // The slot-count gate (singlePassDatasetExceedsCap) decides effectiveKeyCount
-// * recordCount > MAX_SINGLE_PASS_CELLS, and its precision argument holds
+// * recordCount > its ceiling, and its precision argument holds
 // only while that product is exact -- below 2^53. That once rested
 // implicitly on the recordCount schema's `.int()` safe-integer ceiling;
 // MAX_RECORD_COUNT makes it explicit. The check is against the EFFECTIVE key
 // count (a declared width multiplies it), so a future raise of
 // MAX_EFFECTIVE_KEY_COUNT or MAX_RECORD_COUNT that would cost the product
 // precision fails here instead of silently corrupting the gate.
+
+test("a single-pass value slot ceiling holds only where a browser is a party", () => {
+  expect(
+    singlePassValueSlotCeiling(
+      MAX_PSI_DECODE_ELEMENTS,
+      MAX_PSI_DECODE_ELEMENTS,
+    ),
+  ).toBeUndefined();
+  expect(
+    singlePassValueSlotCeiling(
+      MAX_PSI_DECODE_ELEMENTS,
+      BROWSER_PSI_SET_MAX_ELEMENTS,
+    ),
+  ).toBe(BROWSER_PSI_SET_MAX_ELEMENTS);
+  expect(
+    singlePassValueSlotCeiling(
+      BROWSER_PSI_SET_MAX_ELEMENTS,
+      MAX_PSI_DECODE_ELEMENTS,
+    ),
+  ).toBe(BROWSER_PSI_SET_MAX_ELEMENTS);
+});
 
 test("the irreducible reply is one index word per key and row of the sender", () => {
   expect(singlePassIrreducibleReplyBytes(25, 150_001)).toBe(15_000_100);

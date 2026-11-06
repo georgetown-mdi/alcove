@@ -1,0 +1,248 @@
+- Single-pass messages 1 and 2 are not split; the single-pass dataset ceiling below keeps each within one frame. -> Single-pass messages 1 and 2 are sent in parts only when their caps pass the per-frame bound ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- - -> A message whose cap passes the per-frame bound is sent in parts instead ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- - -> Single-pass messages in parts
+- - -> Single-pass message 1 or message 2 is sent in parts when the cap the counts derive for it is larger than the largest frame the partner's per-frame bound admits after the channel's envelope, on a connection stating no file-sync bound (`singlePassMessageInParts`, `packages/core/src/psi/link.ts`).
+- - -> Otherwise it is the one frame [above](#linkage-strategies-cascade-and-single-pass), so a message whose cap is within the bound is byte-identical in either case.
+- - -> Message 1's cap is the request cap, `singlePassRequestByteCap`, and message 2's is the reply cap once the request is built, `singlePassReplyByteCap` ([The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
+- - -> Both parties derive the decision from the same cap and the same stated bound, so each reads a message in the layout it was sent in.
+- - -> Over file-sync each message stays one frame, held to the message file.
+- - -> **Message 1 in parts** is the request, sent as a PSI set is, under the part header [above](#a-psi-set-is-sent-in-parts).
+- - -> The sender holds its declared length, at its first part, to the request cap and to the combined bound.
+- - -> **Message 2 in parts** is three sets in turn, each sent as a PSI set is: the setup, the response, and the tail, which is part (c), the `uint32` row count, followed by part (d), the index table, as in the one frame.
+- - -> The `uint32` lengths of parts (a) and (b) are not sent, since each part header states its set's length.
+- - -> **Message 2's bound.**
+- - -> The reply in parts is counted at the length of the one frame it replaces, so one reply cap holds both layouts.
+- - -> At each set's first part the receiver holds its declared length to what the reply cap leaves after the two `uint32` lengths and the sets before it, and the response to the request it sent as well.
+- - -> **What the receiver joins.**
+- - -> It hands the setup's parts to the engine's streamed match as they arrive, as a cascade round's setup, and joins the response and the tail.
+- - -> The response is joined because the engine's match takes the whole response, as a cascade round's does.
+- - -> Each refusal [above](#a-psi-set-is-sent-in-parts) applies to each set.
+- - -> Known-answer vectors: each reply frame's `partsHex` in `packages/core/test/vectors/index-table-vectors.json`, replayed by `packages/core/test/psi/indexTableVectors.test.ts`.
+- **An installed CLI** calls `v8.setFlagsFromString("--max-old-space-size=19075")` immediately before it starts the PSI worker, or, on a single-pass run over file-sync, with the heap the counts need ([The worker's heap, from the counts](#the-workers-heap-from-the-counts)), unless the process already runs under a larger limit (`raisePsiWorkerHeapLimit`). -> **An installed CLI** calls `v8.setFlagsFromString("--max-old-space-size=19075")` immediately before it starts the PSI worker, or, on a single-pass run, with the heap the counts need ([The worker's heap, from the counts](#the-workers-heap-from-the-counts)), unless the process already runs under a larger limit (`raisePsiWorkerHeapLimit`).
+- A command-line party over file-sync weighs each partner frame against `process.availableMemory()`, which follows the host's memory and a container's limit and falls as the process uses memory. -> A command-line party weighs each partner frame against `process.availableMemory()`, which follows the host's memory and a container's limit and falls as the process uses memory.
+- **Before each read.** -> **Before each read, over file-sync.**
+- At the terms exchange of a single-pass run over file-sync, the PSI worker's heap is set to `298,000,000 + 709 * n` bytes, `n` the larger party's value slots (`psiWorkerHeapNeedBytes`): the measured worker V8 heap of a joiner's full round, the costlier role, in [The measured costs](#the-measured-costs). -> At the terms exchange of a single-pass run, the PSI worker's heap is set to `298,000,000 + 709 * n` bytes, `n` the larger party's value slots (`psiWorkerHeapNeedBytes`): the measured worker V8 heap of a joiner's full round, the costlier role, in [The measured costs](#the-measured-costs).
+- **Not over WebRTC, or with no bundled worker.** -> **The read gate on file-sync only, the hand-off check only with the bundled worker.**
+- The frame checks run on file-sync only, and the hand-off check only where the engine runs in the worker. -> Over WebRTC no part is weighed before it is read: a single-pass message is weighed whole at the terms exchange, and each partner set again before the worker takes it.
+- - -> The hand-off check runs only where the engine runs in the worker.
+- - -> On every channel and in every round, a cascade's, a count-only run's or a single-pass run's, each partner set is weighed before the worker takes it.
+- - -> Over WebRTC, where either single-pass message may travel in parts ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)), no frame ceiling applies, and the read is charged as a message in parts: the message and the measured multiple of one part (`webRtcMessageReadBytes`, [TRANSPORT_BOUNDS.md, Memory a message in parts takes](TRANSPORT_BOUNDS.md#memory-a-message-in-parts-takes)).
+- - -> The message this party sends, the request where it receives and the reply cap where it sends, is weighed too, at the message and the measured multiple of one part (`webRtcMessageSendBytes`), and the need is the larger of the two.
+- - -> **Parts weighed at a measured multiple.**
+- - -> Over WebRTC the multiple of one part was measured on the message's read or send alone between two werift peers, not through a whole exchange.
+- - -> Memory a message in parts takes
+- - -> A command-line party weighs a single-pass message it reads or sends over WebRTC in parts ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)) at the message and a measured multiple of one part, the part being the smaller of the message and the most set bytes one part holds, 267,532,399 under envelope version 2 (`WEBRTC_PART_MEMORY_MULTIPLES`, `webRtcMessageReadBytes` and `webRtcMessageSendBytes`, `packages/core/src/connection/inboundFrameMemory.ts`).
+- - -> The terms-exchange check of [FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes) weighs both.
+- - -> A unit test holds the multiples to this table:
+- - -> Step | Multiple | Measured
+- - -> Receiving a message in parts and joining it, beyond the joined message (`read`) | 5 | 2.70 to 4.93
+- - -> Sending a message in parts, beyond the message (`send`) | 5.2 | 4.58 to 5.14
+- - -> Each multiple is the largest figure measured, rounded up.
+- - -> Measured 2026-11-06 in the development container (aarch64 Linux, Node v26.13.0): two command-line parties, each a process of its own on the CLI's WebRTC connection (werift, the PeerJS framing and `BoundedInboundFrames` at the shipped bound) under the application envelope at version 2, one sending a set in parts (`sendPsiSet`) and the other receiving it (`receivePsiSet`).
+- - -> Each party sampled its resident set every 10 ms from a baseline taken after one forced collection, with no collection forced after it, so a peak counts garbage not yet freed.
+- - -> The receiver read either as each part arrived, or after the sender had sent the whole message, which queued every part.
+- - -> The multiple is the resident peak over the baseline, less the joined message for the receiver, over one part:
+- - -> Message | Receiver | Receiver's peak over baseline | Sender's peak over baseline
+- - -> 128 MiB, one part | as each part arrives | 650.5 MiB | 623.3 MiB
+- - -> 384 MiB, two parts | as each part arrives | 1,433.2 MiB | 1,202.3 MiB
+- - -> 640 MiB, three parts | as each part arrives | 1,897.2 MiB | 1,248.3 MiB
+- - -> 896 MiB, four parts | as each part arrives | 1,946.2 MiB | 1,298.6 MiB
+- - -> 384 MiB, two parts | after the whole message | 1,073.7 MiB | 1,167.8 MiB
+- - -> 640 MiB, three parts | after the whole message | 1,569.9 MiB | 1,254.1 MiB
+- - -> 896 MiB, four parts | after the whole message | 2,090.7 MiB | 1,310.7 MiB
+- - -> The sender's message is held before its baseline, so its peak is the parts in flight alone.
+- - -> Limits of the measurement:
+- - -> **One message, not an exchange.**
+- - -> The step ran alone, with no PSI engine and no other message in flight.
+- - -> **Resident set, one host.**
+- - -> The peak is the process's resident set on one aarch64 Linux host; another allocator or platform can hold garbage longer.
+- - -> **A part's multiple, not a message's.**
+- - -> The receiver's peak past the joined message was 2.70 to 4.93 parts' worth at every size, with no trend in the number of parts; no message past four parts was measured.
+- A single-pass exchange is left to its dataset ceiling over WebRTC, and over file-sync to the checks in [Memory an inbound frame takes](#memory-an-inbound-frame-takes). -> A single-pass exchange is left to the checks in [Memory an inbound frame takes](#memory-an-inbound-frame-takes), and where a browser is its partner to that partner's ceiling too.
+- The single-pass limit of 3,000,000 value slots a party bounds `d`, so the last row is at that limit. -> -
+- A single-pass exchange is not checked at the start: over WebRTC its dataset ceiling keeps every frame it sends under the bound, the reply at the ceiling being the largest (see [The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)), and a unit test holds that reply under the charged bound too. -> A single-pass exchange is not checked at the start: over WebRTC a message whose cap passes the bound is sent in parts, each within it ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- Single-pass cannot stream, and its single frame imposes a much tighter dataset ceiling than the streaming cascade. -> Single-pass cannot stream, and its single message imposes a much tighter dataset ceiling than the streaming cascade.
+- The cascade processes one key per round, so its working set is a single key's column at a time; single-pass holds every key's values in memory at once and ships message 2 as one frame -- the encrypted setup and response plus the index table's `keyCount * senderRecordCount * 4` bytes. -> The cascade processes one key per round, so its working set is a single key's column at a time; single-pass holds every key's values in memory at once and ships message 2 as one message -- the encrypted setup and response plus the index table's `keyCount * senderRecordCount * 4` bytes -- in one frame, or over WebRTC in parts when its cap passes the per-frame bound ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- The frame travels as raw bytes (the AEAD and file-sync envelopes do not base64-expand it), so the on-wire frame is essentially its raw size plus a small fixed envelope. -> -
+- That frame is not bounded by the static transport cap: the single-pass reply is bounded by a per-exchange cap **derived from the exchanged record counts and the agreed key count**, identical on both parties, up to a fixed maximum dataset size -- specified, with its two enforcement points, in [The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) below. -> -
+- Both apply over WebRTC; file-sync has neither. -> -
+- A single-pass exchange is held to its dataset ceiling instead ([below](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)), which is under every ceiling a party states. -> -
+- The cap therefore does not project receiver RSS at runtime from these constants; over WebRTC it sets a single fixed, conservative budget on the per-party (key, record) cell count derived from them (`MAX_SINGLE_PASS_CELLS`, below), which is non-configurable -- a configurable maximum reintroduces the memory DoS -- and revisited as a one-line change when the per-value peak moves. -> -
+- The near-ceiling `D` ~= 2M exchange the cell budget is derived from was re-measured through an exchange on 2026-10-08, and its peaks are under the cap below. -> -
+- That cost was not measured at the ceiling through an exchange, so the receiver-peak headroom behind `MAX_SINGLE_PASS_CELLS` is re-established for the setup merge and for the 2.3 to 2.9 KB per value slope above, not for the association table at the ceiling. -> That cost was not measured through an exchange past `D` ~= 2M.
+- **The cap over WebRTC: a (key, record) cell-count budget plus a derived byte cap.** -> -
+- The single-pass ceiling over WebRTC is gated on the receiver's projected memory, which the exchanged record counts and the agreed key count bound -- never on a static frame size. -> -
+- **`MAX_SINGLE_PASS_CELLS` = 3,000,000** -- the per-party budget on the cell count `keyCount * recordCount` over WebRTC. -> -
+- It is **the real ceiling** on that transport. -> -
+- An exchange exceeds it (and aborts, below) when either party's `keyCount * recordCount` exceeds the budget. -> An exchange exceeds it (and aborts, below) when either party's `keyCount * recordCount` exceeds it.
+- It is a cell-count budget, not a bare row count, because a rows-only cap is off by ~14x between a 1-key and a 14-key linkage at the same memory; it admits ~214k rows at the ~14-key default template and ~3M rows at a single key. -> It is a cell-count budget, not a bare row count, because a rows-only cap is off by ~14x between a 1-key and a 14-key linkage at the same memory; it admits ~599k rows at the ~14-key default template and 8,388,608 rows at a single key.
+- The budget is derived from a near-ceiling measurement -- a forked-process run of the real linkage with the phase-boundary churn relief (above) active, at `D` ~= 2M distinct values (the worst-case `keyCount * rows`), not extrapolated from a low-`D` fit. -> -
+- That run put the binding peak -- the *heavier* party, which at scale is the sender (it holds its own encrypted setup plus the re-encrypted request resident at once) -- at 2,620 MiB relieved, the receiver at 1,513 MiB, over a WebAssembly linear heap of 175 MiB on each side and a post-GC live heap of 114 MiB on the sender and 121 MiB on the receiver. -> -
+- Projected linearly to the 3M ceiling the sender peak is about 3.8 GiB -- comfortable headroom on a 16 GB target. -> -
+- With the relief active the binding constraint is not receiver memory but the **WebRTC per-frame envelope**. -> -
+- The derived reply byte cap at the ceiling (~251 MiB, below) must stay below `MAX_WEBRTC_FRAME_BYTES` (256 MiB) so a legitimate single-pass reply is never rejected mid-exchange on the WebRTC path. -> -
+- 3M is the largest round value that keeps that envelope from binding. -> -
+- A browser, which never exposes `gc` and so runs the *unrelieved* peak, is expected to hit its own memory wall near the same scale (estimated from the relief factor, not separately measured). -> -
+- It is a **fixed constant, not operator-configurable** -- a configurable maximum reintroduces the memory-exhaustion denial of service -- and may be raised only after a further measured reduction of the transient peak, re-derived from fresh measurement (and, past the point where the derived reply cap reaches the WebRTC envelope, the WebRTC reassembly path reworked to fail closed rather than mid-frame). -> It is a **fixed constant, not operator-configurable** -- a configurable maximum reintroduces the memory-exhaustion denial of service -- and may be raised only from a fresh measurement in both roles.
+- It is **transport-aware via per-transport clamps**: file-sync uses the derived cap, held to the AEAD's limit on one frame on an encrypted connection under envelope version 1; the WebRTC data channel keeps its fixed browser-tab envelope `MAX_WEBRTC_FRAME_BYTES` (256 MiB) at its reassembly read gate (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)). -> -
+- At the cell-count ceiling the derived reply frame is about 251 MiB -- below both envelopes, though the 256 MiB WebRTC envelope is the nearer one -- so the per-transport clamp does not bind there, and the cell-count budget is what gates first on WebRTC. -> -
+- The generalization -- the (key, record) cell becomes a **value slot**, `keyCount` becomes the `effectiveKeyCount` both parties derive from the agreed terms, and `recordCount` becomes the count each party declared -- is specified with the width bound in [Fan-out matching](#fan-out-matching-multi-value-key-candidates), with the cell-count budget unchanged in value. -> The generalization -- the (key, record) cell becomes a **value slot**, `keyCount` becomes the `effectiveKeyCount` both parties derive from the agreed terms, and `recordCount` becomes the count each party declared -- is specified with the width bound in [Fan-out matching](#fan-out-matching-multi-value-key-candidates), with the value-slot ceiling unchanged in value.
+- `sftp` and `filedrop` have no value-slot budget: neither `linkViaSinglePassPSI` nor `prepareForExchange` applies `MAX_SINGLE_PASS_CELLS` there. -> `sftp` and `filedrop` have no value-slot budget: `linkViaSinglePassPSI` applies none there, and only a browser party, which never runs over file-sync, pre-flights one in `prepareForExchange`.
+- Over WebRTC a single-pass set is held to `MAX_PSI_DECODE_ELEMENTS`, far above the dataset ceiling there. -> -
+- Over WebRTC the value-slot budget, `MAX_SINGLE_PASS_CELLS`, holds the partner to fewer rows than that, so only a file-sync run reaches the refusal. -> -
+- The gate above decides `keyCount * recordCount > MAX_SINGLE_PASS_CELLS`, sound only while that product is exact -- below `Number.MAX_SAFE_INTEGER` (2^53). -> The gate above decides `keyCount * recordCount > ceiling`, sound only while that product is exact -- below `Number.MAX_SAFE_INTEGER` (2^53).
+- The bound is astronomically above any legitimate dataset (the frame cap admits ~15M curve points; the WebRTC cell budget is 3M), so it never rejects a real count; it makes the gate's exact-product dependency an executable check that survives a future migration to BigInt or a wider numeric type, rather than resting silently on the schema's `.int()` safe-integer ceiling. -> The bound is astronomically above any legitimate dataset (the frame cap admits ~15M curve points; a browser party's cell budget is 8,388,608), so it never rejects a real count; it makes the gate's exact-product dependency an executable check that survives a future migration to BigInt or a wider numeric type, rather than resting silently on the schema's `.int()` safe-integer ceiling.
+- The budget is per party, so the guidance over WebRTC is **attributed**: it states each over-budget party's own declared width, record count, and their product -- the quantities the gate multiplied -- names whether this party's own declaration, the partner's, or both reached the budget, and offers the dataset remedies only to a side that can apply them. -> The budget is per party, so the guidance where a browser is a party is **attributed**: it states each over-budget party's own declared width, record count, and their product -- the quantities the gate multiplied -- names whether this party's own declaration, the partner's, or both reached the budget, and offers the dataset remedies only to a side that can apply them.
+- It replaces `keyCount * recordCount` in every derived bound: the per-party single-pass budget over WebRTC (`MAX_SINGLE_PASS_CELLS`, a budget on value slots, unchanged in value), the per-message PSI element bounds (`psiElementBounds`: the sender's slots bound a received setup, the receiver's bound a received request), and the reply byte cap below. -> It replaces `keyCount * recordCount` in every derived bound: the per-party single-pass budget where a browser is a party (`singlePassValueSlotCeiling`, a budget on value slots, unchanged in value), the per-message PSI element bounds (`psiElementBounds`: the sender's slots bound a received setup, the receiver's bound a received request), and the reply byte cap below.
+- The WebRTC budget therefore buys width with rows, and what it admits depends on the whole template rather than on the widened key alone. -> -
+- In the ~14-key default template, one key with a fan-out element gives `effectiveKeyCount` = 33 and admits ~90k rows where that same template fan-out-free admits ~214k, and a fan-out element on all 14 of its keys admits ~10k. -> In the ~14-key default template, one key with a fan-out element gives `effectiveKeyCount` = 33 and admits ~254k rows where that same template fan-out-free admits ~599k, and a fan-out element on all 14 of its keys admits ~30k.
+- In a one-key template whose single element declares a fan-out, `effectiveKeyCount` = 20 and it admits ~150k rows; whose single element declares `edit_distances` with no transform bounding its width, `effectiveKeyCount` = 129 and it admits ~23k. -> In a one-key template whose single element declares a fan-out, `effectiveKeyCount` = 20 and it admits ~419k rows; whose single element declares `edit_distances` with no transform bounding its width, `effectiveKeyCount` = 129 and it admits ~65k.
+- An element that splits its cell and then takes a `substring` of 10 characters declares 20 x 11 = 220 and admits ~14k, while the same element with no width bound would declare 20 x 129 = 2,580. -> An element that splits its cell and then takes a `substring` of 10 characters declares 20 x 11 = 220 and admits ~38k, while the same element with no width bound would declare 20 x 129 = 2,580.
+- Every row figure here is `MAX_SINGLE_PASS_CELLS` divided by the effective key count beside it. -> Every row figure here is a browser party's ceiling, 8,388,608, divided by the effective key count beside it.
+- At the slot ceiling the cap reaches about 251 MiB, still below the 256 MiB `MAX_WEBRTC_FRAME_BYTES` envelope, so the per-transport clamp does not bind and a legitimate reply is never rejected mid-exchange. -> -
+- The [single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) aborts an over-budget exchange because the quantity that binds it -- the receiver's resident memory -- has no protocol bound at all: nothing in the specified checks caps it, so a fixed budget is imposed over WebRTC, non-configurable, and enforced as a fail-closed refusal in lockstep on both parties; file-sync has [its own limits](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute). -> The [single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) aborts an over-budget exchange because the quantity that binds it -- the parties' resident memory -- has no protocol bound at all: nothing in the specified checks caps it, so a fixed budget is imposed where a browser is a party, non-configurable, and enforced as a fail-closed refusal in lockstep on both parties, and a command-line pair weighs it against its memory at the terms exchange ([its own limits](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
+- The single-pass reply (message 2 of the single-pass strategy) holds both parties' encrypted value sets and the sender's index table in one frame, whose legitimate size grows with the dataset. -> The single-pass reply (message 2 of the single-pass strategy) holds both parties' encrypted value sets and the sender's index table in one message, whose legitimate size grows with the dataset.
+- The request (message 1) holds the receiver's encrypted value set in one frame, which grows with it too. -> The request (message 1) holds the receiver's encrypted value set in one message, which grows with it too.
+- **Over WebRTC the real ceiling is a memory budget, fixed and non-configurable.** -> -
+- An exchange aborts when either party's `effectiveKeyCount * recordCount` -- its value slot count, the upper bound on its distinct-value count, over the effective key count both parties derive from the agreed terms and the record count that party declared, which for a width-free party is its `keyCount * recordCount` -- exceeds [`MAX_SINGLE_PASS_CELLS`](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute). -> An exchange aborts when either party's `effectiveKeyCount * recordCount` -- its value slot count, the upper bound on its distinct-value count, over the effective key count both parties derive from the agreed terms and the record count that party declared, which for a width-free party is its `keyCount * recordCount` -- exceeds the browser party's stated receive ceiling, `BROWSER_PSI_SET_MAX_ELEMENTS` ([PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
+- Its value, its derivation from the heavier party's measured peak, and the constraint that binds it -- the WebRTC per-frame envelope below, not memory -- are specified there, under the single-pass dataset ceiling. -> -
+- File-sync gets the derived bound, held to the AEAD's limit on an encrypted connection under envelope version 1; the WebRTC data channel keeps its fixed browser-tab envelope [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound) at its reassembly read gate (`apps/web/src/psi/transport/boundedReassembly.ts`) and relies on the count-budget check, run identically on both parties, plus the decode-time coherence checks below. -> File-sync gets the derived bound, held to the AEAD's limit on an encrypted connection under envelope version 1; the WebRTC data channel keeps its fixed per-frame bound [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound) at its reassembly read gate, and a message whose derived cap passes it is sent in parts, each a frame within it ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)).
+- At the ceiling the derived reply frame, whose size there [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) derives, sits below both envelopes -- the WebRTC one is the nearer -- so a legitimate single-pass reply the count budget admits is never rejected by the WebRTC clamp. -> -
+- The cap is held below the point where the derived reply cap would reach the WebRTC envelope precisely so this stays true; raising it past that point would require reworking the WebRTC reassembly path to fail closed rather than mid-frame. -> -
+- That is held as a standing check: `packages/core/test/connection/binaryPackBounds.test.ts` packs an envelope-sized binary value with the real packer at two record counts, extrapolates it to the single-pass ceiling (`MAX_SINGLE_PASS_CELLS`, [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)) at 8 bytes a record, the size of that ceiling's resolved table, and requires it to keep a factor of three of headroom against the one-per-byte the rule refuses at. -> That is held as a standing check: `packages/core/test/connection/binaryPackBounds.test.ts` packs an envelope-sized binary value with the real packer at two record counts, extrapolates it to a browser party's single-pass ceiling (`BROWSER_PSI_SET_MAX_ELEMENTS`, [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)) at 8 bytes a record, the size of that ceiling's resolved table, and requires it to keep a factor of three of headroom against the one-per-byte the rule refuses at.
+- - -> No run past the last row was measured; past it the figure is the line extended.
+- - -> The message travels as raw bytes (the AEAD and file-sync envelopes do not base64-expand it), so the bytes on the wire are essentially its raw size plus a small fixed envelope.
+- - -> It is not bounded by the static transport cap: the single-pass reply is bounded by a per-exchange cap **derived from the exchanged record counts and the agreed key count**, identical on both parties -- specified, with its two enforcement points, in [The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) below.
+- - -> Both apply where a browser is a party; between two command-line parties, over WebRTC or file-sync, the memory check at the terms exchange is the limit instead.
+- - -> A single-pass exchange does not hold its sets to these points; where either party states a ceiling under `MAX_PSI_DECODE_ELEMENTS`, which only a browser party does, both parties' value slots are held to it instead ([below](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
+- - -> A browser party therefore does not project its memory at runtime from these constants: it holds both parties to a single fixed budget on each party's value slots, its stated receive ceiling (below), which is non-configurable -- a configurable maximum reintroduces the memory DoS.
+- - -> A command-line party projects its peak from the agreed counts at the terms exchange instead ([FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes)).
+- - -> A `D` ~= 2M exchange was re-measured through an exchange on 2026-10-08 (below, "The 2M exchange").
+- - -> **The cap where a browser is a party: a (key, record) cell-count budget plus a derived byte cap.**
+- - -> The single-pass ceiling where a browser is a party is gated on the parties' memory, which the exchanged record counts and the agreed key count bound -- never on a static frame size.
+- - -> **The value-slot ceiling** (`singlePassValueSlotCeiling`) -- the lesser of the two parties' stated receive ceilings ([The receive ceiling](#the-receive-ceiling)) where it is under `MAX_PSI_DECODE_ELEMENTS`, which only a browser party states: `BROWSER_PSI_SET_MAX_ELEMENTS`, 8,388,608.
+- - -> Both parties read both figures from the terms exchange, so both reach one verdict.
+- - -> Between two command-line parties there is none ([Between two command-line parties over WebRTC](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), below).
+- - -> A single-pass exchange runs the engine operations a cascade round runs -- the setup, the request, the answer and the match -- on sets of at most each party's value slots, so a browser party holds both parties to the largest same-size round measured to complete in a browser tab in both PSI roles ([What a browser tab can match](#what-a-browser-tab-can-match)).
+- - -> A single-pass exchange at that size was measured in a browser in both roles ([What a browser tab can match](#what-a-browser-tab-can-match), "Single-pass in a browser").
+- - -> **The 2M exchange.**
+- - -> A forked-process run of the real linkage with the phase-boundary churn relief (above) active, at `D` ~= 2M distinct values (the worst-case `keyCount * rows`), put the *heavier* party, which at scale is the sender (it holds its own encrypted setup plus the re-encrypted request resident at once), at 2,620 MiB relieved, the receiver at 1,513 MiB, over a WebAssembly linear heap of 175 MiB on each side and a post-GC live heap of 114 MiB on the sender and 121 MiB on the receiver.
+- - -> It is **transport-aware**: file-sync uses the derived cap, held to the AEAD's limit on one frame on an encrypted connection under envelope version 1; the WebRTC data channel keeps its fixed per-frame bound `MAX_WEBRTC_FRAME_BYTES` (256 MiB) at its reassembly read gate (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)), and a message whose cap passes that bound is sent in parts, the cap counting them at the length of the one frame they replace ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- - -> At a browser party's ceiling, 8,388,608 value slots a side at one key, the request cap is 293,601,282 bytes and the reply cap, its response term that request, 696,254,722 bytes (about 664 MiB), so both go in parts.
+- - -> What limits a run is:
+- - -> **One PSI set.**
+- - -> Over WebRTC a party's own single-pass set is held to `MAX_PSI_DECODE_ELEMENTS`, above a browser party's ceiling.
+- - -> A browser party's ceiling holds the partner to fewer rows than that, so only a run between two command-line parties reaches the refusal.
+- - -> **Memory, at the terms exchange.**
+- - -> **Between two command-line parties over WebRTC.**
+- - -> Neither party states a receive ceiling under `MAX_PSI_DECODE_ELEMENTS`, so neither holds the other to a value-slot budget.
+- - -> **The caps the counts derive, in parts.**
+- - -> Each message is held to the cap the counts derive for it, and one whose cap passes the per-frame bound is sent in parts, each within that bound ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- - -> A party's own set is held to `MAX_PSI_DECODE_ELEMENTS` and refused past it before any value is masked, its partner sent `PSI_SET_TOO_LARGE_ABORT_REASON`.
+- - -> A receiver holds the partner's set to `MAX_PSI_DECODE_ELEMENTS` too.
+- - -> A setup in parts is held at its first part to the [combined bound](#a-psi-set-is-sent-in-parts) and to what the reply cap leaves, and its element scan to the lesser of the sender's value slots and `MAX_PSI_DECODE_ELEMENTS`.
+- - -> A request in parts is held at its first part to the request cap and to the combined bound, and once joined its element scan holds it to the receiver's value slots, as over file-sync.
+- - -> Each party weighs the message it will read and the message it will send, each at the measured multiple of one part, and the hand-off to the PSI worker as over file-sync ([FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes)).
+- - -> A need over what is available is a `RoundCapacityError` that sends the partner `PARTNER_SET_OVER_CAPACITY_ABORT_REASON`, or with `--allow-memory-shortfall` a warning.
+- - -> Both parties need a build with this rule, a browser party as much as a command-line one.
+- - -> A build that reads messages 1 and 2 only as one frame refuses a part, and one that holds every WebRTC party to a fixed value-slot budget refuses an exchange the other admits; a party on each side of the rule is not a supported pair.
+- - -> Below release `1.0.0` partners upgrade together ([RELEASES.md, Compatibility policy](../RELEASES.md#compatibility-policy)).
+- - -> An exchange whose messages each fit one frame is byte-identical under either build.
+- - -> A browser party's budget therefore buys width with rows, and what it admits depends on the whole template rather than on the widened key alone.
+- - -> Over WebRTC a reply whose cap passes the 256 MiB `MAX_WEBRTC_FRAME_BYTES` bound is sent in parts ([Single-pass messages in parts](#single-pass-messages-in-parts)), so a legitimate reply is never rejected mid-exchange.
+- - -> Over file-sync each message is one frame; over WebRTC one past the per-frame bound is sent in parts ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)).
+- - -> **Where a browser is a party the real ceiling is a memory budget, fixed and non-configurable.**
+- - -> Its value and its derivation from the rounds measured in a browser tab are specified there, under the single-pass dataset ceiling.
+- - -> **Between two command-line parties over WebRTC no value-slot budget applies.**
+- - -> The limits are the derived caps, each message past the per-frame bound sent in parts, the set maximums, and the memory check each party makes at the terms exchange on the message it reads and the message it sends ([Memory a message in parts takes](#memory-a-message-in-parts-takes)), which `--allow-memory-shortfall` turns into a warning.
+- - -> The receiver holds each part to the per-frame bound and the whole message to its derived cap, so a legitimate single-pass message is never rejected by the WebRTC bound.
+- - -> **Single-pass in a browser.**
+- - -> `apps/web/test/bench/browserWrappedRound.ts --strategy single-pass` runs a single-pass exchange through the same wrap in place of the round, on one linkage key with one value a record, so a party's value slots are its set's size.
+- - -> Each message whose cap passes the per-frame bound is sent in parts ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- - -> Each step is recorded as above.
+- - -> The bench forces no collection within a step, so a peak is the unrelieved one a tab reaches.
+- - -> Measured 2026-11-06 in the development container (aarch64 Linux, 10 CPUs, 23 GB of memory) in Playwright's Chrome for Testing 156.0.8078.4 run headless, identifier-revealing, with 1,000 values shared, the partner on the native addon.
+- - -> Every exchange matched the known overlap.
+- - -> At 8,388,608 a side the request and the reply each crossed the channel in parts, and the browser's engine took the setup as the joiner in two parts as they arrived.
+- - -> Browser's role | Value slots a side | Wall time | Page's `usedJSHeapSize` peak | Worker V8 heap peak | Peak renderer RSS
+- - -> Joiner | 2,097,152 | 1,780.8 s | 727 MiB, sending the request | 632 MiB, creating the request in 966.5 s | 1,688 MB
+- - -> Joiner | 8,388,608 | 8,409.4 s | 2,294 MiB, sending the request | 2,561 MiB, creating the request in 4,219.7 s | 5,127 MB
+- - -> Starter | 2,097,152 | 2,031.3 s | 1,138 MiB, sending the reply | 642 MiB creating the setup; 892 MiB answering the request in 898.6 s | 2,110 MB
+- - -> Starter | 8,388,608 | 7,247.0 s | 3,419 MiB, sending the reply | 2,771 MiB creating the setup; 3,456 MiB answering the request in 3,065.7 s | 7,223 MB
+- - -> **Memory per value slot.**
+- - -> From 2,097,152 to 8,388,608 a side the worker's heap in the starter's answer grew by 427 bytes a value slot, and the renderer's peak by 813 bytes a value slot as the starter and 547 as the joiner.
+- - -> **The worker's heap in the answer binds.**
+- - -> At 8,388,608 it peaked at 3,456 MiB, 82% of the 4,192 MiB limit and within 1 MiB of the cascade round's answer at that size through the wrap ([above](#what-a-browser-tab-can-match), "Rounds at the ceiling through the wrap").
+- - -> Extended at 427 bytes a value slot it reaches the limit near 10.2 million value slots a side, the size at which the cascade round's answer failed.
+- - -> **The browser's check.**
+- - -> A browser party therefore holds both parties' value slots to its receive ceiling, `BROWSER_PSI_SET_MAX_ELEMENTS` ([The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)), the largest size measured here in both roles.
+- - -> **The page holds the messages as ArrayBuffers.**
+- - -> The page's V8 heap peaked at 902 MiB at 8,388,608 a side before the first operation, holding the bench's own values.
+- - -> The rest of `usedJSHeapSize` was ArrayBuffers: the messages, their parts and the wrap's copies, which the page's heap limit does not bind ([above](#what-a-browser-tab-can-match), "Rounds at the ceiling through the wrap").
+- - -> **A collection between steps.**
+- - -> To read the worker's heap the bench forces a collection in the worker at each step's start and end, which a tab does not.
+- - -> Garbage from one step can therefore stay in a tab's worker into the next, though V8 collects before it fails an allocation.
+- - -> **One host, one build, one run a size.**
+- - -> Other work ran in the container beside the runs: the one-minute load reached 4.9, 8.1, 13.7 and 8.5 in the table's order, and the container's available memory fell to 8.6 GB at the lowest.
+- - -> A host with less memory, or a tab granted less heap than this build gave its worker, can fall short of what the ceiling admits.
+- - -> **One key of width one.**
+- - -> A party with more keys or a fan-out reaches the same value slots on fewer records.
+- - -> The engine's sets then hold the same number of values, but that was not run.
+- - -> **Steps past the inactivity default.**
+- - -> In the container three steps at 8,388,608 ran past the web application's inactivity default of 3,600 s: creating the setup, creating the request and the joiner's match, which took 3,789.1 s.
+- - -> The bench raises the timeout, as above, so these runs show the memory at the ceiling, not that the web application's run would finish within its default on this host.
+- - -> Limits of the measurement:
+- - -> Limits:
+- - -> **A frame after the reply.**
+- - -> The single-pass phase reads nothing past the reply's tail, so a frame the sender sends after it is read as the next message the receiver awaits, the sender's payload.
+- - -> Measured with one extra part after a conforming reply, in parts and in one frame, in both handshake orders, signed and unsigned, the receiver refused it there as a `protocol` error with no result in every case.
+- - -> What the sender ends with depends on the handshake order and signing:
+- - -> **The receiver is the handshake responder, signed or unsigned.**
+- - -> The sender ends with no result: the receiver closed the connection while the sender awaited its payload.
+- - -> **The receiver is the handshake initiator, signed.**
+- - -> The sender ends with no result: the receiver closed the connection before the signed receipts were swapped.
+- - -> **The receiver is the handshake initiator, unsigned.**
+- - -> The sender ends with its result: the receiver sent its payload before it read the extra part, and the sender's own payload, the run's last frame, does not wait on the receiver.
+- - -> On commit 0f5aa3fd5, ahead of messages in parts, the same four cases with the reply in one frame ended the same way.
+- - -> **A response shorter than the request.**
+- - -> The receiver holds a response to at most the length of the request it sent, not to that length, and matches a shorter one as it stands.
+- - -> Measured with 30 receiver values and 20 matches, a response leaving out its last 15 elements lost the 5 matches among those 15 request positions from both parties' results, and an empty response lost all 20, in one frame and in parts, with no error.
+- - -> Only a sender that deviates from the protocol sends one, which is outside the semi-honest model ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#threat-model)).
+- - -> **What a relay sees.**
+- - -> A relay that forwards the parties' frames, such as the WebSocket relay, can tell each frame's size from the chunk framing it forwards unread.
+- - -> In parts it can therefore tell the reply's setup, response and tail lengths apart, which give the sender's distinct-value count and its value-slot count, as it can tell each cascade round's set sizes apart.
+- - -> In one frame it sees only the reply's total length.
+- - -> Each party checks it at the terms exchange ahead of its memory checks (`refuseSinglePassOverCeiling`, `packages/core/src/psi/link.ts`), so a run over it is refused for the ceiling however much memory the host has.
+- The byte bound is derived from the longest run of frames the protocol bounds that a sender sends without waiting for a reply. -> The byte bound is derived from the longest run of frames the set maximum bounds that a sender sends without waiting for a reply.
+- The other runs the protocol bounds are shorter: a single PSI set is three frames, and a round's association table, its two index lists and their grouping, comes to at most 402,653,232 bytes. -> The other runs the set maximum bounds are shorter: a single PSI set is three frames, and a round's association table, its two index lists and their grouping, comes to at most 402,653,232 bytes.
+- - -> **The single-pass reply in parts.**
+- - -> Single-pass message 2 in parts is its setup, response and tail sent back to back, with no receive between ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)).
+- - -> Between two command-line parties no value-slot ceiling bounds it, so it can be longer than the crossing; the reply cap the agreed counts derive bounds it instead.
+- - -> Once the receiver of the reply has sent the request's last part, it holds the queue's byte bound to at least the frames that cap takes, and restores the bound the queue was built with once the reply is read (`holdInboundQueueBytes`, `packages/core/src/connection/messageConnection.ts`).
+- - -> The sender reads the whole request before it sends any part of the reply, so no part of the reply arrives before the bound is raised.
+- - -> The frames are `floor((cap - 8) / part) + 3`, where `part` is the set bytes one part holds and the three sets together take at most three parts more than their bytes fill whole, and one frame more for the frame in hand, each at the stated per-frame bound (`singlePassReplyQueueBytes`, `packages/core/src/psi/link.ts`).
+- - -> The bound is never lowered below the default.
+- - -> It passes the default only when the reply's sets fill four parts or more, and there it is under twice the reply cap, which the terms-exchange memory check weighs at three times the cap while the reply is read ([Memory a message in parts takes](#memory-a-message-in-parts-takes)).
+- - -> The check weighs reading the reply and matching it as alternatives, taking the larger, so frames the raised bound admitted must not stay queued while the receiver matches.
+- - -> At the restore, frames already queued that the restored bound would not have admitted fail the connection with the same `protocol` refusal a frame past the bound gets, and are dropped, so the run ends on the receiver with no result.
+- - -> From the restore on, the queue holds no more than the bound it was built with, as through the rest of the run.
+- - -> Measured through whole exchanges in parts at a lowered frame bound, in both handshake orders, signed and unsigned, a conforming sender had queued at most one frame by the restore: the one part of its empty payload, 28 bytes before encryption, which it sends right after the reply when it is the handshake initiator and is sent no association table ([PROTOCOL.md, Linkage strategies: cascade and single-pass](PROTOCOL.md#linkage-strategies-cascade-and-single-pass), "Withholding the sender's table from a blind helper").
+- - -> In every other case the sender awaits a message from the receiver, so nothing is queued.
+- - -> For a browser party the value-slot ceiling of 8,388,608 holds the reply cap to 696,254,722 bytes, which takes five frames and the frame in hand, within the browser bound of six.
+- - -> `packages/core/test/psi/singlePassParts.test.ts` runs a reply in parts queued behind a receiver that reads nothing until the whole reply is sent, past the count-only bound at a lowered frame bound, to completion, refuses a partner sending past the raised bound, and refuses at the restore a partner that keeps frames queued past the built bound through the reply.
+- - -> It also runs a conforming exchange in parts on a queue at the count-only bound to completion in both handshake orders, with the sender's table sent and withheld.
+- - -> **Through a whole exchange.**
+- - -> The receiver of the reply was also measured through a whole single-pass exchange, the reply in parts, its setup streamed into the engine while its response and tail queued.
+- - -> Measured 2026-11-06 in the development container (aarch64 Linux, 10 CPUs, Node v26.13.0, native backend): two command-line parties, each a process of its own on the CLI's WebRTC connection at the shipped bound under the application envelope at version 2, the PSI engine in the CLI's worker, running `linkViaSinglePassPSI` on one key with every value distinct and 1,000 shared, one run at each size.
+- - -> Each party sampled its resident set every 10 ms.
+- - -> The rise while reading the reply is the peak from the request's last frame to the run's end, over the resident set when that frame was sent.
+- - -> The whole run's peak is over a baseline taken after one forced collection, before the worker started.
+- - -> The weighed need is the larger of the receiver's two terms-exchange figures (`singlePassInboundPeakBytes` and `singlePassOutboundPeakBytes`, `apps/cli/src/psiMemoryBudget.ts`):
+- - -> Records each side | Reply | Reply cap | Weighed need | Rise while reading the reply | Whole run's peak over baseline
+- - -> 3,850,000 | 271.7 MiB, three frames | 304.7 MiB | 1,580.4 MiB | 553.7 MiB | 2,792.4 MiB
+- - -> 7,700,000 | 543.4 MiB, five frames | 609.5 MiB | 1,885.2 MiB | 355.1 MiB | 5,208.8 MiB
+- - -> Limits of this measurement:
+- - -> **Two sizes.**
+- - -> The rise while reading the reply was within the weighed need at these two sizes only, one run each.
+- - -> **The whole run is not what the check weighs.**
+- - -> The whole run's peak includes this party's own masking before the reply, which the terms-exchange check does not weigh and this measurement does not compare.

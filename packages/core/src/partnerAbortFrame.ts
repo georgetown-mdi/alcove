@@ -276,6 +276,7 @@ const FORWARDED_CONNECTION_MEMBERS = {
   close: true,
   terminated: true,
   setInboundFrameCap: true,
+  holdInboundQueueBytes: true,
   frameCeilingBytes: true,
   inboundPollIntervalMs: true,
   outboundWebRtcFrameBound: true,

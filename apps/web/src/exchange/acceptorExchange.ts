@@ -1,4 +1,4 @@
-import { prepareForExchange } from "@alcove/core";
+import { BROWSER_PSI_SET_MAX_ELEMENTS, prepareForExchange } from "@alcove/core";
 
 import { acceptorExchangeDataSpec } from "@psi/acceptInvitation";
 
@@ -50,6 +50,9 @@ export function prepareAcceptorExchange({
     acceptorName,
     rawRows,
     columns,
+    undefined,
+    undefined,
+    BROWSER_PSI_SET_MAX_ELEMENTS,
   );
   prepared.expectedPartnerDeduplicate = linkageTerms.deduplicate;
   return prepared;

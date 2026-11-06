@@ -66,9 +66,12 @@ import {
   sendAbort,
 } from "./protocolSetup.js";
 import type { TermsChange, TermsRotation } from "./protocolSetup.js";
-import type { ConnectionConfig } from "./config/connection.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
-import { withholdsSenderAssociationTable } from "./psi/link.js";
+import {
+  refuseSinglePassOverCeiling,
+  withholdsSenderAssociationTable,
+} from "./psi/link.js";
+import { psiSetPartPayloadBytes } from "./psi/psiSetParts.js";
 import type { LinkageCardinality } from "./psi/link.js";
 import type { EntityClusterSummary } from "./psi/entityClosure.js";
 import type { ResolvedRunShape } from "./pairTableProjection.js";
@@ -83,6 +86,7 @@ import {
   singlePassIrreducibleReplyBytes,
   singlePassReplyByteCap,
   singlePassRequestByteCap,
+  singlePassValueSlotCeiling,
   valueSlots,
 } from "./connection/frameSize.js";
 import type { InboundPsiFrameUse } from "./connection/inboundFrameMemory.js";
@@ -151,7 +155,7 @@ import {
   resolvePayloadDisclosureOrAbort,
 } from "./exchange/termsRefusals.js";
 import { buildOwedExchangeRecord } from "./exchange/owedRecord.js";
-import { runPsiPhase } from "./exchange/psiPhase.js";
+import { psiParticipantId, runPsiPhase } from "./exchange/psiPhase.js";
 import type {
   DualSignedRecord,
   ReceiptContent,
@@ -637,10 +641,11 @@ export function undeclaredColumnsForOwnResult(
  *                ({@link resolveExchangeInputs}): `direct` for a run on an
  *                input file with no invitation or configuration, else the
  *                `declaredOnly` default.
- * @param channel The channel the run will use, which picks the single-pass
- *                pre-flight: `sftp` and `filedrop` have no size limit, and
- *                anything else, absence included, is held to
- *                `MAX_SINGLE_PASS_CELLS`.
+ * @param singlePassValueSlotCeiling The most value slots a single-pass run of
+ *                this party's may declare before contact: a browser party's
+ *                receive ceiling, `BROWSER_PSI_SET_MAX_ELEMENTS`. Absent for a
+ *                command-line party, whose run the memory check at the terms
+ *                exchange holds instead.
  */
 export function prepareForExchange(
   exchangeDataSpec: ExchangeDataSpec,
@@ -649,7 +654,7 @@ export function prepareForExchange(
   columnNames: Array<string>,
   sanitizedColumnPositions: ReadonlyArray<number> = [],
   inferenceMode: MetadataInferenceMode = "declaredOnly",
-  channel?: ConnectionConfig["channel"],
+  singlePassValueSlotCeiling?: number,
 ): PreparedExchange {
   const log = getLogger("exchange");
 
@@ -786,15 +791,15 @@ export function prepareForExchange(
     termsStatingDeclaredPayloadSend(linkageTerms, metadata),
   );
 
-  // Pre-flight the single-pass dataset ceiling: a coarse, ONE-PARTY lower
-  // bound. It sees only this party's own row count, never the partner's or
-  // either side's distinct-value counts (not computed locally or exchanged),
-  // so it cannot replace the authoritative, symmetric two-party check in
-  // linkViaSinglePassPSI, which runs once both record counts are exchanged.
-  // Applies to either role: the ceiling is symmetric (a receiver holds both
-  // encrypted sets resident, bounded exactly as the sender's), so this
-  // party's own count predicts an abort regardless of which side it plays.
-  // File-sync has no such ceiling, so a run on it is not checked.
+  // Pre-flight a browser party's single-pass ceiling: a coarse, ONE-PARTY
+  // lower bound. It sees only this party's own row count, never the partner's
+  // or either side's distinct-value counts (not computed locally or
+  // exchanged), so it cannot replace the authoritative, symmetric two-party
+  // check in linkViaSinglePassPSI, which runs once both record counts are
+  // exchanged. Applies to either role: the ceiling is symmetric (a receiver
+  // holds both encrypted sets resident, bounded exactly as the sender's), so
+  // this party's own count predicts an abort regardless of which side it
+  // plays. A command-line party has no ceiling before contact.
   //
   // Ordered behind the fan-out refusal above, so a fan-out a strategy cannot
   // match is refused for that rather than for size. An OperatorConfigError
@@ -829,13 +834,16 @@ export function prepareForExchange(
     rawRows.length * localFanOutFactor(dataset.declaresFanOut);
 
   if (
-    channel !== "sftp" &&
-    channel !== "filedrop" &&
+    singlePassValueSlotCeiling !== undefined &&
     runsSinglePassLink(linkageTerms) &&
-    singlePassDatasetExceedsCap(effectiveKeyCount, declaredRecordCount)
+    singlePassDatasetExceedsCap(
+      effectiveKeyCount,
+      declaredRecordCount,
+      singlePassValueSlotCeiling,
+    )
   ) {
     throw new OperatorConfigError(
-      `this dataset is too large for single-pass linkage: ` +
+      `this dataset is too large for single-pass linkage in a browser: ` +
         `${declaredRecordCount} declared record(s) across ` +
         `${linkageTerms.linkageKeys.length} linkage key(s) exceed the ` +
         `single-pass limit. ${SINGLE_PASS_LOCAL_REMEDY}` +
@@ -1183,11 +1191,10 @@ export interface RunExchangeOptions {
     partnerRoundValues: number,
   ) => void | Promise<void>;
   /**
-   * Called on a single-pass exchange over file-sync at the terms exchange, before
-   * either party masks anything, with what the counts say about this run. Its
-   * values are not bounded by a budget there, so the command-line application
-   * refuses a run that cannot fit and states the rest. A
-   * {@link RoundCapacityError} also sends the partner
+   * Called on a single-pass exchange at the terms exchange, before either
+   * party masks anything, with what the counts say about this run. The
+   * command-line application refuses a run that cannot fit and states the
+   * rest. A {@link RoundCapacityError} also sends the partner
    * {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON}.
    */
   checkSinglePassPartnerSize?: (
@@ -1425,7 +1432,7 @@ async function assertPartnerRoundWithinCapacity(
 }
 
 /**
- * What the agreed counts say about a single-pass run over file-sync, for
+ * What the agreed counts say about a single-pass run, for
  * {@link RunExchangeOptions.checkSinglePassPartnerSize}.
  */
 export interface SinglePassPartnerSize {
@@ -1448,6 +1455,12 @@ export interface SinglePassPartnerSize {
   inboundFrameBytes: number;
   /** What the PSI engine does with that frame. */
   inboundFrameUse: InboundPsiFrameUse;
+  /**
+   * Over a WebRTC data channel, where both single-pass messages may travel in
+   * parts: the most set bytes one part holds, and the most bytes of the
+   * message this party sends, from the counts. Absent over file-sync.
+   */
+  webRtc?: { partBytes: number; outboundFrameBytes: number };
 }
 
 /**
@@ -1892,10 +1905,15 @@ export async function runExchange(
   // effective key count both parties derive from the agreed terms. The receiver
   // (joiner) is the PSI sender's counterpart, so the sender's set is the
   // partner's when this party receives; both parties compute identical bounds.
+  const valueSlotCeiling = singlePassValueSlotCeiling(
+    localReceiveCeiling,
+    partnerReceiveCeiling,
+  );
   const singlePassBounds = {
     partnerRecordCount,
     keyWidths,
     localFanOutFactor: localFactor,
+    ...(valueSlotCeiling === undefined ? {} : { valueSlotCeiling }),
   };
   const localSize = {
     effectiveKeyCount,
@@ -1911,11 +1929,11 @@ export async function runExchange(
   );
 
   // A cascade or count-only round exchanges one key's sets at a time, sent in
-  // parts, each held to the receive ceilings; the single-pass dataset ceiling
-  // bounds the rest over WebRTC, and over file-sync the check after this one. This party's first round, and in a count-only exchange
-  // every round, is held to the partner's stated ceiling before this party
-  // builds a set. A count-only exchange is held here to the protocol's maximum
-  // too, since its round sizes depend on the resolved role, which the
+  // parts, each held to the receive ceilings; a single-pass run is weighed by
+  // the check after this one. This party's first round, and in a count-only
+  // exchange every round, is held to the partner's stated ceiling before this
+  // party builds a set. A count-only exchange is held here to the protocol's
+  // maximum too, since its round sizes depend on the resolved role, which the
   // start-of-exchange check did not know; at that maximum a cascade's first
   // round is left to that check and to the round's own refusal.
   const roundsSentInParts = !runsSinglePassLink(linkageTerms);
@@ -1933,8 +1951,29 @@ export async function runExchange(
         partnerReceiveCeiling,
         options.onPsiProgress,
       );
-  } else if (conn.outboundFileSyncFrameBound?.() !== undefined) {
+  } else {
     const keyCount = linkageRounds(linkageTerms.linkageKeys).length;
+    const replyCap = singlePassReplyByteCap(
+      keyCount,
+      isReceiver ? partnerSize : localSize,
+      isReceiver ? localSize : partnerSize,
+      singlePassRequestByteCap(isReceiver ? localSize : partnerSize),
+    );
+    const requestCap = singlePassRequestByteCap(
+      isReceiver ? localSize : partnerSize,
+    );
+    const fileSync = conn.outboundFileSyncFrameBound?.() !== undefined;
+    // A run over the ceiling can never fit, so it is refused before any
+    // memory check that would ask for more memory.
+    if (!fileSync)
+      refuseSinglePassOverCeiling(
+        psiParticipantId(isReceiver),
+        keyCount,
+        localSize,
+        partyFansOut(keyCount, { effectiveKeyCount }) || localFactor > 1,
+        partnerSize,
+        valueSlotCeiling,
+      );
     await assertPartnerRoundWithinCapacity(conn, () =>
       options.checkSinglePassPartnerSize?.({
         partnerValueSlots: valueSlots(partnerSize),
@@ -1944,17 +1983,19 @@ export async function runExchange(
           ? singlePassIrreducibleReplyBytes(keyCount, partnerRecordCount)
           : 0,
         inboundFrameBytes: Math.min(
-          conn.frameCeilingBytes?.() ?? MAX_DERIVED_FRAME_BYTES,
-          isReceiver
-            ? singlePassReplyByteCap(
-                keyCount,
-                partnerSize,
-                localSize,
-                singlePassRequestByteCap(localSize),
-              )
-            : singlePassRequestByteCap(partnerSize),
+          (fileSync ? conn.frameCeilingBytes?.() : undefined) ??
+            MAX_DERIVED_FRAME_BYTES,
+          isReceiver ? replyCap : requestCap,
         ),
         inboundFrameUse: isReceiver ? "stream" : "decode",
+        ...(fileSync
+          ? {}
+          : {
+              webRtc: {
+                partBytes: psiSetPartPayloadBytes(conn),
+                outboundFrameBytes: isReceiver ? requestCap : replyCap,
+              },
+            }),
       }),
     );
   }
