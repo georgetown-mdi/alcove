@@ -166,6 +166,10 @@ as [`roleSwapDeterminism.test.ts`](../../packages/core/test/roleSwapDeterminism.
 - Where: as each round's values are built, not in a pass over every row before the rounds.
   A cascade round after the first reads only the rows still unmatched, and the receiver checks only those;
   a sender checking every row up front would refuse a run the receiver role completes, which is the role dependence the rule removes.
+- Read order: on a `swap` key the sender reads the elements in the receiver's swapped order and assembles the authored order from them,
+  so an empty value ends a row at the same element in both roles; read in the authored order, a row could end before the date in one role and reach it in the other.
+- Residual: the sender does not spend the receiver's one-sided expansion of an element ahead of the date, so a row that expansion alone takes past a per-row bound ends on the receiver and reaches the date on the sender.
+  Matching it would measure the would-be expansion in both roles, the approach declined for the width bound (section 3).
 - Disclosure: none; the check is local and the refusal is one the partner already meets from a receiver.
 - Traffic: none.
 - Other cost: an exchange that completed with that party as the sender is refused in both roles.
