@@ -157,8 +157,8 @@ publishes the image.
 Unverified as of 2026-09-29: the package counts, sizes, versions and the `apk` error text in this section and the next were measured on earlier image builds. A documentation audit on that date had no Docker and could not reach the image registries, and did not re-run them.
 
 It floats: the instruction names no version, so a rebuild takes whatever the
-mirror holds for the pinned base's Alpine release. Measured on the base digest
-pinned here (Alpine 3.24.2): `samba-client-4.23.8-r0` and 44 dependencies, 45
+mirror holds for the pinned base's Alpine release. Measured on the previous
+base digest (Alpine 3.24.2): `samba-client-4.23.8-r0` and 44 dependencies, 45
 packages newly present and none removed. `apk`'s trailing `OK:` line reports the
 post-install total rather than the increment, so it reads
 `OK: 11.1 MiB in 18 packages` on the bare base and `OK: 63.1 MiB in 63 packages`
@@ -868,7 +868,7 @@ project makes no separate offer of source.
 each image's own package-manager metadata, queried against the built image by
 tag.
 
-- Default image: `apk list --installed`, apk-tools 3.0.8-r0 on Alpine 3.24.2.
+- Default image: `apk list --installed`, apk-tools 3.0.9-r0 on Alpine 3.24.4.
   `/lib/apk/db/installed` agrees with that listing on every package's name,
   version and license on both architectures; the listing is what the generator
   parses.
@@ -887,11 +887,11 @@ tag.
 
 **What was measured.** Both images built without a layer cache at both
 architectures, the FIPS variant on 2026-10-30 and the default image on
-2026-09-24. A first attempt with a warm cache reported an architecture
+2026-11-06. A first attempt with a warm cache reported an architecture
 difference that was a stale layer rather than a property of the image, so a
 re-measurement builds with `--no-cache` or it measures the cache.
 
-- Default image: 63 packages, 6 of which declare a disjunction and 18 of which
+- Default image: 64 packages, 6 of which declare a disjunction and 18 of which
   hold a GPL-3.0 or LGPL-3.0 term.
 - FIPS variant: 170 rows, 15 of which declare a disjunction and 37 of which hold
   a GPL-3.0 or LGPL-3.0 term. One row is the `gpg-pubkey` pseudo-package the
