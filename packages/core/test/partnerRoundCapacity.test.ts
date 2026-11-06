@@ -10,6 +10,7 @@ import {
 } from "../src/connection/frameSize";
 import { sendAbort, sendLocalFaultAbort } from "../src/protocolSetup";
 import { createMessagePipe } from "../src/connection/messageConnection";
+import { psiSetPartPayloadBytes } from "../src/psi/psiSetParts";
 import {
   PeerAbortError,
   RoundCapacityError,
@@ -679,11 +680,50 @@ describe("single-pass over file-sync, at the terms exchange", () => {
     );
   });
 
-  test("a connection stating no file-sync bound is not checked here", async () => {
-    const check = vi.fn();
-    const { local } = await runSinglePass(false, check);
+  test("a connection stating no file-sync bound is checked too, with the part size and the message this party sends", async () => {
+    const seen: Array<SinglePassPartnerSize> = [];
+    const { local } = await runSinglePass(false, (size) => {
+      seen.push(size);
+    });
     expect(local.status).toBe("fulfilled");
-    expect(check).not.toHaveBeenCalled();
+    const sender = { effectiveKeyCount: 1, recordCount: 12 };
+    const receiver = { effectiveKeyCount: 1, recordCount: 5 };
+    const [conn] = createMessagePipe();
+    expect(seen).toEqual([
+      {
+        partnerValueSlots: 12,
+        localValueSlots: 5,
+        partnerRecordCount: 12,
+        irreducibleReplyBytes: 48,
+        inboundFrameBytes: singlePassReplyByteCap(
+          1,
+          sender,
+          receiver,
+          singlePassRequestByteCap(receiver),
+        ),
+        inboundFrameUse: "stream",
+        webRtc: {
+          partBytes: psiSetPartPayloadBytes(conn),
+          outboundFrameBytes: singlePassRequestByteCap(receiver),
+        },
+      },
+    ]);
+  });
+
+  test("a capacity refusal over WebRTC stops the run before any set moves and tells the partner", async () => {
+    const failure = new RoundCapacityError("cannot fit", "terms-exchange");
+    const { local, partner, sent } = await runSinglePass(false, () => {
+      throw failure;
+    });
+    expect((local as PromiseRejectedResult).reason).toBe(failure);
+    expect(binaryFrames(sent)).toEqual([]);
+    expect(sent.at(-1)).toEqual({
+      decision: "abort",
+      abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
+    });
+    expect((partner as PromiseRejectedResult).reason).toBeInstanceOf(
+      PeerAbortError,
+    );
   });
 
   test("a cascade over file-sync is not checked here", async () => {

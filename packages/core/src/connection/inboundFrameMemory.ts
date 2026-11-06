@@ -62,6 +62,47 @@ export function psiFrameHandlingBytes(
 }
 
 /**
+ * The measured multiples of one part's size that a message sent in parts over
+ * a WebRTC data channel takes beyond the message itself, under the application
+ * envelope at version 2 (docs/spec/TRANSPORT_BOUNDS.md, Memory a message in
+ * parts takes).
+ */
+export const WEBRTC_PART_MEMORY_MULTIPLES = {
+  /** Receiving a message in parts and joining it, beyond the joined message. */
+  read: 5,
+  /** Sending a message in parts, beyond the message. */
+  send: 5.2,
+} as const;
+
+/**
+ * The memory receiving a message of `messageBytes` in parts of at most
+ * `partBytes` takes over WebRTC: the joined message and the part being read.
+ */
+export function webRtcMessageReadBytes(
+  messageBytes: number,
+  partBytes: number,
+): number {
+  return (
+    messageBytes +
+    WEBRTC_PART_MEMORY_MULTIPLES.read * Math.min(messageBytes, partBytes)
+  );
+}
+
+/**
+ * The memory sending a message of `messageBytes` in parts of at most
+ * `partBytes` takes over WebRTC: the message and the part being sent.
+ */
+export function webRtcMessageSendBytes(
+  messageBytes: number,
+  partBytes: number,
+): number {
+  return (
+    messageBytes +
+    WEBRTC_PART_MEMORY_MULTIPLES.send * Math.min(messageBytes, partBytes)
+  );
+}
+
+/**
  * The most memory a PSI frame of `frameBytes` takes from its read to the end
  * of its handling: the larger of the read, charged as the file-sync read gate
  * charges it ({@link inboundFrameReadBytes}), and of the frame held beside its

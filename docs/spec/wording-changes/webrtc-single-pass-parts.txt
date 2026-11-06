@@ -18,3 +18,42 @@
 - - -> The response is joined because the engine's match takes the whole response, as a cascade round's does.
 - - -> Each refusal [above](#a-psi-set-is-sent-in-parts) applies to each set.
 - - -> Known-answer vectors: each reply frame's `partsHex` in `packages/core/test/vectors/index-table-vectors.json`, replayed by `packages/core/test/psi/indexTableVectors.test.ts`.
+- **An installed CLI** calls `v8.setFlagsFromString("--max-old-space-size=19075")` immediately before it starts the PSI worker, or, on a single-pass run over file-sync, with the heap the counts need ([The worker's heap, from the counts](#the-workers-heap-from-the-counts)), unless the process already runs under a larger limit (`raisePsiWorkerHeapLimit`). -> **An installed CLI** calls `v8.setFlagsFromString("--max-old-space-size=19075")` immediately before it starts the PSI worker, or, on a single-pass run, with the heap the counts need ([The worker's heap, from the counts](#the-workers-heap-from-the-counts)), unless the process already runs under a larger limit (`raisePsiWorkerHeapLimit`).
+- A single-pass exchange is left to its dataset ceiling over WebRTC, and over file-sync to the checks in [Memory an inbound frame takes](#memory-an-inbound-frame-takes). -> A single-pass exchange is left to the checks in [Memory an inbound frame takes](#memory-an-inbound-frame-takes), and over WebRTC to its dataset ceiling too.
+- A command-line party over file-sync weighs each partner frame against `process.availableMemory()`, which follows the host's memory and a container's limit and falls as the process uses memory. -> A command-line party weighs each partner frame against `process.availableMemory()`, which follows the host's memory and a container's limit and falls as the process uses memory.
+- **Before each read.** -> **Before each read, over file-sync.**
+- At the terms exchange of a single-pass run over file-sync, the PSI worker's heap is set to `298,000,000 + 709 * n` bytes, `n` the larger party's value slots (`psiWorkerHeapNeedBytes`): the measured worker V8 heap of a joiner's full round, the costlier role, in [The measured costs](#the-measured-costs). -> At the terms exchange of a single-pass run, the PSI worker's heap is set to `298,000,000 + 709 * n` bytes, `n` the larger party's value slots (`psiWorkerHeapNeedBytes`): the measured worker V8 heap of a joiner's full round, the costlier role, in [The measured costs](#the-measured-costs).
+- **Not over WebRTC, or with no bundled worker.** -> **The read gate on file-sync only, the hand-off check only with the bundled worker.**
+- The frame checks run on file-sync only, and the hand-off check only where the engine runs in the worker. -> Over WebRTC a part is weighed only within its message at the terms exchange, and the hand-off check runs only where the engine runs in the worker.
+- - -> Over WebRTC, where either single-pass message may travel in parts ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)), no frame ceiling applies, and the read is charged as a message in parts: the message and the measured multiple of one part (`webRtcMessageReadBytes`, [TRANSPORT_BOUNDS.md, Memory a message in parts takes](TRANSPORT_BOUNDS.md#memory-a-message-in-parts-takes)).
+- - -> The message this party sends, the request where it receives and the reply cap where it sends, is weighed too, at the message and the measured multiple of one part (`webRtcMessageSendBytes`), and the need is the larger of the two.
+- - -> **Parts weighed at a measured multiple.**
+- - -> Over WebRTC the multiple of one part was measured on the message's read or send alone between two werift peers, not through a whole exchange.
+- - -> Memory a message in parts takes
+- - -> A command-line party weighs a single-pass message it reads or sends over WebRTC in parts ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)) at the message and a measured multiple of one part, the part being the smaller of the message and the most set bytes one part holds, 267,532,399 under envelope version 2 (`WEBRTC_PART_MEMORY_MULTIPLES`, `webRtcMessageReadBytes` and `webRtcMessageSendBytes`, `packages/core/src/connection/inboundFrameMemory.ts`).
+- - -> The terms-exchange check of [FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes) weighs both.
+- - -> A unit test holds the multiples to this table:
+- - -> Step | Multiple | Measured
+- - -> Receiving a message in parts and joining it, beyond the joined message (`read`) | 5 | 2.70 to 4.93
+- - -> Sending a message in parts, beyond the message (`send`) | 5.2 | 4.58 to 5.14
+- - -> Each multiple is the largest figure measured, rounded up.
+- - -> Measured 2026-11-06 in the development container (aarch64 Linux, Node v26.13.0): two command-line parties, each a process of its own on the CLI's WebRTC connection (werift, the PeerJS framing and `BoundedInboundFrames` at the shipped bound) under the application envelope at version 2, one sending a set in parts (`sendPsiSet`) and the other receiving it (`receivePsiSet`).
+- - -> Each party sampled its resident set every 10 ms from a baseline taken after one forced collection, with no collection forced after it, so a peak counts garbage not yet freed.
+- - -> The receiver read either as each part arrived, or after the sender had sent the whole message, which queued every part.
+- - -> The multiple is the resident peak over the baseline, less the joined message for the receiver, over one part:
+- - -> Message | Receiver | Receiver's peak over baseline | Sender's peak over baseline
+- - -> 128 MiB, one part | as each part arrives | 650.5 MiB | 623.3 MiB
+- - -> 384 MiB, two parts | as each part arrives | 1,433.2 MiB | 1,202.3 MiB
+- - -> 640 MiB, three parts | as each part arrives | 1,897.2 MiB | 1,248.3 MiB
+- - -> 896 MiB, four parts | as each part arrives | 1,946.2 MiB | 1,298.6 MiB
+- - -> 384 MiB, two parts | after the whole message | 1,073.7 MiB | 1,167.8 MiB
+- - -> 640 MiB, three parts | after the whole message | 1,569.9 MiB | 1,254.1 MiB
+- - -> 896 MiB, four parts | after the whole message | 2,090.7 MiB | 1,310.7 MiB
+- - -> The sender's message is held before its baseline, so its peak is the parts in flight alone.
+- - -> Limits of the measurement:
+- - -> **One message, not an exchange.**
+- - -> The step ran alone, with no PSI engine and no other message in flight.
+- - -> **Resident set, one host.**
+- - -> The peak is the process's resident set on one aarch64 Linux host; another allocator or platform can hold garbage longer.
+- - -> **A part's multiple, not a message's.**
+- - -> The receiver's peak past the joined message was 2.70 to 4.93 parts' worth at every size, with no trend in the number of parts; no message past four parts was measured.

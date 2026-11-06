@@ -79,6 +79,7 @@ export {
   decodeSinglePassReply,
   encodeInt32LE,
   encodeSinglePassReply,
+  decodeSinglePassReplyTail,
   encodeSinglePassReplyTail,
   getSortedDistinctValueIndices,
   linkViaPSI,
@@ -201,6 +202,7 @@ export type {
 export {
   PSI_SET_PART_HEADER_BYTES,
   psiSetByteBound,
+  psiSetPartPayloadBytes,
 } from "./psi/psiSetParts.js";
 
 // The input bounds a suite drives at their edge: the invitation decode's host,

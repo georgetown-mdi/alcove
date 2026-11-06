@@ -478,16 +478,13 @@ async function runExchangeStage(params: {
     log.warn(message);
     emit((e) => e.warning("memoryShortfall", message));
   };
-  // Set at the terms exchange of a single-pass run over file-sync, before the
-  // PSI worker starts.
+  // Set at the terms exchange of a single-pass run, before the PSI worker
+  // starts.
   let psiWorkerHeapBytes: number | undefined;
-  const psiFrameMemoryCheck =
-    build.fileSync === undefined
-      ? undefined
-      : inboundFrameMemoryCheck({
-          allowShortfall: allowMemoryShortfall,
-          onShortfallWarning: warnMemoryShortfall,
-        });
+  const psiFrameMemoryCheck = inboundFrameMemoryCheck({
+    allowShortfall: allowMemoryShortfall,
+    onShortfallWarning: warnMemoryShortfall,
+  });
   return runExchange(
     // Every authenticated run reaches here with `secure`, the AEAD
     // decorator over mc, since authenticateRun refuses a handshake that

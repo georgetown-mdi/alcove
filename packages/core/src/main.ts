@@ -177,6 +177,9 @@ export {
   INBOUND_FRAME_MEMORY_MULTIPLES,
   inboundPsiFramePeakBytes,
   psiFrameHandlingBytes,
+  WEBRTC_PART_MEMORY_MULTIPLES,
+  webRtcMessageReadBytes,
+  webRtcMessageSendBytes,
   type InboundPsiFrameUse,
 } from "./connection/inboundFrameMemory";
 export type { InboundFrameMemoryCheck } from "./connection/fileSyncMessageLoop";

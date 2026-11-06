@@ -69,6 +69,7 @@ import type { TermsChange, TermsRotation } from "./protocolSetup.js";
 import type { ConnectionConfig } from "./config/connection.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
 import { withholdsSenderAssociationTable } from "./psi/link.js";
+import { psiSetPartPayloadBytes } from "./psi/psiSetParts.js";
 import type { LinkageCardinality } from "./psi/link.js";
 import type { EntityClusterSummary } from "./psi/entityClosure.js";
 import type { ResolvedRunShape } from "./pairTableProjection.js";
@@ -1183,11 +1184,10 @@ export interface RunExchangeOptions {
     partnerRoundValues: number,
   ) => void | Promise<void>;
   /**
-   * Called on a single-pass exchange over file-sync at the terms exchange, before
-   * either party masks anything, with what the counts say about this run. Its
-   * values are not bounded by a budget there, so the command-line application
-   * refuses a run that cannot fit and states the rest. A
-   * {@link RoundCapacityError} also sends the partner
+   * Called on a single-pass exchange at the terms exchange, before either
+   * party masks anything, with what the counts say about this run. The
+   * command-line application refuses a run that cannot fit and states the
+   * rest. A {@link RoundCapacityError} also sends the partner
    * {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON}.
    */
   checkSinglePassPartnerSize?: (
@@ -1425,7 +1425,7 @@ async function assertPartnerRoundWithinCapacity(
 }
 
 /**
- * What the agreed counts say about a single-pass run over file-sync, for
+ * What the agreed counts say about a single-pass run, for
  * {@link RunExchangeOptions.checkSinglePassPartnerSize}.
  */
 export interface SinglePassPartnerSize {
@@ -1448,6 +1448,12 @@ export interface SinglePassPartnerSize {
   inboundFrameBytes: number;
   /** What the PSI engine does with that frame. */
   inboundFrameUse: InboundPsiFrameUse;
+  /**
+   * Over a WebRTC data channel, where both single-pass messages may travel in
+   * parts: the most set bytes one part holds, and the most bytes of the
+   * message this party sends, from the counts. Absent over file-sync.
+   */
+  webRtc?: { partBytes: number; outboundFrameBytes: number };
 }
 
 /**
@@ -1911,11 +1917,11 @@ export async function runExchange(
   );
 
   // A cascade or count-only round exchanges one key's sets at a time, sent in
-  // parts, each held to the receive ceilings; the single-pass dataset ceiling
-  // bounds the rest over WebRTC, and over file-sync the check after this one. This party's first round, and in a count-only exchange
-  // every round, is held to the partner's stated ceiling before this party
-  // builds a set. A count-only exchange is held here to the protocol's maximum
-  // too, since its round sizes depend on the resolved role, which the
+  // parts, each held to the receive ceilings; a single-pass run is weighed by
+  // the check after this one. This party's first round, and in a count-only
+  // exchange every round, is held to the partner's stated ceiling before this
+  // party builds a set. A count-only exchange is held here to the protocol's
+  // maximum too, since its round sizes depend on the resolved role, which the
   // start-of-exchange check did not know; at that maximum a cascade's first
   // round is left to that check and to the round's own refusal.
   const roundsSentInParts = !runsSinglePassLink(linkageTerms);
@@ -1933,8 +1939,18 @@ export async function runExchange(
         partnerReceiveCeiling,
         options.onPsiProgress,
       );
-  } else if (conn.outboundFileSyncFrameBound?.() !== undefined) {
+  } else {
     const keyCount = linkageRounds(linkageTerms.linkageKeys).length;
+    const replyCap = singlePassReplyByteCap(
+      keyCount,
+      isReceiver ? partnerSize : localSize,
+      isReceiver ? localSize : partnerSize,
+      singlePassRequestByteCap(isReceiver ? localSize : partnerSize),
+    );
+    const requestCap = singlePassRequestByteCap(
+      isReceiver ? localSize : partnerSize,
+    );
+    const fileSync = conn.outboundFileSyncFrameBound?.() !== undefined;
     await assertPartnerRoundWithinCapacity(conn, () =>
       options.checkSinglePassPartnerSize?.({
         partnerValueSlots: valueSlots(partnerSize),
@@ -1944,17 +1960,19 @@ export async function runExchange(
           ? singlePassIrreducibleReplyBytes(keyCount, partnerRecordCount)
           : 0,
         inboundFrameBytes: Math.min(
-          conn.frameCeilingBytes?.() ?? MAX_DERIVED_FRAME_BYTES,
-          isReceiver
-            ? singlePassReplyByteCap(
-                keyCount,
-                partnerSize,
-                localSize,
-                singlePassRequestByteCap(localSize),
-              )
-            : singlePassRequestByteCap(partnerSize),
+          (fileSync ? conn.frameCeilingBytes?.() : undefined) ??
+            MAX_DERIVED_FRAME_BYTES,
+          isReceiver ? replyCap : requestCap,
         ),
         inboundFrameUse: isReceiver ? "stream" : "decode",
+        ...(fileSync
+          ? {}
+          : {
+              webRtc: {
+                partBytes: psiSetPartPayloadBytes(conn),
+                outboundFrameBytes: isReceiver ? requestCap : replyCap,
+              },
+            }),
       }),
     );
   }

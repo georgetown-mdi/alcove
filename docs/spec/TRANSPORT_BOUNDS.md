@@ -478,3 +478,30 @@ This is encoded as a runtime check, not a comment: `assertChunkReassemblySupport
 The second is the BinaryPack wire format the structural scan parses (the marker dispatch in `peerjs-js-binarypack`'s `Unpacker.unpack`: fixint/fixraw/fixstr/fixarray/fixmap and the `0xc0`-`0xdf` markers, with maps declaring two child values per pair).
 A format change there would not silently disable the bound -- a misparse either refuses the frame early (fail-closed) or runs the cursor off the end (treated as a malformed frame and delegated to the unpacker, which would itself error); it never admits a frame it did not walk -- but it would weaken the scan's precision, so re-verify the marker table on a `peerjs-js-binarypack` bump.
 On a `peerjs` bump, re-verify both assumptions.
+
+### Memory a message in parts takes
+
+A command-line party weighs a single-pass message it reads or sends over WebRTC in parts ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)) at the message and a measured multiple of one part, the part being the smaller of the message and the most set bytes one part holds, 267,532,399 under envelope version 2 (`WEBRTC_PART_MEMORY_MULTIPLES`, `webRtcMessageReadBytes` and `webRtcMessageSendBytes`, `packages/core/src/connection/inboundFrameMemory.ts`). The terms-exchange check of [FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes) weighs both. A unit test holds the multiples to this table:
+
+| Step | Multiple | Measured |
+| --- | --- | --- |
+| Receiving a message in parts and joining it, beyond the joined message (`read`) | 5 | 2.70 to 4.93 |
+| Sending a message in parts, beyond the message (`send`) | 5.2 | 4.58 to 5.14 |
+
+Each multiple is the largest figure measured, rounded up. Measured 2026-11-06 in the development container (aarch64 Linux, Node v26.13.0): two command-line parties, each a process of its own on the CLI's WebRTC connection (werift, the PeerJS framing and `BoundedInboundFrames` at the shipped bound) under the application envelope at version 2, one sending a set in parts (`sendPsiSet`) and the other receiving it (`receivePsiSet`). Each party sampled its resident set every 10 ms from a baseline taken after one forced collection, with no collection forced after it, so a peak counts garbage not yet freed. The receiver read either as each part arrived, or after the sender had sent the whole message, which queued every part. The multiple is the resident peak over the baseline, less the joined message for the receiver, over one part:
+
+| Message | Receiver | Receiver's peak over baseline | Sender's peak over baseline |
+| --- | --- | --- | --- |
+| 128 MiB, one part | as each part arrives | 650.5 MiB | 623.3 MiB |
+| 384 MiB, two parts | as each part arrives | 1,433.2 MiB | 1,202.3 MiB |
+| 640 MiB, three parts | as each part arrives | 1,897.2 MiB | 1,248.3 MiB |
+| 896 MiB, four parts | as each part arrives | 1,946.2 MiB | 1,298.6 MiB |
+| 384 MiB, two parts | after the whole message | 1,073.7 MiB | 1,167.8 MiB |
+| 640 MiB, three parts | after the whole message | 1,569.9 MiB | 1,254.1 MiB |
+| 896 MiB, four parts | after the whole message | 2,090.7 MiB | 1,310.7 MiB |
+
+The sender's message is held before its baseline, so its peak is the parts in flight alone. Limits of the measurement:
+
+- **One message, not an exchange.** The step ran alone, with no PSI engine and no other message in flight.
+- **Resident set, one host.** The peak is the process's resident set on one aarch64 Linux host; another allocator or platform can hold garbage longer.
+- **A part's multiple, not a message's.** The receiver's peak past the joined message was 2.70 to 4.93 parts' worth at every size, with no trend in the number of parts; no message past four parts was measured.

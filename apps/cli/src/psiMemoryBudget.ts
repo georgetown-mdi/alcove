@@ -7,6 +7,9 @@ import {
   formatCount,
   inboundPsiFramePeakBytes,
   markStatesItsOwnNextStep,
+  psiFrameHandlingBytes,
+  webRtcMessageReadBytes,
+  webRtcMessageSendBytes,
   type InboundFrameMemoryCheck,
   type SinglePassPartnerSize,
 } from "@alcove/core";
@@ -286,30 +289,53 @@ export function checkPsiMemoryBudget(params: {
  * bytes, from the agreed counts: the larger of the reply's index table, which
  * no choice of values reduces, and the most the frame the counts allow takes
  * to read and hand to the PSI engine at the measured multiples, its read
- * charged under `envelopeVersion` as the file-sync read gate charges it.
+ * charged under `envelopeVersion` as the file-sync read gate charges it, or
+ * over WebRTC as a message in parts.
  */
 export function singlePassInboundPeakBytes(
   size: SinglePassPartnerSize,
   encrypted: boolean,
   envelopeVersion: number | undefined,
 ): number {
+  const frameBytes = size.inboundFrameBytes;
   return Math.max(
     size.irreducibleReplyBytes,
-    inboundPsiFramePeakBytes(
-      size.inboundFrameBytes,
-      size.inboundFrameUse,
-      encrypted,
-      envelopeVersion,
-    ),
+    size.webRtc === undefined
+      ? inboundPsiFramePeakBytes(
+          frameBytes,
+          size.inboundFrameUse,
+          encrypted,
+          envelopeVersion,
+        )
+      : Math.max(
+          webRtcMessageReadBytes(frameBytes, size.webRtc.partBytes),
+          frameBytes + psiFrameHandlingBytes(frameBytes, size.inboundFrameUse),
+        ),
   );
 }
 
 /**
- * What a single-pass run over file-sync does with the partner's declared size at
- * the terms exchange. When reading the partner's PSI frame can take more memory
- * than is available now ({@link singlePassInboundPeakBytes}), the run is a
- * {@link RoundCapacityError}, or, with `allowShortfall`, a warning and the run
- * continues. Every run states the partner's value slots and its worst-case
+ * The memory sending this party's own single-pass message in parts over
+ * WebRTC can take, in bytes, from the agreed counts, or 0 over file-sync.
+ */
+export function singlePassOutboundPeakBytes(
+  size: SinglePassPartnerSize,
+): number {
+  return size.webRtc === undefined
+    ? 0
+    : webRtcMessageSendBytes(
+        size.webRtc.outboundFrameBytes,
+        size.webRtc.partBytes,
+      );
+}
+
+/**
+ * What a single-pass run does with the partner's declared size at the terms
+ * exchange. When reading the partner's PSI frame, or over WebRTC sending this
+ * party's own, can take more memory than is available now
+ * ({@link singlePassInboundPeakBytes}, {@link singlePassOutboundPeakBytes}),
+ * the run is a {@link RoundCapacityError}, or, with `allowShortfall`, a
+ * warning and the run continues. Every run states the partner's value slots and its worst-case
  * memory and time. `envelopeVersion` is the one the key exchange negotiated,
  * or `undefined` on an unencrypted connection.
  */
@@ -323,15 +349,24 @@ export function checkSinglePassPartnerMemory(params: {
   onShortfallWarning: (message: string) => void;
 }): void {
   const { size, availableBytes, log } = params;
-  const needBytes = singlePassInboundPeakBytes(
+  const inboundBytes = singlePassInboundPeakBytes(
     size,
     params.encrypted,
     params.envelopeVersion,
   );
+  const outboundBytes = singlePassOutboundPeakBytes(size);
+  const needBytes = Math.max(inboundBytes, outboundBytes);
   if (needBytes > availableBytes) {
     const sentence =
       `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +
-      `and reading what they send could take up to ${gigabytes(needBytes)} ` +
+      `and ${
+        outboundBytes <= inboundBytes
+          ? "reading what they send"
+          : size.inboundFrameUse === "decode"
+            ? "sending your reply"
+            : "sending your values"
+      } ` +
+      `could take up to ${gigabytes(needBytes)} ` +
       `of memory, but this machine has ${gigabytes(availableBytes)} available ` +
       `now`;
     if (!params.allowShortfall)

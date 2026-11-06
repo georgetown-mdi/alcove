@@ -9,6 +9,9 @@ import {
   inboundFrameReadBytes,
   inboundPsiFramePeakBytes,
   psiFrameHandlingBytes,
+  WEBRTC_PART_MEMORY_MULTIPLES,
+  webRtcMessageReadBytes,
+  webRtcMessageSendBytes,
 } from "../../src/connection/inboundFrameMemory";
 import {
   CHUNKED_ENVELOPE_VERSION,
@@ -139,4 +142,70 @@ describe("the measured multiples of an inbound frame", () => {
       expect(inboundFrameReadBytes(100, true, envelopeVersion)).toBe(readBytes);
     },
   );
+});
+
+// docs/spec/TRANSPORT_BOUNDS.md, "Memory a message in parts takes".
+const TRANSPORT_SPEC = path.resolve(
+  __dirname,
+  "../../../../docs/spec/TRANSPORT_BOUNDS.md",
+);
+
+function transportSpecSection(): string {
+  const text = fs.readFileSync(TRANSPORT_SPEC, "utf8");
+  const start = text.indexOf("### Memory a message in parts takes");
+  const end = text.indexOf("\n## ", start + 1);
+  return text.slice(start, end === -1 ? undefined : end);
+}
+
+const MiB = 2 ** 20;
+const PART_BYTES = 267_532_399;
+
+describe("the measured multiples of a message in parts over WebRTC", () => {
+  test("are the figures the spec states", () => {
+    const rows: Record<string, number> = {};
+    for (const line of transportSpecSection().split("\n")) {
+      const row = /^\| .*\(`(\w+)`\) \| ([\d.]+) \| /.exec(line);
+      if (row !== null) rows[row[1]] = Number(row[2]);
+    }
+    expect(WEBRTC_PART_MEMORY_MULTIPLES).toEqual({ read: 5, send: 5.2 });
+    expect(rows).toEqual(WEBRTC_PART_MEMORY_MULTIPLES);
+  });
+
+  // Each measured run's message and the receiver's and the sender's peaks
+  // over their baselines, in MiB, read from the spec's table.
+  const measured = (): Array<[number, number, number]> =>
+    transportSpecSection()
+      .split("\n")
+      .flatMap((line) => {
+        const row =
+          /^\| (\d+) MiB, \w+ parts? \| [^|]+ \| ([\d,.]+) MiB \| ([\d,.]+) MiB \|$/.exec(
+            line,
+          );
+        if (row === null) return [];
+        const mib = (s: string) => Number(s.replaceAll(",", ""));
+        return [[Number(row[1]), mib(row[2]), mib(row[3])]];
+      });
+
+  test("cover every measured run", () => {
+    const runs = measured();
+    expect(runs).toHaveLength(7);
+    for (const [messageMiB, receiverMiB, senderMiB] of runs) {
+      const message = messageMiB * MiB;
+      expect(webRtcMessageReadBytes(message, PART_BYTES)).toBeGreaterThan(
+        receiverMiB * MiB,
+      );
+      // The sender's message is held before its baseline.
+      expect(
+        webRtcMessageSendBytes(message, PART_BYTES) - message,
+      ).toBeGreaterThan(senderMiB * MiB);
+    }
+  });
+
+  test("a message within one part is charged at its own size", () => {
+    expect(webRtcMessageReadBytes(100, PART_BYTES)).toBe(600);
+    expect(webRtcMessageSendBytes(100, PART_BYTES)).toBe(620);
+    expect(webRtcMessageReadBytes(3 * PART_BYTES, PART_BYTES)).toBe(
+      8 * PART_BYTES,
+    );
+  });
 });
