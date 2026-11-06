@@ -1,0 +1,1 @@
+- - -> A format-version refusal says whether the file is from a newer or an older version of Alcove: the older one names the `alcove fingerprint --force` replacement, and the newer one names only running that version, though `--force` replaces a newer file too ([CLI.md](../CLI.md#signing-identity-fingerprint)).

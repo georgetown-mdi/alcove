@@ -54,9 +54,15 @@ function readIdentityDocument(
     source,
     messageWithOperatorText`signing identity at ${operatorSuppliedText(identityPath)}`,
   );
-  const otherVersion = otherIdentityFormatVersion(document);
-  if (otherVersion !== undefined)
-    throw identityFormatVersionError(identityPath, otherVersion);
+  const version =
+    document !== null && typeof document === "object"
+      ? (document as Record<string, unknown>)["version"]
+      : undefined;
+  if (typeof version === "string") {
+    const age = identityFormatAge(version);
+    if (age !== undefined)
+      throw identityFormatVersionError(identityPath, version, age);
+  }
   return { document };
 }
 
@@ -67,53 +73,83 @@ const IDENTITY_VERSION_FAMILY = SIGNING_IDENTITY_VERSION.slice(
   SIGNING_IDENTITY_VERSION.lastIndexOf("/") + 1,
 );
 
-// The label after the family that is named back to the operator. A longer or
-// stranger value is not what a release writes, so it takes the shape refusal.
-const VERSION_LABEL = /^[A-Za-z0-9._-]{1,32}$/;
+// The label after the family that a release writes: `v` and a decimal number
+// with no leading zero, so each number has one spelling.
+const VERSION_LABEL = /^v(0|[1-9][0-9]{0,8})$/;
 
 /**
- * The version of a document that is a signing identity in another format of
- * this family, or `undefined` for the current format and for anything that is
- * not an identity file. Version numbers are not compared: the format counter
- * can move down as well as up, so neither side is called the older.
+ * The format number of an identity format version (`3` for
+ * `alcove-signing-identity/v3`), or `undefined` for any value outside that
+ * family.
+ * @internal exported for testing
  */
-function otherIdentityFormatVersion(document: unknown): string | undefined {
-  if (document === null || typeof document !== "object") return undefined;
-  const version = (document as Record<string, unknown>)["version"];
-  if (typeof version !== "string" || version === SIGNING_IDENTITY_VERSION)
+export function identityFormatNumber(version: unknown): number | undefined {
+  if (
+    typeof version !== "string" ||
+    !version.startsWith(IDENTITY_VERSION_FAMILY)
+  )
     return undefined;
-  if (!version.startsWith(IDENTITY_VERSION_FAMILY)) return undefined;
-  return VERSION_LABEL.test(version.slice(IDENTITY_VERSION_FAMILY.length))
-    ? version
-    : undefined;
+  const label = VERSION_LABEL.exec(
+    version.slice(IDENTITY_VERSION_FAMILY.length),
+  );
+  return label === null ? undefined : Number(label[1]);
+}
+
+/** Whether an identity file's format is newer or older than this build's. */
+export type IdentityFormatAge = "newer" | "older";
+
+/**
+ * How an identity file's stated format version compares with the one this
+ * build reads, or `undefined` for this build's own version and for any value
+ * outside the family, which takes the shape refusal instead. The one
+ * comparison behind every refusal and warning naming another format version.
+ * @internal exported for testing
+ */
+export function identityFormatAge(
+  version: unknown,
+): IdentityFormatAge | undefined {
+  const found = identityFormatNumber(version);
+  const read = identityFormatNumber(SIGNING_IDENTITY_VERSION);
+  if (found === undefined || read === undefined || found === read)
+    return undefined;
+  return found > read ? "newer" : "older";
 }
 
 /**
- * A signing identity file another version of Alcove wrote, in a format this
- * build does not read. A usage error, so the CLI exits 64.
+ * A signing identity file a newer or an older version of Alcove wrote, in a
+ * format this build does not read. A usage error, so the CLI exits 64.
  */
 export class IdentityFormatVersionError extends UsageError {
   /** The format version the file states. */
   readonly foundVersion: string;
+  /** Whether that format is newer or older than this build's. */
+  readonly age: IdentityFormatAge;
 
-  constructor(message: string, foundVersion: string) {
+  constructor(message: string, foundVersion: string, age: IdentityFormatAge) {
     super(message);
     this.name = "IdentityFormatVersionError";
     this.foundVersion = foundVersion;
+    this.age = age;
   }
 }
 
 function identityFormatVersionError(
   identityPath: string,
   foundVersion: string,
+  age: IdentityFormatAge,
 ): IdentityFormatVersionError {
-  const message = messageWithOperatorText`signing identity at ${operatorSuppliedText(
-    identityPath,
-  )} was written by another version of Alcove: its format is ${foundVersion}, and this version reads ${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --identity-file "${operatorSuppliedText(
-    identityPath,
-  )}" --force --identity NAME' to replace it, with NAME the identity your agreed terms name (linkage_terms.identity); give --config-file for a configuration that holds it in place of --identity. The replacement is a new identity: a new key with a new fingerprint, which every partner must re-pin before your receipts verify again.`;
+  const message =
+    age === "newer"
+      ? messageWithOperatorText`signing identity at ${operatorSuppliedText(
+          identityPath,
+        )} was written by a newer version of Alcove: its format is ${foundVersion}, and this version reads ${SIGNING_IDENTITY_VERSION}. Run the newer version of Alcove that wrote it.`
+      : messageWithOperatorText`signing identity at ${operatorSuppliedText(
+          identityPath,
+        )} was written by an older version of Alcove: its format is ${foundVersion}, and this version reads ${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --identity-file "${operatorSuppliedText(
+          identityPath,
+        )}" --force --identity NAME' to replace it, with NAME the identity your agreed terms name (linkage_terms.identity); give --config-file for a configuration that holds it in place of --identity. The replacement is a new identity: a new key with a new fingerprint, which every partner must re-pin before your receipts verify again.`;
   return keepOperatorSuppliedText(
-    new IdentityFormatVersionError(message.text, foundVersion),
+    new IdentityFormatVersionError(message.text, foundVersion, age),
     message,
   );
 }
@@ -132,8 +168,8 @@ function malformedIdentity(identityPath: string, err: unknown): UsageError {
  * `undefined` if the file does not exist (so a caller can lazily create it).
  * Rejects with a {@link UsageError} on a malformed, unreadable, or inconsistent
  * file -- the same exit-64 classification a malformed key file gets -- and
- * with its {@link IdentityFormatVersionError} subclass on a file another
- * version of Alcove wrote in a different format. Warns
+ * with its {@link IdentityFormatVersionError} subclass on a file a newer or an
+ * older version of Alcove wrote in a different format. Warns
  * (advisory) if the file is readable by other users. Validation reaches
  * `crypto.subtle`, so the load is asynchronous; the file read itself is not.
  *

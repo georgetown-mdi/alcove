@@ -1133,33 +1133,58 @@ async function writeIdentityOfVersion(
   });
 }
 
-test("an identity file of another version is refused by name, exit 64", async () => {
-  const idPath = path.join(dir, "other-version.json");
-  const foundVersion = "alcove-signing-identity/v0-synthetic";
-  await writeIdentityOfVersion(idPath, foundVersion);
-  const before = fs.readFileSync(idPath, "utf8");
-  const { stdout, stderr, thrown } = await runFingerprint({
-    "identity-file": idPath,
-  });
-  expect((thrown as Error).message).toBe("exit:64");
-  expect(stdout).toBe("");
-  expect(stderr).toContain(
-    `signing identity at ${idPath} was written by another version of ` +
-      `Alcove: its format is ${foundVersion}, and this version reads ` +
-      `${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --identity-file "` +
-      `${idPath}" --force --identity NAME' to replace it, with NAME the ` +
-      "identity your agreed terms name (linkage_terms.identity); give " +
-      "--config-file for a configuration that holds it in place of " +
-      "--identity. The replacement is a new identity: a new key with a new " +
-      "fingerprint, which every partner must re-pin before your receipts verify again.\n",
-  );
-  expect(stderr).not.toContain("invalid_value");
-  expect(fs.readFileSync(idPath, "utf8")).toBe(before);
-});
+const IDENTITY_FAMILY = SIGNING_IDENTITY_VERSION.slice(
+  0,
+  SIGNING_IDENTITY_VERSION.lastIndexOf("/") + 1,
+);
+const READ_NUMBER = Number(
+  SIGNING_IDENTITY_VERSION.slice(IDENTITY_FAMILY.length + 1),
+);
+const OLDER_IDENTITY_VERSION = `${IDENTITY_FAMILY}v${READ_NUMBER - 1}`;
+const NEWER_IDENTITY_VERSION = `${IDENTITY_FAMILY}v${READ_NUMBER + 1}`;
 
-test("the remedy the refusal prints regenerates the identity as printed", async () => {
+test.each([
+  {
+    age: "older",
+    foundVersion: OLDER_IDENTITY_VERSION,
+    remedy:
+      `Run 'alcove fingerprint --identity-file "{path}" --force --identity ` +
+      "NAME' to replace it, with NAME the identity your agreed terms name " +
+      "(linkage_terms.identity); give --config-file for a configuration that " +
+      "holds it in place of --identity. The replacement is a new identity: a " +
+      "new key with a new fingerprint, which every partner must re-pin before " +
+      "your receipts verify again.",
+  },
+  {
+    age: "newer",
+    foundVersion: NEWER_IDENTITY_VERSION,
+    remedy: "Run the newer version of Alcove that wrote it.",
+  },
+])(
+  "an identity file whose format version is $age is refused by name, exit 64",
+  async ({ age, foundVersion, remedy }) => {
+    const idPath = path.join(dir, "other-version.json");
+    await writeIdentityOfVersion(idPath, foundVersion);
+    const before = fs.readFileSync(idPath, "utf8");
+    const { stdout, stderr, thrown } = await runFingerprint({
+      "identity-file": idPath,
+    });
+    expect((thrown as Error).message).toBe("exit:64");
+    expect(stdout).toBe("");
+    expect(stderr).toContain(
+      `signing identity at ${idPath} was written by ` +
+        `${age === "newer" ? "a" : "an"} ${age} version of Alcove: its ` +
+        `format is ${foundVersion}, and this version reads ` +
+        `${SIGNING_IDENTITY_VERSION}. ${remedy.replace("{path}", idPath)}\n`,
+    );
+    expect(stderr).not.toContain("invalid_value");
+    expect(fs.readFileSync(idPath, "utf8")).toBe(before);
+  },
+);
+
+test("the remedy an older-version refusal prints regenerates the identity as printed", async () => {
   const idPath = path.join(dir, "other version.json");
-  await writeIdentityOfVersion(idPath, "alcove-signing-identity/v0-synthetic");
+  await writeIdentityOfVersion(idPath, OLDER_IDENTITY_VERSION);
   const refused = await runFingerprint({ "identity-file": idPath });
   const printed = /'(alcove fingerprint [^']*)'/.exec(refused.stderr)?.[1];
   if (printed === undefined) throw new Error("the refusal prints no command");
@@ -1188,29 +1213,34 @@ test("the remedy the refusal prints regenerates the identity as printed", async 
   );
 });
 
-test("--force replaces an identity file of another version and says so", async () => {
-  const idPath = path.join(dir, "other-version.json");
-  const foundVersion = "alcove-signing-identity/v0-synthetic";
-  await writeIdentityOfVersion(idPath, foundVersion);
-  const { stdout, stderr, thrown } = await runFingerprint({
-    "identity-file": idPath,
-    identity: "Party A",
-    force: true,
-  });
-  expect(thrown).toBeUndefined();
-  expect(stderr).toContain(
-    `the existing signing identity at ${idPath} was written by another ` +
-      `version of Alcove (its format is ${foundVersion}, and this version ` +
-      `reads ${SIGNING_IDENTITY_VERSION}); --force replaces it.`,
-  );
-  expect(stderr).not.toContain("Run 'alcove fingerprint");
-  const stored = await loadSigningIdentity(idPath);
-  if (stored === undefined) throw new Error("the identity was not persisted");
-  expect(stored.version).toBe(SIGNING_IDENTITY_VERSION);
-  expect(stdout).toBe(
-    `${await computeCertificateFingerprint(stored.certificate)}\n`,
-  );
-});
+test.each([
+  { article: "an", age: "older", foundVersion: OLDER_IDENTITY_VERSION },
+  { article: "a", age: "newer", foundVersion: NEWER_IDENTITY_VERSION },
+])(
+  "--force replaces an identity file whose format version is $age and says so",
+  async ({ article, age, foundVersion }) => {
+    const idPath = path.join(dir, "other-version.json");
+    await writeIdentityOfVersion(idPath, foundVersion);
+    const { stdout, stderr, thrown } = await runFingerprint({
+      "identity-file": idPath,
+      identity: "Party A",
+      force: true,
+    });
+    expect(thrown).toBeUndefined();
+    expect(stderr).toContain(
+      `the existing signing identity at ${idPath} was written by ${article} ` +
+        `${age} version of Alcove (its format is ${foundVersion}, and this ` +
+        `version reads ${SIGNING_IDENTITY_VERSION}); --force replaces it.`,
+    );
+    expect(stderr).not.toContain("Run ");
+    const stored = await loadSigningIdentity(idPath);
+    if (stored === undefined) throw new Error("the identity was not persisted");
+    expect(stored.version).toBe(SIGNING_IDENTITY_VERSION);
+    expect(stdout).toBe(
+      `${await computeCertificateFingerprint(stored.certificate)}\n`,
+    );
+  },
+);
 
 test("--identity-file creates the identity exactly where it was named", async () => {
   const idPath = path.join(dir, "named", "alcove-signing-identity.json");
