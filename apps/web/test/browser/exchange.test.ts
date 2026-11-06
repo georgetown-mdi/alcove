@@ -2611,13 +2611,13 @@ describe("inviter screen", () => {
         "alcove-record-2026-07-08T14-32.keys.json",
     );
 
-    // Under the downloads, where to check the record and keys later, and a link to the
+    // Under the downloads, where to check the record with the keys, and a link to the
     // Verify page that leaves this page and its downloads in place.
     expect(
       document.querySelector(`.${styles.small}:has(a[href="/verify"])`)
         ?.textContent,
     ).toBe(
-      "Check the record and keys later on the Verify page (opens in a new tab).",
+      "Check the record on the Verify page (opens in a new tab) with the keys.",
     );
     expect(document.body.textContent).not.toContain(
       "store them with the record",
