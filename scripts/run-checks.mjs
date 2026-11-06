@@ -164,6 +164,13 @@ export const CHECKS = [
       "No absolute URL literal in shipped source outside the reasoned allowlist, which is what PRIVACY.md's no-egress statement rests on.",
   },
   {
+    script: "check:crypto-claims",
+    group: INDEPENDENT,
+    expiresOn: "2027-06-30",
+    description:
+      "Core loads no cryptographic library but the PSI engine and no node:crypto, node:crypto elsewhere in shipped source is used only as its reasoned list states, and only the listed transit modules encrypt: what COMPLIANCE.md's crypto.subtle and nothing-encrypted-on-disk statements rest on.",
+  },
+  {
     script: "check:workflow-agent-models",
     group: INDEPENDENT,
     expiresOn: "2027-03-31",

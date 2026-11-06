@@ -93,6 +93,38 @@ Most are past the reach of a literal scan; the guard is against egress added ina
   An interpolation beside a literal host is reported (`https://${tenant}.evil.example`),
   and so is `https://${host}` in a string or JSX attribute, where nothing interpolates.
 
+## Cryptographic-call claims
+
+[`scripts/check-crypto-claims.mjs`](../../scripts/check-crypto-claims.mjs)
+
+### Why it is a check
+
+[COMPLIANCE.md](../COMPLIANCE.md) tells agency reviewers two things about where cryptography happens:
+the application-layer operations protecting an exchange are each a `crypto.subtle` call rather than a third-party library one (the SC-13 row),
+and Alcove encrypts nothing on disk (the SC-28 row).
+Both are one import or one call away from going false, and neither shows in a diff a reviewer of some other change is reading for it.
+So each is held by a list a change has to edit, with a reason per entry:
+
+- `CORE_MODULES`, the packages `packages/core/src` may load. Every operation the SC-13 row names is made in core, so a core that loads no `node:crypto` and no cryptographic package leaves `crypto.subtle` as the only route to one. The PSI engine is the one cryptographic entry, and COMPLIANCE.md already keeps the PSI out of the claim.
+- `NODE_CRYPTO_USES`, the `node:crypto` members shipped source outside core uses, per file. Each names or identifies something local; none protects data. This also holds the inventory's notes on random values and digests outside core.
+- `ENCRYPTING_MODULES`, the modules holding an `encrypt` or `wrapKey` reference, with their count. Each encrypts for the partner or in memory. A count, not only a file, so a second encryption inside a transit module is a visible edit too.
+
+An entry nothing uses fails the check, so a list keeps no exemption its code no longer needs.
+
+### What is read
+
+The egress check's shipped-source roots and files, filtered to the JavaScript family, so a tree that starts shipping is read by both.
+Each file is parsed alone; nothing resolves a name across files.
+
+### What it does not cover
+
+These limits are published beside the claims in COMPLIANCE.md.
+
+- A primitive written out in JavaScript. No syntactic check can tell cryptography from other arithmetic.
+- Encryption a third-party library performs on an application's behalf. The SSH and WebRTC stacks encrypt the channel in transit; an application's own packages are not held to a list, only core's.
+- An encrypting call reached through a computed name, or through a module a `CORE_MODULES` package loads.
+- Where an allowed module's output goes. The transit modules' ciphertext is written to the shared folder on a file-sync exchange, which is the channel, not storage the claim is about.
+
 ## Dependabot checklist-pin coverage
 
 [`scripts/check-dependabot-pin-coverage.mjs`](../../scripts/check-dependabot-pin-coverage.mjs)

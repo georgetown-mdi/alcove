@@ -34,6 +34,7 @@
     "check:rule-citations": "node scripts/check-rule-citations.mjs",
     "check:spec-citations": "node scripts/check-spec-citations.mjs",
     "check:egress-claims": "node scripts/check-egress-claims.mjs",
+    "check:crypto-claims": "node scripts/check-crypto-claims.mjs",
     "check:workflow-agent-models": "node scripts/check-workflow-agent-models.mjs",
     "check:workflow-args-resolve": "node scripts/check-workflow-args-resolve.mjs",
     "check:action-pin-drift": "node scripts/check-action-pin-drift.mjs",
