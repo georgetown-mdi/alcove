@@ -278,7 +278,7 @@ describe("read-failed recovery listing", () => {
         page.getByText(
           "A saved exchange is format version alcove-managed-exchange/v3, " +
             "and this version of Alcove could not move it to version " +
-            "alcove-managed-exchange/v6: it has no migration from version " +
+            "alcove-managed-exchange/v4: it has no migration from version " +
             "alcove-managed-exchange/v3. The saved exchange was not changed. " +
             "Remove it from the list of saved exchanges, then import its " +
             "backup file or set the exchange up again with your partner.",

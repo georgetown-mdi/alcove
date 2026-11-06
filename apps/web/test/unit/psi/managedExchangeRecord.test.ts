@@ -426,51 +426,66 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     expect(storedRecordAheadOfThisBuild({ ...record, label: 7 })).toBe(false);
   });
 
-  test("accepts the recognized v6 schemaVersion", () => {
+  test("writes and accepts the v4 schemaVersion", () => {
     const record = buildManagedExchangeRecord(newExchange());
+    expect(MANAGED_EXCHANGE_SCHEMA_VERSION).toBe("alcove-managed-exchange/v4");
+    expect(record.schemaVersion).toBe("alcove-managed-exchange/v4");
     expect(safeParseManagedExchangeRecord(record).success).toBe(true);
   });
 
-  test("migrates a v5 record in memory, adding no default relay refusal", () => {
-    const record = buildManagedExchangeRecord(newExchange({ schedule }));
-    const { defaultRelayRefusal: _absent, ...rest } = record;
-    const stored = { ...rest, schemaVersion: "alcove-managed-exchange/v5" };
-    const kept = structuredClone(stored);
-
-    expect(stored).toHaveProperty("heldAppUpdate", NO_HELD_APP_UPDATE);
-    expect(parseManagedExchangeRecord(stored)).toEqual({
-      ...record,
-      defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-    });
-    expect(stored).toEqual(kept);
-  });
-
-  test("migrates a v4 record in memory, adding no held app update and no default relay refusal", () => {
-    const record = buildManagedExchangeRecord(newExchange({ schedule }));
-    const {
-      heldAppUpdate: _absent,
-      defaultRelayRefusal: _alsoAbsent,
-      ...rest
-    } = record;
-    const stored = { ...rest, schemaVersion: "alcove-managed-exchange/v4" };
-    const kept = structuredClone(stored);
-
-    expect(parseManagedExchangeRecord(stored)).toEqual({
-      ...record,
-      heldAppUpdate: NO_HELD_APP_UPDATE,
-      defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-    });
-    expect(stored).toEqual(kept);
-  });
-
-  test.each(["heldAppUpdate", "defaultRelayRefusal"])(
-    "rejects a record with no %s: the field is required",
-    (field) => {
-      const stored: Record<string, unknown> = {
-        ...buildManagedExchangeRecord(newExchange()),
+  test.each(["alcove-managed-exchange/v5", "alcove-managed-exchange/v6"])(
+    "treats a record stored under %s as a later build's",
+    (schemaVersion) => {
+      const stored = {
+        ...buildManagedExchangeRecord(newExchange({ schedule })),
+        schemaVersion,
       };
-      delete stored[field];
+      expect(storedRecordAheadOfThisBuild(stored)).toBe(true);
       expect(safeParseManagedExchangeRecord(stored).success).toBe(false);
+    },
+  );
+
+  const storedHeldUpdate = {
+    kind: "held",
+    at: "2026-01-06T14:30:00.000Z",
+    holders: ["run", "file"],
+  } as const;
+  const storedRelayRefusal = {
+    kind: "refused",
+    at: "2026-01-06T14:30:00.000Z",
+    cause: "rate-limit",
+    retryAfterSeconds: 600,
+  } as const;
+
+  test.each([
+    [["heldAppUpdate"]],
+    [["defaultRelayRefusal"]],
+    [["heldAppUpdate", "defaultRelayRefusal"]],
+  ])(
+    "reads a v4 record with no %j as holding the none form, keeping the other field",
+    (absent) => {
+      const record = {
+        ...buildManagedExchangeRecord(newExchange({ schedule })),
+        heldAppUpdate: storedHeldUpdate,
+        defaultRelayRefusal: storedRelayRefusal,
+      };
+      const stored: Record<string, unknown> = {
+        ...record,
+        schemaVersion: "alcove-managed-exchange/v4",
+      };
+      for (const field of absent) delete stored[field];
+      const kept = structuredClone(stored);
+
+      expect(parseManagedExchangeRecord(stored)).toEqual({
+        ...record,
+        heldAppUpdate: absent.includes("heldAppUpdate")
+          ? NO_HELD_APP_UPDATE
+          : storedHeldUpdate,
+        defaultRelayRefusal: absent.includes("defaultRelayRefusal")
+          ? NO_DEFAULT_RELAY_REFUSAL
+          : storedRelayRefusal,
+      });
+      expect(stored).toEqual(kept);
     },
   );
 

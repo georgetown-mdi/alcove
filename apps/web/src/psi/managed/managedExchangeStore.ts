@@ -314,7 +314,7 @@ export async function putManagedExchange(
  * does not read, rejects loudly rather than loading.
  *
  * @throws {FormatMigrationError} if the stored value's migration fails.
- * @throws {ZodError} if the stored value is not a valid v6 record.
+ * @throws {ZodError} if the stored value is not a valid v4 record.
  */
 export async function getManagedExchange(
   id: string,
@@ -330,7 +330,7 @@ export async function getManagedExchange(
  * read rather than silently dropping it, so a corrupted store, or one holding a
  * record whose migration fails, shows rather than partially loading.
  *
- * @throws {ZodError} if any stored value is not a valid v6 record.
+ * @throws {ZodError} if any stored value is not a valid v4 record.
  */
 export async function listManagedExchanges(): Promise<
   Array<ManagedExchangeRecord>
@@ -899,7 +899,7 @@ function markBackupOnLocalStore(
  * transaction opens, since the field-scoped transform must be synchronous.
  *
  * @throws {Error} if no record with `id` exists.
- * @throws {ZodError} if the stored value is not a valid v6 record or the edit
+ * @throws {ZodError} if the stored value is not a valid v4 record or the edit
  *   produces an invalid one; the transaction aborts and nothing is written.
  */
 export async function updateManagedExchangeLocalFields(
@@ -943,7 +943,7 @@ export async function updateManagedExchangeLocalFields(
  *   narrowed on, and the transaction aborts with the record still keyless.
  * @throws {ManagedExchangeSecretChangedError} if the stored secret is not
  *   `expectedSharedSecret`; the transaction aborts and nothing is written.
- * @throws {ZodError} if the stored value is not a valid v6 record or the rotation
+ * @throws {ZodError} if the stored value is not a valid v4 record or the rotation
  *   produces an invalid one; the transaction aborts and nothing is written.
  */
 export async function persistManagedExchangeRotation(
@@ -1149,7 +1149,7 @@ export class ManagedReinviteWithheldError extends Error {
  *   response as they were.
  * @throws {ManagedExchangeSecretChangedError} if the stored secret is not
  *   `expectedSharedSecret`; the transaction aborts and nothing is written.
- * @throws {ZodError} if the stored value is not a valid v6 record or the rotation
+ * @throws {ZodError} if the stored value is not a valid v4 record or the rotation
  *   produces an invalid one; the transaction aborts and nothing is written.
  */
 export async function persistManagedExchangeReinvite(
@@ -1513,7 +1513,7 @@ export async function persistManagedExchangeScheduleAdvance(
  * reads its input from and a scheduled run writes its results into.
  *
  * @throws {Error} if no record with `id` exists.
- * @throws {ZodError} if the stored value is not a valid v6 record or the result is
+ * @throws {ZodError} if the stored value is not a valid v4 record or the result is
  *   invalid; the transaction aborts and nothing is written.
  */
 export async function persistManagedExchangeWorkingDirectory(
