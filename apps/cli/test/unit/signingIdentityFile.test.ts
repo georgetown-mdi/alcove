@@ -13,10 +13,24 @@ import {
 import * as signingIdentityFile from "../../src/signingIdentityFile";
 import {
   IdentityFormatVersionError,
+  identityFormatAge,
+  identityFormatNumber,
   loadSigningCertificate,
   loadSigningIdentity,
   saveSigningIdentity,
 } from "../../src/signingIdentityFile";
+
+const IDENTITY_FAMILY = SIGNING_IDENTITY_VERSION.slice(
+  0,
+  SIGNING_IDENTITY_VERSION.lastIndexOf("/") + 1,
+);
+const READ_NUMBER = Number(
+  SIGNING_IDENTITY_VERSION.slice(IDENTITY_FAMILY.length + 1),
+);
+
+function identityVersion(formatNumber: number): string {
+  return `${IDENTITY_FAMILY}v${formatNumber}`;
+}
 
 let dir: string;
 
@@ -121,43 +135,90 @@ test("loadSigningCertificate does not import the private key beside it", async (
   expect(await loadSigningCertificate(idPath)).toEqual(id.certificate);
 });
 
-test("both loaders refuse an identity file of another format version by name", async () => {
-  // The certificate has its own version, but a document that is not a
-  // signing identity of a recognized format is not mined for one here while
-  // loadSigningIdentity refuses it, so the two refusals are pinned together.
-  const idPath = path.join(dir, "other-version.json");
-  const id = await generateSigningIdentity("Party A");
-  const foundVersion = "alcove-signing-identity/v0-synthetic";
-  fs.writeFileSync(idPath, JSON.stringify({ ...id, version: foundVersion }), {
-    mode: 0o600,
-  });
-  const expected =
-    `signing identity at ${idPath} was written by another version of ` +
-    `Alcove: its format is ${foundVersion}, and this version reads ` +
-    `${SIGNING_IDENTITY_VERSION}. Run 'alcove fingerprint --identity-file "` +
-    `${idPath}" --force --identity NAME' to replace it, with NAME the ` +
-    "identity your agreed terms name (linkage_terms.identity); give " +
-    "--config-file for a configuration that holds it in place of " +
-    "--identity. The replacement is a new identity: a new key with a new " +
-    "fingerprint, which every partner must re-pin before your receipts verify again.";
-  for (const load of [loadSigningCertificate, loadSigningIdentity]) {
-    const err = await load(idPath).then(
-      () => undefined,
-      (caught: unknown) => caught,
-    );
-    expect(err).toBeInstanceOf(UsageError);
-    expect(err).toBeInstanceOf(IdentityFormatVersionError);
-    expect((err as IdentityFormatVersionError).foundVersion).toBe(foundVersion);
-    expect((err as Error).message).toBe(expected);
-    expect(sanitizeErrorForDisplay(err)).toBe(expected);
-  }
+test("this build's identity format version has a format number", () => {
+  // Without one, every other-version file would take the shape refusal.
+  expect(identityFormatNumber(SIGNING_IDENTITY_VERSION)).toBe(READ_NUMBER);
+  expect(Number.isInteger(READ_NUMBER)).toBe(true);
 });
+
+test.each([
+  [identityVersion(READ_NUMBER - 1), "older"],
+  [identityVersion(READ_NUMBER + 1), "newer"],
+  // Compared as numbers: as strings, v12 would sort before v3.
+  [identityVersion(READ_NUMBER + 10), "newer"],
+  [SIGNING_IDENTITY_VERSION, undefined],
+  [`${SIGNING_IDENTITY_VERSION}-unrecognized`, undefined],
+  [`${IDENTITY_FAMILY}v0${READ_NUMBER}`, undefined],
+  [`${IDENTITY_FAMILY}v0-synthetic`, undefined],
+  ["alcove-signing-cert/v1", undefined],
+  [3, undefined],
+])("identityFormatAge(%j) is %s", (version, age) => {
+  expect(identityFormatAge(version)).toBe(age);
+});
+
+test.each([
+  {
+    age: "older",
+    foundVersion: identityVersion(READ_NUMBER - 1),
+    remedy:
+      `Run 'alcove fingerprint --identity-file "{path}" --force --identity ` +
+      "NAME' to replace it, with NAME the identity your agreed terms name " +
+      "(linkage_terms.identity); give --config-file for a configuration that " +
+      "holds it in place of --identity. The replacement is a new identity: a " +
+      "new key with a new fingerprint, which every partner must re-pin before " +
+      "your receipts verify again.",
+  },
+  {
+    age: "newer",
+    foundVersion: identityVersion(READ_NUMBER + 1),
+    remedy: "Run the newer version of Alcove that wrote it.",
+  },
+])(
+  "both loaders refuse an identity file whose format version is $age, by name",
+  async ({ age, foundVersion, remedy }) => {
+    // The certificate has its own version, but a document that is not a
+    // signing identity of a recognized format is not mined for one here while
+    // loadSigningIdentity refuses it, so the two refusals are pinned together.
+    const idPath = path.join(dir, "other-version.json");
+    const id = await generateSigningIdentity("Party A");
+    fs.writeFileSync(idPath, JSON.stringify({ ...id, version: foundVersion }), {
+      mode: 0o600,
+    });
+    const expected =
+      `signing identity at ${idPath} was written by ${age === "newer" ? "a" : "an"} ` +
+      `${age} version of Alcove: its format is ${foundVersion}, and this ` +
+      `version reads ${SIGNING_IDENTITY_VERSION}. ` +
+      remedy.replace("{path}", idPath);
+    for (const load of [loadSigningCertificate, loadSigningIdentity]) {
+      const err = await load(idPath).then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+      expect(err).toBeInstanceOf(UsageError);
+      expect(err).toBeInstanceOf(IdentityFormatVersionError);
+      expect((err as IdentityFormatVersionError).foundVersion).toBe(
+        foundVersion,
+      );
+      expect((err as IdentityFormatVersionError).age).toBe(age);
+      expect((err as Error).message).toBe(expected);
+      expect(sanitizeErrorForDisplay(err)).toBe(expected);
+    }
+  },
+);
 
 test.each([
   ["a version outside the identity family", "alcove-signing-cert/v3"],
   [
     "an identity version with an overlong label",
     `alcove-signing-identity/${"v".repeat(33)}`,
+  ],
+  [
+    "an identity version whose label is not a number",
+    `${IDENTITY_FAMILY}v0-synthetic`,
+  ],
+  [
+    "an identity version whose number has a leading zero",
+    `${IDENTITY_FAMILY}v0${READ_NUMBER}`,
   ],
 ])(
   "%s keeps the shape refusal, naming the field and its rule",

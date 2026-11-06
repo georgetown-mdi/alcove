@@ -307,13 +307,15 @@ export async function resolveSigningIdentity(
         : await loadSigningIdentity(input.identityPath);
   } catch (err) {
     if (!input.force) throw err;
-    // The refusal's own remedy is this --force run, so it is not repeated.
+    // The operator asked for this --force run, so the refusal's remedy is not
+    // repeated.
     input.log.warn(
       `the existing signing identity at ${redactAndRenderOperatorSuppliedText(
         operatorSuppliedText(input.identityPath),
       )} ` +
         (err instanceof IdentityFormatVersionError
-          ? "was written by another version of Alcove (its format is " +
+          ? `was written by ${err.age === "newer" ? "a newer" : "an older"} ` +
+            "version of Alcove (its format is " +
             `${sanitizeForDisplay(err.foundVersion)}, and this version ` +
             `reads ${SIGNING_IDENTITY_VERSION}); --force replaces it.`
           : `could not be read (${sanitizeErrorForDisplay(err)}); --force ` +
