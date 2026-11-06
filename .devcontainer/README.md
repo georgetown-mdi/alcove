@@ -94,17 +94,28 @@ Four layers, so prompt-free operation inside is safe:
    which spares a session prompts it would otherwise answer by hand, and never
    overrides a deny -- and the command-sandbox rules that go with it.
 
-`post-create.sh` writes the container's *user* settings wholesale from
-`claude-settings.json`, the tracked template beside it: `permissions.defaultMode:
-bypassPermissions` so sessions inside start prompt-free, the session model and
-effort, the editor and TUI preferences, the statusline command pointing at
-`/workspace/.claude/statusline.mjs` on the bind-mounted workspace, and
-`cleanupPeriodDays: 60`, which keeps session transcripts past Claude Code's
-30-day default so a retro that runs late still has its window. None of this
-touches the host's own Claude configuration. The template is the source of truth
-for those settings, so a change to make belongs in it: the `~/.claude` volume is
-per-`${devcontainerId}` and a hand-edit inside one is replaced the next time a
-container is created against it. It also pre-seeds Claude Code's interactive
+`post-create.sh` applies `claude-settings.json`, the tracked template beside it,
+to the container's *user* settings: `permissions.defaultMode: bypassPermissions`
+so sessions inside start prompt-free, the session model (`opus`) and its
+per-model effort and auto-compact window, the editor and TUI preferences, the
+statusline command pointing at `/workspace/.claude/statusline.mjs` on the
+bind-mounted workspace, and `cleanupPeriodDays: 60`, which keeps session
+transcripts past Claude Code's 30-day default so a retro that runs late still
+has its window. None of this touches the host's own Claude configuration. The
+template holds defaults, merged in by `scripts/merge-claude-settings.mjs`: a
+setting changed inside the container (`/model`, `/effort`, `/autocompact`,
+`/config`) persists when the container is re-created against the same
+`~/.claude` volume, and a setting never changed follows the template. The
+template as last applied is stored on the volume as
+`.settings-template-applied.json`, which is how the two are told apart. A
+volume with no such file (an older volume, or one where it was deleted) gets
+the template written whole once. A setting kept from the container is named in
+the post-create log (`post-create: kept container settings: model`); to return
+one to the template default, set it back to the template value. The
+`modelSettings` entry is keyed by a model id, so it stops applying when the
+`opus` alias moves to a newer model. An unparsable settings file is renamed
+aside with a `.unreadable` suffix and replaced by the template. The volume is
+per-`${devcontainerId}`. `post-create.sh` also pre-seeds Claude Code's interactive
 first-run state -- the onboarding and per-workspace trust prompts, which are
 session state and are filled in rather than replaced -- and sets the VS Code
 extension's own bypass mode in `devcontainer.json` (the extension does not honor

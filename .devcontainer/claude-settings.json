@@ -2,7 +2,13 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
-  "model": "Fable",
+  "model": "opus",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "xhigh",
+      "autoCompactWindow": 400000
+    }
+  },
   "statusLine": {
     "type": "command",
     "command": "node /workspace/.claude/statusline.mjs"
