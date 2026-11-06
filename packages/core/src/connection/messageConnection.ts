@@ -63,7 +63,10 @@ export interface MessageConnection {
   /**
    * Optional: hold the inbound queue's byte bound to at least `minBytes` until
    * cleared (`undefined` restores the bound the queue was built with); it never
-   * lowers the bound. Threaded through any decorator to the queue. The
+   * lowers the bound below that. Where the lowered bound would not have
+   * admitted the frames already queued, the connection fails with the inbound
+   * overflow a frame past the bound gets, drops those frames, and throws that
+   * `ConnectionError`. Threaded through any decorator to the queue. The
    * receiver of a single-pass reply in parts sets it to the frames the reply
    * cap takes ({@link singlePassReplyQueueBytes}). See
    * docs/spec/TRANSPORT_BOUNDS.md ("WebRTC data-channel inbound bound").
@@ -354,6 +357,14 @@ export const DEFAULT_QUEUE_BYTE_CAPACITY = countOnlyRunAheadBytes(
 export const BROWSER_QUEUE_BYTE_CAPACITY = countOnlyRunAheadBytes(
   BROWSER_PSI_SET_WEBRTC_FRAMES,
 );
+
+function inboundByteBoundOverflow(byteCapacity: number): ConnectionError {
+  return new ConnectionError(
+    `inbound buffer overflow: over the ${byteCapacity}-byte bound ` +
+      "on unconsumed messages; messages arrived faster than this side read them",
+    "protocol",
+  );
+}
 
 // What an in-memory pipe charges a message, which this process sent itself:
 // a binary message's length, and nothing for any other.
@@ -684,13 +695,7 @@ export class QueuedMessageConnection implements MessageConnection {
       this.queue.length > 0 &&
       this.queuedBytes + receivedBytes > this.byteCapacity
     ) {
-      this.fail(
-        new ConnectionError(
-          `inbound buffer overflow: over the ${this.byteCapacity}-byte bound ` +
-            "on unconsumed messages; messages arrived faster than this side read them",
-          "protocol",
-        ),
-      );
+      this.fail(inboundByteBoundOverflow(this.byteCapacity));
       return;
     }
     this.queue.push(message);
@@ -839,8 +844,18 @@ export class QueuedMessageConnection implements MessageConnection {
     this.hooks.setInboundFrameCap?.(maxBytes);
   }
 
+  // Frames queued under a raised bound that the lowered one would not have
+  // admitted are refused here, as deliver() refuses a frame past the bound,
+  // and dropped, so they are not held through the work that follows.
   holdInboundQueueBytes(minBytes: number | undefined): void {
     this.byteCapacity = Math.max(this.builtByteCapacity, minBytes ?? 0);
+    if (this.queue.length <= 1 || this.queuedBytes <= this.byteCapacity) return;
+    const error = inboundByteBoundOverflow(this.byteCapacity);
+    this.queue.splice(0);
+    this.queueBytes.splice(0);
+    this.queuedBytes = 0;
+    this.fail(error);
+    throw error;
   }
 
   inboundPollIntervalMs(): number | undefined {

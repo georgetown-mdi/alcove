@@ -271,7 +271,12 @@ Over file-sync each message stays one frame, held to the message file.
 
 Limits:
 
-- **A frame after the reply.** The single-pass phase reads nothing past the reply's tail, so a frame the sender sends after it is read as the next message the run awaits, the payload exchange. Measured with one extra part after a conforming reply, in parts and in one frame, the receiver refused it there as a `protocol` error and the run ended on both parties with no result.
+- **A frame after the reply.** The single-pass phase reads nothing past the reply's tail, so a frame the sender sends after it is read as the next message the receiver awaits, the sender's payload. Measured with one extra part after a conforming reply, in parts and in one frame, in both handshake orders, signed and unsigned, the receiver refused it there as a `protocol` error with no result in every case. What the sender ends with depends on the handshake order and signing:
+  - **The receiver is the handshake responder, signed or unsigned.** The sender ends with no result: the receiver closed the connection while the sender awaited its payload.
+  - **The receiver is the handshake initiator, signed.** The sender ends with no result: the receiver closed the connection before the signed receipts were swapped.
+  - **The receiver is the handshake initiator, unsigned.** The sender ends with its result: the receiver sent its payload before it read the extra part, and the sender's own payload, the run's last frame, does not wait on the receiver.
+
+  On commit 0f5aa3fd5, ahead of messages in parts, the same four cases with the reply in one frame ended the same way.
 - **A response shorter than the request.** The receiver holds a response to at most the length of the request it sent, not to that length, and matches a shorter one as it stands. Measured with 30 receiver values and 20 matches, a response leaving out its last 15 elements lost the 5 matches among those 15 request positions from both parties' results, and an empty response lost all 20, in one frame and in parts, with no error. Only a sender that deviates from the protocol sends one, which is outside the semi-honest model ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#threat-model)).
 - **What a relay sees.** A relay that forwards the parties' frames, such as the WebSocket relay, can tell each frame's size from the chunk framing it forwards unread. In parts it can therefore tell the reply's setup, response and tail lengths apart, which give the sender's distinct-value count and its value-slot count, as it can tell each cascade round's set sizes apart. In one frame it sees only the reply's total length.
 

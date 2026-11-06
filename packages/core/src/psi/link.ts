@@ -1996,6 +1996,21 @@ function setSinglePassReadGate(
   );
 }
 
+// Clears the read gate and restores the queue bound the reply was read under.
+// Frames the partner queued past the restored bound are refused once the
+// reply is read; on a run already failing, its own error is the one raised.
+function releaseSinglePassReplyBounds(
+  conn: MessageConnection,
+  replyRead: boolean,
+): void {
+  conn.setInboundFrameCap?.(undefined);
+  try {
+    conn.holdInboundQueueBytes?.(undefined);
+  } catch (error) {
+    if (replyRead) throw error;
+  }
+}
+
 // The diagnosis for the send-time reply-cap safety check below, which is
 // NOT an over-ceiling condition: the ceiling gate has already passed, so
 // both parties' declared sizes are within budget and no dataset either
@@ -2577,9 +2592,6 @@ export async function linkViaSinglePassPSI(
       request.byteLength,
     );
     setSinglePassReadGate(conn, replyCap);
-    // The reply's parts queue while its setup streams into the engine.
-    if (singlePassMessageInParts(conn, replyCap))
-      conn.holdInboundQueueBytes?.(singlePassReplyQueueBytes(conn, replyCap));
     await refuseSinglePassFrameOverCeiling(
       conn,
       participant.id,
@@ -2589,6 +2601,10 @@ export async function linkViaSinglePassPSI(
     if (singlePassMessageInParts(conn, singlePassRequestByteCap(receiverSize)))
       await sendPsiSet(conn, request);
     else await conn.send(request);
+    // The reply's parts queue while its setup streams into the engine. The
+    // sender reads the whole request before it sends any part.
+    if (singlePassMessageInParts(conn, replyCap))
+      conn.holdInboundQueueBytes?.(singlePassReplyQueueBytes(conn, replyCap));
     reply = singlePassMessageInParts(conn, replyCap)
       ? {
           inParts: true,
@@ -2607,10 +2623,11 @@ export async function linkViaSinglePassPSI(
           ),
           cap: replyCap,
         };
-  } finally {
-    conn.setInboundFrameCap?.(undefined);
-    conn.holdInboundQueueBytes?.(undefined);
+  } catch (error) {
+    releaseSinglePassReplyBounds(conn, false);
+    throw error;
   }
+  releaseSinglePassReplyBounds(conn, true);
   if (!reply.inParts && reply.frame.byteLength > reply.cap) {
     throw partnerProtocolError(
       participant.id,

@@ -194,8 +194,16 @@
 - - -> Limits of the measurement:
 - - -> Limits:
 - - -> **A frame after the reply.**
-- - -> The single-pass phase reads nothing past the reply's tail, so a frame the sender sends after it is read as the next message the run awaits, the payload exchange.
-- - -> Measured with one extra part after a conforming reply, in parts and in one frame, the receiver refused it there as a `protocol` error and the run ended on both parties with no result.
+- - -> The single-pass phase reads nothing past the reply's tail, so a frame the sender sends after it is read as the next message the receiver awaits, the sender's payload.
+- - -> Measured with one extra part after a conforming reply, in parts and in one frame, in both handshake orders, signed and unsigned, the receiver refused it there as a `protocol` error with no result in every case.
+- - -> What the sender ends with depends on the handshake order and signing:
+- - -> **The receiver is the handshake responder, signed or unsigned.**
+- - -> The sender ends with no result: the receiver closed the connection while the sender awaited its payload.
+- - -> **The receiver is the handshake initiator, signed.**
+- - -> The sender ends with no result: the receiver closed the connection before the signed receipts were swapped.
+- - -> **The receiver is the handshake initiator, unsigned.**
+- - -> The sender ends with its result: the receiver sent its payload before it read the extra part, and the sender's own payload, the run's last frame, does not wait on the receiver.
+- - -> On commit 0f5aa3fd5, ahead of messages in parts, the same four cases with the reply in one frame ended the same way.
 - - -> **A response shorter than the request.**
 - - -> The receiver holds a response to at most the length of the request it sent, not to that length, and matches a shorter one as it stands.
 - - -> Measured with 30 receiver values and 20 matches, a response leaving out its last 15 elements lost the 5 matches among those 15 request positions from both parties' results, and an empty response lost all 20, in one frame and in parts, with no error.
@@ -210,12 +218,19 @@
 - - -> **The single-pass reply in parts.**
 - - -> Single-pass message 2 in parts is its setup, response and tail sent back to back, with no receive between ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)).
 - - -> Between two command-line parties no value-slot ceiling bounds it, so it can be longer than the crossing; the reply cap the agreed counts derive bounds it instead.
-- - -> While the receiver of the reply reads it, it holds the queue's byte bound to at least the frames that cap takes, and restores the bound the queue was built with once the reply is read (`holdInboundQueueBytes`, `packages/core/src/connection/messageConnection.ts`).
+- - -> Once the receiver of the reply has sent the request's last part, it holds the queue's byte bound to at least the frames that cap takes, and restores the bound the queue was built with once the reply is read (`holdInboundQueueBytes`, `packages/core/src/connection/messageConnection.ts`).
+- - -> The sender reads the whole request before it sends any part of the reply, so no part of the reply arrives before the bound is raised.
 - - -> The frames are `floor((cap - 8) / part) + 3`, where `part` is the set bytes one part holds and the three sets together take at most three parts more than their bytes fill whole, and one frame more for the frame in hand, each at the stated per-frame bound (`singlePassReplyQueueBytes`, `packages/core/src/psi/link.ts`).
 - - -> The bound is never lowered below the default.
-- - -> It passes the default only when the reply's sets fill four parts or more, and there it is under twice the reply cap, which the terms-exchange memory check weighs at three times the cap ([Memory a message in parts takes](#memory-a-message-in-parts-takes)), so the raised bound admits nothing that check did not weigh.
+- - -> It passes the default only when the reply's sets fill four parts or more, and there it is under twice the reply cap, which the terms-exchange memory check weighs at three times the cap while the reply is read ([Memory a message in parts takes](#memory-a-message-in-parts-takes)).
+- - -> The check weighs reading the reply and matching it as alternatives, taking the larger, so frames the raised bound admitted must not stay queued while the receiver matches.
+- - -> At the restore, frames already queued that the restored bound would not have admitted fail the connection with the same `protocol` refusal a frame past the bound gets, and are dropped, so the run ends on the receiver with no result.
+- - -> From the restore on, the queue holds no more than the bound it was built with, as through the rest of the run.
+- - -> Measured through whole exchanges in parts at a lowered frame bound, in both handshake orders, signed and unsigned, a conforming sender had queued at most one frame by the restore: the one part of its empty payload, 28 bytes before encryption, which it sends right after the reply when it is the handshake initiator and is sent no association table ([PROTOCOL.md, Linkage strategies: cascade and single-pass](PROTOCOL.md#linkage-strategies-cascade-and-single-pass), "Withholding the sender's table from a blind helper").
+- - -> In every other case the sender awaits a message from the receiver, so nothing is queued.
 - - -> For a browser party the value-slot ceiling of 8,388,608 holds the reply cap to 696,254,722 bytes, which takes five frames and the frame in hand, within the browser bound of six.
-- - -> `packages/core/test/psi/singlePassParts.test.ts` runs a reply in parts queued behind a receiver that reads nothing until the whole reply is sent, past the count-only bound at a lowered frame bound, to completion, and refuses a partner sending past the raised bound.
+- - -> `packages/core/test/psi/singlePassParts.test.ts` runs a reply in parts queued behind a receiver that reads nothing until the whole reply is sent, past the count-only bound at a lowered frame bound, to completion, refuses a partner sending past the raised bound, and refuses at the restore a partner that keeps frames queued past the built bound through the reply.
+- - -> It also runs a conforming exchange in parts on a queue at the count-only bound to completion in both handshake orders, with the sender's table sent and withheld.
 - - -> **Through a whole exchange.**
 - - -> The receiver of the reply was also measured through a whole single-pass exchange, the reply in parts, its setup streamed into the engine while its response and tail queued.
 - - -> Measured 2026-11-06 in the development container (aarch64 Linux, 10 CPUs, Node v26.13.0, native backend): two command-line parties, each a process of its own on the CLI's WebRTC connection at the shipped bound under the application envelope at version 2, the PSI engine in the CLI's worker, running `linkViaSinglePassPSI` on one key with every value distinct and 1,000 shared, one run at each size.

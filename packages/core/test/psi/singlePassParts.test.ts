@@ -33,9 +33,11 @@ import {
   psiSetPartPayloadBytes,
   psiSetParts,
 } from "../../src/psi/psiSetParts";
+import { runExchange } from "../../src/exchange";
+import type { Output } from "../../src/config/linkageTermsSchema";
 import type { AssociationTable } from "../../src/types";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
-import { makeParticipant } from "../utils/support";
+import { distinctFirstName, makeParticipant, prepared } from "../utils/support";
 
 const psiLibrary = await PSI();
 
@@ -468,6 +470,233 @@ test("a partner sending past the raised queue bound is still refused", async () 
     `inbound buffer overflow: over the ${raised}-byte bound`,
   );
 });
+
+test("the receiver raises its queue bound only after the request's last part is sent", async () => {
+  const events: Array<string> = [];
+  const [a, b] = createMessagePipe({ byteCapacity: LOWERED_QUEUE_BYTES });
+  const receiver: MessageConnection = {
+    send: (frame: unknown) => {
+      events.push("send");
+      return b.send(frame);
+    },
+    receive: (timeoutMs?: number) => b.receive(timeoutMs),
+    close: () => b.close(),
+    outboundWebRtcFrameBound: () => LOWERED_FRAME_BOUND,
+    holdInboundQueueBytes: (bytes) => {
+      events.push(bytes === undefined ? "restore" : `raise ${bytes}`);
+      b.holdInboundQueueBytes?.(bytes);
+    },
+  };
+  const run = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    makeParticipant(psiLibrary, "joiner"),
+    receiver,
+    [receiverSet],
+    fanOutFreeBounds(1, senderSet.length),
+    false,
+    -1,
+  );
+  const requestFrames: Array<Uint8Array> = [];
+  for (;;) {
+    const part = (await a.receive()) as Uint8Array;
+    requestFrames.push(part);
+    const { index, count } = header(part);
+    if (index === count - 1) break;
+  }
+  const request = joinedSets(requestFrames, 1)[0];
+  const { setup, response } = await conformingReply(request);
+  await sendAll(
+    a,
+    singlePassReplyParts(
+      setup,
+      response,
+      encodeSinglePassReplyTail(
+        senderSet.length,
+        Array.from({ length: senderSet.length }, () => -1),
+      ),
+      psiSetPartPayloadBytes(receiver),
+    ),
+  );
+  await run;
+
+  const raised = singlePassReplyQueueBytes(
+    receiver,
+    singlePassReplyByteCap(1, senderSize, receiverSize, request.byteLength),
+  );
+  expect(requestFrames.length).toBeGreaterThan(1);
+  expect(raised).toBeGreaterThan(LOWERED_QUEUE_BYTES);
+  expect(events.slice(0, requestFrames.length + 2)).toStrictEqual([
+    ...requestFrames.map(() => "send"),
+    `raise ${raised}`,
+    "restore",
+  ]);
+});
+
+test("a partner keeping frames queued past the built bound through the reply is refused when the bound is restored", async () => {
+  const JUNK_BYTES = LOWERED_FRAME_BOUND;
+  const [a, b] = createMessagePipe({ byteCapacity: LOWERED_QUEUE_BYTES });
+  let replySent!: () => void;
+  const sent = new Promise<void>((resolve) => (replySent = resolve));
+  let raised = 0;
+  let queued = 0;
+  let mostQueuedAtRestore = 0;
+  const receiver: MessageConnection = {
+    send: (frame: unknown) => b.send(frame),
+    // Before each read the partner tops the queue up to the raised bound with
+    // frames behind the reply.
+    receive: async (timeoutMs?: number) => {
+      await sent;
+      while (raised > 0 && queued + JUNK_BYTES <= raised) {
+        queued += JUNK_BYTES;
+        await a.send(new Uint8Array(JUNK_BYTES));
+      }
+      const frame = (await b.receive(timeoutMs)) as Uint8Array;
+      queued -= frame.byteLength;
+      return frame;
+    },
+    close: () => b.close(),
+    outboundWebRtcFrameBound: () => LOWERED_FRAME_BOUND,
+    holdInboundQueueBytes: (bytes) => {
+      if (bytes === undefined) mostQueuedAtRestore = queued;
+      else raised = bytes;
+      b.holdInboundQueueBytes?.(bytes);
+    },
+  };
+  const run = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    makeParticipant(psiLibrary, "joiner"),
+    receiver,
+    [receiverSet],
+    fanOutFreeBounds(1, senderSet.length),
+    false,
+    -1,
+  ).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  const requestFrames: Array<Uint8Array> = [];
+  for (;;) {
+    const part = (await a.receive()) as Uint8Array;
+    requestFrames.push(part);
+    const { index, count } = header(part);
+    if (index === count - 1) break;
+  }
+  const { setup, response } = await conformingReply(
+    joinedSets(requestFrames, 1)[0],
+  );
+  for (const part of singlePassReplyParts(
+    setup,
+    response,
+    encodeSinglePassReplyTail(
+      senderSet.length,
+      Array.from({ length: senderSet.length }, () => -1),
+    ),
+    psiSetPartPayloadBytes(receiver),
+  )) {
+    queued += part.byteLength;
+    await a.send(part);
+  }
+  replySent();
+  const error = await run;
+
+  expect(mostQueuedAtRestore).toBeGreaterThan(LOWERED_QUEUE_BYTES);
+  expect(error).toBeInstanceOf(ConnectionError);
+  expect((error as ConnectionError).kind).toBe("protocol");
+  expect(String(error)).toContain(
+    `inbound buffer overflow: over the ${LOWERED_QUEUE_BYTES}-byte bound`,
+  );
+});
+
+// One first-name row per name, prepared as `identity` for a single-pass run.
+function singlePassRows(
+  identity: string,
+  names: Array<string>,
+  output: Output,
+): ReturnType<typeof prepared> {
+  return prepared(
+    identity,
+    names.map((first_name) => ({ first_name })),
+    { terms: { linkageStrategy: "single-pass", output } },
+  );
+}
+
+// `conn` stating the lowered frame bound, recording each queue bound it holds.
+function loweredRecordingHolds(
+  conn: MessageConnection,
+  holds: Array<number | undefined>,
+): MessageConnection {
+  const hold = conn.holdInboundQueueBytes?.bind(conn);
+  return Object.assign(conn, {
+    outboundWebRtcFrameBound: () => LOWERED_FRAME_BOUND,
+    holdInboundQueueBytes: (bytes: number | undefined) => {
+      holds.push(bytes);
+      hold?.(bytes);
+    },
+  });
+}
+
+const sharedNames = Array.from({ length: 20 }, (_, i) => distinctFirstName(i));
+const receiverNames = [
+  ...sharedNames,
+  ...Array.from({ length: 10 }, (_, i) => distinctFirstName(100 + i)),
+];
+const senderNames = [
+  ...sharedNames,
+  ...Array.from({ length: 20 }, (_, i) => distinctFirstName(200 + i)),
+];
+const bothOutput: Output = { expectsOutput: true, shareWithPartner: true };
+
+test.each([
+  ["the initiator", "is sent its table", true, false],
+  ["the responder", "is sent its table", false, false],
+  ["the initiator", "is sent no table", true, true],
+  ["the responder", "is sent no table", false, true],
+])(
+  "a conforming exchange in parts whose reply receiver is %s and whose sender %s completes on a queue at the count-only bound",
+  async (_receiver, _table, receiverIsInitiator, withheld) => {
+    const [a, b] = createMessagePipe({ byteCapacity: LOWERED_QUEUE_BYTES });
+    const holds: Array<number | undefined> = [];
+    const receiverOutput: Output = withheld
+      ? { expectsOutput: true, shareWithPartner: false }
+      : bothOutput;
+    const senderOutput: Output = withheld
+      ? { expectsOutput: false, shareWithPartner: true }
+      : bothOutput;
+    const receiverParty = singlePassRows(
+      receiverIsInitiator ? "Initiator Co" : "Responder Co",
+      receiverNames,
+      receiverOutput,
+    );
+    const senderParty = singlePassRows(
+      receiverIsInitiator ? "Responder Co" : "Initiator Co",
+      senderNames,
+      senderOutput,
+    );
+    const [initiator, responder] = await Promise.all([
+      runExchange(
+        loweredRecordingHolds(a, holds),
+        "initiator",
+        receiverIsInitiator ? receiverParty : senderParty,
+        { psiLibrary },
+      ),
+      runExchange(
+        loweredRecordingHolds(b, holds),
+        "responder",
+        receiverIsInitiator ? senderParty : receiverParty,
+        { psiLibrary },
+      ),
+    ]);
+    const [receiverResult, senderResult] = receiverIsInitiator
+      ? [initiator, responder]
+      : [responder, initiator];
+    expect(holds[0]).toBeGreaterThan(LOWERED_QUEUE_BYTES);
+    expect(holds.slice(1)).toStrictEqual([undefined]);
+    expect(receiverResult.associationTable?.[0]).toHaveLength(20);
+    expect(senderResult.associationTable?.[0].length).toBe(
+      withheld ? undefined : 20,
+    );
+  },
+);
 
 test("a request in parts declaring more than its derived cap is refused at its first part", async () => {
   const [a, b] = createMessagePipe();
