@@ -1413,6 +1413,28 @@ test("setInboundFrameCap reaches the inner transport's read gate", async () => {
   await conn.close();
 });
 
+test("holdInboundQueueBytes reaches the inner connection's queue", async () => {
+  const [, rawLocal] = createMessagePipe();
+  const held: Array<number | undefined> = [];
+  const inner: MessageConnection = {
+    send: (data) => rawLocal.send(data),
+    receive: (timeoutMs) => rawLocal.receive(timeoutMs),
+    close: () => rawLocal.close(),
+    holdInboundQueueBytes: (minBytes) => held.push(minBytes),
+  };
+  const conn = await EncryptedMessageConnection.create(
+    inner,
+    V1_KEYING,
+    "responder",
+  );
+
+  conn.holdInboundQueueBytes(4096);
+  conn.holdInboundQueueBytes(undefined);
+
+  expect(held).toEqual([4096, undefined]);
+  await conn.close();
+});
+
 test("under a cap above the AEAD's limit, the length check admits the largest version-1 envelope and refuses one byte more", async () => {
   // An envelope of about 2 GiB cannot be allocated here, so a 64-byte one
   // reports the length under test. Its version byte is wrong, so an envelope

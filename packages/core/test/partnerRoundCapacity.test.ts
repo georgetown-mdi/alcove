@@ -511,6 +511,30 @@ test("a single-pass exchange is left to its value-slot ceiling, not weighed as a
   expect(partner.status).toBe("fulfilled");
 });
 
+test("a single-pass exchange over the value-slot ceiling gets the ceiling refusal ahead of a failing memory check", async () => {
+  const check = vi.fn(() => {
+    throw new RoundCapacityError("cannot fit", "terms-exchange");
+  });
+  const { local, partner, sent, partnerSent } = await runPair({
+    localRows: 5,
+    partnerRows: 12,
+    ceiling: 10,
+    strategy: "single-pass",
+    options: { checkSinglePassPartnerSize: check },
+  });
+  expect(check).not.toHaveBeenCalled();
+  for (const outcome of [local, partner]) {
+    const reason = (outcome as PromiseRejectedResult).reason;
+    expect(reason).toBeInstanceOf(UsageError);
+    expect(String(reason)).toMatch(/too large for single-pass linkage/);
+  }
+  expect(String((local as PromiseRejectedResult).reason)).toContain(
+    "single-pass limit of 10 value slot(s) per party",
+  );
+  expect(binaryFrames(sent)).toEqual([]);
+  expect(binaryFrames(partnerSent)).toEqual([]);
+});
+
 test("a sender partner is weighed at the declared width", async () => {
   // The partner has more records, so it resolves to the PSI sender.
   const seen: Array<number> = [];

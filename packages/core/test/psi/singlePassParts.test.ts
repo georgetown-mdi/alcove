@@ -3,6 +3,8 @@ import { expect, test } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import {
+  MAX_PSI_SET_WEBRTC_FRAMES,
+  countOnlyRunAheadBytes,
   createMessagePipe,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
@@ -14,7 +16,7 @@ import {
   singlePassReplyByteCap,
   singlePassRequestByteCap,
 } from "../../src/connection/frameSize";
-import { PartnerProtocolRefusalError } from "../../src/errors";
+import { ConnectionError, PartnerProtocolRefusalError } from "../../src/errors";
 import {
   decodeSinglePassReply,
   decodeSinglePassReplyTail,
@@ -23,6 +25,7 @@ import {
   linkViaSinglePassPSI,
   singlePassMessageInParts,
   singlePassReplyParts,
+  singlePassReplyQueueBytes,
   SINGLE_PASS_REPLY_LENGTH_FIELDS_BYTES,
 } from "../../src/psi/link";
 import {
@@ -350,6 +353,120 @@ test("a conforming reply in parts from a separate sender resolves", async () => 
   // The tail's table names no value, so the run matches nothing and sends back
   // an empty resolved table.
   expect(error).toBeUndefined();
+});
+
+// The queue byte bound the count-only crossing derives at the lowered bound.
+const LOWERED_QUEUE_BYTES = countOnlyRunAheadBytes(
+  MAX_PSI_SET_WEBRTC_FRAMES,
+  LOWERED_FRAME_BOUND,
+);
+
+// A receiver run over a lowered bound and a queue held to
+// LOWERED_QUEUE_BYTES, whose partner is played by `reply`. The receiver reads
+// nothing until `reply` has sent every frame, so they all queue.
+async function queuedReceiverAgainst(
+  reply: (
+    conn: MessageConnection,
+    request: Uint8Array,
+    receiver: MessageConnection,
+  ) => Promise<void>,
+): Promise<unknown> {
+  const [a, b] = createMessagePipe({ byteCapacity: LOWERED_QUEUE_BYTES });
+  let replySent!: () => void;
+  const sent = new Promise<void>((resolve) => (replySent = resolve));
+  const receiver: MessageConnection = {
+    send: (frame: unknown) => b.send(frame),
+    receive: async (timeoutMs?: number) => {
+      await sent;
+      return b.receive(timeoutMs);
+    },
+    close: () => b.close(),
+    outboundWebRtcFrameBound: () => LOWERED_FRAME_BOUND,
+    holdInboundQueueBytes: (bytes) => b.holdInboundQueueBytes?.(bytes),
+  };
+  const run = linkViaSinglePassPSI(
+    { cardinality: "one-to-one" },
+    makeParticipant(psiLibrary, "joiner"),
+    receiver,
+    [receiverSet],
+    fanOutFreeBounds(1, senderSet.length),
+    false,
+    -1,
+  ).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  const requestFrames: Array<Uint8Array> = [];
+  for (;;) {
+    const part = (await a.receive()) as Uint8Array;
+    requestFrames.push(part);
+    const { index, count } = header(part);
+    if (index === count - 1) break;
+  }
+  await reply(a, joinedSets(requestFrames, 1)[0], receiver);
+  replySent();
+  return run;
+}
+
+test("a reply in parts queued past the count-only bound behind a slow setup consumer completes", async () => {
+  let queued = 0;
+  const error = await queuedReceiverAgainst(async (conn, request) => {
+    const { setup, response } = await conformingReply(request);
+    for (const part of singlePassReplyParts(
+      setup,
+      response,
+      encodeSinglePassReplyTail(
+        senderSet.length,
+        Array.from({ length: senderSet.length }, () => -1),
+      ),
+      psiSetPartPayloadBytes(
+        Object.assign(createMessagePipe()[0], {
+          outboundWebRtcFrameBound: () => LOWERED_FRAME_BOUND,
+        }),
+      ),
+    )) {
+      queued += part.byteLength;
+      await conn.send(part);
+    }
+  });
+  expect(queued).toBeGreaterThan(LOWERED_QUEUE_BYTES);
+  expect(error).toBeUndefined();
+});
+
+test("a partner sending past the raised queue bound is still refused", async () => {
+  let raised = 0;
+  const error = await queuedReceiverAgainst(async (conn, request, receiver) => {
+    raised = singlePassReplyQueueBytes(
+      receiver,
+      singlePassReplyByteCap(1, senderSize, receiverSize, request.byteLength),
+    );
+    const { setup, response } = await conformingReply(request);
+    const frames = [
+      ...singlePassReplyParts(
+        setup,
+        response,
+        encodeSinglePassReplyTail(
+          senderSet.length,
+          Array.from({ length: senderSet.length }, () => -1),
+        ),
+        psiSetPartPayloadBytes(receiver),
+      ),
+    ];
+    let queued = 0;
+    for (const frame of frames) {
+      queued += frame.byteLength;
+      await conn.send(frame);
+    }
+    while (queued <= raised) {
+      queued += LOWERED_FRAME_BOUND;
+      await conn.send(new Uint8Array(LOWERED_FRAME_BOUND));
+    }
+  });
+  expect(raised).toBeGreaterThan(LOWERED_QUEUE_BYTES);
+  expect(error).toBeInstanceOf(ConnectionError);
+  expect(String(error)).toContain(
+    `inbound buffer overflow: over the ${raised}-byte bound`,
+  );
 });
 
 test("a request in parts declaring more than its derived cap is refused at its first part", async () => {

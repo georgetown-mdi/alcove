@@ -61,6 +61,15 @@ export interface MessageConnection {
    */
   setInboundFrameCap?(maxBytes: number | undefined): void;
   /**
+   * Optional: hold the inbound queue's byte bound to at least `minBytes` until
+   * cleared (`undefined` restores the bound the queue was built with); it never
+   * lowers the bound. Threaded through any decorator to the queue. The
+   * receiver of a single-pass reply in parts sets it to the frames the reply
+   * cap takes ({@link singlePassReplyQueueBytes}). See
+   * docs/spec/TRANSPORT_BOUNDS.md ("WebRTC data-channel inbound bound").
+   */
+  holdInboundQueueBytes?(minBytes: number | undefined): void;
+  /**
    * Optional: the largest frame this connection can send or open whole, or
    * `undefined` where nothing below the runtime's own limits bounds it. The
    * encryption layer states the AEAD's limit.
@@ -323,12 +332,16 @@ export function countOnlyRunAheadBytes(
 
 /**
  * The most bytes of frames the inbound queue holds unconsumed, each charged
- * the length it was received at: the longest bounded run of frames a partner
- * sends without waiting for a reply, the count-only crossing (round r's
- * response, then round r+1's setup and index table), each frame at most
- * {@link MAX_WEBRTC_FRAME_BYTES}. A frame arriving at an empty queue or at a
- * waiting receive is admitted whatever its size. See docs/spec/TRANSPORT_BOUNDS.md
- * ("WebRTC data-channel inbound bound").
+ * the length it was received at: the longest run of frames a partner sends
+ * without waiting for a reply that the protocol's set maximum bounds, the
+ * count-only crossing (round r's response, then round r+1's setup and index
+ * table), each frame at most {@link MAX_WEBRTC_FRAME_BYTES}. The single-pass
+ * reply in parts, its setup, response and tail back to back, is bounded by
+ * the agreed counts instead, so its receiver raises the bound to the reply
+ * cap's frames while it reads the reply
+ * ({@link MessageConnection.holdInboundQueueBytes}). A frame arriving at an
+ * empty queue or at a waiting receive is admitted whatever its size. See
+ * docs/spec/TRANSPORT_BOUNDS.md ("WebRTC data-channel inbound bound").
  */
 export const DEFAULT_QUEUE_BYTE_CAPACITY = countOnlyRunAheadBytes(
   MAX_PSI_SET_WEBRTC_FRAMES,
@@ -408,7 +421,8 @@ export class QueuedMessageConnection implements MessageConnection {
   private queuedBytes = 0;
   private readonly waiters: Array<Waiter> = [];
   private readonly capacity: number;
-  private readonly byteCapacity: number;
+  private readonly builtByteCapacity: number;
+  private byteCapacity: number;
   private readonly inactivityTimeoutMs: number | undefined;
   // Transport-supplied clause appended to the peer-silence inactivity error.
   // Kept here (rather than baked into the message) so the generic core layer
@@ -452,7 +466,9 @@ export class QueuedMessageConnection implements MessageConnection {
     },
   ) {
     this.capacity = options?.capacity ?? DEFAULT_CAPACITY;
-    this.byteCapacity = options?.byteCapacity ?? DEFAULT_QUEUE_BYTE_CAPACITY;
+    this.builtByteCapacity =
+      options?.byteCapacity ?? DEFAULT_QUEUE_BYTE_CAPACITY;
+    this.byteCapacity = this.builtByteCapacity;
     this.inactivityTimeoutMs = options?.inactivityTimeoutMs;
     this.inactivityHint = options?.inactivityHint;
     this.inactivityTimeoutSetting = options?.inactivityTimeoutSetting;
@@ -821,6 +837,10 @@ export class QueuedMessageConnection implements MessageConnection {
   // `setInboundFrameCap?.()` is optional precisely so it can degrade silently.
   setInboundFrameCap(maxBytes: number | undefined): void {
     this.hooks.setInboundFrameCap?.(maxBytes);
+  }
+
+  holdInboundQueueBytes(minBytes: number | undefined): void {
+    this.byteCapacity = Math.max(this.builtByteCapacity, minBytes ?? 0);
   }
 
   inboundPollIntervalMs(): number | undefined {

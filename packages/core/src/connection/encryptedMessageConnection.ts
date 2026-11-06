@@ -763,6 +763,10 @@ export class EncryptedMessageConnection implements MessageConnection {
       : MAX_AEAD_FRAME_BYTES;
   }
 
+  holdInboundQueueBytes(minBytes: number | undefined): void {
+    this.inner.holdInboundQueueBytes?.(minBytes);
+  }
+
   outboundWebRtcFrameBound(): number | undefined {
     return this.inner.outboundWebRtcFrameBound?.();
   }

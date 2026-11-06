@@ -1884,6 +1884,37 @@ function singlePassOverCapMessage(
   );
 }
 
+/**
+ * Refuses a single-pass run whose declared sizes pass `ceiling`, the
+ * value-slot ceiling where a browser is a party, as a {@link UsageError}
+ * naming the remedy. Both parties call it on the same authenticated counts
+ * before either sends a single-pass frame, so both stop and neither waits.
+ * The exchange calls it at the terms exchange, ahead of the memory checks.
+ */
+export function refuseSinglePassOverCeiling(
+  id: string,
+  numLinkageKeys: number,
+  local: SinglePassPartySize,
+  localFansOut: boolean,
+  partner: SinglePassPartySize,
+  ceiling: number | undefined,
+): void {
+  if (ceiling === undefined) return;
+  const breach = singlePassCeilingBreach(local, partner, ceiling);
+  if (breach === undefined) return;
+  throw new UsageError(
+    singlePassOverCapMessage(
+      id,
+      numLinkageKeys,
+      breach,
+      local,
+      localFansOut,
+      partner,
+      ceiling,
+    ),
+  );
+}
+
 // Over file-sync a frame's real size is known only after masking, and the
 // counts bound it from above without deciding it: a run can fit where its counts
 // would not. So a frame larger than one message can be on this connection (the
@@ -1927,6 +1958,26 @@ export function singlePassMessageInParts(
 ): boolean {
   if (conn.outboundFileSyncFrameBound?.() !== undefined) return false;
   return capBytes > psiSetPartPayloadBytes(conn) + PSI_SET_PART_HEADER_BYTES;
+}
+
+/**
+ * The inbound queue bytes a single-pass reply whose cap is `capBytes` can
+ * take on `conn` when it travels in parts, sent back to back with no receive
+ * between: its setup, response and tail each in parts, together at most three
+ * parts more than their bytes fill whole, and the frame in hand, each frame at
+ * the stated per-frame bound (docs/spec/TRANSPORT_BOUNDS.md, "WebRTC
+ * data-channel inbound bound").
+ */
+export function singlePassReplyQueueBytes(
+  conn: MessageConnection,
+  capBytes: number,
+): number {
+  const setBytes = Math.max(
+    0,
+    capBytes - SINGLE_PASS_REPLY_LENGTH_FIELDS_BYTES,
+  );
+  const frames = Math.floor(setBytes / psiSetPartPayloadBytes(conn)) + 3 + 1;
+  return frames * statedFrameBound(conn);
 }
 
 // Sets the read gate to the message file a frame of `frameBytes` is written as,
@@ -2234,7 +2285,7 @@ export async function linkViaSinglePassPSI(
     localFanOutFactor > 1;
 
   // Over file-sync a set is held to what the reply's uint32 lengths state;
-  // over WebRTC the dataset ceiling below is far under the protocol's maximum.
+  // elsewhere, to the protocol's per-set maximum.
   const fileSync = conn.outboundFileSyncFrameBound?.() !== undefined;
   let ownValues: ReturnType<typeof getDistinctValuesAndIndices>;
   try {
@@ -2291,40 +2342,23 @@ export async function linkViaSinglePassPSI(
     );
   }
 
-  // Authoritative, symmetric over-ceiling gate where a browser is a party.
-  // Both parties compute it identically from the exchanged counts, effective
-  // key counts and stated receive ceilings, BEFORE exchanging any single-pass
-  // frame, so an over-ceiling exchange aborts on both sides in lockstep --
-  // neither sends nor waits, so neither hangs to the inactivity timeout. The
+  // The over-ceiling gate where a browser is a party, which the exchange
+  // already applied at the terms exchange ahead of the memory checks. The
   // verdict is on the per-party budget, so the two parties' breach labels
-  // mirror each other (a "partner" breach here is a "local" one over there)
-  // while the abort decision is the same on both. The guidance shown is
-  // oriented to this party and does not recommend cascade. Between two
-  // command-line parties the memory check at the terms exchange is the gate,
-  // and over file-sync the limits are the set maximum, met before masking,
-  // and the AEAD's limit on one frame, which a frame's real size meets after
-  // it (refuseSinglePassFrameOverCeiling).
-  const ceiling = bounds.valueSlotCeiling;
-  if (!fileSync && ceiling !== undefined) {
-    const ceilingBreach = singlePassCeilingBreach(
+  // mirror each other while the abort decision is the same on both. Between
+  // two command-line parties the memory check at the terms exchange is the
+  // gate, and over file-sync the limits are the set maximum, met before
+  // masking, and the AEAD's limit on one frame, which a frame's real size
+  // meets after it (refuseSinglePassFrameOverCeiling).
+  if (!fileSync)
+    refuseSinglePassOverCeiling(
+      participant.id,
+      numLinkageKeys,
       localSize,
+      localFansOut,
       partnerSize,
-      ceiling,
+      bounds.valueSlotCeiling,
     );
-    if (ceilingBreach !== undefined) {
-      throw new UsageError(
-        singlePassOverCapMessage(
-          participant.id,
-          numLinkageKeys,
-          ceilingBreach,
-          localSize,
-          localFansOut,
-          partnerSize,
-          ceiling,
-        ),
-      );
-    }
-  }
 
   if (participant.config.role === "starter") {
     // Need to send:
@@ -2543,6 +2577,9 @@ export async function linkViaSinglePassPSI(
       request.byteLength,
     );
     setSinglePassReadGate(conn, replyCap);
+    // The reply's parts queue while its setup streams into the engine.
+    if (singlePassMessageInParts(conn, replyCap))
+      conn.holdInboundQueueBytes?.(singlePassReplyQueueBytes(conn, replyCap));
     await refuseSinglePassFrameOverCeiling(
       conn,
       participant.id,
@@ -2572,6 +2609,7 @@ export async function linkViaSinglePassPSI(
         };
   } finally {
     conn.setInboundFrameCap?.(undefined);
+    conn.holdInboundQueueBytes?.(undefined);
   }
   if (!reply.inParts && reply.frame.byteLength > reply.cap) {
     throw partnerProtocolError(

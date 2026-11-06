@@ -67,7 +67,10 @@ import {
 } from "./protocolSetup.js";
 import type { TermsChange, TermsRotation } from "./protocolSetup.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
-import { withholdsSenderAssociationTable } from "./psi/link.js";
+import {
+  refuseSinglePassOverCeiling,
+  withholdsSenderAssociationTable,
+} from "./psi/link.js";
 import { psiSetPartPayloadBytes } from "./psi/psiSetParts.js";
 import type { LinkageCardinality } from "./psi/link.js";
 import type { EntityClusterSummary } from "./psi/entityClosure.js";
@@ -152,7 +155,7 @@ import {
   resolvePayloadDisclosureOrAbort,
 } from "./exchange/termsRefusals.js";
 import { buildOwedExchangeRecord } from "./exchange/owedRecord.js";
-import { runPsiPhase } from "./exchange/psiPhase.js";
+import { psiParticipantId, runPsiPhase } from "./exchange/psiPhase.js";
 import type {
   DualSignedRecord,
   ReceiptContent,
@@ -1960,6 +1963,17 @@ export async function runExchange(
       isReceiver ? localSize : partnerSize,
     );
     const fileSync = conn.outboundFileSyncFrameBound?.() !== undefined;
+    // A run over the ceiling can never fit, so it is refused before any
+    // memory check that would ask for more memory.
+    if (!fileSync)
+      refuseSinglePassOverCeiling(
+        psiParticipantId(isReceiver),
+        keyCount,
+        localSize,
+        partyFansOut(keyCount, { effectiveKeyCount }) || localFactor > 1,
+        partnerSize,
+        valueSlotCeiling,
+      );
     await assertPartnerRoundWithinCapacity(conn, () =>
       options.checkSinglePassPartnerSize?.({
         partnerValueSlots: valueSlots(partnerSize),

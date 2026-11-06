@@ -446,7 +446,7 @@ The transport hands each frame to the queue with that length (`TransportControls
 On both WebRTC data channels and both WebSocket relay paths it is the bytes of the reassembled frame, or of the datagram for a frame sent whole, read where the frame is reassembled (`boundChunkReassembly` on the browser's data channel, `BoundedInboundFrames` on the other three); on file-sync it is the bytes of the message file read.
 A message handed over without a length that is a whole number of bytes fails the connection as a `usage` `ConnectionError`, so no frame enters the queue uncharged.
 The file-sync poll loop holds what it reads ahead of the consumer to its inbound cap ([Inbound frame-size bound](#inbound-frame-size-bound), "Read-ahead"), but a data channel pushes its frames, so on this transport the frames a sender sends back to back queue while the consumer is busy: the parts of a setup arrive while the engine matches the parts before them.
-The byte bound is derived from the longest run of frames the protocol bounds that a sender sends without waiting for a reply.
+The byte bound is derived from the longest run of frames the set maximum bounds that a sender sends without waiting for a reply.
 That run is the count-only crossing: having sent its response to round r's request, a count-only sender sends round r+1's setup and its index table, while the receiver may not yet have read the response.
 It is seven frames at the wire cap:
 
@@ -460,7 +460,17 @@ It is seven frames at the wire cap:
 `messageConnection.test.ts` holds both set counts to the part size the sender uses (`psiSetPartPayloadBytes`), under both envelope versions.
 Each frame is at most `MAX_WEBRTC_FRAME_BYTES`, so the bound is **`DEFAULT_QUEUE_BYTE_CAPACITY` = 7 x 268,435,456 = 1,879,048,192 bytes**, and for a browser party **`BROWSER_QUEUE_BYTE_CAPACITY` = 6 x 268,435,456 = 1,610,612,736 bytes**.
 Both are computed from those constants (`countOnlyRunAheadBytes`), and `messageConnection.test.ts` holds them to the derivation.
-The other runs the protocol bounds are shorter: a single PSI set is three frames, and a round's association table, its two index lists and their grouping, comes to at most 402,653,232 bytes.
+The other runs the set maximum bounds are shorter: a single PSI set is three frames, and a round's association table, its two index lists and their grouping, comes to at most 402,653,232 bytes.
+
+**The single-pass reply in parts.**
+Single-pass message 2 in parts is its setup, response and tail sent back to back, with no receive between ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)).
+Between two command-line parties no value-slot ceiling bounds it, so it can be longer than the crossing; the reply cap the agreed counts derive bounds it instead.
+While the receiver of the reply reads it, it holds the queue's byte bound to at least the frames that cap takes, and restores the bound the queue was built with once the reply is read (`holdInboundQueueBytes`, `packages/core/src/connection/messageConnection.ts`).
+The frames are `floor((cap - 8) / part) + 3`, where `part` is the set bytes one part holds and the three sets together take at most three parts more than their bytes fill whole, and one frame more for the frame in hand, each at the stated per-frame bound (`singlePassReplyQueueBytes`, `packages/core/src/psi/link.ts`).
+The bound is never lowered below the default.
+It passes the default only when the reply's sets fill four parts or more, and there it is under twice the reply cap, which the terms-exchange memory check weighs at three times the cap ([Memory a message in parts takes](#memory-a-message-in-parts-takes)), so the raised bound admits nothing that check did not weigh.
+For a browser party the value-slot ceiling of 8,388,608 holds the reply cap to 696,254,722 bytes, which takes five frames and the frame in hand, within the browser bound of six.
+`packages/core/test/psi/singlePassParts.test.ts` runs a reply in parts queued behind a receiver that reads nothing until the whole reply is sent, past the count-only bound at a lowered frame bound, to completion, and refuses a partner sending past the raised bound.
 Two streams no agreed term bounds are read as they arrive.
 The joiner reads the starter's mapped-element list before it resolves the last round, since the starter sends the list once it has resolved the round itself.
 The responder's payload receive is registered in the same synchronous turn as its preparation, so no payload frame waits in the queue behind that preparation.
@@ -507,3 +517,15 @@ The sender's message is held before its baseline, so its peak is the parts in fl
 - **One message, not an exchange.** The step ran alone, with no PSI engine and no other message in flight.
 - **Resident set, one host.** The peak is the process's resident set on one aarch64 Linux host; another allocator or platform can hold garbage longer.
 - **A part's multiple, not a message's.** The receiver's peak past the joined message was 2.70 to 4.93 parts' worth at every size, with no trend in the number of parts; no message past four parts was measured.
+
+**Through a whole exchange.** The receiver of the reply was also measured through a whole single-pass exchange, the reply in parts, its setup streamed into the engine while its response and tail queued. Measured 2026-11-06 in the development container (aarch64 Linux, 10 CPUs, Node v26.13.0, native backend): two command-line parties, each a process of its own on the CLI's WebRTC connection at the shipped bound under the application envelope at version 2, the PSI engine in the CLI's worker, running `linkViaSinglePassPSI` on one key with every value distinct and 1,000 shared, one run at each size. Each party sampled its resident set every 10 ms. The rise while reading the reply is the peak from the request's last frame to the run's end, over the resident set when that frame was sent. The whole run's peak is over a baseline taken after one forced collection, before the worker started. The weighed need is the larger of the receiver's two terms-exchange figures (`singlePassInboundPeakBytes` and `singlePassOutboundPeakBytes`, `apps/cli/src/psiMemoryBudget.ts`):
+
+| Records each side | Reply | Reply cap | Weighed need | Rise while reading the reply | Whole run's peak over baseline |
+| --- | --- | --- | --- | --- | --- |
+| 3,850,000 | 271.7 MiB, three frames | 304.7 MiB | 1,580.4 MiB | 553.7 MiB | 2,792.4 MiB |
+| 7,700,000 | 543.4 MiB, five frames | 609.5 MiB | 1,885.2 MiB | 355.1 MiB | 5,208.8 MiB |
+
+Limits of this measurement:
+
+- **Two sizes.** The rise while reading the reply was within the weighed need at these two sizes only, one run each.
+- **The whole run is not what the check weighs.** The whole run's peak includes this party's own masking before the reply, which the terms-exchange check does not weigh and this measurement does not compare.

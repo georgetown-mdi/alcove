@@ -165,6 +165,26 @@ test("a frame handed to a parked receive is not counted against the byte bound",
   expect(await conn.receive()).toHaveLength(5);
 });
 
+test("a held byte bound admits frames up to it, never lowers the bound, and clears to the built one", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  conn.holdInboundQueueBytes(20);
+  for (let frame = 0; frame < 4; frame++)
+    controls.deliver(new Uint8Array(5), 5); // 20 bytes queued
+  for (let frame = 0; frame < 4; frame++)
+    expect(await conn.receive()).toHaveLength(5);
+  conn.holdInboundQueueBytes(4);
+  controls.deliver(new Uint8Array(5), 5);
+  controls.deliver(new Uint8Array(5), 5); // 10 bytes queued, within the built bound
+  expect(await conn.receive()).toHaveLength(5);
+  expect(await conn.receive()).toHaveLength(5);
+  conn.holdInboundQueueBytes(20);
+  conn.holdInboundQueueBytes(undefined);
+  controls.deliver(new Uint8Array(6), 6);
+  controls.deliver(new Uint8Array(6), 6); // 12 bytes queued, over the built 10
+  expect(await conn.receive()).toHaveLength(6);
+  await expectRejectionKind(conn.receive(), "protocol");
+});
+
 test("a structured message is charged the length it was received at, as a binary one is", async () => {
   const { conn, controls } = makeQueued({ byteCapacity: 10 });
   controls.deliver({ type: "hello" }, 4);
