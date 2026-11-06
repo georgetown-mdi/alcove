@@ -1,0 +1,20 @@
+- Single-pass messages 1 and 2 are not split; the single-pass dataset ceiling below keeps each within one frame. -> Single-pass messages 1 and 2 are sent in parts only when their caps pass the per-frame bound ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- - -> A message whose cap passes the per-frame bound is sent in parts instead ([Single-pass messages in parts](#single-pass-messages-in-parts)).
+- - -> Single-pass messages in parts
+- - -> Single-pass message 1 or message 2 is sent in parts when the cap the counts derive for it is larger than the largest frame the partner's per-frame bound admits after the channel's envelope, on a connection stating no file-sync bound (`singlePassMessageInParts`, `packages/core/src/psi/link.ts`).
+- - -> Otherwise it is the one frame [above](#linkage-strategies-cascade-and-single-pass), so a message whose cap is within the bound is byte-identical in either case.
+- - -> Message 1's cap is the request cap, `singlePassRequestByteCap`, and message 2's is the reply cap once the request is built, `singlePassReplyByteCap` ([The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
+- - -> Both parties derive the decision from the same cap and the same stated bound, so each reads a message in the layout it was sent in.
+- - -> Over file-sync each message stays one frame, held to the message file.
+- - -> **Message 1 in parts** is the request, sent as a PSI set is, under the part header [above](#a-psi-set-is-sent-in-parts).
+- - -> The sender holds its declared length, at its first part, to the request cap and to the combined bound.
+- - -> **Message 2 in parts** is three sets in turn, each sent as a PSI set is: the setup, the response, and the tail, which is part (c), the `uint32` row count, followed by part (d), the index table, as in the one frame.
+- - -> The `uint32` lengths of parts (a) and (b) are not sent, since each part header states its set's length.
+- - -> **Message 2's bound.**
+- - -> The reply in parts is counted at the length of the one frame it replaces, so one reply cap holds both layouts.
+- - -> At each set's first part the receiver holds its declared length to what the reply cap leaves after the two `uint32` lengths and the sets before it, and the response to the request it sent as well.
+- - -> **What the receiver joins.**
+- - -> It hands the setup's parts to the engine's streamed match as they arrive, as a cascade round's setup, and joins the response and the tail.
+- - -> The response is joined because the engine's match takes the whole response, as a cascade round's does.
+- - -> Each refusal [above](#a-psi-set-is-sent-in-parts) applies to each set.
+- - -> Known-answer vectors: each reply frame's `partsHex` in `packages/core/test/vectors/index-table-vectors.json`, replayed by `packages/core/test/psi/indexTableVectors.test.ts`.

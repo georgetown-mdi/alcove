@@ -161,7 +161,7 @@ The cascade above can be realized on the wire in two ways, chosen by the mandato
 
 Both strategies match a per-record candidate set -- a `split_on` fan-out, a `generate_fuzzy_comparisons` expansion, or a key declaring `swap` -- by different routes to the one table: the single-pass receiver resolves it alone from the index table it already holds, and a cascade round resolves it on both parties from the grouping its two frames hold ([Per-round candidacy under cascade](#per-round-candidacy-under-cascade)). Terms naming a strategy whose resolution is unwritten are refused at validation rather than narrowed to a single candidate or promoted to the other strategy (see [Fan-out runs under both linkage strategies](#fan-out-runs-under-both-linkage-strategies)).
 
-The exchange is at most three messages, regardless of key count -- message 3 is suppressed entirely in the one blindness case below, leaving two. Message 2 packs everything the sender owes into a **single binary frame**: on a high-latency channel each frame costs a round trip (file-sync gates each send on the peer consuming the previous one), so combining the sender's reply into one frame holds the whole exchange at three round trips rather than one per piece. The transport holds one binary blob or one JSON object per frame, never the two mixed, so the record count is packed into the binary frame rather than sent as its own JSON frame.
+The exchange is at most three messages, regardless of key count -- message 3 is suppressed entirely in the one blindness case below, leaving two. Message 2 packs everything the sender owes into a **single binary frame**: on a high-latency channel each frame costs a round trip (file-sync gates each send on the peer consuming the previous one), so combining the sender's reply into one frame holds the whole exchange at three round trips rather than one per piece. The transport holds one binary blob or one JSON object per frame, never the two mixed, so the record count is packed into the binary frame rather than sent as its own JSON frame. A message whose cap passes the per-frame bound is sent in parts instead ([Single-pass messages in parts](#single-pass-messages-in-parts)).
 
 1. **receiver -> sender** -- the receiver's PSI request over its distinct-value union (encrypted once under the receiver's key).
 2. **sender -> receiver** -- a single binary frame packing four parts in order (all integers little-endian):
@@ -225,7 +225,7 @@ The same abort can reach a partner parked on a receive that awaits a JSON frame 
 
 #### A PSI set is sent in parts
 
-A cascade or count-only round sends each of its PSI sets -- the setup, the request, and the response -- as one or more parts, each its own binary frame (`sendPsiSet` and `receivePsiSet`, `packages/core/src/psi/psiSetParts.ts`). The receiver joins a request's or a response's parts before the element scan and the decode, which see the whole set as they would a set sent in one frame. It does not join a setup's parts: it checks each part's header, scans the part, and hands it to the engine's streamed match as it arrives (`receivePsiSetInPieces`), and the scan, carried from part to part, counts and refuses as it would over the joined set ([The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), the streamed match). Single-pass messages 1 and 2 are not split; the single-pass dataset ceiling below keeps each within one frame.
+A cascade or count-only round sends each of its PSI sets -- the setup, the request, and the response -- as one or more parts, each its own binary frame (`sendPsiSet` and `receivePsiSet`, `packages/core/src/psi/psiSetParts.ts`). The receiver joins a request's or a response's parts before the element scan and the decode, which see the whole set as they would a set sent in one frame. It does not join a setup's parts: it checks each part's header, scans the part, and hands it to the engine's streamed match as it arrives (`receivePsiSetInPieces`), and the scan, carried from part to part, counts and refuses as it would over the joined set ([The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), the streamed match). Single-pass messages 1 and 2 are sent in parts only when their caps pass the per-frame bound ([Single-pass messages in parts](#single-pass-messages-in-parts)).
 
 **The part header.** Every part, the only part of a set that fits one frame included, begins with a 16-byte header, big-endian:
 
@@ -255,6 +255,21 @@ The rest of the part is the next slice of the set's bytes, in order. An empty se
 - A part with no set bytes, unless it is the only part of an empty set, so every part before the last holds payload and a partner cannot keep the receiver reading empty parts.
 
 An abort frame in place of any part ends the round as a peer termination, and any other non-binary frame is a `protocol` error, as [above](#an-abort-arriving-where-a-round-awaits-binary). The part header is a wire-format delta within `PROTOCOL_VERSION` 1, as [Wire-format deltas](#wire-format-deltas-existing-frames-only-and-no-version-bump) states for deltas below `1.0.0`; its vectors are among those `check:protocol-version-bump` pins.
+
+#### Single-pass messages in parts
+
+Single-pass message 1 or message 2 is sent in parts when the cap the counts derive for it is larger than the largest frame the partner's per-frame bound admits after the channel's envelope, on a connection stating no file-sync bound (`singlePassMessageInParts`, `packages/core/src/psi/link.ts`).
+Otherwise it is the one frame [above](#linkage-strategies-cascade-and-single-pass), so a message whose cap is within the bound is byte-identical in either case.
+Message 1's cap is the request cap, `singlePassRequestByteCap`, and message 2's is the reply cap once the request is built, `singlePassReplyByteCap` ([The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
+Both parties derive the decision from the same cap and the same stated bound, so each reads a message in the layout it was sent in.
+Over file-sync each message stays one frame, held to the message file.
+
+- **Message 1 in parts** is the request, sent as a PSI set is, under the part header [above](#a-psi-set-is-sent-in-parts). The sender holds its declared length, at its first part, to the request cap and to the combined bound.
+- **Message 2 in parts** is three sets in turn, each sent as a PSI set is: the setup, the response, and the tail, which is part (c), the `uint32` row count, followed by part (d), the index table, as in the one frame. The `uint32` lengths of parts (a) and (b) are not sent, since each part header states its set's length.
+- **Message 2's bound.** The reply in parts is counted at the length of the one frame it replaces, so one reply cap holds both layouts. At each set's first part the receiver holds its declared length to what the reply cap leaves after the two `uint32` lengths and the sets before it, and the response to the request it sent as well.
+- **What the receiver joins.** It hands the setup's parts to the engine's streamed match as they arrive, as a cascade round's setup, and joins the response and the tail. The response is joined because the engine's match takes the whole response, as a cascade round's does. Each refusal [above](#a-psi-set-is-sent-in-parts) applies to each set.
+
+Known-answer vectors: each reply frame's `partsHex` in `packages/core/test/vectors/index-table-vectors.json`, replayed by `packages/core/test/psi/indexTableVectors.test.ts`.
 
 #### A list of matched records is sent in parts
 

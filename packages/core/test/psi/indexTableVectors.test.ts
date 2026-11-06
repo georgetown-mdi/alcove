@@ -2,16 +2,21 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "vitest";
 
+import { createMessagePipe } from "../../src/connection/messageConnection";
 import { FAN_OUT_CANDIDATES_PER_ELEMENT } from "../../src/fanOutFunctions";
 import {
   decodeFixedWidthIndexTable,
   decodeInt32LE,
   decodeRaggedIndexTable,
   decodeSinglePassReply,
+  decodeSinglePassReplyTail,
   encodeInt32LE,
   encodeSinglePassReply,
+  encodeSinglePassReplyTail,
   getSortedDistinctValueIndices,
+  singlePassReplyParts,
 } from "../../src/psi/link";
+import { receivePsiSet } from "../../src/psi/psiSetParts";
 
 import type { KeyCells, LocalKeyColumn } from "../../src/psi/link";
 
@@ -75,6 +80,8 @@ interface IndexTableVectors {
     responseHex: string;
     recordCount: number;
     frameHex: string;
+    partPayloadBytes: number;
+    partsHex: Array<string>;
   }>;
 }
 
@@ -268,6 +275,41 @@ describe("single-pass index-table layout vectors", () => {
           pinned.recordCount,
         ),
       ).toEqual(pinned.cells);
+    },
+  );
+
+  test.each(vectors.replyFrames.map((frame) => [frame.name, frame] as const))(
+    "%s: message 2 in parts is the pinned frames, and they join back into its fields",
+    async (_name, entry) => {
+      const pinned = vectors.tables.find(
+        (each) => each.name === entry.table,
+      ) as Table;
+      const setup = fromHex(entry.setupHex);
+      const response = fromHex(entry.responseHex);
+      const parts = [
+        ...singlePassReplyParts(
+          setup,
+          response,
+          encodeSinglePassReplyTail(entry.recordCount, pinned.words),
+          entry.partPayloadBytes,
+        ),
+      ];
+      expect(parts.map(hex)).toEqual(entry.partsHex);
+
+      const [a, b] = createMessagePipe();
+      for (const part of entry.partsHex) await a.send(fromHex(part));
+      const bound = Number.MAX_SAFE_INTEGER;
+      expect(hex(await receivePsiSet(b, "client", "serverSetup", bound))).toBe(
+        entry.setupHex,
+      );
+      expect(hex(await receivePsiSet(b, "client", "response", bound))).toBe(
+        entry.responseHex,
+      );
+      const tail = decodeSinglePassReplyTail(
+        await receivePsiSet(b, "client", "reply tail", bound),
+      );
+      expect(tail.numRecords).toBe(entry.recordCount);
+      expect(Array.from(tail.distinctValueIndices)).toEqual(pinned.words);
     },
   );
 });

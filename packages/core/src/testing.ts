@@ -79,8 +79,10 @@ export {
   decodeSinglePassReply,
   encodeInt32LE,
   encodeSinglePassReply,
+  encodeSinglePassReplyTail,
   getSortedDistinctValueIndices,
   linkViaPSI,
+  singlePassReplyParts,
 } from "./psi/link.js";
 export { FAN_OUT_CANDIDATES_PER_ELEMENT } from "./fanOutFunctions.js";
 // The single-pass link a sweep of scripts/single-pass-bench.mjs runs on each
