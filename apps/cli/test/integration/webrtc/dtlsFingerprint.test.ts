@@ -9,10 +9,11 @@ import type { RefusingStunServer } from "./refusingStunServer";
 
 /**
  * werift's check of the remote DTLS certificate against the `a=fingerprint`
- * line of the SDP the peer was handed. The CLI's `webrtc` channel adds no
- * application-layer encryption, so this check is what binds the data channel
- * to the description that negotiated it. The assumption and its
- * re-verification on a bump are in docs/spec/DEPENDENCY_PINS.md.
+ * line of the SDP the peer was handed. The CLI requests the application-layer
+ * encryption on every channel, `webrtc` included, and DTLS below it still
+ * protects the data channel against the network path, so a session to a
+ * certificate the description did not name must not complete. The assumption
+ * and its re-verification on a bump are in docs/spec/DEPENDENCY_PINS.md.
  *
  * Two real werift peers meet over loopback with host candidates only, as in
  * transport.test.ts, handing each other their descriptions directly.
