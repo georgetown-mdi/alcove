@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-04"
+last_reviewed: "2026-11-06"
 ---
 
 # Alcove security
@@ -294,7 +294,7 @@ The AEAD construction is in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#appli
 
 The wrap begins once the key exchange has produced the session key. Three kinds of artifact sit outside it, and none holds exchange data or linkage identifiers:
 
-- **The key-exchange handshake frames** -- the ephemeral public keys and the confirmation MACs. In a shared folder they are ordinary files; on SFTP the SSH session protects them. The handshake is authenticated, so tampering with them fails the exchange.
+- **The key-exchange handshake frames** -- each party's version hello, ephemeral public key and request-encryption flag, the confirmation MACs, the rotation-history proofs, the initiator's wrapped rotation value and previous-secret flag, and, on a handshake that fails, an abort that can hold a behind notice ([PROTOCOL.md](spec/PROTOCOL.md#p-256-authenticated-key-exchange), Message flow). In a shared folder they are ordinary files; on SFTP the SSH session protects them. The handshake is authenticated, so tampering with them fails the exchange.
 - **The rendezvous hello and joining files**, written before the key exchange, which hold the two bilateral mode flags.
 - **The abort marker** a failing party leaves for its partner, which holds a version marker and one token derived from the session key.
 
