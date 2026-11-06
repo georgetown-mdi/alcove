@@ -39,9 +39,9 @@ const MAX_REGISTRAR_REASON_LENGTH = 300;
 
 /**
  * The longest `Retry-After` wait read off an answer, in seconds; a longer one
- * is not read. An arbitrary working value, raised on request: the registrar's
- * longest wait is a row's 70-minute lifetime (infra/relay/README.md,
- * Enrollment without a token).
+ * is not read. An arbitrary working value, not derived, raised on request. The
+ * registrar's own waits end by a row's 70-minute lifetime at the latest
+ * (infra/relay/README.md, Enrollment without a token), well under it.
  */
 export const MAX_REGISTRAR_RETRY_AFTER_SECONDS = 86_400;
 
