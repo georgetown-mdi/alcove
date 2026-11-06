@@ -643,18 +643,18 @@ export function leftBehindConfirm(
   };
 }
 
-/** Where to check the record and its keys later. The link opens a new tab:
+/** Where to check the record, using its keys. The link opens a new tab:
  * navigating this page away would discard a one-off run's only copy of its
  * downloads. */
 function RecordPurposeNote() {
   return (
     <p className={styles.small}>
-      Check the record and keys later on the{" "}
+      Check the record on the{" "}
       <Link to="/verify" target="_blank" rel="noreferrer">
         Verify page
         <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
-      </Link>
-      .
+      </Link>{" "}
+      with the keys.
     </p>
   );
 }
