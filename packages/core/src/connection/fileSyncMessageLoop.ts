@@ -1437,7 +1437,9 @@ export class FileSyncMessageLoop {
                     // emitting it here would deliver it again on every cycle.
                     throw new UsageError(PARTNER_MESSAGE_DELETE_FAILED, {
                       cause: chainDetailCauses(
-                        [`message file: ${messageFile.name}`],
+                        [
+                          `message file: ${redactPrivateKeyMaterial(messageFile.name)}`,
+                        ],
                         deleteErr,
                       ),
                     });

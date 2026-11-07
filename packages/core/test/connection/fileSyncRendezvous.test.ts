@@ -47,6 +47,7 @@ import {
   sanitizeForDisplay,
   DISPLAY_TRUNCATION_MARKER,
   DEFAULT_MAX_DISPLAY_LENGTH,
+  COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "../../src/utils/sanitizeForDisplay";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { cancellableDelay } from "../../src/connection/fileSyncConstants";
@@ -627,7 +628,9 @@ describe("readControlFileWithGate", () => {
     // unconditional "remove it" would point the operator at that partner's file.
     expect((thrown as Error).message).toContain("Re-run");
     expect((thrown as Error).message).toContain("remove only if it persists");
-    expect((thrown as Error).message).toContain(helloPath);
+    expect(((thrown as Error).cause as Error).message).toBe(
+      `peer hello: ${helloPath}`,
+    );
   });
 
   test("attributes no residue to a hello that appeared during the run", async () => {
@@ -654,7 +657,9 @@ describe("readControlFileWithGate", () => {
     expect((thrown as Error).message).not.toContain("left over");
     expect((thrown as Error).message).toContain("appeared during this run");
     expect((thrown as Error).message).toContain("Re-run");
-    expect((thrown as Error).message).toContain(helloPath);
+    expect(((thrown as Error).cause as Error).message).toBe(
+      `peer hello: ${helloPath}`,
+    );
   });
 
   test.each([
@@ -663,9 +668,9 @@ describe("readControlFileWithGate", () => {
   ] as const)(
     "the whole %s terminal message survives the display boundary for a realistic path",
     async (provenance, recoveryStep) => {
-      // Every cause-chain link is truncated at DEFAULT_MAX_DISPLAY_LENGTH where
-      // it is rendered, so the operative sentence, the recovery step, AND a
-      // realistically long path must all fit inside one link.
+      // Every cause-chain link is capped where it is rendered: the operative
+      // sentence, the recovery step, and a realistically long path all arrive
+      // uncut.
       const filePath =
         "/srv/exchange/partner-drop/2f1c9a04-3b7e-4f6a-9d21-88ca0e6b5477-hello-48.json";
       const client = stubClient(async () => {
@@ -691,42 +696,55 @@ describe("readControlFileWithGate", () => {
     },
   );
 
-  // The path budget is what the fixed text leaves inside one 256-character
-  // cause-chain link, and it is the whole reason both texts are terse. Measured
-  // rather than asserted in a comment: a text that grows past the budget cuts
-  // the tail of the very path the recovery step tells the operator to act on,
-  // and prose saying "only a pathologically long path can be cut" cannot fail
-  // when that stops being true. The floor is set well above a realistic
-  // rendezvous path (the ~92 characters of the case above) so ordinary
-  // directory layouts have margin, and any edit that eats into it reddens here.
-  const MIN_PATH_BUDGET = 100;
-  test.each(["presentAtEntry", "appearedAfterEntry"] as const)(
-    "the %s message leaves a usable path budget inside one rendered link",
-    async (provenance) => {
-      const client = stubClient(async () => {
+  const timedOutRead = (
+    filePath: string,
+    provenance: Parameters<typeof readControlFileWithGate>[6],
+  ) =>
+    readControlFileWithGate(
+      stubClient(async () => {
         throw new Error("still syncing");
-      });
-      // The shortest name the gate reads: an empty id, so only the type word
-      // and byte count it needs remain, and they are subtracted below.
-      const minimalName = sizedControlName("", "hello", listedSize);
-      const thrown = await readControlFileWithGate(
-        client,
-        minimalName,
-        listedSize,
-        new Date(Date.now() - 1),
-        1,
-        HelloEnvelopeSchema,
-        provenance,
-        signal(),
-      ).then(
-        () => undefined,
-        (err: unknown) => err,
+      }),
+      filePath,
+      listedSize,
+      new Date(Date.now() - 1),
+      1,
+      HelloEnvelopeSchema,
+      provenance,
+      signal(),
+    ).then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
+
+  // A path past the per-link cap is cut on its own link, and the summary with
+  // its recovery step renders whole ahead of it.
+  test.each(["presentAtEntry", "appearedAfterEntry"] as const)(
+    "the %s message renders whole when the path is past the link budget",
+    async (provenance) => {
+      const filePath = `/${"d".repeat(COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH)}/${sizedControlName("peer", "hello", listedSize)}`;
+      const thrown = await timedOutRead(filePath, provenance);
+
+      expect(thrown?.message).not.toContain(filePath);
+      const links = sanitizeErrorForDisplay(thrown).split("\ncaused by: ");
+      expect(links).toHaveLength(2);
+      expect(links[0]).toBe(thrown?.message);
+      expect(links[1].startsWith("peer hello: /ddd")).toBe(true);
+      expect(links[1].endsWith(DISPLAY_TRUNCATION_MARKER)).toBe(true);
+    },
+  );
+
+  // Checked on the error object, not the rendering: the display sink redacts
+  // every link again, so only the raw link shows where redaction ran.
+  test.each(["presentAtEntry", "appearedAfterEntry"] as const)(
+    "the %s message redacts a key marker in the path where it is composed",
+    async (provenance) => {
+      const filePath = `in/${sizedControlName("-----BEGIN RSA PRIVATE KEY-----", "hello", listedSize)}`;
+      const thrown = await timedOutRead(filePath, provenance);
+
+      expect(thrown?.message).not.toContain("BEGIN");
+      expect((thrown?.cause as Error).message).toBe(
+        "peer hello: in/[redacted private key]",
       );
-      const fixedTextLength =
-        (thrown as Error).message.length - minimalName.length;
-      expect(
-        DEFAULT_MAX_DISPLAY_LENGTH - fixedTextLength,
-      ).toBeGreaterThanOrEqual(MIN_PATH_BUDGET);
     },
   );
 });
@@ -3052,7 +3070,7 @@ describe("FileSyncRendezvous bounded hello read", () => {
     const elapsed = Date.now() - started;
 
     expect((err as Error).message).toContain("left over");
-    expect((err as Error).message).toContain(helloName("zzz"));
+    expect(sanitizeErrorForDisplay(err)).toContain(helloName("zzz"));
     // Well inside the 5 s budget the pre-bound read would have consumed.
     expect(elapsed).toBeLessThan(2000);
     // Not this party's to remove: the leftover is left exactly as found.
@@ -3113,7 +3131,7 @@ describe("FileSyncRendezvous bounded hello read", () => {
 
       expect((err as Error).message).not.toContain("left over");
       expect((err as Error).message).toContain("appeared during this run");
-      expect((err as Error).message).toContain(peerHello);
+      expect(sanitizeErrorForDisplay(err)).toContain(peerHello);
       // Still bounded by the read window, not the peer budget.
       expect(Date.now() - started).toBeLessThan(2000);
       expect(files.has(`${DIR}/${peerHello}`)).toBe(true);
@@ -3273,6 +3291,26 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
 
     expect(Date.now() - started).toBeLessThan(2000);
     expect(files.has(`${DIR}/${helloName("zzz", retain)}`)).toBe(true);
+  });
+
+  // Checked on the error object, not the rendering: the display sink redacts
+  // the message again, so only the raw message shows where redaction ran.
+  test("redacts a key marker in the leftover's name where the refusal is composed", async () => {
+    const files = new Map<string, Buffer>();
+    placePeerHello(files, "-----BEGIN RSA PRIVATE KEY-----", flags);
+    const p = makeParty("aaa", { ...flags, ...budget() }, files);
+
+    const err = await p.rdv.run(p.scope).then(
+      () => undefined,
+      (e: unknown) => e as Error,
+    );
+
+    expect(err).toBeInstanceOf(UsageError);
+    expect(err?.message).toContain("never answered");
+    expect(err?.message).not.toContain("BEGIN");
+    expect(err?.message).toMatch(
+      /no other exchange uses this path: \[redacted private key\]$/,
+    );
   });
 
   test("is not armed for a peer hello that appears after entry", async () => {
