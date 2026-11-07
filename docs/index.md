@@ -43,7 +43,7 @@ How many records each one handles, and roughly how long an exchange takes: [How 
 
 - [Security policy](../SECURITY.md): which versions receive fixes, and how to report a vulnerability.
   Do not report a vulnerability in a public issue: use GitHub's private vulnerability reporting, as the policy describes.
-- [Incident response](INCIDENT_RESPONSE.md): how a reported vulnerability is handled.
+- [Incident response](INCIDENT_RESPONSE.md): how a reported vulnerability, or an incident on a service the project runs, is handled.
 
 ## Governance and contributing
 
