@@ -2,7 +2,7 @@
 
 Alcove: Open Source Encrypted Matching and Sharing
 
-Alcove is an open-source tool that lets two organizations find the records (individuals) they have in common with the option of exchanging data about those shared records, without either organization revealing anything about the records they do not share. It performs privacy-preserving record linkage (PPRL) using a cryptographic protocol called private set intersection (PSI).
+Alcove is an open-source tool that lets two organizations find the records (individuals) they have in common with the option of exchanging data about those shared records, without either organization revealing the records they do not share; each learns how many records the other holds. It performs privacy-preserving record linkage (PPRL) using a cryptographic protocol called private set intersection (PSI).
 
 Guides and documentation: [data-bridge.org](https://data-bridge.org).
 
@@ -31,10 +31,10 @@ To run the web app from source instead, see [apps/web/README.md](apps/web/README
 
 ## Key features
 
-- **Match without disclosure.** Each party keeps its full dataset private; the protocol reveals only which records the two parties have in common.
+- **Match without disclosure.** Each party keeps its full dataset private; the protocol reveals which records the two parties have in common and how many records each holds.
 - **Optional data exchange for matched records.** Beyond identifying matches, parties can share selected columns (for example, program enrollment dates or contact information).
 - **Configurable matching.** Records are matched on linkage keys built from identifier fields such as name, date of birth, or SSN, with built-in data cleaning and standardization so both parties' data is compared consistently.
-- **No third party holds your data.** The web app encrypts data in each party's browser before sending it to the other; the command line app uses an SFTP server or shared folder that you control, or exchanges encrypted data with a partner's browser over WebRTC.
+- **No third party holds your data.** The web app encrypts data in each party's browser before sending it to the other; the command line app uses an SFTP server or shared folder that you control, or exchanges encrypted data with a partner's browser over WebRTC. What is sent, stored, and logged, and to whom: [PRIVACY.md](PRIVACY.md).
 - **A record of every exchange.** Each completed exchange produces a local record of what was shared, which you can retain for disclosure documentation.
 
 ## Example use cases
