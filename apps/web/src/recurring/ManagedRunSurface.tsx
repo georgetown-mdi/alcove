@@ -11,7 +11,10 @@ import { useOnlineStatus } from "@components/useOnlineStatus";
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
 import { matchingKeyTurnedOffByWrite } from "@psi/managed/managedExchangeRecord";
 
-import { deriveManagedBackupState } from "@psi/managed/managedBackupState";
+import {
+  automaticBackupOnMarker,
+  deriveManagedBackupState,
+} from "@psi/managed/managedBackupState";
 
 import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
 
@@ -520,6 +523,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
                   deriveManagedBackupState(load.backupMarker).kind ===
                   "backed-up"
                 }
+                folderBackup={automaticBackupOnMarker(load.backupMarker)}
                 onDeleted={() => void navigate({ to: "/saved" })}
               />
             </div>

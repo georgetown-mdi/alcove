@@ -340,6 +340,9 @@ describe("a live no-show is read against the evidence standing at launch", () =>
       "Your partner did not arrive",
     );
     expect(app.container.textContent).not.toContain("nothing left this device");
+    expect(app.container.textContent).not.toContain(
+      "none of your records left this device",
+    );
 
     // The second run reached the store and stamped its own no-show over the
     // storage entry: without this the assertions above would pass against the

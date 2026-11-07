@@ -81,10 +81,9 @@ export interface ManagedStandingConditionView {
 export const STANDING_CONDITION_CLEAR_LABEL = "Clear this";
 
 /** The line a tier no run clears ends on: the condition outlives the runs
- * after it, so an operator does not read a state nothing has answered as
- * settled. */
-const STANDS_UNTIL =
-  "Runs since then do not settle it, including any that succeeded.";
+ * after it, so an operator does not take a state nothing has answered as
+ * resolved. */
+const STANDS_UNTIL = "A later run, even a successful one, does not clear this.";
 
 /**
  * The standing condition's view for a record, or `undefined` for a record holding
@@ -119,8 +118,8 @@ export function managedStandingConditionView(
         message:
           `A run on ${when} could not verify your partner, and this exchange ` +
           "was restored from a backup or key file since its last successful " +
-          "run. Such a secret can " +
-          "be one your partnership has rotated past, which explains it. " +
+          "run. A restored copy can hold an older secret your partnership " +
+          "no longer uses, which would explain the failure. " +
           `Re-invite your partner to reconnect. ${STANDS_UNTIL}`,
         clearance: "acknowledge",
       };
@@ -131,9 +130,9 @@ export function managedStandingConditionView(
         message:
           `A run on ${when} connected but could not verify your partner, and ` +
           "nothing on this device explains why. That can be an ordinary " +
-          "problem on your partner's side - or a sign someone is interfering, " +
-          "which is why it is still here: confirm with your partner before you " +
-          `re-invite them. ${STANDS_UNTIL}`,
+          "problem on your partner's side, or a sign someone is interfering. " +
+          "Confirm with your partner before you re-invite them. " +
+          STANDS_UNTIL,
         clearance: "confirmation",
       };
   }

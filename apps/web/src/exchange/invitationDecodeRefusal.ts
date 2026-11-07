@@ -1,5 +1,4 @@
 import {
-  INVITATION_NEWER_REMEDY,
   InvitationDecodeError,
   KeyFoldCollisionError,
   NestingDepthExceededError,
@@ -19,8 +18,9 @@ import type { Displayable } from "@alcove/core";
  * - `damaged` -- the string was cut or changed in transit (too short, not
  *   base64url, a checksum mismatch); copy the whole link again or ask for it
  *   again.
- * - `newer` -- a newer version of Alcove made the invitation; updating this
- *   one opens it ({@link NEWER_INVITATION_BODY}).
+ * - `newer` -- a newer version of Alcove made the invitation; reload for the
+ *   newest version, then ask the partner which version made it
+ *   ({@link NEWER_INVITATION_BODY}).
  * - `unreadable` -- the string arrived intact but is not an invitation this
  *   build reads; only a new one from the partner helps.
  * - `refused` -- a readable invitation this page will not run (expired, an
@@ -36,10 +36,16 @@ export type InvitationDecodeRefusal =
   | { kind: "unreadable"; detail: Displayable }
   | { kind: "refused"; message: Displayable };
 
-/** The body of the `newer` refusal: what happened, then the update remedy. */
+/** The body of the `newer` refusal: what happened, then the browser's remedy.
+ * A browser updates by reloading, and where the hosted build is itself older
+ * than the partner's tool only the partner can say which version to use, so
+ * core's update sentence (`INVITATION_NEWER_REMEDY`), which the command line
+ * states, is not the remedy here. */
 export const NEWER_INVITATION_BODY =
   "This invitation was made by a newer version of Alcove than this one. " +
-  INVITATION_NEWER_REMEDY;
+  "Reload this page to get the newest version, then open the invitation " +
+  "again. If it still fails, ask your partner which version of Alcove made " +
+  "the invitation.";
 
 const DAMAGED_FAILURES: ReadonlySet<InvitationDecodeError["failure"]> = new Set(
   ["tooShort", "notBase64Url", "checksumMismatch"],

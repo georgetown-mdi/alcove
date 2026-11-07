@@ -72,9 +72,10 @@ export function succeededRun(
 }
 
 /**
- * Record a run whose partner never arrived: no handshake ran and nothing left
- * this party. It has no `failureKind`, since a no-show is the absence of a run
- * and the failure tiering keys off the `"missed"` outcome alone.
+ * Record a run whose partner never arrived: no handshake ran and none of this
+ * party's records left it. It has no `failureKind`, since a no-show is the
+ * absence of a run and the failure tiering keys off the `"missed"` outcome
+ * alone.
  */
 export function missedRun(at: number): ManagedExchangeLastRun {
   return { at: new Date(at).toISOString(), outcome: "missed" };

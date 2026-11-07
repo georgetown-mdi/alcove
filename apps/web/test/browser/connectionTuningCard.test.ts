@@ -7,6 +7,7 @@ import { createElement, useState } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  LOW_POLL_INTERVAL_ADVISORY,
   PEER_TIMEOUT_LABEL,
   SFTP_CONNECTION_TUNING,
   connectionTuningOptions,
@@ -105,5 +106,18 @@ describe("ConnectionTuningCard: a loaded duration shows as the file states it", 
       ...stated,
       peerTimeoutMs: 300_000,
     });
+  });
+});
+
+describe("ConnectionTuningCard: advisories", () => {
+  test("the advisories are titled by what they are about", async () => {
+    await renderLoaded({ pollIntervalMs: 500 });
+
+    await expect
+      .element(page.getByText("How these settings affect the SFTP server"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(LOW_POLL_INTERVAL_ADVISORY))
+      .toBeInTheDocument();
   });
 });

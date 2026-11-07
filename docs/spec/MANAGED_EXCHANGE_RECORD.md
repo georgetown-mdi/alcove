@@ -51,12 +51,17 @@ again. It is **not** a saved copy of the exchange's inputs or outputs:
 - **It never holds a match result.** The intersection and any received payload
   are the run's output, handled under the operator's data governance, not
   folded back into the managed record.
-- **It holds exactly one live shared secret at a time.** The secret is a linear
-  resource (see [The secret is a linear
+- **It holds the current shared secret, and after a cut run the previous
+  one.** The secret is a linear resource (see [The secret is a linear
   resource](#the-secret-is-a-linear-resource)); the record stores the current
-  rotated value and no prior value. Of each secret it retired it keeps only a
-  history verifier, from which the secret cannot be recovered
-  (`rotationHistory`).
+  rotated value. A run in which this party stored as the initiator also keeps
+  the secret that run used (`previousSharedSecret`) until the partner's first
+  frame after the terms exchange. The record holds it past the run only where
+  the run was cut before that frame or the removal failed, and a run cut before
+  the partner saved the rotated secret heals at the next one under it ([The
+  previous secret](PROTOCOL.md#the-previous-secret)).
+  Of each secret it retired it keeps only a history verifier, from which the
+  secret cannot be recovered (`rotationHistory`).
 
 ## Record shape
 
@@ -1566,17 +1571,19 @@ the scheduled runtime, or by the operator on an attended run.
 The persisted `sharedSecret` is the single most consequential field, because it
 is not an ordinary cache entry: it is a **linear resource**. After a successful
 run, both parties derive the same replacement secret at the terms exchange
-that follows the key exchange, and the old secret is retired; there is exactly one live
-secret shared between the two parties at any time, and neither party keeps the
-old one. Two consequences follow, and both are normative:
+that follows the key exchange, and the old secret is retired. The side that
+stores first, the initiator, keeps the old one as its [previous
+secret](PROTOCOL.md#the-previous-secret) until its partner's first frame after
+the terms exchange, so a run cut before the partner saved the replacement heals
+at the next run; a completed run drops it. Two consequences follow, and both are normative:
 
 ### Single-owner invariant
 
 A managed record's `sharedSecret` must be advanced (used to run, then rotated and
 re-persisted) by **one device only**. If two devices both hold a copy and both
 run, they fork the secret permanently: after the first device rotates, the second
-device's copy is stale, and no automatic reconciliation exists (there is no grace
-window; see [Desync detection and
+device's copy is stale, and no automatic reconciliation exists (a previous secret
+covers only a run cut between the two saves of one rotation; see [Desync detection and
 recovery](../notes/managed-exchange-design.md#desync-detection-and-recovery)). The guard on a
 single device is a cross-tab single-writer lock (Web Locks) held from a run's
 begin through the success stamp it writes, so **one exchange of a record is in

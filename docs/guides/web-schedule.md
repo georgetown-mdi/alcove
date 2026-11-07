@@ -135,7 +135,7 @@ You should see: **Run complete**, the downloads, and a line naming the results f
 
 ## When a run is missed
 
-"Your partner did not arrive" means nothing was exchanged and nothing left your computer. The app tries again at the next window, and no sooner: for a quarterly exchange, that is 91 days later.
+"Your partner did not arrive" means nothing was exchanged and none of your records left your computer. The app tries again at the next window, and no sooner: for a quarterly exchange, that is 91 days later.
 
 To run before then, agree on a time with your partner and each choose **Run exchange** on the exchange's page, once a folder is chosen.
 If misses repeat, compare the two schedules line by line, using the UTC time in **Copy this schedule for your partner**, and check this computer's clock.

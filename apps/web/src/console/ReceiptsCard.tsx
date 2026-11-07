@@ -575,7 +575,7 @@ export function ReceiptsCard({
           <Alert
             color="blue"
             icon={<IconInfoCircle aria-hidden />}
-            title="Worth knowing about these settings"
+            title="Where your signing key and receipt are kept"
           >
             <ul>
               {notices.map((advisory) => (

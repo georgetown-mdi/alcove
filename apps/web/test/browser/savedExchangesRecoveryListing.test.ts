@@ -25,6 +25,7 @@ import {
   deleteManagedExchange,
   listManagedExchanges,
   listManagedExchangesDiagnostic,
+  markManagedBackupIfCurrent,
   openManagedExchangeDatabase,
   recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
@@ -477,6 +478,34 @@ describe("recovery listing: the delete confirm's custody notes", () => {
         page.getByText("A backup file you exported stays in your custody", {
           exact: false,
         }),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("folder marker -> the recovery confirm names the folder and file a scheduled run wrote", async () => {
+    await mountReadFailedWith("Folder backed up", (record) =>
+      markManagedBackupIfCurrent(
+        record.id,
+        record.sharedSecret,
+        "2026-07-10T09:00:00.000Z",
+        {
+          kind: "folder",
+          folderName: "Riverbend exchange",
+          fileName: "folder-backed-up-backup.alcove.json",
+        },
+      ),
+    );
+
+    await page.getByRole("button", { name: "Remove" }).first().click();
+    await expect
+      .element(
+        page
+          .getByRole("dialog")
+          .getByText(
+            "this app wrote a backup of this exchange to the folder " +
+              "Riverbend exchange as folder-backed-up-backup.alcove.json",
+            { exact: false },
+          ),
       )
       .toBeInTheDocument();
   });

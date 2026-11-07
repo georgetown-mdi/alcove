@@ -15,6 +15,7 @@ import {
   createManagedExchange,
   getManagedExchange,
   listManagedExchanges,
+  markManagedBackupIfCurrent,
   persistManagedExchangeRotation,
 } from "@psi/managed/managedExchangeStore";
 
@@ -577,11 +578,56 @@ describe("saved list route: delete is a fully supported, always-available action
       .toBeInTheDocument();
     await expect
       .element(
-        page.getByText("remains a credential until the partnership rotates", {
-          exact: false,
-        }),
+        page.getByText(
+          "Until your partner removes their copy or one of you re-invites, " +
+            "anyone who can read the file can run this exchange as you.",
+          { exact: false },
+        ),
       )
       .toBeInTheDocument();
+    expect(page.getByText("rotates past", { exact: false }).query()).toBeNull();
+  });
+
+  test("a scheduled run's folder backup is named by folder and file, as written by this app", async () => {
+    const created = await createRunnableExchange(
+      newExchange({ label: "Folder backed up" }),
+    );
+    expect(
+      await markManagedBackupIfCurrent(
+        created.id,
+        created.sharedSecret,
+        "2026-07-10T09:00:00.000Z",
+        {
+          kind: "folder",
+          folderName: "Riverbend exchange",
+          fileName: "folder-backed-up-backup.alcove.json",
+        },
+      ),
+    ).toBe("marked");
+
+    app.render(createElement(SavedExchanges));
+
+    await expect
+      .element(page.getByText("Backed up as of", { exact: false }))
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Remove" }).click();
+
+    await expect
+      .element(
+        page
+          .getByRole("dialog")
+          .getByText(
+            "After a scheduled run, this app wrote a backup of this " +
+              "exchange to the folder Riverbend exchange as " +
+              "folder-backed-up-backup.alcove.json. Removing the exchange " +
+              "here leaves that file in place.",
+            { exact: false },
+          ),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByText("A backup file you exported", { exact: false }).query(),
+    ).toBeNull();
   });
 
   test("a never-backed-up exchange's confirm holds no custody note", async () => {

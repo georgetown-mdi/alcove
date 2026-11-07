@@ -1513,8 +1513,9 @@ the confirmation says the accounting cannot be read and is removed with the
 exchange. Removal is local: it does not notify your partner, whose copy stands
 until they remove it or a re-invite replaces it. It is not secret expiry: it
 erases this party's stored information whatever the secret's state. Removal
-covers the browser's storage only; an exported backup file is in your own
-custody, and you dispose of it (see [Moving the exchange to another
+covers the browser's storage only, so a backup file stays where it is: one you
+exported is in your own custody, and the backup a scheduled run wrote stays in
+the working folder, where the confirmation names it. You dispose of either (see [Moving the exchange to another
 device](#moving-the-exchange-to-another-device)).
 
 ## See also

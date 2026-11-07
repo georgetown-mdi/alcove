@@ -563,8 +563,8 @@ type BenignRerunOutcome =
  *
  * `"missed"` is the one state here a connection attempt reaches -- the wait for
  * the partner's runner spent its whole budget with nobody arriving -- and it
- * stays out of the transport bucket since no handshake ran and nothing left
- * this device.
+ * stays out of the transport bucket since no handshake ran and none of this
+ * party's records left this device.
  *
  * `"custody-unreadable"` is read before the input state because the run refuses
  * in that order (see {@link ./managedExchangeRun.ts}), and it is read off the

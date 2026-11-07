@@ -33,6 +33,7 @@ import { dateLabel } from "@psi/formatting";
 import { rowSideLabel } from "./savedExchangesModel";
 
 import type { ManagedExchangeDiagnosticEntry } from "@psi/managed/managedExchangeStore";
+import type { ManagedFolderBackupLocation } from "@psi/managed/managedBackupState";
 
 /** The label a row shows for an unreadable entry: nothing about it could be
  * parsed, so it displays as an unreadable record rather than an empty or guessed
@@ -107,6 +108,17 @@ export interface RecoveryRow {
   /** Whether an exported backup remains under the operator's custody, so the delete
    * confirm states the custody note. Survives record unreadability. */
   backedUp: boolean;
+  /** The backup a scheduled run wrote into the working folder, which the
+   * delete confirm names by folder and file. */
+  folderBackup?: ManagedFolderBackupLocation;
+}
+
+function folderBackupOf(entry: ManagedExchangeDiagnosticEntry): {
+  folderBackup?: ManagedFolderBackupLocation;
+} {
+  return entry.folderBackup !== undefined
+    ? { folderBackup: entry.folderBackup }
+    : {};
 }
 
 /** Derive one recovery row from a diagnostic entry. A readable entry shows
@@ -126,6 +138,7 @@ export function recoveryRow(
       laterVersion: true,
       stateUnreadable: false,
       backedUp: entry.backedUp,
+      ...folderBackupOf(entry),
     };
   if (entry.kind === "unreadable")
     return {
@@ -139,6 +152,7 @@ export function recoveryRow(
         : {}),
       stateUnreadable: false,
       backedUp: entry.backedUp,
+      ...folderBackupOf(entry),
     };
   const { essentials } = entry;
   return {
@@ -153,6 +167,7 @@ export function recoveryRow(
     laterVersion: false,
     stateUnreadable: entry.stateUnreadable === true,
     backedUp: entry.backedUp,
+    ...folderBackupOf(entry),
   };
 }
 
