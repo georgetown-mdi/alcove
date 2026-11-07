@@ -191,7 +191,8 @@ A `put` to any other name is a direct write, whose re-issue is below.
 `delete` maps a source-absent re-issue (`SSH_FX_NO_SUCH_FILE`) to success, since a pre-drop delete that landed reports the source gone.
 `rename` treats a re-issue whose source is gone (or a code-4 dest-exists) as success when `exists(dest)` confirms the destination, taking a present destination as this party's own landed attempt.
 Every rename destination is self-prefixed, but a name is a convention, not proof of who wrote the file.
-A file another writer of the directory planted there gives that writer nothing it could not do without the re-issue, as a server can answer a first rename with success without performing it.
+A server, which can answer a first rename with success without performing it, gains nothing by planting a file there, nor does another writer of the directory that can replace files in it.
+Where the directory lets only a file's owner remove it, a file another account has at the destination when a rename is re-issued is taken as this party's landed attempt.
 The converse does not hold and is not relied on: an absent destination is not evidence the rename failed.
 In delete mode the partner's consume-delete removes exactly this party's own self-prefixed write, so a rename that landed durably and was consumed inside the recovery window reports the state a rename that never landed reports -- source gone, destination absent, `SSH_FX_NO_SUCH_FILE` -- and no reading the adapter can take separates them (see "A write the transport cannot resolve" below).
 `createExclusive` resolves its own normalized `EEXIST` on re-issue as success, reusing the existing code-11 / code-4-via-`exists()` normalization; the narrow rendezvous-phase "two winners" race this admits is documented at the call site and verified benign (roles commit from hello-filename order before the lock, which only gates eager cleanup).

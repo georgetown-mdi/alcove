@@ -32,7 +32,8 @@
 - - -> The host-key types a connection offers are not configurable: `provider_options.algorithms` admits no `serverHostKey` (`SFTP_ALGORITHMS_ALLOWED_SUBKEYS`, `packages/core/src/connection/sftpConnect.ts`), and the offer includes `ssh-rsa`, whose signature uses SHA-1.
 - - -> A server that offers only `ssh-rsa` is negotiated with, and a pin binds the server's key, not the signature algorithm ([FIPS_SFTP_PROFILE.md](../FIPS_SFTP_PROFILE.md#host-key-types-cannot-be-constrained)).
 - - -> Every rename destination is self-prefixed, but a name is a convention, not proof of who wrote the file.
-- - -> A file another writer of the directory planted there gives that writer nothing it could not do without the re-issue, as a server can answer a first rename with success without performing it.
+- - -> A server, which can answer a first rename with success without performing it, gains nothing by planting a file there, nor does another writer of the directory that can replace files in it.
+- - -> Where the directory lets only a file's owner remove it, a file another account has at the destination when a rename is re-issued is taken as this party's landed attempt.
 - - -> **A stated limit: a payload's total is bounded only by its rows.**
 - - -> A payload part has no bound but the per-frame bound, and the receiver keeps a copy of each part's values until the run ends, so the partner's payload can total its declared row count times the per-frame bound, the row count at most the pairs in this party's matched table: 1,000 rows over WebRTC admit up to 268,435,456,000 bytes.
 - - -> A partner that sends that much ends the receiver's run on memory, and nothing is disclosed.

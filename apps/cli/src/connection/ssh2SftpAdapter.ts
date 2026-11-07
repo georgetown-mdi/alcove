@@ -3311,9 +3311,11 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
         // (SSH_FX_NO_SUCH_FILE) or a code-4 dest-exists. A present destination
         // is taken as our own landed attempt and resolves as success. Every
         // rename destination is self-prefixed, but a name does not prove the
-        // writer: a file another writer planted there gives it nothing it could
-        // not do without this re-issue, as a server can answer a first rename
-        // with success without performing it.
+        // writer. A server, which can answer a first rename with success
+        // without performing it, gains nothing by planting one, nor does another
+        // writer that can replace files in the directory; where only a file's
+        // owner may remove it, another account's file at the destination when
+        // the rename is re-issued is taken as ours (SFTP_SESSION_RECOVERY.md).
         //
         // The CONVERSE does not hold, and the arm below is what that costs. An
         // absent destination is not evidence the rename failed: in delete mode
