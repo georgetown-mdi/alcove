@@ -376,7 +376,7 @@ function setupCloseError(
       );
     case RelayCloseCode.idle:
       return new ConnectionError(
-        "The WebSocket relay closed the connection after an hour with no message. Start the exchange again.",
+        "The WebSocket relay closed the connection after more than two hours with no message. Start the exchange again.",
         "transport",
       );
     case RelayCloseCode.queueLimit:
@@ -407,7 +407,7 @@ function forwardingCloseError(event: CloseEvent): ConnectionError {
     );
   if (event.code === RelayCloseCode.idle)
     return new ConnectionError(
-      "the WebSocket relay closed the exchange after an hour with no message either way",
+      "the WebSocket relay closed the exchange after more than two hours with no message either way",
       "transport",
     );
   if (event.code === RelayCloseCode.goingAway)

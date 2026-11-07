@@ -38,6 +38,8 @@ import {
   durationFieldForMs,
   durationUnitChoices,
   ignoreFilesOlderThanDefaultMs,
+  inactivityTimeoutDescription,
+  inactivityTimeoutPlaceholder,
   peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
   withConnectionTuning,
@@ -677,6 +679,24 @@ describe("the placeholder shows core's own default in the chosen unit", () => {
       expect(peerTimeoutDefaultMs(capabilities)).toBe(expected);
     },
   );
+
+  test("the quiet-partner field states the webrtc default as at least an hour, from the record counts", () => {
+    expect(inactivityTimeoutPlaceholder(WEBRTC_CONNECTION_TUNING, "m")).toBe(
+      "at least 60",
+    );
+    expect(inactivityTimeoutDescription(WEBRTC_CONNECTION_TUNING)).toContain(
+      "Left blank, it is set from both sides' record counts and is at least an hour.",
+    );
+    for (const capabilities of [
+      SFTP_CONNECTION_TUNING,
+      FILEDROP_CONNECTION_TUNING,
+    ]) {
+      expect(inactivityTimeoutPlaceholder(capabilities, "m")).toBe("60");
+      expect(inactivityTimeoutDescription(capabilities)).not.toContain(
+        "record counts",
+      );
+    }
+  });
 
   // A rounded bare number here would misstate the default, or read "0", a
   // value the field itself refuses. The placeholder states the default in

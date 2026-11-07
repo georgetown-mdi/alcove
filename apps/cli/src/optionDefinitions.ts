@@ -550,7 +550,9 @@ export function addCommonBootstrapOptions(
         "folder may go unanswered, " +
         "before the exchange fails " +
         `(maximum: ${MAX_TIMEOUT_SECONDS / 86_400}d); overrides ` +
-        "connection.options.inactivity_timeout_ms. " +
+        "connection.options.inactivity_timeout_ms. Unset on webrtc, the " +
+        "wait is set from both parties' record counts, at least 1h; a " +
+        "value given replaces it. " +
         DURATION_VALUE_HELP,
     })
     .option("polling-frequency", {

@@ -56,6 +56,11 @@ export const POLL_INTERVAL_LINES = [
 
 const POLL_INTERVAL_KEY = "poll_interval_ms";
 
+const WEBRTC_INACTIVITY_LINES = [
+  `Unset, ${INACTIVITY_TIMEOUT_KEY} is set from both parties' record counts,`,
+  `at least the ${DEFAULT_PEER_INACTIVITY_TIMEOUT_MS} shown; a value set here replaces it.`,
+];
+
 /**
  * The tuning fields shown as a commented example, in render order. A `webrtc`
  * block shows only `peer_timeout_ms` and `inactivity_timeout_ms`, the two
@@ -107,7 +112,10 @@ export function annotateConnectionGuidance(doc: YAML.Document): void {
 
   const intro = shown.some(([key]) => key === POLL_INTERVAL_KEY)
     ? [...TUNING_LINES, ...POLL_INTERVAL_LINES]
-    : TUNING_LINES;
+    : connection.get("channel") === "webrtc" &&
+        shown.some(([key]) => key === INACTIVITY_TIMEOUT_KEY)
+      ? [...TUNING_LINES, ...WEBRTC_INACTIVITY_LINES]
+      : TUNING_LINES;
   const example = shown.map(([key, value]) => `${key}: ${value}`);
   if (alreadySet !== undefined) {
     alreadySet.comment = commentBlock([...intro, ...example]);

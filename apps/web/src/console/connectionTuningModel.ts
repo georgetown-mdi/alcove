@@ -584,6 +584,35 @@ export const TUNING_DEFAULT_MS = {
   serverConnectTimeout: DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
 } as const;
 
+/** The quiet-partner field's placeholder: core's default, which on `webrtc` is
+ * only the least wait, since a blank field there leaves the run to set the
+ * wait from both parties' record counts. */
+export function inactivityTimeoutPlaceholder(
+  capabilities: ConnectionTuningCapabilities,
+  unit: DurationUnit,
+): string {
+  const placeholder = defaultPlaceholder(
+    TUNING_DEFAULT_MS.inactivityTimeout,
+    unit,
+  );
+  return capabilities.channel === "webrtc"
+    ? `at least ${placeholder}`
+    : placeholder;
+}
+
+/** The quiet-partner field's description for the flow's channel. */
+export function inactivityTimeoutDescription(
+  capabilities: ConnectionTuningCapabilities,
+): string {
+  const what =
+    "Once your partner has started, how long this side waits for each next " +
+    "step from them before it gives up.";
+  return capabilities.channel === "webrtc"
+    ? `${what} Left blank, it is set from both sides' record counts and is ` +
+        "at least an hour. A value entered is used instead, even a shorter one."
+    : `${what} Raise it for a partner working through a large file.`;
+}
+
 /** Core's peer-timeout default for the flow's channel, for the card's
  * placeholder: a WebRTC run waits less than the file-sync channels. */
 export function peerTimeoutDefaultMs(

@@ -157,6 +157,15 @@ export interface MessageConnection {
   raiseInactivityTimeout?(minMs: number): void;
 }
 
+/**
+ * Where the limit a timed-out wait reports came from, as told to a function
+ * `inactivityHint`: the operator setting the connection names, whether set or
+ * at its default (`"setting"`); a budget the exchange raised from the two
+ * parties' record counts (`"record counts"`); or neither, so the message names
+ * no setting (`"unnamed"`).
+ */
+export type InactivityLimitSource = "setting" | "record counts" | "unnamed";
+
 /** The transport's interface to push inbound events into the queue. */
 export interface TransportControls {
   /**
@@ -448,6 +457,7 @@ export class QueuedMessageConnection implements MessageConnection {
   // Set by a transport whose budget is its own default rather than one the
   // operator configured; only then does raiseInactivityTimeout lengthen it.
   private readonly inactivityTimeoutRaisable: boolean;
+  private inactivityTimeoutRaised = false;
   // Transport-supplied clause appended to the peer-silence inactivity error.
   // Kept here (rather than baked into the message) so the generic core layer
   // stays transport-agnostic: a caller that knows the transport supplies
@@ -458,7 +468,7 @@ export class QueuedMessageConnection implements MessageConnection {
   // establishes after construction (the file-sync CLI decides between two
   // attributions on what the rendezvous observed).
   private readonly inactivityHint:
-    string | ((limitNamed: boolean) => string) | undefined;
+    string | ((limit: InactivityLimitSource) => string) | undefined;
   private readonly inactivityTimeoutSetting: string | undefined;
   private readonly hooks: TransportHooks;
   // Single source of truth for the terminal lifecycle; undefined means open.
@@ -486,7 +496,7 @@ export class QueuedMessageConnection implements MessageConnection {
       byteCapacity?: number;
       inactivityTimeoutMs?: number;
       inactivityTimeoutRaisable?: boolean;
-      inactivityHint?: string | ((limitNamed: boolean) => string);
+      inactivityHint?: string | ((limit: InactivityLimitSource) => string);
       inactivityTimeoutSetting?: string;
     },
   ) {
@@ -537,18 +547,18 @@ export class QueuedMessageConnection implements MessageConnection {
       // sentence, not the fail() below -- an escaping exception would leave the
       // parked receive() unresolved for the life of the process, turning a
       // decorative sentence into a hang at the last-resort failure boundary.
-      const setBy = this.inactivityLimitClause(ms);
+      const source = this.inactivityLimitSource(ms);
       let hint: string | undefined;
       try {
         hint =
           typeof this.inactivityHint === "function"
-            ? this.inactivityHint(setBy !== "")
+            ? this.inactivityHint(source)
             : this.inactivityHint;
       } catch {
         hint = undefined;
       }
       const deadline = new ConnectionError(
-        `no message arrived within ${ms} ms${setBy}; the ` +
+        `no message arrived within ${ms} ms${this.inactivityLimitClause(source)}; the ` +
           "partner appears to have gone silent" +
           // Append the transport's guidance, if any, as a trailing sentence;
           // a caller that supplies none gets the bare diagnostic unchanged.
@@ -560,13 +570,26 @@ export class QueuedMessageConnection implements MessageConnection {
     }, ms);
   }
 
-  // Names the setting only for a wait the connection's own limit set, not a
-  // shorter per-call override.
-  private inactivityLimitClause(ms: number): string {
-    return this.inactivityTimeoutSetting === undefined ||
+  // Names a source only for a wait the connection's own limit set, not a
+  // shorter per-call override, and only where the operator can set that limit.
+  private inactivityLimitSource(ms: number): InactivityLimitSource {
+    if (
+      this.inactivityTimeoutSetting === undefined ||
       ms !== this.inactivityTimeoutMs
-      ? ""
-      : ` (the limit ${this.inactivityTimeoutSetting} sets)`;
+    )
+      return "unnamed";
+    return this.inactivityTimeoutRaised ? "record counts" : "setting";
+  }
+
+  private inactivityLimitClause(source: InactivityLimitSource): string {
+    switch (source) {
+      case "setting":
+        return ` (the limit ${this.inactivityTimeoutSetting} sets)`;
+      case "record counts":
+        return " (the wait set from the two parties' record counts)";
+      case "unnamed":
+        return "";
+    }
   }
 
   private disarmIdle(): void {
@@ -611,7 +634,7 @@ export class QueuedMessageConnection implements MessageConnection {
           reject(
             new ConnectionError(
               `an outgoing message was not accepted for sending within ` +
-                `${ms} ms${this.inactivityLimitClause(ms)}; the ` +
+                `${ms} ms${this.inactivityLimitClause(this.inactivityLimitSource(ms))}; the ` +
                 "connection to the partner appears to have been lost",
               "transport",
             ),
@@ -907,11 +930,13 @@ export class QueuedMessageConnection implements MessageConnection {
     if (
       !this.inactivityTimeoutRaisable ||
       current === undefined ||
-      !Number.isFinite(minMs) ||
-      minMs <= current
+      !Number.isFinite(minMs)
     )
       return;
-    this.inactivityTimeoutMs = Math.min(Math.ceil(minMs), MAX_TIMER_MS);
+    const raised = Math.min(Math.ceil(minMs), MAX_TIMER_MS);
+    if (raised <= current) return;
+    this.inactivityTimeoutMs = raised;
+    this.inactivityTimeoutRaised = true;
     if (this.idleTimer !== undefined) {
       this.disarmIdle();
       this.armIdle();
@@ -940,7 +965,7 @@ export class QueuedMessageConnection implements MessageConnection {
  * something the transport only learns after this bridge is built -- it is
  * resolved when the deadline fires, not here, and a function that throws costs
  * only its own sentence: the peer-silence failure still lands. The function is
- * told whether the message already names `inactivityTimeoutSetting`, so its
+ * told which limit the message names ({@link InactivityLimitSource}), so its
  * guidance can refer to that limit rather than name the setting a second time.
  *
  * `inactivityTimeoutSetting` is the name the operator sets the inactivity
@@ -953,7 +978,7 @@ export function fromEventConnection(
     capacity?: number;
     byteCapacity?: number;
     inactivityTimeoutMs?: number;
-    inactivityHint?: string | ((limitNamed: boolean) => string);
+    inactivityHint?: string | ((limit: InactivityLimitSource) => string);
     inactivityTimeoutSetting?: string;
   },
 ): MessageConnection {

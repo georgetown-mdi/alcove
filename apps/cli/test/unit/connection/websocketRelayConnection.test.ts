@@ -254,8 +254,30 @@ test("a set inactivity_timeout_ms is not raised", async () => {
   const { connection } = await startedConnection({ inactivityTimeoutMs: 30 });
   connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
   await expect(connection.receive()).rejects.toThrow(
-    /no message arrived within 30 ms/,
+    "no message arrived within 30 ms (the limit inactivity_timeout_ms sets); " +
+      "the partner appears to have gone silent. If the partner or server is " +
+      "only slow, run again with a longer --inactivity-timeout, or raise " +
+      "that limit under connection.options in the configuration",
   );
+});
+
+test("a raised wait's expiry names the record counts, not the setting", async () => {
+  const { connection } = await startedConnection();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
+    const received = connection.receive().catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000);
+    const message = ((await received) as Error).message;
+    expect(message).toContain(
+      "no message arrived within 10800000 ms (the wait set from the two " +
+        "parties' record counts)",
+    );
+    expect(message).not.toContain("the limit inactivity_timeout_ms sets");
+    expect(message).toContain("set inactivity_timeout_ms to a longer wait");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("a frame larger than one chunk crosses as chunk envelopes the reassembler takes", async () => {

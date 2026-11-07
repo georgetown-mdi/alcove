@@ -821,10 +821,10 @@ export async function prepareTransport(
     build.transport = fromEventConnection(fileSyncConn, {
       inactivityTimeoutMs: fileSyncInactivityTimeoutMs(connection),
       inactivityTimeoutSetting: INACTIVITY_TIMEOUT_KEY,
-      inactivityHint: (limitNamed) => {
+      inactivityHint: (limit) => {
         const leftover = fileSyncConn.unconfirmedEntryPeerHello;
         return leftover === undefined
-          ? peerSilenceGuidance(limitNamed)
+          ? peerSilenceGuidance(limit === "setting")
           : entryHelloResidueGuidance(leftover);
       },
     });

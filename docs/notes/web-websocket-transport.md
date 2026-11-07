@@ -141,7 +141,7 @@ Each side sends the sentinel and waits for the peer's close to reach it through 
 That is the browser's WebRTC reading of the peer's close applied to a relayed socket, and the CLI's acknowledgement drain has no counterpart here: TCP acknowledges to the relay, not to the peer, so the peer's close is the one signal either side has.
 A sender whose process or tab ends the instant its close returns keeps its final frame only if the close waited: a close that returned once the sentinel was queued lost the frame in 8 of 10 runs from a Node process and in 6 and 8 of 10 from a closed Chromium tab, and the wait for the relayed peer close lost it in none of 10 from either ([S5](#the-spikes)).
 
-**Keepalive.** A PSI step can hold a party silent for the parked-receive budget of an hour ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#budgets)), and any TLS front in the path has an idle timeout -- the broker's is 300 s.
+**Keepalive.** A PSI step can hold a party silent for the parked-receive budget of an hour or more ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#budgets)), and any TLS front in the path has an idle timeout -- the broker's is 300 s.
 A client that can send a WebSocket ping may send one while a receive is parked; the relay answers and forwards nothing.
 The CLI's client is Node's own `WebSocket`, which, like a browser's, has no ping method and answers the relay's (measured on Node 26.12.0), so it adds no dependency and relies on the relay's ping below.
 A browser's `WebSocket` cannot send a ping but answers one (measured on Chromium 156, [S6](#the-spikes)), so the browser's keepalive is a ping the relay sends its socket on the same interval.

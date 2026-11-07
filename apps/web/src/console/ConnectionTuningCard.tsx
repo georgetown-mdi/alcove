@@ -28,6 +28,8 @@ import {
   durationUnitChoices,
   holdsExchangeFolder,
   ignoreFilesOlderThanDefaultMs,
+  inactivityTimeoutDescription,
+  inactivityTimeoutPlaceholder,
   peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
 } from "./connectionTuningModel";
@@ -57,6 +59,7 @@ function DurationRow({
   description,
   units,
   defaultMs,
+  placeholder = (unit) => defaultPlaceholder(defaultMs, unit),
   value,
   onChange,
 }: {
@@ -64,6 +67,7 @@ function DurationRow({
   description: string;
   units: ReadonlyArray<DurationUnit>;
   defaultMs: number;
+  placeholder?: (unit: DurationUnit) => string;
   value: DurationField;
   onChange: (next: DurationField) => void;
 }) {
@@ -77,7 +81,7 @@ function DurationRow({
         label={label}
         description={description}
         inputMode="numeric"
-        placeholder={defaultPlaceholder(defaultMs, value.unit)}
+        placeholder={placeholder(value.unit)}
         value={value.magnitude}
         onChange={(event) =>
           onChange({ ...value, magnitude: event.currentTarget.value })
@@ -176,9 +180,12 @@ export function ConnectionTuningCard({
 
         <DurationRow
           label="How long your partner may go quiet"
-          description="Once your partner has started, how long this side waits for each next step from them before it gives up. Raise it for a partner working through a large file."
+          description={inactivityTimeoutDescription(capabilities)}
           units={DURATION_FIELD_UNITS.inactivityTimeout}
           defaultMs={TUNING_DEFAULT_MS.inactivityTimeout}
+          placeholder={(unit) =>
+            inactivityTimeoutPlaceholder(capabilities, unit)
+          }
           value={draft.inactivityTimeout}
           onChange={(next) => set("inactivityTimeout", next)}
         />

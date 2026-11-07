@@ -15,7 +15,10 @@ import {
 } from "../../src/connection/partnerStepWait";
 import { MAX_TIMER_MS } from "../../src/utils/promise";
 
-import type { TransportControls } from "../../src/connection/messageConnection";
+import type {
+  InactivityLimitSource,
+  TransportControls,
+} from "../../src/connection/messageConnection";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -101,6 +104,8 @@ describe("partnerStepWaitMs", () => {
 function makeQueued(options: {
   inactivityTimeoutMs?: number;
   inactivityTimeoutRaisable?: boolean;
+  inactivityTimeoutSetting?: string;
+  inactivityHint?: (limit: InactivityLimitSource) => string;
 }): {
   conn: QueuedMessageConnection;
   controls: TransportControls;
@@ -218,6 +223,64 @@ describe("raiseInactivityTimeout", () => {
     await sending;
     expect((failure as Error).message).toContain(
       `was not accepted for sending within ${2 * HOUR_MS} ms`,
+    );
+  });
+
+  test("a raised budget's expiry names the record counts, not the setting, and tells the hint so", async () => {
+    vi.useFakeTimers();
+    const sources: InactivityLimitSource[] = [];
+    const { conn, send } = makeQueued({
+      inactivityTimeoutMs: HOUR_MS,
+      inactivityTimeoutRaisable: true,
+      inactivityTimeoutSetting: "inactivity_timeout_ms",
+      inactivityHint: (limit) => {
+        sources.push(limit);
+        return "hint";
+      },
+    });
+    conn.raiseInactivityTimeout(2 * HOUR_MS);
+    send.mockReturnValue(new Promise(() => {}));
+    const sending = conn.send("x").catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(2 * HOUR_MS);
+    expect(((await sending) as Error).message).toBe(
+      `an outgoing message was not accepted for sending within ${2 * HOUR_MS} ms ` +
+        "(the wait set from the two parties' record counts); the connection " +
+        "to the partner appears to have been lost",
+    );
+
+    const parked = makeQueued({
+      inactivityTimeoutMs: HOUR_MS,
+      inactivityTimeoutRaisable: true,
+      inactivityTimeoutSetting: "inactivity_timeout_ms",
+      inactivityHint: (limit) => {
+        sources.push(limit);
+        return "hint";
+      },
+    });
+    parked.conn.raiseInactivityTimeout(2 * HOUR_MS);
+    const received = parked.conn.receive().catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(2 * HOUR_MS);
+    expect(((await received) as Error).message).toBe(
+      `no message arrived within ${2 * HOUR_MS} ms (the wait set from the ` +
+        "two parties' record counts); the partner appears to have gone " +
+        "silent. hint",
+    );
+    expect(sources).toEqual(["record counts"]);
+  });
+
+  test("an unraised budget's expiry still names the setting", async () => {
+    vi.useFakeTimers();
+    const { conn } = makeQueued({
+      inactivityTimeoutMs: HOUR_MS,
+      inactivityTimeoutRaisable: true,
+      inactivityTimeoutSetting: "inactivity_timeout_ms",
+    });
+    conn.raiseInactivityTimeout(1_000);
+    const received = conn.receive().catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(HOUR_MS);
+    expect(((await received) as Error).message).toBe(
+      `no message arrived within ${HOUR_MS} ms (the limit ` +
+        "inactivity_timeout_ms sets); the partner appears to have gone silent",
     );
   });
 });

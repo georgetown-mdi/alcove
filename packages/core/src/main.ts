@@ -148,7 +148,10 @@ export {
   QueuedMessageConnection,
   fromEventConnection,
 } from "./connection/messageConnection";
-export type { MessageConnection } from "./connection/messageConnection";
+export type {
+  InactivityLimitSource,
+  MessageConnection,
+} from "./connection/messageConnection";
 export { EncryptedMessageConnection } from "./connection/encryptedMessageConnection";
 // The transport-agnostic half of the WebRTC data-channel inbound bound. Published
 // because the enforcement point is per-transport and lives outside this package

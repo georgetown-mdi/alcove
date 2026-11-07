@@ -12,8 +12,8 @@ import { MAX_PSI_DECODE_ELEMENTS } from "./frameSize";
 export const PARTNER_STEP_WAIT_FLOOR_MS = 60 * 60 * 1000;
 
 /**
- * The slowest rate a value slot recorded for a PSI step since the match was
- * streamed, which {@link partnerStepWaitMs} scales by with no factor above it:
+ * The slowest rate a value slot recorded for a PSI step with the streamed
+ * match, which {@link partnerStepWaitMs} scales by with no factor above it:
  * a browser party creating its single-pass request at 8,388,608 value slots a
  * side in 4,219.7 s, about 503.0 microseconds a value slot, in the development
  * container (docs/spec/PROTOCOL.md, "Single-pass in a browser").

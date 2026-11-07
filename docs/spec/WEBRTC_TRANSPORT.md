@@ -1180,14 +1180,12 @@ W = max(1 h, 4,219.7 s / 8,388,608 value slots * (n_local + n_partner))
   other party states and to `MAX_PSI_DECODE_ELEMENTS`, since no set a party
   sends may hold more.
 - **The rate.** 4,219.7 s at 8,388,608 value slots, about 503.0 microseconds a
-  value slot, is the slowest rate recorded for a PSI step since the match was
-  streamed: a browser party creating its single-pass request in the
+  value slot, is the slowest rate recorded for a PSI step with the streamed
+  match: a browser party creating its single-pass request in the
   development container
   ([PROTOCOL.md](PROTOCOL.md#what-a-browser-tab-can-match), "Single-pass in a
   browser"). No factor is applied above it. The steps recorded on the x86-64
-  host ran at 289.0 to 355.2 microseconds a value slot. An earlier build's
-  match, which matched in setup slices, ran at 700.8 microseconds a value slot
-  at 7,500,000 a side; the streamed match replaced it.
+  host ran at 289.0 to 355.2 microseconds a value slot.
 - **Why the sum.** A single-pass receiver waits through the sender's setup and
   its answer back to back, one step over each party's set. A cascade or
   count-only party waits through one step at a time.
@@ -1226,7 +1224,11 @@ What ends the wait on a partner that has gone is whichever comes first:
     answer ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#keepalive)).
 - **W itself**, with the peer-inactivity refusal (`no message arrived within W
   ms; the partner appears to have gone silent`). It alone ends the wait on a
-  partner still connected that sends nothing.
+  partner still connected that sends nothing. On the CLI the refusal, and a
+  send's hand-off refusal under the same budget, name after the figure where it
+  came from: `(the wait set from the two parties' record counts)` for W, and
+  `(the limit inactivity_timeout_ms sets)` for the one-hour default or a value
+  that setting gave.
 
 ## See also
 
