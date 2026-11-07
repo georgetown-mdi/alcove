@@ -174,16 +174,20 @@ A flaw in the software these services run is a vulnerability, handled from [step
 
 ### Who acts
 
-The maintainer acts first. When the maintainer cannot, the co-owner takes the same steps. Each step needs an account or access, named in [The access each step needs](#the-access-each-step-needs); this runbook does not record who holds it.
+The maintainer acts first. When the maintainer cannot, the co-owner takes the same steps, and on this path may publish the incident's advisory and the note in SECURITY.md. Step 6 of [When the maintainer is unavailable](#when-the-maintainer-is-unavailable) governs the vulnerability path, not this one.
 
-Record the dates as you go, as step 1 does: noticed, stopped or rolled back, users told.
+Each step needs an account or access, named in [The access each step needs](#the-access-each-step-needs); this runbook does not record who holds it.
+
+Open a draft GitHub security advisory from the repository's Security tab at the start, and record the dates in it as you go: noticed, stopped or rolled back, users told. Publishing the same advisory is how users are told ([Tell users](#tell-users)).
 
 ### Stop or roll back the pages
 
 The pages are rolled back, not stopped: no deploy path takes a Pages project offline, and the OpenTofu root refuses to remove one (`prevent_destroy`, [infra/hosted/README.md](../infra/hosted/README.md#what-it-describes)).
 
-1. **Roll production back to the last deploy with a signed manifest.** Re-run the `pages_deploy.yaml` run on `main` that deployed the last build known good. The re-run deploys that run's build to production, the demo site's with it, and publishes that build's signed manifest ([RELEASES.md](RELEASES.md#the-manifest-of-a-main-deploy)). Where GitHub no longer offers that run's re-run, revert the cause on `staging` and promote `main`: the push deploys a build of the reverted commit, with a signed manifest of its own.
-2. **Take the cause out of `main`.** The next push to `main` deploys its tip, so after a re-run the cause is reverted on `staging` before the next promotion.
+After a deploy-token incident, rotate the token first ([Rotate a leaked credential](#rotate-a-leaked-credential)), then roll back and delete deployments as below.
+
+1. **Roll production back to the last deploy with a signed manifest.** Re-run the `pages_deploy.yaml` run on `main` that deployed the last build known good. The re-run deploys that run's build to production, the demo site's with it, and publishes that build's signed manifest ([RELEASES.md](RELEASES.md#the-manifest-of-a-main-deploy)). A `release.yaml` run does not serve here: it uploads only while `main` holds no commit its tag's commit lacks ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)), so once `main` has moved past the tag, its re-run deploys nothing. Where GitHub no longer offers that run's re-run, revert the cause on `staging` and promote `main`: the push deploys a build of the reverted commit, with a signed manifest of its own.
+2. **Take the cause out of `main`.** The next push to `main` deploys its tip, so after a re-run the cause is reverted on `staging` before the next promotion. Until the revert is on `main`, push no release tag: `release.yaml` redeploys production from a tag on the newest release line whose commit `main` has not moved past ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)).
 3. **Roll back the staging previews and the project site** by reverting the cause on `staging`, and for the project site promoting `main`: a push redeploys each ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages), [The project site](DEPLOYMENT.md#the-project-site)). Neither has a signed manifest, so neither has a signed deploy to roll back to.
 4. **Delete the deployments that serve the affected build.** Every upload stays served at its own address, `<hash>.<project>.pages.dev`, after a later one replaces it, so a rollback alone leaves the affected build reachable there. From a checkout, with the locked deploy tool and a token in `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` set:
 
@@ -193,19 +197,24 @@ The pages are rolled back, not stopped: no deploy path takes a Pages project off
    npx wrangler pages deployment delete <deployment-id> --project-name <project>
    ```
 
-   Each workflow upload names its commit (`--commit-hash`), which identifies the affected deployments. `--force` deletes one that still has an alias. Repeat for each Pages project the affected build reached.
+   Which deployments are affected:
+
+   - After a deploy-token incident, every deployment created since the token may have leaked, other than those the rollback creates. Delete them all: an upload's commit hash is whatever the uploader passes, so it does not tell a forged upload from a workflow's.
+   - After any other incident, the commit hash each deployment lists is the guide: it is the commit a workflow upload records (`--commit-hash`).
+
+   `--force` deletes one that still has an alias. Repeat for each Pages project the affected build reached.
 
 ### Stop or roll back the relay host
 
 - **Stop it** by stopping the instance, in the EC2 console or with `aws ec2 stop-instances --instance-ids <the host's instance id> --region us-west-2`. That stops the coordination server, the TURN relay, the WebSocket relay, and the registrar together. While it is stopped, an exchange that needs the project's coordination server or relays cannot connect.
 - **Roll it back** by reverting the cause on `staging` and promoting `main`. Once the tip's push-triggered runs have passed and its core build is on the `broker-core-build` prerelease, run the pull by hand in a Session Manager session on the host, `systemctl start alcove-host-pull.service`, and read its outcome in `/var/lib/alcove-host-pull/status` ([the host pull](../infra/host-pull/README.md#outcomes)). The pull verifies that commit's signed core build before it installs it. A host that was stopped is started first, and runs the affected commit until the pull finishes.
 - **There is no redeploy of an earlier signed build.** The prerelease holds the build of the latest commit on `main` alone ([RELEASES.md](RELEASES.md#the-broker-core-build)), so the host's rollback is the revert, deployed with the next signed build.
-- **Replace a compromised host rather than cleaning it.** Launch a new instance from [`infra/relay/aws/provision.md`](../infra/relay/aws/provision.md), install it as [`infra/relay/README.md`](../infra/relay/README.md#order-of-operations) and [`infra/broker/README.md`](../infra/broker/README.md#install) describe, and move the elastic address to it. Replace every secret the old host held, each one [What is not tracked](../infra/relay/README.md#what-is-not-tracked) lists: the TURN static secret, the registrar token, the DNS provider credential, and the certificates' keys.
+- **Replace a compromised host rather than cleaning it.** Launch a new instance from [`infra/relay/aws/provision.md`](../infra/relay/aws/provision.md), install it as [`infra/relay/README.md`](../infra/relay/README.md#order-of-operations) and [`infra/broker/README.md`](../infra/broker/README.md#install) describe, install [the host pull](../infra/host-pull/README.md#install), which neither install script installs and which the rollback above needs, and move the elastic address to it. Replace every secret the old host held, each one [What is not tracked](../infra/relay/README.md#what-is-not-tracked) lists: the TURN static secret, the registrar token, the DNS provider credential, and the certificates' keys. Also revoke each certificate the old host held, through the ACME client (with lego, the default, `lego certificates revoke --path <ACME directory> --email <ACME email> --cert.name <certificate name> --reason 1`, for each of the old host's ACME directories, `/etc/alcove-relay/acme` and `/etc/alcove-broker/acme`): the intruder holds its key, and a certificate stays valid until it expires.
 
 ### Rotate a leaked credential
 
-- **The Pages deploy token.** One `CLOUDFLARE_API_TOKEN` is set on both the `Production` and `Staging` environments, and its grant covers every Pages project on the account, production included, so a token incident rotates both. Create a new token at the scope [DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages) states, set it on both environments, and delete the old token in Cloudflare. Then list each project's deployments, as step 4 above does, and treat any upload that no workflow run made as a deploy that serves unintended code.
-- **The OpenTofu tokens and the state credentials** are the maintainer's, outside the repository ([infra/hosted/README.md](../infra/hosted/README.md#state-and-credentials)). Replace them in Cloudflare and AWS.
+- **The Pages deploy token.** One `CLOUDFLARE_API_TOKEN` is set on both the `Production` and `Staging` environments, and its grant covers every Pages project on the account, production included, so a token incident rotates both. Create a new token at the scope [DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages) states, set it on both environments, and delete the old token in Cloudflare. Then roll back and delete deployments as [the pages steps](#stop-or-roll-back-the-pages) set out for a token incident.
+- **The OpenTofu tokens and the state credentials** are the maintainer's, outside the repository ([infra/hosted/README.md](../infra/hosted/README.md#state-and-credentials)). Replace them in Cloudflare and AWS. The co-owner takes this step only with the access [the table](#the-access-each-step-needs) names for it.
 - **A secret the relay host holds** goes with the host: replace the host as above.
 
 ### Remove what a service kept
@@ -216,7 +225,7 @@ For a service that kept more than documented, first stop it or roll back the bui
 
 The project has no accounts and no list of users, so it tells them in three places:
 
-1. **A GitHub security advisory**, drafted and published from the repository's Security tab as [step 5](#5-draft-the-advisory-and-request-a-cve) describes. It names the service, what happened, the window from its start to the stop or rollback, what the service could have seen or served in that window by PRIVACY.md, and what a user should do. A CVE is requested only when the cause is a vulnerability in the software.
+1. **A GitHub security advisory**: the draft opened at the start ([Who acts](#who-acts)), completed and published from the repository's Security tab as [step 5](#5-draft-the-advisory-and-request-a-cve) describes. It names the service, what happened, the window from its start to the stop or rollback, what the service could have seen or served in that window by PRIVACY.md, and what a user should do. A CVE is requested only when the cause is a vulnerability in the software.
 2. **A dated note in [SECURITY.md](../SECURITY.md)**, under a heading for hosted-service incidents that the first note adds, linking the advisory. It is merged into `staging` and reaches readers when `main` is promoted.
 3. **A notice on the hosted site, in the same deploy as the fix, when the pages are intact.** The pages are intact when a deploy can again be trusted to serve what the workflows built; after a deploy-token incident, that is once the token is rotated. The web application has no notice component, so the notice is a change to it, merged into `staging` with the revert where there is one, and promoted with it. A re-run of an older run deploys an existing build and cannot include the notice, which ships with the revert that follows.
 
@@ -231,6 +240,7 @@ The project has no accounts and no list of users, so it tells them in three plac
 | Run the pull by hand, or delete records on the host | A Session Manager session on the host, which is administered through SSM ([provision.md](../infra/relay/aws/provision.md#the-instance-role)) |
 | Replace the relay host | An AWS principal allowed to launch an instance and move the elastic address, and the DNS provider's credential for the zone |
 | Rotate the Pages deploy token | Membership of the Cloudflare account to create and delete the token, and admin access to the repository to set environment secrets |
+| Replace the OpenTofu tokens and the state credentials | Membership of the Cloudflare account to create and delete the two tokens, and an AWS principal allowed to replace the state principal's credentials |
 | Publish the advisory | A repository role that can publish a security advisory |
 
 ## Exercise record
