@@ -26,6 +26,7 @@ const ADMITTED_VALUE_IMPORTS: Record<string, ReadonlyArray<string>> = {
   "@alcove/core/websocket-relay": [
     "checkWebSocketRelayProof",
     "deriveWebSocketRelayProofKey",
+    "EXCHANGE_ID_PATTERN",
     "parseBoundedJson",
     "parseWebSocketRelayProof",
     "redactAndSanitizeForDisplay",

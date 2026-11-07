@@ -16,6 +16,7 @@ export {
   WebSocketRelayProofRefusedError,
 } from "./websocketRelayProof";
 export type { WebSocketRelayProof } from "./websocketRelayProof";
+export { EXCHANGE_ID_PATTERN } from "./relayRegistrarProof";
 export { RENDEZVOUS_ROLES } from "./rendezvousRoles";
 export type { RendezvousRole } from "./rendezvousRoles";
 export { parseBoundedJson } from "./utils/boundedJson";

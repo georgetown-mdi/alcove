@@ -14,11 +14,14 @@ const PROOF_KEY_BYTES = 32;
 
 const RELAY_KEY_BYTES = 32;
 const RELAY_KEY_PATTERN = /^[0-9a-f]{64}$/;
-// The registrar's exchange-id rule (valid_exchange_id in
-// infra/relay/relay_table.py): the EXCHANGE_ID alphabet, which admits no
-// newline, the signed message's field separator, and no HEX_RUN of 64 hex
+/**
+ * The registrar's exchange-id alphabet (EXCHANGE_ID in
+ * infra/relay/relay_table.py): 1 to 128 of `[A-Za-z0-9._-]`, not starting
+ * with `-`. It admits no newline, the signed message's field separator.
+ */
+export const EXCHANGE_ID_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/;
+// The rest of the registrar's rule (valid_exchange_id): no HEX_RUN of 64 hex
 // characters.
-const EXCHANGE_ID_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/;
 const EXCHANGE_ID_HEX_RUN = /[0-9A-Fa-f]{64}/;
 
 /**

@@ -1,4 +1,5 @@
 import {
+  EXCHANGE_ID_PATTERN,
   parseBoundedJson,
   parseWebSocketRelayProof,
   RENDEZVOUS_ROLES,
@@ -263,9 +264,6 @@ export class RelayFrameError extends Error {
   }
 }
 
-// The registrar's exchange id alphabet (infra/relay/README.md, Per-exchange
-// keys).
-const EXCHANGE_ID_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/;
 const TAG_PATTERN = /^[0-9a-f]{64}$/;
 const HELLO_KEYS = ["type", "exchangeId", "role", "proof", "tag"];
 
