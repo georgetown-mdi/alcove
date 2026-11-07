@@ -1087,6 +1087,11 @@ fresh invitation, and saving it adds a **new** recurring exchange: nothing links
 it to the old one. The acceptor then removes the superseded exchange, whose runs
 would fail closed; nothing removes it for them.
 
+The inviter's fresh secret expires when the invitation does, an hour after it
+was created, until a run with the partner succeeds. Run the exchange together
+once by hand after the partner accepts, rather than waiting for the next
+scheduled window. The command line's key file expires the same way.
+
 Every re-invite puts a fresh setup secret on the channel you send invitations
 over, so that channel has to stay trusted for as long as the partnership lasts
 ([Invitation contents and

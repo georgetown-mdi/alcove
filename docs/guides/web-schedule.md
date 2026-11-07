@@ -140,6 +140,7 @@ You should see: **Run complete**, the downloads, and a line naming the results f
 To run before then, agree on a time with your partner and each choose **Run exchange** on the exchange's page, once a folder is chosen.
 If misses repeat, compare the two schedules line by line, using the UTC time in **Copy this schedule for your partner**, and check this computer's clock.
 If your partner was running in the window and misses continue, choose **Re-invite with the same terms**: the exchange keeps its terms and gets a new shared secret. Your partner accepts the new invitation ([Accept with the web app](./web-accept.md)), saves it as a recurring exchange, sets the schedule and folder again, and removes the old one under **Recurring exchanges**: the new one is a separate entry.
+Then, before the invitation expires an hour after you created it, agree on a time with your partner and each choose **Run exchange**. A run left to the next window is refused, and you would re-invite again.
 
 More detail: [How retries and repeated misses work](../MANAGED_EXCHANGE.md#retry-and-repeated-misses).
 

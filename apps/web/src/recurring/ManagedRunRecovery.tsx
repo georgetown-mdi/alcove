@@ -533,6 +533,8 @@ export function ReinvitePanel({
           </span>
           .
         </strong>{" "}
+        After your partner accepts, run the exchange once by hand before the
+        invitation expires.{" "}
         {record.label === ""
           ? "The exchange keeps its terms."
           : `"${record.label}" keeps its terms.`}

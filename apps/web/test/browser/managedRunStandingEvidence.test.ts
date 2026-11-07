@@ -1663,3 +1663,31 @@ describe("a re-invite control while a run is in flight", () => {
     }
   });
 });
+
+describe("the fresh invitation's panel", () => {
+  test("tells the operator to run the exchange by hand before the invitation expires", async () => {
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
+    );
+    const failedAt = Date.now() - 120_000;
+    await recordManagedExchangeLastRun(
+      created.id,
+      failedRun(failedAt, "failed", "storage"),
+      failedAt,
+    );
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    const recovery = page.getByRole("button", {
+      name: "Create a fresh invitation",
+    });
+    await expect.element(recovery).toBeEnabled();
+    await recovery.click();
+
+    await expect
+      .element(page.getByText("Send this fresh invitation"))
+      .toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      "After your partner accepts, run the exchange once by hand before the invitation expires.",
+    );
+  });
+});

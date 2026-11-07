@@ -64,17 +64,27 @@ describe("deriveEditedExpiry", () => {
     expect(result).toBe(new Date(NOW + 30 * MS_PER_DAY).toISOString());
   });
 
-  test("clear: dropping the policy clears the bound", () => {
+  test("clear: dropping the policy keeps the current bound", () => {
     expect(
       deriveEditedExpiry(
         { expires: EXPIRES_90, tokenMaxAgeDays: 90 },
         null,
         NOW,
       ),
-    ).toBeNull();
+    ).toBe(EXPIRES_90);
   });
 
-  test("clear on a record that had no bound is still a cleared bound", () => {
+  test("clear keeps a bound held without a policy", () => {
+    expect(
+      deriveEditedExpiry(
+        { expires: EXPIRES_90, tokenMaxAgeDays: undefined },
+        null,
+        NOW,
+      ),
+    ).toBe(EXPIRES_90);
+  });
+
+  test("clear on a record that had no bound leaves it with none", () => {
     expect(
       deriveEditedExpiry(
         { expires: undefined, tokenMaxAgeDays: undefined },
@@ -107,6 +117,24 @@ describe("deriveEditedExpiry", () => {
       NOW,
     );
     expect(result).toBe(new Date(NOW + 30 * MS_PER_DAY).toISOString());
+  });
+
+  test("a shorten while a re-invite's setup secret is pending ends that secret at once", () => {
+    // The stated limit: a re-invite at REINVITE_AT under a 30-day policy stores the
+    // invitation's expiry, an hour out, and the record keeps no instant of the
+    // re-invite, so a shorten to 29 days reconstructs the anchor a month back and
+    // lands a bound a day before the re-invite. A further re-invite recovers.
+    const REINVITE_AT = NOW;
+    const invitationExpires = new Date(REINVITE_AT + 3_600_000).toISOString();
+    const result = deriveEditedExpiry(
+      { expires: invitationExpires, tokenMaxAgeDays: 30 },
+      29,
+      REINVITE_AT + 60_000,
+    );
+    expect(result).toBe(
+      new Date(REINVITE_AT + 3_600_000 - MS_PER_DAY).toISOString(),
+    );
+    expect(Date.parse(result as string)).toBeLessThan(REINVITE_AT);
   });
 
   test("an over-large add clears rather than hardens into an unbounded credential", () => {

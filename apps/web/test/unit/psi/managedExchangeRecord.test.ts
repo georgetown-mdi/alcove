@@ -884,6 +884,45 @@ describe("applyManagedExchangeLocalEdits", () => {
     expect(edited.tokenMaxAgeDays).toBe(90);
   });
 
+  // The settings card sends the policy on every save, `null` while it is off.
+  test("a save restating a set policy leaves expires untouched", () => {
+    const record = buildManagedExchangeRecord(
+      newExchange({ tokenMaxAgeDays: 90, expires: "2026-04-06T14:00:00.000Z" }),
+    );
+    const edited = applyManagedExchangeLocalEdits(record, {
+      label: "Riverbend monthly",
+      tokenMaxAgeDays: 90,
+    });
+    expect(edited.expires).toBe("2026-04-06T14:00:00.000Z");
+    expect(edited.tokenMaxAgeDays).toBe(90);
+  });
+
+  test("a save restating no policy keeps a bound held without one", () => {
+    const record = buildManagedExchangeRecord(
+      newExchange({ expires: "2026-04-06T14:00:00.000Z" }),
+    );
+    expect(record).not.toHaveProperty("tokenMaxAgeDays");
+    const edited = applyManagedExchangeLocalEdits(record, {
+      label: "Renamed",
+      tokenMaxAgeDays: null,
+    });
+    expect(edited.label).toBe("Renamed");
+    expect(edited.expires).toBe("2026-04-06T14:00:00.000Z");
+    expect(edited).not.toHaveProperty("tokenMaxAgeDays");
+  });
+
+  test("a save restating a policy on a record with no bound stamps none", () => {
+    const record = buildManagedExchangeRecord(
+      newExchange({ tokenMaxAgeDays: 90 }),
+    );
+    expect(record).not.toHaveProperty("expires");
+    const edited = applyManagedExchangeLocalEdits(record, {
+      label: "Renamed",
+      tokenMaxAgeDays: 90,
+    });
+    expect(edited).not.toHaveProperty("expires");
+  });
+
   // The security corner: editing the max-token-age policy re-derives `expires`
   // conservatively -- an edit never pushes the bound later than the anchor
   // derivation (docs/spec/MANAGED_EXCHANGE_RECORD.md, the `expires` row). The four
@@ -939,7 +978,7 @@ describe("applyManagedExchangeLocalEdits", () => {
     );
   });
 
-  test("clearing the policy drops both the policy and the bound", () => {
+  test("clearing the policy drops the policy and keeps the bound", () => {
     const record = buildManagedExchangeRecord(
       newExchange({ tokenMaxAgeDays: 90, expires: expires90 }),
     );
@@ -949,7 +988,22 @@ describe("applyManagedExchangeLocalEdits", () => {
       editNow,
     );
     expect(edited).not.toHaveProperty("tokenMaxAgeDays");
-    expect(edited).not.toHaveProperty("expires");
+    expect(edited.expires).toBe(expires90);
+  });
+
+  test("clearing the policy keeps a bound earlier than the policy's stamp", () => {
+    // A re-invite stamps the invitation's expiry, earlier than the policy's.
+    const inviteExpires = new Date(anchor + 3_600_000).toISOString();
+    const record = buildManagedExchangeRecord(
+      newExchange({ tokenMaxAgeDays: 90, expires: inviteExpires }),
+    );
+    const edited = applyManagedExchangeLocalEdits(
+      record,
+      { label: "Renamed", tokenMaxAgeDays: null },
+      anchor + 60_000,
+    );
+    expect(edited).not.toHaveProperty("tokenMaxAgeDays");
+    expect(edited.expires).toBe(inviteExpires);
   });
 });
 

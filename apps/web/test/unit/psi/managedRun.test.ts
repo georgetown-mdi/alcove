@@ -5,6 +5,7 @@ import {
   LinkageTermsUnsatisfiableError,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PeerAbortError,
+  encodeInvitation,
   generateSharedSecret,
   getDefaultLinkageTerms,
   getLogger,
@@ -17,6 +18,8 @@ import {
   NO_DEFAULT_RELAY_REFUSAL,
   NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
+  applyManagedExchangeLocalEdits,
+  applyManagedExchangeReinviteRotation,
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
@@ -47,6 +50,7 @@ import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { PartnerSecretNotSavedError } from "@psi/partnerSecretNotSaved";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
+import { composeManagedReinvite } from "@psi/managed/managedReinvite";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -212,6 +216,70 @@ describe("runManagedRerun: pre-connection expiry of the stored record", () => {
       () => undefined,
       (reason: unknown) => reason,
     );
+    expect(error).not.toBeInstanceOf(ManagedExchangeExpiredError);
+    expect((error as Error).message).toBe(
+      "acquireInput must not run for a lapsed record",
+    );
+  });
+});
+
+describe("runManagedRerun: a re-invited record's setup secret", () => {
+  const REINVITE_LOCATION = {
+    origin: "https://app.example.org",
+    signaling: "saved" as const,
+  };
+
+  /** Re-invite from a record with no max-age policy, as the default is, and
+   * return the record the rotation leaves and the invitation's expiry. */
+  async function reinvitedRecord() {
+    const original = runnableManagedExchangeOrRefuse(record());
+    const reinvite = await composeManagedReinvite(original, REINVITE_LOCATION, {
+      generateSecret: generateSharedSecret,
+      encode: encodeInvitation,
+      now: () => Date.now(),
+      ownRelay: undefined,
+      defaultRelay: undefined,
+    });
+    return {
+      reinvited: applyManagedExchangeReinviteRotation(
+        original,
+        reinvite.rotation,
+        { verifier: "A".repeat(43), at: 0 },
+      ),
+      tokenExpiresMs: Date.parse(reinvite.tokenExpires),
+    };
+  }
+
+  async function rerunAt(stored: ManagedExchangeRecord, now: number) {
+    stubGrantingWebLocks();
+    storedRecord.value = stored;
+    return runManagedRerun(stored, unreachableSeams, { now: () => now }).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+  }
+
+  test("is refused past the invitation's expiry before the handshake", async () => {
+    const { reinvited, tokenExpiresMs } = await reinvitedRecord();
+    const error = await rerunAt(reinvited, tokenExpiresMs + 1_000);
+    expect(error).toBeInstanceOf(ManagedExchangeExpiredError);
+    expect(benignRerunOutcome(error, false)).toBe("expired");
+  });
+
+  test("is still refused past the invitation's expiry after a settings save", async () => {
+    const { reinvited, tokenExpiresMs } = await reinvitedRecord();
+    const saved = applyManagedExchangeLocalEdits(reinvited, {
+      label: "Renamed",
+      tokenMaxAgeDays: null,
+    });
+    expect(saved.expires).toBe(reinvited.expires);
+    const error = await rerunAt(saved, tokenExpiresMs + 1_000);
+    expect(error).toBeInstanceOf(ManagedExchangeExpiredError);
+  });
+
+  test("runs inside the invitation's lifetime", async () => {
+    const { reinvited, tokenExpiresMs } = await reinvitedRecord();
+    const error = await rerunAt(reinvited, tokenExpiresMs - 1_000);
     expect(error).not.toBeInstanceOf(ManagedExchangeExpiredError);
     expect((error as Error).message).toBe(
       "acquireInput must not run for a lapsed record",

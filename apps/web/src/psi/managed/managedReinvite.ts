@@ -31,10 +31,10 @@
  *   It names the exchange's own relay and the build's default relay where the
  *   exchange uses it, both passed in by the host, as a new invitation does.
  * - `sharedSecret` -- a fresh setup secret, superseding the desynced one.
- * - `expires` -- a fresh bounded setup lifetime on the TOKEN (the invitation-in-
- *   transit bound). The RECORD's own `expires` is re-derived from the max-age policy,
- *   never the setup lifetime -- the record's `expires` provenance is single-source
- *   (see {@link buildReinviteRotation}).
+ * - `expires` -- a fresh bounded setup lifetime on the TOKEN. The RECORD's own
+ *   `expires` is the earlier of that instant and the max-age stamp, so the fresh
+ *   setup secret is refused past the invitation's expiry until the first
+ *   successful run replaces it (see {@link buildReinviteRotation}).
  *
  * The ongoing cost of this recovery, which the copy must not hide: every
  * re-invite puts a fresh live setup secret on the out-of-band channel, so the
@@ -109,35 +109,42 @@ export interface ManagedReinvite {
   deepLink: string;
   /** The fresh setup secret the token holds and the record adopts. */
   sharedSecret: string;
-  /** The token's bounded setup expiry (the invitation-in-transit bound), ISO 8601. */
+  /** The token's bounded setup expiry, ISO 8601. */
   tokenExpires: string;
   /** The record rotation to persist: the fresh secret, the record's own `expires`
-   * re-derived from the max-age policy (never the setup lifetime), and the
+   * (the earlier of {@link tokenExpires} and the max-age stamp), and the
    * coordination server the invitation names. */
   rotation: ManagedExchangeReinviteRotation;
 }
 
 /**
- * Compute the record write a re-invite persists: the fresh setup secret and the
- * record's `expires` re-derived from the max-age policy, exactly as a rotation would
- * restamp it -- through {@link rotationWriteBack}, so the date math and its guards are
- * reused, not duplicated -- and `signalingEndpoint`, the server the invitation names.
- * The setup lifetime never flows into the record's `expires` (its provenance is
- * single-source, the max-age stamp), so a record with no policy clears any standing
- * bound and a record with a policy stamps `now + tokenMaxAgeDays`.
+ * Compute the record write a re-invite persists: the fresh setup secret, the
+ * record's `expires`, and `signalingEndpoint`, the server the invitation names.
+ * `expires` is the earlier of `tokenExpires` and the max-age stamp a rotation
+ * would write ({@link rotationWriteBack}, whose date math and guards are reused),
+ * so a record with no policy takes `tokenExpires`. The first successful run's
+ * rotation write-back replaces it, as for any other bound.
  *
  * @throws {RangeError} (from {@link rotationWriteBack}) if the policy is not a
  *   positive integer or stamps an expiry outside the representable range.
  */
 function buildReinviteRotation(
   freshSecret: string,
+  tokenExpires: string,
   tokenMaxAgeDays: number | undefined,
   now: number,
   signalingEndpoint: WebRTCEndpoint,
 ): ManagedExchangeReinviteRotation {
   const { host, port, path } = signalingEndpoint;
+  const writeBack = rotationWriteBack(freshSecret, tokenMaxAgeDays, now);
+  const policyExpires = writeBack.expires;
   return {
-    ...rotationWriteBack(freshSecret, tokenMaxAgeDays, now),
+    sharedSecret: writeBack.sharedSecret,
+    expires:
+      policyExpires !== null &&
+      Date.parse(policyExpires) < Date.parse(tokenExpires)
+        ? policyExpires
+        : tokenExpires,
     signalingServer: {
       host,
       ...(port !== undefined ? { port } : {}),
@@ -292,6 +299,7 @@ export async function composeManagedReinvite(
     tokenExpires,
     rotation: buildReinviteRotation(
       freshSecret,
+      tokenExpires,
       record.tokenMaxAgeDays,
       now,
       signalingEndpoint,

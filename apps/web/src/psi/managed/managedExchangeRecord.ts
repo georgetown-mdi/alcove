@@ -537,7 +537,9 @@ export interface ManagedExchangeRecord {
    * or stating such a part is a configuration only. */
   sharedSecret?: string;
   /** ISO 8601 UTC instant after which {@link sharedSecret} must not be used;
-   * absent means no bound is in force. Only {@link tokenMaxAgeDays} writes it. */
+   * absent means no bound is in force. A re-invite stamps the earlier of its
+   * invitation's expiry and the {@link tokenMaxAgeDays} stamp; a run stamps the
+   * policy alone. */
   expires?: string;
   /** The operator's max-token-age policy, off by default: absent means no bound.
    * When set, each successful run stamps {@link expires} this many days out. */
@@ -2852,11 +2854,12 @@ function connectionWithSignalingServer(
  * {@link deriveEditedExpiry}: a shorter policy recomputes the bound from the
  * reconstructed advance anchor, a longer one keeps the current bound (it takes
  * effect only at the next rotation), an added policy stamps `now + days`, and a
- * cleared policy drops the bound. The rule never moves `expires` later, so an edit
- * cannot stretch a stored credential's life without a rotation (see
- * {@link ./managedTokenAgeEdit.ts}). `now` is the anchor for an added policy;
- * default `Date.now()` for callers that do not inject a clock. An edit that does
- * not touch `tokenMaxAgeDays` leaves `expires` untouched.
+ * cleared policy keeps the bound until the next rotation. The rule never moves
+ * `expires` later, so an edit cannot stretch a stored credential's life without a
+ * rotation (see {@link ./managedTokenAgeEdit.ts}). `now` is the anchor for an
+ * added policy; default `Date.now()` for callers that do not inject a clock. An
+ * edit that leaves `tokenMaxAgeDays` absent or equal to the stored policy (`null`
+ * equal to no policy) leaves `expires` untouched.
  *
  * @throws {ZodError} if the edited record is invalid.
  * @throws {Error} if `allowedRelays` or `signalingServer` is edited on a
@@ -2912,7 +2915,12 @@ export function applyManagedExchangeLocalEdits(
       exchangeFile.retentionDisposition = edits.retentionDisposition;
     next.exchangeFile = exchangeFile;
   }
-  if (edits.tokenMaxAgeDays !== undefined) {
+  // The settings card sends the policy on every save, `null` while it is off,
+  // so a save restating the stored policy is not an edit of it.
+  if (
+    edits.tokenMaxAgeDays !== undefined &&
+    (edits.tokenMaxAgeDays ?? undefined) !== record.tokenMaxAgeDays
+  ) {
     if (edits.tokenMaxAgeDays === null) delete next.tokenMaxAgeDays;
     else next.tokenMaxAgeDays = edits.tokenMaxAgeDays;
     // `expires` bounds the stored secret, so a record holding none takes the
