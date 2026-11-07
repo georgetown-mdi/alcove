@@ -636,11 +636,11 @@ inProcessOnly(
 
 // --- host-key verification over real SFTP ------------------------------------
 
-// Run a host-key refusal against a server and, once it settles, assert the
-// server was never offered a credential. The shared server lives in the
-// globalSetup process, out of reach of its authentication events, so on the
-// in-process backend the refusal dials a worker-local instance whose userauth
-// count is read here. The count is asserted even when the dial itself threw, and
+// Run a host-key refusal against a server and, once it settles and the server
+// has seen every connection close, assert the server was never offered a
+// credential. The shared server lives in the globalSetup process, out of reach
+// of its authentication events, so on the in-process backend the refusal dials
+// a worker-local instance whose userauth count is read here. The count is asserted even when the dial itself threw, and
 // its failure wins over the dial's, so a client that authenticates before the
 // verdict is reported as that. A native sshd exposes no such count: its
 // refusals still run against the shared server and make only the dial's own
@@ -654,6 +654,7 @@ async function againstRefusingServer<T>(
     return await dial(own.handle);
   } finally {
     try {
+      await own.acceptedConnectionsClosed();
       expect(own.authenticationEvents()).toBe(0);
     } finally {
       await own.stop();

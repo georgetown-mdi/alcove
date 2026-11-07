@@ -265,6 +265,9 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
   // adapter at teardown would otherwise hang the runner indefinitely.
   const clients = new Set<Connection>();
 
+  // Resolvers of acceptedConnectionsClosed() calls waiting for `clients` to empty.
+  let closedWaiters: (() => void)[] = [];
+
   const server = new Server({ hostKeys: [hostKey.private] }, (client) => {
     clients.add(client);
     // The earliest point a control can reach the socket: a connection
@@ -286,7 +289,13 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
     // 'error' on the connection; without a listener it would crash the test
     // process. There is nothing to recover here -- the connection is going away.
     client.on("error", () => {});
-    client.on("close", () => clients.delete(client));
+    client.on("close", () => {
+      clients.delete(client);
+      if (clients.size > 0) return;
+      const waiters = closedWaiters;
+      closedWaiters = [];
+      for (const resolveWaiter of waiters) resolveWaiter();
+    });
     client.on("close", () => sessionControls.releaseConnection(client));
 
     client.on("authentication", (ctx) => {
@@ -432,6 +441,25 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
     inject,
     sessionControls,
     authenticationEvents: () => authenticationEvents,
+    acceptedConnectionsClosed(timeoutMs = 5_000): Promise<void> {
+      if (clients.size === 0) return Promise.resolve();
+      return new Promise<void>((resolve, reject) => {
+        const waiter = (): void => {
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          closedWaiters = closedWaiters.filter((w) => w !== waiter);
+          reject(
+            new Error(
+              `in-process SFTP server: ${clients.size} accepted connection(s) ` +
+                `still open ${timeoutMs} ms after the client dial settled`,
+            ),
+          );
+        }, timeoutMs);
+        closedWaiters.push(waiter);
+      });
+    },
     async stop() {
       // Disarm the withheld-close control and hand the real closers back to the
       // sockets it silenced: end() below reaches those sockets, and a silenced one

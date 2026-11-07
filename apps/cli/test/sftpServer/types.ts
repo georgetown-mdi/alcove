@@ -505,4 +505,11 @@ export interface InProcessSftpServer extends SftpTestServer {
    * zero: no request means no credential was sent.
    */
   authenticationEvents(): number;
+  /**
+   * Resolves once the server has seen every connection it accepted close on its
+   * own side, at once when none is open, and rejects after `timeoutMs` (default
+   * 5000) naming the wait. Read {@link authenticationEvents} after it, so a
+   * userauth request still in flight when the client gave up is counted.
+   */
+  acceptedConnectionsClosed(timeoutMs?: number): Promise<void>;
 }
