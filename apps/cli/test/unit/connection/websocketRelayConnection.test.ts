@@ -770,9 +770,9 @@ test("a proof time on the relay's clock past the last date is refused naming the
   expect(error).toBeInstanceOf(ConnectionError);
   expect((error as ConnectionError).message).toBe(
     "could not build this side's proof for the WebSocket relay at " +
-      "wss://relay.example.org/relay from the exchange's relay key. Check " +
-      "that both parties use the current invitation, and run the exchange " +
-      "again.",
+      "wss://relay.example.org/relay: the relay stated a time this side " +
+      "cannot use. Run the exchange again, and if it fails the same way, " +
+      "tell whoever runs the relay.",
   );
   expect(sanitizeErrorForDisplay(error)).not.toContain(
     "buildWebSocketRelayProof",

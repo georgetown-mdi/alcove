@@ -491,8 +491,9 @@ function proofExpiredOnRelayClockError(url: string): ConnectionError {
 function proofNotBuiltError(url: string): ConnectionError {
   return withNextStep(
     "could not build this side's proof for the WebSocket relay at " +
-      `${url} from the exchange's relay key. Check that both parties use ` +
-      "the current invitation, and run the exchange again.",
+      `${url}: the relay stated a time this side cannot use. Run the ` +
+      "exchange again, and if it fails the same way, tell whoever runs the " +
+      "relay.",
     "transport",
   );
 }
