@@ -791,7 +791,7 @@ export function buildDataSpec(args: BuildDataSpecArgs): ResolvedDataSpec {
   const standardization = getDefaultStandardization(metadata, linkageTerms, {
     dateInputFormat,
   });
-  return { linkageTerms, metadata, standardization };
+  return { linkageTerms, metadata, standardization } satisfies InferredDataSpec;
 }
 
 /**
