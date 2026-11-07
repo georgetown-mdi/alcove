@@ -335,11 +335,12 @@ came from different releases. Its reach is the architecture being built, each
 having a rootfs of its own, and `image_smoke.yaml` builds `amd64` alone. The
 release workflow's `workflow_dispatch` dry run builds both Dockerfiles for
 `amd64` and `arm64`, so it runs this assertion, and the build's others, on each
-architecture before a tag. The dry run is started by hand and runs no scan, so
-reading that release out of each architecture's rootfs by hand stays the
-fallback -- `docker create` plus `docker cp` of `/etc/os-release` reads the
-foreign architecture without emulating or executing it -- and
-`AL2023_RELEASEVER` takes the value that reading produces. The rest of
+architecture before a tag. The dry run checks the value and cannot supply it:
+reading the release out of the new rootfs stays required, because
+`AL2023_RELEASEVER` takes the value that reading produces -- `docker create`
+plus `docker cp` of `/etc/os-release` reads a foreign architecture without
+emulating or executing it. The dry run is started by hand, so reading the other
+architecture's release by hand stays the fallback when it is not dispatched. The rest of
 the bump procedure, and what a green smoke run does and does not prove about a bump,
 are in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#bumping-the-fips-base-image).
 

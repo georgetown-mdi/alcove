@@ -1037,7 +1037,7 @@ One limit sits between a green run there and a bump being proved:
   `workflow_dispatch` dry run builds both Dockerfiles for `amd64` and `arm64`
   without publishing, so dispatching it on the bump's branch runs the
   release assertion and the build's other assertions on `arm64` before a tag.
-  The dry run is started by hand and runs no scan, so reading the other
+  The dry run is started by hand, so reading the other
   architecture's release by hand, as above, stays the fallback; without
   either, the assertion runs for `arm64` first in the tag's multi-arch push.
 
