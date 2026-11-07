@@ -34,3 +34,16 @@ docker run --rm --mount "type=bind,src=C:\path\to\your\exchange-folder,dst=/work
   [--identity=O'Brien & Co, #1 @home]
   [input.csv]
   [./]
+
+docker run --rm --mount "type=bind,src=C:\path\to\your\exchange-folder,dst=/work" ghcr.io/georgetown-mdi/alcove@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef exchange .alcove-signing-identity.json _scratch mode=fast:1 input.csv ./
+  [run]
+  [--rm]
+  [--mount]
+  [type=bind,src=C:\path\to\your\exchange-folder,dst=/work]
+  [ghcr.io/georgetown-mdi/alcove@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef]
+  [exchange]
+  [.alcove-signing-identity.json]
+  [_scratch]
+  [mode=fast:1]
+  [input.csv]
+  [./]

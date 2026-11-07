@@ -793,22 +793,33 @@ describe("the Windows run commands the Windows CI suite runs", () => {
     "../../../../../support/maintainer-notes/windows-run-lines.txt";
   const WINDOWS_FOLDER = "C:\\path\\to\\your\\exchange-folder";
 
-  const FIXTURES: ReadonlyArray<ReadonlyArray<string>> = [
-    ["--log-file=exchange.log"],
-    [
-      "--csv-delimiter=;",
-      "--identity=$env:USERNAME",
-      "--outbound-path=$(Write-Output expanded)",
-      "--log-file=a`b.log",
-    ],
-    ["--csv-delimiter=|", "--identity=O'Brien & Co, #1 @home"],
+  const DIGEST_IMAGE = `ghcr.io/georgetown-mdi/alcove@sha256:${"0123456789abcdef".repeat(4)}`;
+
+  const FIXTURES: ReadonlyArray<{
+    args: ReadonlyArray<string>;
+    image?: string;
+  }> = [
+    { args: ["--log-file=exchange.log"] },
+    {
+      args: [
+        "--csv-delimiter=;",
+        "--identity=$env:USERNAME",
+        "--outbound-path=$(Write-Output expanded)",
+        "--log-file=a`b.log",
+      ],
+    },
+    { args: ["--csv-delimiter=|", "--identity=O'Brien & Co, #1 @home"] },
+    {
+      args: [".alcove-signing-identity.json", "_scratch", "mode=fast:1"],
+      image: DIGEST_IMAGE,
+    },
   ];
 
-  function entry(args: ReadonlyArray<string>): string {
+  function entry({ args, image = IMAGE }: (typeof FIXTURES)[number]): string {
     const source: ScheduledRunSource = {
       argv: ["alcove", "exchange", ...args, "input.csv", "./"],
       bindPaths: [],
-      image: IMAGE,
+      image,
     };
     const tokens =
       dockerRunArgv(source, "docker", WINDOWS_FOLDER, {

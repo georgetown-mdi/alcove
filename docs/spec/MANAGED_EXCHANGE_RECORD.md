@@ -1527,7 +1527,7 @@ operator copies.
 The one-off Windows command is a PowerShell command
 (`powerShellJoinCommand`), where the Task Scheduler line's action is quoted
 for `cmd.exe`. A token is left bare only when it starts with a letter, `_`,
-`/` or `./` and holds only letters, digits, `_`, `.`, `/`, `:`, `=`, `@` and
+`/` or a `.` followed by a letter, `_` or `/`, and holds only letters, digits, `_`, `.`, `/`, `:`, `=`, `@` and
 `-`, or is an option of only letters, digits and hyphens after its dashes.
 Every other token, and every token holding a placeholder, is a PowerShell
 double-quoted string with a backtick before each `$`, backtick and

@@ -327,7 +327,7 @@ export function powerShellString(text: string): string {
 }
 
 /** A word left bare in a PowerShell line: it starts with a letter, `_`, `/`
- * or `./`, so it cannot start a number, an operator, a splat or a comment, and
+ * or a `.` followed by one of those, so it cannot start a number, an operator, a splat or a comment, and
  * holds none of the characters PowerShell expands or ends a word at. */
 const POWERSHELL_BARE_WORD = /^(?:[A-Za-z_/]|\.[A-Za-z_/])[\w./:=@-]*$/;
 
