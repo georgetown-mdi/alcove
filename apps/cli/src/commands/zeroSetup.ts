@@ -194,7 +194,7 @@ export function builder(cmd: Argv): Argv {
           "(default: off, each of your records matches at most one). This is " +
           "your own side of the setting: your partner declares its own on its " +
           "own run, and neither side is read from the other. Setting it widens " +
-          "what your partner discloses -- more of its records can match than in " +
+          "what your partner discloses. More of its records can match than in " +
           "a one-to-one run of the same two files. Both parties setting it " +
           "runs a many-to-many match under either linkage strategy, where each " +
           "party's records may group the other's. " +
@@ -712,7 +712,7 @@ function unsavedBootstrapNotice(params: {
       `at ${params.keyFile} did not reach disk, so no recurring exchange is ` +
       `set up; the configuration at ${params.configFile} was written and ` +
       `could not be removed, so move or remove it, then run 'alcove invite' ` +
-      `and share the invitation with your partner -- do not re-run this ` +
+      `and share the invitation with your partner. Do not re-run this ` +
       `exchange`
     );
   const files =
@@ -723,7 +723,7 @@ function unsavedBootstrapNotice(params: {
   return (
     `the exchange completed and its results are written, but ${files} did ` +
     "not reach disk, so no recurring exchange is set up; do not re-run this " +
-    "exchange -- run 'alcove invite' and share the invitation with your " +
+    "exchange. Run 'alcove invite' and share the invitation with your " +
     "partner instead"
   );
 }

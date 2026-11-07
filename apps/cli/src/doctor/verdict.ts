@@ -346,8 +346,8 @@ export function verdictLines(report: DoctorReport): string[] {
     overall === "ok"
       ? "ALL CHECKS PASSED"
       : overall === "fix_and_retry"
-        ? "NOT READY YET -- follow the ACTION lines above and run this again."
-        : "COULD NOT RUN THE CHECKS -- nothing was established either way.",
+        ? "NOT READY YET - follow the ACTION lines above and run this again."
+        : "COULD NOT RUN THE CHECKS - nothing was established either way.",
   );
   return lines;
 }

@@ -2275,9 +2275,9 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     this.log.info(
       (outcome.status === "expired"
         ? `The partner's SFTP server did not close the connection within the ` +
-          `${CLIENT_CLOSE_TIMEOUT_MS} ms teardown bound -- a server that ` +
+          `${CLIENT_CLOSE_TIMEOUT_MS} ms teardown bound - a server that ` +
           `leaves connections half-open, or one merely slower to answer than ` +
-          `the bound allows for -- so this side closed it. `
+          `the bound allows for - so this side closed it. `
         : `Closing the SFTP connection did not complete: ` +
           `${sanitizeErrorForDisplay(outcome.error)}. The connection was left ` +
           `open, so this side closed it. `) +

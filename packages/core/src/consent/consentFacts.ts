@@ -44,8 +44,8 @@ export const CONSENT_FACTS = {
       "through the same predicate the payload step transmits on, so no column " +
       "outside the displayed set leaves the machine. The acceptance records the " +
       "displayed set as this party's consent to it, and a run whose own resolved " +
-      "set differs -- including one on a configuration already on disk, whose " +
-      "stored metadata this line is not rendered from -- stops and asks rather " +
+      "set differs - including one on a configuration already on disk, whose " +
+      "stored metadata this line is not rendered from - stops and asks rather " +
       "than transmit a set that was never shown. Where the set is not resolvable " +
       "at acceptance the line says so, and the same confirmation is taken at the " +
       "first run that can resolve it.",
@@ -56,7 +56,7 @@ export const CONSENT_FACTS = {
       "The same disclosure at the seat that wrote its own configuration, where " +
       "the half of `outboundSend` resting on a recorded acceptance has nothing " +
       "to rest on: this party consented to no set and Alcove holds none for " +
-      "it. What remains is the derivation, which is the whole basis here -- the " +
+      "it. What remains is the derivation, which is the whole basis here. The " +
       "displayed set comes from the run's own resolved metadata through the " +
       "same predicate the payload step transmits on, so no column outside it " +
       "leaves the machine. A later run whose file discloses a different set " +
@@ -68,7 +68,7 @@ export const CONSENT_FACTS = {
     reason:
       "A free-text name the inviter typed, carried in an invitation accepted " +
       "on a transcription checksum. Nothing authenticates it, and Alcove " +
-      "substitutes nothing for an inviter that typed none -- but the absence " +
+      "substitutes nothing for an inviter that typed none - but the absence " +
       "marker shown in its place is itself free text an inviter could type, so " +
       "display does not separate the two cases.",
     note:
@@ -114,7 +114,7 @@ export const CONSENT_FACTS = {
       "them, or names one (docs/spec/PROTOCOL.md, PSI-C, What each party " +
       "learns). None of it needs a deviation from the protocol and none of it " +
       "is shown to the operator, so this sits in the run's register rather " +
-      "than the partner's -- the same one as the own-membership disclosure a " +
+      "than the partner's - the same one as the own-membership disclosure a " +
       "one-sided `psi` exchange carries.",
     note:
       "Your partner learns how many records you hold. Each round sends the " +
@@ -158,7 +158,7 @@ export const CONSENT_FACTS = {
     reason:
       "Only the receiver computes the count. Where both parties are entitled to " +
       "it the other party's copy arrives as the receiver's report, and Alcove " +
-      "does not stop a receiver that reports a different number -- the same " +
+      "does not stop a receiver that reports a different number - the same " +
       "arrangement as the `psi` association-table return leg, where the sender's " +
       "half of the pairing likewise arrives as the receiver's word. Which party " +
       "computes follows from the record counts the run exchanges, so acceptance " +
@@ -175,8 +175,8 @@ export const CONSENT_FACTS = {
     reason:
       "The count-only claim holds against a partner that contributes a genuine " +
       "dataset, and Alcove checks no such thing. A partner that chooses its " +
-      "contributed values -- one live candidate padded with values it knows this " +
-      "party cannot hold, or two runs differing in a single value -- reads that " +
+      "contributed values - one live candidate padded with values it knows this " +
+      "party cannot hold, or two runs differing in a single value - reads that " +
       "value's membership off the count, and nothing on the wire distinguishes a " +
       "crafted set from a genuine one. A receiver has a cheaper route still: " +
       "it gives each of its records its own pattern of keys with a value and " +
@@ -237,7 +237,7 @@ export const CONSENT_FACTS = {
       "the two parties' output directions are compared as a mirror before data " +
       "moves, and the run then delivers the result to the party those agreed " +
       "terms entitle to it. What the partner does with the result once it holds " +
-      "it is governed by the agreement, not by Alcove -- a limit on its use, " +
+      "it is governed by the agreement, not by Alcove - a limit on its use, " +
       "which the note carries, not on whether the disclosure happens.",
     note:
       "Your agreement governs how your partner uses the result; Alcove does " +
@@ -258,11 +258,11 @@ export const CONSENT_FACTS = {
       "An intrinsic property of an identifier-revealing match rather than a " +
       "matter of conduct: under `psi` a non-receiving partner whose half of " +
       "the association table the run returns learns its own records' " +
-      "membership however honestly it behaves. Bounded to that -- never which " +
+      "membership however honestly it behaves. Bounded to that - never which " +
       "of the viewer's records they met, nor anything about the rest of the " +
       "set beyond its size. Gated first on the ALGORITHM: no `psi-c` exchange " +
       "states it at all, since the role rule makes the non-receiving party of " +
-      "a count-only run the sender -- which computes nothing from the round " +
+      "a count-only run the sender - which computes nothing from the round " +
       "and is sent no count-report frame (docs/spec/PROTOCOL.md, PSI-C), so it " +
       "learns no membership to state, and what a count-only run does disclose " +
       "is the `countOnly*` tier's. Within `psi` it is the case where that half " +
@@ -288,16 +288,16 @@ export const CONSENT_FACTS = {
       "is the sender the withholding covers, and the receiver suppresses that " +
       "party's half of the association table entirely while it skips awaiting " +
       "it, both sides deriving the decision from the same authenticated " +
-      "session state -- so the partner's process never receives, and so never " +
+      "session state - so the partner's process never receives, and so never " +
       "learns, which of its own records the viewer also holds " +
       "(docs/spec/PROTOCOL.md, Withholding the sender's table from a blind " +
       "helper). The declared-empty direction is what binds the partner to " +
       "disclosing no column, which is the second condition the rule asks. " +
-      "Resolved off the run's own predicate -- " +
+      "Resolved off the run's own predicate - " +
       "`withholdsInviterAssociationTable` where the partner is the inviting " +
       "party, `withholdsAcceptorAssociationTable` where it is the accepting " +
       "party, and `withholdsPartnerAssociationTable` where the viewer reads " +
-      "linkage terms it wrote itself (consent/invitationSummary.ts) -- so a " +
+      "linkage terms it wrote itself (consent/invitationSummary.ts) - so a " +
       "surface never states this basis for a run that does not withhold. The " +
       "third of those reads two documents from one of them, and its own " +
       "documentation states the shape it cannot see.",
@@ -314,7 +314,7 @@ export const CONSENT_FACTS = {
       "(`withholdsPartnerAssociationTable`), which holds this party's " +
       "declared `payload.receive` against the partner's DECLARED " +
       "`payload.send` rather than against what the partner's resolved " +
-      "metadata will transmit -- `validateCompatibility` passes a partner " +
+      "metadata will transmit. `validateCompatibility` passes a partner " +
       "config with no payload block by comparing against " +
       "`partner.payload?.send ?? []`. The run does not leave that " +
       "difference to the agreement: both parties resolve each " +
@@ -346,9 +346,9 @@ export const CONSENT_FACTS = {
       "exchange rather than matching looser. The marker carries that fact and " +
       "no more. Where the invitation makes the inviting party the sole " +
       "receiver, what reaches the accepting party of the grouping is a further " +
-      "fact of its own -- `duplicateGroupingWithheld` where the exchange " +
+      "fact of its own - `duplicateGroupingWithheld` where the exchange " +
       "closes it, `duplicateGroupingDisplayLimit` in the other register where " +
-      "the client alone does -- so this marker is never read as covering " +
+      "the client alone does - so this marker is never read as covering " +
       "either.",
   },
   duplicateGroupingDisplayLimit: {
@@ -362,7 +362,7 @@ export const CONSENT_FACTS = {
       "withholding does not reach a party that transmits a payload column of " +
       "its own or is left free to. So presenting none of the grouping is the " +
       "client's doing rather than the exchange's, and what an operator on that " +
-      "side is shown rests on the software that side runs -- the partner's " +
+      "side is shown rests on the software that side runs - the partner's " +
       "register, not the run's. The combination the exchange does close is " +
       "`duplicateGroupingWithheld` below, resolved from the run's own rule " +
       "(`withholdsAcceptorAssociationTable`) rather than from a second reading " +
@@ -411,7 +411,7 @@ export const CONSENT_FACTS = {
       "The same two registers as the pair above, read from the other side: " +
       "the ACCEPTING party groups its own records and the inviting party is " +
       "entitled to no result. The result gate hands that party none, but the " +
-      "run still reaches its process -- under cascade the rounds carry each " +
+      "run still reaches its process. Under cascade the rounds carry each " +
       "matched position once per group member, and under single-pass the " +
       "wire-level withholding does not reach a party that transmits a payload " +
       "column of its own or is left free to. So what a partner is shown of " +
@@ -477,7 +477,7 @@ export const CONSENT_FACTS = {
   matchedFields: {
     basis: "enforced",
     reason:
-      "The fields the linkage keys are computed over -- what the exchange " +
+      "The fields the linkage keys are computed over - what the exchange " +
       "actually hashes and compares.",
   },
   heldBackColumnsSelfAuthored: {
@@ -527,7 +527,7 @@ export const CONSENT_FACTS = {
       "one key, not what the partner does with it. Every candidate enters that " +
       "key's round as its own entry; a record appearing in any of the round's " +
       "candidate pairs leaves candidacy for every later key, paired or not; and " +
-      "each strategy discloses a grouping of its own -- the index table " +
+      "each strategy discloses a grouping of its own. The index table " +
       "the single-pass receiver holds carries each sender record's candidate " +
       "grouping for every key, matched or not, where a cascade round states " +
       "each party's grouping of that round's matched values alone. All three " +
@@ -575,7 +575,7 @@ export const CONSENT_FACTS = {
       "boundary's own verdict on the other party's value rather than the " +
       "strategy rule alone, so no surface withholds the sentence for a key " +
       "that expands its value by another route and none states it where that " +
-      "value is one the accept refuses -- a sole-receiver document, which " +
+      "value is one the accept refuses - a sole-receiver document, which " +
       "leaves that party none to set, as much as a refused pair. The " +
       "sentence states the pair conditionally, since the party reading it " +
       "holds one side and not the other wherever it is rendered.",
@@ -603,7 +603,7 @@ export const CONSENT_FACTS = {
     basis: "trust-contingent",
     reason:
       "A request for the acceptor's columns, not a statement of what the " +
-      "acceptor sends -- that is settled by the acceptor's own metadata.",
+      "acceptor sends. That is settled by the acceptor's own metadata.",
   },
   legalAgreement: {
     basis: "trust-contingent",
@@ -637,13 +637,13 @@ export const CONSENT_FACTS = {
       "the hello and a disagreement aborts both sides before any data moves " +
       "(BilateralModeMismatchError), so an exchange that runs at all is one both " +
       "parties ran in the stated mode. What the run does not hold is what " +
-      "becomes of the transcript once it ends -- retain mode deletes nothing, " +
-      "and the rendezvous location is the inviting party's to keep or clear -- " +
+      "becomes of the transcript once it ends - retain mode deletes nothing, " +
+      "and the rendezvous location is the inviting party's to keep or clear - " +
       "so that half is carried by the note rather than by the marker. Nothing " +
       "applies the inviter's declaration: the accepting party still sets its own " +
       "half, which is what leaves the mismatch to fast-fail (see " +
       "InvitationToken.inviterRetainsFiles). " +
-      "Stated on either ground that puts an acceptor's run in retain mode -- the " +
+      "Stated on either ground that puts an acceptor's run in retain mode - the " +
       "inviter declaring it, or an invitation endpoint whose split-directory " +
       "shape requires it of the connection the acceptor is seeded with, where a " +
       "display gated on the declaration alone would say nothing to a party " +
@@ -652,7 +652,7 @@ export const CONSENT_FACTS = {
       "the inviter offering one is running the mode this states. Delete mode is " +
       "not the mirror claim: a run killed outright, or one that fails after the " +
       "handshake, leaves files behind in either mode, so a stated negative would " +
-      "promise a cleanup the transport does not make -- and an invitation " +
+      "promise a cleanup the transport does not make - and an invitation " +
       "carrying no declaration has made no claim to state at all.",
     note:
       "Every file your partner writes stays in the shared folder or on the " +

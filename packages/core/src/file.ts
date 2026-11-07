@@ -71,7 +71,7 @@ function rowParseFaultError(error: Papa.ParseError): CsvRowParseError {
   return new CsvRowParseError(
     `CSV parse failed at ${position}: ${error.message} (${error.code}). The ` +
       "rows this file yields would differ from the rows it contains, so the " +
-      "read refuses rather than return them; correct the input file -- an " +
+      "read refuses rather than return them; correct the input file. An " +
       "unterminated quote, or a row whose field count differs from the " +
       "header, is the usual cause.",
   );

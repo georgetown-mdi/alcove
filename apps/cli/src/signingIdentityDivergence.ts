@@ -60,7 +60,7 @@ export function warnOnIdentityDivergence(
   if (unstatable !== undefined) {
     log.warn(
       "the signing identity is bound to a label the linkage terms cannot " +
-        `state -- ${unstatable} -- so it differs from ` +
+        `state - ${unstatable} - so it differs from ` +
         `linkage_terms.identity "${termsLabel}" in the config, and no edit ` +
         "of that field can bring the two into agreement. " +
         `${DIVERGENCE_CONSEQUENCE} ${REKEY_GUIDANCE}`,

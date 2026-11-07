@@ -73,8 +73,8 @@ export function reconcileHostKeyFingerprints(
       `between the two parties' setups or a one-sided interception, in which ` +
       `one party's connection is intercepted while the other reaches the real ` +
       `server.`
-    : `Different key types can be benign -- a server that presents multiple ` +
-      `host keys may show each party a different one -- but the difference can ` +
+    : `Different key types can be benign - a server that presents multiple ` +
+      `host keys may show each party a different one - but the difference can ` +
       `also be a server host-key rotation between the two parties' setups or a ` +
       `one-sided interception, in which one party's connection is intercepted ` +
       `while the other reaches the real server.`;

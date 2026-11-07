@@ -67,13 +67,13 @@ import { configureLogging, logLevelFlag } from "../util/logging";
  * no way to tell the operator whether an earlier identity exists elsewhere.
  */
 const NO_IDENTITY_PATH_REFUSAL =
-  "no signing identity path is configured. Name the path and re-run -- " +
+  "no signing identity path is configured. Name the path and re-run - " +
   "'alcove fingerprint --identity-file " +
   "/run/signing/alcove-signing-identity.json', or signing.identity_file in " +
   "the configuration. Its directory must be writable for this creating run; " +
   "every run after it only reads the file, so a read-only mount of its own " +
   "is right from then on. Choose somewhere " +
-  "durable, and never a directory your partner syncs into -- that would put " +
+  "durable, and never a directory your partner syncs into. That would put " +
   "your private signing key in their hands. If you already hold an identity " +
   "from an earlier release, name THAT file rather than creating a second one: " +
   "a new identity has a new fingerprint, and every partner has to re-pin it " +
@@ -116,7 +116,7 @@ export function builder(cmd: Argv): Argv {
       describe:
         "regenerate the signing identity even if one exists. This creates a " +
         "NEW key with a NEW fingerprint and INVALIDATES any fingerprint a " +
-        "partner has already pinned -- they must re-pin the new one",
+        "partner has already pinned. They must re-pin the new one",
     })
     .option("export-certificate", {
       type: "string",
@@ -341,7 +341,7 @@ export async function resolveSigningIdentity(
         "--identity is ignored: the existing identity is bound to " +
           (unstatable === undefined
             ? `"${redactAndDisplayPartyIdentity(existing.certificate.identity)}"`
-            : `a label the linkage terms cannot state -- ${unstatable}`) +
+            : `a label the linkage terms cannot state - ${unstatable}`) +
           ". Use --force to regenerate (this invalidates any fingerprint your " +
           "partner has pinned).",
       );

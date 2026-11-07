@@ -92,7 +92,7 @@ test("parseDurationFlag: the bare-integer hint strips leading zeros from its sug
   } catch (err) {
     message = (err as UsageError).message;
   }
-  expect(message).toContain("use 7s for 7 seconds");
+  expect(message).toContain("Use 7s for 7 seconds");
   expect(message).not.toContain("007");
 });
 

@@ -356,8 +356,8 @@ export class SftpSession {
                   `${presented}, which does not match ${pinnedDescription}. ` +
                   `A changed key is never auto-accepted.`,
                 details: [
-                  `This may be a legitimate key rotation or an active attack ` +
-                    `-- only the server administrator can disambiguate.`,
+                  `This may be a legitimate key rotation or an active attack. ` +
+                    `Only the server administrator can disambiguate.`,
                   `If the key was rotated, verify the new fingerprint ` +
                     `out-of-band, then add it to ` +
                     `connection.server.host_key_fingerprint (alongside or in ` +

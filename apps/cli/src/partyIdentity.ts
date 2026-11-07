@@ -60,7 +60,7 @@ export function configuredIdentityRequired(configPath: string): string {
   return (
     `no identity for this party: ${configPath} has no ` +
     `linkage_terms.identity, and it is the source of this invitation's terms. ` +
-    `${PARTNER_READS_IT}, so set it there -- ${FLAG_CANNOT_STAND_IN}`
+    `${PARTNER_READS_IT}, so set it there. ${FLAG_CANNOT_STAND_IN}`
   );
 }
 
@@ -72,7 +72,7 @@ export function keptConfigurationIdentityRequired(configPath: string): string {
   return (
     `no identity for this party: ${configPath} has no ` +
     "linkage_terms.identity, and this acceptance keeps that configuration " +
-    `rather than writing one. ${PARTNER_READS_IT}, so set it there -- ` +
+    `rather than writing one. ${PARTNER_READS_IT}, so set it there. ` +
     FLAG_CANNOT_STAND_IN
   );
 }
@@ -88,7 +88,7 @@ export function configuredIdentityStillPlaceholder(configPath: string): string {
     `"${PLACEHOLDER_IDENTITY}", the placeholder alcove init writes where a ` +
     "name belongs, so it is refused exactly as an absent one. " +
     `${PARTNER_READS_IT}, so replace it there with this party's name, ` +
-    `organization, and contact -- ${FLAG_CANNOT_STAND_IN}`
+    `organization, and contact. ${FLAG_CANNOT_STAND_IN}`
   );
 }
 

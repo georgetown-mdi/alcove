@@ -567,7 +567,7 @@ describe("alcove apply", () => {
     expect(lines).toContain("    before:");
     expect(lines).toContain("      notes");
     expect(lines).toContain(
-      "    after: not stated -- the next exchange takes whatever columns your partner sends",
+      "    after: not stated - the next exchange takes whatever columns your partner sends",
     );
   });
 

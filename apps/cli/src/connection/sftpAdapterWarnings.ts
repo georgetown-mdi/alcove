@@ -128,7 +128,7 @@ export function midExchangeReconnectBudgetExhaustedError(
         `failed, or was refused, so the exchange cannot continue`;
   return new UsageError(
     `The SFTP session dropped mid-exchange and ${budgetClause}. The partner's ` +
-      `SFTP server is dropping the held session -- typically a server-enforced ` +
+      `SFTP server is dropping the held session - typically a server-enforced ` +
       `session-duration or idle limit you cannot change. Raise ` +
       `max_reconnect_attempts if the link is merely flaky, or switch this ` +
       `connection to connection-per-poll mode (--connection-per-poll, or ` +
@@ -167,8 +167,8 @@ export function sessionRecoveredEphemeralWarning(sessionsLost: number): string {
     `re-dialed (${count} ${count === 1 ? "session" : "sessions"} lost to ` +
     `the partner so far this exchange); the exchange continues. ` +
     "Connection-per-poll dials a fresh session per poll cycle, so this is " +
-    "either a drop within a poll cycle -- the link or the partner's server " +
-    "faulting mid-cycle, which is what to investigate -- or a rendezvous " +
+    "either a drop within a poll cycle - the link or the partner's server " +
+    "faulting mid-cycle, which is what to investigate - or a rendezvous " +
     "wait, which runs before the poll loop starts cycling and holds one " +
     "session throughout, so the partner's session-lifetime, idle, or " +
     "operation cap cut it. The rendezvous case needs nothing from you: the " +
@@ -269,9 +269,9 @@ export function subsystemOpenTimeoutMessage(
     `the SFTP server accepted this connection's credentials and then did not ` +
     `open the SFTP subsystem within ${subsystemOpenTimeoutMs} ms, so no ` +
     `SFTP session was established. Check that ` +
-    `the account Alcove signs in as may use SFTP on that server -- an ` +
+    `the account Alcove signs in as may use SFTP on that server - an ` +
     `OpenSSH server needs a 'Subsystem sftp' line, and a per-user or ` +
-    `per-group setting can withdraw it -- or raise ` +
+    `per-group setting can withdraw it - or raise ` +
     `server_connect_timeout_ms if the server is only slow to open it.`
   );
 }
@@ -390,7 +390,7 @@ export function forcedIdleReleaseWarning(boundaryCount: number): string {
   const count = boundaryCount;
   return (
     `The partner's SFTP server did not close the connection within the ` +
-    `connection-per-poll idle release's bound -- a server that leaves ` +
+    `connection-per-poll idle release's bound - a server that leaves ` +
     `connections half-open, or one merely slower to answer than the ` +
     `bound allows for. The release closed it from this side and the next ` +
     `poll cycle dials a fresh session; the exchange continues (${count} ` +

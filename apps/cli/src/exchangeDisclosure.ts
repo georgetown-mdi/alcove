@@ -133,12 +133,12 @@ function displayOutboundColumns(
   }
   if (!linkageTerms.output.shareWithPartner) {
     emit(
-      `${label}: (none) -- your partner receives no result, so no payload is sent`,
+      `${label}: (none) - your partner receives no result, so no payload is sent`,
     );
     return;
   }
   if (columns.length === 0) {
-    emit(`${label}: (none) -- only matched records`);
+    emit(`${label}: (none) - only matched records`);
     return;
   }
   emit(`${label}:`);

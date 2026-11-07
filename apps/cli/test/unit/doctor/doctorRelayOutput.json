@@ -70,7 +70,7 @@
       "ACTION:  If this relay should be the one a run allocates on, list it first",
       "         under connection.turn and run this check again.",
       "",
-      "NOT READY YET -- follow the ACTION lines above and run this again."
+      "NOT READY YET - follow the ACTION lines above and run this again."
     ],
     "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"warn\",\"meaning\":\"the registrar did not record this exchange's relay key. A run makes this same enrollment just before it connects, because it uses a TURN relay or a WebSocket relay that your partner's invitation names.\",\"action\":\"Run this check again. If the enrollment keeps failing, ask your partner whether the relay registrar their invitation names is up. A run goes on without this enrollment, but the relay your partner's invitation names refuses the run's credential until either of you enrolls the exchange there.\",\"registrar\":\"https://registrar.example.org\"},{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. The likely cause is the failed enrollment above: this relay refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled at its registrar.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"},{\"id\":\"turn_2\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not contact this relay: a run allocates on the first TURN url it lists alone, so the check does not ask it.\",\"action\":\"If this relay should be the one a run allocates on, list it first under connection.turn and run this check again.\",\"url\":\"turn:relay-2.example.org:3478\",\"transport\":\"udp\"}]}"
   },
@@ -104,7 +104,7 @@
       "ACTION:  If this relay should be the one a run allocates on, list it first",
       "         under connection.turn and run this check again.",
       "",
-      "NOT READY YET -- follow the ACTION lines above and run this again."
+      "NOT READY YET - follow the ACTION lines above and run this again."
     ],
     "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"ok\",\"registrar\":\"https://registrar.example.org\"},{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"},{\"id\":\"turn_2\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not contact this relay: a run allocates on the first TURN url it lists alone, so the check does not ask it.\",\"action\":\"If this relay should be the one a run allocates on, list it first under connection.turn and run this check again.\",\"url\":\"turn:relay-2.example.org:3478\",\"transport\":\"udp\"}]}"
   },
@@ -146,7 +146,7 @@
       "ACTION:  If this relay should be the one a run allocates on, list it first",
       "         under connection.turn and run this check again.",
       "",
-      "NOT READY YET -- follow the ACTION lines above and run this again."
+      "NOT READY YET - follow the ACTION lines above and run this again."
     ],
     "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not enroll at this registrar, because the relay it allocates on is not one the invitation names, so the check does not contact it.\",\"registrar\":\"https://registrar.example.org\"},{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. A relay that takes enrolled keys refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled there with alcove enroll-relay.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"},{\"id\":\"turn_2\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not contact this relay: a run allocates on the first TURN url it lists alone, so the check does not ask it.\",\"action\":\"If this relay should be the one a run allocates on, list it first under connection.turn and run this check again.\",\"url\":\"turn:static-relay.example.org:3478\",\"transport\":\"udp\"},{\"id\":\"turn_3\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not contact this relay: a run allocates on the first TURN url it lists alone, so the check does not ask it.\",\"action\":\"If this relay should be the one a run allocates on, list it first under connection.turn and run this check again.\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"}]}"
   },
@@ -217,7 +217,7 @@
       "ACTION:  Fix the relay, or arrange a direct path; waiting longer changes",
       "         nothing.",
       "",
-      "NOT READY YET -- follow the ACTION lines above and run this again."
+      "NOT READY YET - follow the ACTION lines above and run this again."
     ],
     "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. This relay refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled there.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"}]}"
   },
@@ -273,7 +273,7 @@
       "ACTION:  Enroll this exchange's relay key at the relay's registrar with",
       "         alcove enroll-relay, then run this check again.",
       "",
-      "NOT READY YET -- follow the ACTION lines above and run this again."
+      "NOT READY YET - follow the ACTION lines above and run this again."
     ],
     "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"ok\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"},{\"id\":\"websocket_1\",\"status\":\"fail\",\"meaning\":\"the relay holds no key for this exchange, so it refuses the proof a run presents until the exchange's relay key is enrolled there.\",\"action\":\"Enroll this exchange's relay key at the relay's registrar with alcove enroll-relay, then run this check again.\",\"url\":\"wss://own-relay.example.org/relay\",\"outcome\":\"not_admitted\",\"close_code\":4003}]}"
   },
@@ -298,7 +298,7 @@
       "ACTION:  Check that this host can reach the relay and that the url names its",
       "         address and path, then run this check again.",
       "",
-      "NOT READY YET -- follow the ACTION lines above and run this again."
+      "NOT READY YET - follow the ACTION lines above and run this again."
     ],
     "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"ok\",\"registrar\":\"https://registrar.example.org\",\"lapses_at\":\"2026-01-01T01:10:00Z\"},{\"id\":\"websocket_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this url as an Alcove WebSocket relay: the network blocked it, nothing answered at that address and path, or the connection closed before the relay answered the proof.\",\"action\":\"Check that this host can reach the relay and that the url names its address and path, then run this check again.\",\"url\":\"wss://relay.example.org/relay\",\"outcome\":\"not_reached\"}]}"
   },
@@ -334,7 +334,7 @@
       "         relay's operator whether its certificate is current and issued for",
       "         its host.",
       "",
-      "NOT READY YET -- follow the ACTION lines above and run this again."
+      "NOT READY YET - follow the ACTION lines above and run this again."
     ],
     "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. A relay that takes enrolled keys refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled there with alcove enroll-relay.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing. Each WebSocket relay line below shows whether the exchange can still go that way.\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"},{\"id\":\"websocket_1\",\"status\":\"fail\",\"meaning\":\"the relay presented a TLS certificate that does not verify on this host, as one does where the network intercepts TLS.\",\"action\":\"If this network intercepts TLS, add its certificate authority to this machine's trust store, or name a file holding it in NODE_EXTRA_CA_CERTS, then run this check again. Otherwise ask the relay's operator whether its certificate is current and issued for its host.\",\"url\":\"wss://own-relay.example.org/relay\",\"outcome\":\"certificate_not_verified\"}]}"
   }

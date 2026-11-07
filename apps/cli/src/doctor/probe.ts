@@ -312,7 +312,7 @@ function padSkipped(checks: DoctorCheckRecord[]): DoctorCheckRecord[] {
   return [
     ...checks,
     ...PROBE_CHECK_IDS.filter((id) => !seen.has(id)).map((id) =>
-      skipped(id, `${PROBE_CHECK_NAMES[id]} -- not run.`, {
+      skipped(id, `${PROBE_CHECK_NAMES[id]} - not run.`, {
         meaning: SKIPPED_BY_FAILURE_MEANING,
       }),
     ),
@@ -355,13 +355,13 @@ function authenticationCheck(
         status,
         "the username, password, or domain is wrong. This is the one status " +
           "that really does mean bad credentials.",
-        "if this is a domain account, give its domain -- answer the setup " +
+        "if this is a domain account, give its domain - answer the setup " +
           "script's Domain prompt, or set SMB_DOMAIN if you are running this " +
           "image yourself. If the folder opens in " +
           "File Explorer WITHOUT ever asking for a password, Windows is signing " +
           "you in with Kerberos and there may be no password that works here; " +
           "see the troubleshooting page, 'The share never asks for a password'. " +
-          "Do not work through passwords one at a time -- each run is one failed " +
+          "Do not work through passwords one at a time. Each run is one failed " +
           "sign-in against the account, and a handful of those locks it out.",
         detail,
       );
@@ -391,11 +391,11 @@ function authenticationCheck(
       return fail(
         "authentication",
         status,
-        "the account itself is not permitted to sign in -- disabled, expired, " +
+        "the account itself is not permitted to sign in - disabled, expired, " +
           "restricted to certain hours, or restricted to certain machines. The " +
           "password is not the problem and neither are the rights on your folder.",
         "ask whoever issued the account to lift that restriction, or ask for a " +
-          "service account instead -- it is item 1 of the IT request on the " +
+          "service account instead. It is item 1 of the IT request on the " +
           "troubleshooting page. Without this, every later check would report " +
           "the same status and blame your folder for it.",
         detail,
@@ -420,7 +420,7 @@ function authenticationCheck(
       return ok("authentication", "the credentials were accepted.", {
         meaning:
           `the server would not list its shares (${status}). That is common ` +
-          "and is not a problem by itself -- many servers refuse the list to " +
+          "and is not a problem by itself. Many servers refuse the list to " +
           "ordinary accounts. Opening your share is the test that counts.",
       });
   }
@@ -449,7 +449,7 @@ function shareOpenCheck(
       return fail(
         "share_open",
         status,
-        "the server is telling us outright that this path is a DFS link -- it " +
+        "the server is telling us outright that this path is a DFS link. It " +
           "does not hold the data itself and expects the client to follow a " +
           "referral to whichever server does. A volume mounted on this path " +
           "cannot follow one.",
@@ -850,7 +850,7 @@ export async function runProbe(
           : ok("authentication", "authenticated.", {
               meaning:
                 `'${input.share}' is not among the shares this account can ` +
-                "see. That does not decide anything -- a share can be reachable " +
+                "see. That does not decide anything. A share can be reachable " +
                 "without being listed. Opening it is the test that counts.",
             }),
       );
@@ -949,10 +949,10 @@ export async function runProbe(
       checks.push(
         fail(
           "write",
-          `${putStatus} -- could not create a file.`,
+          `${putStatus} - could not create a file.`,
           "this account can read the folder but not write to it.",
           "ask whoever administers the share for write permission on this " +
-            "folder. Mount options such as file_mode cannot grant it -- they " +
+            "folder. Mount options such as file_mode cannot grant it. They " +
             "only change how permissions look inside the container, not what " +
             "the server allows.",
           { detail: put.output },
@@ -979,7 +979,7 @@ export async function runProbe(
       checks.push(
         fail(
           "rename",
-          `${renameStatus} -- created a file but could not rename it.`,
+          `${renameStatus} - created a file but could not rename it.`,
           "creating files is allowed here and renaming them is not. Alcove " +
             "renames every message into place, so this stops an exchange even " +
             "though the folder looks writable.",
@@ -1003,7 +1003,7 @@ export async function runProbe(
       checks.push(
         fail(
           "delete",
-          `${deleteStatus} -- created and renamed a file but could not delete it.`,
+          `${deleteStatus} - created and renamed a file but could not delete it.`,
           "Alcove removes each message once the other side has read it. " +
             "Without delete rights the folder fills up and a second exchange in " +
             "it will not start.",

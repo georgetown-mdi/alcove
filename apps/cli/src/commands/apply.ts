@@ -221,8 +221,7 @@ function columnLines(
   columns: ReadonlyArray<string> | undefined,
   notStated: string,
 ): string[] {
-  if (columns === undefined)
-    return [`    ${label}: not stated -- ${notStated}`];
+  if (columns === undefined) return [`    ${label}: not stated - ${notStated}`];
   if (columns.length === 0) return [`    ${label}: (none)`];
   return [
     `    ${label}:`,

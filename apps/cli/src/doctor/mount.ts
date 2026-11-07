@@ -91,7 +91,7 @@ function padSkipped(checks: DoctorCheckRecord[]): DoctorCheckRecord[] {
   return [
     ...checks,
     ...MOUNT_CHECK_IDS.filter((id) => !seen.has(id)).map((id) =>
-      skipped(id, `${MOUNT_CHECK_NAMES[id]} -- not run.`, {
+      skipped(id, `${MOUNT_CHECK_NAMES[id]} - not run.`, {
         meaning: SKIPPED_BY_FAILURE_MEANING,
       }),
     ),
@@ -124,8 +124,8 @@ function markerCheck(
       "marker",
       `${input.marker} is not in this folder.`,
       "the file the network checks left behind is not visible here. Either " +
-        "a previous `doctor mount` already consumed it -- run `doctor probe` " +
-        "again first -- or the mount and those checks are pointing at " +
+        "a previous `doctor mount` already consumed it - run `doctor probe` " +
+        "again first - or the mount and those checks are pointing at " +
         "different directories: the server, share, or subfolder is wrong " +
         "somewhere, and a DFS path is the usual reason, because the " +
         "namespace and the real location can differ in all three.",
@@ -154,7 +154,7 @@ function markerCheck(
       "marker",
       "the folders match, but the marker could not be removed.",
       "the mount and the network checks agree on this folder, and this mount " +
-        "refuses deletes -- expect the write checks below to fail too.",
+        "refuses deletes. Expect the write checks below to fail too.",
       `remove ${input.marker} from the drop folder yourself once write ` +
         "access is fixed.",
     );
@@ -190,7 +190,7 @@ export function runMountChecks(
     fail(
       id,
       `${name} is in this folder and cannot be removed.`,
-      "something is occupying a name this check creates and removes -- " +
+      "something is occupying a name this check creates and removes - " +
         "usually a folder with the doctor's working name.",
       `remove ${name} from the drop folder and run this again.`,
     );

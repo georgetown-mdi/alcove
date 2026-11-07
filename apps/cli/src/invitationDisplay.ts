@@ -185,7 +185,7 @@ const OUTBOUND_SEND_FORWARD_REFERENCE = {
  * outbound-send line, and what it stands behind".
  */
 const OUTBOUND_SEND_NO_PAYLOAD =
-  "(none) -- the inviting party receives no result, so no payload is sent";
+  "(none) - the inviting party receives no result, so no payload is sent";
 
 /**
  * Render the coordination server an acceptance dials, for a line the
@@ -693,7 +693,7 @@ export function logDecisionFacts(
     emit(`  ${outboundLabel}: ${OUTBOUND_SEND_FORWARD_REFERENCE.value}`);
     emit(`    ${OUTBOUND_SEND_FORWARD_REFERENCE.note}`);
   } else if (ownOutboundSend.length === 0)
-    emit(`  ${outboundLabel}: (none) -- only matched records`);
+    emit(`  ${outboundLabel}: (none) - only matched records`);
   else {
     emit(`  ${outboundLabel}:`);
     logList(

@@ -1793,7 +1793,7 @@ test("handler: a run transmitting no column of its own says so", async () => {
   );
 
   expect(stderr).toContain("columns you will send");
-  expect(stderr).toContain("(none) -- only matched records");
+  expect(stderr).toContain("(none) - only matched records");
   expect(stderr).not.toContain("- diagnosis");
 });
 
@@ -2459,7 +2459,7 @@ test("handler --save: a failed key save whose rollback also fails names the conf
     );
     // Still the same class of loss: no re-run, and the cause stays on the human
     // log rather than reaching the supervisor double-escaped.
-    expect(notice).toContain("do not re-run");
+    expect(notice).toContain("Do not re-run");
     expect(notice).not.toContain("ENOENT");
     expect(stderr).toContain("ENOENT");
   } finally {

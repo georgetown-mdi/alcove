@@ -4121,7 +4121,7 @@ async function expectedConsentSurface(
     promptFollows,
   });
   expect(lines).toContain(
-    `  ${OUTBOUND_SEND_LABEL}: (none) -- only matched records`,
+    `  ${OUTBOUND_SEND_LABEL}: (none) - only matched records`,
   );
   expect(lines.length).toBeGreaterThan(20);
   return lines;

@@ -28,8 +28,8 @@ export const CONNECTION_BLOCK_DOC_URL =
  * for whichever channel the operator picks.
  */
 export const CONNECTION_BLOCK_NOTICE =
-  "The block each channel takes -- sftp, filedrop (a shared mounted " +
-  `directory), or webrtc -- is at ${CONNECTION_BLOCK_DOC_URL}`;
+  "The block each channel takes - sftp, filedrop (a shared mounted " +
+  `directory), or webrtc - is at ${CONNECTION_BLOCK_DOC_URL}`;
 
 const CONNECTION_LINES = [
   "How to reach your exchange partner. channel is one of sftp, filedrop (a",

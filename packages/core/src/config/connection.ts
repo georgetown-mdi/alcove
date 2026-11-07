@@ -299,7 +299,7 @@ const SFTPServerSchema: z.ZodType<ServerAwaitingAddress<SFTPServer>> = z
   )
   .refine((s) => s.certificate === undefined, {
     message:
-      "certificate is not yet supported; remove it from the config -- " +
+      "certificate is not yet supported; remove it from the config. " +
       "SSH client-auth certificates are a planned feature and will be " +
       "accepted in a future release",
     path: ["certificate"],

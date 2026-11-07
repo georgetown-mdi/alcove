@@ -482,7 +482,7 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
   identity: {
     classification: "consent-relevant",
     reason:
-      "The party the acceptor is disclosing to -- the first thing consent turns " +
+      "The party the acceptor is disclosing to - the first thing consent turns " +
       "on.",
     unrepresented: {
       exchangeDisclosure:
@@ -507,7 +507,7 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     classification: "consent-relevant",
     reason:
       "Decides whether the exchange reveals the matched identifiers (`psi`) or " +
-      "only their count (`psi-c`) -- and with the count, each party's record " +
+      "only their count (`psi-c`) - and with the count, each party's record " +
       "count and what the receiver's software derives beside it, which the " +
       "count-only tier states and a surface omitting the tier does not.",
     // A count-only exchange accepts no payload, so the pair is built on a base
@@ -572,7 +572,7 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "Whether several of the inviter's records may match the same one of " +
       "the acceptor's, which changes how many records the intersection holds " +
-      "-- and discloses to whichever party receives the result how the " +
+      "- and discloses to whichever party receives the result how the " +
       "inviter's records group onto each matched record of the acceptor's.",
     // Which party reads the grouping follows the output shape, so the shapes a
     // deduplicating document can take are measured separately. The schema
@@ -720,13 +720,13 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "A partner-authored label that only binds a key element to a declared " +
       "field. It never reaches a matched value, and the web summary withholds " +
-      "it deliberately -- unvetted partner text that could impersonate a system " +
-      "label -- showing the semantic `type` it resolves to instead.",
+      "it deliberately - unvetted partner text that could impersonate a system " +
+      "label - showing the semantic `type` it resolves to instead.",
   },
   "linkageFields[].type": {
     classification: "consent-relevant",
     reason:
-      "Which category of PII participates in linkage -- a full SSN and its last " +
+      "Which category of PII participates in linkage - a full SSN and its last " +
       "four digits are a real disclosure difference.",
     // A date-of-birth field becomes an SSN field: the two have the same
     // constraint shape, so the replacement moves the semantic type and nothing
@@ -845,13 +845,13 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     classification: "consent-relevant",
     reason:
       "Expands one value into several match candidates, so records that do not " +
-      "agree exactly still match -- and under `psi` their identifiers are " +
+      "agree exactly still match - and under `psi` their identifiers are " +
       "disclosed.",
     unrepresented: {
       exchangeDisclosure:
-        "The display states the widening a key's candidate set makes -- " +
+        "The display states the widening a key's candidate set makes - " +
         "several values per record, and records grouped with no value in " +
-        "common -- rather than the element declaration producing it, so one " +
+        "common - rather than the element declaration producing it, so one " +
         "widening declaration in place of another leaves it unmoved. " +
         SELF_AUTHORED_DETAIL_BOUND,
     },
@@ -875,7 +875,7 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     classification: "consent-relevant",
     reason:
       "Rewrites the value before it is hashed, so it decides which records meet " +
-      "-- a truncation or a sound-alike recoding matches records the raw values " +
+      "- a truncation or a sound-alike recoding matches records the raw values " +
       "never would.",
     unrepresented: { exchangeDisclosure: SELF_AUTHORED_TRANSFORM_GAP },
     vary: (terms) =>
@@ -918,7 +918,7 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "Runs the key only where one side's record has no valid value for the " +
       "field, so a match through it tells a party receiving the result which " +
-      "of the two records had none -- or, on a count-only exchange, tells the " +
+      "of the two records had none - or, on a count-only exchange, tells the " +
       "software of the party computing the count.",
     // The pair is built on a base with the condition removed and the variant
     // adding it back, so the condition line each algorithm owes is required of
@@ -948,13 +948,13 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
   "payload.send[].name": {
     classification: "consent-relevant",
     reason:
-      "The columns the inviter declares it will transmit for matched records -- " +
+      "The columns the inviter declares it will transmit for matched records - " +
       "what the acceptor receives beyond the intersection itself.",
     unrepresented: {
       exchangeDisclosure:
         "The display lists the columns this run will transmit, resolved from " +
         "the reader's own input metadata, rather than the list declared here " +
-        "-- the same disclosure read from what leaves the machine.",
+        "- the same disclosure read from what leaves the machine.",
     },
     vary: (terms) =>
       edited(terms, (draft) => {
@@ -972,14 +972,14 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
   "payload.receive[].name": {
     classification: "consent-relevant",
     reason:
-      "The columns the inviter requests FROM the acceptor for matched records -- " +
+      "The columns the inviter requests FROM the acceptor for matched records - " +
       "an outbound disclosure the acceptor is being asked to make.",
     unrepresented: {
       exchangeDisclosure:
         "The display states what this run sends, not the columns its reader " +
-        "asks their partner for. Where that request bears on a disclosure -- " +
+        "asks their partner for. Where that request bears on a disclosure - " +
         "a declared empty one withholding the partner's half of the " +
-        "matched-pair table -- the display states the withholding on its own " +
+        "matched-pair table - the display states the withholding on its own " +
         "line, which turns on the request being empty rather than on any " +
         "column name.",
     },

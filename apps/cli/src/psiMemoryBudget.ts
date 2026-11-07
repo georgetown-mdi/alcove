@@ -236,8 +236,8 @@ export function psiMemoryShortfallMessage(
   assessment: PsiMemoryAssessment,
 ): string {
   return (
-    `${shortfallSentence(assessment)}. Give the run more memory -- a larger ` +
-    `host, or a larger docker run --memory -- or split the input into ` +
+    `${shortfallSentence(assessment)}. Give the run more memory - a larger ` +
+    `host, or a larger docker run --memory - or split the input into ` +
     `smaller files and run one exchange for each. Pass ` +
     `--allow-memory-shortfall to run anyway; the exchange may then run out ` +
     `of memory partway through, which fails it for both parties.`

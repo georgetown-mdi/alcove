@@ -656,7 +656,7 @@ export function singlePassDisclosureNotice(): string {
     "on the weaker keys, not only the strongest. Which of you sends is " +
     "decided when the exchange runs, so it may be you. The matched result is " +
     "the same either way; what differs is how much your partner can observe " +
-    "while it runs -- a consented disclosure tradeoff for a round-trip count " +
+    "while it runs - a consented disclosure tradeoff for a round-trip count " +
     "that stays constant as keys are added, not a free speed-up. See " +
     "https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
     "EXCHANGE_REFERENCE.md (linkage_terms.linkage_strategy)."

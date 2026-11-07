@@ -628,7 +628,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     // list and not a forward-reference.
     const empty = renderDisplayInvitation(log, base, []);
     expect(empty).toContain(
-      `${OUTBOUND_SEND_LABEL}: (none) -- only matched records`,
+      `${OUTBOUND_SEND_LABEL}: (none) - only matched records`,
     );
     expect(outboundSendEntries(empty.split("\n"))).toEqual([]);
     // Not-yet-known: no metadata at prompt time, so the line says the set is not
@@ -668,7 +668,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     for (const own of [["diagnosis", "medication"], [], undefined]) {
       const rendered = renderDisplayInvitation(log, oneSided, own);
       expect(rendered.split("\n")).toContain(
-        `  ${OUTBOUND_SEND_LABEL}: (none) -- the inviting party receives no ` +
+        `  ${OUTBOUND_SEND_LABEL}: (none) - the inviting party receives no ` +
           "result, so no payload is sent",
       );
       expect(outboundSendEntries(rendered.split("\n"))).toEqual([]);

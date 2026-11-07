@@ -111,8 +111,8 @@ export function builder(cmd: Argv): Argv {
   return addLoggingOptions(withoutLogging).usage(
     "Usage:\n" +
       "  $0 init [options] [URL] [INPUT_FILE]\n\n" +
-      "Write a commented alcove.yaml template -- every option documented\n" +
-      "inline with defaults pre-filled -- then exit. No key file is created\n" +
+      "Write a commented alcove.yaml template - every option documented\n" +
+      "inline with defaults pre-filled - then exit. No key file is created\n" +
       "and no exchange is run. With a URL, the connection block is filled\n" +
       "from it, leaving only the credential to add. With an INPUT_FILE,\n" +
       "column metadata, linkage fields, and standardizing transformations\n" +
@@ -404,7 +404,7 @@ function initNextSteps(
   ];
   const edit =
     steps.length > 0
-      ? `Edit the file -- ${steps.join(", and ")} -- then run`
+      ? `Edit the file - ${steps.join(", and ")} - then run`
       : "Review the file, then run";
   return `${edit} 'alcove invite' or 'alcove accept' to set up an exchange.`;
 }
