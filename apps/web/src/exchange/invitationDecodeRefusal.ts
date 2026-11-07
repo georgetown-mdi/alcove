@@ -1,10 +1,14 @@
 import {
+  COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
+  INVITATION_NEWER_REMEDY,
   InvitationDecodeError,
   KeyFoldCollisionError,
   NestingDepthExceededError,
   NodeCountExceededError,
   describeDecodeError,
   isNewerInvitationVersionError,
+  rawDecodeErrorDescription,
+  redactAndSanitizeForDisplay,
 } from "@alcove/core";
 import { ZodError } from "zod";
 
@@ -51,6 +55,17 @@ const DAMAGED_FAILURES: ReadonlySet<InvitationDecodeError["failure"]> = new Set(
   ["tooShort", "notBase64Url", "checksumMismatch"],
 );
 
+/** The decoder's description of a newer-version refusal without core's update
+ * sentence, which the acceptor screen replaces with {@link NEWER_INVITATION_BODY}. */
+function newerInvitationDetail(error: unknown): Displayable {
+  const described = rawDecodeErrorDescription(error);
+  const remedy = ` ${INVITATION_NEWER_REMEDY}`;
+  return redactAndSanitizeForDisplay(
+    described.endsWith(remedy) ? described.slice(0, -remedy.length) : described,
+    { maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH },
+  );
+}
+
 /** Classify an error the accept route's decode threw. */
 export function invitationDecodeRefusal(
   error: unknown,
@@ -60,7 +75,7 @@ export function invitationDecodeRefusal(
       ? { kind: "damaged", detail: describeDecodeError(error) }
       : { kind: "unreadable", detail: describeDecodeError(error) };
   if (isNewerInvitationVersionError(error))
-    return { kind: "newer", detail: describeDecodeError(error) };
+    return { kind: "newer", detail: newerInvitationDetail(error) };
   if (
     error instanceof ZodError ||
     error instanceof KeyFoldCollisionError ||

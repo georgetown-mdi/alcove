@@ -571,16 +571,20 @@ describe("saved list route: delete is a fully supported, always-available action
 
     await expect
       .element(
-        page.getByText("A backup file you exported stays in your custody", {
-          exact: false,
-        }),
+        page.getByText(
+          "Any backup file of this exchange you hold stays in your custody",
+          {
+            exact: false,
+          },
+        ),
       )
       .toBeInTheDocument();
     await expect
       .element(
         page.getByText(
-          "Until your partner removes their copy or one of you re-invites, " +
-            "anyone who can read the file can run this exchange as you.",
+          "Until your partner removes their copy of this exchange or replaces it " +
+            "with a new invitation, anyone who can read the file can run this " +
+            "exchange as you.",
           { exact: false },
         ),
       )
@@ -618,15 +622,19 @@ describe("saved list route: delete is a fully supported, always-available action
           .getByRole("dialog")
           .getByText(
             "After a scheduled run, this app wrote a backup of this " +
-              "exchange to the folder Riverbend exchange as " +
-              "folder-backed-up-backup.alcove.json. Removing the exchange " +
+              'exchange to the folder "Riverbend exchange" as ' +
+              '"folder-backed-up-backup.alcove.json". Removing the exchange ' +
               "here leaves that file in place.",
             { exact: false },
           ),
       )
       .toBeInTheDocument();
     expect(
-      page.getByText("A backup file you exported", { exact: false }).query(),
+      page
+        .getByText("Any backup file of this exchange you hold", {
+          exact: false,
+        })
+        .query(),
     ).toBeNull();
   });
 
@@ -642,9 +650,12 @@ describe("saved list route: delete is a fully supported, always-available action
       .toBeInTheDocument();
     expect(
       page
-        .getByText("A backup file you exported stays in your custody", {
-          exact: false,
-        })
+        .getByText(
+          "Any backup file of this exchange you hold stays in your custody",
+          {
+            exact: false,
+          },
+        )
         .query(),
     ).toBeNull();
   });

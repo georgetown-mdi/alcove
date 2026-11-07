@@ -84,8 +84,10 @@ test("an invitation on a newer format version asks for a reload, then the partne
     ),
   );
   expect(newer.kind).toBe("newer");
-  if (newer.kind === "newer")
+  if (newer.kind === "newer") {
     expect(newer.detail).toContain("made by a newer version of Alcove");
+    expect(newer.detail).not.toContain(INVITATION_NEWER_REMEDY);
+  }
   // A browser updates by reloading; the command line keeps core's sentence.
   expect(NEWER_INVITATION_BODY).toBe(
     "This invitation was made by a newer version of Alcove than this one. " +

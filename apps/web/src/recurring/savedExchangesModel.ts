@@ -358,8 +358,9 @@ function backupFor(local: ManagedLocalState | undefined): SavedExchangeBackup {
 /** The line both backup notes end on: a rotation clears the backup marker, so
  * a marked file holds the stored secret, the one the partner's copy uses. */
 const REMOVED_BACKUP_STILL_RUNS =
-  "Until your partner removes their copy or one of you re-invites, anyone " +
-  "who can read the file can run this exchange as you.";
+  "Until your partner removes their copy of this exchange or replaces it " +
+  "with a new invitation, anyone who can read the file can run this " +
+  "exchange as you.";
 
 /**
  * The remove confirmation's note on the backup the removal leaves behind:
@@ -376,18 +377,18 @@ export function removedBackupNote(
     const folder =
       folderBackup.folderName === undefined
         ? "your working folder"
-        : `the folder ${folderBackup.folderName}`;
+        : `the folder "${folderBackup.folderName}"`;
     return (
       `After a scheduled run, this app wrote a backup of this exchange to ` +
-      `${folder} as ${folderBackup.fileName}. Removing the exchange here ` +
+      `${folder} as "${folderBackup.fileName}". Removing the exchange here ` +
       "leaves that file in place. Delete it yourself if you no longer want " +
       `it. ${REMOVED_BACKUP_STILL_RUNS}`
     );
   }
   if (!backedUp) return undefined;
   return (
-    "A backup file you exported stays in your custody. Delete it yourself " +
-    `if you no longer want it. ${REMOVED_BACKUP_STILL_RUNS}`
+    "Any backup file of this exchange you hold stays in your custody. Delete " +
+    `it yourself if you no longer want it. ${REMOVED_BACKUP_STILL_RUNS}`
   );
 }
 

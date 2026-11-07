@@ -475,9 +475,12 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
       .element(
-        page.getByText("A backup file you exported stays in your custody", {
-          exact: false,
-        }),
+        page.getByText(
+          "Any backup file of this exchange you hold stays in your custody",
+          {
+            exact: false,
+          },
+        ),
       )
       .toBeInTheDocument();
   });
@@ -503,7 +506,7 @@ describe("recovery listing: the delete confirm's custody notes", () => {
           .getByRole("dialog")
           .getByText(
             "this app wrote a backup of this exchange to the folder " +
-              "Riverbend exchange as folder-backed-up-backup.alcove.json",
+              '"Riverbend exchange" as "folder-backed-up-backup.alcove.json"',
             { exact: false },
           ),
       )
@@ -519,9 +522,12 @@ describe("recovery listing: the delete confirm's custody notes", () => {
       .toBeInTheDocument();
     expect(
       page
-        .getByText("A backup file you exported stays in your custody", {
-          exact: false,
-        })
+        .getByText(
+          "Any backup file of this exchange you hold stays in your custody",
+          {
+            exact: false,
+          },
+        )
         .query(),
     ).toBeNull();
   });
@@ -578,9 +584,12 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     ).toBeNull();
     await expect
       .element(
-        dialog.getByText("A backup file you exported stays in your custody", {
-          exact: false,
-        }),
+        dialog.getByText(
+          "Any backup file of this exchange you hold stays in your custody",
+          {
+            exact: false,
+          },
+        ),
       )
       .toBeInTheDocument();
   });

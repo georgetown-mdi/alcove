@@ -316,8 +316,9 @@ describe("savedExchangeRow backup state", () => {
 
 describe("removedBackupNote", () => {
   const STILL_RUNS =
-    "Until your partner removes their copy or one of you re-invites, anyone " +
-    "who can read the file can run this exchange as you.";
+    "Until your partner removes their copy of this exchange or replaces it " +
+    "with a new invitation, anyone who can read the file can run this " +
+    "exchange as you.";
 
   test("names the folder and file a scheduled run wrote, and says this app wrote it", () => {
     expect(
@@ -328,7 +329,7 @@ describe("removedBackupNote", () => {
       }),
     ).toBe(
       "After a scheduled run, this app wrote a backup of this exchange to " +
-        "the folder Riverbend exchange as riverbend-backup.alcove.json. " +
+        'the folder "Riverbend exchange" as "riverbend-backup.alcove.json". ' +
         "Removing the exchange here leaves that file in place. Delete it " +
         `yourself if you no longer want it. ${STILL_RUNS}`,
     );
@@ -342,13 +343,14 @@ describe("removedBackupNote", () => {
       }),
     ).toContain(
       "wrote a backup of this exchange to your working folder as " +
-        "riverbend-backup.alcove.json.",
+        '"riverbend-backup.alcove.json".',
     );
   });
 
-  test("keeps the exported-file wording for any other backup, and says nothing without one", () => {
+  test("keeps the held-file wording for any other backup, and says nothing without one", () => {
     expect(removedBackupNote(true, undefined)).toBe(
-      "A backup file you exported stays in your custody. Delete it yourself " +
+      "Any backup file of this exchange you hold stays in your custody. " +
+        "Delete it yourself " +
         `if you no longer want it. ${STILL_RUNS}`,
     );
     expect(removedBackupNote(false, undefined)).toBeUndefined();
