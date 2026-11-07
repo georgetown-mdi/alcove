@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  clearRead,
   markerPath,
   READ_TTL_MS,
   recordedReadAgeMs,
@@ -74,6 +75,20 @@ describe("recordRead and recordedReadAgeMs", () => {
 
   it("reads no age when nothing is recorded", () => {
     expect(recordedReadAgeMs(markerPath(randomUUID()))).toBeNull();
+  });
+});
+
+describe("clearRead", () => {
+  it("removes a recorded read", () => {
+    const path = markerPath(randomUUID());
+    written.push(path);
+    expect(recordRead(path)).toBe(true);
+    expect(clearRead(path)).toBe(true);
+    expect(recordedReadAgeMs(path)).toBeNull();
+  });
+
+  it("counts a read never recorded as removed", () => {
+    expect(clearRead(markerPath(randomUUID()))).toBe(true);
   });
 });
 

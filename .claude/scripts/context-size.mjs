@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 //
-// Print the size of the session's context in tokens, so an orchestrating
-// session can tell when it has passed the size at which
-// .claude/orchestration/ruleset.md, Session lifecycle, has it prepare a
-// compaction.
+// Print the size of the session's context in tokens, so a session can see
+// how far it stands from the compaction window .claude/settings.json sets.
 //
 // Usage:
 //   node context-size.mjs [<transcript.jsonl>]
