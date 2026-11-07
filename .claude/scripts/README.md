@@ -72,10 +72,11 @@ push:
   harness injects `args`, `agent`, `parallel`, and `pipeline`, and takes the
   top-level `return` as the run's result. No ES module parser accepts that, so
   eslint ignores them and the test beside each one compiles it into a function
-  to drive it. The review-round and controversy workflow scripts import and
-  require nothing (asserted by their tests), because the harness refuses a
-  script that does; work that needs a file or a command runs in a script beside
-  it (`verify-fix-shape.mjs` states why).
+  to drive it. The workflow scripts import and require nothing (asserted by
+  their tests), because the harness refuses a script that does; work that
+  needs a file or a command runs in a script beside it (`verify-fix-shape.mjs`
+  states why). `lib/workflowScriptHarness.mjs` holds the compiling and the
+  argument shapes the three tests share.
 - `judgment-call-controversy-workflow.mjs`, the controversy scoring `/docket`
   runs while building its list: one Sonnet gatherer per session lists the judgment
   calls taken since the last docket, two independent Opus lenses judge each one

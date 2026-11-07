@@ -1,9 +1,10 @@
 // Reading a Bash command line, and putting a read-only question to git.
 //
 // The hooks that split a command line into stages and tokenize it before
-// deciding anything, or ask git a question about a repository, share this
-// one copy, so a fix to the splitters or the tokenizer -- pragmatic, and they
-// say so -- reaches every hook at once.
+// deciding anything, read a git invocation's global options, or ask git a
+// question about a repository, share this one copy, so a fix to the splitters,
+// the tokenizer or the option reader -- pragmatic, and they say so -- reaches
+// every hook at once.
 //
 // None of this is a shell parser and none will become one. What it reads is a
 // plain command line: a subshell, a brace group, a command substitution, an
@@ -172,6 +173,50 @@ export function peelCommandPrefix(
     break;
   }
   return { assignments, index };
+}
+
+// git's global options that take a value. Each of them also takes it joined by
+// `=` except `-C` and `-c`, which git refuses in that spelling; the reader still
+// splits `-C=x` and `-c=x` on the `=`, so each hook decides what such a word means.
+const GIT_VALUE_OPTIONS = new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--config-env",
+]);
+
+/**
+ * Read the global options of a git invocation, given the words after the `git`
+ * command word: the hook peels the command prefix and recognizes git itself.
+ * Each option comes back in order as `{ option, value, attached }`: `value` is
+ * the text after an `=` (`attached` true), else the next word for an option
+ * that takes one, else undefined. The first word not opening with `-` is the
+ * subcommand, undefined when none is left, and `args` are the words after it.
+ */
+export function readGitGlobalOptions(words) {
+  const options = [];
+  let index = 0;
+  while (index < words.length && words[index].startsWith("-")) {
+    const word = words[index];
+    const equals = word.indexOf("=");
+    const option = equals >= 0 ? word.slice(0, equals) : word;
+    const attached = equals >= 0;
+    const takesNext = !attached && GIT_VALUE_OPTIONS.has(option);
+    const value = attached
+      ? word.slice(equals + 1)
+      : takesNext
+        ? words[index + 1]
+        : undefined;
+    options.push({ option, value, attached });
+    index += takesNext ? 2 : 1;
+  }
+  return {
+    options,
+    subcommand: words[index],
+    args: words.slice(index + 1),
+  };
 }
 
 /** Seconds per unit of the durations `sleep` and `timeout` take; bare is seconds. */

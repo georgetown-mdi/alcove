@@ -43,6 +43,7 @@ import { eventForTools } from "./lib/event.mjs";
 export const EXPIRES_ON = "2027-03-31";
 
 const TIERS = new Set(["opus", "sonnet", "haiku", "fable"]);
+const TIER_LIST = [...TIERS].join(", ");
 
 // The subagent type whose model the platform discards; see the header's dated basis.
 const INHERITING_SUBAGENT_TYPE = "fork";
@@ -77,9 +78,7 @@ function main() {
   if (typeof model === "string" && model.length > 0) {
     // Explicit-model spawn: validate the tier and never touch the filesystem.
     if (!TIERS.has(model)) {
-      block(
-        `unknown model tier '${model}'; pass one of opus, sonnet, haiku, fable`,
-      );
+      block(`unknown model tier '${model}'; pass one of ${TIER_LIST}`);
     }
     process.exit(0);
   }
@@ -113,7 +112,7 @@ function main() {
   const allowlist = [...pinned].sort().join(", ") || "(none)";
   block(
     `spawn of '${subagentType ?? "(none)"}' passes no explicit model and is not a ` +
-      `pinned definition. Pass an explicit model (opus, sonnet, haiku, fable), or ` +
+      `pinned definition. Pass an explicit model (${TIER_LIST}), or ` +
       `use a pinned subagent_type from {${allowlist}}`,
   );
 }

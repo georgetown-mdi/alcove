@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +8,7 @@ import {
   git,
   leadingCdDestination,
   peelCommandPrefix,
+  readGitGlobalOptions,
   splitPipelines,
   splitSegments,
   splitStages,
@@ -130,6 +131,95 @@ describe("peelCommandPrefix", () => {
       assignments: ["FOO=1"],
       command: "",
     });
+  });
+});
+
+describe("readGitGlobalOptions", () => {
+  const read = (line) => readGitGlobalOptions(line.split(" "));
+
+  it("reads each value option's value in the separate spelling", () => {
+    expect(
+      read(
+        "-C a -c k=v --git-dir g --work-tree w --namespace n --config-env e=V push x",
+      ),
+    ).toEqual({
+      options: [
+        { option: "-C", value: "a", attached: false },
+        { option: "-c", value: "k=v", attached: false },
+        { option: "--git-dir", value: "g", attached: false },
+        { option: "--work-tree", value: "w", attached: false },
+        { option: "--namespace", value: "n", attached: false },
+        { option: "--config-env", value: "e=V", attached: false },
+      ],
+      subcommand: "push",
+      args: ["x"],
+    });
+  });
+
+  it("reads a value joined by '=' and takes no next word for it", () => {
+    expect(read("--config-env=e=V --git-dir=g push")).toEqual({
+      options: [
+        { option: "--config-env", value: "e=V", attached: true },
+        { option: "--git-dir", value: "g", attached: true },
+      ],
+      subcommand: "push",
+      args: [],
+    });
+    expect(read("-C=a push").options).toEqual([
+      { option: "-C", value: "a", attached: true },
+    ]);
+  });
+
+  it("takes no value for an option outside the table", () => {
+    expect(read("--no-pager --bare push origin")).toEqual({
+      options: [
+        { option: "--no-pager", value: undefined, attached: false },
+        { option: "--bare", value: undefined, attached: false },
+      ],
+      subcommand: "push",
+      args: ["origin"],
+    });
+  });
+
+  it("has no subcommand when the words run out", () => {
+    expect(read("-C")).toEqual({
+      options: [{ option: "-C", value: undefined, attached: false }],
+      subcommand: undefined,
+      args: [],
+    });
+    expect(readGitGlobalOptions([]).subcommand).toBeUndefined();
+  });
+
+  // The table is checked against real git: git finds its subcommand where the
+  // reader does, in both spellings, and refuses `-C` and `-c` joined by `=`.
+  it("finds the subcommand where real git does", () => {
+    const dir = makeRepo();
+    const runGit = (words) =>
+      spawnSync("git", words, { cwd: dir, encoding: "utf8" });
+    const subcommand = ["rev-parse", "--abbrev-ref", "HEAD"];
+    for (const options of [
+      ["-C", "."],
+      ["-c", "core.pager=cat"],
+      ["--git-dir", ".git"],
+      ["--git-dir=.git"],
+      ["--work-tree", "."],
+      ["--work-tree=."],
+      ["--namespace", "n"],
+      ["--namespace=n"],
+      ["--config-env", "core.pager=HOME"],
+      ["--config-env=core.pager=HOME"],
+    ]) {
+      const words = [...options, ...subcommand];
+      expect(readGitGlobalOptions(words).subcommand, words.join(" ")).toBe(
+        "rev-parse",
+      );
+      const run = runGit(words);
+      expect(run.status, `${words.join(" ")}: ${run.stderr}`).toBe(0);
+      expect(run.stdout.trim()).toBe("primary");
+    }
+    for (const joined of ["-C=.", "-c=core.pager=cat"]) {
+      expect(runGit([joined, ...subcommand]).status, joined).not.toBe(0);
+    }
   });
 });
 

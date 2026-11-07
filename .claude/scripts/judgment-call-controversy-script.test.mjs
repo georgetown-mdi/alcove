@@ -1,29 +1,17 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { jsBlocks } from "../../scripts/lib/markdownFences.mjs";
+import {
+  compileScript,
+  readRepoFile,
+  SHAPES,
+  UNRESOLVABLE,
+} from "./lib/workflowScriptHarness.mjs";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const COMMAND = ".claude/commands/docket.md";
 const SCRIPT = ".claude/scripts/judgment-call-controversy-workflow.mjs";
 
-const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-
 // The checked-in script the command invokes by path IS the artifact under test.
-// It is a Workflow script body rather than a module, so compile it into a
-// function of the names the Workflow runtime injects; `export const meta` is the
-// one module-only spelling in it, and the top-level `return` is legal in a
-// function body.
-function compileScript() {
-  const body = readFileSync(resolve(root, SCRIPT), "utf8").replace(
-    /^export const meta =/m,
-    "const meta =",
-  );
-  return new AsyncFunction("args", "agent", "parallel", "pipeline", body);
-}
-
-const script = compileScript();
+const script = compileScript(SCRIPT, ["args", "agent", "parallel", "pipeline"]);
 const parallel = (thunks) => Promise.all(thunks.map((thunk) => thunk()));
 // Each item runs through every stage in turn, a later stage taking the earlier
 // stage's result and the item. The results come back in reverse order, so a
@@ -40,13 +28,6 @@ const pipeline = async (items, first, ...rest) => {
 };
 const runner = (deliver) => (args, respond) =>
   script(deliver(args), respond, parallel, pipeline);
-
-// The harness may deliver the arguments as JSON text rather than as the object
-// the caller passed, so every case below runs under both shapes.
-const SHAPES = [
-  { shape: "object", deliver: (args) => args },
-  { shape: "string", deliver: (args) => JSON.stringify(args) },
-];
 
 const SINCE = "2026-10-20T18:00Z";
 const SESSION_ONE = {
@@ -117,21 +98,20 @@ const judged = (key, product, trust = product) => ({
 
 describe("judgment-call-controversy command wiring", () => {
   it("is invoked by the docket command, which has no script of its own", () => {
-    const command = readFileSync(resolve(root, COMMAND), "utf8");
+    const command = readRepoFile(COMMAND);
     expect(command).toContain(SCRIPT);
     expect(jsBlocks(command)).toEqual([]);
   });
 
   // The Workflow tool refuses at launch a script whose body loads a module.
   it("loads no module, so the Workflow tool will launch it", () => {
-    const body = readFileSync(resolve(root, SCRIPT), "utf8");
+    const body = readRepoFile(SCRIPT);
     expect(body).not.toMatch(/^\s*import\s/m);
     expect(body).not.toContain("import(");
     expect(body).not.toContain("require(");
   });
 });
 
-const UNRESOLVABLE = [[], 42, "text", true, null, undefined];
 const mustNotSpawn = () => {
   throw new Error("must not spawn");
 };

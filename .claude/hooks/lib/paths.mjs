@@ -6,6 +6,9 @@
 // outright, so each walks up to the part that does exist, resolves that, and
 // puts the rest back -- the same walk, and the same off-by-one to get wrong.
 // It lives here rather than in two copies for that reason.
+//
+// The same goes for the filename two libraries build from untrusted text: the
+// review-round lock from a ref, the ruleset-read marker from a session id.
 
 import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -45,4 +48,14 @@ export function nearestExistingDirectory(path) {
     if (parent === current) return null;
     current = parent;
   }
+}
+
+/**
+ * A filename-safe key for `text`: every run of characters outside
+ * `[A-Za-z0-9._-]` becomes one `_` and leading dots are stripped, so no key can
+ * name a directory component of its own. May be empty; what an empty key means,
+ * and any length cap, is the caller's.
+ */
+export function fileKey(text) {
+  return text.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "");
 }

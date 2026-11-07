@@ -20,6 +20,7 @@ import { commandOf, eventForTools } from "./lib/event.mjs";
 import {
   COMMAND_PREFIX_WORDS,
   peelCommandPrefix,
+  readGitGlobalOptions,
   splitSegments,
   tokenizeRaw,
 } from "./lib/shell.mjs";
@@ -64,43 +65,21 @@ function identityAssignment(assignments) {
   return null;
 }
 
-// git global options that consume a following token as their value, so the
-// subcommand scan does not mistake that value for the subcommand.
-const VALUE_GLOBALS = new Set([
-  "-C",
-  "-c",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-  "--config-env",
-]);
-
 // Read a git invocation as the config keys its global options set, the
 // subcommand, and that subcommand's arguments; null when the segment does not
 // invoke git as its command word (so `echo git commit --author=x` is not one).
+// An attached `-c=name=value`, which git refuses, is still read as a setting.
 function gitInvocation(tokens) {
   const command = tokens[0];
   if (!command || command.replace(/^.*\//, "") !== "git") return null;
-  const configOptions = [];
-  let i = 1;
-  while (i < tokens.length && tokens[i].startsWith("-")) {
-    const token = tokens[i];
-    const equals = token.indexOf("=");
-    const option = equals >= 0 ? token.slice(0, equals) : token;
-    const attached = equals >= 0 ? token.slice(equals + 1) : null;
-    // `-c name=value` always takes a separate token; `--config-env name=envvar`
-    // takes either form.
-    if (option === "-c" || option === "--config-env") {
-      const setting = attached ?? tokens[i + 1];
-      if (setting !== undefined) {
-        configOptions.push({ option, key: configKey(setting) });
-      }
-      i += attached === null ? 2 : 1;
-      continue;
-    }
-    i += VALUE_GLOBALS.has(option) && attached === null ? 2 : 1;
-  }
-  return { configOptions, subcommand: tokens[i], args: tokens.slice(i + 1) };
+  const { options, subcommand, args } = readGitGlobalOptions(tokens.slice(1));
+  const configOptions = options
+    .filter(
+      ({ option, value }) =>
+        (option === "-c" || option === "--config-env") && value !== undefined,
+    )
+    .map(({ option, value }) => ({ option, key: configKey(value) }));
+  return { configOptions, subcommand, args };
 }
 
 // Config key names are case-insensitive in git (`-c USER.NAME=x` sets user.name),

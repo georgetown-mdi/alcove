@@ -53,6 +53,7 @@ import { basename, resolve } from "node:path";
 import { commandOf, eventCwd, eventForTools } from "./lib/event.mjs";
 import {
   peelCommandPrefix,
+  readGitGlobalOptions,
   splitPipelines,
   splitStages,
   tokenize,
@@ -449,46 +450,22 @@ function removalOperands(commands) {
   return deleting.flatMap(removalTargets);
 }
 
-// git global options that consume a following token as their value, so the
-// subcommand scan does not mistake that value for the subcommand.
-const VALUE_GLOBALS = new Set([
-  "-C",
-  "-c",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-  "--config-env",
-]);
-
 // Read a git invocation as the directory redirects it holds, its subcommand,
 // and that subcommand's arguments. Repeated `-C` is kept in order rather than
 // overwritten: real git applies each one from where the last one left it, so
 // `-C a -C b` lands in `a/b` and a second `-C .` stays where the first went.
-function gitInvocation(args) {
+function gitInvocation(words) {
   const chdirs = [];
   let workTree = null;
   const configSettings = [];
-  let index = 0;
-  while (index < args.length && args[index].startsWith("-")) {
-    const token = args[index];
-    const equals = token.indexOf("=");
-    const option = equals >= 0 ? token.slice(0, equals) : token;
-    const attached = equals >= 0 ? token.slice(equals + 1) : null;
-    const value = attached ?? args[index + 1];
-    if (value !== undefined) {
-      if (option === "-C") chdirs.push(value);
-      else if (option === "--work-tree") workTree = value;
-      else if (option === "-c") configSettings.push(value);
-    }
-    index += VALUE_GLOBALS.has(option) && attached === null ? 2 : 1;
+  const { options, subcommand, args } = readGitGlobalOptions(words);
+  for (const { option, value } of options) {
+    if (value === undefined) continue;
+    if (option === "-C") chdirs.push(value);
+    else if (option === "--work-tree") workTree = value;
+    else if (option === "-c") configSettings.push(value);
   }
-  return {
-    chdirs,
-    workTree,
-    configSettings,
-    subcommand: args[index],
-    args: args.slice(index + 1),
-  };
+  return { chdirs, workTree, configSettings, subcommand, args };
 }
 
 // `git clean` refuses to delete without a force UNLESS `clean.requireForce` is
