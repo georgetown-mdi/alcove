@@ -613,7 +613,7 @@ export function finalizeBootstrap(params: {
       // Both parties saved: the initiator generated the secret and the responder
       // received it, so both persist the same config and key.
       const { configPath, keyPath } = provisionConfigAndKey(
-        spec,
+        { write: spec },
         { sharedSecret: bootstrap.sharedSecret },
         { configPath: configFile, keyPath: keyFile },
         { savedConfigWarning },

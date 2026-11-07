@@ -9,7 +9,6 @@ import {
   termsStatingDeclaredPayloadSend,
   CONNECTION_BLOCK_NOTICE,
   DEFAULT_PEER_TIMEOUT_MS,
-  inferMetadata,
   INVITATION_LIFETIME_SECONDS,
   MAX_INVITATION_LIFETIME_SECONDS,
   invitationExpires,
@@ -34,6 +33,7 @@ import {
 import type {
   ConnectionConfig,
   ConnectionEndpoint,
+  InvitationToken,
   ExchangeSpec,
   LinkageStrategy,
   LinkageTerms,
@@ -478,15 +478,14 @@ function mintPreflightMessaging(configPath: string): LinkagePreflightMessaging {
 }
 
 /**
- * The same mint-time wording for the online path, whose linkage terms are
- * derived from the input file's own columns rather than read from a
- * configuration: `inputPath` names that file, unlike `configPath` above the
- * online path's input may be the stdin sentinel `-`, so it is named through
- * {@link describeInputSource} rather than composed raw. Nobody has authored
- * a terms document here, so the keyless refusal leads with the input-side
- * remedy the shortfall refusal already gives.
+ * The same mint-time wording for terms derived from the input file's own
+ * columns rather than read from a configuration: `inputPath` names that file,
+ * which unlike `configPath` above may be the stdin sentinel `-`, so it is
+ * named through {@link describeInputSource} rather than composed raw. Nobody
+ * has authored a terms document here, so the keyless refusal leads with the
+ * input-side remedy the shortfall refusal already gives.
  */
-function onlineMintPreflightMessaging(
+function inputMintPreflightMessaging(
   inputPath: string,
 ): LinkagePreflightMessaging {
   return {
@@ -582,7 +581,53 @@ type InviteReady =
  *
  * @internal exported for testing
  */
-export async function validateInvite(params: {
+export async function validateInvite(
+  params: ValidateInviteParams,
+): Promise<InviteReady> {
+  const { resolved, options, ownRelay, log } = params;
+  const lifetimeSeconds =
+    params.expiresInSeconds ?? INVITATION_LIFETIME_SECONDS;
+
+  // The input is read at most once per invocation. The three modes below are
+  // mutually exclusive, and each reads the input through a single
+  // loadInputRows call with allowStdin enabled. When the input is `-` that
+  // stream is process.stdin, which is single-use, so this exclusivity is
+  // critical: merging the modes such that two loadInputRows calls could both
+  // run would read stdin twice and silently yield empty rows the second time.
+  if (resolved.mode === "online")
+    return validateOnlineInvite(params, resolved, lifetimeSeconds);
+
+  // Offline: the server-block overrides (--server-* and --outbound-path) and the
+  // connection-options overrides (timeouts, --max-reconnect-attempts, the
+  // file-sync toggles) cannot take effect (the connection block is written as a
+  // placeholder to edit, not built from a URL), so warn rather than silently
+  // drop a flag the operator chose to pass. Two diagnostics: the server block
+  // and the connection.options block have distinct remedies.
+  warnServerOverridesIgnoredOffline(options, log);
+  warnOptionsOverridesIgnoredOffline(options, log);
+  for (const name of relayFlagsGiven(ownRelay))
+    log.warn(
+      `--${name} applies only to an online invitation over a webrtc URL ` +
+        "(http://, https://, ws://, or wss://), so it was ignored. An " +
+        "offline invitation names the " +
+        `relay in connection.${name} of a webrtc configuration; set it there.`,
+    );
+
+  // Offline. Linkage terms come from a pre-existing config when one is present
+  // at the config path, and are inferred from the input file otherwise.
+  const configSource = loadConfigLinkageSource(options.configFile);
+  if (configSource !== undefined)
+    return validateInviteFromConfig(
+      params,
+      resolved,
+      configSource,
+      lifetimeSeconds,
+    );
+  return validateInviteFromInput(params, resolved, lifetimeSeconds);
+}
+
+/** The parameters of {@link validateInvite}. */
+interface ValidateInviteParams {
   resolved: ReturnType<typeof resolveInvitePositionals>;
   options: CommonBootstrapOptions;
   acceptTimeout: number;
@@ -595,248 +640,201 @@ export async function validateInvite(params: {
   /** The relay `--turn` / `--stun` name, applied on a webrtc URL (http://, https://, ws://, or wss://). */
   ownRelay?: InviterOwnRelay;
   log: ReturnType<typeof getLogger>;
-}): Promise<InviteReady> {
+}
+
+type ResolvedInvite = ReturnType<typeof resolveInvitePositionals>;
+type InputRows = Awaited<ReturnType<typeof loadInputRows>>;
+
+/** {@link validateInvite} for an invitation that runs its own exchange at a server URL. */
+async function validateOnlineInvite(
+  params: ValidateInviteParams,
+  resolved: Extract<ResolvedInvite, { mode: "online" }>,
+  lifetimeSeconds: number,
+): Promise<InviteReady> {
   const {
-    resolved,
     options,
     acceptTimeout,
-    expiresInSeconds,
     linkageStrategy,
     csvDelimiter,
     ownRelay,
     log,
   } = params;
-  const delimiterSection = csvDelimiter !== undefined ? { csvDelimiter } : {};
-  const lifetimeSeconds = expiresInSeconds ?? INVITATION_LIFETIME_SECONDS;
-
-  // The input is read at most once per invocation. The online branch below and
-  // the two offline branches (config-as-source, and infer-from-input) are
-  // mutually exclusive -- each returns -- and each reads the input through a
-  // single loadInputRows call with allowStdin enabled. When the input is `-`
-  // that stream is process.stdin, which is single-use, so this exclusivity is
-  // critical: merging these branches such that two loadInputRows calls could
-  // both run would read stdin twice and silently yield empty rows the second time.
-  if (resolved.mode === "online") {
-    const { url, input, output } = resolved;
-    // This path authors its terms from the input file, so the label is the
-    // operator's to supply; refuse before any probe, mint, or write.
-    const identity = resolveIdentity(options.identity);
-    // A non-positive accept-timeout is a pure usage error; reject it before any
-    // filesystem probe or connection construction. The CLI handler already
-    // rejects a non-positive or malformed value when it parses the flag
-    // (durationFlagSeconds -> parseDurationFlag -> parseDuration), so this is
-    // unreachable from the command line; it is kept as an independent guard
-    // because validateInvite is exported and driven with a raw numeric
-    // acceptTimeout that does not pass through that parse (invite.test.ts,
-    // "validateInvite: a non-positive accept-timeout is rejected").
-    if (acceptTimeout <= 0)
-      throw new UsageError(
-        `accept-timeout must be a positive duration; got ${acceptTimeout}s`,
-      );
-    // Detect a pre-existing config or key file before anything else so a
-    // bootstrap never clobbers either partway through an exchange. Reusing a
-    // pre-existing config as the linkage-terms source is a documented remaining
-    // limitation (see docs/CLI.md "Online invitation").
-    assertNoProvisionConflicts({
-      configPath: options.configFile,
-      keyPath: options.keyFile,
-    });
-    // Refuse an unusable output folder here, before the invitation is printed,
-    // so no token goes out for an inviter that is about to exit.
-    if (output !== undefined) preflightOutputFolder(output, log);
-    // Validate the URL before the token is minted, so an unusable URL (e.g. one
-    // with no host) fails before the caller can disclose the token. The role is
-    // stamped here because this command is the inviting end; on a ws:/wss: URL
-    // that is what makes the connection dialable, since a URL has no role field.
-    //
-    // --accept-timeout is not merged in: this connection is what the bootstrap
-    // persists, and an accept-only wait written as the config's peer_timeout_ms
-    // would silently become the budget of every later recurring run. It reaches
-    // this run alone, through runOnlineBootstrap's runOnlyPeerTimeoutSeconds.
-    const serverURL = isWebAppAddress(url)
-      ? await resolveWebAppSignalingServer(url)
-      : url;
-    const connection = withWebRTCPeerRole(
-      inviterConnectionFromURL(
-        serverURL,
-        connectionOverridesFrom(options),
-        ownRelay,
+  const { url, input, output } = resolved;
+  // This path authors its terms from the input file, so the label is the
+  // operator's to supply; refuse before any probe, mint, or write.
+  const identity = resolveIdentity(options.identity);
+  // A non-positive accept-timeout is a pure usage error; reject it before any
+  // filesystem probe or connection construction. The CLI handler already
+  // rejects a non-positive or malformed value when it parses the flag
+  // (durationFlagSeconds -> parseDurationFlag -> parseDuration), so this is
+  // unreachable from the command line; it is kept as an independent guard
+  // because validateInvite is exported and driven with a raw numeric
+  // acceptTimeout that does not pass through that parse (invite.test.ts,
+  // "validateInvite: a non-positive accept-timeout is rejected").
+  if (acceptTimeout <= 0)
+    throw new UsageError(
+      `accept-timeout must be a positive duration; got ${acceptTimeout}s`,
+    );
+  // Detect a pre-existing config or key file before anything else so a
+  // bootstrap never clobbers either partway through an exchange. Reusing a
+  // pre-existing config as the linkage-terms source is a documented remaining
+  // limitation (see docs/CLI.md "Online invitation").
+  assertNoProvisionConflicts({
+    configPath: options.configFile,
+    keyPath: options.keyFile,
+  });
+  // Refuse an unusable output folder here, before the invitation is printed,
+  // so no token goes out for an inviter that is about to exit.
+  if (output !== undefined) preflightOutputFolder(output, log);
+  // Validate the URL before the token is minted, so an unusable URL (e.g. one
+  // with no host) fails before the caller can disclose the token. The role is
+  // stamped here because this command is the inviting end; on a ws:/wss: URL
+  // that is what makes the connection dialable, since a URL has no role field.
+  //
+  // --accept-timeout is not merged in: this connection is what the bootstrap
+  // persists, and an accept-only wait written as the config's peer_timeout_ms
+  // would silently become the budget of every later recurring run. It reaches
+  // this run alone, through runOnlineBootstrap's runOnlyPeerTimeoutSeconds.
+  const serverURL = isWebAppAddress(url)
+    ? await resolveWebAppSignalingServer(url)
+    : url;
+  const connection = withWebRTCPeerRole(
+    inviterConnectionFromURL(
+      serverURL,
+      connectionOverridesFrom(options),
+      ownRelay,
+    ),
+    "inviter",
+  );
+  // Read before the invitation is printed: an unreadable file must not leave
+  // a printed invitation behind.
+  const credentials = readConnectionCredentials(connection);
+  // The file-sync half of this connection's options, absent on webrtc (whose
+  // options block is the shared timeouts alone). The diagnostics and the retain
+  // declaration below all read file-sync facts, so each reads it through here
+  // rather than off a connection that may have no such field.
+  const fileSyncOptions =
+    connection.channel === "webrtc" ? undefined : connection.options;
+  // Only on this online path -- the offline path reports the override ignored
+  // (see validateInvite). A no-op on webrtc, which polls nothing.
+  warnLowPollingFrequency(connection.channel, options.pollingFrequencyMs, log);
+  // Warn when a file-sync flag resolves to a channel that ignores it (a file://
+  // URL is filedrop, which holds no session; a ws:// URL is webrtc, which has
+  // no directory to poll or retain). applyConnectionOverrides drops each flag on
+  // channels that cannot use it, so the raw flag is the only source of the
+  // operator's intent; read it alongside the merged value a future persisted
+  // source would set. --connection-per-poll on sftp is a no-op here --
+  // warnConnectionPerPollShortInterval covers the short-interval case instead,
+  // and the two never double-warn.
+  warnUnsupportedFileSyncFlags(
+    connection.channel,
+    {
+      locklessRendezvous: options.locklessRendezvous,
+      retainFiles: options.retainFiles,
+      pollingFrequencyMs: options.pollingFrequencyMs,
+      connectionPerPoll:
+        options.connectionPerPoll === true ||
+        fileSyncOptions?.connectionPerPoll === true,
+      peerId: options.peerId,
+      timestampInFilename: options.timestampInFilename,
+      writeWithoutRenaming: options.writeWithoutRenaming,
+      ignoreFilesOlderThan: options.ignoreFilesOlderThan,
+    },
+    log,
+  );
+  // The server-block half of the same report: applyConnectionOverrides merges
+  // that sub-group on sftp alone, so every --server-* flag typed at this
+  // command's ws:/wss: URL is dropped, credentials included.
+  warnUnsupportedWebRTCServerFlags(
+    connection.channel,
+    {
+      serverPort: options.serverPort,
+      serverUsername: options.serverUsername,
+      serverPassword: options.serverPassword,
+      serverPrivateKey: options.serverPrivateKey,
+      serverPrivateKeyPassphrase: options.serverPrivateKeyPassphrase,
+      serverKeyboardInteractive: options.serverKeyboardInteractive,
+      serverHostKeyFingerprint: options.serverHostKeyFingerprint,
+    },
+    log,
+    "url",
+  );
+  // A webrtc endpoint holds no scheme, so a plaintext coordination server is
+  // one thing this invitation cannot convey: the acceptor seeded from it
+  // resolves TLS and would meet nobody. Name it where the operator can still
+  // act, beside the disclosure warning the dial itself raises.
+  if (connection.channel === "webrtc" && connection.server.secure === false)
+    log.warn(
+      plaintextEndpointWarning(
+        "invite over a wss:// coordination server or an https:// web app " +
+          "address",
       ),
-      "inviter",
     );
-    // Read before the invitation is printed: an unreadable file must not leave
-    // a printed invitation behind.
-    const credentials = readConnectionCredentials(connection);
-    // The file-sync half of this connection's options, absent on webrtc (whose
-    // options block is the shared timeouts alone). The diagnostics and the retain
-    // declaration below all read file-sync facts, so each reads it through here
-    // rather than off a connection that may have no such field.
-    const fileSyncOptions =
-      connection.channel === "webrtc" ? undefined : connection.options;
-    // Only on this online path -- the offline path reports the override ignored
-    // (see below). A no-op on webrtc, which polls nothing.
-    warnLowPollingFrequency(
-      connection.channel,
-      options.pollingFrequencyMs,
-      log,
-    );
-    // Warn when a file-sync flag resolves to a channel that ignores it (a file://
-    // URL is filedrop, which holds no session; a ws:// URL is webrtc, which has
-    // no directory to poll or retain). applyConnectionOverrides drops each flag on
-    // channels that cannot use it, so the raw flag is the only source of the
-    // operator's intent; read it alongside the merged value a future persisted
-    // source would set. --connection-per-poll on sftp is a no-op here --
-    // warnConnectionPerPollShortInterval covers the short-interval case instead,
-    // and the two never double-warn.
-    warnUnsupportedFileSyncFlags(
-      connection.channel,
-      {
-        locklessRendezvous: options.locklessRendezvous,
-        retainFiles: options.retainFiles,
-        pollingFrequencyMs: options.pollingFrequencyMs,
-        connectionPerPoll:
-          options.connectionPerPoll === true ||
-          fileSyncOptions?.connectionPerPoll === true,
-        peerId: options.peerId,
-        timestampInFilename: options.timestampInFilename,
-        writeWithoutRenaming: options.writeWithoutRenaming,
-        ignoreFilesOlderThan: options.ignoreFilesOlderThan,
-      },
-      log,
-    );
-    // The server-block half of the same report: applyConnectionOverrides merges
-    // that sub-group on sftp alone, so every --server-* flag typed at this
-    // command's ws:/wss: URL is dropped, credentials included.
-    warnUnsupportedWebRTCServerFlags(
-      connection.channel,
-      {
-        serverPort: options.serverPort,
-        serverUsername: options.serverUsername,
-        serverPassword: options.serverPassword,
-        serverPrivateKey: options.serverPrivateKey,
-        serverPrivateKeyPassphrase: options.serverPrivateKeyPassphrase,
-        serverKeyboardInteractive: options.serverKeyboardInteractive,
-        serverHostKeyFingerprint: options.serverHostKeyFingerprint,
-      },
-      log,
-      "url",
-    );
-    // A webrtc endpoint holds no scheme, so a plaintext coordination server is
-    // one thing this invitation cannot convey: the acceptor seeded from it
-    // resolves TLS and would meet nobody. Name it where the operator can still
-    // act, beside the disclosure warning the dial itself raises.
-    if (connection.channel === "webrtc" && connection.server.secure === false)
+  // The relay flags describe a webrtc connection's own relay; a file-sync
+  // connection has none to name or save.
+  if (connection.channel !== "webrtc")
+    for (const name of relayFlagsGiven(ownRelay))
       log.warn(
-        plaintextEndpointWarning(
-          "invite over a wss:// coordination server or an https:// web app " +
-            "address",
-        ),
+        `--${name} applies only to a webrtc URL (http://, https://, ` +
+          "ws://, or wss://); this " +
+          `${connection.channel} invitation names no relay and saves ` +
+          "none, so it was ignored.",
       );
-    // The relay flags describe a webrtc connection's own relay; a file-sync
-    // connection has none to name or save.
-    if (connection.channel !== "webrtc")
-      for (const name of relayFlagsGiven(ownRelay))
-        log.warn(
-          `--${name} applies only to a webrtc URL (http://, https://, ` +
-            "ws://, or wss://); this " +
-            `${connection.channel} invitation names no relay and saves ` +
-            "none, so it was ignored.",
-        );
-    // Warn when --connection-per-poll is paired with a short poll interval. Built
-    // from the URL with no loaded config, so `connection` holds the effective
-    // mode and interval (the CLI overrides applied when it was built).
-    warnConnectionPerPollShortInterval(
-      connection.channel,
-      fileSyncOptions?.connectionPerPoll,
-      fileSyncOptions?.pollIntervalMs,
-      log,
+  // Warn when --connection-per-poll is paired with a short poll interval. Built
+  // from the URL with no loaded config, so `connection` holds the effective
+  // mode and interval (the CLI overrides applied when it was built).
+  warnConnectionPerPollShortInterval(
+    connection.channel,
+    fileSyncOptions?.connectionPerPoll,
+    fileSyncOptions?.pollIntervalMs,
+    log,
+  );
+
+  // --accept-timeout is this run's arrival budget unconditionally, since it
+  // is always set (by the flag or its default), so a --peer-timeout typed
+  // here does not bound this wait. It is not discarded either: when the
+  // configuration is written, it becomes the budget of the runs that follow.
+  // This warning fires before the partner has accepted, so it states that
+  // destination conditionally, naming both budgets rather than leaving the
+  // operator to read silence as the one they asked for.
+  if (options.peerTimeout !== undefined)
+    log.warn(
+      "--peer-timeout does not bound this online invitation: " +
+        `--accept-timeout (${acceptTimeout}s) is how long this run waits ` +
+        "for the partner to accept. When the configuration is saved, " +
+        `--peer-timeout (${options.peerTimeout}s) is recorded in it as ` +
+        "connection.options.peer_timeout_ms, how long a later " +
+        "'alcove exchange' waits for the partner to arrive.",
     );
 
-    // --accept-timeout is this run's arrival budget unconditionally, since it
-    // is always set (by the flag or its default), so a --peer-timeout typed
-    // here does not bound this wait. It is not discarded either: when the
-    // configuration is written, it becomes the budget of the runs that follow.
-    // This warning fires before the partner has accepted, so it states that
-    // destination conditionally, naming both budgets rather than leaving the
-    // operator to read silence as the one they asked for.
-    if (options.peerTimeout !== undefined)
-      log.warn(
-        "--peer-timeout does not bound this online invitation: " +
-          `--accept-timeout (${acceptTimeout}s) is how long this run waits ` +
-          "for the partner to accept. When the configuration is saved, " +
-          `--peer-timeout (${options.peerTimeout}s) is recorded in it as ` +
-          "connection.options.peer_timeout_ms, how long a later " +
-          "'alcove exchange' waits for the partner to arrive.",
-      );
-
-    // An accept-timeout longer than the token's lifetime would keep waiting at
-    // the rendezvous past the point the token can be honored. Compare against
-    // the resolved lifetime so an --expires-in override is respected here too.
-    if (acceptTimeout > lifetimeSeconds)
-      log.warn(
-        `--accept-timeout (${acceptTimeout}s) exceeds the invitation ` +
-          `lifetime (${lifetimeSeconds}s); the token will expire ` +
-          "first and a later acceptance will be rejected.",
-      );
-
-    const rows = await loadInputRows(input, {
-      allowStdin: true,
-      csvDelimiter,
-      allowMemoryShortfall: options.allowMemoryShortfall,
-    });
-    const builtDataSpec = {
-      ...buildDataSpec({ identity, rows, linkageStrategy }),
-      ...delimiterSection,
-    };
-    // Grade the derived terms before the token is minted and before any
-    // connection is opened: the same verdict prepareForExchange enforces at the
-    // run boundary, where it is stated on the agreed standing rather than on
-    // this seat's draft one. The standardization and metadata are the ones that
-    // grading reads, so the refusal lands exactly where the run's would.
-    checkLinkageSatisfiability(
-      rows.columns,
-      builtDataSpec.linkageTerms,
-      onlineMintPreflightMessaging(input),
-      builtDataSpec.standardization,
-      builtDataSpec.metadata,
-    );
-    noteLinkageStrategySelection(
-      linkageStrategy,
-      builtDataSpec.linkageTerms,
-      log,
+  // An accept-timeout longer than the token's lifetime would keep waiting at
+  // the rendezvous past the point the token can be honored. Compare against
+  // the resolved lifetime so an --expires-in override is respected here too.
+  if (acceptTimeout > lifetimeSeconds)
+    log.warn(
+      `--accept-timeout (${acceptTimeout}s) exceeds the invitation ` +
+        `lifetime (${lifetimeSeconds}s); the token will expire ` +
+        "first and a later acceptance will be rejected.",
     );
 
-    // The metadata this party's disclosure is read from: the same one
-    // prepareForExchange uses (dataSpec.metadata, or inferred from the input
-    // columns).
-    const disclosureMetadata =
-      builtDataSpec.metadata ??
-      inferMetadata(rows.columns, rows.sanitizedColumnPositions);
+  const rows = await loadInputRows(input, {
+    allowStdin: true,
+    csvDelimiter,
+    allowMemoryShortfall: options.allowMemoryShortfall,
+  });
+  const dataSpec = authorTermsFromInput({
+    identity,
+    input,
+    rows,
+    linkageStrategy,
+    csvDelimiter,
+    log,
+  });
 
-    // Before the mint, so an over-long disclosed name is refused by position
-    // rather than as encodeInvitation's raw schema error.
-    assertDisclosedNamesCarriable(
-      disclosureMetadata,
-      builtDataSpec.linkageTerms.output,
-    );
-
-    // The acceptor's mirrored payload.receive holds exactly what
-    // preparePayload transmits.
-    const dataSpec: ResolvedDataSpec = {
-      ...builtDataSpec,
-      linkageTerms: termsStatingDeclaredPayloadSend(
-        builtDataSpec.linkageTerms,
-        disclosureMetadata,
-      ),
-    };
-
-    const expires = invitationExpires(lifetimeSeconds, Date.now());
-    const sharedSecret = generateSharedSecret();
-    const invitation = await encodeInvitation({
-      version: "1",
+  const { invitation, expires, sharedSecret } = await mintInvitation(
+    lifetimeSeconds,
+    {
       linkageTerms: dataSpec.linkageTerms,
-      sharedSecret,
-      expires,
       // Embed the credential-free locator for the connection this invite is
       // using, so the acceptor seeds its connection block from it (the same path
       // web-originated invitations exercise) rather than reconstructing it by
@@ -859,212 +857,201 @@ export async function validateInvite(params: {
       ...(fileSyncOptions?.retainFiles === true
         ? { inviterRetainsFiles: true }
         : {}),
-    });
-    // prepareForOnlineExchange can throw; run it here, before the token print in
-    // the caller's commit step, so a failure never follows disclosure.
-    const prepared = await prepareForOnlineExchange(dataSpec, identity, rows);
+    },
+  );
+  // prepareForOnlineExchange can throw; run it here, before the token print in
+  // the caller's commit step, so a failure never follows disclosure.
+  const prepared = await prepareForOnlineExchange(dataSpec, identity, rows);
 
-    return {
-      mode: "online",
-      url,
-      output,
-      connection,
-      credentials,
-      dataSpec,
-      prepared,
-      invitation,
-      expires,
-      sharedSecret,
-    };
+  return {
+    mode: "online",
+    url,
+    output,
+    connection,
+    credentials,
+    dataSpec,
+    prepared,
+    invitation,
+    expires,
+    sharedSecret,
+  };
+}
+
+/**
+ * {@link validateInvite} for an offline invitation whose linkage terms come from
+ * the configuration file already at the config path; only the key file is
+ * written.
+ */
+async function validateInviteFromConfig(
+  params: ValidateInviteParams,
+  resolved: Extract<ResolvedInvite, { mode: "offline" }>,
+  configSource: NonNullable<ReturnType<typeof loadConfigLinkageSource>>,
+  lifetimeSeconds: number,
+): Promise<InviteReady> {
+  const { options, linkageStrategy, csvDelimiter, log } = params;
+  const configTerms = configSource.linkageTerms;
+  // The config is the authoritative terms source here, so --linkage-strategy
+  // cannot silently override its linkage_strategy; name it as ignored (like the
+  // offline server/options override warnings in validateInvite) and point at
+  // the config field as the way to change it. The config's strategy is always
+  // materialized (the schema default), so it can be stated plainly.
+  if (linkageStrategy !== undefined)
+    log.warn(
+      `--linkage-strategy ${linkageStrategy} has no effect when the linkage ` +
+        "terms come from an existing configuration file; the file's " +
+        `linkage_strategy (${configTerms.linkageStrategy}) is used instead. ` +
+        `Edit linkage_strategy in ${redactAndRenderOperatorSuppliedText(
+          operatorSuppliedText(options.configFile),
+        )} to change it.`,
+    );
+  // The identity is one of those terms, so it is governed by the same rule:
+  // the config supplies the label this invitation is minted under, and a flag
+  // typed here is reported rather than silently dropped. A configuration
+  // holding none refuses instead -- an invitation names its inviter, and this
+  // path cannot write the label anywhere the partnership's later runs would
+  // read it. A blank flag value is nothing to report -- it is what a scripted
+  // `--identity "$ORG"` sends with ORG unset, and the config supplies it
+  // either way.
+  const configIdentity = resolveInvitationIdentity(
+    configTerms.identity,
+    options.configFile,
+  );
+  const suppliedIdentity = options.identity?.trim();
+  if (suppliedIdentity)
+    log.warn(
+      `--identity "${redactAndSanitizeForDisplay(suppliedIdentity)}" has no effect ` +
+        "when the linkage terms come from an existing configuration file; " +
+        "the file's linkage_terms.identity " +
+        `("${redactAndSanitizeForDisplay(configIdentity)}") is used instead. ` +
+        "Edit linkage_terms.identity in " +
+        `${redactAndRenderOperatorSuppliedText(
+          operatorSuppliedText(options.configFile),
+        )} to change it.`,
+    );
+  // The delimiter this mint reads the input by: the flag for this run, else
+  // the config's own, which is what the exchanges run from this file read
+  // by. The config persists unchanged here, so a flag naming a different
+  // delimiter is reported rather than written into it.
+  const runCsvDelimiter = csvDelimiterForRun({
+    configured: configSource.csvDelimiter,
+    supplied: csvDelimiter,
+    configPath: options.configFile,
+    warn: (message) => log.warn(message),
+  });
+  // Config-as-source: the config supplies the linkage terms and persists
+  // unchanged. The config read above is the mode discriminator, so it must run
+  // first; the only conflict it can clobber here is an existing key file (the
+  // config existing is expected), so gate just the key path -- the same
+  // primitive accept uses when reusing a reconciled config -- before the input
+  // is read or the token is minted, mirroring the online path's
+  // conflicts-first order.
+  assertNoProvisionConflicts(
+    { configPath: options.configFile, keyPath: options.keyFile },
+    ["key"],
+  );
+
+  if (resolved.input !== undefined) {
+    const rows = await loadInputRows(resolved.input, {
+      allowStdin: true,
+      csvDelimiter: runCsvDelimiter,
+      allowMemoryShortfall: options.allowMemoryShortfall,
+    });
+    // The input only validated compatibility; the invitation's terms come from
+    // the config, not the input. Say so ahead of the check below, so a user who
+    // passed an input expecting it to define the terms reads the refusal it can
+    // raise against the right source.
+    log.info(
+      `a configuration file at ${redactAndRenderOperatorSuppliedText(
+        operatorSuppliedText(options.configFile),
+      )} is present; deriving ` +
+        "the invitation's linkage terms from it and checking the input file " +
+        "against those terms (the input does not redefine them). Pass " +
+        "--config-file pointing at a new path to infer terms from the input " +
+        "instead.",
+    );
+    // Reconcile the input against the config on the same verdict the run
+    // boundary enforces, rather than on column coverage alone: an invitation
+    // whose terms declare a key this input cannot produce -- or one whose own
+    // cleaning drops every record -- is refused here, before it is minted,
+    // instead of at an `alcove exchange` the partner has already accepted into.
+    //
+    // Pass the config's explicit standardization AND metadata so the columns
+    // resolve to linkage fields exactly as the eventual exchange does: metadata
+    // retypes columns for the type fallback, so without it a config that types a
+    // column explicitly (or types an inferred one away) would be checked against
+    // name inference and could mint an invitation the exchange cannot satisfy.
+    checkLinkageSatisfiability(
+      rows.columns,
+      configTerms,
+      mintPreflightMessaging(options.configFile),
+      configSource.standardization,
+      configSource.metadata,
+    );
+  } else {
+    log.info(
+      `a configuration file at ${redactAndRenderOperatorSuppliedText(
+        operatorSuppliedText(options.configFile),
+      )} is present; deriving ` + "the invitation's linkage terms from it.",
+    );
   }
 
-  // Offline: the server-block overrides (--server-* and --outbound-path) and the
-  // connection-options overrides (timeouts, --max-reconnect-attempts, the
-  // file-sync toggles) cannot take effect (the connection block is written as a
-  // placeholder to edit, not built from a URL), so warn rather than silently
-  // drop a flag the operator chose to pass. Two diagnostics: the server block
-  // and the connection.options block have distinct remedies.
-  warnServerOverridesIgnoredOffline(options, log);
-  warnOptionsOverridesIgnoredOffline(options, log);
-  for (const name of relayFlagsGiven(ownRelay))
-    log.warn(
-      `--${name} applies only to an online invitation over a webrtc URL ` +
-        "(http://, https://, ws://, or wss://), so it was ignored. An " +
-        "offline invitation names the " +
-        `relay in connection.${name} of a webrtc configuration; set it there.`,
-    );
+  // Fail closed, before the token is minted, on terms this config's own
+  // exchange would refuse, so the partner never accepts an invitation the
+  // first run refuses.
+  assertTermsRunnable(configTerms, configSource);
+  renderInvitationTermsDisclosure(
+    consentSurfaceSink({ log, toPromptStream: false }),
+    configTerms,
+  );
 
-  // Offline. Linkage terms come from a pre-existing config when one is present
-  // at the config path, and are inferred from the input file otherwise.
-  const configSource = loadConfigLinkageSource(options.configFile);
+  // State the send set only when the config declares an explicit metadata
+  // block: without one the run infers metadata from the exchange input (which
+  // this offline invite never reads), so the transmitted set is unknown at
+  // mint and the acceptor fills its receive list at the first exchange.
+  const mintTerms =
+    configSource.metadata !== undefined
+      ? termsStatingDeclaredPayloadSend(configTerms, configSource.metadata)
+      : configTerms;
 
-  if (configSource !== undefined) {
-    const configTerms = configSource.linkageTerms;
-    // The config is the authoritative terms source here, so --linkage-strategy
-    // cannot silently override its linkage_strategy; name it as ignored (like the
-    // offline server/options override warnings above) and point at the config
-    // field as the way to change it. The config's strategy is always materialized
-    // (the schema default), so it can be stated plainly.
-    if (linkageStrategy !== undefined)
-      log.warn(
-        `--linkage-strategy ${linkageStrategy} has no effect when the linkage ` +
-          "terms come from an existing configuration file; the file's " +
-          `linkage_strategy (${configTerms.linkageStrategy}) is used instead. ` +
-          `Edit linkage_strategy in ${redactAndRenderOperatorSuppliedText(
-            operatorSuppliedText(options.configFile),
-          )} to change it.`,
-      );
-    // The identity is one of those terms, so it is governed by the same rule:
-    // the config supplies the label this invitation is minted under, and a flag
-    // typed here is reported rather than silently dropped. A configuration
-    // holding none refuses instead -- an invitation names its inviter, and this
-    // path cannot write the label anywhere the partnership's later runs would
-    // read it. A blank flag value is nothing to report -- it is what a scripted
-    // `--identity "$ORG"` sends with ORG unset, and the config supplies it
-    // either way.
-    const configIdentity = resolveInvitationIdentity(
-      configTerms.identity,
-      options.configFile,
-    );
-    const suppliedIdentity = options.identity?.trim();
-    if (suppliedIdentity)
-      log.warn(
-        `--identity "${redactAndSanitizeForDisplay(suppliedIdentity)}" has no effect ` +
-          "when the linkage terms come from an existing configuration file; " +
-          "the file's linkage_terms.identity " +
-          `("${redactAndSanitizeForDisplay(configIdentity)}") is used instead. ` +
-          "Edit linkage_terms.identity in " +
-          `${redactAndRenderOperatorSuppliedText(
-            operatorSuppliedText(options.configFile),
-          )} to change it.`,
-      );
-    // The delimiter this mint reads the input by: the flag for this run, else
-    // the config's own, which is what the exchanges run from this file read
-    // by. The config persists unchanged here, so a flag naming a different
-    // delimiter is reported rather than written into it.
-    const runCsvDelimiter = csvDelimiterForRun({
-      configured: configSource.csvDelimiter,
-      supplied: csvDelimiter,
-      configPath: options.configFile,
-      warn: (message) => log.warn(message),
-    });
-    // Config-as-source: the config supplies the linkage terms and persists
-    // unchanged. The config read above is the mode discriminator, so it must run
-    // first; the only conflict it can clobber here is an existing key file (the
-    // config existing is expected), so gate just the key path -- the same
-    // primitive accept uses when reusing a reconciled config -- before the input
-    // is read or the token is minted, mirroring the online path's
-    // conflicts-first order.
-    assertNoProvisionConflicts(
-      { configPath: options.configFile, keyPath: options.keyFile },
-      ["key"],
-    );
-
-    if (resolved.input !== undefined) {
-      const rows = await loadInputRows(resolved.input, {
-        allowStdin: true,
-        csvDelimiter: runCsvDelimiter,
-        allowMemoryShortfall: options.allowMemoryShortfall,
-      });
-      // The input only validated compatibility; the invitation's terms come from
-      // the config, not the input. Say so ahead of the check below, so a user who
-      // passed an input expecting it to define the terms reads the refusal it can
-      // raise against the right source.
-      log.info(
-        `a configuration file at ${redactAndRenderOperatorSuppliedText(
-          operatorSuppliedText(options.configFile),
-        )} is present; deriving ` +
-          "the invitation's linkage terms from it and checking the input file " +
-          "against those terms (the input does not redefine them). Pass " +
-          "--config-file pointing at a new path to infer terms from the input " +
-          "instead.",
-      );
-      // Reconcile the input against the config on the same verdict the run
-      // boundary enforces, rather than on column coverage alone: an invitation
-      // whose terms declare a key this input cannot produce -- or one whose own
-      // cleaning drops every record -- is refused here, before it is minted,
-      // instead of at an `alcove exchange` the partner has already accepted into.
-      //
-      // Pass the config's explicit standardization AND metadata so the columns
-      // resolve to linkage fields exactly as the eventual exchange does: metadata
-      // retypes columns for the type fallback, so without it a config that types a
-      // column explicitly (or types an inferred one away) would be checked against
-      // name inference and could mint an invitation the exchange cannot satisfy.
-      checkLinkageSatisfiability(
-        rows.columns,
-        configTerms,
-        mintPreflightMessaging(options.configFile),
-        configSource.standardization,
-        configSource.metadata,
-      );
-    } else {
-      log.info(
-        `a configuration file at ${redactAndRenderOperatorSuppliedText(
-          operatorSuppliedText(options.configFile),
-        )} is present; deriving ` + "the invitation's linkage terms from it.",
-      );
-    }
-
-    // Fail closed, before the token is minted, on terms this config's own
-    // exchange would refuse, so the partner never accepts an invitation the
-    // first run refuses.
-    assertTermsRunnable(configTerms, configSource);
-    renderInvitationTermsDisclosure(
-      consentSurfaceSink({ log, toPromptStream: false }),
-      configTerms,
-    );
-
-    // State the send set only when the config declares an explicit metadata
-    // block: without one the run infers metadata from the exchange input (which
-    // this offline invite never reads), so the transmitted set is unknown at
-    // mint and the acceptor fills its receive list at the first exchange.
-    const mintTerms =
-      configSource.metadata !== undefined
-        ? termsStatingDeclaredPayloadSend(configTerms, configSource.metadata)
-        : configTerms;
-
-    // A webrtc config names the coordination server and relay this invitation's
-    // exchange runs on, so the acceptor is seeded from them as the online path's
-    // acceptor is. An sftp config names its server only when a create-mode
-    // provision block made it here; otherwise the file-sync channels keep a
-    // placeholder-tolerant block and name no endpoint.
-    const configConnection =
-      loadConfigWebRTCConnection(options.configFile) ??
-      loadConfigProvisionedSFTPConnection(options.configFile);
-    // After every local refusal above and before the mint below, so a failed
-    // call leaves no token printed and no key file written.
-    const provisionedAddress =
-      configConnection !== undefined
-        ? await createProvisionedServer(configConnection, log)
+  // A webrtc config names the coordination server and relay this invitation's
+  // exchange runs on, so the acceptor is seeded from them as the online path's
+  // acceptor is. An sftp config names its server only when a create-mode
+  // provision block made it here; otherwise the file-sync channels keep a
+  // placeholder-tolerant block and name no endpoint.
+  const configConnection =
+    loadConfigWebRTCConnection(options.configFile) ??
+    loadConfigProvisionedSFTPConnection(options.configFile);
+  // After every local refusal above and before the mint below, so a failed
+  // call leaves no token printed and no key file written.
+  const provisionedAddress =
+    configConnection !== undefined
+      ? await createProvisionedServer(configConnection, log)
+      : undefined;
+  const connection =
+    configConnection === undefined
+      ? undefined
+      : provisionedAddress !== undefined
+        ? connectionAtProvisionedAddress(configConnection, provisionedAddress)
+        : connectionStatingHost(configConnection);
+  const connectionEndpoint =
+    connection?.channel === "webrtc"
+      ? offlineWebRTCEndpoint(connection)
+      : connection !== undefined && provisionedAddress !== undefined
+        ? endpointFromConnection(connection)
         : undefined;
-    const connection =
-      configConnection === undefined
-        ? undefined
-        : provisionedAddress !== undefined
-          ? connectionAtProvisionedAddress(configConnection, provisionedAddress)
-          : connectionStatingHost(configConnection);
-    const connectionEndpoint =
-      connection?.channel === "webrtc"
-        ? offlineWebRTCEndpoint(connection)
-        : connection !== undefined && provisionedAddress !== undefined
-          ? endpointFromConnection(connection)
-          : undefined;
-    const webrtcConnection =
-      connection?.channel === "webrtc" ? connection : undefined;
-    if (webrtcConnection?.server.secure === false)
-      log.warn(
-        plaintextEndpointWarning(
-          "reach the coordination server over TLS by removing `secure: false`",
-        ),
-      );
+  const webrtcConnection =
+    connection?.channel === "webrtc" ? connection : undefined;
+  if (webrtcConnection?.server.secure === false)
+    log.warn(
+      plaintextEndpointWarning(
+        "reach the coordination server over TLS by removing `secure: false`",
+      ),
+    );
 
-    const expires = invitationExpires(lifetimeSeconds, Date.now());
-    const sharedSecret = generateSharedSecret();
-    const invitation = await encodeInvitation({
-      version: "1",
+  const { invitation, expires, sharedSecret } = await mintInvitation(
+    lifetimeSeconds,
+    {
       linkageTerms: mintTerms,
-      sharedSecret,
-      expires,
       ...(connectionEndpoint !== undefined ? { connectionEndpoint } : {}),
       // The config is the connection this invitation's exchange runs on, so its
       // retain mode is the one to declare. Taken as the single boolean the reader
@@ -1072,28 +1059,39 @@ export async function validateInvite(params: {
       // still mints); a config that does not turn retain mode on declares
       // nothing, since a placeholder connection cannot back a cleanup promise.
       ...(configSource.retainsFiles ? { inviterRetainsFiles: true } : {}),
-    });
+    },
+  );
 
-    return {
-      mode: "offlineFromConfig",
-      configPath: options.configFile,
-      linkageTerms: mintTerms,
-      ...(mintTerms !== configTerms && mintTerms.payload?.send !== undefined
-        ? {
-            statedPayloadSend: mintTerms.payload.send,
-            payloadSendReplaced: configTerms.payload?.send !== undefined,
-          }
-        : {}),
-      ...(provisionedAddress !== undefined ? { provisionedAddress } : {}),
-      invitation,
-      expires,
-      sharedSecret,
-    };
-  }
+  return {
+    mode: "offlineFromConfig",
+    configPath: options.configFile,
+    linkageTerms: mintTerms,
+    ...(mintTerms !== configTerms && mintTerms.payload?.send !== undefined
+      ? {
+          statedPayloadSend: mintTerms.payload.send,
+          payloadSendReplaced: configTerms.payload?.send !== undefined,
+        }
+      : {}),
+    ...(provisionedAddress !== undefined ? { provisionedAddress } : {}),
+    invitation,
+    expires,
+    sharedSecret,
+  };
+}
 
-  // No config: infer terms from the input file, then write both files. Nothing
-  // here holds a label, so it is the operator's to supply, refused ahead of
-  // the input read and the token mint below.
+/**
+ * {@link validateInvite} for an offline invitation with no configuration file
+ * at the config path: the terms are inferred from the input file, and both the
+ * configuration and the key file are written.
+ */
+async function validateInviteFromInput(
+  params: ValidateInviteParams,
+  resolved: Extract<ResolvedInvite, { mode: "offline" }>,
+  lifetimeSeconds: number,
+): Promise<InviteReady> {
+  const { options, linkageStrategy, csvDelimiter, log } = params;
+  // Nothing here holds a label, so it is the operator's to supply, refused
+  // ahead of the input read and the token mint below.
   const identity = resolveIdentity(options.identity);
   if (resolved.input === undefined)
     throw new UsageError(
@@ -1110,49 +1108,94 @@ export async function validateInvite(params: {
     csvDelimiter,
     allowMemoryShortfall: options.allowMemoryShortfall,
   });
-  const builtDataSpec = {
-    ...buildDataSpec({ identity, rows, linkageStrategy }),
-    ...delimiterSection,
-  };
+  const dataSpec = authorTermsFromInput({
+    identity,
+    input: resolved.input,
+    rows,
+    linkageStrategy,
+    csvDelimiter,
+    log,
+  });
+
+  // No retain declaration on this path, by design: the config it writes is a
+  // placeholder scaffold whose connection block the operator still has to fill in
+  // and may set either way, so this mint has no fixed mode to declare. An
+  // absent declaration states nothing, which is the accurate answer here.
+  const { invitation, expires, sharedSecret } = await mintInvitation(
+    lifetimeSeconds,
+    { linkageTerms: dataSpec.linkageTerms },
+  );
+
+  return { mode: "offline", dataSpec, invitation, expires, sharedSecret };
+}
+
+/**
+ * The data spec an invitation authors from its input file's own columns, for
+ * the online and the infer-from-input modes alike. The derived terms are
+ * graded before the mint on the verdict prepareForExchange enforces at the run
+ * boundary, so the refusal lands exactly where the run's would; `input` names
+ * the file in that refusal. The returned terms state the payload the inferred
+ * metadata sends, so the acceptor's mirrored payload.receive holds exactly
+ * what preparePayload transmits.
+ */
+function authorTermsFromInput(params: {
+  identity: string;
+  input: string;
+  rows: InputRows;
+  linkageStrategy: LinkageStrategy | undefined;
+  csvDelimiter: string | undefined;
+  log: ReturnType<typeof getLogger>;
+}): ResolvedDataSpec {
+  const { identity, input, rows, linkageStrategy, csvDelimiter, log } = params;
+  const builtDataSpec = buildDataSpec({ identity, rows, linkageStrategy });
+  checkLinkageSatisfiability(
+    rows.columns,
+    builtDataSpec.linkageTerms,
+    inputMintPreflightMessaging(input),
+    builtDataSpec.standardization,
+    builtDataSpec.metadata,
+  );
   noteLinkageStrategySelection(
     linkageStrategy,
     builtDataSpec.linkageTerms,
     log,
   );
-
-  // The metadata the inferred terms (and the eventual exchange) read this party's
-  // disclosure from.
-  const disclosureMetadata =
-    builtDataSpec.metadata ??
-    inferMetadata(rows.columns, rows.sanitizedColumnPositions);
-
+  // Before the mint, so an over-long disclosed name is refused by position
+  // rather than as encodeInvitation's raw schema error.
   assertDisclosedNamesCarriable(
-    disclosureMetadata,
+    builtDataSpec.metadata,
     builtDataSpec.linkageTerms.output,
   );
-
-  const dataSpec: ResolvedDataSpec = {
+  return {
     ...builtDataSpec,
+    ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
     linkageTerms: termsStatingDeclaredPayloadSend(
       builtDataSpec.linkageTerms,
-      disclosureMetadata,
+      builtDataSpec.metadata,
     ),
   };
+}
 
+/**
+ * Encode the invitation for `token`, generating its shared secret and stamping
+ * its expiry `lifetimeSeconds` from now, so the lifetime clock starts when the
+ * shared secret exists.
+ */
+async function mintInvitation(
+  lifetimeSeconds: number,
+  token: Omit<InvitationToken, "version" | "sharedSecret" | "expires">,
+): Promise<{ invitation: string; expires: string; sharedSecret: string }> {
+  const { linkageTerms, ...declarations } = token;
   const expires = invitationExpires(lifetimeSeconds, Date.now());
   const sharedSecret = generateSharedSecret();
-  // No retain declaration on this path, by design: the config it writes is a
-  // placeholder scaffold whose connection block the operator still has to fill in
-  // and may set either way, so this mint has no fixed mode to declare. An
-  // absent declaration states nothing, which is the accurate answer here.
   const invitation = await encodeInvitation({
     version: "1",
-    linkageTerms: dataSpec.linkageTerms,
+    linkageTerms,
     sharedSecret,
     expires,
+    ...declarations,
   });
-
-  return { mode: "offline", dataSpec, invitation, expires, sharedSecret };
+  return { invitation, expires, sharedSecret };
 }
 
 const INVITE_PROVISIONING_COMMAND: OfflineProvisioningCommand = {
@@ -1301,17 +1344,12 @@ export async function handler(argv: Arguments): Promise<void> {
       if (ready.mode === "offlineFromConfig") {
         // The config already exists and sourced the linkage terms; reuse it and
         // write only the key file (refusing to clobber an existing one), after
-        // the records below. Under reuseExistingConfig the spec is ignored and
-        // the operator-authored config content is left untouched, so the
-        // placeholder spec here is never written.
+        // the records below. The operator-authored config content is otherwise
+        // left untouched.
         const { keyPath } = provisionOfflineCommandFiles(
           INVITE_PROVISIONING_COMMAND,
-          specWithPlaceholderConnection({ linkageTerms: ready.linkageTerms }),
-          { sharedSecret: ready.sharedSecret, expires: ready.expires },
-          { configPath: ready.configPath, keyPath: options.keyFile },
           {
-            reuseExistingConfig: true,
-            refreshReusedConfig: (keptConfigPath) => {
+            reuse: (keptConfigPath) => {
               // Before the token print, so a failure never follows disclosure.
               if (ready.statedPayloadSend !== undefined) {
                 if (ready.payloadSendReplaced === true)
@@ -1332,6 +1370,8 @@ export async function handler(argv: Arguments): Promise<void> {
                 );
             },
           },
+          { sharedSecret: ready.sharedSecret, expires: ready.expires },
+          { configPath: ready.configPath, keyPath: options.keyFile },
         );
 
         printInvitation(ready.invitation, undefined);
@@ -1368,10 +1408,9 @@ export async function handler(argv: Arguments): Promise<void> {
         return;
       }
 
-      const spec = specWithPlaceholderConnection(ready.dataSpec);
       const { configPath, keyPath } = provisionOfflineCommandFiles(
         INVITE_PROVISIONING_COMMAND,
-        spec,
+        { write: specWithPlaceholderConnection(ready.dataSpec) },
         { sharedSecret: ready.sharedSecret, expires: ready.expires },
         { configPath: options.configFile, keyPath: options.keyFile },
       );

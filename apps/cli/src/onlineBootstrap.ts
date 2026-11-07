@@ -41,6 +41,7 @@ import type {
   LinkageStrategy,
   LinkageTerms,
   Metadata,
+  Standardization,
   PreparedExchange,
   ServerProvision,
   SFTPConnectionConfig,
@@ -677,6 +678,33 @@ export function linkageStrategyNote(
   return undefined;
 }
 
+/** The input rows {@link buildDataSpec} infers a spec from. */
+interface BuildDataSpecRows {
+  rawRows: Array<CSVRow>;
+  columns: string[];
+  /** The 1-based positions this read removed control characters from
+   * ({@link loadInputRows}'s own field), so the empty-name refusal below names
+   * the removal. Required: an omitted list states the trailing-comma cause. */
+  sanitizedColumnPositions: Array<number>;
+}
+
+/** The arguments of {@link buildDataSpec}. */
+interface BuildDataSpecArgs {
+  terms?: LinkageTerms;
+  identity: string;
+  rows?: BuildDataSpecRows;
+  dateInputFormat?: string;
+  linkageStrategy?: LinkageStrategy;
+  ruleSet?: BuiltInLinkageRuleSet;
+  listColumns?: ReadonlyArray<string>;
+}
+
+/** A {@link ResolvedDataSpec} inferred from input rows. */
+export type InferredDataSpec = ResolvedDataSpec & {
+  metadata: Metadata;
+  standardization: Standardization;
+};
+
 /**
  * Resolve the exchange-data portion of a config.
  *
@@ -712,23 +740,15 @@ export function linkageStrategyNote(
  * `listColumns`, when given, names input columns the metadata lists, not sent,
  * where inference leaves them out ({@link metadataListingColumns}). Every name
  * must be a column of `rows`; the caller refuses one that is not.
+ *
+ * Given `rows`, the spec always states its metadata and standardization, and
+ * the return type says so.
  */
-export function buildDataSpec(args: {
-  terms?: LinkageTerms;
-  identity: string;
-  rows?: {
-    rawRows: Array<CSVRow>;
-    columns: string[];
-    /** The 1-based positions this read removed control characters from
-     * ({@link loadInputRows}'s own field), so the empty-name refusal below names
-     * the removal. Required: an omitted list states the trailing-comma cause. */
-    sanitizedColumnPositions: Array<number>;
-  };
-  dateInputFormat?: string;
-  linkageStrategy?: LinkageStrategy;
-  ruleSet?: BuiltInLinkageRuleSet;
-  listColumns?: ReadonlyArray<string>;
-}): ResolvedDataSpec {
+export function buildDataSpec(
+  args: BuildDataSpecArgs & { rows: BuildDataSpecRows },
+): InferredDataSpec;
+export function buildDataSpec(args: BuildDataSpecArgs): ResolvedDataSpec;
+export function buildDataSpec(args: BuildDataSpecArgs): ResolvedDataSpec {
   const { terms, identity, rows, linkageStrategy } = args;
   const ruleSet = args.ruleSet ?? DEFAULT_LINKAGE_RULE_SET;
 
@@ -771,7 +791,7 @@ export function buildDataSpec(args: {
   const standardization = getDefaultStandardization(metadata, linkageTerms, {
     dateInputFormat,
   });
-  return { linkageTerms, metadata, standardization };
+  return { linkageTerms, metadata, standardization } satisfies InferredDataSpec;
 }
 
 /**

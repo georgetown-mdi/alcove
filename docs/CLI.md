@@ -306,7 +306,7 @@ The refusal names the keys, the linkage fields they cost, and the configuration 
 
 **A `webrtc` configuration.** When the configuration's connection is `webrtc`, the invitation names its coordination server and relay as its [connection endpoint](#invitations), as an [online invitation over WebRTC](#inviting-over-webrtc) does: the `url` of each `turn` entry that sets no `username` or `credential`, and the `stun` list ([`invitation_relay`](EXCHANGE_REFERENCE.md#connectioninvitation_relay)). That block must be valid; another channel's block may still be a placeholder. A partner who accepts it with an `INPUT_FILE` runs the exchange at once ([Accepting and running a WebRTC exchange](#accepting-and-running-a-webrtc-exchange)), so run `alcove exchange` at the same time, or have them accept with [`--no-run`](#accepting-without-running) and agree on when both of you run it. An invitation requesting a column their configuration does not send stops their acceptance until they declare it, so agree on the time either way.
 
-Given only an `INPUT_FILE`, the command writes the inferred linkage terms, metadata, and data standardizations to a configuration file, and tells you to fill in its connection block before exchanging.
+Given only an `INPUT_FILE`, the command writes the inferred linkage terms, metadata, and data standardizations to a configuration file, and tells you to fill in its connection block before exchanging. An input whose columns support no linkage key (none of the field types the built-in rules match on, such as name, date of birth, or SSN) stops the command (exit 64) before the token is created or any file is written, as on the [online path](#online-invitation).
 
 ### Abandoning a pending offline invitation
 

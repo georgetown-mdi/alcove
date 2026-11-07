@@ -109,24 +109,26 @@ export function assertNoProvisionConflicts(
   throwIfConflicts(configPath, keyPath, check);
 }
 
+/**
+ * The configuration side of {@link provisionConfigAndKey}.
+ *
+ * - `write`: write a fresh config from this spec, gating both target paths.
+ * - `reuse`: keep the pre-existing config file at the target path instead of
+ *   writing one. The caller has already reconciled it against the invitation
+ *   (and, online, the URL) and confirmed it agrees, so only the key file is
+ *   written. The key path is still gated -- a pre-existing key remains a hard
+ *   conflict -- while the config write and its failure rollback are skipped,
+ *   so the user's config is never replaced. The function is the caller's
+ *   in-place record writes to the kept config, run after the gate and before
+ *   the key is written. The key is the last write, so a record write that
+ *   fails (a read-only configuration directory) leaves no key behind and the
+ *   same command can be run again.
+ */
+export type ProvisionedConfig =
+  { write: ExchangeSpec } | { reuse: (configPath: string) => void };
+
 /** Options for {@link provisionConfigAndKey}. */
 export interface ProvisionOptions {
-  /**
-   * Keep a pre-existing config file at the target path instead of writing one:
-   * the caller has already reconciled it against the invitation (and, online,
-   * the URL) and confirmed it agrees, so only the key file is written. The key
-   * path is still gated -- a pre-existing key remains a hard conflict -- while
-   * the config write (and its failure rollback) are skipped, so the user's
-   * config is never touched. Default `false`: write both files, gating both.
-   */
-  reuseExistingConfig?: boolean;
-  /**
-   * With {@link reuseExistingConfig}, the caller's in-place record writes to
-   * the kept config, run after the gate and before the key is written. The key
-   * is the last write, so a record write that fails (a read-only configuration
-   * directory) leaves no key behind and the same command can be run again.
-   */
-  refreshReusedConfig?: (configPath: string) => void;
   /**
    * Where the warning for a written config holding a credential as typed
    * goes. It is given only once the key is written, since a key-write failure
@@ -166,12 +168,12 @@ const REUSED_CONFIG_REMOVED_REMEDY =
  * after the gate is refused the same way rather than replaced.
  * `keyData.expires` is written when set and omitted otherwise.
  *
- * With `options.reuseExistingConfig` (see {@link ProvisionOptions}), the
- * config write is skipped and only the key is written and gated. Before
- * writing the key, the config's presence is re-checked: if it was removed
- * since the caller reconciled it, this throws rather than orphaning a key
- * with no matching config. `options.refreshReusedConfig` then runs, and the
- * key is written only once it returns.
+ * With `config.reuse` (see {@link ProvisionedConfig}), the config write is
+ * skipped and only the key is written and gated. Before writing the key, the
+ * config's presence is re-checked: if it was removed since the caller
+ * reconciled it, this throws rather than orphaning a key with no matching
+ * config. `config.reuse` then runs, and the key is written only once it
+ * returns.
  *
  * Both writers link a temp file onto the target, which refuses an existing
  * one (see docs/spec/CREDENTIAL_STORAGE.md#posix-write-discipline), and
@@ -187,24 +189,25 @@ const REUSED_CONFIG_REMOVED_REMEDY =
  *   not reusing an existing one).
  */
 export function provisionConfigAndKey(
-  spec: ExchangeSpec,
+  config: ProvisionedConfig,
   keyData: KeyFile,
   targets: ProvisionTargets = {},
   options: ProvisionOptions = {},
 ): { configPath: string; keyPath: string } {
   const resolved = resolveTargets(targets);
+  const reusesConfig = "reuse" in config;
   // Reusing an existing config gates only the key path; the config is
   // expected to be present. The same-path guard inside throwIfConflicts still
   // runs.
   throwIfConflicts(
     resolved.configPath,
     resolved.keyPath,
-    options.reuseExistingConfig ? ["key"] : ["config", "key"],
+    reusesConfig ? ["key"] : ["config", "key"],
   );
   const heldWarnings: string[] = [];
   // Outside the try: a saveConfig failure is atomic (nothing written), so it
   // propagates before the key is touched.
-  if (options.reuseExistingConfig) {
+  if ("reuse" in config) {
     // Re-check the config's presence right before writing the key: if it was
     // removed since the caller reconciled it (the TOCTOU window between
     // reconcile and here), writing the key would orphan it. Nothing has been
@@ -217,10 +220,10 @@ export function provisionConfigAndKey(
       )}${REUSED_CONFIG_REMOVED_REMEDY}`;
       throw keepOperatorSuppliedText(new UsageError(message.text), message);
     }
-    options.refreshReusedConfig?.(resolved.configPath);
+    config.reuse(resolved.configPath);
   } else {
     createIfAbsent(resolved.configPath, () =>
-      saveConfig(resolved.configPath, spec, {
+      saveConfig(resolved.configPath, config.write, {
         exclusive: true,
         log: { warn: (message) => heldWarnings.push(message) },
       }),
@@ -233,7 +236,7 @@ export function provisionConfigAndKey(
   } catch (err) {
     // Roll back only a config THIS call wrote; the key write left nothing, and a
     // reused config is the user's pre-existing file and must never be deleted.
-    if (!options.reuseExistingConfig) {
+    if (!reusesConfig) {
       try {
         fs.rmSync(resolved.configPath, { force: true });
       } catch {

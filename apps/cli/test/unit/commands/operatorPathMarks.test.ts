@@ -372,10 +372,9 @@ const REFUSALS: readonly SinkCase<RefusalOutcome>[] = [
         filePath,
         thrown: await raised(() =>
           provisionConfigAndKey(
-            sampleSpec(),
+            { reuse: () => {} },
             { sharedSecret: TOKEN },
             { configPath: filePath, keyPath: backslashedPath(".alcove.key") },
-            { reuseExistingConfig: true },
           ),
         ),
       };
