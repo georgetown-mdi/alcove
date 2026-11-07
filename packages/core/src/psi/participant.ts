@@ -888,7 +888,9 @@ export class PSIParticipant {
     try {
       let at = 0;
       do {
-        const piece = setupBytes.slice(at, at + pieceBytes);
+        // Copied into a buffer of its own: a Node Buffer's `slice` is a view,
+        // and moving a view's buffer would move the response with it.
+        const piece = new Uint8Array(setupBytes.subarray(at, at + pieceBytes));
         await decodePsiBinaryFrame(this.id, "serverSetup", () =>
           this.engine.receiveServerSetupPiece(piece, { transfer: true }),
         );

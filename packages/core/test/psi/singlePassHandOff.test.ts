@@ -203,8 +203,11 @@ interface Reply {
 }
 
 // The starter's setup and its response to the joiner's request, as views of
-// one buffer, the layout the reply's decode leaves them in.
-async function replyFor(joiner: PSIParticipant): Promise<Reply> {
+// one buffer `allocate` returns, the layout the reply's decode leaves them in.
+async function replyFor(
+  joiner: PSIParticipant,
+  allocate: (bytes: number) => Uint8Array = (bytes) => new Uint8Array(bytes),
+): Promise<Reply> {
   const request = await joiner.createClientRequest(JOINER_DATA[0]!);
   const starter = new InProcessPsiEngine(
     psiLibrary,
@@ -215,7 +218,7 @@ async function replyFor(joiner: PSIParticipant): Promise<Reply> {
   );
   const { setup } = await starter.createServerSetup(STARTER_DATA[0]!);
   const response = await starter.processClientRequest(request);
-  const frame = new Uint8Array(setup.length + response.length);
+  const frame = allocate(setup.length + response.length);
   frame.set(setup);
   frame.set(response, setup.length);
   return {
@@ -265,6 +268,39 @@ test("a handed-over setup goes in pieces of the given size, each moved, and matc
       Math.min(64, setupBytes - i * 64),
     ),
   );
+  expect(reply.frame.byteLength).toBe(0);
+});
+
+// A file-sync frame is a Node Buffer, whose `slice` is a view rather than a
+// copy: a piece cut that way would move the whole reply, response and all.
+test("a reply read into a Node Buffer moves only its pieces' copies until the response goes", async () => {
+  const whole = joinerWith([]);
+  const wholeReply = await replyFor(whole);
+  const expected = await whole.computeValueMatches(
+    wholeReply.setup,
+    wholeReply.response,
+  );
+
+  const posts: Array<Post> = [];
+  const joiner = joinerWith(posts);
+  const reply = await replyFor(joiner, (bytes) => Buffer.alloc(bytes));
+  const frameBytes = reply.frame.byteLength;
+  const setupBytes = reply.setup.byteLength;
+  const matches = await joiner.computeValueMatches(
+    reply.setup,
+    reply.response,
+    { transfer: true },
+  );
+  expect(matches).toEqual(expected);
+  expect(
+    posts
+      .filter((post) => post.method !== "createClientRequest")
+      .map((post) => [post.method, post.transferred]),
+  ).toEqual([
+    ["receiveServerSetupPiece", [setupBytes]],
+    ["completeServerSetup", []],
+    ["computeAssociationTable", [frameBytes]],
+  ]);
   expect(reply.frame.byteLength).toBe(0);
 });
 
