@@ -84,7 +84,7 @@ describe.skipIf(!existsSync(manifestPath))("the built route documents", () => {
   );
 });
 
-describe("the hosted build's signaling control", () => {
+describe("the hosted build's signaling and default relay controls", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   const resolve = () =>
@@ -103,6 +103,20 @@ describe("the hosted build's signaling control", () => {
   test("builds when the variable holds a value", () => {
     vi.stubEnv("VITE_SIGNALING_SERVER_URL", "wss://signaling.example.org/api/");
     expect(resolve()).toHaveProperty("build.outDir", "dist/hosted");
+  });
+
+  test("refuses a build whose default relay the page would refuse", () => {
+    vi.stubEnv("VITE_SIGNALING_SERVER_URL", "wss://signaling.example.org/api/");
+    vi.stubEnv("VITE_DEFAULT_RELAY_TURN_URL", undefined);
+    vi.stubEnv("VITE_DEFAULT_RELAY_REGISTRAR_URL", undefined);
+    vi.stubEnv("VITE_DEFAULT_RELAY_MODE", "bogus");
+    expect(resolve).toThrow(/VITE_DEFAULT_RELAY_MODE must be opt-in or on/);
+    vi.stubEnv(
+      "VITE_DEFAULT_RELAY_TURN_URL",
+      "turns:turn.example.org:443?transport=tcp",
+    );
+    vi.stubEnv("VITE_DEFAULT_RELAY_MODE", undefined);
+    expect(resolve).toThrow(/VITE_DEFAULT_RELAY_REGISTRAR_URL is not set/);
   });
 });
 

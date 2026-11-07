@@ -11,7 +11,11 @@ import {
   hostedBuildIdentity,
   hostedBuildIdentityDefines,
 } from "./hosted/buildIdentity.ts";
-import { requireHostedSignalingServer, srcAliases } from "./vite.config.ts";
+import {
+  requireHostedSignalingServer,
+  requireValidDefaultRelay,
+  srcAliases,
+} from "./vite.config.ts";
 import { clientModuleGraphGuard } from "./hosted/moduleGraphGuard.ts";
 import { deployGraphRecorderFromEnv } from "./hosted/deployGraphRecorder.ts";
 import { hostedHeadersFile } from "./hosted/headersFile.ts";
@@ -81,11 +85,13 @@ const hostedConfig = {
  * build inlines (`third-party-licenses.txt`, scripts/lib/bundleNotices.mjs)
  * and no server. The build fails if the page's or a worker's module graph
  * reaches a server-only module
- * (hosted/moduleGraphGuard.ts). The page names the release tag or commit it
- * was built from (hosted/buildIdentity.ts).
+ * (hosted/moduleGraphGuard.ts), and on a default relay variable the page
+ * would refuse at load (vite.config.ts). The page names the release tag or
+ * commit it was built from (hosted/buildIdentity.ts).
  */
 export default defineConfig((configEnv) => {
   requireHostedSignalingServer(configEnv);
+  requireValidDefaultRelay(configEnv);
   return {
     ...hostedConfig,
     define: hostedBuildIdentityDefines(

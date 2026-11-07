@@ -1005,7 +1005,9 @@ jobs:
   # needs the manifest's signature too, so production never serves a release
   # build that has no signed manifest. A tag on an older release line, such as
   # a hotfix of the previous major, skips it, so production keeps the newest
-  # release's build.
+  # release's build. A tag main has moved past uploads nothing either (the
+  # comparison step before the upload), so production keeps the newer build
+  # main deployed.
   #
   # The only job here given the Cloudflare credentials. As in
   # pages_deploy.yaml, it checks out the deploy tool's lockfile alone and runs
@@ -1025,10 +1027,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: Production
-    # The checkout of the deploy tool's lockfile.
+    # The checkout of the deploy tool's lockfile, and the comparison with main.
     permissions:
       contents: read
     outputs:
+      uploaded: ${{ steps.compare-main.outputs.upload }}
       siteUrl: ${{ steps.deploy.outputs.deployment-url }}
       demoUrl: ${{ steps.deploy-demo.outputs.deployment-url }}
       demoOutcome: ${{ steps.deploy-demo.outcome }}
@@ -1064,12 +1067,33 @@ jobs:
             echo "::error::${TREE} does not match the digest the package job reported" >&2
             exit 1
           fi
+      # Uploads only while main's tip is the release commit or an ancestor of
+      # it; otherwise pages_deploy.yaml may already serve a newer commit, and
+      # production keeps it. A failed call fails the job, uploading nothing.
+      - name: Compare the release commit with main
+        id: compare-main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${GITHUB_SHA}...main" --jq .status)"
+          case "${status}" in
+            identical | behind)
+              echo "upload=true" >>"$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "upload=false" >>"$GITHUB_OUTPUT"
+              echo "::notice::Skipped the production upload: main holds a commit the release commit lacks (compare status ${status}), so production keeps main's last build."
+              echo "Skipped the production upload: \`main\` holds a commit the release commit ${GITHUB_SHA} lacks (compare status \`${status}\`), so production keeps \`main\`'s last build." >>"$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
       # As in pages_deploy.yaml: wrangler gets the command as arguments with no
       # shell. The branch is the Pages projects' production branch
       # (infra/hosted/cloudflare.tf), which makes the upload the production
       # deployment; the tag name would make it a preview.
       - name: Deploy
         id: deploy
+        if: steps.compare-main.outputs.upload == 'true'
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -1080,13 +1104,13 @@ jobs:
       # As in pages_deploy.yaml: after the site, and skipped while the
       # environment sets no CLOUDFLARE_DEMO_PAGES_PROJECT.
       - name: Download the demo site
-        if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
+        if: steps.compare-main.outputs.upload == 'true' && vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
         uses: actions/download-artifact@v8
         with:
           artifact-ids: ${{ needs.web.outputs.demoArtifactId }}
           path: ${{ runner.temp }}/demo-site
       - name: Check the demo site against the package job's digest
-        if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
+        if: steps.compare-main.outputs.upload == 'true' && vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
         env:
           TREE: ${{ runner.temp }}/demo-site
           EXPECTED_SHA256: ${{ needs.web.outputs.demoArtifactSha256 }}
@@ -1103,7 +1127,7 @@ jobs:
           fi
       - name: Deploy the demo site
         id: deploy-demo
-        if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
+        if: steps.compare-main.outputs.upload == 'true' && vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -1113,10 +1137,11 @@ jobs:
           command: pages deploy ${{ runner.temp }}/demo-site --project-name=${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} --branch=main --commit-hash=${{ github.sha }}
 
   # As in pages_deploy.yaml: a job of its own, holding no credentials, since it
-  # runs repository code.
+  # runs repository code. It runs only once the pages job has uploaded.
   check-security-txt:
     name: Check the served security.txt
     needs: pages
+    if: ${{ needs.pages.outputs.uploaded == 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
