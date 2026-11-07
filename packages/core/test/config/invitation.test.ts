@@ -19,6 +19,7 @@ import {
   MAX_ENDPOINT_HOST_LENGTH,
   MAX_ENDPOINT_PATH_LENGTH,
   stripInvitationWhitespace,
+  isNewerInvitationVersionError,
 } from "../../src/config/invitation";
 import type {
   ConnectionEndpoint,
@@ -961,8 +962,24 @@ test("rejects a token with an unknown token version", async () => {
     ...baseToken,
     version: String(INVITATION_VERSION_POLICY.current + 1),
   });
-  await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
+  const error = await decodeInvitation(encoded).catch((err: unknown) => err);
+  expect(error).toBeInstanceOf(ZodError);
+  expect(isNewerInvitationVersionError(error)).toBe(true);
 });
+
+test.each([INVITATION_VERSION_POLICY.current + 1, 1e12, 1])(
+  "a token whose version is the number %d is refused by the schema, not as newer",
+  async (version) => {
+    const encoded = await encodeRawInvitation({ ...baseToken, version });
+    const error = await decodeInvitation(encoded).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ZodError);
+    expect(isNewerInvitationVersionError(error)).toBe(false);
+    expect((error as ZodError).issues[0]).toMatchObject({
+      code: "invalid_type",
+      path: ["version"],
+    });
+  },
+);
 
 // --- Expiry enforcement is the caller's responsibility -----------------------
 

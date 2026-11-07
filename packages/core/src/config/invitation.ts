@@ -845,11 +845,13 @@ export async function decodeInvitation(
       "invitation payload is not valid JSON",
     );
   }
-  const declared = declaredFormatVersion(
+  // The token's version is a string; a number is left to the schema refusal.
+  const stated =
     typeof raw === "object" && raw !== null
       ? (raw as Record<string, unknown>)["version"]
-      : undefined,
-  );
+      : undefined;
+  const declared =
+    typeof stated === "string" ? declaredFormatVersion(stated) : undefined;
   if (declared !== undefined && declared > policy.current)
     throw new z.ZodError([
       {
