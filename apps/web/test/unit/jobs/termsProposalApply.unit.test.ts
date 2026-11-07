@@ -226,7 +226,7 @@ describe("applying the terms proposal a run of the opened configuration stopped 
     );
     const before = fs.readFileSync(path.join(root, "alcove.yaml"), "utf8");
     expect(await manager.applyTermsProposal(id)).toEqual({
-      kind: "configuration-changed",
+      kind: "proposal-changed",
     });
     expect(fs.existsSync(answerFile)).toBe(false);
     expect(fs.readFileSync(path.join(root, "alcove.yaml"), "utf8")).toBe(
@@ -245,7 +245,7 @@ describe("applying the terms proposal a run of the opened configuration stopped 
     fs.rmSync(path.join(record.workdir, TERMS_PROPOSAL_FILE_NAME));
     const before = fs.readFileSync(path.join(root, "alcove.yaml"), "utf8");
     expect(await manager.applyTermsProposal(id)).toEqual({
-      kind: "configuration-changed",
+      kind: "proposal-changed",
     });
     expect(fs.existsSync(answerFile)).toBe(false);
     expect(fs.readFileSync(path.join(root, "alcove.yaml"), "utf8")).toBe(
@@ -266,7 +266,7 @@ describe("applying the terms proposal a run of the opened configuration stopped 
     fs.symlinkSync(elsewhere, proposalPath);
     const before = fs.readFileSync(path.join(root, "alcove.yaml"), "utf8");
     expect(await manager.applyTermsProposal(id)).toEqual({
-      kind: "configuration-changed",
+      kind: "proposal-changed",
     });
     expect(fs.readFileSync(path.join(root, "alcove.yaml"), "utf8")).toBe(
       before,

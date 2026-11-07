@@ -2119,17 +2119,18 @@ export class JobManager {
    * this console can apply, or one was already applied; `busy` while an apply
    * is running or the run's child has not exited; `configuration-changed`
    * where the mounted `alcove.yaml` is no longer the one the run was opened
-   * from, or the proposal file is no longer the bytes it held when the run's
-   * terminal event stated the change, so the change the operator was shown is
-   * not the one the file would take on; `run-terms-differ` where the run's own
-   * configuration states other linkage terms than that file, for the same
-   * reason.
+   * from, so the change the operator was shown is not the one the file would
+   * take on; `proposal-changed` where the proposal file is no longer the
+   * bytes it held when the run's terminal event stated the change, or cannot
+   * be read; `run-terms-differ` where the run's own configuration states
+   * other linkage terms than that file, for the same reason.
    */
-  async applyTermsProposal(
-    id: string,
-  ): Promise<
+  async applyTermsProposal(id: string): Promise<
     | TermsProposalApplyResult
-    | { kind: "unavailable" | "busy" | "configuration-changed" }
+    | {
+        kind:
+          "unavailable" | "busy" | "configuration-changed" | "proposal-changed";
+      }
   > {
     if (this.shuttingDown) throw new ConsoleShuttingDownError();
     const record = this.getJob(id);
@@ -2152,7 +2153,7 @@ export class JobManager {
       record.termsProposalDigest === null ||
       termsProposalDigest(workdir) !== record.termsProposalDigest
     )
-      return { kind: "configuration-changed" };
+      return { kind: "proposal-changed" };
     this.termsApplyInFlight = true;
     try {
       const result = await this.runStoppableChild((stop) =>

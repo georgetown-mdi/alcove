@@ -170,7 +170,7 @@ The terms, column roles, and cleaning steps are reapplied to whichever input fil
 The console runs `alcove` with no terminal, so a run whose partner changed its terms stops before any linkage key or data moves, and the run screen shows the change. What is shown, and why the run stops: [CLI.md](CLI.md#when-your-partners-terms-change).
 
 - **For a run of a configuration you opened**, **Apply to alcove.yaml** runs `alcove apply --consent-to-terms` on the kept terms, against the `alcove.yaml` and `.alcove.key` in your folder; choosing Apply is your consent ([Applying an update](CLI.md#applying-an-update)). The command line writes the file and its exit code tells the console whether it applied. **Review the updated terms** then reopens the configuration at the review step.
-  - Apply is refused, and nothing is written, when `alcove.yaml` changed after you opened it (for `webrtc`, after the run started), or when the run used terms you changed on these pages, or when the kept terms changed after the run stopped. Apply from the command line, or start over.
+  - Apply is refused, and nothing is written, when `alcove.yaml` changed after you opened it (for `webrtc`, after the run started), or when the run used terms you changed on these pages, or when your partner's proposed terms changed after the run stopped. Apply from the command line, or start over.
   - **Start over** leaves `alcove.yaml` as it was; the next run stops the same way until your partner returns to the agreed terms.
 - **For any other run** there is no file to apply the change to: agree on the terms with your partner and start over.
 
