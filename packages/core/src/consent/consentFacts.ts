@@ -587,17 +587,17 @@ export const CONSENT_FACTS = {
       "and with each other.",
   },
   inboundPayloadColumns: {
-    basis: "trust-contingent",
+    basis: "enforced",
     reason:
       "The inviting party's declared payload send, which the acceptance " +
       "mirrors into its own payload receive list. Every run's terms exchange " +
       "compares that list against the send set the inviting party's run " +
       "states, before any key or payload moves, and refuses the run on a " +
       "difference unless this party takes the change on as its new terms. " +
-      "What then crosses is held to that set only by the inviting party's own " +
-      "build, which sends the columns it stated: this party does not compare " +
-      "the received payload against the list, so a partner whose software " +
-      "states one set and sends another is not stopped.",
+      "Once the payload arrives, this party compares the column names it " +
+      "received against that agreed send, and the run ends with a protocol " +
+      "error, before its result is returned, when they differ. The check holds the names, not the values: " +
+      "what the received columns contain remains the inviting party's word.",
   },
   requestedPayloadColumns: {
     basis: "trust-contingent",

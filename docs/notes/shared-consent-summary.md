@@ -99,11 +99,8 @@ basis is marked on the CLI's line and not on the web's payload block, which show
 the set with no basis beside it. The two surfaces do not disagree there -- one of
 them declines to state the basis rather than stating a different one.
 
-That silence is deliberate rather than pending. The clause the web's line held
-before -- that any payload column would abort the exchange -- overstates: nothing
-compares the received columns against the set once they cross. A fact's
-classification binds the surface that states the fact, not every surface that
-shows the value.
+That silence is deliberate rather than pending. A fact's classification binds
+the surface that states the fact, not every surface that shows the value.
 
 That the classification is a KEYED TABLE, rather than a field on
 `InvitationSummary`, follows from two properties a per-field flag cannot hold.
@@ -168,14 +165,14 @@ states, before any key or data moves, on the offline and the online path alike.
 A declared empty set renders `(none)`: it becomes the acceptor's strict
 `receive: []`.
 
-The line takes one basis, `trust-contingent` (`inboundPayloadColumns`). The terms
-exchange settles which set the partner's run states, and refuses on a mismatch,
-but what then crosses is held to that set only by the partner's own build: the
-received payload is not compared against the list after it crosses, and the one
-check there, refusing any column sent to a party receiving none, runs only for a
-count-only party or one entitled to no result. A partner whose software states
-one set and sends another is not stopped, which is the `trust-contingent`
-definition, and `enforced` would claim a run that aborts on the violation.
+The line takes one basis, `enforced` (`inboundPayloadColumns`). The terms
+exchange settles which set the partner's run states, and refuses on a mismatch.
+Once the payload crosses, a party that receives payload compares the received
+column names against the partner's agreed `payload.send`, and the run ends with a
+protocol error, before its result is returned, when they differ
+(`assertPayloadMatchesAgreedSend`). A run that aborts on the violation is the
+`enforced` definition. The check holds the column names only: the values those
+columns carry remain the partner's word.
 
 Why one basis rather than two: a line whose source the inviting party can pick
 needs a basis per source. With the send set inside the agreed terms on every

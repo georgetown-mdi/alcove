@@ -353,9 +353,11 @@ state the columns only in their terms.
 The set a party's run states as its send is `disclosedColumnNames(metadata)` --
 the names `isDisclosedToPartner` selects and `preparePayload` transmits -- never
 a separately authored list, so the set compared at the terms exchange is the set
-the payload step sends. A received payload is not compared against
-`payload.receive` again after it crosses. The one check after the payload
-exchange is for a party that receives no payload at all
+the payload step sends. After the payload exchange, a party that receives
+payload compares the received column names against the partner's agreed
+`payload.send` (`assertPayloadMatchesAgreedSend`), and the run ends with a
+`protocol` error, before its result is returned, when they differ. A party that
+receives no payload at all refuses any column sent to it instead
 ([The no-output send gate](#the-no-output-send-gate)).
 
 ### Absent, empty, present
