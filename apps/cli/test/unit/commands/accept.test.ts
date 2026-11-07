@@ -4871,9 +4871,14 @@ describe("handler: the prompt's copy has the redaction on its own", () => {
     const fixture = armoredFixture();
     promptConfirmMock.mockResolvedValue("no");
     try {
-      const encoded = await encodeInvitation(armoredToken());
+      // Given as an @path, so the run logs no command-line credential notice.
+      const invitationFile = path.join(fixture.dir, "invitation.txt");
+      fs.writeFileSync(invitationFile, await encodeInvitation(armoredToken()));
       const { stderrWrites, stdoutWrites } =
-        await runOfflineAcceptCapturingStdio({ encoded, fixture });
+        await runOfflineAcceptCapturingStdio({
+          encoded: `@${invitationFile}`,
+          fixture,
+        });
       expect(stdoutWrites.join("")).toBe("");
       const transcript = stderrWrites.join("");
       expect(transcript).toContain(SURFACE_HEADING);

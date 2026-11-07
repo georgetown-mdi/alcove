@@ -1366,7 +1366,9 @@ export async function handler(argv: Arguments): Promise<void> {
       const url = resolved.mode === "online" ? resolved.url : undefined;
       assertBootstrapUrlPasswordStorable(argv, url);
       warnIfCommandLineHoldsLiteralCredential(
-        commandLineLiteralCredentials(argv, url, BOOTSTRAP_CREDENTIAL_FLAGS),
+        commandLineLiteralCredentials(argv, url, BOOTSTRAP_CREDENTIAL_FLAGS, {
+          value: resolved.invitation,
+        }),
         log,
       );
       // --consent-to-terms records advance consent to the invitation's terms and

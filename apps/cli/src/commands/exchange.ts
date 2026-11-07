@@ -1100,6 +1100,7 @@ export async function resolveSigningPersist(
   assertIdentityMatchesAgreedTerms(identity.certificate, termsIdentity);
   return {
     identity,
+    identityFilePath: identityPath,
     partnerFingerprint: signing.partnerFingerprint,
     configPath,
   };
@@ -1147,6 +1148,7 @@ export async function handler(argv: Arguments): Promise<void> {
           argv,
           undefined,
           BOOTSTRAP_CREDENTIAL_FLAGS,
+          { value: invitation, flag: "--invitation" },
         ),
         log,
       );

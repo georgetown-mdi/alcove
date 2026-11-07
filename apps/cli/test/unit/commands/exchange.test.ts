@@ -2246,6 +2246,47 @@ test("handler: --invitation provisions the key file when none exists and the exc
   }
 });
 
+test("handler: an --invitation given as typed gets the command-line notice naming its @path form, and an @path one none", async () => {
+  fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
+  const input = path.join(dir, "in.csv");
+  fs.writeFileSync(input, "ssn\n123456789\n");
+  const encoded = await encodeInvitation(inviteToken());
+  const invitationFile = path.join(dir, "invitation.txt");
+  fs.writeFileSync(invitationFile, encoded);
+  const notices = async (invitation: string): Promise<string[]> => {
+    fs.rmSync(keyFile, { force: true });
+    mockState.warnings.length = 0;
+    vi.mocked(runProtocol).mockReset();
+    vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
+    const exitSpy = captureProcessExit();
+    try {
+      await handler({
+        _: [],
+        $0: "alcove",
+        input,
+        "config-file": configFile,
+        "key-file": keyFile,
+        invitation,
+        "log-level": "silent",
+      } as unknown as Arguments);
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      exitSpy.mockRestore();
+    }
+    return mockState.warnings.filter((m) =>
+      m.startsWith("the command line holds"),
+    );
+  };
+
+  expect(await notices(encoded)).toEqual([
+    "the command line holds a credential as typed in --invitation, which " +
+      "other users of this machine can see while the command runs and your " +
+      "shell may keep in its history. Put each value in a file of its own " +
+      "and pass its path with a leading @, e.g. --invitation '@invitation.txt'.",
+  ]);
+  expect(await notices(`@${invitationFile}`)).toEqual([]);
+});
+
 test("handler: only an --invitation run tells the run its key file was written by this invocation", async () => {
   fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
   const input = path.join(dir, "in.csv");

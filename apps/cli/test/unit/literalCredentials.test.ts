@@ -200,6 +200,51 @@ describe("commandLineLiteralCredentialNotice", () => {
     ).toBeUndefined();
   });
 
+  test("an invitation as typed is named with its @path form, and an @path invitation is not", () => {
+    const notice = (invitation: { value: string; flag?: string }) => {
+      const found = commandLineLiteralCredentials(
+        {},
+        undefined,
+        BOOTSTRAP_CREDENTIAL_FLAGS,
+        invitation,
+      );
+      return found === undefined
+        ? undefined
+        : commandLineLiteralCredentialNotice(found);
+    };
+    expect(notice({ value: "eyJ2IjoiMSJ9" })).toBe(
+      "the command line holds a credential as typed in the INVITATION " +
+        "argument, which other users of this machine can see while the " +
+        "command runs and your shell may keep in its history. Put each value " +
+        "in a file of its own and pass its path with a leading @, e.g. " +
+        "'@invitation.txt'.",
+    );
+    expect(notice({ value: "eyJ2IjoiMSJ9", flag: "--invitation" })).toBe(
+      "the command line holds a credential as typed in --invitation, which " +
+        "other users of this machine can see while the command runs and " +
+        "your shell may keep in its history. Put each value in a file of " +
+        "its own and pass its path with a leading @, e.g. --invitation " +
+        "'@invitation.txt'.",
+    );
+    expect(notice({ value: "@invitation.txt" })).toBeUndefined();
+    expect(
+      notice({ value: "@invitation.txt", flag: "--invitation" }),
+    ).toBeUndefined();
+  });
+
+  test("an invitation as typed beside a credential flag is listed after it", () => {
+    const found = commandLineLiteralCredentials(
+      { "server-password": "pw" },
+      undefined,
+      BOOTSTRAP_CREDENTIAL_FLAGS,
+      { value: "eyJ2IjoiMSJ9", flag: "--invitation" },
+    );
+    expect(found?.sources).toEqual(["--server-password", "--invitation"]);
+    expect(commandLineLiteralCredentialNotice(found!)).toContain(
+      "e.g. --server-password @./sftp-password.txt.",
+    );
+  });
+
   test("a URL password is named even when the flag overrides it with a reference", () => {
     expect(
       noticeFor(
