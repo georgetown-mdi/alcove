@@ -512,12 +512,26 @@ SHA256:gILsiGXszofEYqaCjXtCFuUzIw+cZDK0WrlCGd6fohM (RSA, vdorie@gmail.com)
 SHA256:oIZgU+TUz2x087PjXSwci7tglQGJe4y1qVwPOewSKiU (ED25519, eric.giannella@gmail.com)
 ```
 
-To verify, point git at the `allowed_signers` file in the repository root, then verify the tag:
+The trusted signers are the `allowed_signers` file as `main` holds it, never as the tag's own tree does. The release workflow's `verify-tag` job checks the pushed tag that way before anything publishes, and refuses a tag that does not name the commit the run builds. To check a tag yourself, read the file from a `main` commit fetched from github.com, and note that commit with the result:
 
 ```sh
-git config gpg.ssh.allowedSignersFile allowed_signers
-git verify-tag vX.Y.Z
+git clone https://github.com/georgetown-mdi/alcove.git alcove-verify
+cd alcove-verify
+main="$(git rev-parse origin/main)"
+echo "allowed_signers from main at ${main}"
+git show "${main}:allowed_signers" >../alcove-allowed-signers
+git -c gpg.ssh.allowedSignersFile=../alcove-allowed-signers verify-tag vX.Y.Z
 ```
+
+A good tag prints `Good "git" signature for` a principal, then the key's `SHA256:` fingerprint. Any other result, `No principal matched.` included, is a failed check. Compare that fingerprint with the maintainers' SSH signing keys on GitHub, a source outside the repository (with `curl`, `jq` and OpenSSH):
+
+```sh
+for user in vdorie giannella; do
+  curl -s "https://api.github.com/users/${user}/ssh_signing_keys" | jq -r '.[].key' | ssh-keygen -lf -
+done
+```
+
+The fingerprint git printed must be one of these, and one of the two listed above.
 
 ## Software Bill of Materials (SBOM)
 

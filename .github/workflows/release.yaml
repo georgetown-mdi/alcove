@@ -88,9 +88,46 @@ jobs:
           newest="$(node scripts/release-line.mjs)"
           echo "newest=${newest}" >>"$GITHUB_OUTPUT"
 
+  # The pushed tag must carry a good signature from a key in `allowed_signers`
+  # as `main` holds it, never as the tag's own tree does, and must name the
+  # commit this run builds. Every job that publishes, signs or deploys needs
+  # publish, which needs this. No checkout and no repository code: the step
+  # fetches the two refs into an empty repository and runs git alone.
+  verify-tag:
+    name: Verify the tag's signature against main's signers
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Verify the tag against allowed_signers on main
+        id: verify
+        env:
+          ALCOVE_TAG: ${{ github.ref_name }}
+          ALCOVE_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          repo="${RUNNER_TEMP}/verify-tag"
+          signers="${RUNNER_TEMP}/allowed_signers"
+          git init --quiet "$repo"
+          git -C "$repo" fetch --quiet --no-tags --depth=1 "$ALCOVE_REPOSITORY_URL" \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/tags/${ALCOVE_TAG}:refs/tags/${ALCOVE_TAG}"
+          git -C "$repo" show refs/remotes/origin/main:allowed_signers >"$signers"
+          # Matched against both, so the check holds whichever of the two a
+          # tag push sets GITHUB_SHA to.
+          object="$(git -C "$repo" rev-parse --verify "refs/tags/${ALCOVE_TAG}")"
+          tagged="$(git -C "$repo" rev-parse --verify "refs/tags/${ALCOVE_TAG}^{commit}")"
+          if [ "$GITHUB_SHA" != "$object" ] && [ "$GITHUB_SHA" != "$tagged" ]; then
+            echo "::error::Tag ${ALCOVE_TAG} names ${tagged}, but this run builds ${GITHUB_SHA}."
+            exit 1
+          fi
+          git -C "$repo" -c gpg.ssh.allowedSignersFile="$signers" verify-tag "$ALCOVE_TAG"
+
   publish:
     name: Publish Docker image
-    needs: [test, release-line]
+    needs: [test, release-line, verify-tag]
     if: ${{ github.event_name == 'push' }}
     # Runs on Ubuntu 24.04; the dry-run job proves 26.04 before this moves.
     runs-on: ubuntu-24.04
