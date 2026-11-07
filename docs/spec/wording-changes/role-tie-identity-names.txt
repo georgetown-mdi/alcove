@@ -1,0 +1,21 @@
+- Nothing is built to hold the role steady across runs. -> Nothing is built to hold the role steady across runs whose counts move.
+- - -> At equal counts the role does not follow which party arrives first, except where the two parties' names are equal or absent ([Role resolution and work minimization](#role-resolution-and-work-minimization)).
+- The rule is: **the party with the smaller declared record count becomes the receiver**; an equal-count tie is work-neutral and broken deterministically in favour of the initiator. -> The rule is: **the party with the smaller declared record count becomes the receiver**; an equal-count tie is work-neutral and broken deterministically, as the next paragraphs state.
+- - -> **An equal-count tie on file-sync and SFTP goes to the name that sorts first.**
+- - -> On those channels the handshake role follows the rendezvous ([FILE_SYNC.md, Phase 1](FILE_SYNC.md#phase-1----rendezvous-lock-path)), so it can change from run to run.
+- - -> At equal declared counts the party whose `identity` in the agreed terms sorts first by UTF-16 code unit becomes the receiver, whichever party arrives first (`breaksRoleTieOnIdentity` and `resolveRole`, `packages/core/src/protocolSetup.ts`).
+- - -> The names compare by code unit rather than by a locale's collation, so both machines order them alike.
+- - -> Where either party states no `identity`, or the two are equal, the tie goes to the initiator, as on WebRTC.
+- - -> **On WebRTC the tie goes to the initiator.**
+- - -> The connection's role fixes which party initiates ([WEBRTC_TRANSPORT.md, Roles](WEBRTC_TRANSPORT.md#roles)), so the tie gives the same receiver on every run.
+- - -> **The tie-break sends nothing new.**
+- - -> Each party's `identity` is in the terms it sends on the terms exchange, and a responder that takes on the initiator's terms keeps its own ([Taking a change on](#a-terms-change-at-the-terms-exchange)), so at role resolution both parties hold the same two names.
+- - -> No frame, field, or message is added.
+- - -> A party can name itself to sort first, as it can declare a smaller count, so the rule gives a partner no role it could not already reach.
+- - -> **Limit: a build with the tie-break and one without it can resolve the same role at equal counts.**
+- - -> The two agree where the name order matches the arrival order and disagree where it does not.
+- - -> Below 1.0.0 partners upgrade together, so the rule takes no version step ([RELEASES.md, Compatibility policy](../RELEASES.md#compatibility-policy)).
+- - -> Measured in-process, a disagreeing pair runs as follows (`packages/core/test/roleTieIdentity.test.ts`):
+- - -> Both senders: under `cascade` both parties refuse at the first round with `server protocol error: malformed inbound PSI request frame`; under `single-pass` both wait for a frame neither sends.
+- - -> Both receivers: under `cascade` both wait; under `single-pass` both refuse with `protocol error: single-pass reply truncated reading setup`.
+- - -> A waiting run ends at the inactivity timeout (`inactivity_timeout_ms`, [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md)), one hour by default on file-sync and SFTP; that timeout was not driven.

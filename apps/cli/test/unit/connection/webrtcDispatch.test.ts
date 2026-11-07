@@ -40,6 +40,8 @@ const mockState = vi.hoisted(() => ({
   reportEncryptionOff: false,
   /** The connection each party's runExchange was handed. */
   exchangeConnections: [] as Array<unknown>,
+  /** The options each party's runExchange was handed. */
+  exchangeOptions: [] as Array<{ breakRoleTieOnIdentity?: boolean }>,
   /** Every `log.info` line the run emitted, with its arguments joined as a console joins them. */
   logLines: [] as Array<string>,
   /** Every `log.warn` line, joined the same way. */
@@ -107,6 +109,9 @@ vi.mock("@alcove/core", async (importActual) => {
     ),
     runExchange: vi.fn(async (...args: unknown[]) => {
       mockState.exchangeConnections.push(args[0]);
+      mockState.exchangeOptions.push(
+        args[3] as { breakRoleTieOnIdentity?: boolean },
+      );
       // The real terms exchange stores the next secret through
       // `options.rotation`; a fixed responder value makes both sides agree.
       const rotation = (args[3] as { rotation?: TermsRotation }).rotation;
@@ -339,6 +344,7 @@ beforeEach(() => {
   mockState.dials.length = 0;
   mockState.handshakes.length = 0;
   mockState.exchangeConnections.length = 0;
+  mockState.exchangeOptions.length = 0;
   mockState.reportEncryptionOff = false;
   mockState.logLines.length = 0;
   mockState.warnLines.length = 0;
@@ -472,6 +478,13 @@ test("both parties ask for the application-layer AEAD, and both wrap", async () 
     expect(connection).toBeInstanceOf(EncryptedMessageConnection);
     expect([pair.inviter, pair.acceptor]).not.toContain(connection);
   }
+});
+
+test("a webrtc exchange does not break an equal-count role tie on identity", async () => {
+  await Promise.all([runParty("inviter"), runParty("acceptor")]);
+  expect(mockState.exchangeOptions).toHaveLength(2);
+  for (const options of mockState.exchangeOptions)
+    expect(options.breakRoleTieOnIdentity).toBe(false);
 });
 
 test("each party's role and encryption request match the shared interop vectors", async () => {

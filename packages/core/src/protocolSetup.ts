@@ -26,6 +26,7 @@ import type {
   TermsDifferenceKind,
 } from "./linkageTermsNegotiation";
 import { SHARED_SECRET_REGEX } from "./config/connection";
+import type { ConnectionConfig } from "./config/connection";
 import {
   MAX_PSI_DECODE_ELEMENTS,
   MAX_RECORD_COUNT,
@@ -1555,18 +1556,54 @@ export async function receiveCountReport(
 
 // --- Role resolution ---------------------------------------------------------
 
+/**
+ * The two parties' `identity` names from the agreed terms, which break an
+ * equal-count role tie in {@link resolveRole} on a channel where
+ * {@link breaksRoleTieOnIdentity} holds.
+ */
+export interface RoleTieIdentities {
+  /** This party's own `identity`, absent when it supplied none. */
+  readonly local: string | undefined;
+  /** The partner's `identity` as its terms stated it, absent when it supplied none. */
+  readonly partner: string | undefined;
+}
+
+/**
+ * Whether an equal-count role tie on `channel` is broken on the two parties'
+ * `identity` names before the handshake role. On file-sync and SFTP the
+ * handshake role follows which party arrives first; on WebRTC the connection's
+ * own role fixes it, so the tie stays with the handshake initiator there.
+ */
+export function breaksRoleTieOnIdentity(
+  channel: ConnectionConfig["channel"],
+): boolean {
+  switch (channel) {
+    case "sftp":
+    case "filedrop":
+      return true;
+    case "webrtc":
+      return false;
+  }
+}
+
 // The work-minimizing PSI role assignment for two both-output parties, from
 // their exchanged declared counts, derived in docs/spec/PROTOCOL.md ("Role
 // resolution and work minimization"). Both parties run this over the same
 // inputs, so the tie-break has to be deterministic rather than merely
-// work-neutral, or the two would resolve to the same role.
+// work-neutral, or the two would resolve to the same role. The names compare
+// by UTF-16 code unit, never by locale, so both machines order them alike.
 function pickRole(
   localCount: number,
   partnerCount: number,
   handshakeRole: HandshakeRole,
+  tieIdentities: RoleTieIdentities | undefined,
 ): PsiRole {
   if (localCount < partnerCount) return "receiver";
   if (localCount > partnerCount) return "sender";
+  const local = tieIdentities?.local;
+  const partner = tieIdentities?.partner;
+  if (local !== undefined && partner !== undefined && local !== partner)
+    return local < partner ? "receiver" : "sender";
   return handshakeRole === "initiator" ? "receiver" : "sender";
 }
 
@@ -1587,6 +1624,11 @@ function pickRole(
  * Call this after a successful {@link exchangeTerms}, whose
  * {@link TermsExchangeResult.partnerRecordCount} supplies
  * `partnerRecordCount`.
+ *
+ * @param tieIdentities Given, an equal-count tie makes the party whose
+ *   `identity` sorts first the receiver, and falls to the handshake role only
+ *   when either name is absent or the two are equal. Omitted, the tie goes to
+ *   the handshake initiator.
  */
 export function resolveRole(
   handshakeRole: HandshakeRole,
@@ -1594,6 +1636,7 @@ export function resolveRole(
   partnerOutput: Output,
   localRecordCount: number,
   partnerRecordCount: number,
+  tieIdentities?: RoleTieIdentities,
 ): PsiRole {
   // One-sided output: the party that expects output is the receiver regardless
   // of the counts -- it is the only party that learns the result.
@@ -1603,5 +1646,10 @@ export function resolveRole(
     return "sender";
 
   // Both expect output: the assignment is free, so minimize total work.
-  return pickRole(localRecordCount, partnerRecordCount, handshakeRole);
+  return pickRole(
+    localRecordCount,
+    partnerRecordCount,
+    handshakeRole,
+    tieIdentities,
+  );
 }

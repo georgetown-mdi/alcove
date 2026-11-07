@@ -4,9 +4,9 @@ title: "PSI Results From Run to Run: Where the Table Can Change on Unchanged Dat
 
 # How a psi result can change from run to run on unchanged data
 
-*Status: examined and measured; one rule built.
+*Status: examined and measured; two rules built.
 The sender's date-shape check (section 4) is built, and its stated limit is retired from [PROTOCOL.md](../spec/PROTOCOL.md).
-The maintainer accepted the equal-count tie-break (section 5, narrow) on the condition that nothing new is exchanged; it is not built, for the reason given in section 5.
+The equal-count tie-break on file-sync and SFTP (section 5, narrow) is built on the two parties' `identity` names, on the maintainer's condition that nothing new is exchanged.
 He declined the record-level uniqueness drop, the width bound in both roles, the value-keyed sweep order, and the fixed role, which stay stated limits.
 See [docs/notes/README.md](README.md).*
 
@@ -24,7 +24,7 @@ Every driven figure below comes from real exchanges between two in-process parti
 the path the suites under `packages/core/test/` drive.
 Where a section says a claim was read from code or is pinned by a suite, it was not driven here.
 Both parties expect output and, except where section 5 adds a row, hold equal declared counts,
-so the initiator becomes the receiver ([Role resolution and work minimization](../spec/PROTOCOL.md#role-resolution-and-work-minimization)),
+so the initiator becomes the receiver, the tie broken on no names ([Role resolution and work minimization](../spec/PROTOCOL.md#role-resolution-and-work-minimization)),
 and swapping which party initiates swaps the roles with the data unchanged.
 Where the records under test are uneven, a party is padded with a row that matches nothing (labelled `xF` or `yF`) to even the counts;
 each section lists every row it drove, in row order, padding included.
@@ -188,13 +188,14 @@ They become run-to-run differences when the assignment moves between runs over t
   A recurring exchange whose counts cross therefore changes the pairs of records that did not change.
   The spec states that nothing holds the role steady across runs.
 - **An equal-count tie.**
-  The tie goes to the initiator.
+  In the build measured the tie went to the initiator.
   Driven: the equal-count rows of the cycle table above.
 - **Who initiates, on file-sync and SFTP.**
   Over WebRTC the initiator is fixed by the invitation ([WEBRTC_TRANSPORT.md, Roles](../spec/WEBRTC_TRANSPORT.md#roles)).
   Over a synced folder or SFTP the handshake role follows the rendezvous: the party that arrives second, or whose hello file name sorts second on a collision, initiates (`setHandshakeRole` in `packages/core/src/connection/fileSyncRendezvous.ts`; [FILE_SYNC.md, Phase 1](../spec/FILE_SYNC.md#phase-1----rendezvous-lock-path)).
-  So on those channels an equal-count tie, and every source above under it, depends on arrival timing.
+  So on those channels, in the build measured, an equal-count tie, and every source above under it, depended on arrival timing.
   This was read from the code, not driven over a real directory.
+  The tie-break below removes that dependence for two parties with different names.
 
 **Deterministic rule.**
 Hold the role fixed for the exchange, from an attribute both parties hold for every run (for example which party issued the invitation), rather than from the counts.
@@ -208,19 +209,28 @@ That removes sources 1 to 4 from run to run, though not from a comparison betwee
 A narrower rule breaks only the equal-count tie on such an attribute instead of on the handshake role.
 It costs nothing and removes the file-sync timing dependence; a count change still moves the role.
 
-**Why the narrow rule is not built.**
-At role resolution (`resolveRole`, called from `runExchange` in `packages/core/src/exchange.ts`) each party holds the two resolved terms documents,
-and both already derive one order of the pair from them for the agreed-terms hash (`computeTermsHash`, `packages/core/src/records/exchangeRecord.ts`).
-Ordering the two documents by a hash of each is held by both parties with nothing new exchanged, fixed for the exchange while its terms are, and computed alike on both sides.
-It fails where the two documents are identical, which two parties sharing one configuration with no `identity`, payload or `deduplicate` difference produce.
-The tie-break then needs a second attribute that differs between the parties, and on file-sync and SFTP none is held every run:
-- the shared secret and the host key are the same on both sides;
-- the inviter and acceptor roles are WebRTC configuration only;
-- a party's peer id is a fresh random value each run unless configured, and a configured template can hold the time;
-- a signing certificate is presented only on a run that signs.
-
-The handshake role is the only attribute left, and it is the arrival order the rule removes.
-Building the hash order with the handshake role as its fallback would leave identical documents depending on arrival timing.
+**The narrow rule, built on the names.**
+At equal declared counts on file-sync and SFTP, the party whose `identity` sorts first becomes the receiver, whichever party arrives first;
+where either name is absent or the two are equal, the tie goes to the initiator as before
+([Role resolution and work minimization](../spec/PROTOCOL.md#role-resolution-and-work-minimization); `breaksRoleTieOnIdentity` and `resolveRole`, `packages/core/src/protocolSetup.ts`).
+WebRTC keeps the initiator's tie, which the invitation already fixes.
+[`roleTieIdentity.test.ts`](../../packages/core/test/roleTieIdentity.test.ts) drives the cycle input above in each arrival order and gets one receiver and one table.
+- Why the names rather than a hash of each terms document: the two documents are identical where both parties run one configuration,
+  and a hash over the whole document would let a responder's taken-on document vary with arrival order.
+  The `identity` is the field that makes two parties' terms differ: it is per-party, never compared between them,
+  and kept by a responder that takes on the initiator's terms.
+- What is left on arrival order: one operator running both sides under one name, and two unnamed parties.
+  No other attribute differs between the parties every run on these channels:
+  the shared secret and the host key are the same on both sides,
+  the inviter and acceptor roles are WebRTC configuration only,
+  a party's peer id is a fresh random value each run unless configured,
+  and a signing certificate is presented only on a run that signs.
+  `alcove invite` and `alcove accept` require a name, so a configuration they write holds one;
+  a quick exchange without `--identity`, or `alcove exchange` over a configuration naming no one, runs unnamed and reaches the fallback ([CLI.md](../CLI.md)).
+- Disclosure and traffic: none; each name is already in the terms each party sends.
+- Mixed builds: a build with the rule and one without it resolve the same role where the name order contradicts the arrival order,
+  and the run refuses or waits, as the spec states.
+  Below 1.0.0 partners upgrade together, so the rule takes no version step.
 
 ## 6. Row order under a deduplicating cardinality
 
@@ -268,7 +278,7 @@ One line each, named by what they would do, with where each stands:
 
 - Order each round's resolution sweep by the smallest matched value of each candidate pair rather than by row ranks, so neither the role nor either party's row order decides which largest pairing the table holds (sources 1 and 6). Declined.
 - Hold the PSI role fixed for an exchange from an attribute both parties hold every run, rather than from the declared counts (source 5, and so sources 1 to 4 between runs). Declined.
-- Break the equal-count role tie on an attribute fixed for the exchange instead of the handshake role, which follows arrival order on file-sync and SFTP (source 5, narrow). Accepted, not built: identical terms documents leave no fixed attribute on file-sync or SFTP (section 5).
+- Break the equal-count role tie on an attribute fixed for the exchange instead of the handshake role, which follows arrival order on file-sync and SFTP (source 5, narrow). Built on the two parties' `identity` names, falling back to the initiator where they are equal or absent (section 5).
 - Apply the one-sided expansions' uniqueness drop at the record level over the would-be expansion in both roles, so a pair meets in one role exactly when it meets in the other (source 2). Declined.
 - Measure the width bound on the would-be expansion in both roles, so a row that splits and expands is dropped or kept the same whichever party receives (source 3). Declined.
 - Check the date expansions' eight-digit shape on the sending party too, so whether the exchange completes does not depend on the role (source 4). Built.

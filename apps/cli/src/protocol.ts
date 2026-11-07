@@ -46,6 +46,7 @@ import {
   isTrustBoundaryFailure,
   releasableTermsRotation,
   sendLocalFaultAbort,
+  breaksRoleTieOnIdentity,
 } from "@alcove/core";
 import type {
   Authentication,
@@ -419,6 +420,7 @@ async function runExchangeStage(params: {
   run: RunLifecycle;
   mc: MessageConnection;
   role: HandshakeRole;
+  channel: ProtocolConnectionConfig["channel"];
   prepared: PreparedExchange;
   psiLibrary: Awaited<ReturnType<typeof loadCliPsiBackend>>["library"];
   verbosity: number;
@@ -444,6 +446,7 @@ async function runExchangeStage(params: {
     run,
     mc,
     role,
+    channel,
     prepared,
     psiLibrary,
     verbosity,
@@ -509,6 +512,7 @@ async function runExchangeStage(params: {
         }),
       verbosity,
       saveIntent,
+      breakRoleTieOnIdentity: breaksRoleTieOnIdentity(channel),
       // Signed-receipt inputs, threaded only when a signing config was
       // passed (the exchange command resolves it from the `signing`
       // block). The step is gated inside runExchange on both the
@@ -2638,6 +2642,7 @@ export async function runProtocol(
       run,
       mc,
       role,
+      channel: connection.channel,
       prepared,
       psiLibrary,
       verbosity,
