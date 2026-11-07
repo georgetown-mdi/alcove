@@ -85,7 +85,8 @@ your own environment:
   socket was upgraded.
 - [The counts publisher and the alarms](#monitoring) ran on the project's
   relay host on 2026-10-15; [the runbook's block
-  command](#when-an-alarm-fires) has not yet run there. The tests drive the
+  command](#when-an-alarm-fires) has not yet run there, and
+  `alcove-relay-busy-refusals` is not yet created there. The tests drive the
   publisher against a stubbed `aws` and hold its timer out of the busy hours.
 
 The measurement this reference implements, and the shapes it rules out, are in
@@ -422,26 +423,42 @@ whose operator gave it none; that is turned on in `relay.env` -- see
   with one fixed message, and the cause, naming the table's file, goes to the
   registrar's journal only. A proof is checked before the table is opened for
   writing, and one write runs at a time.
-- **Bounds on a connection.** A connection's TLS handshake and first request,
-  and each later request on it, must arrive whole within 15 s, however the
-  bytes are spaced, or the connection is closed. Sending a response has its own
-  15 s bound (`RESPONSE_DEADLINE_SECONDS`), and a write waits for the
-  registrar's in-process lock no longer than its request's deadline, answering
-  503 with `Retry-After` and writing nothing past it. The SQLite lock wait
-  inside the table open and transaction is bounded separately by
-  `BUSY_TIMEOUT_SECONDS` (10 s), whatever the deadline; if an outside holder
-  keeps the lock past that, the answer is the fixed 500, not a 503. At most 32 connections are
-  served at once; past that, up to 8 more are answered 503 with
-  `Retry-After: 5` and any further ones are closed unanswered. A connection in
-  that busy band gets the 503 only when it sends its request within 5 s
-  (`BUSY_DEADLINE_SECONDS`); one that stalls is closed unanswered. The
-  `Retry-After` value is `RETRY_AFTER_SECONDS`, which follows the busy
-  deadline. These bounds, and the 4096 and 8192 byte limits above, are
-  arbitrary working values set by `REQUEST_DEADLINE_SECONDS`,
-  `RESPONSE_DEADLINE_SECONDS`, `MAX_HANDLERS`,
-  `MAX_BUSY_ANSWERS`, `BUSY_DEADLINE_SECONDS`, `RETRY_AFTER_SECONDS`,
-  `MAX_REQUEST_LINE_BYTES` and `MAX_HEAD_BYTES` in `registrar.py`, and are
-  raised on request.
+- **Bounds on a connection.**
+  - **One request, within 3 s.** A connection's TLS handshake and its
+    request, and on the front's port the PROXY header before them, must
+    arrive whole within 3 s of the registrar accepting it, however the bytes
+    are spaced, or the connection is closed. The registrar answers one
+    request on a connection: every answer holds `Connection: close`, and the
+    connection is closed after it, so each request is sent on a connection of
+    its own.
+  - **Answering and the table.** Sending a response has its own 15 s bound
+    (`RESPONSE_DEADLINE_SECONDS`), and a write waits for the registrar's
+    in-process lock no longer than what remains of its request's 3 s,
+    answering 503 with `Retry-After` and writing nothing past it. The SQLite
+    lock wait inside the table open and transaction is bounded separately by
+    `BUSY_TIMEOUT_SECONDS` (10 s), whatever the deadline; if an outside
+    holder keeps the lock past that, the answer is the fixed 500, not a 503.
+  - **Connections at once.** At most 32 connections are served at once;
+    past that, up to 8 more are answered 503 with `Retry-After: 3` and any
+    further ones are closed unanswered. A connection in that busy band gets
+    the 503 only when it sends its request within 3 s
+    (`BUSY_DEADLINE_SECONDS`, which follows the request's deadline); one that
+    stalls is closed unanswered. The `Retry-After` value is
+    `RETRY_AFTER_SECONDS`, which follows the busy deadline. Every connection
+    past the 32 is counted as `busy_refusals` ([What it
+    counts](#what-it-counts)).
+  - **What one address can still hold.** No address's connections are
+    bounded, on either port. A connection that sends no request holds a
+    slot for at most 3 s, so one address opening about 13 connections a
+    second (40 slots / 3 s; arithmetic, not measured) can still hold every
+    slot, and while it does every other client is answered 503 or closed
+    unanswered. `busy_refusals` rises while that lasts, and its alarm
+    ([Monitoring](#the-alarms)) names the response.
+  - **The values.** These bounds, and the 4096 and 8192 byte limits above,
+    are arbitrary working values set by `REQUEST_DEADLINE_SECONDS`,
+    `RESPONSE_DEADLINE_SECONDS`, `MAX_HANDLERS`, `MAX_BUSY_ANSWERS`,
+    `BUSY_DEADLINE_SECONDS`, `RETRY_AFTER_SECONDS`, `MAX_REQUEST_LINE_BYTES`
+    and `MAX_HEAD_BYTES` in `registrar.py`, and are raised on request.
 - **Recovery is the operator's action.** An exchange whose key nobody holds any
   more -- a key lost, or a registrar holding a key the caller no longer has --
   is recovered by the relay's operator, deliberately: the token on `PUT` or
@@ -465,8 +482,9 @@ whose operator gave it none; that is turned on in `relay.env` -- see
   and [the 443 front](#the-443-front) passes a connection asking for that
   name there, so its address is `https://<that name>`, on 443. Each
   connection on that port starts with the front's PROXY protocol (version 1)
-  header naming the client's address, which the registrar reads, within 5 s
-  (`PROXY_HEADER_SECONDS`), before the TLS handshake. A connection that does
+  header naming the client's address, which the registrar reads before the
+  TLS handshake, within the connection's 3 s (Bounds on a connection,
+  above). A connection that does
   not start with a well-formed one is closed unanswered and writes nothing,
   including the header's `UNKNOWN` form, which names no client and which
   nginx does not send for a TCP connection. The port listens on
@@ -577,6 +595,12 @@ start: to turn it off, set it to `off` and
   connection the front passes comes from `127.0.0.1` (Where it listens,
   above). For the rate limit, an IPv6 address counts as its /64, which one
   host commonly holds whole; for the cap on each client, below, as its /48.
+- **Any page can spend an address's limits.** The registrar reads no
+  `Origin` header, and its CORS answers allow every origin, so any page a
+  browser on a network loads can send enrollments without a token from that
+  network's address. Those count against the address's rate limit and its
+  cap on each client, below, so that address's own enrollments can be
+  refused 429 until the window ends or the rows lapse.
 - **The cap on each client.** At most 70 rows enrolled without a token and
   not yet lapsed are held for one client address
   (`TOKENLESS_ROWS_PER_CLIENT`), counted inside the enrollment's own write.
@@ -674,10 +698,13 @@ start: to turn it off, set it to `off` and
 
 The registrar counts the enrollments without a token it wrote, the 429s it
 answered at the rate limit (`rate_limit_refusals`) and at the cap on each
-client (`client_cap_refusals`), and the 503s it answered at
+client (`client_cap_refusals`), the 503s it answered at
 [the ceiling](#enrollment-without-a-token) (`tokenless_ceiling_refusals`),
-and writes the counts to `/var/lib/alcove-relay/registrar-counters`
-(beside the secrets table), for the relay's monitoring to read:
+and the connections it accepted with all 32 connection slots taken, each
+answered 503 or closed unanswered (`busy_refusals`, [The
+registrar](#the-registrar), Bounds on a connection). It writes the counts to
+`/var/lib/alcove-relay/registrar-counters` (beside the secrets table), for
+the relay's monitoring to read:
 
 ```
 started=2026-10-15T12:00:00Z
@@ -686,6 +713,7 @@ tokenless_enrollments=12
 rate_limit_refusals=3
 client_cap_refusals=0
 tokenless_ceiling_refusals=0
+busy_refusals=0
 ```
 
 Each count is the total since the registrar started, at `started`; a reader
@@ -1219,7 +1247,7 @@ a disk swapfile before it installs anything:
 ## Monitoring
 
 CloudWatch alarms email the owner when the relay's traffic, the account's
-spend, or the registrar's enrollments without a token rise past a threshold
+spend, the registrar's enrollments without a token, or its refusals rise past a threshold
 derived below, and when the publisher of those counts stops publishing. They are created by hand and recorded, for the relay's
 OpenTofu root to import, in [aws/provision.md](aws/provision.md), Alarms.
 
@@ -1278,6 +1306,7 @@ nothing on a quiet run.
 | `alcove-relay-network-out` | `AWS/EC2` `NetworkOut` of the relay instance, sum over 1 hour | the largest hourly sum in the last full month |
 | `alcove-relay-tokenless-enrollments` | `Alcove/Relay` `tokenless_enrollments`, sum over 6 hours | 30 times `ALCOVE_RELAY_TOTAL_QUOTA` |
 | `alcove-relay-rate-limit-refusals`, `alcove-relay-client-cap-refusals`, `alcove-relay-tokenless-ceiling-refusals` | `Alcove/Relay` `rate_limit_refusals`, `client_cap_refusals` and `tokenless_ceiling_refusals` in turn, sum over 1 hour | 0 |
+| `alcove-relay-busy-refusals` | `Alcove/Relay` `busy_refusals`, sum over 1 hour | 0 |
 
 `alcove-relay-publisher-heartbeat` watches the publisher itself:
 `Alcove/Relay` `publisher_heartbeat`, sum over 1 day, firing when two
@@ -1317,7 +1346,11 @@ How each threshold is derived:
 - **Refusals.** Each bound the registrar refuses at is sized to admit
   legitimate use ([The registrar](#the-registrar), Enrollment without a
   token), so a refusal is a client past it. A ceiling refusal also refuses
-  every other new enrollment without a token.
+  every other new enrollment without a token. A busy refusal means 32
+  connections were open at once. A run sends a few requests, each on a
+  connection closed once answered, so legitimate use is not expected to
+  reach that (an estimate, not measured); while it lasts, other clients are
+  refused too.
 - **Again after the default.** Where the month a baseline came from preceded
   the web app's default use of this relay, record both baselines again a
   month after that default reached production, since it changes the relay's
@@ -1354,6 +1387,13 @@ ss -Htn state established '( sport = :443 )' | awk '{print $4}' | sed 's/:[0-9]*
   counts rise is the likeliest source: block it. Enrollments above the
   threshold from many addresses, or any ceiling refusal, mean turning
   enrollment without a token off.
+- **`alcove-relay-busy-refusals`.** Every connection slot was taken. The
+  registrar's journal names no address, so while the flood lasts, the
+  address holding most connections in the connection count above is the
+  likeliest source: block it. Run the count again with the registrar's own
+  port (`ALCOVE_RELAY_REGISTRAR_PORT`) in place of 443, since a client can
+  reach either. Each connection lasts at most 3 seconds, so once the flood
+  stops the count shows nothing.
 - **`alcove-account-estimated-charges`.** The month's cost by usage type:
   `aws ce get-cost-and-usage --time-period Start=<first of the month>,End=<tomorrow>
   --granularity MONTHLY --metrics UnblendedCost --group-by

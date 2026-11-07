@@ -1503,8 +1503,9 @@ const call = (port, method, path, { token, body, headers = {} } = {}) =>
   });
 
 // Writes raw requests on one connection and resolves with everything the
-// registrar sends back once it closes the connection.
-const callRaw = (port, requests) =>
+// registrar sends back once it closes the connection. `encoding` "latin1"
+// sends each character below 256 as its one byte.
+const callRaw = (port, requests, encoding = "utf8") =>
   new Promise((resolveText, reject) => {
     const socket = connect(
       {
@@ -1513,7 +1514,7 @@ const callRaw = (port, requests) =>
         servername: "relay.example",
         ca: readFileSync(join(certDir, "fullchain.pem")),
       },
-      () => socket.write(requests.join("")),
+      () => socket.write(requests.join(""), encoding),
     );
     let text = "";
     socket.on("data", (chunk) => {
@@ -1856,7 +1857,7 @@ conn.execute("ROLLBACK")`,
         body: keyBody(KEY_B),
       });
       expect(starved.status).toBe(503);
-      expect(starved.headers["retry-after"]).toBe("5");
+      expect(starved.headers["retry-after"]).toBe("3");
       const answered = await slow;
       expect(answered.status, answered.text).toBe(200);
       expect(host.mapping().map((row) => row.id)).toEqual(["exchange-1"]);
@@ -1869,7 +1870,7 @@ conn.execute("ROLLBACK")`,
   // timeout.
   const SLOT_FREED_WAIT = { timeout: 20_000, interval: 50 };
 
-  it("answers 503 past the handler cap, closes past the busy cap, and serves again once a slot frees", async () => {
+  it("answers 503 past the handler cap, closes past the busy cap, counts both, and serves again once a slot frees", async () => {
     const host = fixtureHost();
     // Deadlines past the test's own timeout, so no held connection lapses and
     // frees its slot between the cap assertions on a loaded host.
@@ -1878,6 +1879,7 @@ conn.execute("ROLLBACK")`,
       MAX_BUSY_ANSWERS: 1,
       REQUEST_DEADLINE_SECONDS: 120,
       BUSY_DEADLINE_SECONDS: 120,
+      COUNTERS_WRITE_SECONDS: 0.2,
     });
     const silent = () =>
       new Promise((resolveSocket, reject) => {
@@ -1897,7 +1899,7 @@ conn.execute("ROLLBACK")`,
       const busy = await call(port, "DELETE", "/exchanges/exchange-1");
       expect(busy.status).toBe(503);
       expect(JSON.parse(busy.text)).toEqual({ error: BUSY_REFUSAL });
-      expect(busy.headers["retry-after"]).toBe("5");
+      expect(busy.headers["retry-after"]).toBe("3");
       // The registrar frees the busy slot just after closing the 503's
       // connection, so a connection made at once can still find it taken and be
       // closed unanswered; one that completes a handshake holds the slot.
@@ -1905,6 +1907,13 @@ conn.execute("ROLLBACK")`,
       await expect(
         call(port, "DELETE", "/exchanges/exchange-1"),
       ).rejects.toThrow();
+      // The 503, the connection holding the busy slot, and the one closed
+      // unanswered; a connection the wait above saw closed counts too.
+      await vi.waitFor(() =>
+        expect(Number(readCounters(host).busy_refusals)).toBeGreaterThanOrEqual(
+          3,
+        ),
+      );
     } finally {
       for (const socket of held) socket.destroy();
     }
@@ -2145,6 +2154,48 @@ conn.execute("ROLLBACK")`,
     expect(host.mapping()).toEqual([]);
   });
 
+  it("reads Content-Length as ASCII digits only, answering every other value and journaling the request", async () => {
+    const host = fixtureHost();
+    const { port, log } = await startRegistrar(host);
+    const put = (length, headers) =>
+      [
+        "PUT /exchanges/exchange-1 HTTP/1.1",
+        "Host: relay.example",
+        ...headers,
+        `Content-Length: ${length}`,
+        "Connection: close",
+        "",
+        "",
+      ].join("\r\n");
+    const status = (text) => /^HTTP\/1\.1 (\d{3}) /.exec(text)?.[1];
+    const withToken = [`Authorization: Bearer ${REGISTRAR_TOKEN}`];
+    const cases = [
+      // The body is read: a length that is not ASCII digits is no length.
+      ["\xb2", withToken, "411"],
+      ["1\xb3", withToken, "411"],
+      ["99999", withToken, "413"],
+      ["9".repeat(5000), withToken, "413"],
+      // The body is never read: the refusal is answered whatever the length.
+      ["\xb2", [], "401"],
+      ["1\xb3", [], "401"],
+      ["9".repeat(5000), [], "401"],
+    ];
+    for (const [length, headers, expected] of cases) {
+      const text = await callRaw(port, [put(length, headers)], "latin1");
+      expect(status(text), JSON.stringify(length)).toBe(expected);
+    }
+    await vi.waitFor(() => {
+      const lines = log.stderr
+        .split("\n")
+        .filter((line) => line.startsWith("PUT "));
+      expect(lines).toEqual(
+        cases.map(([, , expected]) => `PUT /exchanges/exchange-1 ${expected}`),
+      );
+    });
+    expect(log.stderr).not.toContain("connection ended");
+    expect(host.mapping()).toEqual([]);
+  });
+
   it.each(["/exchanges/", "/exchanges/a/b", "/exchanges/a?b=c", "/other"])(
     "answers %s 404 with the token and writes nothing",
     async (path) => {
@@ -2157,25 +2208,31 @@ conn.execute("ROLLBACK")`,
     },
   );
 
-  it("reads a DELETE's and a preflight's body so the next request parses", async () => {
+  it("answers one request a connection, closing it after the answer whatever the request asks", async () => {
     const host = fixtureHost();
     host.register("exchange-1", KEY_A);
     const { port } = await startRegistrar(host);
     const auth = { Authorization: `Bearer ${REGISTRAR_TOKEN}` };
-    const text = await callRaw(port, [
-      rawRequest("DELETE", "/exchanges/exchange-1", auth, '{"ignored": 1}'),
-      rawRequest("OPTIONS", "/exchanges/exchange-2", {}, '{"ignored": 2}'),
+    const statuses = (text) =>
+      [...text.matchAll(/^HTTP\/1\.1 (\d{3})/gm)].map((match) => match[1]);
+    const revoked = await callRaw(port, [
       rawRequest(
-        "PUT",
-        "/exchanges/exchange-2",
-        { ...auth, Connection: "close" },
-        keyBody(KEY_B),
+        "DELETE",
+        "/exchanges/exchange-1",
+        { ...auth, Connection: "keep-alive" },
+        '{"ignored": 1}',
       ),
+      rawRequest("PUT", "/exchanges/exchange-2", auth, keyBody(KEY_B)),
     ]);
-    expect(
-      [...text.matchAll(/^HTTP\/1\.1 (\d{3})/gm)].map((match) => match[1]),
-    ).toEqual(["200", "204", "200"]);
-    expect(host.mapping().map(({ id }) => id)).toEqual(["exchange-2"]);
+    expect(statuses(revoked)).toEqual(["200"]);
+    expect(revoked).toMatch(/^Connection: close\r$/im);
+    const preflight = await callRaw(port, [
+      rawRequest("OPTIONS", "/exchanges/exchange-2", {}, '{"ignored": 2}'),
+      rawRequest("PUT", "/exchanges/exchange-2", auth, keyBody(KEY_B)),
+    ]);
+    expect(statuses(preflight)).toEqual(["204"]);
+    expect(preflight).toMatch(/^Connection: close\r$/im);
+    expect(host.mapping()).toEqual([]);
   });
 
   it("ends the connection after a DELETE whose body it does not read", async () => {
@@ -3431,7 +3488,7 @@ describe.skipIf(runningAsRoot)(
     it("closes a front connection whose header never completes at the deadline, and writes nothing", async () => {
       const host = fixtureHost();
       const { frontPort, log } = await startOpenRegistrar(host, {
-        PROXY_HEADER_SECONDS: 0.5,
+        REQUEST_DEADLINE_SECONDS: 0.5,
       });
       const started = Date.now();
       const answer = await openFrontConnection(
@@ -3446,6 +3503,81 @@ describe.skipIf(runningAsRoot)(
         expect(log.stderr).toContain("connection ended: timed out"),
       );
     });
+
+    // Opens a connection to the registrar's own port, or to the front's port
+    // with the PROXY header the front sends first. With `requests` unset it
+    // sends nothing more; otherwise it makes the TLS handshake and writes
+    // them. Resolves with the answer's text and the milliseconds from the
+    // connection's open to the registrar closing it.
+    const timedConnection = (ports, listener, requests) =>
+      new Promise((resolveClosed, reject) => {
+        const started = Date.now();
+        const received = [];
+        const raw = netConnect(
+          {
+            host: "127.0.0.1",
+            port: listener === "front" ? ports.frontPort : ports.port,
+          },
+          () => {
+            if (listener === "front") raw.write(proxyHeaderFor("203.0.113.7"));
+            if (requests === undefined) return;
+            const socket = connect(
+              {
+                socket: raw,
+                servername: "relay.example",
+                ca: readFileSync(join(certDir, "fullchain.pem")),
+              },
+              () => socket.write(requests),
+            );
+            socket.on("data", (chunk) => received.push(chunk));
+            socket.on("error", () => {});
+          },
+        );
+        const bound = setTimeout(() => {
+          raw.destroy();
+          reject(new Error("the registrar did not close the connection"));
+        }, 10_000);
+        raw.on("close", () => {
+          clearTimeout(bound);
+          resolveClosed({
+            text: Buffer.concat(received).toString(),
+            closedAfter: Date.now() - started,
+          });
+        });
+        raw.on("error", () => {});
+      });
+
+    it.each(["own", "front"])(
+      "at its production bounds, closes a connection on its %s port that sends no request within the deadline, and one that sent requests after its first answer",
+      async (listener) => {
+        const host = fixtureHost();
+        const ports = await startOpenRegistrar(host);
+        const silent = await timedConnection(ports, listener);
+        expect(silent.text).toBe("");
+        expect(silent.closedAfter).toBeGreaterThanOrEqual(2500);
+        expect(silent.closedAfter).toBeLessThan(8000);
+        const request = [
+          "DELETE /exchanges/exchange-1 HTTP/1.1",
+          "Host: relay.example",
+          "Connection: keep-alive",
+          "Content-Length: 0",
+          "",
+          "",
+        ].join("\r\n");
+        const answered = await timedConnection(
+          ports,
+          listener,
+          request + request,
+        );
+        expect(
+          [...answered.text.matchAll(/^HTTP\/1\.1 (\d{3})/gm)].map(
+            (match) => match[1],
+          ),
+        ).toEqual(["401"]);
+        expect(answered.text).toMatch(/^Connection: close\r$/im);
+        expect(answered.closedAfter).toBeLessThan(2000);
+      },
+    );
 
     it("refuses an address past the number of addresses it tracks", async () => {
       const host = fixtureHost();

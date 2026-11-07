@@ -24,7 +24,7 @@ STATE_FILE="${ALCOVE_RELAY_METRICS_STATE_FILE:-/var/lib/alcove-relay-metrics/pub
 # The instance role's PutMetricData permission names this namespace
 # (aws/provision.md, The instance role).
 NAMESPACE=Alcove/Relay
-COUNTS=(tokenless_enrollments rate_limit_refusals client_cap_refusals tokenless_ceiling_refusals)
+COUNTS=(tokenless_enrollments rate_limit_refusals client_cap_refusals tokenless_ceiling_refusals busy_refusals)
 HEARTBEAT_DATUM="MetricName=publisher_heartbeat,Value=1,Unit=Count"
 
 die() { printf 'publish-metrics: %s\n' "$*" >&2; exit 1; }
