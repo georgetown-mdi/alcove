@@ -272,6 +272,7 @@ Over file-sync each message stays one frame, held to the message file.
 
 Limits:
 
+- **How the partner learns of the refusal.** On file sync the partner is told by the abort marker on an authenticated run, or by the local-fault abort frame. On WebRTC and the relay the refusing party closes the channel and sends no abort frame, as for every protocol error it raises past the terms exchange, so the partner ends on the channel close.
 - **A frame after the reply.** The single-pass phase reads nothing past the reply's tail, so a frame the sender sends after it is read as the next message the receiver awaits, the sender's payload. Measured with one extra part after a conforming reply, in parts and in one frame, in both handshake orders, signed and unsigned, the receiver refused it there as a `protocol` error with no result in every case. What the sender ends with depends on the handshake order and signing:
   - **The receiver is the handshake responder, signed or unsigned.** The sender ends with no result: the receiver closed the connection while the sender awaited its payload.
   - **The receiver is the handshake initiator, signed.** The sender ends with no result: the receiver closed the connection before the signed receipts were swapped.

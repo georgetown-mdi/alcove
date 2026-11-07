@@ -5,3 +5,6 @@
 - A response, which re-encrypts this party's own request, is held to that request instead: a response declaring more bytes than the request this party sent is refused at its first part, and one declaring more elements at the element scan ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#psi-set-parts-the-combined-bound)). -> A response, which re-encrypts this party's own request, is held to that request instead: a response declaring more bytes than the request this party sent is refused at its first part, and one declaring more elements at the element scan.
 - - -> A response with fewer elements than that request, or none, is refused after the element scan, before the match ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#psi-set-parts-the-combined-bound)).
 - - -> A response with fewer elements than the request, or none, is refused after the scan, before decode, naming both counts.
+- - -> **How the partner learns of the refusal.**
+- - -> On file sync the partner is told by the abort marker on an authenticated run, or by the local-fault abort frame.
+- - -> On WebRTC and the relay the refusing party closes the channel and sends no abort frame, as for every protocol error it raises past the terms exchange, so the partner ends on the channel close.
