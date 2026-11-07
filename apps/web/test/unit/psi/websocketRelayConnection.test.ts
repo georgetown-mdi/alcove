@@ -500,6 +500,35 @@ describe("a refused hello", () => {
       expect(sockets).toHaveLength(1);
     });
 
+    test("a relay time that puts the next proof before 1970 names the relay's time and the remedy, and dials no second socket", async () => {
+      let reads = 0;
+      const sockets: Array<FakeRelaySocket> = [];
+      const pending = openWebSocketRelayConnection({
+        url: RELAY_URL,
+        exchangeId: "exchange-1",
+        role: "inviter",
+        relayKey: RELAY_KEY,
+        now: () => new Date(localSecond * 1000 - reads++ * 2_000),
+        createSocket: (url) => {
+          const socket = new FakeRelaySocket(url);
+          sockets.push(socket);
+          return socket as unknown as WebSocket;
+        },
+      });
+      const first = await dialed(sockets, 1);
+      first.open();
+      first.closeFromRelay(4005, "0");
+
+      const error = await pending.catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ConnectionError);
+      expect(error).toMatchObject({
+        kind: "transport",
+        message:
+          "Could not build this side's proof for the WebSocket relay: the relay stated a time this device cannot use. Start the exchange again, and if it fails the same way, tell whoever runs the relay.",
+      });
+      expect(sockets).toHaveLength(1);
+    });
+
     test.each([
       ["text that is not a second", "\u001b[31mspoofed"],
       ["an empty reason", ""],

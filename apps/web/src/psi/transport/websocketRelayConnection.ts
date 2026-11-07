@@ -219,7 +219,7 @@ async function buildRelayProof(
   options: WebSocketRelayConnectionOptions,
   proofTime: Date,
 ): Promise<WebSocketRelayProof> {
-  if (Number.isNaN(proofTime.getTime()))
+  if (!(proofTime.getTime() >= 0))
     throw new ConnectionError(
       "Could not build this side's proof for the WebSocket relay: the relay stated a time this device cannot use. Start the exchange again, and if it fails the same way, tell whoever runs the relay.",
       "transport",
