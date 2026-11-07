@@ -34,7 +34,7 @@ import { runListsRelay } from "@psi/transport/runRelayPlan";
 import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 import { useHashTarget } from "@components/useHashTarget";
 
-import { dateLabel } from "@psi/formatting";
+import { dateTimeLabel } from "@psi/formatting";
 
 import {
   MAX_AGE_DAYS_LABEL,
@@ -759,12 +759,12 @@ function LocalFieldsEditor({
         </Alert>
       )}
       <p className={`${styles.small} ${styles.sub}`}>
-        Shortening it or turning it off applies now. A longer limit applies from
+        Shortening it applies now. Turning it off or a longer limit applies from
         the next run.
       </p>
       <p className={`${styles.small} ${styles.sub}`}>
         {record.expires !== undefined
-          ? `The shared secret expires ${dateLabel(new Date(record.expires))} unless the exchange runs first.`
+          ? `The shared secret expires ${dateTimeLabel(new Date(record.expires))} unless the exchange runs first.`
           : "The shared secret does not expire."}
       </p>
       <LocalDocumentFields

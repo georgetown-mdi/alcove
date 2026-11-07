@@ -674,6 +674,11 @@ re-invite if it lands an already-lapsed bound (the standing recovery for a lapse
 `expires`). The implementation of this derivation is
 `apps/web/src/psi/managed/managedTokenAgeEdit.ts`.
 
+Limit: shortening the policy while a re-invite's setup secret is pending can
+end that secret at once. Its `expires` is the invitation's, an hour out by
+default, and a shorten moves it back by the days removed, since the record
+keeps no instant at which the secret was written. A further re-invite recovers.
+
 #### Recording a run outcome
 
 Every runner -- the attended Run and the scheduled one alike -- records its
