@@ -269,8 +269,8 @@ export function renderExchangeDisclosure(
   }
   // What those several values group once the partner declares a duplicate
   // matching of its own beside this party's. Read from core's verdict over
-  // every producer of a candidate set, so a key declaring `swap` and a fuzzy
-  // comparison state it where the line above is silent, and stated
+  // every producer of a candidate set, so a fuzzy comparison states it where
+  // the line above is silent, and stated
   // conditionally: this run holds its own side of the pair and reads the
   // partner's only when the exchange runs.
   if (summary.candidateSetChainsGrouping) {

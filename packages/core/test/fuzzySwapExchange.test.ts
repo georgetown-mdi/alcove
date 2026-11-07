@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 
 // A driven exchange is the only place the width both parties declare for a
-// swapped or expanded key and the candidates one of them assembles are composed
-// rather than checked apart, so the four expansion kinds and the swap variant
+// swapped or expanded key and the candidates they build are composed rather
+// than checked apart, so the four expansion kinds and the swap's sorted pair
 // are pinned end to end on the shipped build.
 
 import PSI from "@openmined/psi.js";
@@ -10,10 +10,15 @@ import PSI from "@openmined/psi.js";
 import { runExchange } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
 
-import type { ExchangeResult } from "../src/exchange";
+import type {
+  ExchangeResult,
+  RunExchangeOptions,
+  SinglePassPartnerSize,
+} from "../src/exchange";
 import type { CSVRow } from "../src/file";
 import type {
   LinkageKey,
+  LinkageStrategy,
   LinkageTerms,
   TransformStep,
 } from "../src/config/linkageTermsSchema";
@@ -36,7 +41,7 @@ const baseTerms = {
 };
 
 // The pair a swap is authored for: one element reads the first name and the
-// other the last, and the receiver assembles both arrangements.
+// other the last, and both parties place the two values in sorted order.
 const swappedKey: LinkageKey = {
   name: "FN + LN",
   elements: [{ field: "firstName" }, { field: "lastName" }],
@@ -52,8 +57,7 @@ const BOUND_TO_TWO_CHARACTERS: TransformStep[] = [
 
 // The same pair, with the transposition expansion on both of its positions --
 // the arrangement the terms schema requires of a swap pair. The receiver
-// assembles the two arrangements of the two transpositions of each element,
-// which is the swap factor and the fuzzy factors of the width composing.
+// sorts each combination of the two transpositions of each element.
 const transposedSwappedKey: LinkageKey = {
   name: "FN2 + LN2",
   elements: [
@@ -91,6 +95,7 @@ async function runFuzzyExchange<Row extends CSVRow>(
   reversedRows: Row[],
   terms: Partial<LinkageTerms>,
   columns: Array<string>,
+  authoredOptions: Partial<RunExchangeOptions> = {},
 ): Promise<{ authored: ExchangeResult; reversed: ExchangeResult }> {
   const [connAuthored, connReversed] = createMessagePipe();
   const [authored, reversed] = await Promise.all([
@@ -101,7 +106,7 @@ async function runFuzzyExchange<Row extends CSVRow>(
         terms: { ...terms, linkageKeys: [key] },
         columns,
       }),
-      { psiLibrary },
+      { psiLibrary, ...authoredOptions },
     ),
     runExchange(
       connReversed,
@@ -131,6 +136,8 @@ async function runSwapExchange(
   authoredRows: NameRow[],
   reversedRows: NameRow[],
   receiver: "authored" | "reversed",
+  linkageStrategy: LinkageStrategy = "single-pass",
+  authoredOptions: Partial<RunExchangeOptions> = {},
 ): Promise<{ authored: ExchangeResult; reversed: ExchangeResult }> {
   const padding = 3;
   return runFuzzyExchange(
@@ -143,8 +150,9 @@ async function runSwapExchange(
       ...reversedRows,
       ...(receiver === "reversed" ? [] : filler("REV", padding)),
     ],
-    baseTerms,
+    { ...baseTerms, linkageStrategy },
     ["first_name", "last_name"],
+    authoredOptions,
   );
 }
 
@@ -157,9 +165,9 @@ function matchedPairs(result: ExchangeResult): Array<[number, number]> {
 }
 
 // One pair whose two records agree on the arrangement, and one whose records are
-// reversed against each other. The agreeing pair meets only through the order the
-// terms author, and the reversed pair only through the exchanged one, so a run
-// matching both is a run in which the receiver assembled the key twice.
+// reversed against each other. Each record of the reversed pair builds the
+// same sorted value, so a run matching both is a run in which the sort reached
+// both parties.
 const AGREEING_AND_REVERSED: {
   authored: NameRow[];
   reversed: NameRow[];
@@ -174,33 +182,70 @@ const AGREEING_AND_REVERSED: {
   ],
 };
 
+for (const strategy of ["cascade", "single-pass"] as const)
+  for (const receiver of ["authored", "reversed"] as const) {
+    test(`a swapped key matches both arrangements under ${strategy} with the ${receiver} party as receiver`, async () => {
+      const { authored, reversed } = await runSwapExchange(
+        swappedKey,
+        AGREEING_AND_REVERSED.authored,
+        AGREEING_AND_REVERSED.reversed,
+        receiver,
+        strategy,
+      );
+
+      expect(authored.resolvedRole).toBe(
+        receiver === "authored" ? "receiver" : "sender",
+      );
+      expect(reversed.resolvedRole).toBe(
+        receiver === "reversed" ? "receiver" : "sender",
+      );
+
+      // Both records meet, the agreeing pair and the reversed one. Each party
+      // names the same two pairs from its own side, which is the intersection
+      // both resolved.
+      expect(matchedPairs(authored)).toEqual([
+        [0, 0],
+        [1, 1],
+      ]);
+      expect(matchedPairs(reversed)).toEqual([
+        [0, 0],
+        [1, 1],
+      ]);
+    });
+  }
+
 for (const receiver of ["authored", "reversed"] as const) {
-  test(`a swapped key matches both arrangements with the ${receiver} party as receiver`, async () => {
-    const { authored, reversed } = await runSwapExchange(
+  test(`a swapped key takes one value slot per record with the ${receiver} party as receiver`, async () => {
+    // The slots each party declares are its record count times the key's
+    // width, so a width of 1 states one slot per record on both sides.
+    const sizes: SinglePassPartnerSize[] = [];
+    const { authored } = await runSwapExchange(
       swappedKey,
       AGREEING_AND_REVERSED.authored,
       AGREEING_AND_REVERSED.reversed,
       receiver,
+      "single-pass",
+      { checkSinglePassPartnerSize: (size) => void sizes.push(size) },
     );
+    const authoredRows = receiver === "authored" ? 2 : 5;
+    const reversedRows = receiver === "reversed" ? 2 : 5;
+    expect(sizes).toHaveLength(1);
+    expect(sizes[0].localValueSlots).toBe(authoredRows);
+    expect(sizes[0].partnerValueSlots).toBe(reversedRows);
+    expect(matchedPairs(authored)).toHaveLength(2);
 
-    expect(authored.resolvedRole).toBe(
-      receiver === "authored" ? "receiver" : "sender",
+    // The cascade weighs the partner's first round at the same one value a
+    // record.
+    const rounds: number[] = [];
+    await runSwapExchange(
+      swappedKey,
+      AGREEING_AND_REVERSED.authored,
+      AGREEING_AND_REVERSED.reversed,
+      receiver,
+      "cascade",
+      { checkPartnerRoundCapacity: (values) => void rounds.push(values) },
     );
-    expect(reversed.resolvedRole).toBe(
-      receiver === "reversed" ? "receiver" : "sender",
-    );
-
-    // Both records meet: row 0 through the authored arrangement, row 1 through
-    // the exchanged one. Each party names the same two pairs from its own side,
-    // which is the intersection both resolved.
-    expect(matchedPairs(authored)).toEqual([
-      [0, 0],
-      [1, 1],
-    ]);
-    expect(matchedPairs(reversed)).toEqual([
-      [0, 0],
-      [1, 1],
-    ]);
+    expect(rounds).toEqual([reversedRows]);
   });
 }
 
@@ -233,7 +278,7 @@ for (const receiver of ["authored", "reversed"] as const) {
 }
 
 test("a swapped key still matches nothing the arrangements do not reach", async () => {
-  // The width a swapped key declares buys two arrangements of each record, not a
+  // Sorting the pair matches a record in either arrangement, not a
   // match between records that share neither. Without this the tests above would
   // pass on a key that matched everything.
   const { authored, reversed } = await runSwapExchange(

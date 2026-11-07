@@ -467,14 +467,6 @@ function MatchKeyDetails({ summary }: { summary: InvitationKeySummary }) {
           {summary.swap !== undefined
             ? `${summary.swap[0]} and ${summary.swap[1]} may be matched in either order`
             : "Two of these elements may be matched in either order"}
-          {/* The marker renders only for a swap the run would not apply: one
-              under a linkage strategy that resolves no candidate set. A
-              swapped order changes match breadth, not the
-              disclosure guarantee, so by the caveat-placement rule on
-              {@link InvitationTerms} the marker stays here with the note it
-              qualifies. */}
-          {!summary.swapApplied &&
-            ` ${PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder}`}
         </Text>
       )}
     </Stack>
@@ -1253,10 +1245,10 @@ export function InvitationTerms({
         )}
 
         {/* What those several values group once BOTH parties set duplicate
-            matching. Read over every producer of a candidate set, so a swapped
-            key order and a fuzzy comparison state it where the block above --
+            matching. Read over every producer of a candidate set, so a fuzzy
+            comparison states it where the block above --
             the split half alone -- is silent, and the shipped default keys
-            declare a swap. Rendered whatever this party's own side stands at,
+            declare one. Rendered whatever this party's own side stands at,
             on both seats this component serves, the sentence stating the pair
             conditionally: the operator meets it before setting that value. */}
         {summary.candidateSetChainsGrouping && (

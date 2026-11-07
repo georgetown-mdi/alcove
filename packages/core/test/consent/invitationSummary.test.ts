@@ -348,24 +348,23 @@ describe("the consent summary's fan-out register", () => {
   test.each(["cascade", "single-pass"] as const)(
     "a swapped key order under %s is marked as applied",
     (linkageStrategy) => {
-      // A swap is a candidate set like the fuzzy expansion, and both
-      // strategies resolve one, so the surfaces state the either-order match
-      // the run performs with nothing qualifying it.
+      // Both parties sort the pair into one value, which every strategy
+      // matches, so the surfaces state the either-order match the run
+      // performs with nothing qualifying it.
       const summary = summarizeInvitation({
         linkageTerms: { ...baseTerms, linkageKeys: swapKeys, linkageStrategy },
       });
       expect(summary.linkageKeys[0].hasSwap).toBe(true);
-      expect(summary.linkageKeys[0].swapApplied).toBe(true);
       expect(summary.linkageKeys[0].swapHeaderMarker).toBe(
         "(matched in either order)",
       );
     },
   );
 
-  test("the same swap under the count-only algorithm is marked as applied, and selects the count-only line", () => {
-    // A count-only round counts over the swapped order, so the surfaces state
-    // the either-order match the run performs. A swap declares no fan-out, so
-    // only the count-only flag selects a line for it.
+  test("the same swap under the count-only algorithm is marked as applied, and selects no count-only line", () => {
+    // A count-only round counts over the sorted value, so the surfaces state
+    // the either-order match the run performs. A swap builds one value per
+    // record, so it declares no candidate set for a count-only line to state.
     const summary = summarizeInvitation({
       linkageTerms: {
         ...baseTerms,
@@ -375,13 +374,12 @@ describe("the consent summary's fan-out register", () => {
       },
     });
     expect(summary.linkageKeys[0].hasSwap).toBe(true);
-    expect(summary.linkageKeys[0].swapApplied).toBe(true);
     expect(summary.linkageKeys[0].swapHeaderMarker).toBe(
       "(matched in either order)",
     );
     expect(summary.fanOutApplied).toBe(true);
     expect(summary.fansOut).toBe(false);
-    expect(summary.countOnlyCandidateSets).toBe(true);
+    expect(summary.countOnlyCandidateSets).toBe(false);
   });
 
   test("count-only terms declaring no candidate set select no count-only candidate line", () => {
@@ -600,7 +598,7 @@ describe("the consent summary's chained-grouping register", () => {
   /** Neither party is entitled to a result. */
   const NO_RECEIVER: Output = { expectsOutput: false, shareWithPartner: false };
   // One key per producer of a candidate set, since the fan-out flag beside
-  // this register reads only the first of the three.
+  // this register reads only the first of the two.
   const candidateSetKeys: Array<[string, LinkageTerms["linkageKeys"]]> = [
     [
       "a split value",
@@ -630,16 +628,6 @@ describe("the consent summary's chained-grouping register", () => {
         },
       ],
     ],
-    [
-      "a swapped key order",
-      [
-        {
-          name: "name",
-          elements: [{ field: "first_name" }, { field: "last_name" }],
-          swap: ["first_name", "last_name"] as [string, string],
-        },
-      ],
-    ],
   ];
 
   test.each(candidateSetKeys)(
@@ -656,7 +644,7 @@ describe("the consent summary's chained-grouping register", () => {
 
   test("states it for the shipped default keys, which split a last name", () => {
     // The combination an operator reaches with no key authoring at all: the
-    // built-in rule set's split, swapped and fuzzy keys are candidate sets, so
+    // built-in rule set's split and fuzzy keys are candidate sets, so
     // a both-sided deduplicate over the defaults chains groups, and the split
     // puts them in the fan-out register too.
     const summary = summarizeInvitation({
@@ -674,6 +662,24 @@ describe("the consent summary's chained-grouping register", () => {
           ...baseTerms,
           deduplicate: true,
           linkageKeys: plainKeys,
+        },
+      }).candidateSetChainsGrouping,
+    ).toBe(false);
+  });
+
+  test("withholds it for a swapped key order, which builds one value per record", () => {
+    expect(
+      summarizeInvitation({
+        linkageTerms: {
+          ...baseTerms,
+          deduplicate: true,
+          linkageKeys: [
+            {
+              name: "name",
+              elements: [{ field: "first_name" }, { field: "last_name" }],
+              swap: ["first_name", "last_name"],
+            },
+          ],
         },
       }).candidateSetChainsGrouping,
     ).toBe(false);

@@ -296,7 +296,7 @@ describe("each fuzzy comparison kind matches under the cascade", () => {
   });
 });
 
-// --- a swap key declaring both orders, end to end ----------------------------
+// --- a swap key, end to end --------------------------------------------------
 
 const SWAP_TERMS = cascadeTerms([
   {
@@ -307,8 +307,8 @@ const SWAP_TERMS = cascadeTerms([
 ]);
 
 test("a swap key matches a partner whose two fields are reversed", async () => {
-  // The receiver assembles the key in the authored order as well as the swapped
-  // one, so the pair meets whichever party role resolution hands the receiver
+  // Both parties sort the pair into one order before assembling the key, so
+  // the pair meets whichever party role resolution hands the receiver
   // role to.
   const [initiator, responder] = await runBothParties(
     SWAP_TERMS,
@@ -600,11 +600,11 @@ describe("each fuzzy comparison kind matches with both parties deduplicating", (
   );
 });
 
-test("a swap key declaring both orders matches with both parties deduplicating", async () => {
-  // The candidate set the shipped default key set produces, under the both-sided
-  // pair: one party's record matches the partner whose fields are reversed and
-  // the partner whose fields agree, so the two partner records fall in one
-  // cluster with it.
+test("a swap key matches with both parties deduplicating", async () => {
+  // The shipped default key set's swap key under the both-sided pair: the three
+  // records build one sorted value, so one party's record matches the partner
+  // whose fields are reversed and the partner whose fields agree, and the two
+  // partner records fall in one cluster with it.
   const [initiator, responder] = await runBothParties(
     bothSided(SWAP_TERMS),
     [{ first_name: "John", last_name: "Smith" }],

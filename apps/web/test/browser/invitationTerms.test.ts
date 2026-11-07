@@ -3079,8 +3079,8 @@ describe("InvitationTerms: a qualifying sentence sits at its headline's visibili
   });
 
   test("a count-only invitation shows the swap it runs unqualified", async () => {
-    // A swapped key order is a candidate set, which a count-only round runs,
-    // so the either-order note stands as under `psi`. The shape is composed
+    // A swapped key order sorts the pair on both parties, which a count-only
+    // round runs, so the either-order note stands as under `psi`. The shape is composed
     // from the shared base's key -- the same composition the CLI accept
     // prompt's pin uses, so the two surfaces are measured on one input.
     await renderTerms({
@@ -3102,16 +3102,13 @@ describe("InvitationTerms: a qualifying sentence sits at its headline's visibili
       "given name, family name, and date of birth",
     );
     expect(panel.textContent).toContain("may be matched in either order");
-    expect(app.container.textContent).not.toContain(
-      PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder,
-    );
     expect(app.container.textContent).toContain(
       CONSENT_FACTS.countOnlyCandidateSets.note,
     );
   });
 
   test("a swap the run applies shows its note unqualified", async () => {
-    // The same key under `psi`: the receiver builds the key in both orders, so
+    // The same key under `psi`: both parties sort the pair into one order, so
     // the note stands with nothing qualifying it.
     await renderTerms(CONSENT_PROBE_TERMS);
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
@@ -3132,9 +3129,6 @@ describe("InvitationTerms: a qualifying sentence sits at its headline's visibili
       "given name, family name, and date of birth",
     );
     expect(panel.textContent).toContain("may be matched in either order");
-    expect(app.container.textContent).not.toContain(
-      PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder,
-    );
   });
 
   test("a setting that matches the run has no not-yet-applied caveat", async () => {

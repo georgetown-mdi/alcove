@@ -23,18 +23,15 @@ import type { AdvancedInviteDraft } from "@psi/authoring/advancedInviteTypes";
 const LINKAGE_COLUMNS = ["ssn", "first_name", "last_name", "dob"];
 const NOW = new Date("2026-01-01T00:00:00Z");
 
-/** Whether a seeded key declares a candidate set: a swap, a fuzzy
- * comparison, or a step that splits a value. */
+/** Whether a seeded key declares a candidate set: a fuzzy comparison or a
+ * step that splits a value. */
 function declaresCandidateSet(key: LinkageKey): boolean {
-  return (
-    key.swap !== undefined ||
-    key.elements.some(
-      (element) =>
-        element.generateFuzzyComparisons !== undefined ||
-        (element.transform ?? []).some((step) =>
-          FAN_OUT_FUNCTION_NAMES.includes(step.function),
-        ),
-    )
+  return key.elements.some(
+    (element) =>
+      element.generateFuzzyComparisons !== undefined ||
+      (element.transform ?? []).some((step) =>
+        FAN_OUT_FUNCTION_NAMES.includes(step.function),
+      ),
   );
 }
 

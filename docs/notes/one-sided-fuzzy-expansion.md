@@ -10,7 +10,7 @@ Fuzzy linkage keys were described in one breath -- "generate the variants of the
 
 ## The two shapes
 
-A **full-variant** expansion enumerates the entire set of values at a stated distance from the record's own: every two-position transposition, the year either side of a date, the day either side of a date, the day and month of a date exchanged, the two orders of a swapped element pair. Because the set is complete, a partner holding any value in it meets this record on the partner's own exact value. One party enumerating is sufficient.
+A **full-variant** expansion enumerates the entire set of values at a stated distance from the record's own: every two-position transposition, the year either side of a date, the day either side of a date, the day and month of a date exchanged. Because the set is complete, a partner holding any value in it meets this record on the partner's own exact value. One party enumerating is sufficient.
 
 A **deletion neighbourhood** enumerates the single-character deletions of the value. That is not the set of values one edit away -- it is the shorter half of it. A substitution or an insertion between two records is reached only where the two parties' deletions land on the same shorter string, so both parties must expand. The full variant set for edit distance 1 is not an alternative at any width: it is the alphabet times the length, over an alphabet the terms do not bound.
 
@@ -28,21 +28,26 @@ None of this applies to the deletion neighbourhood, where the second party's exp
 
 ## Which party, and why that does not have to be agreed on
 
-The expanding party is the resolved PSI receiver -- the role both parties already determine from the record counts they exchanged, with no new negotiation, no term, and no wire byte. The `swap` directive has been keyed on that same role since it was specified, so this extends a precedent rather than setting one.
+The expanding party is the resolved PSI receiver -- the role both parties already determine from the record counts they exchanged, with no new negotiation, no term, and no wire byte.
 
 It is NOT an agreed term, by design. A term naming the expanding party would have to be authored, consented to, hashed into the agreed terms, and kept consistent with a role the two parties resolve per run from data neither authored -- and it would buy nothing, because the classification is a function of the kind alone and both parties compute it identically from terms they already hold.
 
 ## Why the role may flip between runs, and why that is harmless
 
-Role resolution reads the exchanged record counts, so a recurring exchange whose datasets grow at different rates can resolve the opposite roles on two consecutive runs. The intersection does not move, because each full-variant relation is an **involution**: `b` is a transposition of `a` exactly when `a` is a transposition of `b`; a one-year shift and the two orders of a swapped pair are the same. A day/month exchange is one over the calendar dates and only there: the generator emits nothing for an input that is not a real date, so both readings of every pair it produces are dates and each maps back to the other. So `a`'s variants contain `b` exactly when `b`'s variants contain `a`, and the pair meets whichever party expanded.
+Role resolution reads the exchanged record counts, so a recurring exchange whose datasets grow at different rates can resolve the opposite roles on two consecutive runs. The intersection does not move, because each full-variant relation is an **involution**: `b` is a transposition of `a` exactly when `a` is a transposition of `b`; a one-year shift and a one-day shift are the same. A day/month exchange is one over the calendar dates and only there: the generator emits nothing for an input that is not a real date, so both readings of every pair it produces are dates and each maps back to the other. So `a`'s variants contain `b` exactly when `b`'s variants contain `a`, and the pair meets whichever party expanded.
 
 That is why nothing here holds the role steady across runs. Pinning it would need a term, a negotiation, or a stored decision, all to preserve a property the arithmetic already gives.
 
-## The swap is a full variant
+## The swap is sorted, not expanded
 
-A key's `swap` names two elements whose values may have been entered the wrong way round at one agency. Exchanging them on the receiver alone matches the reversed record and LOSES the record that agrees -- the arrangement most of the data is in. The fix is the same shape as the transposition one: the receiver assembles both orders, the sender assembles the authored one, and the pair meets in either arrangement. Two orders are the whole set the pair admits, so the involution and the one-sidedness hold unchanged, and the consent surface's claim that a swap matches the two elements in either order becomes true rather than aspirational.
+A key's `swap` names two elements whose values may have been entered the wrong way round at one agency. Exchanging them on the receiver alone matches the reversed record and LOSES the record that agrees -- the arrangement most of the data is in. Two designs reach both arrangements:
 
-It is delivered at the key-read layer rather than as a fuzzy kind because the expansion sees one element's value at a time and cannot reach a sibling's, and because a swap REPLACES a key's arrangement where a fuzzy kind widens one element.
+- **One-sided expansion.** The receiver assembles both orders and the sender the authored one. Two orders are the whole set the pair admits, so it is a full variant like a transposition.
+- **Sorting on both parties.** Each party places the pair's two values in sorted order, so a record and its reversed partner build one string.
+
+The two match the same value pairs. Sorting was taken because it adds no candidate: a swap key's width is 1 in both roles, so it costs no value slots and no receiver-case declaration. Both parties also read the key's elements in one order. A party's own reversed pair collides in both roles rather than only where that party expands, so the swap leaves the role-dependence limit in [PROTOCOL.md](../spec/PROTOCOL.md#which-party-expands-full-variant-and-deletion-neighbourhood-expansions) to the fuzzy kinds. The cost is a mixed-build pair: a build that sorts and one that expands do not meet on the same records, a limit the spec states.
+
+It is delivered at the key-read layer rather than as a fuzzy kind because the expansion sees one element's value at a time and cannot reach a sibling's, and because a swap reorders a key's arrangement where a fuzzy kind widens one element.
 
 ## What the asymmetry costs, stated rather than closed
 

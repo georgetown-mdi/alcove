@@ -246,6 +246,16 @@ const acceptorTerms: LinkageTerms = {
   ],
 };
 
+// A key whose first name matches its single-character deletions: a candidate
+// set with no split.
+const FUZZY_NAME_KEY: LinkageTerms["linkageKeys"][number] = {
+  name: "name",
+  elements: [
+    { field: "firstName", generateFuzzyComparisons: "edit_distances" },
+    { field: "lastName" },
+  ],
+};
+
 async function encodeAcceptToken(
   linkageTerms: LinkageTerms = acceptorTerms,
 ): Promise<string> {
@@ -3212,24 +3222,17 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
       .toBeInTheDocument();
   });
 
-  test("states the same grouping for a key matched in either order", async () => {
-    // The shipped default keys declare a swapped order and no split, so a
-    // screen reading the fan-out register alone -- the split half of the
-    // candidate set -- would state nothing about the grouping on the terms an
-    // operator reaches with no key authoring at all. On screen while this
+  test("states the same grouping for a key with a fuzzy comparison", async () => {
+    // The shipped default keys declare fuzzy dates, so a screen reading the
+    // fan-out register alone -- the split half of the candidate set -- would
+    // state nothing about the grouping on such a key. On screen while this
     // party's own control still stands at the closed default, the sentence
     // stating the pair conditionally, so the operator sets that value against
     // it rather than after it.
     await reachReview({
       ...acceptorTerms,
       deduplicate: true,
-      linkageKeys: [
-        {
-          name: "name",
-          elements: [{ field: "firstName" }, { field: "lastName" }],
-          swap: ["firstName", "lastName"],
-        },
-      ],
+      linkageKeys: [FUZZY_NAME_KEY],
     });
     expect(app.container.textContent).not.toContain(
       CONSENT_FACTS.fanOutCandidates.note,
@@ -3240,7 +3243,7 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
   });
 
   test("says nothing of that grouping where this party receives no result", async () => {
-    // The swapped key and the declared duplicate matching of the case above,
+    // The fuzzy key and the declared duplicate matching of the case above,
     // with the invitation keeping the result: this party mirrors to no
     // entitlement, so the accept takes no duplicate matching from it and the
     // seat offers none. The pair the sentence rests on is one nothing here can
@@ -3250,13 +3253,7 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
       ...acceptorTerms,
       deduplicate: true,
       output: { expectsOutput: true, shareWithPartner: false },
-      linkageKeys: [
-        {
-          name: "name",
-          elements: [{ field: "firstName" }, { field: "lastName" }],
-          swap: ["firstName", "lastName"],
-        },
-      ],
+      linkageKeys: [FUZZY_NAME_KEY],
     });
     expect(ownSide().query()).toBeNull();
     expect(app.container.textContent).not.toContain(
@@ -3269,6 +3266,25 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
     // plain keys pairs records that share a matched value and nothing else, so
     // the sentence would state a grouping this run does not make.
     await reachReview({ ...acceptorTerms, deduplicate: true });
+    expect(app.container.textContent).not.toContain(
+      CONSENT_FACTS.candidateSetChainsGrouping.note,
+    );
+  });
+
+  test("says nothing of that grouping for a key matched in either order", async () => {
+    // Both parties sort a swapped pair into one value per record, so the key
+    // declares no candidate set for the grouping to follow.
+    await reachReview({
+      ...acceptorTerms,
+      deduplicate: true,
+      linkageKeys: [
+        {
+          name: "name",
+          elements: [{ field: "firstName" }, { field: "lastName" }],
+          swap: ["firstName", "lastName"],
+        },
+      ],
+    });
     expect(app.container.textContent).not.toContain(
       CONSENT_FACTS.candidateSetChainsGrouping.note,
     );

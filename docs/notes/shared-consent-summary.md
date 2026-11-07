@@ -26,7 +26,7 @@ Turning a decoded `LinkageTerms` into something an acceptor can decide on is not
 a formatting problem. It involves deciding which fields bear on consent at all,
 naming what each transform does to matching in plain language, resolving a
 key element's field reference to a semantic type without exposing the
-partner-authored field name, working out what a swap does on the receiving side,
+partner-authored field name, working out what a swap does to the key,
 bounding a partner-supplied parameter record, distinguishing a declared-but-empty
 payload direction from an absent one, and marking a term the run does not apply.
 
@@ -278,7 +278,7 @@ acceptance does after it states the conflict.
 
 A term an inviter may declare is not always honored by the combination the
 invitation names: a linkage strategy that resolves no candidate set refuses
-the one a per-element fuzzy expansion or a swapped key order produces. The summary derives the
+the one a per-element fuzzy expansion produces. The summary derives the
 resulting flags from the refusals' own predicates and holds them alongside each
 term, rather than leaving each renderer to derive them. A surface therefore
 cannot state a matching behavior the run does not perform, and cannot forget the

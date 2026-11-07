@@ -986,8 +986,8 @@ const splittingKeyTerms: LinkageTerms = {
   ],
 };
 
-/** {@link localTerms} with a key matched in either order -- a candidate set
- * that declares no split, which is the shape the shipped default keys take. */
+/** {@link localTerms} with a key matched in either order, which builds one
+ * sorted value per record and so declares no candidate set. */
 const swappedKeyTerms: LinkageTerms = {
   ...localTerms,
   linkageKeys: [
@@ -1201,38 +1201,38 @@ test("an inferred id column is held back", () => {
 
 test("a candidate set beside this party's own grouping states what it groups", () => {
   // The grouping the pair the partner's own setting completes makes of records
-  // no linkage key links. It follows the candidate set rather than the split
-  // alone, so a key matched in either order states it where the fan-out line
-  // above says nothing.
-  for (const terms of [splittingKeyTerms, swappedKeyTerms]) {
-    const lines = rendered({ ...terms, deduplicate: true }).join("\n");
-    expect(lines).toContain(
-      "records grouped with no value in common (enforced):",
-    );
-    expect(lines).toContain(CONSENT_FACTS.candidateSetChainsGrouping.note);
-  }
-  expect(rendered(swappedKeyTerms).join("\n")).not.toContain(
-    "several values per record",
+  // no linkage key links.
+  const lines = rendered({ ...splittingKeyTerms, deduplicate: true }).join(
+    "\n",
   );
+  expect(lines).toContain(
+    "records grouped with no value in common (enforced):",
+  );
+  expect(lines).toContain(CONSENT_FACTS.candidateSetChainsGrouping.note);
 
   // Stated under either linkage strategy, both of which pair the grouping.
   expect(
     rendered({
-      ...swappedKeyTerms,
+      ...splittingKeyTerms,
       deduplicate: true,
       linkageStrategy: "single-pass",
     }).join("\n"),
   ).toContain("records grouped with no value in common (enforced):");
 
   // Silent where these terms declare no side of the pair, and where they
-  // declare no candidate set for it to group over.
+  // declare no candidate set for it to group over: a swapped key builds one
+  // sorted value per record.
   for (const terms of [
-    swappedKeyTerms,
+    splittingKeyTerms,
+    { ...swappedKeyTerms, deduplicate: true },
     { ...localTerms, deduplicate: true },
   ] as const)
     expect(rendered(terms).join("\n")).not.toContain(
       "records grouped with no value in common",
     );
+  expect(rendered(swappedKeyTerms).join("\n")).not.toContain(
+    "several values per record",
+  );
 });
 
 test("single-pass linkage states the disclosure it trades for its round trip", () => {

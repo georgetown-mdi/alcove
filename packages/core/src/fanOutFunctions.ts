@@ -99,9 +99,8 @@ export const QUOTED_FAN_OUT_FUNCTION_NAMES = FAN_OUT_FUNCTION_NAMES.map(
 const CANDIDATE_SET_STRATEGY_RECOVERY =
   "Agree on linkage terms whose linkage_strategy matches " +
   "several candidates per record, or " +
-  `remove the ${QUOTED_FAN_OUT_FUNCTION_NAMES} step, the fuzzy comparison, and ` +
-  "the swapped key order from the standardization and from every linkage " +
-  "key.";
+  `remove the ${QUOTED_FAN_OUT_FUNCTION_NAMES} step and the fuzzy comparison ` +
+  "from the standardization and from every linkage key.";
 
 /**
  * The declared-step refusal for a standardization pipeline. `functionName` is
@@ -135,13 +134,6 @@ export function candidateSetUnderStrategyMessage(): string {
 }
 
 /**
- * The factor a key declaring `swap` multiplies into its width: the receiver
- * assembles the authored order and the swapped one
- * (docs/spec/PROTOCOL.md#the-width-bound-a-per-key-candidate-cap-the-terms-declare).
- */
-export const SWAP_VARIANT_WIDTH_FACTOR = 2;
-
-/**
  * The first declared fan-out producer among `steps`, or `undefined`. Reads the
  * frozen {@link FAN_OUT_FUNCTION_NAMES}, so {@link withNoListedFanOutFunctions}
  * does not affect it.
@@ -164,8 +156,8 @@ function keySite(keyIndex: number | undefined): string {
  * The width one linkage key declares, from the agreed terms alone and whatever
  * role this party resolves to: the product of its elements' candidate factors
  * (fan-out, and {@link fuzzyCandidateCeiling} at the
- * {@link elementValueWidthBound}), times {@link SWAP_VARIANT_WIDTH_FACTOR}
- * for a swapped key
+ * {@link elementValueWidthBound}). A `swap` adds no factor: both parties sort
+ * the pair's values into one order
  * (docs/spec/PROTOCOL.md#the-width-bound-a-per-key-candidate-cap-the-terms-declare).
  *
  * @throws {UsageError} if the width exceeds {@link MAX_KEY_CANDIDATE_WIDTH}.
@@ -181,7 +173,7 @@ function keyWidthOrRefusal(
   key: LinkageKey,
   keyIndex?: number,
 ): { readonly width: number } | { readonly refusal: string } {
-  let width = key.swap !== undefined ? SWAP_VARIANT_WIDTH_FACTOR : 1;
+  let width = 1;
   for (const element of key.elements) {
     if (declaredFanOutFunction(element.transform) !== undefined)
       width *= FAN_OUT_CANDIDATES_PER_ELEMENT;
@@ -204,12 +196,11 @@ function keyWidthOrRefusal(
 }
 
 /**
- * Whether a linkage key declares a candidate set (a fan-out, a fuzzy
- * expansion or a `swap`): {@link declaredKeyWidth} above 1 over the same
- * producers, answered even for terms whose width is refused.
+ * Whether a linkage key declares a candidate set (a fan-out or a fuzzy
+ * expansion): {@link declaredKeyWidth} above 1 over the same producers,
+ * answered even for terms whose width is refused.
  */
 export function keyDeclaresCandidateSet(key: LinkageKey): boolean {
-  if (key.swap !== undefined) return true;
   return key.elements.some(
     (element) =>
       declaredFanOutFunction(element.transform) !== undefined ||

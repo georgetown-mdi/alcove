@@ -221,8 +221,9 @@ test("the first-round check weighs a count-only exchange at its record count tim
 });
 
 test("the first-round check refuses a count-only exchange only where the widest round is over the maximum in both roles", async () => {
-  // A swapped key has width 2 on the receiver and 1 on the sender, so a party
-  // that may still resolve as the sender is not refused before contact.
+  // A key whose receiver alone transposes a two-character slice has width 2
+  // on the receiver and 1 on the sender, so a party that may still resolve as
+  // the sender is not refused before contact.
   const prepared = prepareForExchange(
     {
       linkageTerms: {
@@ -240,8 +241,16 @@ test("the first-round check refuses a count-only exchange only where the widest 
         linkageKeys: [
           {
             name: "names",
-            elements: [{ field: "firstName" }, { field: "lastName" }],
-            swap: ["firstName", "lastName"],
+            elements: [
+              { field: "firstName" },
+              {
+                field: "lastName",
+                transform: [
+                  { function: "substring", params: { start: 1, length: 2 } },
+                ],
+                generateFuzzyComparisons: "transpositions",
+              },
+            ],
           },
         ],
       },

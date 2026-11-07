@@ -605,10 +605,10 @@ describe("buildKeyStrings: the expanding side", () => {
   });
 
   test("the receiver applies a swapped position's own expansion", () => {
-    // `swap` moves the field references and leaves each position's expansion
-    // where it is, so the receiver expands the column its sibling declared. The
-    // terms schema requires both positions to declare the same expansion, which
-    // is what keeps that from being a second reading of the same terms.
+    // Each position expands its own column, and each combination places the
+    // pair's two values in sorted order. The terms schema requires both
+    // positions to declare the same expansion, so the sort compares like with
+    // like.
     const key: LinkageKey = {
       name: "swapped",
       elements: [
@@ -618,20 +618,11 @@ describe("buildKeyStrings: the expanding side", () => {
       swap: ["a", "b"],
     };
     const dataset = datasetOf({ a: "19900115", b: "20000229" });
-    // Swapped, the receiver reads b then a, expanding each: 2000-02-29 has
-    // no counterpart in either adjacent (non-leap) year, so it contributes
-    // itself alone, while 1990-01-15 contributes both neighbours. The
-    // authored order the swap variant assembles beside it holds the same
-    // two expansions, in the other position.
+    // 2000-02-29 has no counterpart in either adjacent (non-leap) year, so it
+    // contributes itself alone, while 1990-01-15 contributes both neighbours,
+    // each sorting ahead of 2000-02-29.
     expect(buildKeyStrings(key, dataset, 0, true)).toEqual(
-      new Set([
-        "2000022919900115",
-        "2000022919890115",
-        "2000022919910115",
-        "1990011520000229",
-        "1989011520000229",
-        "1991011520000229",
-      ]),
+      new Set(["1990011520000229", "1989011520000229", "1991011520000229"]),
     );
     expect(buildKeyStrings(key, dataset, 0, false)).toEqual(
       new Set(["1990011520000229"]),
@@ -639,7 +630,7 @@ describe("buildKeyStrings: the expanding side", () => {
   });
 });
 
-describe("buildKeyStrings: the swap's full variant", () => {
+describe("buildKeyStrings: the swap's sorted pair", () => {
   function datasetOf(fields: Record<string, string>): StandardizedDataset {
     const keyOverEveryField = {
       name: "every field",
@@ -673,17 +664,20 @@ describe("buildKeyStrings: the swap's full variant", () => {
   const meet = (a: Set<string>, b: Set<string>): boolean =>
     [...a].some((value) => b.has(value));
 
-  test("the receiver builds both orders and the sender the authored one", () => {
-    expect(keysFor("JOHN", "SMITH", true)).toEqual(
-      new Set(["JOHNSMITH", "SMITHJOHN"]),
-    );
-    expect(keysFor("JOHN", "SMITH", false)).toEqual(new Set(["JOHNSMITH"]));
+  test("both roles build the sorted order alone", () => {
+    for (const isReceiver of [true, false]) {
+      expect(keysFor("SMITH", "JOHN", isReceiver)).toEqual(
+        new Set(["JOHNSMITH"]),
+      );
+      expect(keysFor("JOHN", "SMITH", isReceiver)).toEqual(
+        new Set(["JOHNSMITH"]),
+      );
+    }
   });
 
   test("a partner whose two fields are reversed matches, and so does one that agrees", () => {
     // What the swap's coverage text states: the two elements match in EITHER
-    // order. Building the exchanged order alone would match the reversed partner
-    // and lose the one that agrees.
+    // order.
     expect(
       meet(keysFor("JOHN", "SMITH", true), keysFor("SMITH", "JOHN", false)),
     ).toBe(true);
@@ -693,9 +687,8 @@ describe("buildKeyStrings: the swap's full variant", () => {
   });
 
   test("the intersection is the same whichever party resolves to the receiver", () => {
-    // The exchange is an involution, so the pair meets on one party's variant
-    // whichever party role resolution designates -- a recurring exchange may
-    // resolve the opposite role between runs and match the same records.
+    // Both roles build one value, so a recurring exchange may resolve the
+    // opposite role between runs and match the same records.
     for (const [first, last] of [
       ["JOHN", "SMITH"],
       ["SMITH", "JOHN"],
@@ -706,16 +699,15 @@ describe("buildKeyStrings: the swap's full variant", () => {
     }
   });
 
-  test("a record whose two values agree realizes one order, not two", () => {
+  test("a record whose two values agree realizes one value", () => {
     expect(keysFor("LEE", "LEE", true)).toEqual(new Set(["LEELEE"]));
   });
 
-  test("a swap pair declaring different transforms is refused", () => {
-    // The receiver assembles the authored order by exchanging the pair's two
-    // candidate lists, which is that order only because the pair declares one
-    // transform and one expansion. The terms schema requires it; a key that
-    // reached the row build without it is refused rather than matched on a set
-    // neither order realizes.
+  test("a swap pair declaring different transforms is refused in both roles", () => {
+    // Sorting compares the pair's two values as interchangeable, which they are
+    // only under one transform and one expansion. The terms schema requires it;
+    // a key that reached the row build without it is refused rather than
+    // matched on values from different transforms.
     const mismatched: LinkageKey = {
       name: "FN+LN",
       elements: [
@@ -730,16 +722,34 @@ describe("buildKeyStrings: the swap's full variant", () => {
       swap: ["first_name", "last_name"],
     };
     const dataset = datasetOf({ first_name: "JOHN", last_name: "SMITH" });
-    expect(() => buildKeyStrings(mismatched, dataset, 0, true)).toThrow(
-      UsageError,
-    );
-    expect(() => buildKeyStrings(mismatched, dataset, 0, true)).toThrow(
-      /swap whose two elements do not declare the same transform/,
-    );
-    // The sender never assembles the second order, so nothing is refused for it.
-    expect(buildKeyStrings(mismatched, dataset, 0, false)).toEqual(
-      new Set(["JOHNSM"]),
-    );
+    for (const isReceiver of [true, false]) {
+      expect(() => buildKeyStrings(mismatched, dataset, 0, isReceiver)).toThrow(
+        UsageError,
+      );
+      expect(() => buildKeyStrings(mismatched, dataset, 0, isReceiver)).toThrow(
+        /swap whose two elements do not declare the same transform/,
+      );
+    }
+  });
+
+  test("a swap pair declaring different generateFuzzyComparisons is refused in both roles", () => {
+    const mismatched: LinkageKey = {
+      name: "FN+LN",
+      elements: [
+        { field: "first_name", generateFuzzyComparisons: "transpositions" },
+        { field: "last_name" },
+      ],
+      swap: ["first_name", "last_name"],
+    };
+    const dataset = datasetOf({ first_name: "JOHN", last_name: "SMITH" });
+    for (const isReceiver of [true, false]) {
+      expect(() => buildKeyStrings(mismatched, dataset, 0, isReceiver)).toThrow(
+        UsageError,
+      );
+      expect(() => buildKeyStrings(mismatched, dataset, 0, isReceiver)).toThrow(
+        /do not declare the same transform and generate_fuzzy_comparisons/,
+      );
+    }
   });
 });
 

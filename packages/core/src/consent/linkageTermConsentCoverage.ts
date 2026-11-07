@@ -296,9 +296,8 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
         },
         {
           // The swap pair has ONE transform across both of its positions,
-          // which is what the terms admit: a swap moves the field references and
-          // leaves each transform on its position, so a pair whose transforms
-          // differ is refused.
+          // which is what the terms admit: both parties sort the pair's two
+          // values, so a pair whose transforms differ is refused.
           field: "family_name",
           name: "family",
           transform: [
@@ -899,10 +898,10 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
   "linkageKeys[].swap": {
     classification: "consent-relevant",
     reason:
-      "Builds this key with the two named elements' values exchanged on the " +
-      "receiving side, so records whose values are transposed between two " +
+      "Builds this key with the two named elements' values in sorted order " +
+      "on both sides, so records whose values are transposed between two " +
       "fields match.",
-    // A count-only round counts over the swapped order too, so the swap is
+    // A count-only round counts over the sorted order too, so the swap is
     // measured where a count-only acceptor reads it.
     shapes: [
       { name: IDENTIFIER_REVEALING_SHAPE_NAME },

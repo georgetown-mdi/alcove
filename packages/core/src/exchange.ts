@@ -445,9 +445,9 @@ function assertDeclaredWidthMatchesStrategy(
     "these linkage terms declare " +
       `${effectiveKeyCount} candidate value slot(s) per record across ` +
       `${keyCount} linkage key(s), but their linkage_strategy matches one ` +
-      "value per record. Remove the expanding step, the fuzzy comparison, or " +
-      "the swapped key order from the key's elements, or agree on terms " +
-      "whose linkage_strategy matches several candidates.",
+      "value per record. Remove the expanding step or the fuzzy comparison " +
+      "from the key's elements, or agree on terms whose linkage_strategy " +
+      "matches several candidates.",
   );
 }
 

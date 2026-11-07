@@ -173,7 +173,7 @@ export function assertDeduplicateImplemented(terms: LinkageTerms): void {
 
 /**
  * Which linkage strategies resolve a per-(record, key) candidate set (a
- * fan-out, a fuzzy expansion or a `swap`). The entry also gates the cascade's
+ * fan-out or a fuzzy expansion). The entry also gates the cascade's
  * grouping frames (docs/spec/PROTOCOL.md#per-round-candidacy-under-cascade).
  * A total table, typed `boolean`, so a new strategy refuses a candidate set
  * until its resolution is written
@@ -408,8 +408,8 @@ function swapPairDeclaresOneTransform(
 
 /**
  * Whether the two elements this key's `swap` names declare different
- * transforms, which {@link LinkageTermsSchema} refuses: a swap moves the field
- * references and leaves each transform on its position
+ * transforms, which {@link LinkageTermsSchema} refuses: both parties sort the
+ * pair's two values, which compares like with like only under one transform
  * (docs/EXCHANGE_REFERENCE.md#swapped-keys). False for no swap or a dangling
  * target. Exported so authoring can name the fault first.
  */
@@ -424,7 +424,7 @@ export function swapPairTransformsDiffer(key: LinkageKey): boolean {
  * Whether the two elements this key's `swap` names declare different
  * `generateFuzzyComparisons`, refused like {@link swapPairTransformsDiffer}.
  * False for no swap or a dangling target. Exported for `planKeyRead`, which
- * treats the pair's positions as interchangeable.
+ * sorts the pair's values as interchangeable.
  */
 export function swapPairFuzzyComparisonsDiffer(key: LinkageKey): boolean {
   const paired = swapPairedElements(key);

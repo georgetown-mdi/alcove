@@ -143,35 +143,21 @@ describe("StandardizedKeyIterable — element transforms", () => {
   });
 });
 
-describe("StandardizedKeyIterable — swap (isReceiver)", () => {
+describe("StandardizedKeyIterable — swap", () => {
   const key = terms.linkageKeys[2];
 
-  test("sender: last_name then first_name", () => {
-    const sender = new StandardizedKeyIterable(
+  // Both roles yield one string a row, the pair's two values in sorted order,
+  // which is what makes the pair match whichever way round the partner's
+  // record holds them.
+  test.each([false, true])("isReceiver=%s: the pair sorted", (isReceiver) => {
+    const iter = new StandardizedKeyIterable(
       key,
       dataset,
       rawRows.length,
-      false,
+      isReceiver,
     );
-    expect(sender.at(0)).toBe("HEARDJAMES19750716");
-    expect(sender.at(1)).toBe("IORIOALBERT19750817");
-  });
-
-  test("receiver: both orders, the swapped one and the authored one", () => {
-    // The receiver assembles the key twice, which is what makes the pair match
-    // whichever way round the partner's record holds the two values.
-    const receiver = new StandardizedKeyIterable(
-      key,
-      dataset,
-      rawRows.length,
-      true,
-    );
-    expect(receiver.at(0)).toEqual(
-      new Set(["JAMESHEARD19750716", "HEARDJAMES19750716"]),
-    );
-    expect(receiver.at(1)).toEqual(
-      new Set(["ALBERTIORIO19750817", "IORIOALBERT19750817"]),
-    );
+    expect(iter.at(0)).toBe("HEARDJAMES19750716");
+    expect(iter.at(1)).toBe("ALBERTIORIO19750817");
   });
 });
 

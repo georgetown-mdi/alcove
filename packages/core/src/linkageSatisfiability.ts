@@ -117,8 +117,8 @@ export function assertStandardizationMatchesTerms(
 }
 
 /**
- * Refuse a per-(record, key) candidate set (a fan-out, a fuzzy expansion or a
- * `swap`) under a strategy that resolves none, and a fan-out this party's own
+ * Refuse a per-(record, key) candidate set (a fan-out or a fuzzy expansion)
+ * under a strategy that resolves none, and a fan-out this party's own
  * standardization declares under `psi-c`, before matching
  * (docs/spec/PROTOCOL.md#the-combinations-that-stay-unsupported, and Refusals
  * under count-only). Runs where terms are authored or minted, at prepare, and

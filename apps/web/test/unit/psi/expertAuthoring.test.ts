@@ -126,8 +126,8 @@ describe("expert authoring round-trips", () => {
     // Author one key from scratch: two elements referencing declared fields, a
     // substring transform, and a swap matching them in either order. The swapped
     // pair holds ONE transform across both positions, which is what the terms
-    // admit -- a swap moves the field references and leaves each transform where
-    // it is, so a pair whose transforms differ is refused.
+    // admit -- both parties sort the pair after each position's transforms, so
+    // a pair whose transforms differ is refused.
     const initial = [
       { function: "substring", params: { start: 1, length: 1 } },
     ];

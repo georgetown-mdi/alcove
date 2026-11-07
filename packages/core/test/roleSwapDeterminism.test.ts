@@ -20,6 +20,7 @@ import {
 import { createMessagePipe } from "../src/connection/messageConnection";
 import { UsageError } from "../src/errors";
 import type {
+  LinkageKey,
   LinkageStrategy,
   LinkageTerms,
 } from "../src/config/linkageTermsSchema";
@@ -221,8 +222,8 @@ const STRIPPED_YEAR_X = ["01/15/1990", "01/15/1985"];
 const STRIPPED_YEAR_Y = ["01/15/1985", "06/15/1950"];
 
 // Two such elements under a swap, over two date columns already in the
-// canonical layout, cleaned only so an empty cell holds no value. The receiver
-// reads the pair in swapped order, dob_b first.
+// canonical layout, cleaned only so an empty cell holds no value. Both roles
+// read the elements in authored order, dob_a first.
 function swappedStrippedYearTerms(
   linkageStrategy: LinkageStrategy,
   identity: string,
@@ -343,14 +344,13 @@ describe.each<LinkageStrategy>(["cascade", "single-pass"])(
     });
 
     // Each first row holds one empty date and one that reaches the element as
-    // 0115. Read in the receiver's order, dob_b first, the row is refused when
-    // the short date is dob_b's and leaves the round empty when it is dob_a's;
-    // read in the authored order it would take the other outcome.
-    test("a swap key's date is refused in both roles when the receiver's read order reaches it", async () => {
+    // 0115. Read in authored order, dob_a first, the row is refused when the
+    // short date is dob_a's and leaves the round empty when it is dob_b's.
+    test("a swap key's date is refused in both roles when the authored read order reaches it", async () => {
       const refusals: string[] = [];
       for (const initiator of ["x", "y"] as const) {
         const outcome = await swappedStrippedYearExchange(initiator, strategy, [
-          ["", "19900115"],
+          ["19900115", ""],
           ["19850115", "19800220"],
         ]);
         expect(outcome.status).toBe("rejected");
@@ -362,11 +362,11 @@ describe.each<LinkageStrategy>(["cascade", "single-pass"])(
       expect(refusals[1]).toBe(refusals[0]);
     });
 
-    test("a swap key's date completes in both roles when the receiver's read order leaves the row first", async () => {
+    test("a swap key's date completes in both roles when the authored read order leaves the row first", async () => {
       const tables: Array<Array<[number, number]>> = [];
       for (const initiator of ["x", "y"] as const) {
         const outcome = await swappedStrippedYearExchange(initiator, strategy, [
-          ["19900115", ""],
+          ["", "19900115"],
           ["19850115", "19800220"],
         ]);
         expect(outcome.status).toBe("fulfilled");
@@ -391,4 +391,155 @@ test("the count-only count over the cycle is the same in both role assignments",
     );
     expect(result.intersectionCount).toBe(3);
   }
+});
+
+// A name key whose two elements may have been entered either way round. Party
+// x holds one person twice, the second time with the names reversed, so both
+// of its records build one sorted value; party y holds that person once and a
+// row that matches nothing.
+const SWAP_COLLISION_X = [
+  { first_name: "Carol", last_name: "Smith" },
+  { first_name: "Smith", last_name: "Carol" },
+];
+const SWAP_COLLISION_Y = [
+  { first_name: "Carol", last_name: "Smith" },
+  { first_name: "Henry", last_name: "Brown" },
+];
+
+const SWAPPED_NAME_KEY: LinkageKey = {
+  name: "either name order",
+  elements: [{ field: "first_name" }, { field: "last_name" }],
+  swap: ["first_name", "last_name"],
+};
+
+function swappedNameTerms(
+  algorithm: Algorithm,
+  linkageStrategy: LinkageStrategy,
+  identity: string,
+  key: LinkageKey = SWAPPED_NAME_KEY,
+): LinkageTerms {
+  return {
+    version: "1.0.0",
+    identity,
+    date: "2026-01-01",
+    algorithm,
+    linkageStrategy,
+    output: { expectsOutput: true, shareWithPartner: true },
+    deduplicate: false,
+    linkageFields: [
+      { name: "first_name", type: "first_name" },
+      { name: "last_name", type: "last_name" },
+    ],
+    linkageKeys: [key],
+  };
+}
+
+/** Party x's result over the swap collision, `initiator` the receiver. */
+async function swapCollisionExchange(
+  initiator: "x" | "y",
+  algorithm: Algorithm,
+  strategy: LinkageStrategy,
+  xRows: ReadonlyArray<Record<string, string>> = SWAP_COLLISION_X,
+  key: LinkageKey = SWAPPED_NAME_KEY,
+  yRows: ReadonlyArray<Record<string, string>> = SWAP_COLLISION_Y,
+): Promise<ExchangeResult> {
+  const prepare = (
+    identity: string,
+    rows: ReadonlyArray<Record<string, string>>,
+  ) =>
+    prepareForExchange(
+      { linkageTerms: swappedNameTerms(algorithm, strategy, identity, key) },
+      identity,
+      rows.map((row) => ({ ...row })),
+      ["first_name", "last_name"],
+    );
+  const outcome = await settledAs(
+    initiator,
+    prepare("X Co", xRows),
+    prepare("Y Co", yRows),
+  );
+  expect(outcome.status).toBe("fulfilled");
+  const result = (outcome as PromiseFulfilledResult<ExchangeResult>).value;
+  expect(result.resolvedRole).toBe(initiator === "x" ? "receiver" : "sender");
+  return result;
+}
+
+// Both of party x's records build the one value, so the round's uniqueness
+// rule drops it from x's set in either role and the partner's record meets
+// nothing. The drop is the same whichever party sends.
+describe.each<LinkageStrategy>(["cascade", "single-pass"])(
+  "a swap key's own collision under %s",
+  (strategy) => {
+    test("drops both records in both roles, so no pair is made", async () => {
+      for (const initiator of ["x", "y"] as const)
+        expect(
+          pairsOf(await swapCollisionExchange(initiator, "psi", strategy)),
+        ).toEqual([]);
+    });
+
+    test("matches the reversed record in both roles where x holds it once", async () => {
+      const xHoldsItOnce = [
+        { first_name: "Smith", last_name: "Carol" },
+        { first_name: "Alice", last_name: "Jones" },
+      ];
+      for (const initiator of ["x", "y"] as const)
+        expect(
+          pairsOf(
+            await swapCollisionExchange(
+              initiator,
+              "psi",
+              strategy,
+              xHoldsItOnce,
+            ),
+          ),
+        ).toEqual([[0, 0]]);
+    });
+
+    // A one-sided expansion reaches the limit a swap key does not:
+    // x's two records collide on their transpositions only where x
+    // expands, so the table depends on the role.
+    test("a transpositions element's own collision drops x's records as the receiver only", async () => {
+      const transposedKey: LinkageKey = {
+        name: "transposed initials",
+        elements: [
+          {
+            field: "first_name",
+            transform: [
+              { function: "substring", params: { start: 1, length: 2 } },
+            ],
+            generateFuzzyComparisons: "transpositions",
+          },
+        ],
+      };
+      const xRows = [
+        { first_name: "ABE", last_name: "Smith" },
+        { first_name: "BAT", last_name: "Smith" },
+      ];
+      const yRows = [
+        { first_name: "ABE", last_name: "Smith" },
+        { first_name: "ZED", last_name: "Brown" },
+      ];
+      const run = async (initiator: "x" | "y") =>
+        pairsOf(
+          await swapCollisionExchange(
+            initiator,
+            "psi",
+            strategy,
+            xRows,
+            transposedKey,
+            yRows,
+          ),
+        );
+      expect(await run("x")).toEqual([]);
+      expect(await run("y")).not.toEqual([]);
+    });
+  },
+);
+
+test("a swap key's own collision counts nothing in either count-only role", async () => {
+  for (const initiator of ["x", "y"] as const)
+    expect(
+      (await swapCollisionExchange(initiator, "psi-c", "cascade"))
+        .intersectionCount,
+    ).toBe(0);
 });

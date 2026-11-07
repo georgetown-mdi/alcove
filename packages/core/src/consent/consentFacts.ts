@@ -144,8 +144,8 @@ export const CONSENT_FACTS = {
       "declared width of values in one record, the crafted set " +
       "`countOnlyInputChoice` states, scaled by the width.",
     note:
-      "A key here matches several values per record, such as a name in " +
-      "either order or a date read approximately. Every record sends the " +
+      "A key here matches several values per record, such as the parts of " +
+      "a split name or a date read approximately. Every record sends the " +
       "same number of encrypted values for that key, and each record is " +
       "counted at most once. The party that computes the count also has " +
       "software that learns, for each match on such a key, how many values " +
@@ -932,10 +932,6 @@ export const PROPOSED_NOT_APPLIED_NOTES = {
     "(The exchange will refuse to run these terms, because the agreed " +
     "linkage strategy cannot match approximate variants. Ask your partner " +
     "for an invitation that drops the approximate matching.)",
-  swappedKeyOrder:
-    "(The exchange will refuse to run these terms, because the agreed " +
-    "linkage strategy cannot match in either order. Ask your partner for an " +
-    "invitation that drops the swapped key order.)",
 } as const;
 
 /**
