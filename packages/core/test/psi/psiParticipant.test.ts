@@ -372,7 +372,7 @@ describe.each([
 ] as const)("a real round on the %s backend", (_backend, library) => {
   describe.each(["identifier-revealing"] as const)("in %s mode", (mode) => {
     test.for(RESPONSE_BOUND_SETS)(
-      "answers a request from %s with a response no longer than it",
+      "answers a request from %s with a response no longer than it, of its element count",
       async ([, receiverSet], ctx) => {
         if (library === undefined) {
           ctx.skip();
@@ -410,9 +410,7 @@ describe.each([
         const response = await processRequest.mock.results[0].value;
         expect(response.byteLength).toBeLessThanOrEqual(request.byteLength);
         const max = Number.MAX_SAFE_INTEGER;
-        expect(
-          countDeclaredPsiElements(response, "response", max),
-        ).toBeLessThanOrEqual(
+        expect(countDeclaredPsiElements(response, "response", max)).toBe(
           countDeclaredPsiElements(request, "request", max),
         );
         sender.dispose();

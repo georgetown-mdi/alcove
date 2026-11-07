@@ -82,9 +82,9 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   ],
   "packages/core/src/psi/link.ts :: decodeSinglePassReplyTail": [PARTNER],
   // The partner's PSI frames: unreadable, over the ceiling, a response with no
-  // request, or larger than the request.
-  "packages/core/src/psi/participant.ts :: PSIParticipant.assertResponseWithinRequest":
-    [PARTNER],
+  // request, or a response larger than the request or of another element count.
+  "packages/core/src/psi/participant.ts :: PSIParticipant.assertResponseMatchesRequest":
+    [PARTNER, PARTNER],
   "packages/core/src/psi/participant.ts :: PSIParticipant.assertScanWithinCeiling":
     [PARTNER, PARTNER],
   "packages/core/src/psi/participant.ts :: PSIParticipant.requestAnswered": [
