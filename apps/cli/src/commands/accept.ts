@@ -456,6 +456,53 @@ function keptDataBlocks(
 }
 
 /**
+ * This party's data spec for an acceptance, for the URL-driven and offline
+ * forms alike: the kept configuration's own data blocks where it declares
+ * them, else the spec {@link buildDataSpec} infers from `rows` under the
+ * invitation's terms, listing every requested column. An input is first
+ * graded against those terms on the verdict the run boundary enforces, and a
+ * requested column it lacks is refused.
+ */
+function acceptedDataSpec(params: {
+  myTerms: LinkageTerms;
+  myIdentity: string;
+  rows: Awaited<ReturnType<typeof loadInputRows>> | undefined;
+  keptBlocks: ReturnType<typeof keptDataBlocks>;
+  requestedColumns: ReadonlyArray<string>;
+  csvDelimiter: string | undefined;
+}): ResolvedDataSpec {
+  const {
+    myTerms,
+    myIdentity,
+    rows,
+    keptBlocks,
+    requestedColumns,
+    csvDelimiter,
+  } = params;
+  if (rows !== undefined) {
+    checkLinkageSatisfiability(
+      rows.columns,
+      myTerms,
+      INVITATION_PREFLIGHT_MESSAGING,
+      keptBlocks?.standardization,
+      keptBlocks?.metadata,
+    );
+    refuseRequestedColumnsTheInputLacks(requestedColumns, rows.columns);
+  }
+  return {
+    ...(keptBlocks !== undefined
+      ? { linkageTerms: myTerms, ...keptBlocks }
+      : buildDataSpec({
+          terms: myTerms,
+          identity: myIdentity,
+          rows,
+          listColumns: requestedColumns,
+        })),
+    ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
+  };
+}
+
+/**
  * The endpoint-seeded connection with `--peer-timeout`, `--inactivity-timeout`
  * and `--server-provision` applied, for the acceptance that runs the exchange
  * itself. The peer timeout bounds the partner's arrival at the rendezvous and
@@ -608,7 +655,6 @@ export async function validateAccept(params: {
     configPath: options.configFile,
     warn: (message) => log.warn(message),
   });
-  const delimiterSection = csvDelimiter !== undefined ? { csvDelimiter } : {};
   // Adopt the invitation's agreed linkage fields/keys/algorithm, but record this
   // party's own identity (the invitation's identity is the inviter's) and MIRROR
   // the output direction rather than copying it: validateCompatibility compares
@@ -704,25 +750,14 @@ export async function validateAccept(params: {
       csvDelimiter,
       allowMemoryShortfall: options.allowMemoryShortfall,
     });
-    checkLinkageSatisfiability(
-      rows.columns,
+    const dataSpec = acceptedDataSpec({
       myTerms,
-      INVITATION_PREFLIGHT_MESSAGING,
-      keptBlocks?.standardization,
-      keptBlocks?.metadata,
-    );
-    refuseRequestedColumnsTheInputLacks(requestedColumns, rows.columns);
-    const dataSpec = {
-      ...(keptBlocks !== undefined
-        ? { linkageTerms: myTerms, ...keptBlocks }
-        : buildDataSpec({
-            terms: myTerms,
-            identity: myIdentity,
-            rows,
-            listColumns: requestedColumns,
-          })),
-      ...delimiterSection,
-    };
+      myIdentity,
+      rows,
+      keptBlocks,
+      requestedColumns,
+      csvDelimiter,
+    });
     const unsentRequestedColumns = requestedColumnsNotSent(
       requestedColumns,
       dataSpec.metadata,
@@ -830,27 +865,14 @@ export async function validateAccept(params: {
           allowMemoryShortfall: options.allowMemoryShortfall,
         })
       : undefined;
-  if (rows !== undefined) {
-    checkLinkageSatisfiability(
-      rows.columns,
-      myTerms,
-      INVITATION_PREFLIGHT_MESSAGING,
-      keptBlocks?.standardization,
-      keptBlocks?.metadata,
-    );
-    refuseRequestedColumnsTheInputLacks(requestedColumns, rows.columns);
-  }
-  const dataSpec = {
-    ...(keptBlocks !== undefined
-      ? { linkageTerms: myTerms, ...keptBlocks }
-      : buildDataSpec({
-          terms: myTerms,
-          identity: myIdentity,
-          rows,
-          listColumns: requestedColumns,
-        })),
-    ...delimiterSection,
-  };
+  const dataSpec = acceptedDataSpec({
+    myTerms,
+    myIdentity,
+    rows,
+    keptBlocks,
+    requestedColumns,
+    csvDelimiter,
+  });
   const unsentRequestedColumns = requestedColumnsNotSent(
     requestedColumns,
     dataSpec.metadata,
@@ -1582,39 +1604,37 @@ export async function handler(argv: Arguments): Promise<void> {
       // Widened by the assertion: the refresh callback assigns it, which
       // control-flow narrowing does not follow.
       let relayRefresh = undefined as InvitationRelayRefresh | undefined;
-      // When reusing a pre-existing config, provisionConfigAndKey ignores `spec`
-      // and writes only the key file, after the records below, leaving the rest
-      // of the user's config untouched.
+      // When reusing a pre-existing config, only the key file is written, after
+      // the records below, leaving the rest of the user's config untouched.
+      const reusedConfig = {
+        reuse: (keptConfigPath: string): void => {
+          // The operator has just re-consented to THIS invitation's terms (the
+          // prompt above, or --consent-to-terms, gates every write here), so
+          // the machine-managed consent record is rewritten while the
+          // connection and linkage blocks are kept: a prior value would
+          // false-abort the next recurring exchange or bind it to terms nobody
+          // consented to.
+          persistExpectedPartnerDeduplicate(
+            keptConfigPath,
+            ready.accepted.expectedPartnerDeduplicate,
+          );
+          // The relay the terms review just showed is the one the kept
+          // configuration's runs use: `invitation_relay` is refreshed from
+          // this invitation, and the operator's own `turn`/`stun` are left
+          // alone.
+          relayRefresh = persistInvitationRelay(
+            keptConfigPath,
+            invitationRelay,
+          );
+        },
+      };
       const { configPath, keyPath } = provisionOfflineCommandFiles(
         ACCEPT_PROVISIONING_COMMAND,
-        spec,
+        ready.reuseExistingConfig ? reusedConfig : { write: spec },
         // The acceptor's key file holds the invitation token without an expiry; the
         // inviter's copy has the expiry. The token rotates on first exchange.
         { sharedSecret: ready.token.sharedSecret },
         { configPath: options.configFile, keyPath: options.keyFile },
-        {
-          reuseExistingConfig: ready.reuseExistingConfig,
-          refreshReusedConfig: (keptConfigPath) => {
-            // The operator has just re-consented to THIS invitation's terms (the
-            // prompt above, or --consent-to-terms, gates every write here), so
-            // the machine-managed consent record is rewritten while the
-            // connection and linkage blocks are kept: a prior value would
-            // false-abort the next recurring exchange or bind it to terms nobody
-            // consented to.
-            persistExpectedPartnerDeduplicate(
-              keptConfigPath,
-              ready.accepted.expectedPartnerDeduplicate,
-            );
-            // The relay the terms review just showed is the one the kept
-            // configuration's runs use: `invitation_relay` is refreshed from
-            // this invitation, and the operator's own `turn`/`stun` are left
-            // alone.
-            relayRefresh = persistInvitationRelay(
-              keptConfigPath,
-              invitationRelay,
-            );
-          },
-        },
       );
 
       if (ready.reuseExistingConfig) {

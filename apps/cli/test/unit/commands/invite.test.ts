@@ -2163,6 +2163,50 @@ test("validateInvite: a config declaring no linkage key never reaches the mint g
   }
 });
 
+test("handler: an offline invitation inferred from an input with no linkage column exits 64 with the online path's refusal", async () => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-keyless-"));
+  const input = path.join(dir, "input.csv");
+  fs.writeFileSync(input, "color,count\nred,1\n");
+  const configFile = path.join(dir, "alcove.yaml");
+  const keyFile = path.join(dir, ".alcove.key");
+  const exit = captureProcessExit();
+  const stdio = captureStdio();
+  const printed = vi.spyOn(console, "log").mockImplementation(() => {});
+  try {
+    await expect(
+      inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: [input],
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "info",
+        record: false,
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
+    const stderr = stdio.stderrWrites.join("");
+    expect(stderr).toContain(
+      "the input file's linkage terms declare no linkage key, so this " +
+        "exchange has nothing to match on",
+    );
+    expect(stderr).toContain(
+      "To fix: provide a CSV that covers the required field types, then " +
+        "generate the invitation again; these terms are derived from the " +
+        `CSV input ${pathAsDisplayed(input)}.`,
+    );
+    expect(stderr).not.toContain("too_small");
+    expect(printed).not.toHaveBeenCalled();
+    expect(fs.existsSync(configFile)).toBe(false);
+    expect(fs.existsSync(keyFile)).toBe(false);
+  } finally {
+    printed.mockRestore();
+    stdio.restore();
+    exit.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("validateInvite: a config whose payload.send names other columns states the metadata's columns", async () => {
   // The metadata block sends `notes` and gates `secret` off (role: ignored),
   // while the hand-authored payload.send lists `secret`. The invitation states

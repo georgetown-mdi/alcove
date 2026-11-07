@@ -49,7 +49,7 @@ test("provisionConfigAndKey reports a pre-existing config file and writes nothin
   fs.writeFileSync(configPath, "channel: filedrop\n");
   expect(() =>
     provisionConfigAndKey(
-      sampleSpec(),
+      { write: sampleSpec() },
       { sharedSecret: TOKEN },
       { configPath, keyPath },
     ),
@@ -62,7 +62,7 @@ test("provisionConfigAndKey reports a pre-existing key file and writes nothing",
   fs.writeFileSync(keyPath, JSON.stringify({ sharedSecret: TOKEN }));
   expect(() =>
     provisionConfigAndKey(
-      sampleSpec(),
+      { write: sampleSpec() },
       { sharedSecret: TOKEN },
       { configPath, keyPath },
     ),
@@ -87,7 +87,7 @@ test("provisionConfigAndKey rejects the same path for config and key", () => {
   const both = path.join(dir, "shared.yaml");
   expect(() =>
     provisionConfigAndKey(
-      sampleSpec(),
+      { write: sampleSpec() },
       { sharedSecret: TOKEN },
       { configPath: both, keyPath: both },
     ),
@@ -112,7 +112,7 @@ test("assertNoProvisionConflicts rejects the same path for config and key", () =
 
 test("provisionConfigAndKey writes a key file with expires when set", () => {
   provisionConfigAndKey(
-    sampleSpec(),
+    { write: sampleSpec() },
     { sharedSecret: TOKEN, expires: "2028-06-01T12:00:00.000Z" },
     { configPath, keyPath },
   );
@@ -123,7 +123,7 @@ test("provisionConfigAndKey writes a key file with expires when set", () => {
 
 test("provisionConfigAndKey omits expires when absent", () => {
   provisionConfigAndKey(
-    sampleSpec(),
+    { write: sampleSpec() },
     { sharedSecret: TOKEN },
     { configPath, keyPath },
   );
@@ -137,7 +137,7 @@ test.skipIf(process.platform === "win32")(
     // Windows uses a restricted ACL, not POSIX mode bits; fs.statSync reports a
     // synthetic mode there, so this assertion is Unix-only (mirrors saveKeyFile).
     provisionConfigAndKey(
-      sampleSpec(),
+      { write: sampleSpec() },
       { sharedSecret: TOKEN },
       { configPath, keyPath },
     );
@@ -149,7 +149,7 @@ test.skipIf(process.platform === "win32")(
 
 test("provisionConfigAndKey writes both files and returns the resolved paths", () => {
   const result = provisionConfigAndKey(
-    sampleSpec(),
+    { write: sampleSpec() },
     { sharedSecret: TOKEN },
     { configPath, keyPath },
   );
@@ -166,7 +166,7 @@ test("provisionConfigAndKey rolls back the written config when the key write fai
   // catch block's rollback rather than the up-front conflict gate.
   expect(() =>
     provisionConfigAndKey(
-      sampleSpec(),
+      { write: sampleSpec() },
       { sharedSecret: "too-short" },
       { configPath, keyPath },
     ),
@@ -188,7 +188,7 @@ function specWithPassword(): ExchangeSpec {
 test("provisionConfigAndKey warns about a saved credential once the key is written", () => {
   const warnings: string[] = [];
   provisionConfigAndKey(
-    specWithPassword(),
+    { write: specWithPassword() },
     { sharedSecret: TOKEN },
     { configPath, keyPath },
     { savedConfigWarning: { log: { warn: (m) => warnings.push(m) } } },
@@ -201,7 +201,7 @@ test("provisionConfigAndKey does not warn about a config the key-write failure r
   const warnings: string[] = [];
   expect(() =>
     provisionConfigAndKey(
-      specWithPassword(),
+      { write: specWithPassword() },
       { sharedSecret: "too-short" },
       { configPath, keyPath },
       { savedConfigWarning: { log: { warn: (m) => warnings.push(m) } } },
@@ -217,7 +217,7 @@ test("provisionConfigAndKey leaves the error unmarked when the rollback succeeds
   let thrown: unknown;
   try {
     provisionConfigAndKey(
-      sampleSpec(),
+      { write: sampleSpec() },
       { sharedSecret: "too-short" },
       { configPath, keyPath },
     );
@@ -250,7 +250,7 @@ test("provisionConfigAndKey marks the error when the config rollback also fails"
     let thrown: unknown;
     try {
       provisionConfigAndKey(
-        sampleSpec(),
+        { write: sampleSpec() },
         { sharedSecret: "too-short" },
         { configPath, keyPath },
       );
@@ -292,7 +292,7 @@ test.skipIf(process.platform === "win32")(
       // config write fails first (saveConfig runs before saveKeyFile).
       expect(() =>
         provisionConfigAndKey(
-          sampleSpec(),
+          { write: sampleSpec() },
           { sharedSecret: TOKEN },
           { configPath: badConfig, keyPath },
         ),
@@ -305,31 +305,29 @@ test.skipIf(process.platform === "win32")(
   },
 );
 
-// --- reuseExistingConfig -----------------------------------------------------
+// --- reusing an existing config ----------------------------------------------
 
-test("provisionConfigAndKey with reuseExistingConfig writes only the key, keeping the config", () => {
+test("provisionConfigAndKey reusing a config writes only the key, keeping the config", () => {
   const original = "channel: filedrop\npath: /mnt/share\n# user-authored\n";
   fs.writeFileSync(configPath, original);
   const result = provisionConfigAndKey(
-    sampleSpec(),
+    { reuse: () => {} },
     { sharedSecret: TOKEN },
     { configPath, keyPath },
-    { reuseExistingConfig: true },
   );
   expect(result).toEqual({ configPath, keyPath });
   expect(fs.readFileSync(configPath, "utf8")).toBe(original);
   expect(loadKeyFile(keyPath)?.sharedSecret).toBe(TOKEN);
 });
 
-test("provisionConfigAndKey with reuseExistingConfig still rejects a pre-existing key file", () => {
+test("provisionConfigAndKey reusing a config still rejects a pre-existing key file", () => {
   fs.writeFileSync(configPath, "channel: filedrop\npath: /mnt/share\n");
   fs.writeFileSync(keyPath, JSON.stringify({ sharedSecret: TOKEN }));
   expect(() =>
     provisionConfigAndKey(
-      sampleSpec(),
+      { reuse: () => {} },
       { sharedSecret: TOKEN },
       { configPath, keyPath },
-      { reuseExistingConfig: true },
     ),
   ).toThrow(keyPath);
   expect(fs.readFileSync(configPath, "utf8")).toBe(
@@ -337,34 +335,32 @@ test("provisionConfigAndKey with reuseExistingConfig still rejects a pre-existin
   );
 });
 
-test("provisionConfigAndKey with reuseExistingConfig does not delete the config when the key write fails", () => {
+test("provisionConfigAndKey reusing a config does not delete the config when the key write fails", () => {
   const original = "channel: filedrop\npath: /mnt/share\n";
   fs.writeFileSync(configPath, original);
   // A malformed token makes saveKeyFile throw; the reused config must survive
   // (the rollback only removes a config THIS call wrote, never the user's).
   expect(() =>
     provisionConfigAndKey(
-      sampleSpec(),
+      { reuse: () => {} },
       { sharedSecret: "too-short" },
       { configPath, keyPath },
-      { reuseExistingConfig: true },
     ),
   ).toThrow("base64url-encoded 32-byte value");
   expect(fs.readFileSync(configPath, "utf8")).toBe(original);
   expect(fs.existsSync(keyPath)).toBe(false);
 });
 
-test("provisionConfigAndKey with reuseExistingConfig aborts when the config was removed, writing no key", () => {
+test("provisionConfigAndKey reusing a config aborts when the config was removed, writing no key", () => {
   // The caller reconciled a config for reuse, but it was deleted in the window
   // before this call. Writing the key would orphan it (a key with no matching
   // config), so the re-gate must abort -- nothing written -- rather than leave
   // inconsistent on-disk state. (configPath does not exist in this test.)
   expect(() =>
     provisionConfigAndKey(
-      sampleSpec(),
+      { reuse: () => {} },
       { sharedSecret: TOKEN },
       { configPath, keyPath },
-      { reuseExistingConfig: true },
     ),
   ).toThrow(UsageError);
   expect(fs.existsSync(configPath)).toBe(false);
@@ -436,7 +432,7 @@ test("provisionConfigAndKey refuses a config that appears after the gate, leavin
   withFileAppearingAfterGate(configPath, () =>
     expect(() =>
       provisionConfigAndKey(
-        sampleSpec(),
+        { write: sampleSpec() },
         { sharedSecret: TOKEN },
         { configPath, keyPath },
       ),
@@ -451,7 +447,7 @@ test("provisionConfigAndKey refuses a key that appears after the gate and remove
   withFileAppearingAfterGate(keyPath, () =>
     expect(() =>
       provisionConfigAndKey(
-        sampleSpec(),
+        { write: sampleSpec() },
         { sharedSecret: TOKEN },
         { configPath, keyPath },
       ),
@@ -461,38 +457,34 @@ test("provisionConfigAndKey refuses a key that appears after the gate and remove
   expect(fs.existsSync(configPath)).toBe(false);
 });
 
-test("provisionConfigAndKey with reuseExistingConfig writes the records before the key", () => {
+test("provisionConfigAndKey reusing a config writes the records before the key", () => {
   fs.writeFileSync(configPath, "channel: filedrop\n");
   const keyExistedAtRefresh: boolean[] = [];
   provisionConfigAndKey(
-    sampleSpec(),
-    { sharedSecret: TOKEN },
-    { configPath, keyPath },
     {
-      reuseExistingConfig: true,
-      refreshReusedConfig: (kept) => {
+      reuse: (kept) => {
         expect(kept).toBe(configPath);
         keyExistedAtRefresh.push(fs.existsSync(keyPath));
       },
     },
+    { sharedSecret: TOKEN },
+    { configPath, keyPath },
   );
   expect(keyExistedAtRefresh).toEqual([false]);
   expect(loadKeyFile(keyPath)?.sharedSecret).toBe(TOKEN);
 });
 
-test("provisionConfigAndKey with reuseExistingConfig writes no key when a record write fails", () => {
+test("provisionConfigAndKey reusing a config writes no key when a record write fails", () => {
   fs.writeFileSync(configPath, "channel: filedrop\n");
   expect(() =>
     provisionConfigAndKey(
-      sampleSpec(),
-      { sharedSecret: TOKEN },
-      { configPath, keyPath },
       {
-        reuseExistingConfig: true,
-        refreshReusedConfig: () => {
+        reuse: () => {
           throw new Error("record write failed");
         },
       },
+      { sharedSecret: TOKEN },
+      { configPath, keyPath },
     ),
   ).toThrow("record write failed");
   expect(fs.existsSync(keyPath)).toBe(false);
@@ -507,14 +499,9 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     saveConfig(keptConfig, sampleSpec());
     const provision = () =>
       provisionConfigAndKey(
-        sampleSpec(),
+        { reuse: (kept) => persistExpectedPartnerDeduplicate(kept, true) },
         { sharedSecret: TOKEN },
         { configPath: keptConfig, keyPath },
-        {
-          reuseExistingConfig: true,
-          refreshReusedConfig: (kept) =>
-            persistExpectedPartnerDeduplicate(kept, true),
-        },
       );
     fs.chmodSync(confDir, 0o555);
     try {
