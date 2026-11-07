@@ -571,6 +571,49 @@ This is the direction `require-agent-model.mjs` takes and the opposite of `requi
 What this gate enforces is a reading discipline, so a miss costs a session that reasons from memory,
 while a refusal that fires wrongly stops every spawn in every session at once.
 
+## Compaction hooks
+
+[`.claude/hooks/instruct-compaction-summary.mjs`](../../.claude/hooks/instruct-compaction-summary.mjs), on PreCompact, and
+[`.claude/hooks/remind-after-compaction.mjs`](../../.claude/hooks/remind-after-compaction.mjs), on SessionStart's `compact` source,
+with the `modelSettings` window in `.claude/settings.json`.
+
+### Why compaction is automatic
+
+An orchestrating session compacted by hand at about 300k costs a preparation pass and two owner turns, `/compact` and `/orchestrate`, each time.
+An automatic compaction needs neither.
+What the hand-written `/compact` argument carried moves into the PreCompact hook, which reaches automatic and manual compactions alike,
+and what the typed resume message carried moves into the continuation brief and the SessionStart line naming it, since no hook output can type a turn.
+
+### Why the record of a ruleset read is removed
+
+A compaction keeps the session id, and the ruleset-read record is keyed on it, so without the removal a read from before the compaction stands for a context that no longer holds the ruleset.
+The removal costs one read of the ruleset a compaction, about 10k tokens carried for the rest of the segment.
+
+### What was driven
+
+Claude Code 2.1.318 holds no credentials in the dev container, so the runs used a local stand-in for the Messages API that logs each request and reports scripted usage, leaving every compaction decision to the client.
+Measured that way, 2026-11-06:
+
+- A project-scope `modelSettings` `claude-opus-5-5` `autoCompactWindow` of 333000 overrides the user-scope 400000 and fires at the first check past 300,000 tokens (boundary `pre_tokens` 300,120); 400000 fires at 367,120, matching the 367-371k of real sessions, so the trigger is the window less about 33k.
+- An automatic compaction in the middle of a turn carries the turn on with no user input, in a `-p` run and in an interactive session alike.
+- PreCompact's stdout lands in the summarization request under "Additional Instructions", after the text typed after `/compact`; the input carries `trigger` and `custom_instructions`, null for `auto`.
+- SessionStart's `hookSpecificOutput.additionalContext` reaches the first request after the compaction; the input carries `source: "compact"` and the same `session_id`.
+- A spawned agent's compaction fires both hooks with the session's own id and transcript path and no agent field, so the hooks cannot tell it from the session's.
+  The SessionStart line tells a spawned agent to ignore it, and the removed record costs the session one more read.
+  The 333000 window applies to a spawned agent on the same model too, and an agent definition's `autoCompactWindow: 1000000` did not raise it.
+
+### Why idle compaction stays on
+
+The orchestrating session of 2026-11-06 ended a turn at 237k with background work out and compacted itself 55 minutes later, at 237,395, reporting "Compacted while idle, before the prompt cache expired".
+Idle compaction fires below the 300k target, but only when the cache is about to lapse, so the next call would have rewritten the whole context uncached; the compaction rewrites a summary instead.
+
+### Stated limits
+
+- The 290-310k trigger was measured against reported usage, not a real 300k context, and the real-session figure is still to be read from a compact boundary.
+- The stand-in API did not bring on an idle compaction: 62 minutes idle at 205k produced none, so the idle case rests on the one real session, whose background agent had stopped with its own command still running.
+- A newest continuation brief is found by modification time in the primary checkout's `scratch/`, the rule `/orchestrate` states; a brief kept elsewhere is not found.
+- The record lives in the temp directory, so after a reboot a compacted session counts as not orchestrating and gets no line, though the ruleset-read gate still refuses its first spawn.
+
 ## Measured claim literals
 
 [`.claude/hooks/require-measured-claim-literals.mjs`](../../.claude/hooks/require-measured-claim-literals.mjs)

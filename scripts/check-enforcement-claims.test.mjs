@@ -72,7 +72,7 @@ describe("enforcement claim check", () => {
       // The events this repo hooks. A hook registered on a name Claude Code does
       // not raise never runs, and nothing else here would say so.
       expect(event).toMatch(
-        /^(PreToolUse|PostToolUse|UserPromptSubmit|SessionStart)$/,
+        /^(PreToolUse|PostToolUse|UserPromptSubmit|SessionStart|PreCompact)$/,
       );
       expect(matcher.length).toBeGreaterThan(0);
     }

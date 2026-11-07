@@ -17,6 +17,9 @@ const HOOK = fileURLToPath(
 const RECORDER = fileURLToPath(
   new URL("./record-orchestration-ruleset-read.mjs", import.meta.url),
 );
+const COMPACTION_HOOK = fileURLToPath(
+  new URL("./remind-after-compaction.mjs", import.meta.url),
+);
 const RULESET = fileURLToPath(
   new URL("../orchestration/ruleset.md", import.meta.url),
 );
@@ -181,6 +184,41 @@ describe("require-orchestration-ruleset-read hook", () => {
       if (transcript_path === undefined) delete payload.transcript_path;
       expect(runHook(payload, root).status, String(transcript_path)).toBe(0);
     }
+  });
+
+  // A compaction keeps the session id, so the read recorded before it would
+  // otherwise stand for a context that no longer holds the ruleset.
+  it("refuses the first spawn after a compaction until the ruleset is read again", () => {
+    const root = makeMarkerRoot();
+    const read = {
+      tool_name: "Read",
+      tool_input: { file_path: RULESET },
+      session_id: SESSION,
+    };
+    expect(runHook(read, root, RECORDER).status).toBe(0);
+    expect(runHook(spawn(), root).status).toBe(0);
+
+    const compaction = runHook(
+      {
+        session_id: SESSION,
+        transcript_path: SESSION_TRANSCRIPT,
+        cwd: root,
+        hook_event_name: "SessionStart",
+        source: "compact",
+      },
+      root,
+      COMPACTION_HOOK,
+    );
+    expect(compaction.status).toBe(0);
+
+    const refused = runHook(spawn(), root);
+    expect(refused.status).toBe(2);
+    expect(refused.stderr).toContain(`cat '${RULESET}'`);
+    expect(runHook(workflow(), root).status).toBe(2);
+
+    expect(runHook(read, root, RECORDER).status).toBe(0);
+    expect(runHook(spawn(), root).status).toBe(0);
+    expect(runHook(workflow(), root).status).toBe(0);
   });
 
   // The two hooks derive one marker path from one session id; a divergence

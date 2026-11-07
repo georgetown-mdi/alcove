@@ -1,14 +1,16 @@
 // The per-session record that the orchestration ruleset has been read, and
 // where that record is kept.
 //
-// Two hooks split the job: record-orchestration-ruleset-read.mjs writes the
-// marker when a session reads the ruleset, and
+// Three hooks share the job: record-orchestration-ruleset-read.mjs writes the
+// marker when a session reads the ruleset,
 // require-orchestration-ruleset-read.mjs refuses that session's first Agent or
-// Workflow call until one is there and fresh. They must derive the same path
-// from the same session id and agree on how long a read stands for -- a
-// divergence in either would refuse every spawn in every session, since the gate
-// would be looking where nothing is ever written -- so both live here rather
-// than in each hook.
+// Workflow call until one is there and fresh, and remind-after-compaction.mjs
+// removes it when the session's context is compacted, since a compaction keeps
+// the session id while dropping the ruleset from the context. They must derive
+// the same path from the same session id and agree on how long a read stands
+// for -- a divergence in either would refuse every spawn in every session, since
+// the gate would be looking where nothing is ever written -- so both live here
+// rather than in each hook.
 //
 // WHERE THE MARKERS GO, and why not under the repository. The two hooks fire
 // from whichever checkout the session is working in, and one session works in
@@ -19,7 +21,7 @@
 // working tree's status. The cost is that the markers do not survive a reboot,
 // which costs a session one re-read.
 
-import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -75,6 +77,20 @@ export function recordedReadAgeMs(path) {
     return Math.max(0, Date.now() - statSync(path).mtimeMs);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Remove the record at `path`, so the session's next Agent or Workflow call
+ * waits for a fresh read. A record already absent counts as removed; false only
+ * when one is there and could not be removed.
+ */
+export function clearRead(path) {
+  try {
+    rmSync(path, { force: true });
+    return true;
+  } catch {
+    return false;
   }
 }
 

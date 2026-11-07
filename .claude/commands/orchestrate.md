@@ -6,8 +6,9 @@ description: Start or resume an orchestration session -- load the session rules 
     /orchestrate [the day's notes]
 
 The owner's standing instruction for an orchestration session, less what the ruleset and the other commands already state.
-The same command resumes the session after a compaction and starts the next one after a `/clear`:
+The same command resumes the session after a compaction the owner runs by hand and starts the next one after a `/clear`:
 the resume message is this command, never a continuation brief's path handed to the owner.
+An automatic compaction needs no resume message: the session carries on from the brief, as `.claude/orchestration/ruleset.md`, Session lifecycle, sets out.
 
 ## The day's notes
 
