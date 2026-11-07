@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
@@ -8,9 +9,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { listNodeModulesPackages } from "./list-node-modules-packages.mjs";
+
+const LISTER = fileURLToPath(
+  new URL("./list-node-modules-packages.mjs", import.meta.url),
+);
 
 let root;
 
@@ -154,4 +160,36 @@ describe("listNodeModulesPackages", () => {
       }
     },
   );
+});
+
+// The production-scope step diffs two of these listings, so an empty one would
+// compare clean against anything; the command refuses it instead.
+describe("list-node-modules-packages command", () => {
+  function runLister(directory) {
+    return spawnSync(process.execPath, [LISTER, directory], {
+      encoding: "utf8",
+    });
+  }
+
+  it("refuses an empty tree", () => {
+    const nodeModules = tree({});
+    mkdirSync(nodeModules);
+
+    const result = runLister(nodeModules);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(`${nodeModules} holds no package\n`);
+  });
+
+  it("refuses a tree that does not exist", () => {
+    root = mkdtempSync(join(tmpdir(), "node-modules-listing-"));
+    const absent = join(root, "node_modules");
+
+    const result = runLister(absent);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(`${absent} holds no package\n`);
+  });
 });

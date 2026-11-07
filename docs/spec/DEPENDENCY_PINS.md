@@ -256,7 +256,7 @@ A non-registry source -- a `file:` tarball or directory, a git URL, a remote tar
 **Why the allow and deny entries are pinned differently.**
 
 - **Allows are pinned to an exact version** (`esbuild`, `ssh2`, `cpu-features`). The approval is a review of one version's script, so it must not extend to the next one: a bump arrives with no verdict and has to be reviewed rather than inheriting the answer.
-- **Denials are name-only** (`unrs-resolver`), which covers every version. It is a dev-only native build unreachable from the shipped image, so no future version of it needs a fresh review to stay blocked. Under npm 11.16.0 or 11.17.0 a version that added a `bin` would lose its `.bin` links along with its script, which is the one change that would need a fresh look; from 11.18.0 it keeps them (see Enforcement status above).
+- **Denials are name-only** (`unrs-resolver`), covering every version, where no allow names the same package. It is a dev-only native build unreachable from the shipped image, so no future version of it needs a fresh review to stay blocked. Under npm 11.16.0 or 11.17.0 a version that added a `bin` would lose its `.bin` links along with its script, which is the one change that would need a fresh look; from 11.18.0 it keeps them (see Enforcement status above).
 - **`fsevents` is denied at the one installed version** (`"fsevents@2.3.3"`, at the root, a darwin-only optional dependency of `rollup`, `tsx` and `vite`). Nothing runs either way: the published tarball declares only `clean`, `build`, `test` and `prepublishOnly` and ships no `binding.gyp`, so the `node-gyp rebuild` an install would run does not exist -- it sits in `build`. Re-driven 2026-10-01:
   - The tarball, unpacked from `npm pack`, holds exactly that script set and no `binding.gyp`.
   - The lockfile's `hasInstallScript: true` matches the flag the registry's abbreviated packument carries, while the registry's full version metadata (what `npm view fsevents@2.3.3 scripts` reads) lists an `install: node-gyp rebuild` the tarball does not hold.
@@ -264,6 +264,9 @@ A non-registry source -- a `file:` tarball or directory, a git URL, a remote tar
   - On linux npm skips it as platform-incompatible, and with the verdict removed the committed tree installs clean on 11.19.1. With npm's own `--os=darwin --cpu=arm64` the refusal fires, naming `fsevents@2.3.3 (install: (install scripts present))`.
 
   The verdict is what makes the map complete against what the lockfile records: a flagged package with no verdict is what `--strict-allow-scripts` refuses on a platform that installs it, whether or not a script exists to run.
+- **`esbuild` is denied at one version** (`"esbuild@0.25.12"`, the copy nested under `vitepress` by [the project site's vite override](#the-project-sites-vite-override)), because the allow for the hoisted `esbuild@0.28.1` names the same package. Measured 2026-11-07 on npm 11.20.0 with `npm ci` over a copy of this repository's manifests, lockfile and `.npmrc`:
+  - Under the committed map the install runs `esbuild@0.28.1`'s `postinstall` and not `esbuild@0.25.12`'s.
+  - With the denial written name-only (`"esbuild": false`) beside the `"esbuild@0.28.1": true` allow, in either key order, the install exits 0 with no diagnostic and runs neither `postinstall`: the name-only denial takes the exact-version allow out of force.
 
 **The map is held in step with the lockfile by a check, not by prose.** `scripts/allow-scripts-policy.test.mjs` (run by `npm run test:scripts`, a CI static check) reads the committed `package.json` and `package-lock.json` and fails on an entry in a form npm does not match, an entry matching no package the lockfile installs, a lockfile package with an install script and no verdict, or a key or `overrides` form the check does not model. A dead entry draws no npm diagnostic at all and an unmatchable spelling draws one only sometimes, which is why both are pinned here: a bump that adds an install script, or moves one to a version no entry names, reddens `npm run test:scripts` instead of silently widening the policy.
 
@@ -1031,9 +1034,12 @@ One limit sits between a green run there and a bump being proved:
 - **The build is single-arch.** That workflow builds native `amd64` with no
   QEMU, so on a pull request the release assertion speaks for the `amd64`
   rootfs at the new digest and not for the `arm64` one. The release workflow's
-  multi-arch push builds this image for both architectures, so the assertion
-  runs for `arm64` first at release time; reading the other architecture's
-  release by hand, as above, is what covers it before then.
+  `workflow_dispatch` dry run builds both Dockerfiles for `amd64` and `arm64`
+  without publishing, so dispatching it on the bump's branch runs the
+  release assertion and the build's other assertions on `arm64` before a tag.
+  The dry run is started by hand, so reading the other
+  architecture's release by hand, as above, stays the fallback; without
+  either, the assertion runs for `arm64` first in the tag's multi-arch push.
 
 ## Bumping the default base image
 
@@ -1109,10 +1115,14 @@ containment, the headless CLI invocation, a real file-drop exchange between
 two containers of the built image, and
 `scripts/assert-image-capabilities.mjs`'s walk of what the shipped setup
 scripts ask of the image. The FIPS section's
-single-arch limit applies unchanged here: the smoke build is amd64-only with
+single-arch limit applies here: the smoke build is amd64-only with
 no QEMU across the whole job matrix, and the release path's Trivy scan reads
-an amd64-only build before the separate multi-arch push, so neither workflow
-exercises the arm64 image a bumped digest also includes.
+an amd64-only build before the separate multi-arch push. The release
+workflow's `workflow_dispatch` dry run builds both Dockerfiles for `amd64`
+and `arm64`, running the build-time assertions on the arm64 image a bumped
+digest also includes before a tag. It is started by hand and runs no scan, so
+no automatic run reaches that image before the tag's push, and no scan
+reaches it at all.
 
 **A package the mirror fixed, without a digest bump.** The runtime stage's
 `apk add --no-cache samba-client` floats against the Alpine mirror (why, and
@@ -1127,6 +1137,21 @@ that week, not a reason to bump the digest. A re-run does not clear it, since it
 reads the same week's scope; wait for the next Monday run, or delete that
 week's cache entries (`gh cache list`, `gh cache delete`) to have the next run
 build from the mirror.
+
+The release workflow differs by job:
+
+- The publish job builds with no GitHub Actions layer cache, so a tag's
+  images, and a re-run of that tag's publish job, take `samba-client` from
+  the mirror at build time.
+- The `workflow_dispatch` dry run reads and writes one, under the scopes
+  `dry-run` and `dry-run-fips`, neither of which names a week. A dry run can
+  therefore replay a `samba-client` layer an earlier dry run cached, for as
+  long as nothing above it changes. It publishes nothing and scans nothing; deleting
+  those scopes' entries (`gh cache list`, `gh cache delete`) has the next dry
+  run build that layer from the mirror.
+- Which refs' cache entries a dry run dispatched on one branch restores is
+  unmeasured: no Actions run here has been driven across branches or tags to
+  show it.
 
 **What beyond the digest deserves a look.** `node:26-alpine` is a floating tag
 underneath its digest, so a rebuild the tag picked up can have a different
