@@ -9,21 +9,36 @@ import {
 } from "../src/standaloneOptions.ts";
 
 describe("resolveRelayOptions", () => {
-  it("defaults to loopback, an ephemeral port and the relay host's key table", () => {
+  it("defaults to loopback, an ephemeral port, the relay host's key table and no counters file", () => {
     expect(resolveRelayOptions([], {})).toEqual({
       host: DEFAULT_RELAY_HOST,
       port: DEFAULT_RELAY_PORT,
       keyTablePath: DEFAULT_KEY_TABLE_PATH,
+      countersPath: undefined,
     });
   });
 
   it("reads each flag", () => {
     expect(
       resolveRelayOptions(
-        ["--host", "0.0.0.0", "--port", "9443", "--key-table", "/tmp/turndb"],
+        [
+          "--host",
+          "0.0.0.0",
+          "--port",
+          "9443",
+          "--key-table",
+          "/tmp/turndb",
+          "--counters-file",
+          "/tmp/counters",
+        ],
         {},
       ),
-    ).toEqual({ host: "0.0.0.0", port: 9443, keyTablePath: "/tmp/turndb" });
+    ).toEqual({
+      host: "0.0.0.0",
+      port: 9443,
+      keyTablePath: "/tmp/turndb",
+      countersPath: "/tmp/counters",
+    });
   });
 
   it("takes the key table from the environment relay_table.py reads, behind the flag", () => {
@@ -44,6 +59,7 @@ describe("resolveRelayOptions", () => {
     [["--host"], "--host requires a value"],
     [["--host", "--port", "1"], "--host requires a value"],
     [["--key-table", " "], "--key-table must not be empty"],
+    [["--counters-file", " "], "--counters-file must not be empty"],
     [["--port", "65536"], "--port must be a whole number from 0 to 65535"],
     [["--port", "-1"], "--port must be a whole number from 0 to 65535"],
   ])("refuses %j", (argv, message) => {

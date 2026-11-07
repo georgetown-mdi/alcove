@@ -102,6 +102,9 @@ describe("retained memory", () => {
       const relay = await startRelay({
         testing: {
           pingIntervalMs: 100,
+          // The reader stalls past three of these pings, which span 90
+          // seconds at the production interval.
+          maxUnansweredPings: Number.POSITIVE_INFINITY,
           observer: {
             held: (_r, reason) => reason === "backpressure" && (held = true),
             forwarded: () => (forwarded += 1),

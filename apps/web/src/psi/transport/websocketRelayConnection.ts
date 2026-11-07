@@ -298,7 +298,7 @@ function relayClockOf(reason: string): Date | undefined {
 class ProofExpiredRefusal extends ConnectionError {
   constructor(readonly relayClock: Date | undefined) {
     super(
-      "The WebSocket relay refused this side's proof as expired: this device's clock is behind the relay's. Set this device's clock to the correct time, then start the exchange again.",
+      "The WebSocket relay refused this side's proof as expired: this device's clock differs from the relay's. Set this device's clock to the correct time, then start the exchange again.",
       "transport",
     );
   }

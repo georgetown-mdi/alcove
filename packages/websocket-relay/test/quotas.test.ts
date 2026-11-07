@@ -1,10 +1,17 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { once } from "node:events";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import WebSocket from "ws";
 
+import { DEFAULT_WEBRTC_PEER_TIMEOUT_MS } from "@alcove/core";
+
 import {
   PAIRED_FRAME,
+  RELAY_IDLE_TIMEOUT_MS,
+  RELAY_LONE_PAIRING_TIMEOUT_MS,
   RELAY_MAX_PAIRINGS,
+  RELAY_PING_INTERVAL_MS,
   RelayCloseCode,
   START_FRAME,
 } from "../src/protocol.ts";
@@ -32,6 +39,7 @@ async function relay(
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(running.splice(0).map((started) => started.stop()));
 });
 
@@ -309,5 +317,126 @@ describe("the idle bound", () => {
     const waiting = await connect(url);
     waiting.send(await helloFrame({ role: "inviter" }));
     expect((await waiting.closed).code).toBe(RelayCloseCode.idle);
+  });
+});
+
+describe("the lone-pairing bound", () => {
+  it("is at least the command-line client's default rendezvous budget, and under the idle bound", () => {
+    expect(RELAY_LONE_PAIRING_TIMEOUT_MS).toBeGreaterThanOrEqual(
+      DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
+    );
+    expect(RELAY_LONE_PAIRING_TIMEOUT_MS).toBeLessThan(RELAY_IDLE_TIMEOUT_MS);
+  });
+
+  it("closes a party whose partner has not arrived at the bound, at the production values, and frees its pairing", async () => {
+    // Only the relay's ping interval and its clock are faked; the sockets and
+    // every other timer run in real time.
+    vi.useFakeTimers({
+      toFake: ["setInterval", "clearInterval", "performance"],
+    });
+    const { url } = await relay({
+      keyTable: keyTableOf(manyExchanges(2)),
+      testing: { maxPairings: 1 },
+    });
+    const waiting = await connect(url);
+    waiting.send(
+      await helloFrame({
+        role: "inviter",
+        exchangeId: "exchange-0",
+        relayKey: keyOf(0),
+      }),
+    );
+    waiting.send(START_FRAME);
+    // Its hello has verified once a second socket for its role is refused.
+    const second = await connect(url);
+    second.send(
+      await helloFrame({
+        role: "inviter",
+        exchangeId: "exchange-0",
+        relayKey: keyOf(0),
+      }),
+    );
+    expect((await second.closed).code).toBe(RelayCloseCode.roleTaken);
+
+    const ticks = RELAY_LONE_PAIRING_TIMEOUT_MS / RELAY_PING_INTERVAL_MS;
+    const tick = async (): Promise<void> => {
+      const pinged = once(waiting.socket, "ping");
+      await vi.advanceTimersByTimeAsync(RELAY_PING_INTERVAL_MS);
+      await pinged;
+      // Time for its pong to reach the relay before the next ping.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    };
+    for (let index = 1; index < ticks; index += 1) await tick();
+    expect(waiting.socket.readyState).toBe(WebSocket.OPEN);
+
+    await vi.advanceTimersByTimeAsync(RELAY_PING_INTERVAL_MS);
+    expect(await waiting.closed).toEqual({
+      code: RelayCloseCode.idle,
+      reason: "",
+    });
+    const { inviter } = await pairUnder(url, 1);
+    expect(inviter.received).toEqual([{ text: PAIRED_FRAME }]);
+  }, 30_000);
+
+  it("keeps a pairing whose partner arrived within the bound past it", async () => {
+    const { url } = await relay({
+      testing: { lonePairingTimeoutMs: 200, pingIntervalMs: 50 },
+    });
+    const inviter = await connect(url);
+    inviter.send(await helloFrame({ role: "inviter" }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const acceptor = await connect(url);
+    acceptor.send(await helloFrame({ role: "acceptor" }));
+    await inviter.receivedCount(1);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(inviter.socket.readyState).toBe(WebSocket.OPEN);
+    expect(acceptor.socket.readyState).toBe(WebSocket.OPEN);
+  });
+});
+
+describe("refusals at the caps", () => {
+  it("reports how many hellos and upgrades it refused at its caps, once a window with any", async () => {
+    const faultReportWindowMs = 300;
+    const started = await relay({
+      keyTable: keyTableOf(manyExchanges(3)),
+      testing: { maxPairings: 1, maxUnverifiedSockets: 2, faultReportWindowMs },
+    });
+    await pairUnder(started.url, 0);
+    for (const index of [1, 2]) {
+      const refused = await connect(started.url);
+      refused.send(
+        await helloFrame({
+          role: "inviter",
+          exchangeId: `exchange-${index}`,
+          relayKey: keyOf(index),
+        }),
+      );
+      expect((await refused.closed).code).toBe(RelayCloseCode.relayFull);
+    }
+    await eventually(async () => (await started.connections()) === 2);
+    const awaiting = [await connect(started.url), await connect(started.url)];
+    const upgrade = new WebSocket(started.url);
+    upgrade.on("error", () => {});
+    const [, response] = (await once(upgrade, "unexpected-response")) as [
+      unknown,
+      { statusCode: number },
+    ];
+    expect(response.statusCode).toBe(503);
+    for (const party of awaiting) party.socket.close();
+
+    await eventually(() => started.faults.length > 0, 2000);
+    expect(started.faults).toEqual([
+      "the relay refused 2 hellos at its pairing cap of 1 (4008) and 1 " +
+        "upgrades at its cap of 2 sockets awaiting a hello (503) in the last " +
+        "0.3 s; 2 and 1 since it started",
+    ]);
+    await new Promise((resolve) =>
+      setTimeout(resolve, 2 * faultReportWindowMs),
+    );
+    expect(started.faults).toHaveLength(1);
+    expect(started.relay.counts()).toEqual({
+      websocket_pairing_cap_refusals: 2,
+      websocket_upgrade_cap_refusals: 1,
+    });
   });
 });

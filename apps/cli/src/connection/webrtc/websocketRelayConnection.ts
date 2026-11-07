@@ -276,7 +276,7 @@ export function relayRefusalError(
       return markStatesItsOwnNextStep(
         new ProofExpiredRefusal(
           `${relay} refused this side's proof as expired, so this computer's ` +
-            "clock and the relay's differ by more than five minutes. Correct " +
+            "clock and the relay's differ. Correct " +
             "this computer's clock, and run the exchange again.",
           /^(0|[1-9][0-9]{0,15})$/.test(reason) ? Number(reason) : undefined,
         ),

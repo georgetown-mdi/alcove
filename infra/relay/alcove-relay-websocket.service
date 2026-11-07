@@ -7,7 +7,9 @@
 # It runs as the relay image's account, which owns the secrets table it reads
 # the exchange keys from, under node with tsx's loader, from the Node workspace
 # tree infra/broker/README.md, Install, sets up. The sandbox is the broker's
-# (infra/broker/README.md, Exposure), with the whole file system read-only.
+# (infra/broker/README.md, Exposure), with the whole file system read-only
+# except its own state directory, where it keeps the counters file the
+# metrics publisher reads (README.md, Monitoring).
 # /etc/alcove-relay is hidden from it: that account owns the rendered
 # turnserver.conf, which can hold coturn's static-auth-secret, and the relay
 # reads nothing there.
@@ -23,7 +25,9 @@ Type=simple
 User=__ALCOVE_RELAY_IMAGE_UID__
 Group=__ALCOVE_RELAY_IMAGE_GID__
 WorkingDirectory=/opt/alcove-broker/src
-ExecStart=/usr/local/bin/node --import tsx packages/websocket-relay/src/standalone.ts --host 127.0.0.1 --port __ALCOVE_RELAY_WEBSOCKET_PORT__ --key-table /var/lib/alcove-relay/turndb
+ExecStart=/usr/local/bin/node --import tsx packages/websocket-relay/src/standalone.ts --host 127.0.0.1 --port __ALCOVE_RELAY_WEBSOCKET_PORT__ --key-table /var/lib/alcove-relay/turndb --counters-file /var/lib/alcove-relay-websocket/counters
+StateDirectory=alcove-relay-websocket
+StateDirectoryMode=0700
 Restart=on-failure
 RestartSec=5
 MemoryMax=129M

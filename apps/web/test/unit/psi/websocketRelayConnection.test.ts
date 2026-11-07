@@ -487,7 +487,7 @@ describe("a refused hello", () => {
         expect(error).toMatchObject({
           kind: "transport",
           message:
-            "The WebSocket relay refused this side's proof as expired: this device's clock is behind the relay's. Set this device's clock to the correct time, then start the exchange again.",
+            "The WebSocket relay refused this side's proof as expired: this device's clock differs from the relay's. Set this device's clock to the correct time, then start the exchange again.",
         });
         expect(sockets).toHaveLength(1);
       },
@@ -1029,7 +1029,7 @@ describe("a parked socket", () => {
     socket.closeFromRelay(4005, String(localSecond + 3_600));
     expect(parked.failure).toBeInstanceOf(ConnectionError);
     expect(parked.failure?.message).toMatch(
-      /^The WebSocket relay refused this side's proof as expired: this device's clock is behind the relay's\./,
+      /^The WebSocket relay refused this side's proof as expired: this device's clock differs from the relay's\./,
     );
     await settleTimers(40);
     expect(sockets).toHaveLength(1);

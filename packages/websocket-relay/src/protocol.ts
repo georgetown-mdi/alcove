@@ -119,6 +119,15 @@ export const RELAY_FAULT_REPORT_WINDOW_MS = 60_000;
 export const RELAY_PING_INTERVAL_MS = 30_000;
 
 /**
+ * How many of the relay's pings in a row a socket may leave unanswered before
+ * the relay drops it, while the relay is not holding the socket itself and
+ * sends none of the socket's queue: 90 to 120 seconds at
+ * {@link RELAY_PING_INTERVAL_MS}, so a role a lost socket held is freed well
+ * within the clients' 10-minute rendezvous budget. A working value.
+ */
+export const RELAY_MAX_UNANSWERED_PINGS = 3;
+
+/**
  * The most ping frames, and pong frames beyond those answering the relay's
  * pings, the relay counts from one socket between two of its pings; a socket
  * past it is closed. Two a second, where the clients send none.
@@ -148,6 +157,30 @@ export const RELAY_PAIRING_BURST_BYTES = 2_000_000;
  */
 export const RELAY_IDLE_TIMEOUT_MS = 3_900_000;
 
+/**
+ * How long (ms) a pairing may wait for its second party, counted from its
+ * first verified hello: the clients' 10-minute rendezvous budget, the longest
+ * either client keeps a socket parked at its defaults (the web app's
+ * `DEFAULT_RELAY_PAIRING_TIMEOUT_MS`, and core's
+ * `DEFAULT_WEBRTC_PEER_TIMEOUT_MS`, the command-line client's). A client
+ * counts its budget from before its hello, so its own expires first; a
+ * command-line run given a longer peer timeout dials again on the 4009 the
+ * relay closes it with.
+ */
+export const RELAY_LONE_PAIRING_TIMEOUT_MS = 600_000;
+
+/**
+ * The longest lifetime, in seconds, a client gives a proof: core's
+ * `WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS`.
+ */
+export const RELAY_PROOF_MAX_LIFETIME_SECONDS = 300;
+
+/**
+ * How far past {@link RELAY_PROOF_MAX_LIFETIME_SECONDS} from the relay's own
+ * clock, in seconds, a proof's expiry may be. An arbitrary working value.
+ */
+export const RELAY_PROOF_EXPIRY_SLACK_SECONDS = 5;
+
 /** The close codes the relay sends. */
 export const RelayCloseCode = Object.freeze({
   /** The partner closed normally. */
@@ -174,7 +207,12 @@ export const RelayCloseCode = Object.freeze({
   notEnrolled: 4003,
   /** The proof does not verify under the exchange's relay key. */
   proofRefused: 4004,
-  /** The proof's expiry has passed; the reason is the relay's Unix second. */
+  /**
+   * The proof's expiry has passed, or is more than
+   * {@link RELAY_PROOF_MAX_LIFETIME_SECONDS} plus
+   * {@link RELAY_PROOF_EXPIRY_SLACK_SECONDS} past the relay's clock; the reason
+   * is the relay's Unix second.
+   */
   proofExpired: 4005,
   /** Another socket holds the role under the exchange's relay key. */
   roleTaken: 4006,
@@ -182,7 +220,9 @@ export const RelayCloseCode = Object.freeze({
   helloTimeout: 4007,
   /** The relay holds {@link RELAY_MAX_PAIRINGS} pairings already. */
   relayFull: 4008,
-  /** No message crossed the pairing within {@link RELAY_IDLE_TIMEOUT_MS}. */
+  /** No message crossed the pairing within {@link RELAY_IDLE_TIMEOUT_MS}, or
+   * its second party did not arrive within
+   * {@link RELAY_LONE_PAIRING_TIMEOUT_MS}. */
   idle: 4009,
   /** The messages this party sent and its partner has not read counted above
    * {@link RELAY_QUEUE_LIMIT_BYTES}. */

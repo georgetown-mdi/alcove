@@ -443,7 +443,7 @@ describe("alcove-relay-websocket.service", () => {
     const tree = /^NODE_TREE=(\S+)$/m.exec(install)[1];
     expect(directive("WorkingDirectory")).toEqual([tree]);
     expect(directive("ExecStart")).toEqual([
-      "/usr/local/bin/node --import tsx packages/websocket-relay/src/standalone.ts --host 127.0.0.1 --port __ALCOVE_RELAY_WEBSOCKET_PORT__ --key-table /var/lib/alcove-relay/turndb",
+      "/usr/local/bin/node --import tsx packages/websocket-relay/src/standalone.ts --host 127.0.0.1 --port __ALCOVE_RELAY_WEBSOCKET_PORT__ --key-table /var/lib/alcove-relay/turndb --counters-file /var/lib/alcove-relay-websocket/counters",
     ]);
     for (const needed of [
       "node_modules/tsx/package.json",
@@ -465,6 +465,17 @@ describe("alcove-relay-websocket.service", () => {
     );
   });
 
+  it("keeps its counters file in its state directory, where the metrics publisher reads it", () => {
+    const state = directive("StateDirectory")[0];
+    const counters = `/var/lib/${state}/counters`;
+    expect(directive("ExecStart")[0]).toMatch(
+      new RegExp(` --counters-file ${counters}$`),
+    );
+    expect(read("aws/publish-metrics.sh")).toContain(
+      `WEBSOCKET_COUNTERS_FILE="\${ALCOVE_RELAY_WEBSOCKET_COUNTERS_FILE:-${counters}}"`,
+    );
+  });
+
   it("limits its memory and restarts only on failure", () => {
     expect(directive("MemoryMax")).toEqual(["129M"]);
     expect(directive("Restart")).toEqual(["on-failure"]);
@@ -480,11 +491,14 @@ describe("alcove-relay-websocket.service", () => {
     );
   });
 
-  // The relay writes nothing and opens no connection of its own: the sandbox
-  // leaves it no writable path but its private /tmp, and loopback alone.
-  it("reads the whole file system only and reaches loopback only", () => {
+  // The relay writes only its counters file and opens no connection of its
+  // own: the sandbox leaves it no writable path but its private /tmp and its
+  // state directory, and loopback alone.
+  it("reads the whole file system only but its state directory, and reaches loopback only", () => {
     expect(directive("ProtectSystem")).toEqual(["strict"]);
     expect(directive("ReadWritePaths")).toEqual([]);
+    expect(directive("StateDirectory")).toEqual(["alcove-relay-websocket"]);
+    expect(directive("StateDirectoryMode")).toEqual(["0700"]);
     expect(directive("IPAddressDeny")).toEqual(["any"]);
     expect(directive("IPAddressAllow")).toEqual(["localhost"]);
     expect(directive("CapabilityBoundingSet")).toEqual([""]);

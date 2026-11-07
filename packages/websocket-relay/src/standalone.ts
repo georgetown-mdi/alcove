@@ -1,6 +1,7 @@
 import { redactAndSanitizeForDisplay } from "@alcove/core/websocket-relay";
 import { applyStandaloneUpgradeBounds } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
+import { startRelayCountersFile } from "./countersFile.ts";
 import { openRelayKeyTable } from "./keyTable.ts";
 import { attachWebSocketRelay, createWebSocketRelayServer } from "./relay.ts";
 import { RelayOptionError, resolveRelayOptions } from "./standaloneOptions.ts";
@@ -12,7 +13,8 @@ import type { RelayOptions } from "./standaloneOptions.ts";
 // The relay on an HTTP server of its own, as a process entry point:
 // `npm start -w packages/websocket-relay`, or spawned under `tsx`. It prints
 // one `alcove-websocket-relay <port>` line on stdout once listening and stays
-// up until signalled; diagnostics go to stderr. It terminates no TLS, so a
+// up until signalled; diagnostics go to stderr, and its refusal counts to the
+// file `--counters-file` names, when it names one. It terminates no TLS, so a
 // deployment reachable off the host puts it behind a front that does.
 
 const READY_PREFIX = "alcove-websocket-relay";
@@ -73,6 +75,14 @@ const relay = attachWebSocketRelay(server, {
   keyTable,
   reportFault: (message) => writeLine("WARN", message),
 });
+
+if (options.countersPath !== undefined) {
+  startRelayCountersFile({
+    path: options.countersPath,
+    counts: () => relay.counts(),
+    reportFailure: (message) => writeLine("WARN", message),
+  });
+}
 
 server.on("error", (error: Error) => {
   refuseToStart(

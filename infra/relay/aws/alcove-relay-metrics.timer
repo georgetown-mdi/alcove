@@ -1,5 +1,5 @@
 [Unit]
-Description=Publish the Alcove relay registrar's counts every 5 minutes, outside hours 08 to 10 UTC
+Description=Publish the Alcove relay's counts every 5 minutes, outside hours 08 to 10 UTC
 
 [Timer]
 # Every 5 minutes, the period of the instance's own EC2 metrics. Not in hours

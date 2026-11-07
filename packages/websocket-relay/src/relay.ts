@@ -17,15 +17,19 @@ import {
   RELAY_FAULT_REPORT_WINDOW_MS,
   RELAY_HELLO_TIMEOUT_MS,
   RELAY_IDLE_TIMEOUT_MS,
+  RELAY_LONE_PAIRING_TIMEOUT_MS,
   RELAY_MAX_CONTROL_FRAMES,
   RELAY_MAX_MESSAGE_BYTES,
   RELAY_MAX_MESSAGE_FRAGMENTS,
   RELAY_MAX_PAIRINGS,
+  RELAY_MAX_UNANSWERED_PINGS,
   RELAY_MAX_UNVERIFIED_SOCKETS,
   RELAY_PAIRING_BURST_BYTES,
   RELAY_PAIRING_BYTES_PER_SECOND,
   RELAY_PATH,
   RELAY_PING_INTERVAL_MS,
+  RELAY_PROOF_EXPIRY_SLACK_SECONDS,
+  RELAY_PROOF_MAX_LIFETIME_SECONDS,
   RELAY_QUEUE_LIMIT_BYTES,
   RELAY_READ_HIGH_WATER_MARK_BYTES,
   RELAY_REFUSAL_CLOSE_WAIT_MS,
@@ -43,6 +47,7 @@ import type { Duplex } from "node:stream";
 import type { WebSocket } from "ws";
 
 import type { ControlFrameLimit } from "./controlFrames.ts";
+import type { RelayCounts } from "./countersFile.ts";
 import type { RelayKeyTable } from "./keyTable.ts";
 import type { RelayHello } from "./protocol.ts";
 
@@ -65,8 +70,9 @@ export interface WebSocketRelayOptions {
    * Where the relay reports a fault a hello met: a key table it cannot read,
    * once when lookups start failing and again only after one has succeeded; a
    * malformed enrolled key, once a window for each exchange id; any other
-   * failure to check a hello, once a window. The text is raw, for the sink to
-   * escape.
+   * failure to check a hello, once a window. It also reports how many hellos
+   * and upgrades it refused at its caps, once a window in which it refused
+   * any. The text is raw, for the sink to escape.
    */
   reportFault: (message: string) => void;
   /** @internal */
@@ -84,6 +90,8 @@ export interface WebSocketRelayOptions {
     bytesPerSecond?: number;
     burstBytes?: number;
     idleTimeoutMs?: number;
+    lonePairingTimeoutMs?: number;
+    maxUnansweredPings?: number;
     maxControlFrames?: number;
     observer?: RelayObserver;
   };
@@ -93,6 +101,8 @@ export interface WebSocketRelayOptions {
 export interface WebSocketRelay {
   /** Stop taking sockets and close every socket held with 1001. */
   close(): void;
+  /** The hellos and upgrades refused at the caps since the relay started. */
+  counts(): RelayCounts;
 }
 
 interface Party {
@@ -112,6 +122,13 @@ interface Party {
   tokensAt: number;
   rateTimer: ReturnType<typeof setTimeout> | undefined;
   controlFrames: ControlFrameLimit;
+  /** The relay's pings sent since the socket's last pong, counted only while
+   * the relay is not holding the socket and its queue makes no progress. */
+  unansweredPings: number;
+  /** The socket's `bufferedAmount` just before the relay's last ping. */
+  bufferedAtPing: number;
+  /** The payload bytes forwarded to the socket since the relay's last ping. */
+  forwardedSincePing: number;
 }
 
 interface Pairing {
@@ -122,6 +139,8 @@ interface Pairing {
   openSockets: number;
   /** When a message last crossed the pairing either way. */
   activeAt: number;
+  /** When its first hello verified. */
+  openedAt: number;
 }
 
 const OTHER_ROLE: Record<RendezvousRole, RendezvousRole> = {
@@ -202,6 +221,10 @@ export function attachWebSocketRelay(
     testing.bytesPerSecond ?? RELAY_PAIRING_BYTES_PER_SECOND;
   const burstBytes = testing.burstBytes ?? RELAY_PAIRING_BURST_BYTES;
   const idleTimeoutMs = testing.idleTimeoutMs ?? RELAY_IDLE_TIMEOUT_MS;
+  const lonePairingTimeoutMs =
+    testing.lonePairingTimeoutMs ?? RELAY_LONE_PAIRING_TIMEOUT_MS;
+  const maxUnansweredPings =
+    testing.maxUnansweredPings ?? RELAY_MAX_UNANSWERED_PINGS;
   const maxControlFrames = testing.maxControlFrames ?? RELAY_MAX_CONTROL_FRAMES;
   const observer = testing.observer ?? {};
 
@@ -234,6 +257,34 @@ export function attachWebSocketRelay(
   // window for the relay, since the sender chooses the exchange id.
   const malformedKeyReports = createFaultLatch(faultReportWindowMs);
   const checkFailureReports = createFaultLatch(faultReportWindowMs);
+  const capRefusals = {
+    pairings: { inWindow: 0, total: 0 },
+    upgrades: { inWindow: 0, total: 0 },
+  };
+  let capRefusalReport: ReturnType<typeof setTimeout> | undefined;
+
+  function reportCapRefusals(): void {
+    capRefusalReport = undefined;
+    const { pairings: hellos, upgrades } = capRefusals;
+    reportFault(
+      `the relay refused ${hellos.inWindow} hellos at its pairing cap of ` +
+        `${maxPairings} (4008) and ${upgrades.inWindow} upgrades at its cap ` +
+        `of ${maxUnverifiedSockets} sockets awaiting a hello (503) in the ` +
+        `last ${faultReportWindowMs / 1000} s; ${hellos.total} and ` +
+        `${upgrades.total} since it started`,
+    );
+    hellos.inWindow = 0;
+    upgrades.inWindow = 0;
+  }
+
+  // Counted at once, reported at the end of the window the first one opens.
+  function countCapRefusal(cap: keyof typeof capRefusals): void {
+    capRefusals[cap].inWindow += 1;
+    capRefusals[cap].total += 1;
+    if (capRefusalReport !== undefined) return;
+    capRefusalReport = setTimeout(reportCapRefusals, faultReportWindowMs);
+    capRefusalReport.unref();
+  }
 
   function hold(party: Party, reason: RelayHoldReason): void {
     if (party.holds.has(reason)) return;
@@ -360,6 +411,17 @@ export function attachWebSocketRelay(
       }
       return refuse(party, RelayCloseCode.proofRefused);
     }
+    // Whatever clock made a proof, the relay takes it for at most its longest
+    // lifetime, plus the slack, of the relay's own clock; a client on another
+    // clock signs again at the second the 4005 names.
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const latestExpirySeconds =
+      nowSeconds +
+      RELAY_PROOF_MAX_LIFETIME_SECONDS +
+      RELAY_PROOF_EXPIRY_SLACK_SECONDS;
+    if (hello.proof.expiresAtSeconds > latestExpirySeconds) {
+      return refuse(party, RelayCloseCode.proofExpired, String(nowSeconds));
+    }
     if (party.state !== "verifying") return;
     join(party, key, hello.proof.role);
   }
@@ -373,14 +435,17 @@ export function attachWebSocketRelay(
       const earlier = latestPairings.get(key);
       if (earlier !== undefined) supersede(earlier);
       if (pairingsHoldingSockets.size >= maxPairings) {
+        countCapRefusal("pairings");
         return refuse(party, RelayCloseCode.relayFull);
       }
+      const openedAt = performance.now();
       pairing = {
         key,
         parties: {},
         forwarding: false,
         openSockets: 0,
-        activeAt: performance.now(),
+        activeAt: openedAt,
+        openedAt,
       };
       pairings.set(key, pairing);
       pairingsHoldingSockets.add(pairing);
@@ -440,6 +505,7 @@ export function attachWebSocketRelay(
   }
 
   function forward(source: Party, destination: Party, data: Buffer): void {
+    destination.forwardedSincePing += data.length;
     sendWithinWindow(
       destination.socket,
       data,
@@ -457,10 +523,15 @@ export function attachWebSocketRelay(
     charge(source, data.length);
   }
 
+  // A pairing is in `pairings` until its first close, so one holding a single
+  // party is one whose second party has not arrived.
   function closeIdlePairings(): void {
     const now = performance.now();
     for (const pairing of [...pairings.values()]) {
-      if (now - pairing.activeAt < idleTimeoutMs) continue;
+      const lone = Object.values(pairing.parties).length < 2;
+      const idle = now - pairing.activeAt >= idleTimeoutMs;
+      const unmet = lone && now - pairing.openedAt >= lonePairingTimeoutMs;
+      if (!idle && !unmet) continue;
       for (const party of Object.values(pairing.parties)) {
         if (party === undefined || party.state === "ended") continue;
         end(party, undefined);
@@ -563,6 +634,9 @@ export function attachWebSocketRelay(
         close: () => refuse(party, RelayCloseCode.controlFrameLimit),
         terminate: () => socket.terminate(),
       }),
+      unansweredPings: 0,
+      bufferedAtPing: 0,
+      forwardedSincePing: 0,
     };
     parties.add(party);
     unverified.add(party);
@@ -583,7 +657,9 @@ export function attachWebSocketRelay(
         if (partner !== undefined) release(partner, "backpressure");
       });
     });
-    socket.on("pong", () => party.controlFrames.admit("pong"));
+    socket.on("pong", () => {
+      if (party.controlFrames.admit("pong")) party.unansweredPings = 0;
+    });
     // `ws` closes the socket itself after an error it raises, an oversized
     // message's 1009 among them; the party's part ends here so the partner is
     // closed behind what was already forwarded.
@@ -618,17 +694,36 @@ export function attachWebSocketRelay(
     // relay's tests hold it to that), so the count holds every upgrade already
     // answered.
     if (unverified.size >= maxUnverifiedSockets) {
+      countCapRefusal("upgrades");
       return refuseUpgrade(socket, "503 Service Unavailable");
     }
     socketServer.handleUpgrade(request, socket, head, onConnection);
   };
   server.on("upgrade", onUpgrade);
 
-  // The idle bound is checked at each ping, so it closes a pairing up to one
-  // ping interval late.
+  // The idle and lone bounds are checked at each ping, so they close a pairing
+  // up to one ping interval late. A socket the relay holds reads no pong, so
+  // its pings are not counted until the hold ends. Nor are they while its
+  // queue makes progress: a slow reader reads each ping only behind the data
+  // queued ahead of it. The queue made progress when its buffered bytes are
+  // fewer than just before the last ping plus those forwarded since, so a
+  // ping written and flushed between two ticks is not progress.
   const pingTimer = setInterval(() => {
     closeIdlePairings();
     for (const party of parties) {
+      const buffered = party.socket.bufferedAmount;
+      const progressed =
+        buffered < party.bufferedAtPing + party.forwardedSincePing;
+      party.bufferedAtPing = buffered;
+      party.forwardedSincePing = 0;
+      if (party.holds.size > 0 || progressed) {
+        party.unansweredPings = 0;
+      } else if (party.unansweredPings >= maxUnansweredPings) {
+        party.socket.terminate();
+        continue;
+      } else {
+        party.unansweredPings += 1;
+      }
       party.controlFrames.pinged();
       party.socket.ping();
     }
@@ -639,10 +734,15 @@ export function attachWebSocketRelay(
     close() {
       server.off("upgrade", onUpgrade);
       clearInterval(pingTimer);
+      clearTimeout(capRefusalReport);
       for (const party of [...parties]) {
         end(party, undefined);
         closeWithin(party, RelayCloseCode.goingAway);
       }
     },
+    counts: () => ({
+      websocket_pairing_cap_refusals: capRefusals.pairings.total,
+      websocket_upgrade_cap_refusals: capRefusals.upgrades.total,
+    }),
   };
 }
