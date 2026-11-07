@@ -822,7 +822,7 @@ describe("every terms-time pin refusal states its own next step and condition", 
     );
     expect(versionCheck).toBeGreaterThan(-1);
     expect(versionCheck).toBeLessThan(message.indexOf("fingerprint --force"));
-    expect(message).toContain('or set signing.mode to "none" to run unsigned.');
+    expect(message).toContain('Or set signing.mode to "none" to run unsigned.');
   });
 
   test("an adopted first contact raises nothing to mark", async () => {

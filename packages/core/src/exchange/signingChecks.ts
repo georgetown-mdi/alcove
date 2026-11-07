@@ -257,11 +257,11 @@ const PARTNER_CERTIFICATE_REFUSALS = {
       "your partner presented a signing certificate this version of Alcove " +
       "cannot read. The run stopped before any linkage key or payload row " +
       "was sent. Ask your partner to check that you both run the same " +
-      'Alcove version, or set signing.mode to "none" to run unsigned. If ' +
-      "the versions match, their signing identity is damaged: they make a " +
-      "new one with 'alcove fingerprint --force' and send you only the " +
-      "fingerprint it prints. A new identity means anyone else who pinned " +
-      "their old fingerprint must pin the new one.",
+      "Alcove version. If the versions match, their signing identity is " +
+      "damaged: they make a new one with 'alcove fingerprint --force' and " +
+      "send you only the fingerprint it prints. A new identity means anyone " +
+      "else who pinned their old fingerprint must pin the new one. Or set " +
+      'signing.mode to "none" to run unsigned.',
   },
   absent: {
     abortReason: PARTNER_CERTIFICATE_ABSENT_ABORT_REASON,
