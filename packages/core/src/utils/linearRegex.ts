@@ -25,10 +25,20 @@ import { MatcherInputBase, RE2JS } from "re2js";
 const COMPILE_CACHE_MAX = 1024;
 
 /**
+ * Upper bound on one partner-supplied pattern's {@link patternWeightedSize}, a
+ * count, so the verdict is the same on every machine; the compile cache holds
+ * no pattern over it. See
+ * docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect.
+ */
+export const MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE = 1000;
+
+/**
  * Memoized compiled patterns, keyed by the exact pattern source. Insertion-
  * ordered (a plain `Map`), so the oldest entry is `keys().next().value`. A
  * pattern that fails to compile is not cached (the `RE2JS.compile` throw
- * propagates), so the cache holds only valid handles.
+ * propagates), so the cache holds only valid handles, and a pattern over
+ * {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE} is compiled for its caller and
+ * dropped, so a refused pattern's program is not retained.
  */
 const compileCache = new Map<string, RE2JS>();
 
@@ -51,6 +61,8 @@ function compileCached(pattern: string): RE2JS {
   // ({@link patternConformsToDialect}) or a propagated runtime error, mirroring
   // `new RegExp`'s throw for a factory built from an unvalidated pattern.
   const compiled = RE2JS.compile(pattern);
+  if (compiledWeightedSize(compiled) > MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE)
+    return compiled;
   if (compileCache.size >= COMPILE_CACHE_MAX) {
     const oldest = compileCache.keys().next().value;
     if (oldest !== undefined) compileCache.delete(oldest);
@@ -425,6 +437,21 @@ export function patternWeightedSize(pattern: string): number {
 }
 
 /**
+ * The {@link patternWeightedSize} of `pattern`, or `undefined` when it is
+ * outside the dialect: the conformance check and the size read from one
+ * compile, for a caller that needs both.
+ */
+export function inDialectWeightedSize(pattern: string): number | undefined {
+  let compiled: RE2JS;
+  try {
+    compiled = compileCached(pattern);
+  } catch {
+    return undefined;
+  }
+  return compiledWeightedSize(compiled);
+}
+
+/**
  * Whether `pattern` is in the linear-time dialect: it compiles under the
  * engine. The single conformance oracle for both the terms-validation gate
  * ({@link findTransformRegexRefusal}) and the editor-facing
@@ -434,10 +461,5 @@ export function patternWeightedSize(pattern: string): number {
  * backtrack catastrophically.
  */
 export function patternConformsToDialect(pattern: string): boolean {
-  try {
-    compileCached(pattern);
-    return true;
-  } catch {
-    return false;
-  }
+  return inDialectWeightedSize(pattern) !== undefined;
 }

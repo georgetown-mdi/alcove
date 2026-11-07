@@ -6,10 +6,19 @@ import {
 } from "../src/valueConstraints";
 import { buildStandardizedDataset } from "../src/standardization";
 import type { ColumnMetadata } from "../src/config/metadata";
+import { safeParseLinkageTerms } from "../src/config/linkageTermsSchema";
 import type {
   LinkageField,
   LinkageTerms,
 } from "../src/config/linkageTermsSchema";
+import {
+  allowedCharactersPattern,
+  patternRefusal,
+} from "../src/config/transformRegexDialect";
+import {
+  CLOSED_CLASS_COUNTED_REPEATS,
+  ESCAPED_CARET_COUNTED_REPEATS,
+} from "./utils/oversizedPatterns";
 
 // --- checkValueConstraints ---------------------------------------------------
 
@@ -312,29 +321,60 @@ describe("checkValueConstraints", () => {
     expect(checkValueConstraints(field, "Z")).toEqual([]);
   });
 
-  test("an exotic leading-^ class whose escaped form will not compile over-flags, never suppresses", () => {
+  test("a leading-^ class whose escaped form will not compile is refused at parse", () => {
     // Escaping the leading `^` in `^]A[` to `\^` lets the following `]` close
-    // the class, so `[\^]A[]` does not compile. The raw class `[^]A[]` does (a
-    // `]` right after `[^` is a literal member), so the escape -- not the
-    // partner -- broke it. The check must OVER-flag (the advisory's safe
-    // direction), not fail open and suppress the advisory on every value,
-    // which a leading-^ negation would otherwise still achieve.
-    const field: LinkageField = {
-      name: "fn",
-      type: "first_name",
-      constraints: { allowedCharacters: "^]A[" },
-    };
-    // Every value is flagged -- the advisory is raised, not suppressed.
-    expect(
-      checkValueConstraints(field, "A").some(
-        (v) => v.kind === "disallowedCharacters",
-      ),
-    ).toBe(true);
-    expect(
-      checkValueConstraints(field, "!").some(
-        (v) => v.kind === "disallowedCharacters",
-      ),
-    ).toBe(true);
+    // the class, so `^[\^]A[]$` does not compile. The schema compiles that same
+    // pattern, so the terms are refused before any value is checked.
+    const result = safeParseLinkageTerms({
+      version: "1.0.0",
+      identity: "Test Party",
+      date: "2025-01-01",
+      algorithm: "psi",
+      output: { expectsOutput: true, shareWithPartner: false },
+      deduplicate: false,
+      linkageFields: [
+        {
+          name: "fn",
+          type: "first_name",
+          constraints: { allowedCharacters: "^]A[" },
+        },
+      ],
+      linkageKeys: [{ name: "First Name", elements: [{ field: "fn" }] }],
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((i) => i.message)).toEqual([
+      "allowed_characters must be a valid regex character class",
+    ]);
+  });
+
+  test("the check compiles the pattern the schema measured", () => {
+    for (const allowedCharacters of ["A-Z", "^A-Z", "^-Z", "a]|.*[b"])
+      expect(
+        patternRefusal(allowedCharactersPattern(allowedCharacters)),
+      ).toBeUndefined();
+    expect(allowedCharactersPattern("^A-Z")).toBe("^[\\^A-Z]$");
+    expect(allowedCharactersPattern("^-Z")).toBe("^[\\^\\-Z]$");
+    expect(allowedCharactersPattern("A-Z^")).toBe("^[A-Z^]$");
+  });
+
+  test("a class over the weighted-size cap, checked without a parse, is not flagged", () => {
+    // Uncheckable, as a class that does not compile is: the check reports no
+    // violation for a pattern the schema would refuse.
+    for (const allowedCharacters of [
+      CLOSED_CLASS_COUNTED_REPEATS,
+      ESCAPED_CARET_COUNTED_REPEATS,
+    ]) {
+      expect(
+        patternRefusal(allowedCharactersPattern(allowedCharacters)),
+      ).toMatchObject({ reason: "size" });
+      const field: LinkageField = {
+        name: "fn",
+        type: "first_name",
+        constraints: { allowedCharacters },
+      };
+      expect(checkValueConstraints(field, "!")).toEqual([]);
+    }
   });
 
   test("the empty string conforms to any allowedCharacters class", () => {

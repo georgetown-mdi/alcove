@@ -6,9 +6,11 @@ import {
 } from "../utils/frozenLookupTable.js";
 import {
   compileLinearRegex,
-  patternConformsToDialect,
-  patternWeightedSize,
+  inDialectWeightedSize,
+  MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE,
 } from "../utils/linearRegex.js";
+
+export { MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE };
 
 // Refuses a partner-supplied transform pattern outside the linear-time
 // engine's dialect or over its weighted-size cap at terms validation, before
@@ -39,37 +41,55 @@ export function regexStepPatternParam(
 }
 
 /**
- * Monotonic-clock budget, in milliseconds, for the conformance walk over one
- * terms set, since keys x elements x steps can make compilation itself a
- * denial of service; patterns left when it runs out are refused.
+ * Monotonic-clock budget, in milliseconds, for the conformance walks over one
+ * terms set, its transform patterns and then its name-constraint classes,
+ * since keys x elements x steps can make compilation itself a denial of
+ * service; patterns left when it runs out are refused.
  */
 const REGEX_DIALECT_TOTAL_BUDGET_MS = 2000;
 
-/**
- * Upper bound on one pattern's {@link patternWeightedSize}, a count, so the
- * verdict is the same on every machine. See
- * docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect.
- */
-export const MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE = 1000;
+/** Why {@link patternRefusal} refused one pattern. */
+export type PatternRefusal =
+  { reason: "nonconformant" } | { reason: "size"; weightedSize: number };
+
+const NONCONFORMANT_PATTERN: PatternRefusal = Object.freeze({
+  reason: "nonconformant",
+});
 
 /**
- * The weighted size of in-dialect `pattern` when it exceeds
- * {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}, or `undefined` when it fits;
- * the one size check the terms gate and the step editor share. Throws on a
- * pattern outside the dialect.
+ * Why `pattern` is refused, or `undefined` when it compiles under the engine
+ * within {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}: the one check, from one
+ * compile, that the terms gate, the step editor, and the name-constraint class
+ * share. The engine's cache keeps only a pattern this admits.
  */
-export function transformPatternOverSizeCap(
-  pattern: string,
-): number | undefined {
-  const weightedSize = patternWeightedSize(pattern);
+export function patternRefusal(pattern: string): PatternRefusal | undefined {
+  const weightedSize = inDialectWeightedSize(pattern);
+  if (weightedSize === undefined) return NONCONFORMANT_PATTERN;
   return weightedSize > MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE
-    ? weightedSize
+    ? { reason: "size", weightedSize }
     : undefined;
 }
 
 /**
- * The size refusal both the terms gate and the step editor show for a pattern
- * of `weightedSize` over {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}.
+ * The pattern the name-constraint check compiles for an `allowedCharacters`
+ * class: the class anchored at both ends, with a leading `^` escaped to a
+ * literal caret, since as class negation it would invert the check, and a `-`
+ * right after it escaped too, so it is read as a literal rather than a range.
+ * Built in one place so the schema checks the pattern the check runs.
+ */
+export function allowedCharactersPattern(allowedCharacters: string): string {
+  let classBody = allowedCharacters;
+  if (allowedCharacters.startsWith("^-"))
+    classBody = `\\^\\-${allowedCharacters.slice(2)}`;
+  else if (allowedCharacters.startsWith("^"))
+    classBody = `\\^${allowedCharacters.slice(1)}`;
+  return `^[${classBody}]$`;
+}
+
+/**
+ * The size refusal the terms gate, the step editor, and the name-constraint
+ * class show for a pattern of `weightedSize` over
+ * {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}.
  */
 export function transformPatternSizeMessage(weightedSize: number): string {
   return (
@@ -131,6 +151,11 @@ interface RegexDialectBudget {
    * only), none is refused.
    */
   maxPatternLength?: number;
+  /**
+   * The `performance.now()` reading the budget runs from, so walks over one
+   * document share one budget; omitted, the walk's own start.
+   */
+  startedAt?: number;
 }
 
 /** Why {@link findTransformRegexRefusal} refused a terms set. */
@@ -176,7 +201,7 @@ export function findTransformRegexRefusal(
   const totalBudgetMs = budget.totalBudgetMs ?? REGEX_DIALECT_TOTAL_BUDGET_MS;
   const maxPatternLength = budget.maxPatternLength ?? Infinity;
   // Monotonic, so a backward system-clock step cannot leave the walk unbounded.
-  const startedAt = performance.now();
+  const startedAt = budget.startedAt ?? performance.now();
 
   for (const [keyIndex, key] of terms.linkageKeys.entries()) {
     for (const [elementIndex, element] of key.elements.entries()) {
@@ -191,16 +216,16 @@ export function findTransformRegexRefusal(
         if (performance.now() - startedAt >= totalBudgetMs)
           return NONCONFORMANT;
         if (source.length > maxPatternLength) return NONCONFORMANT;
-        if (!patternConformsToDialect(source)) return NONCONFORMANT;
-        const weightedSize = transformPatternOverSizeCap(source);
-        if (weightedSize !== undefined)
+        const refusal = patternRefusal(source);
+        if (refusal?.reason === "nonconformant") return NONCONFORMANT;
+        if (refusal?.reason === "size")
           return {
             reason: "size",
             keyIndex,
             elementIndex,
             stepIndex,
             paramKey,
-            weightedSize,
+            weightedSize: refusal.weightedSize,
           };
         // Read here rather than in the step schema: this walk bounds what
         // compiling a partner's pattern costs, and this compile is cached.
@@ -216,6 +241,54 @@ export function findTransformRegexRefusal(
           };
       }
     }
+  }
+  return undefined;
+}
+
+/** Optional overrides for {@link findNameClassRefusal}. */
+interface NameClassBudget extends Pick<
+  RegexDialectBudget,
+  "totalBudgetMs" | "startedAt"
+> {
+  /**
+   * Longest class compiled; a longer one is skipped, since the field's own
+   * length ceiling refuses it. The schema passes MAX_NAME_LENGTH; omitted
+   * (unit tests only), none is skipped.
+   */
+  maxClassLength?: number;
+}
+
+/**
+ * Why {@link findNameClassRefusal} refused the `allowedCharacters` class of
+ * `linkageFields[fieldIndex]`: a {@link PatternRefusal} of its built pattern,
+ * or `nonconformant` for a class left when the time budget ran out.
+ */
+export type NameClassRefusal = PatternRefusal & { fieldIndex: number };
+
+/**
+ * The first name field whose `allowedCharacters` class is refused, or
+ * `undefined`: its {@link allowedCharactersPattern} fails {@link
+ * patternRefusal}, or it is left when the time budget runs out. Passing the
+ * transform walk's `startedAt` puts both walks under one budget.
+ */
+export function findNameClassRefusal(
+  terms: Pick<LinkageTerms, "linkageFields">,
+  budget: NameClassBudget = {},
+): NameClassRefusal | undefined {
+  const totalBudgetMs = budget.totalBudgetMs ?? REGEX_DIALECT_TOTAL_BUDGET_MS;
+  const maxClassLength = budget.maxClassLength ?? Infinity;
+  const startedAt = budget.startedAt ?? performance.now();
+
+  for (const [fieldIndex, field] of terms.linkageFields.entries()) {
+    if (field.type !== "first_name" && field.type !== "last_name") continue;
+    const allowedCharacters = field.constraints?.allowedCharacters;
+    if (typeof allowedCharacters !== "string") continue;
+    if (allowedCharacters.length > maxClassLength) continue;
+
+    if (performance.now() - startedAt >= totalBudgetMs)
+      return { reason: "nonconformant", fieldIndex };
+    const refusal = patternRefusal(allowedCharactersPattern(allowedCharacters));
+    if (refusal !== undefined) return { ...refusal, fieldIndex };
   }
   return undefined;
 }

@@ -1,4 +1,5 @@
-import { expect, test, describe } from "vitest";
+import { RE2JS } from "re2js";
+import { expect, test, describe, vi } from "vitest";
 
 import {
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
@@ -11,6 +12,7 @@ import {
   MAX_TRANSFORM_PATTERN_LENGTH,
 } from "../../src/config/linkageTermsSchema";
 import { EMPTY_MATCHING_DELIMITER_FIELD_MESSAGE } from "../../src/config/transformRegexDialect";
+import { oversizedTransformPattern } from "../utils/oversizedPatterns";
 
 // --- Descriptor / registry parity --------------------------------------------
 
@@ -352,6 +354,25 @@ describe("param schemas", () => {
       expect(parsed.error?.issues[0].message).not.toBe(
         EMPTY_MATCHING_DELIMITER_FIELD_MESSAGE,
       );
+    });
+
+    // A refused pattern is not cached, so every compile of it is paid again:
+    // one validation reads the refusal once.
+    test("split_on compiles a delimiter over the size cap once and reports only the size issue", () => {
+      const compile = vi.spyOn(RE2JS, "compile");
+      try {
+        const parsed = schemaFor("split_on").safeParse({
+          delimiter: oversizedTransformPattern(),
+        });
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues).toHaveLength(1);
+        expect(parsed.error?.issues[0].message).toMatch(
+          /^is too large: its size is \d+/,
+        );
+        expect(compile).toHaveBeenCalledTimes(1);
+      } finally {
+        compile.mockRestore();
+      }
     });
 
     // The pattern schema rejects out-of-dialect syntax (backreferences, lookaround)

@@ -41,8 +41,9 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["test/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
-          // `--expose-gc` for the one suite that measures a heap delta
-          // (test/connection/binaryPackRetention.test.ts, which skips itself
+          // `--expose-gc` for the suites that measure a heap delta
+          // (test/connection/binaryPackRetention.test.ts and
+          // test/config/refusedPatternRetention.test.ts, which skip themselves
           // without a collector). It exposes `globalThis.gc` and changes no
           // collection behavior, so the rest of the project is unaffected.
           execArgv: ["--expose-gc"],

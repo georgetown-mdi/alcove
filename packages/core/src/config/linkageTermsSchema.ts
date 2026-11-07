@@ -8,14 +8,17 @@ import { camelizeKeys, MAX_NESTING_DEPTH } from "../utils/camelizeKeys.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
 import { droppedSettingIssues } from "./unreadKeys.js";
 import { boundedArray } from "../utils/boundedArray.js";
-import { patternConformsToDialect } from "../utils/linearRegex.js";
 import {
   emptyMatchingDelimiterMessage,
+  findNameClassRefusal,
   findTransformRegexRefusal,
   regexStepPatternParam,
   transformPatternSizeMessage,
 } from "./transformRegexDialect.js";
-import type { TransformRegexRefusal } from "./transformRegexDialect.js";
+import type {
+  NameClassRefusal,
+  TransformRegexRefusal,
+} from "./transformRegexDialect.js";
 import {
   transformParamAbsenceRefusals,
   transformParamTypeRefusals,
@@ -348,19 +351,11 @@ interface NameConstraints {
 }
 
 const NameConstraintsSchema: z.ZodType<NameConstraints> = z.object({
-  // Must compile as a class under the engine that runs it (re2js,
-  // valueConstraints.ts), a leading `^` escaped. An over-length value skips the
-  // compile and is refused by the ceiling alone
+  // The class is compiled by the document's regex walk (findNameClassRefusal,
+  // under the transform patterns' budget), which skips an over-length value
+  // and leaves it to this ceiling
   // (docs/spec/TRANSFORM_REGEX_DIALECT.md#name-constraint-character-class).
-  allowedCharacters: z
-    .string()
-    .check(maxCodeUnits(MAX_NAME_LENGTH))
-    .refine(
-      (val) =>
-        val.length > MAX_NAME_LENGTH || patternConformsToDialect(`[${val}]`),
-      { message: "allowed_characters must be a valid regex character class" },
-    )
-    .optional(),
+  allowedCharacters: z.string().check(maxCodeUnits(MAX_NAME_LENGTH)).optional(),
   affixesAllowed: z.boolean().optional(),
   exclude: ExcludeSchema.optional(),
 });
@@ -1248,13 +1243,23 @@ const linkageTermsSchema = (
         });
     })
     // Placed here so every parse path refuses a partner's transform regex
-    // before it runs: docs/spec/TRANSFORM_REGEX_DIALECT.md, "Transform-regex linear-time dialect".
+    // and name-constraint class before either runs, both walks under one
+    // budget: docs/spec/TRANSFORM_REGEX_DIALECT.md, "Transform-regex
+    // linear-time dialect" and "Name-constraint character class".
     .superRefine((terms, ctx) => {
+      const startedAt = performance.now();
       const refusal = findTransformRegexRefusal(terms, {
         maxPatternLength: MAX_TRANSFORM_PATTERN_LENGTH,
+        startedAt,
       });
       if (refusal !== undefined)
         ctx.addIssue(transformRegexIssue(refusal, options));
+      const classRefusal = findNameClassRefusal(terms, {
+        maxClassLength: MAX_NAME_LENGTH,
+        startedAt,
+      });
+      if (classRefusal !== undefined)
+        ctx.addIssue(nameClassIssue(classRefusal));
     })
     // The count-only shape, one refine per rule so a document breaking one
     // is located by its own issue path and answered by its own message. The
@@ -1315,6 +1320,27 @@ const linkageTermsSchema = (
           path: refusal.path,
         });
     });
+
+// Interpolates only a size, never partner text.
+function nameClassIssue(refusal: NameClassRefusal): {
+  code: "custom";
+  message: string;
+  path: (string | number)[];
+} {
+  return {
+    code: "custom",
+    message:
+      refusal.reason === "size"
+        ? `allowed_characters ${transformPatternSizeMessage(refusal.weightedSize)}`
+        : "allowed_characters must be a valid regex character class",
+    path: [
+      "linkageFields",
+      refusal.fieldIndex,
+      "constraints",
+      "allowedCharacters",
+    ],
+  };
+}
 
 // Interpolates only positions, counts, and fixed param names, never partner text.
 function transformRegexIssue(
