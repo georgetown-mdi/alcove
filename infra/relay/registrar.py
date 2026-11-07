@@ -78,17 +78,18 @@ MAX_REQUEST_LINE_BYTES = 4096
 # The request line and every header together.
 MAX_HEAD_BYTES = 8192
 # These bounds are arbitrary working values, raised on request.
-# A connection's TLS handshake and first request, and each later request on it,
-# must arrive whole within this long, however the bytes are spaced.
-REQUEST_DEADLINE_SECONDS = 15
+# A connection's PROXY header, on the front's port, its TLS handshake and its
+# one request must arrive whole within this long of its accept, however the
+# bytes are spaced. The connection is closed after its answer.
+REQUEST_DEADLINE_SECONDS = 3
 # Sending a response, once its request was read whole, has its own bound rather
 # than the request's remaining time: a write that committed is always answered.
-RESPONSE_DEADLINE_SECONDS = REQUEST_DEADLINE_SECONDS
+RESPONSE_DEADLINE_SECONDS = 15
 MAX_HANDLERS = 32
 # Past MAX_HANDLERS, up to this many connections are answered 503 under the
-# shorter deadline below; any more are closed unanswered.
+# deadline below; any more are closed unanswered.
 MAX_BUSY_ANSWERS = 8
-BUSY_DEADLINE_SECONDS = 5
+BUSY_DEADLINE_SECONDS = REQUEST_DEADLINE_SECONDS
 RETRY_AFTER_SECONDS = BUSY_DEADLINE_SECONDS
 BUSY_REFUSAL = "the registrar is answering as many requests as it can; try again in a few seconds"
 TABLE_FAILURE = (
@@ -140,7 +141,6 @@ TOKENLESS_ROWS_PER_CLIENT = (TOKENLESS_ENROLLMENTS_PER_WINDOW // TOKENLESS_ENROL
     TOKENLESS_LIFETIME_SECONDS // TOKENLESS_WINDOW_SECONDS
 )
 COUNTERS_WRITE_SECONDS = 10
-PROXY_HEADER_SECONDS = 5
 # The longest PROXY protocol version 1 header, its CRLF included.
 PROXY_HEADER_BYTES = 107
 PROXY_HEADER = re.compile(r"PROXY (TCP4|TCP6) (\S+) (\S+) ([0-9]{1,5}) ([0-9]{1,5})\r\n")
@@ -167,6 +167,7 @@ COUNTER_NAMES = (
     "rate_limit_refusals",
     "client_cap_refusals",
     "tokenless_ceiling_refusals",
+    "busy_refusals",
 )
 # The journal names a request's method only from this list.
 KNOWN_METHODS = frozenset(("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "TRACE", "CONNECT"))
@@ -469,9 +470,6 @@ class HeadLimitedReader:
         self.raw = raw
         self.head_left = MAX_HEAD_BYTES
 
-    def start_request(self):
-        self.head_left = MAX_HEAD_BYTES
-
     def readline(self, limit=-1):
         cap = self.head_left + 1
         line = self.raw.readline(cap if limit is None or limit < 0 else min(limit, cap))
@@ -493,27 +491,32 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = REQUEST_DEADLINE_SECONDS
 
-    def deadline_seconds(self):
+    @classmethod
+    def deadline_seconds(cls):
         return REQUEST_DEADLINE_SECONDS
 
-    def response_seconds(self):
+    @classmethod
+    def response_seconds(cls):
         return RESPONSE_DEADLINE_SECONDS
-
-    def arm_deadline(self):
-        self.connection.deadline = time.monotonic() + self.deadline_seconds()
-        self.connection.send_seconds = self.response_seconds()
-        self.connection.received = 0
 
     def setup(self):
         super().setup()
         self.rfile = HeadLimitedReader(self.rfile)
-        self.arm_deadline()
+        self.connection.send_seconds = self.response_seconds()
         # The listening socket defers the handshake, so a client that connects
-        # and never completes one holds this thread, not the accept loop.
+        # and never completes one holds this thread, not the accept loop. The
+        # connection's deadline was set at its accept.
         self.connection.do_handshake()
 
     def handle_one_request(self):
-        self.rfile.start_request()
+        try:
+            self.serve_request()
+        finally:
+            # One request a connection, so a slot is held for one deadline at
+            # most, whatever the request's Connection header asks.
+            self.close_connection = True
+
+    def serve_request(self):
         try:
             self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE_BYTES + 1)
             if len(self.raw_requestline) > MAX_REQUEST_LINE_BYTES:
@@ -523,17 +526,14 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
                 self.send_error(414)
                 return
             if not self.raw_requestline:
-                self.close_connection = True
                 return
             if not self.parse_request():
                 return
             self.dispatch()
             self.wfile.flush()
-            self.arm_deadline()
         except socket.timeout:
             if self.connection.received:
                 self.log_message("request timed out: it did not arrive whole within %d s", self.deadline_seconds())
-            self.close_connection = True
 
     def dispatch(self):
         handler = getattr(self, "do_" + self.command, None)
@@ -560,12 +560,11 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         # Every error the standard library answers itself -- a malformed or
         # oversized request line or header block -- is answered here, in JSON,
         # and with nothing from the request logged or echoed back.
-        self.close_connection = True
         try:
             reason = self.responses[code][0]
         except KeyError:
             reason = "error"
-        self.send_json(code, {"error": "the request is malformed: %s" % reason.lower()}, (("Connection", "close"),))
+        self.send_json(code, {"error": "the request is malformed: %s" % reason.lower()})
 
     def send_json(self, status, body, extra_headers=()):
         payload = (json.dumps(body) + "\n").encode("utf-8")
@@ -574,6 +573,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Connection", "close")
         for name, value in extra_headers:
             self.send_header(name, value)
         # A browser's script reads only the headers CORS lets it, and
@@ -585,19 +585,16 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(payload)
 
     def discard_body(self):
-        # A small body is read and discarded, so the next request on the
-        # connection starts where this one ends, and because closing a socket
-        # with unread data resets it and can lose the answer; any other body
-        # ends the connection unread. Returns the headers the answer carries.
+        # A small body is read and discarded before the answer, because
+        # closing a socket with unread data resets it and can lose the answer;
+        # any other body is left unread.
         length = stated_length(self.headers.get("Content-Length") or "0")
         if "Transfer-Encoding" not in self.headers and length is not None and length <= MAX_BODY_BYTES:
             self.rfile.read(length)
-            return ()
-        self.close_connection = True
-        return (("Connection", "close"),)
 
     def refuse(self, status, message, extra_headers=()):
-        self.send_json(status, {"error": message}, self.discard_body() + tuple(extra_headers))
+        self.discard_body()
+        self.send_json(status, {"error": message}, extra_headers)
 
     def credential(self):
         """TOKEN for the relay-owner token, or the Proof the header holds,
@@ -627,6 +624,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         now = int(time.time())
         if abs(now - proof.timestamp) <= PROOF_WINDOW_SECONDS:
             return True
+        self.discard_body()
         self.send_json(
             401,
             {
@@ -634,7 +632,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
                 "request again with ts near serverTime" % PROOF_WINDOW_SECONDS,
                 "serverTime": now,
             },
-            self.discard_body() + (("WWW-Authenticate", CHALLENGE),),
+            (("WWW-Authenticate", CHALLENGE),),
         )
         return False
 
@@ -660,20 +658,20 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return None
         return self.rfile.read(size)
 
-    def table_call(self, operation, extra_headers=()):
+    def table_call(self, operation):
         """operation()'s result; a refusal or a table failure is answered here
         and None returned. A failure's cause names the table's path, so it goes
         to the log only."""
         try:
             return operation()
         except relay_table.Refused as error:
-            self.send_json(409, {"error": str(error)}, extra_headers)
+            self.send_json(409, {"error": str(error)})
         except relay_table.TableError as error:
             sys.stderr.write("%s\n" % error)
-            self.send_json(500, {"error": TABLE_FAILURE}, extra_headers)
+            self.send_json(500, {"error": TABLE_FAILURE})
         return None
 
-    def write_table(self, operation, extra_headers=()):
+    def write_table(self, operation):
         def locked():
             # One write at a time from this process; SQLite's lock orders it
             # against the scripts and the sweep.
@@ -692,13 +690,9 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
                 self.server.table_lock.release()
 
         try:
-            return self.table_call(locked, extra_headers)
+            return self.table_call(locked)
         except TableBusy:
-            self.send_json(
-                503,
-                {"error": BUSY_REFUSAL},
-                tuple(extra_headers) + (("Retry-After", str(RETRY_AFTER_SECONDS)),),
-            )
+            self.send_json(503, {"error": BUSY_REFUSAL}, (("Retry-After", str(RETRY_AFTER_SECONDS)),))
             return None
 
     def proof_holds(self, exchange_id, proves_possession):
@@ -710,15 +704,14 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         # A browser's CORS preflight carries no Authorization header, so it is
         # answered without one and does nothing.
-        closing = self.discard_body()
+        self.discard_body()
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "POST, PUT, DELETE")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.send_header("Access-Control-Max-Age", "600")
         self.send_header("Content-Length", "0")
-        for name, value in closing:
-            self.send_header(name, value)
+        self.send_header("Connection", "close")
         self.end_headers()
 
     def target(self, verb):
@@ -928,11 +921,10 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return revocation
 
         if credential is TOKEN:
-            closing = self.discard_body()
-            revocation = self.write_table(lambda conn: forgetting(relay_table.revoke(conn, exchange_id)), closing)
+            self.discard_body()
+            revocation = self.write_table(lambda conn: forgetting(relay_table.revoke(conn, exchange_id)))
             authority = AUTHORITY_TOKEN
         else:
-            closing = ()
             raw = self.read_body(empty_when_unsized=True)
             if raw is None:
                 return
@@ -950,7 +942,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return
         message = relay_table.describe_revocation(revocation)
         sys.stderr.write(issuance_line({"exchange_id": exchange_id, "outcome": "revoked"}, authority, now))
-        self.send_json(200, {"message": message}, closing)
+        self.send_json(200, {"message": message})
 
     def refuse_method(self):
         if self.credential() is not None:
@@ -964,15 +956,16 @@ class BusyHandler(RegistrarHandler):
     never reads the request body: a busy slot is not held while a client
     sends one, so the connection closes with the body unread."""
 
-    def deadline_seconds(self):
+    @classmethod
+    def deadline_seconds(cls):
         return BUSY_DEADLINE_SECONDS
 
-    def response_seconds(self):
+    @classmethod
+    def response_seconds(cls):
         return BUSY_DEADLINE_SECONDS
 
     def dispatch(self):
-        self.close_connection = True
-        self.send_json(503, {"error": BUSY_REFUSAL}, (("Retry-After", str(RETRY_AFTER_SECONDS)), ("Connection", "close")))
+        self.send_json(503, {"error": BUSY_REFUSAL}, (("Retry-After", str(RETRY_AFTER_SECONDS)),))
 
 
 class RegistrarServer(http.server.ThreadingHTTPServer):
@@ -997,15 +990,19 @@ class RegistrarServer(http.server.ThreadingHTTPServer):
         super().__init__(address, handler_class)
 
     def process_request(self, request, client_address):
+        accepted = time.monotonic()
         if self.handler_slots.acquire(blocking=False):
             slot, handler_class = self.handler_slots, self.RequestHandlerClass
         elif self.busy_slots.acquire(blocking=False):
+            self.counters.add("busy_refusals")
             slot, handler_class = self.busy_slots, BusyHandler
         else:
+            self.counters.add("busy_refusals")
             self.shutdown_request(request)
             return
+        deadline = accepted + handler_class.deadline_seconds()
         thread = threading.Thread(
-            target=self.serve_connection, args=(request, client_address, handler_class, slot), daemon=True
+            target=self.serve_connection, args=(request, client_address, handler_class, slot, deadline), daemon=True
         )
         try:
             thread.start()
@@ -1013,11 +1010,12 @@ class RegistrarServer(http.server.ThreadingHTTPServer):
             slot.release()
             self.shutdown_request(request)
 
-    def serve_connection(self, request, client_address, handler_class, slot):
+    def serve_connection(self, request, client_address, handler_class, slot, deadline):
         try:
             if self.tls is not None:
-                client_address = (read_proxy_header(request, time.monotonic() + PROXY_HEADER_SECONDS), 0)
+                client_address = (read_proxy_header(request, deadline), 0)
                 request = self.tls.wrap_socket(request, server_side=True, do_handshake_on_connect=False)
+            request.deadline = deadline
             handler_class(request, client_address, self)
         except Exception:
             self.handle_error(request, client_address)

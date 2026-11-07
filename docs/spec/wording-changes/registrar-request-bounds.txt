@@ -1,0 +1,7 @@
+- - -> **Connections.**
+- - -> The registrar answers one request on a connection, each answer holding `Connection: close`, and closes the connection after it.
+- - -> A connection's request must arrive whole within a few seconds of the registrar accepting it ([infra/relay/README.md](../../infra/relay/README.md#the-registrar), Bounds on a connection).
+- - -> No address's connections are bounded, so one address opening about 13 connections a second can still hold every connection slot the registrar has (arithmetic from its bounds, not measured), and while it does every other caller is answered 503 or closed unanswered.
+- - -> **Any page can spend an address's limits.**
+- - -> The registrar does not check a request's `Origin`, and its CORS answers allow every origin, so any page a browser on a network loads can send enrollments without a token from that network's address.
+- - -> They count against that address's rate limit and its cap, and its own enrollments can then be refused 429 until the window ends or the rows lapse.
