@@ -31,6 +31,7 @@ import type {
   PsiProgress,
   ResolvedMatching,
 } from "@alcove/core";
+import type { ExchangeErrorCategory } from "@alcove/cli-contract";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 const log = getLogger("exchangeLifecycle");
@@ -96,28 +97,7 @@ export interface StageDefinition {
   state: ProcessState;
 }
 
-/** Which half of the lifecycle a failure came from, so the UI can choose its
- * alert. `"exchange"` (acquire/open/run) invites a re-run. `"output"` means
- * the exchange already succeeded and only local results-file generation
- * failed -- never re-run. `"security"` is the trust-boundary subset of an
- * exchange failure: the authenticated key exchange (or the AEAD layer over
- * the exchange) reported a wrong secret, tamper, or replay, so the UI shows it
- * as an authentication failure rather than a retryable transport drop.
- * `"config"` is an {@link OperatorConfigError} raised in the PREPARE phase
- * (inside `acquire`, before any peer connection), whose message names only
- * this party's own configuration -- not a transport drop, so retrying as-is
- * fails identically and the message is safe to show. Scoped to that type
- * only: a sibling prepare-phase `UsageError` whose message can embed
- * partner-influenced values (e.g. the accept side's disclosure check) stays
- * the generic `"exchange"`.
- *
- * {@link LinkageTermsUnsatisfiableError} also classifies `"config"`, for the
- * no-retry affordance rather than the message: it is a deterministic
- * pre-connection refusal whose message names the agreed terms' own key and
- * field names, partner-authored on every accept path, so the alert builder
- * supplies fixed copy instead of rendering it. */
-export type ExchangeErrorCategory =
-  "exchange" | "output" | "security" | "config";
+export type { ExchangeErrorCategory } from "@alcove/cli-contract";
 
 /** Maps a lifecycle failure to the {@link ExchangeErrorCategory} the UI
  * shows, for the given `phase`. A trust-boundary failure
@@ -133,9 +113,17 @@ export type ExchangeErrorCategory =
  * run's certificate/terms refusal -- falls through to `"exchange"` instead,
  * since its message is not guaranteed to be local-only there. The CLI's
  * `classifyTerminalError` drops the phase, since its category has to agree
- * with an exit code this alert has no counterpart for. See {@link
- * ExchangeErrorCategory} for what each category means and for {@link
- * LinkageTermsUnsatisfiableError}'s membership. */
+ * with an exit code this alert has no counterpart for. In the alert,
+ * `"exchange"` invites a re-run, `"output"` (the exchange succeeded, only
+ * local results-file generation failed) never does, `"security"` shows as an
+ * authentication failure, and `"config"` shows the message, which names only
+ * this party's own configuration; a sibling prepare-phase `UsageError`, whose
+ * message can embed partner-influenced values (e.g. the accept side's
+ * disclosure check), stays `"exchange"`. {@link
+ * LinkageTermsUnsatisfiableError} also classifies `"config"`, for the no-retry
+ * affordance only: its message names the agreed terms' key and field names,
+ * partner-authored on every accept path, so the alert builder supplies fixed
+ * copy instead of rendering it. */
 function classifyExchangeFailure(
   error: unknown,
   phase: "prepare" | "run",

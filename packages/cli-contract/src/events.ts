@@ -58,8 +58,11 @@ export function isEventType(type: unknown): type is EventType {
 }
 
 /**
- * The terminal-error categories, the same as the web app's
- * `ExchangeErrorCategory`. See docs/spec/CLI_EVENTS.md#error-categories.
+ * The terminal-error categories, shared by the CLI's `error` event and the web
+ * app's run lifecycle, so a UI can choose its alert from either. What each
+ * category means, and the CLI's classification rules:
+ * docs/spec/CLI_EVENTS.md#error-categories. The web app's rules sit on its
+ * classifier in apps/web/src/psi/exchangeLifecycle.ts.
  */
 export type ExchangeErrorCategory =
   "exchange" | "output" | "security" | "config";

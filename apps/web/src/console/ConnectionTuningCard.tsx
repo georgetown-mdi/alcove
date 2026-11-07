@@ -19,8 +19,7 @@ import {
   CONNECTION_TUNING_HEADING,
   DURATION_FIELD_UNITS,
   IGNORE_FILES_OLDER_THAN_LABEL,
-  PEER_TIMEOUT_LABEL,
-  TUNING_DEFAULT_MS,
+  TIMEOUT_FIELD_ROWS,
   connectionTuningAdvisories,
   connectionTuningProblems,
   connectionTuningSummary,
@@ -28,10 +27,8 @@ import {
   durationUnitChoices,
   holdsExchangeFolder,
   ignoreFilesOlderThanDefaultMs,
-  inactivityTimeoutDescription,
-  inactivityTimeoutPlaceholder,
-  peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
+  timeoutFieldPlaceholder,
 } from "./connectionTuningModel";
 
 import type {
@@ -169,35 +166,20 @@ export function ConnectionTuningCard({
           />
         )}
 
-        <DurationRow
-          label={PEER_TIMEOUT_LABEL}
-          description="How long this side waits for the other to start its half before it gives up."
-          units={DURATION_FIELD_UNITS.peerTimeout}
-          defaultMs={peerTimeoutDefaultMs(capabilities)}
-          value={draft.peerTimeout}
-          onChange={(next) => set("peerTimeout", next)}
-        />
-
-        <DurationRow
-          label="How long your partner may go quiet"
-          description={inactivityTimeoutDescription(capabilities)}
-          units={DURATION_FIELD_UNITS.inactivityTimeout}
-          defaultMs={TUNING_DEFAULT_MS.inactivityTimeout}
-          placeholder={(unit) =>
-            inactivityTimeoutPlaceholder(capabilities, unit)
-          }
-          value={draft.inactivityTimeout}
-          onChange={(next) => set("inactivityTimeout", next)}
-        />
-
-        <DurationRow
-          label="How long to wait for each connection attempt"
-          description="How long one attempt to reach the server may take before it counts as failed. Applies to each attempt, not to all of them together."
-          units={DURATION_FIELD_UNITS.serverConnectTimeout}
-          defaultMs={TUNING_DEFAULT_MS.serverConnectTimeout}
-          value={draft.serverConnectTimeout}
-          onChange={(next) => set("serverConnectTimeout", next)}
-        />
+        {TIMEOUT_FIELD_ROWS.map((row) => (
+          <DurationRow
+            key={row.field}
+            label={row.label}
+            description={row.description(capabilities)}
+            units={row.units}
+            defaultMs={row.defaultMs(capabilities)}
+            placeholder={(unit) =>
+              timeoutFieldPlaceholder(row, capabilities, unit)
+            }
+            value={draft[row.field]}
+            onChange={(next) => set(row.field, next)}
+          />
+        ))}
 
         <TextInput
           label="How many times to retry a failed connection"

@@ -282,7 +282,7 @@ Two limits of the causes the CLI tags: a read-only file at the folder path is no
 
 ## Error categories
 
-The four categories are the web front end's `ExchangeErrorCategory` vocabulary (`apps/web/src/psi/exchangeLifecycle.ts`), so a consumer reads one set of names across both. The CLI's error taxonomy -- the core `UsageError`/`OperatorConfigError` hierarchy, the `InternalConsistencyError` and `ProtocolRefusalError` classes beside it, the `ConnectionError` kinds, and the command boundaries' 64/65/69/70/73/76/77 exit split -- maps onto them as follows:
+The four categories are one `ExchangeErrorCategory` type (`packages/cli-contract/src/events.ts`), which the web front end's run lifecycle re-exports, so a consumer reads one set of names across both. The CLI's error taxonomy -- the core `UsageError`/`OperatorConfigError` hierarchy, the `InternalConsistencyError` and `ProtocolRefusalError` classes beside it, the `ConnectionError` kinds, and the command boundaries' 64/65/69/70/73/76/77 exit split -- maps onto them as follows:
 
 | Category | Meaning | Classification rule |
 | -------- | ------- | ------------------- |

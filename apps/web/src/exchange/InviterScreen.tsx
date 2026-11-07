@@ -1464,7 +1464,7 @@ export function InviterScreen() {
             title: "Your changes were not saved to alcove.yaml",
             message:
               saved.kind === "refused"
-                ? saved.error
+                ? sanitizeForDisplay(saved.error)
                 : CONFIGURATION_SAVE_UNAVAILABLE,
             ...(saved.kind === "refused" && saved.changedSinceOpened === true
               ? { reopensConfiguration: true as const }

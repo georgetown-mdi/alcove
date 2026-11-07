@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Alert, Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
 
+import { sanitizeForDisplay } from "@alcove/core";
+
 import styles from "@styles/app.module.css";
 
 import {
@@ -131,7 +133,7 @@ export function SftpConnectionCard({
           <Text size="sm">
             {ready ? "Runs through " : "Set up on this machine, through "}
             <span className={styles.mono}>
-              {sftpConnectionLabel(connection)}
+              {sanitizeForDisplay(sftpConnectionLabel(connection))}
             </span>
             {ready ? ", set up on this machine." : "."}
           </Text>

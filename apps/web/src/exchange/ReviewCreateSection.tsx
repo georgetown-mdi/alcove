@@ -803,7 +803,7 @@ export function ReviewCreateSection({
                 ? CONFIGURATION_ALREADY_SAVED
                 : CONFIGURATION_SAVED
               : configurationSave?.status === "failed"
-                ? configurationSave.message
+                ? sanitizeForDisplay(configurationSave.message)
                 : ""}
           </p>
           {configurationSave?.status === "failed" &&
