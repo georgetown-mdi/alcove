@@ -10,6 +10,7 @@ import {
   linkViaSinglePassPSI,
 } from "../psi/link.js";
 import { connectionEndReader } from "../connection/messageConnection.js";
+import { partnerStepWaitMs } from "../connection/partnerStepWait.js";
 import { InternalConsistencyError } from "../errors.js";
 import { runsSinglePassLink } from "../linkageTermsPolicy.js";
 import { linkageRounds, roundMatchedKeyName } from "../linkageKeyCondition.js";
@@ -59,6 +60,8 @@ export async function runPsiPhase(p: {
   roundsSentInParts: boolean;
   localReceiveCeiling: number;
   partnerReceiveCeiling: number;
+  localValueSlots: number;
+  partnerValueSlots: number;
   linkageKeyIterables: StandardizedKeyIterable[];
   linkageTerms: LinkageTerms;
   partnerTerms: LinkageTerms;
@@ -89,6 +92,8 @@ export async function runPsiPhase(p: {
     roundsSentInParts,
     localReceiveCeiling,
     partnerReceiveCeiling,
+    localValueSlots,
+    partnerValueSlots,
     linkageKeyIterables,
     linkageTerms,
     partnerTerms,
@@ -111,6 +116,17 @@ export async function runPsiPhase(p: {
       "the matching key of each pair was asked for on a run that does not " +
         "count its own rounds",
     );
+
+  // Each party waits in silence through the partner's steps, which the agreed
+  // sizes bound; a transport on its own default waits that long.
+  conn.raiseInactivityTimeout?.(
+    partnerStepWaitMs({
+      localValueSlots,
+      partnerValueSlots,
+      localReceiveCeiling,
+      partnerReceiveCeiling,
+    }),
+  );
 
   // A count-only run takes its own rounds whichever strategy its terms declare
   // (docs/spec/PROTOCOL.md, PSI-C). Otherwise single-pass is allowlisted, and

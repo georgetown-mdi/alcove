@@ -29,7 +29,8 @@ import type { WebRtcPathFailure } from "./relayFallback";
  * Parked-receive inactivity budget for the WebRTC transport. Hour-scale: the
  * timer arms only while a receive waits on an empty queue, so it bounds the
  * peer's per-step single-threaded WASM compute time (no keepalive while
- * running), and thus the workable dataset size. A transport-local constant by
+ * running). The exchange raises it once the agreed sizes are known
+ * (`MessageConnection.raiseInactivityTimeout`). A transport-local constant by
  * design, not core's file-sync `DEFAULT_PEER_TIMEOUT_MS`: the two govern
  * unrelated transports and only coincide in value today.
  */
@@ -196,6 +197,7 @@ export async function openPeerMessageConnection(
       byteCapacity: options?.byteCapacity ?? BROWSER_QUEUE_BYTE_CAPACITY,
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
+      inactivityTimeoutRaisable: options?.inactivityTimeoutMs === undefined,
     },
   );
   try {

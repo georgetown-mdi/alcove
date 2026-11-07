@@ -60,7 +60,9 @@ import type { RTCDataChannel } from "werift";
  * Parked-receive inactivity budget, matching the web WebRTC transport's.
  * Hour-scale because the timer arms only while a receive waits on an empty
  * queue, so it bounds the peer's per-step single-threaded PSI compute -- which
- * sends no keepalive while it runs -- and thus the workable dataset size.
+ * sends no keepalive while it runs. Where no `inactivity_timeout_ms` is set the
+ * exchange raises it once the agreed sizes are known
+ * (`MessageConnection.raiseInactivityTimeout`).
  *
  * By design a transport-local constant rather than core's file-sync
  * `DEFAULT_PEER_TIMEOUT_MS`: the two govern unrelated transports and only
@@ -403,6 +405,7 @@ export function webRtcMessageConnection(
       byteCapacity: options?.inboundQueueByteCapacity,
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
+      inactivityTimeoutRaisable: options?.inactivityTimeoutMs === undefined,
       inactivityHint: inactivityTimeoutGuidance,
       inactivityTimeoutSetting: INACTIVITY_TIMEOUT_KEY,
     },

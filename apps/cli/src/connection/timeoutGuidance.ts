@@ -3,6 +3,7 @@
 // overrides.
 
 import { INACTIVITY_TIMEOUT_KEY } from "@alcove/core";
+import type { InactivityLimitSource } from "@alcove/core";
 
 /** The flag that sets {@link INACTIVITY_TIMEOUT_KEY} for one run. */
 export const INACTIVITY_TIMEOUT_FLAG = "--inactivity-timeout";
@@ -17,11 +18,25 @@ export const raiseInactivityLimit = (limitNamed: boolean): string =>
   "connection.options in the configuration";
 
 /**
- * Appended to a failure where a present partner, or the server between the
- * parties, stopped answering within the time inactivity_timeout_ms allows.
+ * What to set for a slow partner when the wait came from the record counts
+ * rather than the setting: a set value is used as given in place of that wait.
  */
-export const inactivityTimeoutGuidance = (limitNamed: boolean): string =>
-  `If the partner or server is only slow, ${raiseInactivityLimit(limitNamed)}`;
+const setInactivityLimit =
+  `run again with an ${INACTIVITY_TIMEOUT_FLAG} longer than that wait, or ` +
+  `set ${INACTIVITY_TIMEOUT_KEY} to a longer wait under connection.options ` +
+  "in the configuration";
+
+/**
+ * Appended to a failure where a present partner, or the server between the
+ * parties, stopped answering within the time the connection allows.
+ */
+export const inactivityTimeoutGuidance = (
+  limit: InactivityLimitSource,
+): string =>
+  "If the partner or server is only slow, " +
+  (limit === "record counts"
+    ? setInactivityLimit
+    : raiseInactivityLimit(limit === "setting"));
 
 /** The guidance for a message whose limit clause names the setting. */
-export const INACTIVITY_TIMEOUT_GUIDANCE = inactivityTimeoutGuidance(true);
+export const INACTIVITY_TIMEOUT_GUIDANCE = inactivityTimeoutGuidance("setting");

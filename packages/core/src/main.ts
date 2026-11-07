@@ -148,7 +148,10 @@ export {
   QueuedMessageConnection,
   fromEventConnection,
 } from "./connection/messageConnection";
-export type { MessageConnection } from "./connection/messageConnection";
+export type {
+  InactivityLimitSource,
+  MessageConnection,
+} from "./connection/messageConnection";
 export { EncryptedMessageConnection } from "./connection/encryptedMessageConnection";
 // The transport-agnostic half of the WebRTC data-channel inbound bound. Published
 // because the enforcement point is per-transport and lives outside this package
@@ -171,6 +174,11 @@ export {
   BROWSER_PSI_SET_MAX_ELEMENTS,
   MAX_PSI_DECODE_ELEMENTS,
 } from "./connection/frameSize";
+// The parked-receive budget an exchange raises its WebRTC or relay connection
+// to once the sizes are agreed. Published for tests outside core: the
+// WebSocket relay's tests hold its idle bound to the budget at the browser's
+// ceiling, and the transports' tests raise to it.
+export { partnerStepWaitMs } from "./connection/partnerStepWait";
 // The measured memory an inbound frame takes, which the CLI weighs against the
 // memory its process has before each read and each hand-off to the PSI worker.
 export {

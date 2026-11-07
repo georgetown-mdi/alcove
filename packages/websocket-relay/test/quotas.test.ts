@@ -4,10 +4,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import WebSocket from "ws";
 
-import { DEFAULT_WEBRTC_PEER_TIMEOUT_MS } from "@alcove/core";
+import {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
+  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
+  partnerStepWaitMs,
+} from "@alcove/core";
 
 import {
   PAIRED_FRAME,
+  RELAY_CLOSE_WAIT_MS,
   RELAY_IDLE_TIMEOUT_MS,
   RELAY_LONE_PAIRING_TIMEOUT_MS,
   RELAY_MAX_PAIRINGS,
@@ -282,6 +287,17 @@ describe("the per-pairing byte rate", () => {
 });
 
 describe("the idle bound", () => {
+  it("is a party's parked-receive budget at the browser's ceiling a side plus the close drain", () => {
+    expect(RELAY_IDLE_TIMEOUT_MS).toBe(
+      partnerStepWaitMs({
+        localValueSlots: BROWSER_PSI_SET_MAX_ELEMENTS,
+        partnerValueSlots: BROWSER_PSI_SET_MAX_ELEMENTS,
+        localReceiveCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
+        partnerReceiveCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
+      }) + RELAY_CLOSE_WAIT_MS,
+    );
+  });
+
   it("closes both sockets of a pairing no message has crossed within the bound", async () => {
     const { url } = await relay({
       testing: { idleTimeoutMs: 300, pingIntervalMs: 50 },

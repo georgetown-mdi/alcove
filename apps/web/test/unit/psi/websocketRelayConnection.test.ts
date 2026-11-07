@@ -688,6 +688,28 @@ describe("the inbound path", () => {
     expect(socket.closedWith).toBe(4000);
   });
 
+  test("a receive at the default budget waits the budget the exchange raises it to", async () => {
+    const { socket, mc } = await openStarted();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      mc.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
+      const received = mc.receive();
+      await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000 - 1);
+      for (const datagram of partnerFrames("late")) socket.fromRelay(datagram);
+      await expect(received).resolves.toBe("late");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a budget given at open is not raised", async () => {
+    const { mc } = await openStarted({ inactivityTimeoutMs: 30 });
+    mc.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
+    await expect(mc.receive()).rejects.toMatchObject({
+      message: expect.stringMatching(/no message arrived within 30 ms/),
+    });
+  });
+
   test("the partner's sentinel drains its final frame and closes cleanly", async () => {
     const { socket, mc } = await openStarted();
     for (const datagram of partnerFrames("final")) socket.fromRelay(datagram);

@@ -32,7 +32,7 @@ afterEach(async () => {
 test("the guidance names the setting only when the message does not", () => {
   expect(INACTIVITY_TIMEOUT_GUIDANCE).not.toContain(INACTIVITY_TIMEOUT_KEY);
   expect(INACTIVITY_TIMEOUT_GUIDANCE).toContain("raise that limit");
-  expect(inactivityTimeoutGuidance(false)).toContain(
+  expect(inactivityTimeoutGuidance("unnamed")).toContain(
     `raise ${INACTIVITY_TIMEOUT_KEY} under connection.options`,
   );
 });
@@ -40,11 +40,20 @@ test("the guidance names the setting only when the message does not", () => {
 test("the guidance names the flag alongside the setting", () => {
   for (const guidance of [
     INACTIVITY_TIMEOUT_GUIDANCE,
-    inactivityTimeoutGuidance(false),
+    inactivityTimeoutGuidance("unnamed"),
   ])
     expect(guidance).toContain(
       "run again with a longer --inactivity-timeout, or raise",
     );
+});
+
+test("a wait set from the record counts is replaced by a longer set value, not raised", () => {
+  expect(inactivityTimeoutGuidance("record counts")).toBe(
+    "If the partner or server is only slow, run again with an " +
+      "--inactivity-timeout longer than that wait, or set " +
+      `${INACTIVITY_TIMEOUT_KEY} to a longer wait under connection.options ` +
+      "in the configuration",
+  );
 });
 
 test("the flag the guidance names is the one that sets the setting", () => {

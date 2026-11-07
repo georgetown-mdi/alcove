@@ -38,6 +38,7 @@ import {
 } from "../../src/connection/messageConnection";
 
 import type {
+  InactivityLimitSource,
   MessageConnection,
   TransportControls,
 } from "../../src/connection/messageConnection";
@@ -960,12 +961,12 @@ test("a shorter per-receive override does not attribute its wait to the setting"
 });
 
 test("a function hint is told whether the message names the setting", async () => {
-  const limitNamed: boolean[] = [];
+  const limitNamed: InactivityLimitSource[] = [];
   const options = {
     inactivityTimeoutMs: 20,
     inactivityTimeoutSetting: "inactivity_timeout_ms",
-    inactivityHint: (named: boolean) => {
-      limitNamed.push(named);
+    inactivityHint: (limit: InactivityLimitSource) => {
+      limitNamed.push(limit);
       return "hint";
     },
   };
@@ -982,7 +983,7 @@ test("a function hint is told whether the message names the setting", async () =
     }).receive(20),
     "transport",
   );
-  expect(limitNamed).toEqual([true, false]);
+  expect(limitNamed).toEqual(["setting", "unnamed"]);
 });
 
 test("receive(timeoutMs) bounds a connection that has no inactivity default", async () => {

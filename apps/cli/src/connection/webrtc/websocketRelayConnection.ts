@@ -1006,6 +1006,7 @@ function relayMessageConnection(
     {
       inactivityTimeoutMs:
         options.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
+      inactivityTimeoutRaisable: options.inactivityTimeoutMs === undefined,
       inactivityHint: inactivityTimeoutGuidance,
       inactivityTimeoutSetting: INACTIVITY_TIMEOUT_KEY,
     },

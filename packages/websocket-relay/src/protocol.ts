@@ -152,10 +152,12 @@ export const RELAY_PAIRING_BURST_BYTES = 2_000_000;
 
 /**
  * How long (ms) a pairing may pass no message either way before the relay
- * closes it: the one-hour parked-receive budget plus the five-minute close
- * drain budget, so a party's own budget expires first.
+ * closes it: the parked-receive budget of an exchange at the browser's receive
+ * ceiling a side (core's `partnerStepWaitMs`, 8,439,400 ms) plus the
+ * five-minute close drain budget, so at those sizes and below a party's own
+ * budget expires first.
  */
-export const RELAY_IDLE_TIMEOUT_MS = 3_900_000;
+export const RELAY_IDLE_TIMEOUT_MS = 8_739_400;
 
 /**
  * How long (ms) a pairing may wait for its second party, counted from its

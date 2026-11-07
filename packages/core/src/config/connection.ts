@@ -783,9 +783,12 @@ interface SharedOptions {
   peerTimeoutMs?: number;
   /**
    * Milliseconds a partner present past the rendezvous may send nothing, and a
-   * single transport operation may go unanswered, before the exchange fails;
-   * default 3600000. Armed afresh for each wait, so it bounds silence rather
-   * than the exchange's duration. Must be a positive integer: a zero would fire
+   * single transport operation may go unanswered, before the exchange fails.
+   * Unset, 3600000 on the file-sync channels; on `webrtc` the exchange sets the
+   * wait from the two parties' record counts, at least 3600000
+   * (`partnerStepWaitMs`), and a set value is used exactly in its place. Armed
+   * afresh for each wait, so it bounds silence rather than the exchange's
+   * duration. Must be a positive integer: a zero would fire
    * every wait at once and disable the liveness control. At most
    * {@link MAX_TIMEOUT_SECONDS} seconds.
    */

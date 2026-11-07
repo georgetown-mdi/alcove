@@ -764,6 +764,10 @@ export class EncryptedMessageConnection implements MessageConnection {
     this.inner.holdInboundQueueBytes?.(minBytes);
   }
 
+  raiseInactivityTimeout(minMs: number): void {
+    this.inner.raiseInactivityTimeout?.(minMs);
+  }
+
   outboundWebRtcFrameBound(): number | undefined {
     return this.inner.outboundWebRtcFrameBound?.();
   }
