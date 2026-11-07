@@ -1,0 +1,56 @@
+name: Main Target Guard
+
+# Fails a pull request into `main` unless its head is this repository's own
+# `staging` branch. `main` moves only by promotion, a fast-forward onto a
+# `staging` commit (docs/RELEASES.md), so any other pull request into it is
+# opened in error and must be closed, never merged. The case seen in practice is
+# a Dependabot security update, which opens against the default branch whatever
+# `target-branch` in dependabot.yml says; the handling is the runbook section
+# "A security update opened against main" in docs/RELEASES.md. A release pull
+# request goes into `staging`, and an older-line hotfix never reaches `main`, so
+# no other head passes.
+#
+# The head repository is compared as well as the branch name: a fork's branch
+# named `staging` is not this repository's.
+#
+# The job checks out nothing and runs no repository code: the decision is made
+# from the event's head branch and head repository alone, passed through `env`
+# so the attacker-chosen branch name never reaches the shell as text. The
+# `edited` type re-runs the check when a pull request's base is changed to
+# `main`. This workflow is not a required check (GATING_WORKFLOWS in
+# scripts/check-merge-gate-identities.mjs), so a red result informs the merger
+# and does not block the merge itself. scripts/main-target-guard.test.mjs runs
+# the step below under bash for each kind of head.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize]
+
+# Cancel a superseded run when a newer event lands on the same PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Read-only: the job uses no token scope.
+permissions:
+  contents: read
+
+jobs:
+  promotion-only:
+    name: Main Target Guard
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Require a promotion
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REPO" = "$BASE_REPO" ] && [ "$HEAD_REF" = "staging" ]; then
+            echo "Promotion of staging into main."
+            exit 0
+          fi
+          echo "::error::Only a promotion of staging may target main. Close this pull request unmerged; see docs/RELEASES.md, section A security update opened against main."
+          exit 1

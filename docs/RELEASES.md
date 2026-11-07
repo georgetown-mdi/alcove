@@ -166,6 +166,8 @@ Every ecosystem block in `.github/dependabot.yml` sets `target-branch: staging`,
 
 When something built or assessed from the default branch needs the fix sooner, promote `staging` once it holds the fix.
 
+The Main Target Guard check (`.github/workflows/main_target_guard.yaml`) fails any pull request into `main` whose head is not this repository's `staging` branch, so such a pull request shows red; it is not a required check.
+
 ## Release Checklist
 
 Work through these steps for every release. Steps marked with `[CI]` are automated; the remainder require a maintainer.
