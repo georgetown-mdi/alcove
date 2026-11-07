@@ -27,6 +27,8 @@
 //     exact, collision-free set.
 
 import { compileLinearRegex } from "./utils/linearRegex.js";
+import type { CompiledLinearRegex } from "./utils/linearRegex.js";
+import { MAX_LINKAGE_ENTRIES } from "./config/linkageTermsBounds.js";
 import {
   allowedCharactersPattern,
   patternRefusal,
@@ -96,10 +98,10 @@ interface ConstraintViolation {
  * transform-regex paths use ({@link compileLinearRegex}, re2js), so no partner
  * pattern reaches the backtracking native engine. A pattern {@link
  * patternRefusal} refuses is treated as uncheckable (no violation,
- * fail-open), and is compiled again on each call since a refused pattern is
- * not cached; the schema applies the same check to the same
- * pattern, so that path is unreachable for a class that passed terms
- * validation.
+ * fail-open). The schema refuses the same pattern at parse, but a caller may
+ * pass terms that never went through the parse, so each class's verdict,
+ * refused or compiled, is cached by {@link allowedCharactersMatcher}: a class
+ * is checked and compiled once however many values the check sees.
  *
  * (2) Warning suppression, three sub-cases:
  *   - A breakout that injects a multi-character span or an empty-matchable
@@ -121,11 +123,36 @@ interface ConstraintViolation {
  * character must be in the class). The empty string trivially conforms.
  */
 function withinAllowedCharacters(value: string, allowed: string): boolean {
-  const pattern = allowedCharactersPattern(allowed);
-  if (patternRefusal(pattern) !== undefined) return true;
-  const oneOf = compileLinearRegex(pattern);
+  const oneOf = allowedCharactersMatcher(allowed);
+  if (oneOf === null) return true;
   for (const character of value) if (!oneOf.matches(character)) return false;
   return true;
+}
+
+/** Upper bound on distinct classes held in {@link allowedCharactersMatchers};
+ * on overflow the oldest entry is evicted. One terms set declares at most
+ * {@link MAX_LINKAGE_ENTRIES} fields, so every class of one terms set fits. */
+const ALLOWED_CHARACTERS_CACHE_MAX = MAX_LINKAGE_ENTRIES;
+
+/** Each `allowedCharacters` class's compiled matcher, or `null` for a class
+ * {@link patternRefusal} refuses, keyed by the class text. */
+const allowedCharactersMatchers = new Map<string, CompiledLinearRegex | null>();
+
+/** The compiled matcher for an `allowedCharacters` class, or `null` when its
+ * pattern is refused. The refusal check and the compile run once per class;
+ * a refused class is cached as `null`, so it is never compiled again. */
+function allowedCharactersMatcher(allowed: string): CompiledLinearRegex | null {
+  const cached = allowedCharactersMatchers.get(allowed);
+  if (cached !== undefined) return cached;
+  const pattern = allowedCharactersPattern(allowed);
+  const matcher =
+    patternRefusal(pattern) === undefined ? compileLinearRegex(pattern) : null;
+  if (allowedCharactersMatchers.size >= ALLOWED_CHARACTERS_CACHE_MAX) {
+    const oldest = allowedCharactersMatchers.keys().next().value;
+    if (oldest !== undefined) allowedCharactersMatchers.delete(oldest);
+  }
+  allowedCharactersMatchers.set(allowed, matcher);
+  return matcher;
 }
 
 /** Whether a standardized value is a valid calendar date in canonical YYYYMMDD

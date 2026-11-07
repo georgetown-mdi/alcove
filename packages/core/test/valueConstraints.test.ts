@@ -1,4 +1,14 @@
-import { expect, test, describe } from "vitest";
+import { expect, test, describe, vi } from "vitest";
+
+vi.mock("../src/utils/linearRegex", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/utils/linearRegex")>();
+  return {
+    ...actual,
+    compileLinearRegex: vi.fn(actual.compileLinearRegex),
+    inDialectWeightedSize: vi.fn(actual.inDialectWeightedSize),
+  };
+});
 
 import {
   checkValueConstraints,
@@ -15,6 +25,10 @@ import {
   allowedCharactersPattern,
   patternRefusal,
 } from "../src/config/transformRegexDialect";
+import {
+  compileLinearRegex,
+  inDialectWeightedSize,
+} from "../src/utils/linearRegex";
 import {
   CLOSED_CLASS_COUNTED_REPEATS,
   ESCAPED_CARET_COUNTED_REPEATS,
@@ -401,6 +415,58 @@ describe("checkValueConstraints", () => {
       constraints: { allowedCharacters: "z-a" },
     };
     expect(checkValueConstraints(field, "Q")).toEqual([]);
+  });
+
+  // Each class below is one no other test in this file checks, so the counts
+  // start from an empty cache entry.
+  function callsWith(
+    spy: typeof inDialectWeightedSize | typeof compileLinearRegex,
+    pattern: string,
+  ): number {
+    return vi.mocked(spy).mock.calls.filter(([source]) => source === pattern)
+      .length;
+  }
+
+  test.each([
+    ["outside the dialect", "y-b"],
+    ["over the size cap", CLOSED_CLASS_COUNTED_REPEATS.replace(/^A-Z/, "B-Y")],
+  ])(
+    "a refused class %s, checked without a parse, is refused once and flags no value",
+    (_label, allowedCharacters) => {
+      const pattern = allowedCharactersPattern(allowedCharacters);
+      expect(patternRefusal(pattern)).toBeDefined();
+      vi.mocked(inDialectWeightedSize).mockClear();
+      vi.mocked(compileLinearRegex).mockClear();
+      const field: LinkageField = {
+        name: "fn",
+        type: "first_name",
+        constraints: { allowedCharacters },
+      };
+      for (let index = 0; index < 100; index++)
+        expect(checkValueConstraints(field, `Q${index}!`)).toEqual([]);
+      expect(callsWith(inDialectWeightedSize, pattern)).toBe(1);
+      expect(callsWith(compileLinearRegex, pattern)).toBe(0);
+    },
+  );
+
+  test("an accepted class is checked and compiled once across many values", () => {
+    const allowedCharacters = "C-X";
+    const pattern = allowedCharactersPattern(allowedCharacters);
+    vi.mocked(inDialectWeightedSize).mockClear();
+    vi.mocked(compileLinearRegex).mockClear();
+    const field: LinkageField = {
+      name: "ln",
+      type: "last_name",
+      constraints: { allowedCharacters },
+    };
+    for (let index = 0; index < 100; index++)
+      expect(
+        checkValueConstraints(field, index % 2 === 0 ? "SMITH" : "smith").map(
+          (v) => v.kind,
+        ),
+      ).toEqual(index % 2 === 0 ? [] : ["disallowedCharacters"]);
+    expect(callsWith(inDialectWeightedSize, pattern)).toBe(1);
+    expect(callsWith(compileLinearRegex, pattern)).toBe(1);
   });
 
   test("a Unicode property class admits its code points (accepted advisory limit)", () => {
