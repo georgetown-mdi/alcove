@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { canonicalPath, nearestExistingDirectory } from "./paths.mjs";
+import { canonicalPath, fileKey, nearestExistingDirectory } from "./paths.mjs";
 
 describe("lib/paths", () => {
   const dirs = [];
@@ -60,6 +60,19 @@ describe("lib/paths", () => {
 
     it("walks up to the root rather than answering nothing", () => {
       expect(nearestExistingDirectory("/nowhere/at/all")).toBe("/");
+    });
+  });
+
+  describe("fileKey", () => {
+    it("replaces each run outside the filename set with one underscore", () => {
+      expect(fileKey("feature/a b//c")).toBe("feature_a_b_c");
+      expect(fileKey("v1.2_rc-3")).toBe("v1.2_rc-3");
+    });
+
+    it("leaves no key that names a directory component", () => {
+      expect(fileKey("..")).toBe("");
+      expect(fileKey("../../etc")).toBe("_.._etc");
+      expect(fileKey(".hidden")).toBe("hidden");
     });
   });
 });

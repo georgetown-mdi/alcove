@@ -32,6 +32,7 @@ import {
   git,
   leadingCdDestination,
   peelCommandPrefix,
+  readGitGlobalOptions,
   splitSegments,
   tokenize,
 } from "./lib/shell.mjs";
@@ -49,33 +50,27 @@ function block(reason) {
   process.exit(2);
 }
 
-// git global options that consume a following token as their value, so the
-// subcommand scan does not mistake that value for the subcommand.
-const VALUE_GLOBALS = new Set([
-  "-C",
-  "-c",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-]);
-
 // If this segment invokes `git push`, return the `-C` redirects it holds and
 // the argument list after `push`; otherwise null. Requires git to be the command
 // word (after leading env assignments and simple wrappers) so `echo git push ...`
-// is not mistaken for one.
+// is not mistaken for one. An attached `-C=<path>` is no redirect: git refuses
+// that spelling.
 function gitPushInvocation(tokens) {
-  let i = peelCommandPrefix(tokens).index;
+  const i = peelCommandPrefix(tokens).index;
   const cmd = tokens[i];
   if (!cmd) return null;
   if (cmd.replace(/^.*\//, "") !== "git") return null;
-  i++;
-  const chdirs = [];
-  while (i < tokens.length && tokens[i].startsWith("-")) {
-    if (tokens[i] === "-C" && i + 1 < tokens.length) chdirs.push(tokens[i + 1]);
-    i += VALUE_GLOBALS.has(tokens[i]) ? 2 : 1;
-  }
-  if (tokens[i] !== "push") return null;
-  return { chdirs, args: tokens.slice(i + 1) };
+  const { options, subcommand, args } = readGitGlobalOptions(
+    tokens.slice(i + 1),
+  );
+  if (subcommand !== "push") return null;
+  const chdirs = options
+    .filter(
+      ({ option, value, attached }) =>
+        option === "-C" && !attached && value !== undefined,
+    )
+    .map(({ value }) => value);
+  return { chdirs, args };
 }
 
 // Destination branch names targeted by an explicit refspec, or null when the push

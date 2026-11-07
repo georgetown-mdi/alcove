@@ -25,6 +25,8 @@ import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { fileKey } from "./paths.mjs";
+
 /** The ruleset, as a path relative to a checkout's root. */
 export const RULESET_PATH = ".claude/orchestration/ruleset.md";
 
@@ -57,10 +59,7 @@ const KEY_LENGTH_LIMIT = 128;
  */
 export function markerPath(sessionId) {
   if (typeof sessionId !== "string") return null;
-  const key = sessionId
-    .replace(/[^A-Za-z0-9._-]+/g, "_")
-    .replace(/^\.+/, "")
-    .slice(0, KEY_LENGTH_LIMIT);
+  const key = fileKey(sessionId).slice(0, KEY_LENGTH_LIMIT);
   return key.length === 0 ? null : join(MARKER_DIR, key);
 }
 

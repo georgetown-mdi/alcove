@@ -11,6 +11,8 @@
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { fileKey } from "./paths.mjs";
+
 /** How long a lock refuses its ref before it is treated as stale. */
 export const ROUND_LOCK_TTL_MS = 90 * 60 * 1000;
 
@@ -50,12 +52,9 @@ export function branchName(ref) {
 }
 
 // A filename-safe key for a ref: a `/` in a branch name becomes `_` with every
-// other character outside the filename set, and leading dots are stripped, so
-// no key can name a directory component of its own.
+// other character outside the filename set.
 function refKey(ref) {
-  const key = branchName(ref)
-    .replace(/[^A-Za-z0-9._-]+/g, "_")
-    .replace(/^\.+/, "");
+  const key = fileKey(branchName(ref));
   return key.length === 0 ? "ref" : key;
 }
 

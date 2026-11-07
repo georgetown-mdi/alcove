@@ -1,51 +1,34 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { jsBlocks } from "../../scripts/lib/markdownFences.mjs";
+import {
+  compileScript,
+  readRepoFile,
+  SHAPES,
+  UNRESOLVABLE,
+} from "./lib/workflowScriptHarness.mjs";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const COMMAND = ".claude/commands/review-round.md";
 const SCRIPT = ".claude/scripts/review-round-workflow.mjs";
 
-const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-
 // The checked-in script the command invokes by path IS the artifact under test.
-// It is a Workflow script body rather than a module, so compile it into a
-// function of the three names the Workflow runtime injects; `export const meta`
-// is the one module-only spelling in it, and the top-level `return` of the role
-// branch is legal in a function body.
-function compileScript() {
-  const body = readFileSync(resolve(root, SCRIPT), "utf8").replace(
-    /^export const meta =/m,
-    "const meta =",
-  );
-  return new AsyncFunction("args", "agent", "parallel", body);
-}
-
-const script = compileScript();
+const script = compileScript(SCRIPT, ["args", "agent", "parallel"]);
 const parallel = (thunks) => Promise.all(thunks.map((thunk) => thunk()));
 const runner = (deliver) => (args, respond) =>
   script(deliver(args), respond, parallel);
 
-// The harness may deliver the arguments as JSON text rather than as the object
-// the caller passed, so every case below runs under both shapes: a script that
-// reads only one of them selects the wrong branch under the other.
-const SHAPES = [
-  { shape: "object", deliver: (args) => args },
-  { shape: "string", deliver: (args) => JSON.stringify(args) },
-];
+// Every case below runs under both SHAPES: a script that reads only one of them
+// selects the wrong branch under the other.
 
 describe("review-round command wiring", () => {
   it("invokes the script this file tests, and has no script of its own", () => {
-    const command = readFileSync(resolve(root, COMMAND), "utf8");
+    const command = readRepoFile(COMMAND);
     expect(command).toContain(SCRIPT);
     expect(jsBlocks(command)).toEqual([]);
   });
 
   // The Workflow tool refuses at launch a script whose body loads a module.
   it("loads no module, so the Workflow tool will launch it", () => {
-    const body = readFileSync(resolve(root, SCRIPT), "utf8");
+    const body = readRepoFile(SCRIPT);
     expect(body).not.toContain("import(");
     expect(body).not.toContain("require(");
   });
@@ -326,10 +309,8 @@ const lensRound = (run, verifierClusters) =>
     options.label === "verifier" ? { clusters: verifierClusters } : review,
   );
 
-// Every delivery that is not an object of named arguments, and so resolves no
-// field the round needs. Tolerating one runs the whole round on prompts whose
+// Tolerating an UNRESOLVABLE delivery runs the whole round on prompts whose
 // arguments are missing rather than stopping.
-const UNRESOLVABLE = [[], 42, "text", true, null, undefined];
 
 describe.each(SHAPES)(
   "review-round argument shape ($shape args)",

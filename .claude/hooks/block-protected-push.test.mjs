@@ -138,6 +138,15 @@ describe("block-protected-push hook", () => {
     expect(status).toBe(2);
   });
 
+  it("reads past --config-env in either spelling", () => {
+    for (const command of [
+      "git --config-env core.pager=HOME push origin staging",
+      "git --config-env=core.pager=HOME push origin staging",
+    ]) {
+      expect(verdict(command).status, command).toBe(2);
+    }
+  });
+
   it("refuses --all and --mirror outright", () => {
     for (const command of [
       "git push --all origin",
