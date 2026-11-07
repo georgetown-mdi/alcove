@@ -1388,9 +1388,12 @@ ss -Htn state established '( sport = :443 )' | awk '{print $4}' | sed 's/:[0-9]*
   threshold from many addresses, or any ceiling refusal, mean turning
   enrollment without a token off.
 - **`alcove-relay-busy-refusals`.** Every connection slot was taken. The
-  registrar's journal names no address, so the address holding most
-  connections in the connection count above is the likeliest source: block
-  it.
+  registrar's journal names no address, so while the flood lasts, the
+  address holding most connections in the connection count above is the
+  likeliest source: block it. Run the count again with the registrar's own
+  port (`ALCOVE_RELAY_REGISTRAR_PORT`) in place of 443, since a client can
+  reach either. Each connection lasts at most 3 seconds, so once the flood
+  stops the count shows nothing.
 - **`alcove-account-estimated-charges`.** The month's cost by usage type:
   `aws ce get-cost-and-usage --time-period Start=<first of the month>,End=<tomorrow>
   --granularity MONTHLY --metrics UnblendedCost --group-by
