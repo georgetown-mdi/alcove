@@ -16,7 +16,8 @@ const sourceDirectory = join(dirname(fileURLToPath(import.meta.url)), "../src");
 /** Each module the source may import, and the value names it may take from
  * it; a type-only import is admitted from any of them. */
 const ADMITTED_VALUE_IMPORTS: Record<string, ReadonlyArray<string>> = {
-  "node:fs": ["statSync"],
+  "node:fs": ["renameSync", "statSync", "writeFileSync"],
+  "node:path": ["basename", "dirname", "join"],
   "node:http": ["createServer"],
   "node:net": [],
   "node:stream": [],

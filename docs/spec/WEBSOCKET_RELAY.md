@@ -113,6 +113,7 @@ While the cap is held, every hello that would start another pairing is refused (
 **Refusals at the caps.** The relay counts the hellos it refuses at the pairing cap (4008) and the upgrades it refuses at the cap on sockets awaiting a hello (503, [The endpoint](#the-endpoint)).
 The first refusal after a report starts a minute (`RELAY_FAULT_REPORT_WINDOW_MS`), at whose end the relay reports both counts for that minute, and their totals since it started, on its diagnostic stream ([infra/relay/README.md](../../infra/relay/README.md#the-websocket-relay), Logs).
 The report names no exchange id and no address.
+Given `--counters-file`, the standalone runner also keeps both totals in that file, which the reference deployment's monitoring publishes and alarms on ([infra/relay/README.md](../../infra/relay/README.md#the-websocket-relay), What it counts).
 
 ## Keepalive
 

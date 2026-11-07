@@ -22,3 +22,5 @@
 - 4009 | both parties | No message crossed the pairing within the idle bound -> 4009 | both parties | No message crossed the pairing within the idle bound, or its second party did not arrive within the lone-pairing bound
 - 4009, the relay's idle bound; -> 4009, the relay's idle or lone-pairing bound;
 - 4009, the relay's idle bound; -> 4009, the relay's idle or lone-pairing bound;
+- - -> It refuses a proof that passes these checks but whose expiry is more than 305 seconds past its own current Unix second: the 300-second longest lifetime and 5 seconds of slack (`RELAY_PROOF_EXPIRY_SLACK_SECONDS` in `packages/websocket-relay/src/protocol.ts`).
+- - -> Given `--counters-file`, the standalone runner also keeps both totals in that file, which the reference deployment's monitoring publishes and alarms on ([infra/relay/README.md](../../infra/relay/README.md#the-websocket-relay), What it counts).

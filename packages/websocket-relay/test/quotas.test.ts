@@ -434,5 +434,9 @@ describe("refusals at the caps", () => {
       setTimeout(resolve, 2 * faultReportWindowMs),
     );
     expect(started.faults).toHaveLength(1);
+    expect(started.relay.counts()).toEqual({
+      websocket_pairing_cap_refusals: 2,
+      websocket_upgrade_cap_refusals: 1,
+    });
   });
 });

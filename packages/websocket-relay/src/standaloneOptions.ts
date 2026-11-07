@@ -13,7 +13,7 @@ export const DEFAULT_RELAY_PORT = 0;
 
 const MAX_PORT = 65_535;
 
-const FLAG_NAMES = ["host", "port", "key-table"] as const;
+const FLAG_NAMES = ["host", "port", "key-table", "counters-file"] as const;
 
 type FlagName = (typeof FLAG_NAMES)[number];
 
@@ -28,7 +28,8 @@ export class RelayOptionError extends Error {
   }
 }
 
-/** Where the runner listens and where it reads the key table. */
+/** Where the runner listens, where it reads the key table, and where it
+ * writes its counts. */
 export interface RelayOptions {
   /** Address passed to `listen`. */
   host: string;
@@ -36,6 +37,8 @@ export interface RelayOptions {
   port: number;
   /** The SQLite file holding the per-exchange keys. */
   keyTablePath: string;
+  /** The counters file the runner keeps, or none. */
+  countersPath: string | undefined;
 }
 
 function isFlagName(name: string): name is FlagName {
@@ -50,9 +53,10 @@ function nonEmpty(raw: string, source: string): string {
 
 /**
  * Resolve the runner's settings from an argument vector
- * (`process.argv.slice(2)`) and an environment map: `--host`, `--port` and
- * `--key-table`, each taking the token after it, the key table falling back
- * to `ALCOVE_RELAY_TURNDB` and then to the relay host's path.
+ * (`process.argv.slice(2)`) and an environment map: `--host`, `--port`,
+ * `--key-table` and `--counters-file`, each taking the token after it, the key
+ * table falling back to `ALCOVE_RELAY_TURNDB` and then to the relay host's
+ * path. With no `--counters-file`, the runner writes no counts.
  *
  * @throws {RelayOptionError} on an unknown, repeated, valueless or empty
  *   flag, or a port that is not a whole number from 0 to 65535.
@@ -99,5 +103,6 @@ export function resolveRelayOptions(
       (envPath !== undefined && envPath.trim() !== ""
         ? envPath
         : DEFAULT_KEY_TABLE_PATH),
+    countersPath: flags.get("counters-file"),
   };
 }

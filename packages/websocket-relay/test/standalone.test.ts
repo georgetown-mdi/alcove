@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
+import { RELAY_COUNTER_NAMES } from "../src/countersFile.ts";
 import {
   PAIRED_FRAME,
   RELAY_PATH,
@@ -75,7 +76,10 @@ interface Runner {
   child: ChildProcess;
 }
 
-async function startRunner(keyTablePath: string): Promise<Runner> {
+async function startRunner(
+  keyTablePath: string,
+  extraArgs: ReadonlyArray<string> = [],
+): Promise<Runner> {
   const child = spawn(
     process.execPath,
     [
@@ -83,6 +87,7 @@ async function startRunner(keyTablePath: string): Promise<Runner> {
       "src/standalone.ts",
       "--key-table",
       keyTablePath,
+      ...extraArgs,
     ],
     { cwd: packageRoot, stdio: ["ignore", "pipe", "pipe"] },
   );
@@ -178,6 +183,31 @@ describe("the standalone runner", () => {
       const party = await connect(runner.url);
       party.send(await helloFrame({ role: "inviter" }));
       expect((await party.closed).code).toBe(RelayCloseCode.internalError);
+    },
+  );
+
+  it(
+    "writes its counters file at start, with every count at 0",
+    { timeout: 60_000 },
+    async () => {
+      const countersPath = join(
+        mkdtempSync(join(directory, "run-")),
+        "counters",
+      );
+      const runner = await startRunner(enrolledTurndb(), [
+        "--counters-file",
+        countersPath,
+      ]);
+      await eventually(() => existsSync(countersPath));
+      expect(readFileSync(countersPath, "utf8")).toMatch(
+        new RegExp(
+          "^started=\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ\\n" +
+            "updated=\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ\\n" +
+            RELAY_COUNTER_NAMES.map((name) => `${name}=0\\n`).join("") +
+            "$",
+        ),
+      );
+      expect(runner.stderr()).toBe("");
     },
   );
 });

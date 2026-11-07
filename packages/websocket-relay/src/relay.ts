@@ -47,6 +47,7 @@ import type { Duplex } from "node:stream";
 import type { WebSocket } from "ws";
 
 import type { ControlFrameLimit } from "./controlFrames.ts";
+import type { RelayCounts } from "./countersFile.ts";
 import type { RelayKeyTable } from "./keyTable.ts";
 import type { RelayHello } from "./protocol.ts";
 
@@ -100,6 +101,8 @@ export interface WebSocketRelayOptions {
 export interface WebSocketRelay {
   /** Stop taking sockets and close every socket held with 1001. */
   close(): void;
+  /** The hellos and upgrades refused at the caps since the relay started. */
+  counts(): RelayCounts;
 }
 
 interface Party {
@@ -721,5 +724,9 @@ export function attachWebSocketRelay(
         closeWithin(party, RelayCloseCode.goingAway);
       }
     },
+    counts: () => ({
+      websocket_pairing_cap_refusals: capRefusals.pairings.total,
+      websocket_upgrade_cap_refusals: capRefusals.upgrades.total,
+    }),
   };
 }

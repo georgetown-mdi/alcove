@@ -182,7 +182,7 @@ when its operator runs `install.sh` from that commit's checkout.
 | `relay.env.example` | The host's one configuration file, copied to `/etc/alcove-relay/relay.env` |
 | `certs/` | ACME DNS-01 renewal: the timer and its unit, the client-neutral `renew.sh`, the deploy hook, and the provider credential's example |
 | `aws/` | The AWS-specific half: instance provisioning, the IMDSv2 external-address helper, the registrar's counts publisher, and the demo box's stop/start scripts |
-| `aws/publish-metrics.sh`, `aws/alcove-relay-metrics.service`, `.timer` | Publishes the registrar's counts to CloudWatch every 5 minutes outside the host's busy hours, where `relay.env` names a region. See [Monitoring](#monitoring) |
+| `aws/publish-metrics.sh`, `aws/alcove-relay-metrics.service`, `.timer` | Publishes the registrar's and the WebSocket relay's counts to CloudWatch every 5 minutes outside the host's busy hours, where `relay.env` names a region. See [Monitoring](#monitoring) |
 
 ## Per-exchange keys
 
@@ -950,7 +950,9 @@ stops and disables it where that is unset.
   Exposure](../broker/README.md#exposure)): no capability, connections to and
   from loopback alone (`IPAddressDeny=any`, `IPAddressAllow=localhost`), and
   the whole file system read-only except a private `/tmp`, where tsx keeps
-  its cache. `/etc/alcove-relay` is hidden from it (`InaccessiblePaths=`):
+  its cache, and its own state directory, `/var/lib/alcove-relay-websocket`
+  (`StateDirectory=`, mode 700), where it keeps its counters file.
+  `/etc/alcove-relay` is hidden from it (`InaccessiblePaths=`):
   the relay image's account owns the rendered `turnserver.conf`, which holds
   coturn's static authentication secret where the host keeps one, and the
   relay reads nothing there. `install.sh` refuses an image that reports uid
@@ -986,6 +988,25 @@ stops and disables it where that is unset.
   started
   ([WEBSOCKET_RELAY.md, Quotas](../../docs/spec/WEBSOCKET_RELAY.md#quotas));
   that line names no exchange and no address.
+- **What it counts.** The same two totals, in
+  `/var/lib/alcove-relay-websocket/counters` (`--counters-file`), for the
+  relay's monitoring to read
+  ([Publishing the registrar's counts](#publishing-the-registrars-counts)):
+
+  ```
+  started=2026-11-06T12:00:00Z
+  updated=2026-11-06T12:34:50Z
+  websocket_pairing_cap_refusals=3
+  websocket_upgrade_cap_refusals=0
+  ```
+
+  Each count is the total since the relay started, at `started`, as in the
+  registrar's file ([The registrar](#the-registrar), What it counts). The
+  file is written at start, then at most every 10 s
+  (`RELAY_COUNTERS_WRITE_INTERVAL_MS` in
+  `packages/websocket-relay/src/countersFile.ts`) and only when a count
+  changed, replaced whole. A failure to write it goes to the relay's journal
+  once until a write succeeds, and the relay goes on serving.
 - **Memory.** The unit sets a resource limit on the relay and systemd
   restarts it on failure. On the project's host, the relay's
   resident set peaked at about 81 MB and its cgroup at about 94 MiB through
@@ -1252,7 +1273,8 @@ a disk swapfile before it installs anything:
 ## Monitoring
 
 CloudWatch alarms email the owner when the relay's traffic, the account's
-spend, the registrar's enrollments without a token, or its refusals rise past a threshold
+spend, the registrar's enrollments without a token, its refusals, or the
+WebSocket relay's refusals at its caps rise past a threshold
 derived below, and when the publisher of those counts stops publishing. They are created by hand and recorded, for the relay's
 OpenTofu root to import, in [aws/provision.md](aws/provision.md), Alarms.
 
@@ -1260,9 +1282,23 @@ OpenTofu root to import, in [aws/provision.md](aws/provision.md), Alarms.
 
 `aws/publish-metrics.sh`, run by `alcove-relay-metrics.timer`, reads the
 counters file the registrar writes ([The registrar](#the-registrar), What it
-counts) and publishes how much each count rose since its last publish, as a
-metric of the same name in the namespace `Alcove/Relay`, with `aws cloudwatch
-put-metric-data` under the instance role.
+counts), and the one the WebSocket relay writes
+([The WebSocket relay](#the-websocket-relay), What it counts), and publishes
+how much each count rose since its last publish, as a metric of the same
+name in the namespace `Alcove/Relay`, with `aws cloudwatch put-metric-data`
+under the instance role, in one call a run.
+
+- **The WebSocket relay's file never stops a run.** A count that file
+  lacks, or holds in a form other than a whole number, is not published, and
+  the run writes a line naming the file and the count and publishes the
+  rest; a file with no valid `started` publishes none of its counts. So a
+  file an older relay wrote, holding fewer counts, holds up neither the
+  registrar's counts nor its own others. A count that appears in it later,
+  or that the publisher's record of the relay's counts lacks, is recorded
+  that run and published from the next. Where the file is missing, the run
+  writes a line only where `relay.env` sets `ALCOVE_RELAY_WEBSOCKET_NAME`.
+  The registrar's file is read strictly: a missing, repeated or malformed
+  count stops the run, naming the file and the count.
 
 - **Where.** Only where `relay.env` sets `ALCOVE_RELAY_METRICS_REGION`;
   `install.sh` leaves the timer disabled elsewhere. The instance role needs
@@ -1277,10 +1313,12 @@ put-metric-data` under the instance role.
   nothing, so it does not take [the maintenance
   lock](#the-daily-schedule); the timer keeps it out of the jobs' hours, and
   a run held behind a job would fail after two hours.
-- **The heartbeat.** The first run of each UTC day that reads the counters
-  file also publishes `publisher_heartbeat`, value 1, in the same call as any
-  rise, so [an alarm](#the-alarms) can tell a publisher that fails from a
-  quiet relay. A run that fails, or finds no counters file, sends none.
+- **The heartbeat.** The first run of each UTC day that reads the
+  registrar's counters file also publishes `publisher_heartbeat`, value 1, in
+  the same call as any rise, so [an alarm](#the-alarms) can tell a publisher
+  that fails from a quiet relay. A run that fails, or finds no registrar
+  counters file, sends none; one that finds none still publishes the
+  WebSocket relay's rises.
 - **At install.** Where it enables the timer, `install.sh` first runs
   `publish-metrics.sh --heartbeat`, one test publish of a heartbeat, and stops
   naming the cause where there is no `aws` command or CloudWatch refuses it.
@@ -1288,14 +1326,16 @@ put-metric-data` under the instance role.
   one small file and starts no `aws` process. A run that publishes starts one
   for a few seconds, niced, idle-class for I/O, and stopped after 2 minutes;
   its peak memory on the project's host is not yet measured.
-- **What it keeps.** The counts it last published and the UTC day of the last
-  heartbeat, in `/var/lib/alcove-relay-metrics/published`. The first run
-  records the counts and publishes none of them; a changed `started` in the
-  counters file counts from 0; a failed publish keeps the old record, so the
-  next run publishes the rise, and the heartbeat, again. A run writes one line
-  to `journalctl -u alcove-relay-metrics.service` when it publishes, records
-  the first counts, fails, or finds no counters file, and none on a run where
-  nothing was published.
+- **What it keeps.** The registrar's counts it last published and the UTC
+  day of the last heartbeat, in `/var/lib/alcove-relay-metrics/published`,
+  and the WebSocket relay's in `published-websocket` beside it. The first
+  run that reads a counters file records its counts and publishes none of
+  them; a changed `started` in a counters file counts that file's counts
+  from 0; a failed publish keeps both old records, so the next run publishes
+  the rise, and the heartbeat, again. A run writes one line to `journalctl
+  -u alcove-relay-metrics.service` when it publishes, records the first
+  counts, fails, finds no counters file, or passes over a count of the
+  WebSocket relay's file, and none on a run where nothing was published.
 
 ### The alarms
 
@@ -1312,12 +1352,7 @@ nothing on a quiet run.
 | `alcove-relay-tokenless-enrollments` | `Alcove/Relay` `tokenless_enrollments`, sum over 6 hours | 30 times `ALCOVE_RELAY_TOTAL_QUOTA` |
 | `alcove-relay-rate-limit-refusals`, `alcove-relay-client-cap-refusals`, `alcove-relay-tokenless-ceiling-refusals` | `Alcove/Relay` `rate_limit_refusals`, `client_cap_refusals` and `tokenless_ceiling_refusals` in turn, sum over 1 hour | 0 |
 | `alcove-relay-busy-refusals` | `Alcove/Relay` `busy_refusals`, sum over 1 hour | 0 |
-
-The WebSocket relay's refusals at its caps have no alarm: the relay writes
-their counts to its journal ([The WebSocket relay](#the-websocket-relay),
-Logs), which the publisher does not read. `journalctl -u
-alcove-relay-websocket.service --since -1h | grep 'at its pairing cap'`
-lists the last hour's.
+| `alcove-relay-websocket-pairing-cap-refusals`, `alcove-relay-websocket-upgrade-cap-refusals` | `Alcove/Relay` `websocket_pairing_cap_refusals` and `websocket_upgrade_cap_refusals` in turn, sum over 1 hour | 0 |
 
 `alcove-relay-publisher-heartbeat` watches the publisher itself:
 `Alcove/Relay` `publisher_heartbeat`, sum over 1 day, firing when two
@@ -1362,6 +1397,14 @@ How each threshold is derived:
   connection closed once answered, so legitimate use is not expected to
   reach that (an estimate, not measured); while it lasts, other clients are
   refused too.
+- **WebSocket relay refusals.** A refusal at the pairing cap turned away a
+  hello that would have started a pairing, and that party has no path
+  through this relay; one at the cap on sockets awaiting a hello turned away
+  an upgrade. The caps were set for the host's memory, not measured against
+  use, and every rendezvous that lists the relay counts toward the pairing
+  cap ([WEBSOCKET_RELAY.md, Quotas](../../docs/spec/WEBSOCKET_RELAY.md#quotas)),
+  so a refusal is either use past a cap or a cap held, and either is the
+  owner's to see.
 - **Again after the default.** Where the month a baseline came from preceded
   the web app's default use of this relay, record both baselines again a
   month after that default reached production, since it changes the relay's
@@ -1373,6 +1416,7 @@ On the relay host, as root. What is happening now, for any alarm:
 
 ```sh
 cat /var/lib/alcove-relay/registrar-counters
+cat /var/lib/alcove-relay-websocket/counters
 # Client connections on 443 by address, most first.
 ss -Htn state established '( sport = :443 )' | awk '{print $4}' | sed 's/:[0-9]*$//' | sort | uniq -c | sort -rn | head
 ```
@@ -1405,6 +1449,18 @@ ss -Htn state established '( sport = :443 )' | awk '{print $4}' | sed 's/:[0-9]*
   port (`ALCOVE_RELAY_REGISTRAR_PORT`) in place of 443, since a client can
   reach either. Each connection lasts at most 3 seconds, so once the flood
   stops the count shows nothing.
+- **`alcove-relay-websocket-pairing-cap-refusals` and
+  `alcove-relay-websocket-upgrade-cap-refusals`.** `journalctl -u
+  alcove-relay-websocket.service --since -1h | grep 'at its pairing cap'`
+  has one line for each minute that held a refusal. The relay sees every
+  connection from `127.0.0.1` and names no exchange and no address, so the
+  connection count above is where an address stands out; the front's
+  journal (`journalctl -u alcove-relay-front.service`) names each address
+  the relay's bound of 8 sockets refused (`limiting connections by zone`).
+  Block an address holding many connections; revoke an exchange known to be
+  its. Refusals with no address standing out are use across many addresses
+  past the cap, which a higher `RELAY_MAX_PAIRINGS` and a larger instance
+  answer, the owner's call.
 - **`alcove-account-estimated-charges`.** The month's cost by usage type:
   `aws ce get-cost-and-usage --time-period Start=<first of the month>,End=<tomorrow>
   --granularity MONTHLY --metrics UnblendedCost --group-by
@@ -1412,7 +1468,7 @@ ss -Htn state established '( sport = :443 )' | awk '{print $4}' | sed 's/:[0-9]*
   credentials. Data transfer out of the instance is the relay's traffic: as
   for `alcove-relay-network-out`. Anything else is not the relay's.
 - **`alcove-relay-publisher-heartbeat`.** The publisher has sent nothing for
-  two UTC days, so the alarms on the registrar's counts would not fire either.
+  two UTC days, so the alarms on the published counts would not fire either.
   `journalctl -u alcove-relay-metrics.service --since -3days` names the cause
   on its last lines: CloudWatch refusing the publish (the instance role's
   permission, or the network), a counters file it cannot read or that is

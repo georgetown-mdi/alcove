@@ -122,6 +122,8 @@ project's account are read back with
 | `alcove-relay-client-cap-refusals` | the instance's | `Alcove/Relay`, `client_cap_refusals`, none | `Sum`, 3600 |
 | `alcove-relay-tokenless-ceiling-refusals` | the instance's | `Alcove/Relay`, `tokenless_ceiling_refusals`, none | `Sum`, 3600 |
 | `alcove-relay-busy-refusals` | the instance's | `Alcove/Relay`, `busy_refusals`, none | `Sum`, 3600 |
+| `alcove-relay-websocket-pairing-cap-refusals` | the instance's | `Alcove/Relay`, `websocket_pairing_cap_refusals`, none | `Sum`, 3600 |
+| `alcove-relay-websocket-upgrade-cap-refusals` | the instance's | `Alcove/Relay`, `websocket_upgrade_cap_refusals`, none | `Sum`, 3600 |
 
 ## User-data
 

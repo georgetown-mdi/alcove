@@ -1,10 +1,11 @@
-# Publishes the registrar's counts to CloudWatch (README.md, Monitoring).
+# Publishes the registrar's and the WebSocket relay's counts to CloudWatch
+# (README.md, Monitoring).
 # install.sh installs it on every host and enables its timer only where
 # relay.env sets ALCOVE_RELAY_METRICS_REGION. The aws process takes its
 # credentials from the instance role (aws/provision.md, The instance role).
 
 [Unit]
-Description=Publish the Alcove relay registrar's counts to CloudWatch
+Description=Publish the Alcove relay's counts to CloudWatch
 Documentation=https://github.com/georgetown-mdi/alcove/blob/main/infra/relay/README.md
 After=network-online.target
 Wants=network-online.target
@@ -23,7 +24,7 @@ StateDirectoryMode=0700
 Environment=HOME=/var/lib/alcove-relay-metrics
 
 # Root, which owns relay.env, holding only the capability that reads the
-# counters file in the relay account's mode-700 directory.
+# counters files in the relay account's mode-700 directories.
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH
 AmbientCapabilities=
 NoNewPrivileges=true

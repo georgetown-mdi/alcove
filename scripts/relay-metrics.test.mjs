@@ -37,6 +37,15 @@ const COUNTS = (() => {
   return [...match[1].matchAll(/"([a-z_]+)"/g)].map((name) => name[1]);
 })();
 
+// The names the WebSocket relay writes, from its own RELAY_COUNTER_NAMES.
+const WEBSOCKET_COUNTS = (() => {
+  const match = read("packages/websocket-relay/src/countersFile.ts").match(
+    /^export const RELAY_COUNTER_NAMES = \[([^\]]*)\]/m,
+  );
+  expect(match, "countersFile.ts defines RELAY_COUNTER_NAMES").not.toBeNull();
+  return [...match[1].matchAll(/"([a-z_]+)"/g)].map((name) => name[1]);
+})();
+
 // The backticked metric names in the Alcove/Relay rows of a markdown table
 // whose first cell is an alarm name, other than the heartbeat.
 const alarmedCounts = (path) => {
@@ -68,7 +77,17 @@ const counters = (started, values) =>
     "",
   ].join("\n");
 
-const fixtureHost = ({ region = "us-west-2" } = {}) => {
+// A counters file in the WebSocket relay's format; `names` is the counts it
+// holds, every one by default.
+const websocketCounters = (started, values, names = WEBSOCKET_COUNTS) =>
+  [
+    `started=${started}`,
+    "updated=2026-10-15T12:34:50Z",
+    ...names.map((name) => `${name}=${values[name] ?? 0}`),
+    "",
+  ].join("\n");
+
+const fixtureHost = ({ region = "us-west-2", websocketName = "" } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "relay-metrics-"));
   tmpDirs.push(root);
   const bin = join(root, "bin");
@@ -88,15 +107,19 @@ const fixtureHost = ({ region = "us-west-2" } = {}) => {
   const envFile = join(root, "relay.env");
   writeFileSync(
     envFile,
-    `ALCOVE_RELAY_REALM=relay.example.org\nALCOVE_RELAY_METRICS_REGION=${region}\n`,
+    `ALCOVE_RELAY_REALM=relay.example.org\nALCOVE_RELAY_METRICS_REGION=${region}\n` +
+      `ALCOVE_RELAY_WEBSOCKET_NAME=${websocketName}\n`,
   );
   const countersFile = join(root, "registrar-counters");
+  const websocketCountersFile = join(root, "websocket-counters");
   const stateFile = join(root, "state", "published");
   const emptyBin = join(root, "empty-bin");
   mkdirSync(emptyBin);
   return {
     stateFile,
+    websocketStateFile: `${stateFile}-websocket`,
     write: (text) => writeFileSync(countersFile, text),
+    writeWebsocket: (text) => writeFileSync(websocketCountersFile, text),
     awsFails: (fails) =>
       fails ? writeFileSync(failFlag, "") : rmSync(failFlag, { force: true }),
     // The last heartbeat as published on an earlier UTC day.
@@ -119,6 +142,7 @@ const fixtureHost = ({ region = "us-west-2" } = {}) => {
           PATH: withoutAws ? emptyBin : `${bin}:${process.env.PATH}`,
           ALCOVE_RELAY_ENV_FILE: envFile,
           ALCOVE_RELAY_COUNTERS_FILE: countersFile,
+          ALCOVE_RELAY_WEBSOCKET_COUNTERS_FILE: websocketCountersFile,
           ALCOVE_RELAY_METRICS_STATE_FILE: stateFile,
         },
       });
@@ -138,7 +162,9 @@ describe("publish-metrics.sh", () => {
     const run = host.run();
     expect(run.status).toBe(0);
     expect(run.awsCalls).toEqual([]);
-    expect(run.stderr).toContain("nothing to publish");
+    expect(run.stderr).toContain(
+      "so the registrar has written no counts; none of its counts are published",
+    );
   });
 
   it("records the first counts it reads and publishes none of them, only the day's heartbeat", () => {
@@ -365,13 +391,231 @@ describe("publish-metrics.sh", () => {
     );
   });
 
-  it("is alarmed on exactly the counts the registrar writes, in the README and provision.md", () => {
+  it("publishes exactly the counts the WebSocket relay writes", () => {
+    expect(WEBSOCKET_COUNTS).toContain("websocket_pairing_cap_refusals");
+    const declared = read("infra/relay/aws/publish-metrics.sh").match(
+      /^WEBSOCKET_COUNTS=\(([^)]*)\)/m,
+    );
+    expect(
+      declared,
+      "publish-metrics.sh declares WEBSOCKET_COUNTS",
+    ).not.toBeNull();
+    expect(sortedNames(declared[1].trim().split(/\s+/))).toEqual(
+      sortedNames(WEBSOCKET_COUNTS),
+    );
+  });
+
+  it("is alarmed on exactly the counts the registrar and the WebSocket relay write, in the README and provision.md", () => {
+    const written = sortedNames([...COUNTS, ...WEBSOCKET_COUNTS]);
     expect(sortedNames(alarmedCounts("infra/relay/README.md"))).toEqual(
-      sortedNames(COUNTS),
+      written,
     );
     expect(sortedNames(alarmedCounts("infra/relay/aws/provision.md"))).toEqual(
-      sortedNames(COUNTS),
+      written,
     );
+  });
+
+  describe("the WebSocket relay's counts", () => {
+    const LATER = "2026-10-15T13:00:00Z";
+
+    it("records the first counts it reads and publishes none of them", () => {
+      const host = fixtureHost();
+      host.write(counters(START, {}));
+      host.writeWebsocket(
+        websocketCounters(START, { websocket_pairing_cap_refusals: 9 }),
+      );
+      const run = host.run();
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.awsCalls).toEqual([
+        "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+          "MetricName=publisher_heartbeat,Value=1,Unit=Count",
+      ]);
+      expect(readFileSync(host.websocketStateFile, "utf8")).toContain(
+        "websocket_pairing_cap_refusals=9\n",
+      );
+    });
+
+    it("publishes each count's rise in the same call as the registrar's", () => {
+      const host = fixtureHost();
+      host.write(counters(START, {}));
+      host.writeWebsocket(websocketCounters(START, {}));
+      host.run();
+      host.write(counters(START, { busy_refusals: 1 }));
+      host.writeWebsocket(
+        websocketCounters(START, {
+          websocket_pairing_cap_refusals: 4,
+          websocket_upgrade_cap_refusals: 2,
+        }),
+      );
+      const run = host.run();
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.awsCalls).toEqual([
+        "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+          "MetricName=busy_refusals,Value=1,Unit=Count " +
+          "MetricName=websocket_pairing_cap_refusals,Value=4,Unit=Count " +
+          "MetricName=websocket_upgrade_cap_refusals,Value=2,Unit=Count",
+      ]);
+      expect(host.run().awsCalls).toEqual([]);
+    });
+
+    it("counts from 0 after the relay restarted, and records a restart with no counts yet", () => {
+      const host = fixtureHost();
+      host.write(counters(START, {}));
+      host.writeWebsocket(
+        websocketCounters(START, { websocket_upgrade_cap_refusals: 30 }),
+      );
+      host.run();
+      host.writeWebsocket(websocketCounters(LATER, {}));
+      expect(host.run().awsCalls).toEqual([]);
+      host.writeWebsocket(
+        websocketCounters(LATER, { websocket_upgrade_cap_refusals: 3 }),
+      );
+      const run = host.run();
+      expect(run.awsCalls).toEqual([
+        "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+          "MetricName=websocket_upgrade_cap_refusals,Value=3,Unit=Count",
+      ]);
+    });
+
+    it("publishes the registrar's rise past a relay file lacking a count, names the file and the count, and takes the count afresh once it appears", () => {
+      const host = fixtureHost();
+      const older = ["websocket_pairing_cap_refusals"];
+      host.write(counters(START, {}));
+      host.writeWebsocket(websocketCounters(START, {}, older));
+      host.run();
+      host.write(counters(START, { rate_limit_refusals: 2 }));
+      host.writeWebsocket(
+        websocketCounters(START, { websocket_pairing_cap_refusals: 1 }, older),
+      );
+      const stale = host.run();
+      expect(stale.status, stale.stderr).toBe(0);
+      expect(stale.stderr).toContain(
+        "websocket-counters has no single websocket_upgrade_cap_refusals line holding a whole number, so that count is not published",
+      );
+      expect(stale.awsCalls).toEqual([
+        "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+          "MetricName=rate_limit_refusals,Value=2,Unit=Count " +
+          "MetricName=websocket_pairing_cap_refusals,Value=1,Unit=Count",
+      ]);
+
+      host.writeWebsocket(
+        websocketCounters(START, {
+          websocket_pairing_cap_refusals: 1,
+          websocket_upgrade_cap_refusals: 7,
+        }),
+      );
+      const appeared = host.run();
+      expect(appeared.status, appeared.stderr).toBe(0);
+      expect(appeared.awsCalls).toEqual([]);
+      host.writeWebsocket(
+        websocketCounters(START, {
+          websocket_pairing_cap_refusals: 1,
+          websocket_upgrade_cap_refusals: 9,
+        }),
+      );
+      expect(host.run().awsCalls).toEqual([
+        "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+          "MetricName=websocket_upgrade_cap_refusals,Value=2,Unit=Count",
+      ]);
+    });
+
+    it.each([
+      ["a malformed start", (text) => text.replace(START, "yesterday")],
+      ["a count that is not a number", (text) => text.replace("=0\n", "=x\n")],
+      [
+        "a repeated count",
+        (text) => `${text}websocket_pairing_cap_refusals=1\n`,
+      ],
+    ])(
+      "publishes the registrar's rise past a relay file with %s",
+      (_, spoil) => {
+        const host = fixtureHost();
+        host.write(counters(START, {}));
+        host.writeWebsocket(websocketCounters(START, {}));
+        host.run();
+        host.write(counters(START, { client_cap_refusals: 5 }));
+        host.writeWebsocket(spoil(websocketCounters(START, {})));
+        const run = host.run();
+        expect(run.status, run.stderr).toBe(0);
+        expect(run.stderr).toContain("websocket-counters has no single");
+        expect(run.awsCalls).toEqual([
+          "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+            "MetricName=client_cap_refusals,Value=5,Unit=Count",
+        ]);
+      },
+    );
+
+    it("takes the relay's counts afresh where their record is missing or malformed", () => {
+      const host = fixtureHost();
+      host.write(counters(START, {}));
+      host.run();
+      host.writeWebsocket(
+        websocketCounters(START, { websocket_pairing_cap_refusals: 6 }),
+      );
+      expect(host.run().awsCalls).toEqual([]);
+      writeFileSync(host.websocketStateFile, "not a record\n");
+      host.writeWebsocket(
+        websocketCounters(START, { websocket_pairing_cap_refusals: 8 }),
+      );
+      const run = host.run();
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.awsCalls).toEqual([]);
+      host.writeWebsocket(
+        websocketCounters(START, { websocket_pairing_cap_refusals: 11 }),
+      );
+      expect(host.run().awsCalls).toEqual([
+        "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+          "MetricName=websocket_pairing_cap_refusals,Value=3,Unit=Count",
+      ]);
+    });
+
+    it("publishes the relay's rise where the registrar wrote no counts, with no heartbeat", () => {
+      const host = fixtureHost();
+      host.writeWebsocket(websocketCounters(START, {}));
+      host.run();
+      host.writeWebsocket(
+        websocketCounters(START, { websocket_upgrade_cap_refusals: 1 }),
+      );
+      const run = host.run();
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.awsCalls).toEqual([
+        "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+          "MetricName=websocket_upgrade_cap_refusals,Value=1,Unit=Count",
+      ]);
+      expect(existsSync(host.stateFile)).toBe(false);
+    });
+
+    it("names a missing relay file only where relay.env names the relay", () => {
+      const quiet = fixtureHost();
+      quiet.write(counters(START, {}));
+      quiet.run();
+      expect(quiet.run().stderr).toBe("");
+      const named = fixtureHost({ websocketName: "relay-ws.example.org" });
+      named.write(counters(START, {}));
+      named.run();
+      const run = named.run();
+      expect(run.status).toBe(0);
+      expect(run.stderr).toContain(
+        "so the WebSocket relay has written no counts; none of its counts are published",
+      );
+    });
+
+    it("records nothing of the relay's counts after a failed publish, so the next run publishes the rise again", () => {
+      const host = fixtureHost();
+      host.write(counters(START, {}));
+      host.writeWebsocket(websocketCounters(START, {}));
+      host.run();
+      host.writeWebsocket(
+        websocketCounters(START, { websocket_pairing_cap_refusals: 2 }),
+      );
+      host.awsFails(true);
+      expect(host.run().status).toBe(1);
+      host.awsFails(false);
+      expect(host.run().awsCalls).toEqual([
+        "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+          "MetricName=websocket_pairing_cap_refusals,Value=2,Unit=Count",
+      ]);
+    });
   });
 });
 
