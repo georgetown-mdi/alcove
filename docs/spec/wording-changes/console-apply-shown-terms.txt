@@ -1,0 +1,6 @@
+- - -> **The proposal is the one the run stated.**
+- - -> When the run's terminal event states it wrote a proposal, the job keeps the SHA-256 of `alcove.proposed-terms` as the file is then: the proposal whose change that event states and the console shows.
+- - -> Before anything runs, the file is read again and its digest compared with the kept one.
+- - -> Each read takes a regular file of at most twice `MAX_ENCODED_INVITATION_LENGTH` bytes and refuses a link at the name.
+- - -> A file that differs, is gone, or either read refused is `200 { "status": "configuration-changed" }` and nothing runs.
+- The operator's Apply, given against the change the seat showed from the run's configuration, is the consent `--consent-to-terms` records, so the CLI asks nothing and nothing is written to its stdin; the run-terms check above is what makes that change the one the mounted file takes on. -> The operator's Apply, given against the change the seat showed from the run's configuration, is the consent `--consent-to-terms` records, so the CLI asks nothing and nothing is written to its stdin; the run-terms check above makes the terms the change was shown against the file's, and the proposal check above binds the Apply to the proposal whose change was shown, read again just before the spawn.
