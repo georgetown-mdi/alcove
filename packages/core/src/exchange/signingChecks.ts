@@ -395,9 +395,10 @@ export interface PartnerCertificateResolution {
   /** Called with a freshly adopted fingerprint, at the moment of adoption and
    * before the run goes on. A caller persists the value here rather than after
    * the run, so a run that pins and then fails mid-round does not re-pin blind
-   * on the next attempt. A throw stops the run, having sent the partner an
-   * abort and disclosed no linkage key or payload row. */
-  onPartnerCertificatePinned?: (fingerprint: string) => void;
+   * on the next attempt. Awaited, so a throw or a rejected promise stops the
+   * run, having sent the partner an abort and disclosed no linkage key or
+   * payload row. */
+  onPartnerCertificatePinned?: (fingerprint: string) => void | Promise<void>;
 }
 
 /**
@@ -420,8 +421,8 @@ export interface PartnerCertificateResolution {
  * before the bootstrap frame and before any linkage key or payload row moves.
  *
  * A sixth outcome ends the run without being a refusal of the partner: an
- * `onPartnerCertificatePinned` that throws, which is a caller that could not
- * record the adopted pin. It sends its own abort and propagates the caller's
+ * `onPartnerCertificatePinned` that throws or rejects, which is a caller that
+ * could not record the adopted pin. It sends its own abort and propagates the caller's
  * error unchanged.
  *
  * No path overwrites a pin on file: a divergence refuses, leaving the
@@ -473,7 +474,7 @@ export async function resolvePartnerCertificateOrAbort(
   }
   const adopted = await computeCertificateFingerprint(partnerCertificate);
   try {
-    resolution.onPartnerCertificatePinned?.(adopted);
+    await resolution.onPartnerCertificatePinned?.(adopted);
   } catch (err) {
     await sendAbort(conn, [PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON]);
     throw err;

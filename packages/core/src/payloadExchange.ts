@@ -65,7 +65,9 @@ export interface PartnerPayload {
    * lookup key, these values correspond to element `[1]` of the receiver's
    * local {@link AssociationTable} (the partner indices stored there are the
    * sender's row indices). Distinct: one entry addresses one of the sender's
-   * rows, so a received payload repeating an index is refused.
+   * rows, so a received payload repeating an index is refused, as is one
+   * whose indices are not the partner rows the receiver's table pairs in
+   * ascending order ({@link assertPayloadRowsMatchPairedRows}).
    * Several of the receiver's association entries may address ONE of these --
    * what a deduplicating cardinality groups -- and the receiver joins them all
    * back to the single row it was sent. Empty when partner had no data.
@@ -534,6 +536,43 @@ export function assertPayloadMatchesAgreedSend(
 }
 
 /**
+ * Refuse a received payload that names columns and whose row indices are not
+ * the partner rows this party's table pairs, each once, in ascending order:
+ * what a conforming sender sends, since its own half of the table ascends
+ * ({@link distinctMatchedRows} over it) and the received-payload commitment
+ * is rebuilt in that order (`reconstructCommittedData`).
+ *
+ * @param partnerRowsPaired - The partner half of this party's association
+ *   table, empty for a party holding none.
+ * @throws {ConnectionError} of kind `"protocol"` when they differ. The message
+ *   states counts and no row index.
+ */
+export function assertPayloadRowsMatchPairedRows(
+  received: PartnerPayload,
+  partnerRowsPaired: ReadonlyArray<number>,
+): void {
+  if (received.columns.length === 0) return;
+  const paired = new ShardedMap<number, true>();
+  for (const row of partnerRowsPaired) paired.setIfAbsent(row, true);
+  const { rowIndices } = received;
+  let matches = rowIndices.length === paired.size;
+  for (let i = 0; matches && i < rowIndices.length; ++i)
+    matches =
+      paired.has(rowIndices[i]) &&
+      (i === 0 || rowIndices[i] > rowIndices[i - 1]);
+  if (matches) return;
+  throw new ConnectionError(
+    "payload disclosure mismatch: the partner sent " +
+      `${rowIndices.length} payload row${rowIndices.length === 1 ? "" : "s"}, ` +
+      `and this party's matched pairs name ${paired.size} of the partner's ` +
+      "records, each to be sent once in ascending row order. The exchange is " +
+      "aborted because the payload received does not match the records " +
+      "matched.",
+    "protocol",
+  );
+}
+
+/**
  * Map either payload representation -- the wire message this party sent, or
  * the {@link PartnerPayload} it received -- into the record's canonical
  * {@link CommittedPayload} form.
@@ -634,6 +673,10 @@ export async function exchangePayloads(
 }
 
 const PAYLOAD_WHAT = "payload";
+
+// How many missing row indices the table build's refusal names before it
+// states only the count, so its message stays short however many are missing.
+const MISSING_ROW_INDICES_SHOWN = 5;
 
 const NO_PAYLOAD_ROWS: PayloadRowsToSend = {
   columns: [],
@@ -1060,9 +1103,13 @@ export function buildOutputTableRows(
         missingSeen.setIfAbsent(idx, true) === undefined,
     );
     if (missing.length > 0) {
+      const shown = missing.slice(0, MISSING_ROW_INDICES_SHOWN);
+      const more = missing.length - shown.length;
       throw new PartnerProtocolRefusalError(
         "partner payload is missing rows for association table indices: " +
-          missing.join(", "),
+          shown.join(", ") +
+          (more > 0 ? ` and ${more} more` : "") +
+          ` (${missing.length} missing)`,
       );
     }
   }

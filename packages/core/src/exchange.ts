@@ -97,6 +97,7 @@ import {
   assertDisclosedNamesCarriable,
   assertNoPayloadReceived,
   assertPayloadMatchesAgreedSend,
+  assertPayloadRowsMatchPairedRows,
   termsStatingDeclaredPayloadSend,
 } from "./payloadExchange.js";
 import type { PayloadWireMessage } from "./payloadExchange.js";
@@ -1283,12 +1284,12 @@ export interface RunExchangeOptions {
    * fingerprint, an unpadded base64url SHA-256 digest this party derived from
    * the presented certificate, so it holds no partner-authored text. A caller
    * records it here rather than after the run, so a run that pins and then
-   * fails mid-round does not re-pin blind on the next attempt; a throw stops
-   * the run before the bootstrap frame and before any linkage key or payload
-   * row moves. Not called when a pin was already on file, and not called on
+   * fails mid-round does not re-pin blind on the next attempt. It is awaited,
+   * and a throw or a rejected promise stops the run before the bootstrap
+   * frame and before any linkage key or payload row moves. Not called when a pin was already on file, and not called on
    * any run that does not sign in band.
    */
-  onPartnerCertificatePinned?: (fingerprint: string) => void;
+  onPartnerCertificatePinned?: (fingerprint: string) => void | Promise<void>;
   /**
    * Called once, at the terms exchange, before the partner's certificate is
    * pinned and before any linkage key or payload row moves, when this party
@@ -2064,7 +2065,8 @@ export async function runExchange(
   // present-and-empty (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c)
   // records), and a no-output party, which the send gate above keeps a
   // conforming partner from sending any. A party that receives payload holds
-  // the received columns to the partner's agreed `payload.send`.
+  // the received columns to the partner's agreed `payload.send`, and the
+  // received rows to the partner rows its table pairs, before the receipt.
   //
   // The refusal is caught by the region's guard below rather than thrown straight
   // through: this party's own payload has left it through the transport whatever
@@ -2143,12 +2145,17 @@ export async function runExchange(
     );
     partnerPayloadReceived = true;
     if (receivesNoPayload) assertNoPayloadReceived(partnerPayload);
-    else
+    else {
       assertPayloadMatchesAgreedSend(
         partnerPayload,
         partnerTerms.payload?.send,
         partnerRowsMatched,
       );
+      assertPayloadRowsMatchPairedRows(
+        partnerPayload,
+        associationTable === undefined ? [] : associationTable[1],
+      );
+    }
     // Signed-receipt step: at the conclusion of a disclosing exchange, both
     // parties sign the SAME canonical receipt content (the agreed-terms hash and
     // the two directional payload MACs, plus a session-derived binder) and swap

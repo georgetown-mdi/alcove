@@ -16,6 +16,7 @@ import {
   PRIVATE_KEY_IDENTITY_MESSAGE,
   TEXT_CONTROL_CHAR_MESSAGE,
   TEXT_DIRECTION_MESSAGE,
+  UNSAFE_INTEGER_MESSAGE,
   safeParseLinkageTerms,
 } from "../src/config/linkageTermsSchema";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
@@ -438,12 +439,13 @@ test("linkage keys mismatch is an error", () => {
 });
 
 test("a non-canonical linkage-key param is reported, not thrown", () => {
-  // transform.params is Record<string, unknown>, so an integer beyond 2^53
-  // survives schema parsing but cannot be canonically encoded. The canonical
-  // comparison must report that as an error rather than letting the thrown
-  // CanonicalEncodingError escape validateCompatibility's {errors,warnings}
-  // contract (the callers in protocolSetup abort the exchange on a non-empty
-  // errors list; an uncaught throw would crash the process instead).
+  // An integer beyond 2^53 cannot be canonically encoded, and every parse
+  // refuses it; terms built past the schema still reach validateCompatibility.
+  // The canonical comparison must report that as an error rather than letting
+  // the thrown CanonicalEncodingError escape validateCompatibility's
+  // {errors,warnings} contract (the callers in protocolSetup abort the
+  // exchange on a non-empty errors list; an uncaught throw would crash the
+  // process instead).
   const badKeys: LinkageTerms["linkageKeys"] = [
     {
       name: "SSN",
@@ -455,6 +457,12 @@ test("a non-canonical linkage-key param is reported, not thrown", () => {
       ],
     },
   ];
+  expect(
+    safeParseLinkageTerms({
+      ...termsB,
+      linkageKeys: badKeys,
+    }).error?.issues.map((issue) => issue.message),
+  ).toEqual([UNSAFE_INTEGER_MESSAGE]);
   const runLocalBad = () =>
     validateCompatibility({ ...termsA, linkageKeys: badKeys }, termsB);
   expect(runLocalBad).not.toThrow();
