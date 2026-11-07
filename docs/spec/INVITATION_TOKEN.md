@@ -50,7 +50,7 @@ The token is a JSON object with these members:
 
 | Member | JSON type | Required | Rule |
 | --- | --- | --- | --- |
-| `version` | string | yes | The decimal string of a positive integer no larger than the newest version this build reads, `"2"`. A larger one of up to nine digits, the syntax the decoder reads, is refused as made by a newer Alcove, naming both versions; a longer one, the number `1` and any other string are refused by the schema. |
+| `version` | string | yes | The decimal string of a positive integer no larger than the newest version this build reads, `"2"`. A larger one of up to nine digits, the syntax the decoder reads, is refused as made by a newer Alcove, naming both versions; a longer one, any other string and any value that is not a string, a number such as `1` or `3` included, are refused by the schema. |
 | `about` | object | no | The informational block; see [Version policy](#version-policy). |
 | `linkageTerms` | object | yes | A linkage-terms document, validated by `InvitationLinkageTermsSchema`: `LinkageTermsSchema` behind a key-folding pre-pass (below). |
 | `sharedSecret` | string | yes | `SHARED_SECRET_REGEX` (`packages/core/src/config/connection.ts`): 43 base64url characters, the last one in `[AEIMQUYcgkosw048]`, so the string decodes to exactly 32 bytes. |
@@ -156,8 +156,8 @@ The canonical-form rule catches every other rewrite the parser makes, such as an
 
 - **The partner.** The url in the token is remote partner content, judged at decode and at mint.
   It is never dialed by this build: no browser SFTP transport exists yet, and the CLI and the console connect to the server over TCP and do not read it.
-- **The browser party.** The party's own SFTP relay url is kept in that browser's local storage for the origin (`apps/web/src/psi/transport/sftpRelaySetting.ts`) and set from the screen the browser SFTP transport adds, judged at entry and again each time it is read.
-  Where one is set it replaces the invitation's (`sftpRelayForExchange`); where the stored value cannot be read, neither is chosen.
+- **The browser party.** A setting for the party's own SFTP relay url is part of the unbuilt browser SFTP transport: nothing in this build sets or reads it.
+  When that transport is built, the url is to be kept in that browser's local storage for the origin (`apps/web/src/psi/transport/sftpRelaySetting.ts` holds the storage functions, which no screen or run calls yet), set from a screen the transport adds, and judged at entry and again each time it is read; where one is set it replaces the invitation's (`sftpRelayForExchange`), and where the stored value cannot be read, neither is chosen.
 
 **What the relay sees.**
 The relay forwards the bytes of each connection unread, and SSH runs end to end through it.
@@ -232,7 +232,7 @@ Each of the first five throws `InvitationDecodeError` with a fixed message conta
 4. **Checksum** (`checksumMismatch`): the first 4 bytes of the SHA-256 digest of the decoded body bytes, base64url-encoded, are compared with the last 6 characters as strings.
 5. **JSON** (`notJson`): the bytes are parsed by `parseBoundedJson` (`packages/core/src/utils/boundedJson.ts`), which checks the structure bounds over the bytes, decodes them as UTF-8 with invalid sequences refused, and then calls `JSON.parse`.
    A structure over a bound, invalid UTF-8 and malformed JSON are all reported as `notJson`.
-6. **Version**: a `version` of up to nine digits above the newest this build reads is refused with `ZodError`, naming both versions; a longer one fails the schema step below and is refused as unreadable.
+6. **Version**: a string `version` of up to nine digits above the newest this build reads is refused with `ZodError`, naming both versions; a longer one, and any `version` that is not a string, fail the schema step below and are refused as unreadable.
 7. **Schema**: the parsed value is validated against `InvitationTokenSchema`, which throws `ZodError` on a failure.
    The `linkageTerms` fold runs inside that validation and throws its own errors through it: `NestingDepthExceededError`, `NodeCountExceededError` and `KeyFoldCollisionError`, each a `UsageError`.
    A schema that accepts the token is followed by the refusal of each key of the terms the schema did not read, and of a declared `version` below what the members need, each with `ZodError`.

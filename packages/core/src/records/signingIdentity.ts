@@ -609,11 +609,13 @@ export async function matchesPinnedFingerprint(
 
 /**
  * Assert that a presented partner certificate is trusted: it self-verifies
- * and its fingerprint matches the pinned value. Rejects, with a clear error,
- * a certificate presented when no fingerprint is pinned (`pinnedFingerprint`
- * absent), one whose self-signature does not verify, and one whose
- * fingerprint does not match the pin -- in every case before any receipt
- * presented with it is accepted.
+ * and its fingerprint matches `pinnedFingerprint`, the value the terms
+ * exchange resolved (the pin on file, or the fingerprint a first
+ * authenticated contact adopted there). Rejects, with a clear error, a
+ * certificate presented when none was resolved (`pinnedFingerprint` absent),
+ * one whose self-signature does not verify, and one whose fingerprint does
+ * not match -- in every case before any receipt presented with it is
+ * accepted.
  *
  * @throws {SigningError}
  */
