@@ -840,7 +840,7 @@ Header derivation, column order, and row count: [PROTOCOL.md](spec/PROTOCOL.md#o
 - **A missing folder is created**, parents included, before your partner is contacted.
 - **A path that names a file**, or a folder Alcove cannot create or write in, is refused with exit 64 before anything is sent. Change the argument to a folder, for example `./`.
 - **Without `OUTPUT_FOLDER`** the result goes to `stdout`, and the record, its keys and terms file, and the receipt go to the working directory.
-- **A folder inside the shared folder is warned about.** On `filedrop`, an output folder (or, without one, the working directory), a key file, a signing identity file (`signing.identity_file`), or a log file (`--log-file`) inside `path`, `inbound_path`, or `outbound_path` draws a warning before the exchange starts: anyone who can read the shared folder, your partner included, can read those files. The run continues.
+- **A folder or file inside the shared folder is warned about.** On `filedrop`, an output folder (or, without one, the working directory), a key file, a signing identity file (`signing.identity_file`), or a log file (`--log-file`) inside `path`, `inbound_path`, or `outbound_path` draws a warning before the exchange starts: anyone who can read the shared folder, your partner included, can read those files. The run continues.
 
 A scheduler line naming the folder needs no command substitution and no `%` escaping, under cron, launchd, and Windows Task Scheduler alike ([EXCHANGE_RECORD.md, Where a run's files go](spec/EXCHANGE_RECORD.md#where-a-runs-files-go)).
 
