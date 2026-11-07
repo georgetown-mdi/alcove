@@ -800,8 +800,8 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   sides, the WebSocket relay server's two sides). A registrar client counts
   two. So 1024 is 256 TURN
   clients, six times coturn's `total-quota` of 40 allocations, 256 clients
-  of routed services, twice the 128 WebSocket clients the broker's front
-  admits (`worker_connections 256` in `infra/broker/nginx.conf.tmpl`, two
+  of routed services, the 256 WebSocket clients the broker's front
+  admits (`worker_connections 512` in `infra/broker/nginx.conf.tmpl`, two
   per client), 256 sockets of the WebSocket relay, above the 72 it holds at
   once (48 awaiting a hello and 12 pairings of two, `docs/spec/WEBSOCKET_RELAY.md`),
   or 512 registrar clients. That is the bound on the front's
@@ -822,7 +822,12 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
 - **One limit for every service.** The 1024 connections are shared by
   TURN, the registrar, the WebSocket relay and every routed service, and the
   front sets no limit per client address but the WebSocket relay server's
-  ([The WebSocket relay](#the-websocket-relay), Quotas). One host that opens that many
+  ([The WebSocket relay](#the-websocket-relay), Quotas) and the route hop's:
+  the hop holds at most 32 connections from one address at once, every
+  routed service counted together, keyed on the address the PROXY header
+  from 443 names, and closes a further one unanswered, writing a `limiting
+  connections by zone "alcove_route_hop"` line at `warn` that names the
+  client's address. 32 is a working value, raised on request. One host that opens that many
   connections, and holds them or replaces each as the 10 s or idle bound
   closes it, keeps every other client from TURN, the registrar, the
   WebSocket relay and the broker on 443 for as long as it does so.

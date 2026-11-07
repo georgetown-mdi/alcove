@@ -100,6 +100,13 @@ const WEBSOCKET_ZONE =
 const WEBSOCKET_LIMIT = "limit_conn alcove_websocket_relay 8;";
 const WEBSOCKET_LIMIT_LOG_LEVEL = "limit_conn_log_level warn;";
 
+// The route hop's bound on the connections of one client address, every
+// routed service counted together, keyed the same way.
+const HOP_ZONE =
+  "limit_conn_zone $binary_remote_addr zone=alcove_route_hop:1m;";
+const HOP_LIMIT = "limit_conn alcove_route_hop 32;";
+const HOP_LIMIT_LOG_LEVEL = "limit_conn_log_level warn;";
+
 /** A configuration's server blocks, each as its setting lines. */
 const renderedServerBlocks = (text) =>
   text
@@ -122,8 +129,8 @@ describe("render-front.sh", () => {
       settings(result.stdout).some((line) => line.includes(WEBSOCKET_TLS)),
     ).toBe(false);
     expect(
-      settings(result.stdout).some((line) => line.startsWith("limit_conn")),
-    ).toBe(false);
+      settings(result.stdout).filter((line) => line.startsWith("limit_conn")),
+    ).toEqual([HOP_ZONE, HOP_LIMIT, HOP_LIMIT_LOG_LEVEL]);
   });
 
   it("routes the WebSocket relay's name to the front's WebSocket relay server, which passes it to the relay's port", () => {
@@ -151,7 +158,7 @@ describe("render-front.sh", () => {
       settings(result.stdout).filter((line) =>
         line.startsWith("limit_conn_zone "),
       ),
-    ).toEqual([WEBSOCKET_ZONE]);
+    ).toEqual([HOP_ZONE, WEBSOCKET_ZONE]);
     expect(result.stdout).not.toContain("__WEBSOCKET");
   });
 
@@ -576,13 +583,13 @@ describe("front.conf.tmpl", () => {
       WEBSOCKET_LIMIT,
       WEBSOCKET_LIMIT_LOG_LEVEL,
     ]);
-    for (const server of servers.slice(0, 3)) {
+    for (const server of servers.slice(0, 2)) {
       expect(server.some((line) => line.startsWith("limit_conn"))).toBe(false);
     }
     const text = read("front.conf.tmpl");
     expect(
       settings(text).filter((line) => line.startsWith("limit_conn_zone ")),
-    ).toEqual([WEBSOCKET_ZONE]);
+    ).toEqual([HOP_ZONE, WEBSOCKET_ZONE]);
     const begin = text.indexOf("\n  # __WEBSOCKET_SERVER_BEGIN__\n");
     const end = text.indexOf("\n  # __WEBSOCKET_SERVER_END__\n");
     expect(settings(text.slice(begin, end))).toContain(WEBSOCKET_ZONE);
@@ -592,6 +599,21 @@ describe("front.conf.tmpl", () => {
     expect(WEBSOCKET_LIMIT).toBe(
       `limit_conn alcove_websocket_relay ${probeLimit};`,
     );
+  });
+
+  // A connection through the hop reaches its service from 127.0.0.1, so the
+  // hop is the one place that can count it by the client's address.
+  it("holds 32 connections through the route hop from each client address, keyed on the address the PROXY header names", () => {
+    const hop = serverBlocks()[2];
+    expect(hop).toContain("set_real_ip_from 127.0.0.1;");
+    expect(hop.filter((line) => line.startsWith("limit_conn"))).toEqual([
+      HOP_LIMIT,
+      HOP_LIMIT_LOG_LEVEL,
+    ]);
+    const brokerLimit = /^\s*limit_conn alcove_broker_direct (\d+);$/m.exec(
+      read("../broker/nginx.conf.tmpl"),
+    )[1];
+    expect(HOP_LIMIT).toBe(`limit_conn alcove_route_hop ${brokerLimit};`);
   });
 
   it("reads the server name on 443 and terminates no TLS there or at the route hop", () => {

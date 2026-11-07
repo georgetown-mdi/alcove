@@ -8,7 +8,8 @@
 # block or not at all. A connection asking for the registrar's name goes to the
 # registrar's front port, which reads the header. A name ALCOVE_RELAY_FRONT_ROUTES
 # lists goes to the route hop on 127.0.0.1:5348, which drops the header and
-# passes the connection, TLS unopened, to that route's port.
+# passes the connection, TLS unopened, to that route's port, at most 32 at
+# once from one client address.
 #
 # Every other connection -- the realm's own name, no server name, or bytes that
 # are not TLS -- is TURN: the TURN server on 127.0.0.1:5347 terminates its TLS
@@ -30,9 +31,9 @@ pid /tmp/nginx.pid;
 # Each side of each hop counts one. A TURN, routed-service or WebSocket relay
 # client counts four (the 443 server's two sides, then the 5347, 5348 or 5351
 # server's), a registrar client two, so 1024 is 256 such clients: six times
-# coturn's total-quota of 40 allocations, twice the broker front's 128
-# WebSocket clients, and above the WebSocket relay's 72 sockets (48 awaiting
-# a hello, 12 pairings of two). The bound on the front's memory.
+# coturn's total-quota of 40 allocations, the broker front's 256 WebSocket
+# clients, and above the WebSocket relay's 72 sockets (48 awaiting a hello,
+# 12 pairings of two). The bound on the front's memory.
 events { worker_connections 1024; }
 stream {
   access_log off;
@@ -77,8 +78,17 @@ stream {
     proxy_protocol on;
     proxy_pass 127.0.0.1:5350;
   }
+  # The route hop holds at most 32 connections from one client address at
+  # once, every routed service counted together, a further one closed
+  # unanswered and each refusal logged at warn naming that address. The key is
+  # the address set_real_ip_from takes from the header from 443. 32 is an
+  # arbitrary working value, raised on request.
+  limit_conn_zone $binary_remote_addr zone=alcove_route_hop:1m;
   server {
     listen 127.0.0.1:5348 proxy_protocol;
+    set_real_ip_from 127.0.0.1;
+    limit_conn alcove_route_hop 32;
+    limit_conn_log_level warn;
     ssl_preread on;
     preread_timeout 10s;
     proxy_connect_timeout 5s;

@@ -14,15 +14,27 @@
 // Origin values and query string, and the run prints, for each error-log and
 // access-log line the request wrote, which of those values the line contains.
 //
+// After the cases it drives the front's two connection bounds. One address
+// other than 127.0.0.1 opens more WebSocket upgrades than the front has room
+// for, and must hold the template's per-address limit of them, each further
+// one answered 503, while a second address still upgrades. Then 127.0.0.1,
+// the address every connection through the relay front's 443 arrives from,
+// holds upgrades until the front has no connection left, and the run prints
+// the front's memory before and at that point.
+//
 // Before the cases it runs a positive control: the same template with its
-// error_log level changed from crit to warn, which must write an error-log line
-// holding the refused case's query string, so an unread error log fails the run.
+// error_log level changed from emerg to warn, which must write an error-log
+// line holding the refused case's query string, and one holding the exhaustion
+// case's, so an unread error log or an exhaustion that was never reached fails
+// the run.
 //
 // It exits 1 when the front does not start, the control fails, a request gets
 // no response or no access-log line, any log line (including one after the last
 // request) contains a request's query string, a request or the time after the
-// last one writes an error-log line, or a failure kind's access-log line does
-// not show the fields README.md, Logging, says identify it.
+// last one writes an error-log line, a failure kind's access-log line does not
+// show the fields README.md, Logging, says identify it, one address holds a
+// number of upgrades other than the per-address limit, the second address is
+// not upgraded, or 127.0.0.1's upgrades never run the front out of connections.
 
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -54,6 +66,13 @@ const RESPONSE_DEADLINE_MS = 330_000;
 // nginx's default client_body_buffer_size on x86-64, two 4 KiB memory pages: a
 // request whose body is larger is buffered to a file under /tmp.
 const CLIENT_BODY_BUFFER_BYTES = 8192;
+// Each on the loopback, which Linux answers on all of 127.0.0.0/8.
+const DIRECT_CLIENT = "127.0.0.2";
+const SECOND_DIRECT_CLIENT = "127.0.0.3";
+const ROUTE_HOP_CLIENT = "127.0.0.1";
+const UPGRADE_ANSWER_MS = 3000;
+// The exhaustion run stops after this many upgrades in a row are not upgraded.
+const EXHAUSTED_AFTER = 3;
 
 /** The header values a request sends, each with the marker that finds it in a log line. */
 const FIELDS = [
@@ -99,6 +118,13 @@ const request = (
     "",
   ].join("\r\n") + body;
 
+const UPGRADE_HEADERS = [
+  "Upgrade: websocket",
+  "Connection: Upgrade",
+  "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+  "Sec-WebSocket-Version: 13",
+];
+
 const yesNo = (present) => (present ? "yes" : "no");
 
 /** The access-log fields README.md, Logging, says tell one failure kind from another. */
@@ -115,14 +141,7 @@ const CASES = [
     title: "WebSocket upgrade, upstream refuses the connection",
     identifiedBy: identity("502", "502", false, false),
     upstream: "none",
-    bytes: request("refused", {
-      extra: [
-        "Upgrade: websocket",
-        "Connection: Upgrade",
-        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
-        "Sec-WebSocket-Version: 13",
-      ],
-    }),
+    bytes: request("refused", { extra: UPGRADE_HEADERS }),
   },
   {
     id: "closed",
@@ -192,6 +211,14 @@ const CASES = [
   },
 ];
 
+/** The upgrades the two connection-bound runs open, by the query marker each sends. */
+const PER_ADDRESS = "peraddress";
+const EXHAUSTED = "exhausted";
+const MARKED_IDS = [...CASES.map(({ id }) => id), PER_ADDRESS, EXHAUSTED];
+
+/** The access-log identity of a request refused under the per-address limit. */
+const PER_ADDRESS_REFUSAL = identity("503", "-", false, false);
+
 const fail = (message) => {
   console.error(`check-broker-front-logs: ${message}`);
   process.exitCode = 1;
@@ -209,15 +236,29 @@ const run = (command, args, options = {}) => {
 
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));
 
-/** Starts a stand-in broker that closes or holds every connection, or none for a refused port. */
+/**
+ * Starts a stand-in broker that closes every connection, holds it unanswered,
+ * or answers its upgrade and holds it, or none for a refused port.
+ */
 const startUpstream = (behavior) =>
   new Promise((done, reject) => {
     if (behavior === "none") return done(null);
     const held = new Set();
     const server = createServer((socket) => {
       socket.on("error", () => {});
-      if (behavior === "close") socket.destroy();
-      else held.add(socket);
+      if (behavior === "close") return socket.destroy();
+      held.add(socket);
+      if (behavior !== "upgrade") return;
+      let head = "";
+      const answer = (chunk) => {
+        head += chunk.toString("latin1");
+        if (!head.includes("\r\n\r\n")) return;
+        socket.off("data", answer);
+        socket.write(
+          "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n",
+        );
+      };
+      socket.on("data", answer);
     });
     server.on("error", reject);
     server.listen(UPSTREAM_PORT, "127.0.0.1", () =>
@@ -258,6 +299,157 @@ const send = (bytes) =>
     socket.on("error", () => {});
     socket.on("close", finish);
   });
+
+/**
+ * Opens a WebSocket upgrade from a loopback address and resolves with its
+ * status line, null when none arrives in time, and the socket, held open on a
+ * 101 and destroyed otherwise.
+ */
+const openUpgrade = (localAddress, id) =>
+  new Promise((done) => {
+    let received = "";
+    let finished = false;
+    const socket = connect({
+      host: "127.0.0.1",
+      port: FRONT_PORT,
+      localAddress,
+      servername: BROKER_NAME,
+      rejectUnauthorized: false,
+    });
+    const finish = (status) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(deadline);
+      socket.removeAllListeners("data");
+      socket.removeAllListeners("close");
+      if (!status?.includes(" 101 ")) socket.destroy();
+      done({ status, socket });
+    };
+    const deadline = setTimeout(() => finish(null), UPGRADE_ANSWER_MS);
+    socket.on("secureConnect", () =>
+      socket.write(request(id, { extra: UPGRADE_HEADERS })),
+    );
+    socket.on("data", (chunk) => {
+      received += chunk.toString("latin1");
+      if (received.includes("\r\n")) finish(received.split("\r\n")[0]);
+    });
+    socket.on("error", () => {});
+    socket.on("close", () => finish(null));
+  });
+
+/** The front container's memory use as `docker stats` gives it. */
+const frontMemory = () =>
+  spawnSync(
+    "docker",
+    ["stats", "--no-stream", "--format", "{{.MemUsage}}", CONTAINER],
+    { encoding: "utf8" },
+  ).stdout.trim() || "unread";
+
+/** The value of a directive the rendered template sets once, or undefined. */
+const directiveValue = (rendered, pattern) =>
+  Number(pattern.exec(rendered)?.[1]) || undefined;
+
+/**
+ * Sends a request's headers and none of the body they announce, which holds
+ * one of the front's connections while it waits for the body. nginx closes an
+ * idle connection to reuse it when it runs out, but not one reading a request.
+ */
+const openPendingBody = () =>
+  new Promise((done) => {
+    const socket = connect({
+      host: "127.0.0.1",
+      port: FRONT_PORT,
+      localAddress: ROUTE_HOP_CLIENT,
+      servername: BROKER_NAME,
+      rejectUnauthorized: false,
+    });
+    const deadline = setTimeout(() => done(socket), UPGRADE_ANSWER_MS);
+    socket.on("secureConnect", () => {
+      socket.write(
+        request(EXHAUSTED, { method: "POST", extra: ["Content-Length: 1000"] }),
+      );
+      clearTimeout(deadline);
+      setTimeout(() => done(socket), SETTLE_MS);
+    });
+    socket.on("error", () => {
+      clearTimeout(deadline);
+      done(socket);
+    });
+  });
+
+/**
+ * Opens upgrades from 127.0.0.1 until the front stops answering them, then
+ * frees one upgrade's two connections, takes one with a request whose body
+ * never arrives, and sends one more upgrade into the last, so a request
+ * reaches the front with no connection left for the broker whichever count
+ * the front started from. Then it releases them all. The stand-in broker
+ * answers each upgrade it is passed.
+ */
+const runExhaustion = async (front, workerConnections) => {
+  const upstream = await startUpstream("upgrade");
+  const held = [];
+  let notUpgraded = 0;
+  let attempts = 0;
+  const idleMemory = frontMemory();
+  while (notUpgraded < EXHAUSTED_AFTER && attempts < workerConnections) {
+    attempts++;
+    const { status, socket } = await openUpgrade(ROUTE_HOP_CLIENT, EXHAUSTED);
+    if (status?.includes(" 101 ")) {
+      held.push(socket);
+      notUpgraded = 0;
+    } else {
+      notUpgraded++;
+    }
+  }
+  const fullMemory = frontMemory();
+  const heldAtFull = held.length;
+  const extra = [];
+  if (notUpgraded >= EXHAUSTED_AFTER && held.length) {
+    held.pop().destroy();
+    await delay(SETTLE_MS);
+    extra.push(await openPendingBody());
+    const last = await openUpgrade(ROUTE_HOP_CLIENT, EXHAUSTED);
+    extra.push(last.socket);
+  }
+  await delay(SETTLE_MS);
+  for (const socket of [...held, ...extra]) socket.destroy();
+  await upstream.close();
+  await delay(SETTLE_MS);
+  return {
+    held: heldAtFull,
+    exhausted: notUpgraded >= EXHAUSTED_AFTER,
+    idleMemory,
+    fullMemory,
+    written: front.lines.splice(0),
+  };
+};
+
+/**
+ * Opens more upgrades from one address than the front has connections for,
+ * then one from a second address, and releases them.
+ */
+const runPerAddress = async (front, workerConnections) => {
+  const upstream = await startUpstream("upgrade");
+  const held = [];
+  const statuses = new Map();
+  for (let attempt = 0; attempt < workerConnections / 2 + 8; attempt++) {
+    const { status, socket } = await openUpgrade(DIRECT_CLIENT, PER_ADDRESS);
+    const code = status?.split(" ")[1] ?? "none";
+    statuses.set(code, (statuses.get(code) ?? 0) + 1);
+    if (code === "101") held.push(socket);
+  }
+  const second = await openUpgrade(SECOND_DIRECT_CLIENT, PER_ADDRESS);
+  await delay(SETTLE_MS);
+  for (const socket of [...held, second.socket]) socket.destroy();
+  await upstream.close();
+  await delay(SETTLE_MS);
+  return {
+    held: held.length,
+    statuses,
+    secondStatus: second.status,
+    written: front.lines.splice(0),
+  };
+};
 
 const waitForFront = async (stopped) => {
   for (let attempt = 0; attempt < 60 && !stopped(); attempt++) {
@@ -361,23 +553,26 @@ const startFront = (image, confPath, work) => {
 
 /**
  * Renders the template with its error log at warn and drives the refused case
- * through it. The run fails unless the error log's stream is captured and the
- * query-string detector flags a line, so a real run's empty error log means
- * nothing was written and not that nothing was read.
+ * and the exhaustion case through it. The run fails unless the error log's
+ * stream is captured and the query-string detector flags a line for each, so a
+ * real run's empty error log means nothing was written and not that nothing
+ * was read, nor that the front never ran out of connections.
  */
-const runErrorLogControl = async (image, work, rendered) => {
+const runErrorLogControl = async (image, work, rendered, workerConnections) => {
   const controlRendered = rendered.replace(
-    /^(error_log\s+\S+\s+)crit;/m,
+    /^(error_log\s+\S+\s+)emerg;/m,
     "$1warn;",
   );
   if (controlRendered === rendered) {
-    fail("control: the rendered template has no error_log line at crit");
+    fail("control: the rendered template has no error_log line at emerg");
     return undefined;
   }
   const controlConf = join(work, "nginx.control.conf");
   writeFileSync(controlConf, controlRendered);
   const testCase = CASES.find(({ id }) => id === "refused");
   const front = startFront(image, controlConf, work);
+  let refusedLines;
+  let exhaustion;
   try {
     if (!(await waitForFront(() => front.exited))) {
       fail("control: the front did not accept a TLS connection");
@@ -389,25 +584,41 @@ const runErrorLogControl = async (image, work, rendered) => {
     await send(testCase.bytes);
     await delay(SETTLE_MS);
     await upstream?.close();
+    refusedLines = front.lines.splice(0);
+    exhaustion = await runExhaustion(front, workerConnections);
   } finally {
     await front.stop();
   }
-  const errors = front.lines.filter(({ log }) => log === "error");
-  const flagged = errors.filter(
-    ({ text }) => contains(text, testCase.id)["query string"],
-  );
-  console.log(
-    `control: error_log at warn, ${testCase.id} case wrote ${errors.length} error-log lines, ${flagged.length} holding its query string\n`,
-  );
-  if (!errors.length) {
-    fail("control: no error-log line was captured with the error log at warn");
+  const summaries = [];
+  for (const [id, lines] of [
+    [testCase.id, refusedLines],
+    [EXHAUSTED, exhaustion.written],
+  ]) {
+    const errors = lines.filter(({ log }) => log === "error");
+    const flagged = errors.filter(
+      ({ text }) => contains(text, id)["query string"],
+    );
+    console.log(
+      `control: error_log at warn, ${id} case wrote ${errors.length} error-log lines, ${flagged.length} holding its query string`,
+    );
+    if (!errors.length) {
+      fail(`control: ${id}: no error-log line was captured at warn`);
+      return undefined;
+    }
+    if (!flagged.length) {
+      fail(`control: ${id}: no captured error-log line holds its query string`);
+      return undefined;
+    }
+    summaries.push(
+      `the ${id} case wrote ${errors.length} error-log lines, ${flagged.length} holding its query string`,
+    );
+  }
+  console.log();
+  if (!exhaustion.exhausted) {
+    fail("control: the front did not run out of connections");
     return undefined;
   }
-  if (!flagged.length) {
-    fail("control: no captured error-log line holds the case's query string");
-    return undefined;
-  }
-  return `Positive control: with error_log at warn, the ${testCase.id} case wrote ${errors.length} error-log lines, ${flagged.length} holding its query string.`;
+  return `Positive control: with error_log at warn, ${summaries.join("; ")}.`;
 };
 
 const main = async () => {
@@ -423,6 +634,18 @@ const main = async () => {
     env: { ...process.env, ALCOVE_BROKER_ENV_FILE: envFile },
   }).stdout;
   writeFileSync(conf, rendered);
+  const workerConnections = directiveValue(
+    rendered,
+    /^\s*events\s*\{\s*worker_connections\s+(\d+);/m,
+  );
+  if (!workerConnections) {
+    rmSync(work, { recursive: true, force: true });
+    return fail("the rendered template sets no worker_connections");
+  }
+  const directLimit = directiveValue(
+    rendered,
+    /^\s*limit_conn\s+\S+\s+(\d+);/m,
+  );
   run("openssl", [
     "req",
     "-x509",
@@ -453,8 +676,15 @@ const main = async () => {
   let startup = [];
   let controlSummary;
   let front;
+  let perAddress;
+  let exhaustion;
   try {
-    controlSummary = await runErrorLogControl(image, work, rendered);
+    controlSummary = await runErrorLogControl(
+      image,
+      work,
+      rendered,
+      workerConnections,
+    );
     if (!controlSummary) return;
     front = startFront(image, conf, work);
     if (!(await waitForFront(() => front.exited))) {
@@ -498,6 +728,28 @@ const main = async () => {
       if (!status) fail(`${testCase.id}: no response from the front`);
       if (front.exited) return fail("the front exited during the run");
     }
+    perAddress = await runPerAddress(front, workerConnections);
+    console.log(
+      `== ${PER_ADDRESS}: ${workerConnections / 2 + 8} upgrades from ${DIRECT_CLIENT}, then one from ${SECOND_DIRECT_CLIENT}`,
+    );
+    console.log(
+      `responses: ${[...perAddress.statuses].map(([code, count]) => `${code} x${count}`).join(", ")}; ${SECOND_DIRECT_CLIENT}: ${perAddress.secondStatus ?? "(none)"}`,
+    );
+    for (const { log, text } of perAddress.written)
+      if (log === "error") console.log(`${log} log: ${text}`);
+    console.log();
+    if (front.exited) return fail("the front exited during the run");
+    exhaustion = await runExhaustion(front, workerConnections);
+    console.log(
+      `== ${EXHAUSTED}: upgrades from ${ROUTE_HOP_CLIENT} until the front has no connection left`,
+    );
+    console.log(
+      `held ${exhaustion.held} upgrades, two of the front's ${workerConnections} connections each; front memory idle ${exhaustion.idleMemory}, with them held ${exhaustion.fullMemory}`,
+    );
+    for (const { log, text } of exhaustion.written)
+      if (log === "error") console.log(`${log} log: ${text}`);
+    console.log();
+    if (front.exited) return fail("the front exited during the run");
     await delay(SETTLE_MS);
   } finally {
     await front?.stop();
@@ -518,10 +770,51 @@ const main = async () => {
   for (const { log, text } of [
     ...startup,
     ...results.flatMap(({ written }) => written),
+    ...perAddress.written,
+    ...exhaustion.written,
     ...trailing,
   ]) {
-    const leaked = CASES.find(({ id }) => text.includes(queryMarker(id)));
-    if (leaked) fail(`${log} log: a line contains ${leaked.id}'s query string`);
+    const leaked = MARKED_IDS.find((id) => text.includes(queryMarker(id)));
+    if (leaked) fail(`${log} log: a line contains ${leaked}'s query string`);
+  }
+
+  const perAddressRefusals = perAddress.written.filter(
+    ({ log, text }) =>
+      log === "access" && observedIdentity(text) === PER_ADDRESS_REFUSAL,
+  );
+  const refusedUpgrades = [...perAddress.statuses]
+    .filter(([code]) => code !== "101")
+    .reduce((sum, [, count]) => sum + count, 0);
+  if (!directLimit) {
+    fail("the rendered template sets no limit_conn for a direct client");
+  } else if (perAddress.held !== directLimit) {
+    fail(
+      `${PER_ADDRESS}: ${DIRECT_CLIENT} held ${perAddress.held} upgrades, not the limit of ${directLimit}`,
+    );
+  }
+  if (perAddress.statuses.get("503") !== refusedUpgrades) {
+    fail(`${PER_ADDRESS}: an upgrade past the limit was not answered 503`);
+  }
+  if (perAddressRefusals.length !== refusedUpgrades) {
+    fail(
+      `${PER_ADDRESS}: ${perAddressRefusals.length} access-log lines show ${PER_ADDRESS_REFUSAL}, not ${refusedUpgrades}`,
+    );
+  }
+  if (!perAddress.secondStatus?.includes(" 101 ")) {
+    fail(
+      `${PER_ADDRESS}: ${SECOND_DIRECT_CLIENT} was answered ${perAddress.secondStatus ?? "nothing"}, not 101`,
+    );
+  }
+  if (!exhaustion.exhausted) {
+    fail(`${EXHAUSTED}: the front did not run out of connections`);
+  }
+  for (const [id, written] of [
+    [PER_ADDRESS, perAddress.written],
+    [EXHAUSTED, exhaustion.written],
+  ]) {
+    const errors = written.filter(({ log }) => log === "error");
+    if (errors.length)
+      fail(`${id}: ${errors.length} error-log lines, not none`);
   }
 
   const table = [
@@ -559,6 +852,27 @@ const main = async () => {
     const response = status?.replace(/^HTTP\/\S+ /, "") ?? "none";
     table.push(
       `| ${testCase.title} | ${response} | ${observed ?? "-"} | ${errors.length ? errors.map(({ text }) => message(text)).join("<br>") : "none"} |`,
+    );
+  }
+  const twin = identities.get(PER_ADDRESS_REFUSAL);
+  if (twin) fail(`${PER_ADDRESS} and ${twin} have one access-log identity`);
+  for (const [title, response, observed, written] of [
+    [
+      `WebSocket upgrade from one direct client address past its ${directLimit ?? "(unset)"}`,
+      perAddress.statuses.has("503") ? "503" : "none",
+      perAddressRefusals.length ? PER_ADDRESS_REFUSAL : "-",
+      perAddress.written,
+    ],
+    [
+      `WebSocket upgrade from ${ROUTE_HOP_CLIENT} with the front's ${workerConnections} connections in use (${exhaustion.held} upgrades held; front memory ${exhaustion.idleMemory} idle, ${exhaustion.fullMemory} full)`,
+      exhaustion.exhausted ? "not upgraded" : "upgraded",
+      "-",
+      exhaustion.written,
+    ],
+  ]) {
+    const errors = written.filter(({ log }) => log === "error");
+    table.push(
+      `| ${title} | ${response} | ${observed} | ${errors.length ? errors.map(({ text }) => message(text)).join("<br>") : "none"} |`,
     );
   }
   console.log(table.join("\n"));

@@ -44,6 +44,11 @@ They are pinned instead by a check that scans them for a parse call in any shape
 A structural refusal throws `JsonStructureBoundError`, whose message holds no input bytes, and the handler routes it to the `client-frame` diagnostic with every other parse failure.
 The relay's reconnect queue reconstitutes a held payload through the same chokepoint (`packages/peerjs-broker/src/contrib/models/messageQueue.ts`), so the delivery leg is bounded as well as the receive leg.
 
+**No bound on frame rate.**
+The broker bounds each frame's size and structure, and what waits for a slow reader (the relay send-buffer bound below), but not how many frames a second one socket sends.
+Each frame a registered client sends is parsed and re-serialized on the broker's one thread, and a relayed frame can be up to 4.4 times its wire size, so a client sending at its link's full rate takes processor time and outbound bandwidth that other clients' frames wait behind.
+This is a stated limit, within the residual resource-exhaustion concern the **Channel security** overview in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security) names: no per-socket rate bound is built, and the delay it adds to another client's frames is not measured.
+
 ## Web signaling surface bounds
 
 The bounds in [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md) and [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md) harden the CLI's file-sync transport against a hostile server admin.
@@ -120,6 +125,21 @@ It must also confirm that no upstream WebSocket-layer keepalive was introduced t
 The check runs on the existing 300 ms sweep (`checkBrokenConnections`), so the effective reap is within ~20.3 seconds.
 This bounds the cheap fire-and-forget / register-and-idle flood; a flood that keeps each socket alive with heartbeats is bounded instead at the reverse proxy (per-address limiting, see [DEPLOYMENT.md](../DEPLOYMENT.md#hardening-the-coordination-server)), since the application cannot distinguish it from a live peer.
 The only in-application ceiling on such a maintained flood is the global `concurrent_limit` (default 5,000 registered clients), which is shared across all clients, so on a deployment with no proxy a maintained flood degrades to global connection exhaustion rather than per-address throttling -- the reason per-address limiting is delegated to the proxy rather than attempted here.
+
+**The project's front.**
+The project's own deployment applies that per-address limit at **32** connections from one client address, DEPLOYMENT.md's reference value, an arbitrary working value raised on request.
+It applies it once on each path to the broker:
+
+- A client reaching the broker through the relay host's 443 front is counted at that front's route hop, by the address the PROXY header from 443 names, every service routed through the hop counted together (`infra/relay/front.conf.tmpl`). The hop closes a further connection unanswered.
+- A client reaching the broker's TLS front on 8443 directly is counted there by its own address, and a further request is answered `503` (`infra/broker/nginx.conf.tmpl`). Every connection through the route hop arrives from `127.0.0.1`, which is not counted there.
+
+A 33rd connection from one address, such as a 33rd party behind one network address translator, is refused until one of the 32 closes.
+On 8443 nginx counts a request once its headers have arrived, so a direct connection that has not sent them is bounded instead by the TLS front's 30-second `client_header_timeout`.
+
+The broker's TLS front holds **512** connections (`worker_connections`), 256 WebSocket clients at two connections each, the most the 443 front's 1024 connections pass at four each.
+So one address holds at most an eighth of those clients on each path.
+The value is sized against the relay host's memory, read on the host on 2026-11-07 with `free -m` and `systemctl show`: 412 MiB in total, 121 MiB of it available, and 1435 MiB of swap, with the TLS front's unit using 6.3 MiB while it was configured for 256 connections.
+The front's memory with all 512 in use is not yet measured on that host; `scripts/check-broker-front-logs.mjs` prints it for the pinned image on its CI runner.
 
 **One socket per registered client.**
 Registration is keyed on the `id` and `token` an upgrade holds, so a peer that upgrades again under credentials already in the realm attaches to the client that is already there rather than taking a second slot.
@@ -259,6 +279,13 @@ Even the maximal 262,144-byte wire-legal object frame between two 32-character r
 That is a stated limit at the size extreme rather than a bound on real traffic: real signaling payloads are KB-scale, so a queue still holds dozens, and a drop costs only that sender's own reconnect hold, never the accounting's integrity.
 A queue drained by a reconnecting peer releases the read frames' bytes from the running total, so it accepts fresh frames again rather than staying wedged at the cap.
 The ~5-second read-cold expiry (the `MessagesExpire` prune) still clears an unread queue regardless, so these caps bound the transient peak within a window rather than a permanent residency.
+
+**The heap limit binds before the global ceiling.**
+The 512 MiB global ceiling bounds the queues, not the broker process.
+The project's broker runs under Node's default heap limit, which V8 sets from the host's memory, and its host has 412 MiB of memory in total, so there the heap limit binds before the queue caps do.
+Held frames that fill the heap end the broker process, its unit starts it again 5 seconds later (`Restart=always`, `RestartSec=5` in `infra/broker/alcove-broker.service`), and every rendezvous live at that moment is dropped and has to be started again.
+This is a stated limit: no unit memory limit is set, since it would end the broker after less held data than the heap limit does, and no lower queue cap is set.
+The heap limit on the host, and the held data that reaches it, are not yet measured.
 
 **Structured payloads.**
 Every real signaling payload -- an SDP offer or answer, an ICE candidate -- reaches the relay as a parsed JSON object rather than a string, and a parsed object's heap residency runs a large multiple of the bytes that held it, so a queue holding parsed frames would be bounded by `MAX_QUEUE_BYTES` in name only.
