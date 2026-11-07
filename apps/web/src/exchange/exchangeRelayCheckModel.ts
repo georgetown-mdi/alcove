@@ -175,6 +175,21 @@ function turnRefusalReason(
   return OWN_RELAY_REFUSES_UNTIL_ENROLLED;
 }
 
+// Whether a run enrolls `url` at the registrar the invitation names: the run
+// enrolls the default relay's urls at its registrar, and that registrar is
+// the invitation's only where the invitation names it.
+function enrollsAtInvitationRegistrar(
+  url: string,
+  context: ExchangeRelayCheckContext,
+): boolean {
+  const { registrar, listedOnceEnrolled } = context.hosts;
+  return (
+    registrar !== undefined &&
+    listedOnceEnrolled.includes(url) &&
+    context.invitationRelay?.registrar === registrar
+  );
+}
+
 function doesNotWork(
   url: string,
   cause: ExchangeRelayCheckCause,
@@ -267,8 +282,10 @@ export function exchangeRelayCheckLineShown(
       };
     case "refused": {
       const words = webSocketRelayRefusalWords(result.closeCode, {
-        enrollsAtInvitationRegistrar:
-          context.hosts.listedOnceEnrolled.includes(url),
+        enrollsAtInvitationRegistrar: enrollsAtInvitationRegistrar(
+          url,
+          context,
+        ),
         partnersUnderInvitationExchangeId:
           context.invitationRelay?.websocket === url &&
           context.invitationRelay.websocketExchangeId !== undefined,

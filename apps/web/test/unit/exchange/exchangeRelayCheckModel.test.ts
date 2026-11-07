@@ -151,6 +151,64 @@ describe("each outcome's message and remedy", () => {
     });
   });
 
+  describe("a 4003 at this site's default WebSocket relay", () => {
+    const DEFAULT_WEBSOCKET = "wss://turn.example.org/relay";
+    const siteHosts: RunRelayHosts = {
+      registrar: "https://registrar.example.org",
+      turn: [DEFAULT_TURN],
+      websocket: [DEFAULT_WEBSOCKET],
+      listedOnceEnrolled: [DEFAULT_TURN, DEFAULT_WEBSOCKET],
+      leftOut: [],
+    };
+    const refused: ExchangeRelayCheckLine = {
+      relay: "websocket",
+      url: DEFAULT_WEBSOCKET,
+      result: {
+        kind: "refused",
+        closeCode: 4003,
+        proofRemadeOnRelayClock: false,
+      },
+    };
+    const words = (enrollsAtInvitationRegistrar: boolean) =>
+      webSocketRelayRefusalWords(4003, {
+        enrollsAtInvitationRegistrar,
+        partnersUnderInvitationExchangeId: false,
+        enrollmentFailed: false,
+        proofRemadeOnRelayClock: false,
+      });
+
+    test.each([
+      ["no invitation", undefined],
+      ["an invitation naming no registrar", { turn: [INVITED_TURN] }],
+      [
+        "an invitation naming another registrar",
+        { turn: [INVITED_TURN], registrar: "https://elsewhere.example.org" },
+      ],
+    ])(
+      "does not send the user to the partner's registrar where %s names this site's",
+      (_, invitationRelay) => {
+        const line = exchangeRelayCheckLineShown(refused, {
+          hosts: siteHosts,
+          ...(invitationRelay !== undefined && { invitationRelay }),
+        });
+        expect(line.action).toBe(words(false).action);
+        expect(line.action).not.toBe(words(true).action);
+      },
+    );
+
+    test("keeps the partner's registrar advice where the invitation names this site's registrar", () => {
+      const line = exchangeRelayCheckLineShown(refused, {
+        hosts: siteHosts,
+        invitationRelay: {
+          turn: [DEFAULT_TURN],
+          websocket: DEFAULT_WEBSOCKET,
+          registrar: "https://registrar.example.org",
+        },
+      });
+      expect(line.action).toBe(words(true).action);
+    });
+  });
+
   test.each([
     [4004, "credential_refused"],
     [4005, "credential_refused"],

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button, Group, Stack, Text } from "@mantine/core";
 
@@ -34,12 +34,20 @@ import type {
 /** The control that shows the hosts a check contacts, before any is contacted. */
 export const EXCHANGE_RELAY_CHECK_OPEN_LABEL = "Check the relays";
 
+// Every step past closed names the hosts it was entered under, so a step
+// entered under other hosts than the current ones shows as closed.
 type CheckState =
   | { step: "closed" }
-  | { step: "hosts" }
-  | { step: "checking" }
-  | { step: "done"; lines: Array<ExchangeRelayCheckLineShown> }
-  | { step: "error" };
+  | { step: "hosts"; hostsKey: string }
+  | { step: "checking"; hostsKey: string }
+  | {
+      step: "done";
+      hostsKey: string;
+      lines: Array<ExchangeRelayCheckLineShown>;
+    }
+  | { step: "error"; hostsKey: string };
+
+const CLOSED: CheckState = { step: "closed" };
 
 function HostList({ hosts }: { hosts: ReadonlyArray<ExchangeRelayCheckHost> }) {
   return (
@@ -63,8 +71,9 @@ function HostList({ hosts }: { hosts: ReadonlyArray<ExchangeRelayCheckHost> }) {
  * where a run of the exchange lists a relay, it shows the hosts it contacts
  * when the user opens it, contacts them only when the user starts it, and
  * reports for each relay whether it works and, where it does not, why and
- * what to change. A change of the hosts closes it, so the hosts shown are
- * always the ones a start contacts.
+ * what to change. A change of the hosts closes it and aborts a check still
+ * running, as unmounting does, so the hosts shown are always the ones a
+ * start contacts and a result is shown only under the hosts it checked.
  */
 export function ExchangeRelayCheck({
   subject,
@@ -80,21 +89,34 @@ export function ExchangeRelayCheck({
   /** Tests only. */
   dependencies?: ExchangeRelayCheckDependencies;
 }) {
-  const [state, setState] = useState<CheckState>({ step: "closed" });
+  const [entered, setState] = useState<CheckState>(CLOSED);
   const hostsKey = JSON.stringify(subject.hosts);
+  // Aborted when the hosts change or the component unmounts; every check
+  // started under these hosts runs under it.
+  const hostsAbort = useRef<AbortController | undefined>(undefined);
   useEffect(() => {
-    setState({ step: "closed" });
+    const abort = new AbortController();
+    hostsAbort.current = abort;
+    setState(CLOSED);
+    return () => abort.abort();
   }, [hostsKey]);
+  const state =
+    entered.step !== "closed" && entered.hostsKey !== hostsKey
+      ? CLOSED
+      : entered;
   const statement = exchangeRelayCheckStatement(subject.hosts);
 
   if (!exchangeRelayCheckOffered(subject.hosts)) return null;
 
   async function start(): Promise<void> {
-    setState({ step: "checking" });
+    const signal = hostsAbort.current?.signal;
+    if (signal === undefined) return;
+    setState({ step: "checking", hostsKey });
     try {
-      const lines = await runExchangeRelayCheck(subject, dependencies);
+      const lines = await runExchangeRelayCheck(subject, signal, dependencies);
       setState({
         step: "done",
+        hostsKey,
         lines: lines.map((line) =>
           exchangeRelayCheckLineShown(line, {
             hosts: subject.hosts,
@@ -103,7 +125,7 @@ export function ExchangeRelayCheck({
         ),
       });
     } catch {
-      setState({ step: "error" });
+      if (!signal.aborted) setState({ step: "error", hostsKey });
     }
   }
 
@@ -122,7 +144,7 @@ export function ExchangeRelayCheck({
           <Group>
             <Button
               variant="default"
-              onClick={() => setState({ step: "hosts" })}
+              onClick={() => setState({ step: "hosts", hostsKey })}
             >
               {EXCHANGE_RELAY_CHECK_OPEN_LABEL}
             </Button>
@@ -148,10 +170,7 @@ export function ExchangeRelayCheck({
               {RELAY_CHECK_START_LABEL}
             </Button>
             {!checking && (
-              <Button
-                variant="default"
-                onClick={() => setState({ step: "closed" })}
-              >
+              <Button variant="default" onClick={() => setState(CLOSED)}>
                 {RELAY_CHECK_CANCEL_LABEL}
               </Button>
             )}
@@ -199,7 +218,7 @@ export function ExchangeRelayCheck({
           <Group>
             <Button
               variant="default"
-              onClick={() => setState({ step: "hosts" })}
+              onClick={() => setState({ step: "hosts", hostsKey })}
             >
               {RELAY_CHECK_AGAIN_LABEL}
             </Button>

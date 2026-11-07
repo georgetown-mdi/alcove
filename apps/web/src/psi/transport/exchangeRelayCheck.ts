@@ -10,7 +10,7 @@ import { RELAY_CHECK_BOUND_MS, deriveRelayKey } from "@alcove/core";
 
 import { relayPlanForRun, runRelayHosts } from "./runRelayPlan";
 import { parkWebSocketRelayConnection } from "./websocketRelayConnection";
-import { turnIceServer } from "./rendezvous";
+import { turnIceServer } from "./turnIceServer";
 
 import type {
   ParkedWebSocketRelayConnection,
@@ -130,7 +130,8 @@ function delay(signal: AbortSignal): Promise<void> {
  * Ask the TURN relay of `iceServer` to carry one message between two
  * relay-only peer connections of this page, each presenting the server's
  * credential. Ends on the message's return, on both gatherings ending with
- * no relay candidate on a side, or when `signal` aborts.
+ * no relay candidate on a side, or when `signal` aborts. Every peer
+ * connection it built is closed before it settles, a throw included.
  */
 export async function checkTurnRelay(
   iceServer: RTCIceServer,
@@ -142,53 +143,59 @@ export async function checkTurnRelay(
     iceServers: [iceServer],
     iceTransportPolicy: "relay",
   };
-  const offerer = createPeerConnection(configuration);
-  const answerer = createPeerConnection(configuration);
-  const relayCandidates = new Map<RTCPeerConnection, number>([
-    [offerer, 0],
-    [answerer, 0],
-  ]);
-  const seen = { refused: false, works: false };
-  const ended = new AbortController();
-  const stop = AbortSignal.any([signal, ended.signal]);
-  const gatheringEnded = (): boolean =>
-    offerer.iceGatheringState === "complete" &&
-    answerer.iceGatheringState === "complete";
-  const endIfNoPath = (): void => {
-    if (gatheringEnded() && [...relayCandidates.values()].includes(0))
-      ended.abort();
+  const built: Array<RTCPeerConnection> = [];
+  const build = (): RTCPeerConnection => {
+    const connection = createPeerConnection(configuration);
+    built.push(connection);
+    return connection;
   };
-  for (const [connection, other] of [
-    [offerer, answerer],
-    [answerer, offerer],
-  ] as const) {
-    connection.addEventListener("icecandidate", (event) => {
-      const candidate = event.candidate;
-      if (candidate === null) return;
-      if (candidate.type === "relay")
-        relayCandidates.set(
-          connection,
-          (relayCandidates.get(connection) ?? 0) + 1,
-        );
-      other.addIceCandidate(candidate).catch(() => undefined);
-    });
-    connection.addEventListener("icecandidateerror", (event) => {
-      if (CREDENTIAL_REFUSED_CODES.has(event.errorCode)) seen.refused = true;
-    });
-    connection.addEventListener("icegatheringstatechange", endIfNoPath);
-  }
-  answerer.addEventListener("datachannel", (event) => {
-    const echo = event.channel;
-    echo.addEventListener("message", (message) => echo.send(message.data));
-  });
-  const channel = offerer.createDataChannel("alcove-relay-check");
-  channel.addEventListener("open", () => channel.send(CHECK_MESSAGE));
-  channel.addEventListener("message", (message) => {
-    if (message.data !== CHECK_MESSAGE) return;
-    seen.works = true;
-    ended.abort();
-  });
   try {
+    const offerer = build();
+    const answerer = build();
+    const relayCandidates = new Map<RTCPeerConnection, number>([
+      [offerer, 0],
+      [answerer, 0],
+    ]);
+    const seen = { refused: false, works: false };
+    const ended = new AbortController();
+    const stop = AbortSignal.any([signal, ended.signal]);
+    const gatheringEnded = (): boolean =>
+      offerer.iceGatheringState === "complete" &&
+      answerer.iceGatheringState === "complete";
+    const endIfNoPath = (): void => {
+      if (gatheringEnded() && [...relayCandidates.values()].includes(0))
+        ended.abort();
+    };
+    for (const [connection, other] of [
+      [offerer, answerer],
+      [answerer, offerer],
+    ] as const) {
+      connection.addEventListener("icecandidate", (event) => {
+        const candidate = event.candidate;
+        if (candidate === null) return;
+        if (candidate.type === "relay")
+          relayCandidates.set(
+            connection,
+            (relayCandidates.get(connection) ?? 0) + 1,
+          );
+        other.addIceCandidate(candidate).catch(() => undefined);
+      });
+      connection.addEventListener("icecandidateerror", (event) => {
+        if (CREDENTIAL_REFUSED_CODES.has(event.errorCode)) seen.refused = true;
+      });
+      connection.addEventListener("icegatheringstatechange", endIfNoPath);
+    }
+    answerer.addEventListener("datachannel", (event) => {
+      const echo = event.channel;
+      echo.addEventListener("message", (message) => echo.send(message.data));
+    });
+    const channel = offerer.createDataChannel("alcove-relay-check");
+    channel.addEventListener("open", () => channel.send(CHECK_MESSAGE));
+    channel.addEventListener("message", (message) => {
+      if (message.data !== CHECK_MESSAGE) return;
+      seen.works = true;
+      ended.abort();
+    });
     const offer = await offerer.createOffer();
     await offerer.setLocalDescription(offer);
     await answerer.setRemoteDescription(offer);
@@ -196,15 +203,14 @@ export async function checkTurnRelay(
     await answerer.setLocalDescription(answer);
     await offerer.setRemoteDescription(answer);
     await delay(stop);
+    if (seen.works) return "works";
+    if (seen.refused) return "credential_refused";
+    return [...relayCandidates.values()].includes(0)
+      ? "not_reached"
+      : "no_relayed_path";
   } finally {
-    offerer.close();
-    answerer.close();
+    for (const connection of built) connection.close();
   }
-  if (seen.works) return "works";
-  if (seen.refused) return "credential_refused";
-  return [...relayCandidates.values()].includes(0)
-    ? "not_reached"
-    : "no_relayed_path";
 }
 
 // The closes the WebSocket relay refuses a hello with that end the check at
@@ -228,6 +234,7 @@ type ParkedPair = readonly [
  * one to the other. Ends at the first refusal, at the message's arrival, or
  * when `signal` aborts. A socket is closed with no start sent unless both
  * are paired, so a partner already waiting at the relay is sent nothing.
+ * Every socket it parked is closed before it settles, a throw included.
  */
 export async function checkWebSocketRelay(
   relay: { url: string; exchangeId: string },
@@ -237,8 +244,10 @@ export async function checkWebSocketRelay(
 ): Promise<WebSocketRelayCheckResult> {
   const closes: Array<number> = [];
   let wake = (): void => undefined;
-  const parkInRole = (role: "inviter" | "acceptor") =>
-    park({
+  const sockets: Array<ParkedWebSocketRelayConnection> = [];
+  const removers: Array<() => void> = [];
+  const parkInRole = (role: "inviter" | "acceptor") => {
+    const socket = park({
       url: relay.url,
       exchangeId: relay.exchangeId,
       role,
@@ -249,10 +258,13 @@ export async function checkWebSocketRelay(
         wake();
       },
     });
-  const parked: ParkedPair = [parkInRole("inviter"), parkInRole("acceptor")];
-  const removers = parked.map((socket) => socket.onChange(() => wake()));
+    sockets.push(socket);
+    removers.push(socket.onChange(() => wake()));
+    return socket;
+  };
   const connections: Array<MessageConnection> = [];
   try {
+    const parked: ParkedPair = [parkInRole("inviter"), parkInRole("acceptor")];
     for (;;) {
       const outcome = setupOutcome(parked, closes);
       if (outcome !== undefined) return outcome;
@@ -283,7 +295,7 @@ export async function checkWebSocketRelay(
     }
   } finally {
     for (const remove of removers) remove();
-    for (const socket of parked) socket.close();
+    for (const socket of sockets) socket.close();
     for (const connection of connections)
       connection.close().catch(() => undefined);
   }
@@ -325,10 +337,15 @@ function setupOutcome(
  * ask each TURN url and each WebSocket relay the run lists, at once and under
  * one bound started once the enrollment has ended. A default relay url the
  * run leaves out because its enrollment failed is reported as not enrolled
- * and is not contacted.
+ * and is not contacted. A relay whose request throws is reported not
+ * reached, and the others keep their results.
+ *
+ * @throws {DOMException} `signal`'s reason where it aborts, once every
+ *   request it started has closed its peer connections and sockets.
  */
 export async function runExchangeRelayCheck(
   subject: ExchangeRelayCheckSubject,
+  signal: AbortSignal,
   dependencies: ExchangeRelayCheckDependencies = {},
 ): Promise<Array<ExchangeRelayCheckLine>> {
   let enrollmentRefusal: DefaultRelayRefusal | undefined;
@@ -343,36 +360,50 @@ export async function runExchangeRelayCheck(
   const [relayKey, iceServers] = await Promise.all([
     websocket.length > 0 ? deriveRelayKey(subject.sharedSecret) : "",
     Promise.all(
-      turn.map((url) => turnIceServer([url], subject.sharedSecret, now)),
+      turn.map((url) =>
+        turnIceServer([url], subject.sharedSecret, now).catch(() => undefined),
+      ),
     ),
   ]);
+  signal.throwIfAborted();
   const bound = new AbortController();
   const timer = setTimeout(
     () => bound.abort(),
     dependencies.boundMs ?? RELAY_CHECK_BOUND_MS,
   );
+  const stop = AbortSignal.any([signal, bound.signal]);
   try {
     const [turnResults, websocketResults] = await Promise.all([
       Promise.all(
-        iceServers.map((iceServer) =>
-          checkTurnRelay(
-            iceServer,
-            bound.signal,
-            dependencies.createPeerConnection,
-          ),
-        ),
+        iceServers.map(async (iceServer): Promise<TurnRelayCheckResult> => {
+          if (iceServer === undefined) return "not_reached";
+          try {
+            return await checkTurnRelay(
+              iceServer,
+              stop,
+              dependencies.createPeerConnection,
+            );
+          } catch {
+            return "not_reached";
+          }
+        }),
       ),
       Promise.all(
-        websocket.map((relay) =>
-          checkWebSocketRelay(
-            relay,
-            relayKey,
-            bound.signal,
-            dependencies.parkWebSocketRelay,
-          ),
-        ),
+        websocket.map(async (relay): Promise<WebSocketRelayCheckResult> => {
+          try {
+            return await checkWebSocketRelay(
+              relay,
+              relayKey,
+              stop,
+              dependencies.parkWebSocketRelay,
+            );
+          } catch {
+            return { kind: "not_reached" };
+          }
+        }),
       ),
     ]);
+    signal.throwIfAborted();
     const lineOf = (
       relay: "turn" | "websocket",
       url: string,

@@ -130,6 +130,8 @@ function bound(ms: number): AbortSignal {
   return AbortSignal.timeout(ms);
 }
 
+const NOT_ABORTED = new AbortController().signal;
+
 describe("checkTurnRelay", () => {
   test("works where a message passes between two relay-only connections", async () => {
     const { create, built, peers } = fakePeers("works");
@@ -162,6 +164,21 @@ describe("checkTurnRelay", () => {
     await expect(checkTurnRelay(ICE_SERVER, bound(50), create)).resolves.toBe(
       "no_relayed_path",
     );
+  });
+
+  test("a second peer connection that cannot be built closes the first", async () => {
+    const { create, peers } = fakePeers("works");
+    let calls = 0;
+    const secondThrows: PeerConnectionFactory = (configuration) => {
+      calls += 1;
+      if (calls === 2) throw new Error("no second peer connection");
+      return create(configuration);
+    };
+    await expect(
+      checkTurnRelay(ICE_SERVER, bound(5_000), secondThrows),
+    ).rejects.toThrow("no second peer connection");
+    expect(peers).toHaveLength(1);
+    expect(peers[0]?.closed).toBe(true);
   });
 });
 
@@ -395,7 +412,7 @@ describe("runExchangeRelayCheck", () => {
     expect(park).not.toHaveBeenCalled();
 
     const now = new Date("2026-11-07T17:00:00Z");
-    const lines = await runExchangeRelayCheck(subject, {
+    const lines = await runExchangeRelayCheck(subject, NOT_ABORTED, {
       createPeerConnection: create,
       parkWebSocketRelay: park,
       now: () => now,
@@ -450,7 +467,7 @@ describe("runExchangeRelayCheck", () => {
       undefined,
       { build: () => ({ kind: "on", relay: DEFAULT_RELAY }), enroll },
     );
-    const lines = await runExchangeRelayCheck(subject, {
+    const lines = await runExchangeRelayCheck(subject, NOT_ABORTED, {
       createPeerConnection: create,
       parkWebSocketRelay: park,
     });
@@ -491,8 +508,8 @@ describe("runExchangeRelayCheck", () => {
       createPeerConnection: fakePeers("works").create,
       parkWebSocketRelay: fakeRelay({ kind: "pairs" }).park,
     };
-    await runExchangeRelayCheck(subject, dependencies);
-    await runExchangeRelayCheck(subject, {
+    await runExchangeRelayCheck(subject, NOT_ABORTED, dependencies);
+    await runExchangeRelayCheck(subject, NOT_ABORTED, {
       ...dependencies,
       createPeerConnection: fakePeers("works").create,
     });
@@ -514,10 +531,91 @@ describe("runExchangeRelayCheck", () => {
       },
     );
     expect(subject.hosts.leftOut).toEqual([INVITED_TURN]);
-    const lines = await runExchangeRelayCheck(subject, {
+    const lines = await runExchangeRelayCheck(subject, NOT_ABORTED, {
       createPeerConnection: create,
     });
     expect(lines.map(({ url }) => url)).toEqual([OWN_TURN]);
     expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  function ownAndInvitedRelays(): ReturnType<typeof exchangeRelayCheckSubject> {
+    return exchangeRelayCheckSubject(
+      generateSharedSecret(),
+      { turn: [INVITED_TURN] },
+      undefined,
+      {
+        readOwn: () => ({
+          kind: "set",
+          relay: { turn: [OWN_TURN], stun: [], websocket: OWN_WEBSOCKET },
+        }),
+        build: () => ({ kind: "none" }),
+      },
+    );
+  }
+
+  test("a relay whose request throws is not reached, and the other relays keep their results", async () => {
+    const peers = fakePeers("works");
+    const invitedThrows: PeerConnectionFactory = (configuration) => {
+      const urls = (configuration.iceServers ?? []).flatMap(
+        (server) => server.urls,
+      );
+      if (urls.includes(INVITED_TURN)) throw new Error("cannot build");
+      return peers.create(configuration);
+    };
+    const lines = await runExchangeRelayCheck(
+      ownAndInvitedRelays(),
+      NOT_ABORTED,
+      {
+        createPeerConnection: invitedThrows,
+        parkWebSocketRelay: fakeRelay({ kind: "pairs" }).park,
+      },
+    );
+    expect(lines).toEqual([
+      { relay: "turn", url: OWN_TURN, result: "works" },
+      { relay: "turn", url: INVITED_TURN, result: "not_reached" },
+      { relay: "websocket", url: OWN_WEBSOCKET, result: { kind: "works" } },
+    ]);
+  });
+
+  test("a WebSocket relay whose request throws is not reached, and the TURN relays keep their results", async () => {
+    const lines = await runExchangeRelayCheck(
+      ownAndInvitedRelays(),
+      NOT_ABORTED,
+      {
+        createPeerConnection: fakePeers("works").create,
+        parkWebSocketRelay: () => {
+          throw new Error("cannot park");
+        },
+      },
+    );
+    expect(lines).toEqual([
+      { relay: "turn", url: OWN_TURN, result: "works" },
+      { relay: "turn", url: INVITED_TURN, result: "works" },
+      {
+        relay: "websocket",
+        url: OWN_WEBSOCKET,
+        result: { kind: "not_reached" },
+      },
+    ]);
+  });
+
+  test("an abort closes every request's peer connections and sockets, and rejects", async () => {
+    const peers = fakePeers("no-relayed-path");
+    const relay = fakeRelay({ kind: "silent" });
+    const park = vi.fn<WebSocketRelayParking>(relay.park);
+    const check = new AbortController();
+    const running = runExchangeRelayCheck(ownAndInvitedRelays(), check.signal, {
+      createPeerConnection: peers.create,
+      parkWebSocketRelay: park,
+      boundMs: 60_000,
+    });
+    await vi.waitFor(() => {
+      expect(peers.peers).toHaveLength(4);
+      expect(park).toHaveBeenCalledTimes(2);
+    });
+    check.abort();
+    await expect(running).rejects.toMatchObject({ name: "AbortError" });
+    expect(peers.peers.every((peer) => peer.closed)).toBe(true);
+    expect(relay.closed.sort()).toEqual(["acceptor", "inviter"]);
   });
 });
