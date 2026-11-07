@@ -332,12 +332,15 @@ That equality is asserted in the build rather than left to the bumper: the
 unless it is what `AL2023_RELEASEVER` names, so a digest moved on its own reddens
 the image build instead of producing a green one whose userland and package layer
 came from different releases. Its reach is the architecture being built, each
-having a rootfs of its own, and `image_smoke.yaml` builds `amd64` alone. So
-bumping the base still means re-resolving the digest and reading that release out
-of each architecture's rootfs -- `docker create` plus `docker cp` of
-`/etc/os-release` reads the foreign architecture without emulating or executing
-it -- with the assertion holding the value that reading produces. The rest of
-that procedure, and what a green smoke run does and does not prove about a bump,
+having a rootfs of its own, and `image_smoke.yaml` builds `amd64` alone. The
+release workflow's `workflow_dispatch` dry run builds both Dockerfiles for
+`amd64` and `arm64`, so it runs this assertion, and the build's others, on each
+architecture before a tag. The dry run is started by hand and runs no scan, so
+reading that release out of each architecture's rootfs by hand stays the
+fallback -- `docker create` plus `docker cp` of `/etc/os-release` reads the
+foreign architecture without emulating or executing it -- and
+`AL2023_RELEASEVER` takes the value that reading produces. The rest of
+the bump procedure, and what a green smoke run does and does not prove about a bump,
 are in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#bumping-the-fips-base-image).
 
 **What the build fetches, beyond the npm tree.** Two mirrors rather than the
@@ -360,9 +363,11 @@ the same name, at 4.17.12, so `image_smoke.yaml`'s `command -v smbclient`
 assertion holds against both images unchanged. It costs 53 packages on this
 base against Alpine's 45, including `systemd`, `dbus`, `pam`,
 `cryptsetup-libs`, `device-mapper` and `util-linux` -- a heavier closure, and
-one that includes an init system. The 4.17.12 version and the package counts are
-unverified as of 2026-09-29: they come from an earlier build and were not
-re-run.
+one that includes an init system. The 4.17.12 version is the one
+[`NOTICE-os-packages-fips.tsv`](../../NOTICE-os-packages-fips.tsv) records for
+`samba-client` (`2:4.17.12-1.amzn2023.0.7`), read from the built image. The
+package counts are unverified as of 2026-09-29: they come from an earlier build
+and were not re-run.
 
 ### The FIPS image's measured reading
 
@@ -688,7 +693,7 @@ mode under `/app/node_modules` decides what is measured or refuses the step.
 The comparison runs one way: a package in the image and not in the resolution
 fails, and one in the resolution and not in the image does not. The two trees
 resolve from the same lockfile but are seeded from different manifest sets --
-the builder copies five workspace manifests, a checkout has all six -- so the
+the builder copies five workspace manifests, a checkout has every one -- so the
 runner's tree carries a workspace link the image has no manifest for. What the
 opposite direction would catch is covered by the exchange smokes, which do not
 complete without the runtime dependencies, and by the symlink containment
