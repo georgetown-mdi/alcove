@@ -220,13 +220,13 @@ export function peerIdentificationDiagnosisOf(
  */
 const NON_SSH_SHAPE_DESCRIPTION: Record<PeerAnswerShape, string> = {
   http:
-    `an HTTP response, not an SSH identification string -- most likely a web ` +
+    `an HTTP response, not an SSH identification string - most likely a web ` +
     `server, or a proxy or gateway intercepting this port`,
   "tls-alert":
-    `a TLS alert record, not an SSH identification string -- most likely a ` +
+    `a TLS alert record, not an SSH identification string - most likely a ` +
     `service speaking TLS, or a TLS-terminating proxy`,
   unrecognized:
-    `not an SSH identification string -- most likely something other than an ` +
+    `not an SSH identification string - most likely something other than an ` +
     `SSH server answering this port`,
 };
 

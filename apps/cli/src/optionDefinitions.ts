@@ -1118,7 +1118,7 @@ export function warnUnsupportedWebRTCServerFlags(
       log.warn(
         `${flag} has no effect on the webrtc channel and will be ignored; it ` +
           "authenticates an SSH server, and no SSH credential applies to a " +
-          "webrtc coordination server -- what you typed is neither used nor " +
+          "webrtc coordination server. What you typed is neither used nor " +
           "echoed. The one credential this channel has is the coordination " +
           "server's own API key: a configured `server.key` is sent to that " +
           "server as part of the request it authorizes.",

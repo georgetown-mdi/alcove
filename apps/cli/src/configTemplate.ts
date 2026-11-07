@@ -96,7 +96,7 @@ const HEADER_LINES = [
   "Every option below is documented inline. Edit the placeholders (anything",
   "REPLACE_WITH_...; an exchange refuses a file still holding one), fill in",
   "your connection credentials, and review the linkage terms before running an",
-  "exchange. The shared secret is NOT stored here -- it lives in the key file",
+  "exchange. The shared secret is NOT stored here. It lives in the key file",
   "(.alcove.key), written by invite/accept.",
   "",
   "Field reference:",
@@ -304,7 +304,7 @@ export const SFTP_FIELD_DOCS: Array<{
     lines: [
       "SFTP server both parties drop files on. When the block has no path, the",
       "login directory is used. Supply a credential by adding one",
-      "of (preferably as an @path, never a literal secret -- quote the value, as",
+      "of (preferably as an @path, never a literal secret - quote the value, as",
       "a leading @ is reserved in YAML):",
       '  password: "@./sftp-password.txt"',
       '  private_key: "@~/.ssh/id_alcove"',
@@ -434,7 +434,7 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # certificate (third-party verifiable); the session-derived mode is not yet
 # implemented and an exchange configured with it is refused. Under certificate
 # mode identity_file is required: the signing identity is a long-lived
-# credential, so you choose where it lives and Alcove never does -- a mount of
+# credential, so you choose where it lives and Alcove never does. A mount of
 # its own is the usual home, read-only for every run except the one that creates
 # the file. Create it with
 # 'alcove fingerprint --identity-file <the path below>'. A signed run writes its
@@ -460,7 +460,7 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # back to your input by hand. disclosed writes the columns you send to the
 # partner; all writes every column your metadata block declares, or, with no
 # metadata block, every column of your input file. Your identifier column, if
-# you have one, is left out either way -- the result's first column holds it.
+# you have one, is left out either way. The result's first column holds it.
 # Purely local: nothing extra is sent, and your partner's result is unchanged.
 # Omit the field to write your partner's values alone.
 # include_own_columns: disclosed
@@ -488,7 +488,7 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 //
 // @internal exported so the section-coverage test reads it from one place.
 export const CSV_DELIMITER_HINT = `# csv_delimiter: the field delimiter of the CSV you link and of the result
-# Alcove writes -- one character, 'tab', or 'detect' to take it from the input
+# Alcove writes - one character, 'tab', or 'detect' to take it from the input
 # file. Local to you: your partner reads and writes its own files however it
 # likes, and nothing about this is sent. Omit the field to read and write
 # commas.

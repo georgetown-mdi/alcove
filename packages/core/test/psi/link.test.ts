@@ -72,6 +72,7 @@ import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "../../src/partnerAbortFrame";
 import { sortAssociationTable } from "../../src/testing";
+import { ISSUES_URL } from "../../src/projectLinks";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
 import { sendMatchedList } from "../../src/psi/matchedListParts";
@@ -1198,7 +1199,7 @@ test("the single-pass sender refuses a built reply above the derived cap", async
     `server: single-pass built a reply of ${replyBytes} byte(s), above the ` +
       `${replyCap} byte(s) both parties derive from their declared sizes, ` +
       "though both datasets are within the single-pass limit. Report it " +
-      "with this message.",
+      `at ${ISSUES_URL} with this message.`,
   );
   // The over-ceiling diagnosis and its dataset remedies stay out: neither operator
   // can move this by shrinking a dataset.

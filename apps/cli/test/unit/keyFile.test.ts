@@ -9,6 +9,7 @@ import {
   UsageError,
 } from "@alcove/core";
 import type { InvitationToken } from "@alcove/core";
+import { OUT_OF_SYNC_TOKENS_DOC_URL } from "../../src/docLinks";
 import {
   buildRotatedKeyFile,
   checkKeyFileExpiry,
@@ -478,7 +479,7 @@ test("rotationInFlightNotice names the instant, the new-invitation remedy, and t
   expect(notice).toContain("2026-03-01T12:00:00.000Z");
   expect(notice).toContain("probably hold different secrets");
   expect(notice).toContain("Ask your partner for a new invitation");
-  expect(notice).toContain('"Out-of-sync tokens"');
+  expect(notice).toContain(`See ${OUT_OF_SYNC_TOKENS_DOC_URL} for how.`);
   expect(notice).toContain(
     "confirm with your partner over a channel you trust before asking for a new invitation",
   );

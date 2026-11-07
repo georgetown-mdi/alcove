@@ -58,8 +58,8 @@ export const OLDER_KEY_FILE_NO_SHOW_REMEDY =
 // Worded as the start-up refusal of such a file words it.
 const SHARED_PEER_ID_REMEDY =
   "The likely cause is that both parties set the same peer_id: set a " +
-  "different peer_id on one side, changing its text rather than only its " +
-  "% fields, then run again.";
+  "different peer_id on one side, changing its text rather than only " +
+  "fields such as %Y or %K, then run again.";
 
 const IGNORED_HELLO_REMEDY =
   "If the file this run ignored was your partner's, raise " +
@@ -115,17 +115,12 @@ export const CLI_FAILURE_REMEDIES: {
   "relay-registrar-unreachable": (cause) => {
     switch (cause.failure) {
       case "no-connection":
+      case "no-answer":
         return relayRegistrarUnreachableRemedy(cause);
       case "name-not-resolved":
         return (
           "Check the registrar address in connection.relay_registrar.url and " +
           `that this computer's DNS resolves ${cause.host}, then run again.`
-        );
-      case "no-answer":
-        return (
-          "The registrar did not complete the request: check that it is " +
-          "running and reachable from this network " +
-          "(infra/relay/README.md, The registrar), then run again."
         );
     }
   },

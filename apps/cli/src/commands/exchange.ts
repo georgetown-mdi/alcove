@@ -196,7 +196,7 @@ export function builder(cmd: Argv): Argv {
         "outbound-path":
           "set the outbound (self-written) directory, overriding " +
           "connection.outbound_path in the config; the config supplies the " +
-          "inbound (peer-written) directory -- its single path, or an " +
+          "inbound (peer-written) directory - its single path, or an " +
           "already-configured inbound_path. Requires retain mode; the two " +
           "directories must differ",
       },
@@ -212,7 +212,7 @@ export function builder(cmd: Argv): Argv {
       "exchange in one command. The code is decoded and validated (checksum, " +
       "schema, expiry) before anything is written; a malformed or expired code " +
       "fails with nothing written. Errors if a key file already exists at the " +
-      "key path -- after the first exchange the secret rotates, so the original " +
+      "key path. After the first exchange the secret rotates, so the original " +
       "code must not resurrect a stale secret",
   });
 }
@@ -993,8 +993,8 @@ export async function prepareDataset(
 const SIGNING_IDENTITY_FILE_UNSET_REFUSAL =
   "this exchange signs receipts (signing.mode: certificate) but names no " +
   "signing identity. Set signing.identity_file to the path where the " +
-  "identity lives -- a mount of its own is the usual home, for example " +
-  "/run/signing/alcove-signing-identity.json -- and create the file there " +
+  "identity lives - a mount of its own is the usual home, for example " +
+  "/run/signing/alcove-signing-identity.json - and create the file there " +
   "with 'alcove fingerprint --identity-file " +
   "/run/signing/alcove-signing-identity.json'. The run reads it and writes " +
   "nothing to it, so a read-only mount is enough. Or set signing.mode to " +

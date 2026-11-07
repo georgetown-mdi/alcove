@@ -231,7 +231,7 @@ const UNRECORDABLE_PIN_PREAMBLE =
 
 /** What {@link assertPartnerFingerprintRecordable} states behind the path. */
 const UNRECORDABLE_PIN_REMEDY =
-  " -- and that file cannot be replaced: recording the pin writes a new file " +
+  ". That file cannot be replaced: recording the pin writes a new file " +
   "in the directory holding it and renames that over the old one, which " +
   "needs the directory writable by the user this run is. The run stopped " +
   `before connecting. Either ${PARTNER_FINGERPRINT_REMEDIES}.`;

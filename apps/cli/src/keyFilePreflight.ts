@@ -279,9 +279,9 @@ export function preflightKeyFilePath(
     throw new UsageError(
       `key file parent directory ${parent} is not writable: ` +
         (err instanceof Error ? err.message : String(err)) +
-        ". Restore write access -- the directory's owner as well as its " +
+        ". Restore write access - the directory's owner as well as its " +
         "permissions, since in a container Alcove runs as its own account " +
-        "and a mounted directory keeps the owner it has outside -- before " +
+        "and a mounted directory keeps the owner it has outside - before " +
         `running the exchange; ${FAILS_AFTER_KEY_EXCHANGE}.`,
     );
   } finally {

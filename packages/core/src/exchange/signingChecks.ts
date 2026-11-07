@@ -256,9 +256,12 @@ const PARTNER_CERTIFICATE_REFUSALS = {
     message:
       "your partner presented a signing certificate this version of Alcove " +
       "cannot read. The run stopped before any linkage key or payload row " +
-      "was sent. Ask your partner to share an identity made by " +
-      "'alcove fingerprint' again, or set signing.mode to \"none\" to run " +
-      "unsigned.",
+      "was sent. Ask your partner to check that you both run the same " +
+      "Alcove version. If the versions match, their signing identity is " +
+      "damaged: they make a new one with 'alcove fingerprint --force' and " +
+      "send you only the fingerprint it prints. A new identity means anyone " +
+      "else who pinned their old fingerprint must pin the new one. Or set " +
+      'signing.mode to "none" to run unsigned.',
   },
   absent: {
     abortReason: PARTNER_CERTIFICATE_ABSENT_ABORT_REASON,
@@ -274,8 +277,10 @@ const PARTNER_CERTIFICATE_REFUSALS = {
     message:
       "your partner's signing certificate does not verify under its own key, " +
       "so nothing was pinned. The run stopped before any linkage key or " +
-      "payload row was sent. Ask your partner to share an identity made by " +
-      "'alcove fingerprint' again.",
+      "payload row was sent. Their signing identity is damaged. Ask your " +
+      "partner to make a new one with 'alcove fingerprint --force' and send " +
+      "you only the fingerprint it prints. A new identity means anyone else " +
+      "who pinned their old fingerprint must pin the new one.",
   },
   unauthorizedIdentity: {
     abortReason: PARTNER_CERTIFICATE_UNAUTHORIZED_IDENTITY_ABORT_REASON,

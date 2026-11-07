@@ -230,8 +230,8 @@ test.each([
     "The relay registrar at relay.example.org port 8443 closed the " +
       "connection without answering (ECONNRESET).",
     "The registrar did not complete the " +
-      "request: check that it is running and reachable from this network " +
-      "(infra/relay/README.md, The registrar), then run again.",
+      "request: ask whoever runs the relay to check that its registrar is " +
+      "running and reachable from this network, then run again.",
   ],
 ])("an enrollment that %s", async (_, code, sentence, remedy) => {
   const failure = await enrollmentFailingWith(code);

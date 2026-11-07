@@ -19,7 +19,7 @@ export const peerSilenceGuidance = (limitNamed: boolean): string =>
   "The peer completed the rendezvous but has sent nothing since. The likely " +
   "cause is on the peer's side: its process may have exited, or its exchange " +
   "directory may have become unwritable (for example a read-only or full " +
-  "filesystem, or revoked permissions) -- and a peer that cannot write its " +
+  "filesystem, or revoked permissions). A peer that cannot write its " +
   "next message also cannot record why, so this side cannot name the cause. " +
   "Check the peer's own logs for the underlying error. If the peer is instead " +
   `still working on a large dataset, ${raiseInactivityLimit(limitNamed)}.`;
@@ -45,7 +45,7 @@ export const entryHelloResidueGuidance = (helloName: string): string =>
  */
 export const BOTH_SWEPT_GUIDANCE =
   "Both sides appear to have cleared the folder at the same time, removing " +
-  "each other's files. The folder should be empty now -- run the exchange " +
+  "each other's files. The folder should be empty now. Run the exchange " +
   "again on both sides, without --sweep-exchange-files.";
 
 /**
@@ -216,7 +216,7 @@ export const TERMINATED_RECORD_UNBUILT_WARNING =
  * docs/COMPLIANCE.md#hipaa-considerations.
  */
 export const UNNAMED_PARTNER_ACCOUNTING_NOTE =
-  "-- this exchange's record will hold no partner name, so an accounting of " +
+  "This exchange's record will hold no partner name, so an accounting of " +
   "disclosures drawn from it must take the recipient from your own records of " +
   "who this exchange was with.";
 

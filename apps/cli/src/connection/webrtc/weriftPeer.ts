@@ -260,7 +260,7 @@ export const PLAINTEXT_SIGNALING_WARNING =
   "secret, both parties' session descriptions, and the candidate addresses " +
   "they gather all cross the network in the clear, disclosing each party's " +
   "network location to anything on the path and letting it disrupt the " +
-  "rendezvous. No exchange content is disclosed -- the two parties " +
+  "rendezvous. No exchange content is disclosed. The two parties " +
   "authenticate each other directly and the data channel is encrypted end " +
   "to end regardless. Omit `secure` or set it to true to use TLS, which is " +
   "the default; leave it false only for a broker you reach without a " +

@@ -100,8 +100,8 @@ function csvDelimiterShape(value: string): string {
  */
 export function csvDelimiterRefusal(value: string): string {
   return (
-    `a CSV field delimiter must be a single character -- a tab (write it ` +
-    `\`tab\`), or a printable ASCII character other than the double quote -- ` +
+    `a CSV field delimiter must be a single character - a tab (write it ` +
+    `\`tab\`), or a printable ASCII character other than the double quote - ` +
     `or \`${CSV_DELIMITER_DETECT}\` to take the delimiter from the file ` +
     `itself, and this is ${csvDelimiterShape(value)}`
   );

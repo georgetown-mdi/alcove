@@ -17,6 +17,7 @@ import {
   UsageError,
 } from "@alcove/core";
 
+import { OUT_OF_SYNC_TOKENS_DOC_URL } from "./docLinks";
 import {
   detectFileConflicts,
   FileExistsError,
@@ -369,8 +370,8 @@ export function rotationInFlightNotice(
     "exchange, and your partner may have saved a secret this key file does " +
     "not hold. If this run fails authentication or never meets your partner, " +
     "the two of you probably hold different secrets. " +
-    `${NEW_INVITATION_REMEDY} It is described under "Out-of-sync tokens" in ` +
-    "docs/CLI.md. If neither of you had a run stop partway, confirm with " +
+    `${NEW_INVITATION_REMEDY} See ${OUT_OF_SYNC_TOKENS_DOC_URL} for how. ` +
+    "If neither of you had a run stop partway, confirm with " +
     "your partner over a channel you trust before asking for a new " +
     "invitation."
   );

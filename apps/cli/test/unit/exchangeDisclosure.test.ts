@@ -746,7 +746,7 @@ test("a partner entitled to no result is told no payload is sent", () => {
     ["diagnosis"],
   );
   expect(lines).toContain(
-    "  columns you will send (enforced): (none) -- your partner receives no result, so no payload is sent",
+    "  columns you will send (enforced): (none) - your partner receives no result, so no payload is sent",
   );
   expect(lines.join("\n")).not.toContain("- diagnosis");
   // Withholding a result rests on the agreed terms being honored, so the line
@@ -758,7 +758,7 @@ test("a partner entitled to no result is told no payload is sent", () => {
 
 test("an input file with nothing transmittable says only matched records", () => {
   expect(rendered(localTerms)).toContain(
-    "  columns you will send (enforced): (none) -- only matched records",
+    "  columns you will send (enforced): (none) - only matched records",
   );
 });
 

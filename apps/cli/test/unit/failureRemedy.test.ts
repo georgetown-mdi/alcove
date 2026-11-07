@@ -170,7 +170,7 @@ test("a no-show with a file of this side's name names peer_id and no timeout fla
         "and a file with this side's name appeared in it.\n" +
         "The likely cause is that both parties set the same peer_id: set a " +
         "different peer_id on one side, changing its text rather than only " +
-        "its % fields, then run again.",
+        "fields such as %Y or %K, then run again.",
     );
   const sftp = rendered({ kind: "partner-never-arrived", channel: "sftp" });
   expect(sftp).toContain("--peer-timeout");
@@ -256,8 +256,8 @@ test.each([
     expect(rendered(SAMPLES["relay-registrar-unreachable"][index])).toBe(
       `${sentence}\n` +
         "The registrar did not complete the " +
-        "request: check that it is running and reachable from this network " +
-        "(infra/relay/README.md, The registrar), then run again.",
+        "request: ask whoever runs the relay to check that its registrar is " +
+        "running and reachable from this network, then run again.",
     );
   },
 );

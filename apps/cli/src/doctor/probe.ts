@@ -5,6 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
+import { windowsTroubleshootingSection } from "../docLinks";
 import { MAX_DIRECTORY_ENTRIES } from "../connection/listingGuard";
 import { stripExtendedAcls, writeFileOwnerOnly } from "../fileUtils";
 import { writeStderrLine } from "../util/exitGate";
@@ -312,7 +313,7 @@ function padSkipped(checks: DoctorCheckRecord[]): DoctorCheckRecord[] {
   return [
     ...checks,
     ...PROBE_CHECK_IDS.filter((id) => !seen.has(id)).map((id) =>
-      skipped(id, `${PROBE_CHECK_NAMES[id]} -- not run.`, {
+      skipped(id, `${PROBE_CHECK_NAMES[id]} - not run.`, {
         meaning: SKIPPED_BY_FAILURE_MEANING,
       }),
     ),
@@ -335,9 +336,9 @@ function transportFailureCheck(
       : "smbclient could not finish the request and the server gave no reason " +
           `for it (exit ${String(result.code)}). Nothing about your credentials ` +
           "or your folder has been established either way.",
-    "see the troubleshooting page, 'The container cannot reach the server'. A " +
-      "firewall or VPN that allows the connection and then drops the traffic " +
-      "behaves exactly like this.",
+    "a firewall or VPN that allows the connection and then drops the " +
+      "traffic behaves exactly like this. See " +
+      windowsTroubleshootingSection("The container cannot reach the server"),
     { detail: withoutListingEntries(result.output) },
   );
 }
@@ -355,14 +356,15 @@ function authenticationCheck(
         status,
         "the username, password, or domain is wrong. This is the one status " +
           "that really does mean bad credentials.",
-        "if this is a domain account, give its domain -- answer the setup " +
-          "script's Domain prompt, or set SMB_DOMAIN if you are running this " +
-          "image yourself. If the folder opens in " +
-          "File Explorer WITHOUT ever asking for a password, Windows is signing " +
-          "you in with Kerberos and there may be no password that works here; " +
-          "see the troubleshooting page, 'The share never asks for a password'. " +
-          "Do not work through passwords one at a time -- each run is one failed " +
-          "sign-in against the account, and a handful of those locks it out.",
+        "if this is a domain account, give its domain: answer the Domain " +
+          "prompt of the Windows setup script, Setup-AlcoveFileDrop.ps1, or " +
+          "set SMB_DOMAIN if you are running this image yourself. Do not work " +
+          "through passwords one at a time. Each run is one failed sign-in " +
+          "against the account, and a handful of those locks it out. If the " +
+          "folder opens in File Explorer WITHOUT ever asking for a password, " +
+          "Windows is signing you in with Kerberos and there may be no " +
+          "password that works here. See " +
+          windowsTroubleshootingSection("The share never asks for a password"),
         detail,
       );
     case "NT_STATUS_ACCOUNT_LOCKED_OUT":
@@ -391,13 +393,14 @@ function authenticationCheck(
       return fail(
         "authentication",
         status,
-        "the account itself is not permitted to sign in -- disabled, expired, " +
+        "the account itself is not permitted to sign in - disabled, expired, " +
           "restricted to certain hours, or restricted to certain machines. The " +
           "password is not the problem and neither are the rights on your folder.",
         "ask whoever issued the account to lift that restriction, or ask for a " +
-          "service account instead -- it is item 1 of the IT request on the " +
-          "troubleshooting page. Without this, every later check would report " +
-          "the same status and blame your folder for it.",
+          "service account instead. Without this, every later check would " +
+          "report the same status and blame your folder for it. The service " +
+          "account is item 1 of the request under " +
+          windowsTroubleshootingSection("What to ask your IT department for"),
         detail,
       );
     case "NT_STATUS_NOT_SUPPORTED":
@@ -408,7 +411,8 @@ function authenticationCheck(
         "the server rejected the authentication METHOD, not the credentials. " +
           "NTLM is probably disabled server-side, or this account is not " +
           "allowed to sign in over the network.",
-        "see the troubleshooting page, 'The share never asks for a password'.",
+        "see " +
+          windowsTroubleshootingSection("The share never asks for a password"),
         detail,
       );
     default:
@@ -420,7 +424,7 @@ function authenticationCheck(
       return ok("authentication", "the credentials were accepted.", {
         meaning:
           `the server would not list its shares (${status}). That is common ` +
-          "and is not a problem by itself -- many servers refuse the list to " +
+          "and is not a problem by itself. Many servers refuse the list to " +
           "ordinary accounts. Opening your share is the test that counts.",
       });
   }
@@ -449,14 +453,14 @@ function shareOpenCheck(
       return fail(
         "share_open",
         status,
-        "the server is telling us outright that this path is a DFS link -- it " +
+        "the server reports that this path is a DFS link. It " +
           "does not hold the data itself and expects the client to follow a " +
           "referral to whichever server does. A volume mounted on this path " +
           "cannot follow one.",
         "find the real server by hand and pass it directly: open the folder in " +
           "File Explorer, right-click, Properties, DFS tab, and read the " +
-          "referral. See the troubleshooting page, 'Reading the real path from " +
-          "Windows'.",
+          "referral. See " +
+          windowsTroubleshootingSection("Reading the real path from Windows"),
       );
     case "NT_STATUS_NOT_A_DIRECTORY":
       return fail(
@@ -482,8 +486,10 @@ function shareOpenCheck(
         "the credentials were accepted and access to the share was then " +
           "refused. This is not a wrong password.",
         "the account probably lacks rights when connecting from a machine that " +
-          "is not domain-joined, or the server requires Kerberos. See the " +
-          "troubleshooting page, 'The password works but access is refused'.",
+          "is not domain-joined, or the server requires Kerberos. See " +
+          windowsTroubleshootingSection(
+            "The password works but access is refused",
+          ),
         detail,
       );
   }
@@ -511,8 +517,8 @@ const DFS_LINK_MEANING =
   "cannot reach them.";
 const DFS_LINK_ACTION =
   "read the real path from the folder's Properties, DFS tab and " +
-  "pass it as SMB_SERVER, SMB_SHARE, and SMB_PATH. See the " +
-  "troubleshooting page, 'Reading the real path from Windows'.";
+  "pass it as SMB_SERVER, SMB_SHARE, and SMB_PATH. See " +
+  windowsTroubleshootingSection("Reading the real path from Windows");
 
 /**
  * The subdirectory verdict when smbclient reached the folder on a server or
@@ -631,8 +637,10 @@ export async function runProbe(
             "DNS suffix search list and has no NetBIOS name resolution, so a " +
             "short server name that works in File Explorer often fails here.",
           `on Windows, run Resolve-DnsName ${input.server} and use the full ` +
-            "name or the address it prints. See the troubleshooting page, " +
-            "'The container cannot find the server'.",
+            "name or the address it prints. See " +
+            windowsTroubleshootingSection(
+              "The container cannot find the server",
+            ),
         ),
       );
       return finish();
@@ -650,8 +658,10 @@ export async function runProbe(
           "machine than Windows does. A VPN that routes only the Windows side, " +
           "a host firewall rule, or a server-side address restriction blocks it " +
           "while File Explorer keeps working.",
-        "if you are on a VPN, that is the likely cause. See the troubleshooting " +
-          "page, 'The container cannot reach the server'.",
+        "if you are on a VPN, that is the likely cause. See " +
+          windowsTroubleshootingSection(
+            "The container cannot reach the server",
+          ),
       ),
     );
     return finish();
@@ -850,7 +860,7 @@ export async function runProbe(
           : ok("authentication", "authenticated.", {
               meaning:
                 `'${input.share}' is not among the shares this account can ` +
-                "see. That does not decide anything -- a share can be reachable " +
+                "see. That does not decide anything. A share can be reachable " +
                 "without being listed. Opening it is the test that counts.",
             }),
       );
@@ -949,10 +959,10 @@ export async function runProbe(
       checks.push(
         fail(
           "write",
-          `${putStatus} -- could not create a file.`,
+          `${putStatus} - could not create a file.`,
           "this account can read the folder but not write to it.",
           "ask whoever administers the share for write permission on this " +
-            "folder. Mount options such as file_mode cannot grant it -- they " +
+            "folder. Mount options such as file_mode cannot grant it. They " +
             "only change how permissions look inside the container, not what " +
             "the server allows.",
           { detail: put.output },
@@ -979,7 +989,7 @@ export async function runProbe(
       checks.push(
         fail(
           "rename",
-          `${renameStatus} -- created a file but could not rename it.`,
+          `${renameStatus} - created a file but could not rename it.`,
           "creating files is allowed here and renaming them is not. Alcove " +
             "renames every message into place, so this stops an exchange even " +
             "though the folder looks writable.",
@@ -1003,7 +1013,7 @@ export async function runProbe(
       checks.push(
         fail(
           "delete",
-          `${deleteStatus} -- created and renamed a file but could not delete it.`,
+          `${deleteStatus} - created and renamed a file but could not delete it.`,
           "Alcove removes each message once the other side has read it. " +
             "Without delete rights the folder fills up and a second exchange in " +
             "it will not start.",

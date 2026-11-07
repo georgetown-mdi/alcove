@@ -312,33 +312,33 @@ describe("the human rendering", () => {
         {
           id: "b",
           status: "skipped",
-          summary: "writing -- not run.",
+          summary: "writing - not run.",
           meaning: shared,
         },
         {
           id: "c",
           status: "skipped",
-          summary: "renaming -- not run.",
+          summary: "renaming - not run.",
           meaning: shared,
         },
         {
           id: "d",
           status: "skipped",
-          summary: "deleting -- not run.",
+          summary: "deleting - not run.",
           meaning: shared,
         },
       ]),
     );
-    expect(lines).toContain("SKIP: writing -- not run.");
-    expect(lines).toContain("SKIP: renaming -- not run.");
-    expect(lines).toContain("SKIP: deleting -- not run.");
+    expect(lines).toContain("SKIP: writing - not run.");
+    expect(lines).toContain("SKIP: renaming - not run.");
+    expect(lines).toContain("SKIP: deleting - not run.");
     // Under the last of the run, so the names read as one list rather than
     // one sentence apiece.
     expect(lines.filter((line) => line.startsWith("MEANING: "))).toHaveLength(
       2,
     );
     expect(lines.indexOf(`MEANING: ${shared}`)).toBe(
-      lines.indexOf("SKIP: deleting -- not run.") + 1,
+      lines.indexOf("SKIP: deleting - not run.") + 1,
     );
   });
 
@@ -365,6 +365,19 @@ describe("the human rendering", () => {
         report([{ id: "a", status: "fail", summary: "", blocksRun: true }]),
       ).at(-1),
     ).toContain("COULD NOT RUN");
+  });
+
+  test("each verdict line that is not a pass names the next step", () => {
+    expect(
+      verdictLines(report([{ id: "a", status: "fail", summary: "" }])).at(-1),
+    ).toBe("NOT READY YET - follow the ACTION lines above and run this again.");
+    expect(
+      verdictLines(
+        report([{ id: "a", status: "fail", summary: "", blocksRun: true }]),
+      ).at(-1),
+    ).toBe(
+      "COULD NOT RUN THE CHECKS - fix the failure above and run this again.",
+    );
   });
 
   test("wraps a long meaning under its label rather than emitting one long line", () => {

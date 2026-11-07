@@ -90,6 +90,7 @@ import { openWebRtcWithRelayFallback } from "./connection/webrtc/relayFallback";
 import { webSocketRelayDialsFor } from "./connection/webrtc/websocketRelayDial";
 import { FinalFrameUnconfirmedError } from "./connection/webrtc/webrtcMessageConnection";
 import { persistPartnerFingerprint } from "./config";
+import { OUT_OF_SYNC_TOKENS_DOC_URL } from "./docLinks";
 import {
   enrollAtInvitationRelay,
   reportInvitationRelayEnrollment,
@@ -708,7 +709,7 @@ async function runExchangeStage(params: {
           redactAndDisplayPartyIdentity(partnerTerms.identity),
         ] as const;
         if (writeRecord && partnerTerms.identity === undefined) {
-          log.warn(...line, UNNAMED_PARTNER_ACCOUNTING_NOTE);
+          log.warn(`${line.join(" ")}.`, UNNAMED_PARTNER_ACCOUNTING_NOTE);
           emit((e) =>
             e.warning("unnamedPartnerRecord", UNNAMED_PARTNER_ACCOUNTING_NOTE),
           );
@@ -1285,14 +1286,14 @@ const PARTNER_SAVE_FAILURE_REMEDY =
   "Run the exchange again once your partner has fixed what stopped their " +
   "save. If authentication then fails, or the run never meets your " +
   "partner, you and your partner hold different secrets. " +
-  `${NEW_INVITATION_REMEDY} It is ` +
-  'described under "Out-of-sync tokens" in docs/CLI.md.';
+  `${NEW_INVITATION_REMEDY} See ` +
+  `${OUT_OF_SYNC_TOKENS_DOC_URL} for how.`;
 
 /** {@link PARTNER_SAVE_FAILURE_REMEDY} where the next run cannot heal. */
 const PARTNER_SAVE_FAILURE_REMEDY_NO_HEAL =
   ", so you and your partner now hold different secrets, and running the " +
-  `exchange again cannot reconnect you. ${NEW_INVITATION_REMEDY} It is ` +
-  'described under "Out-of-sync tokens" in docs/CLI.md.';
+  `exchange again cannot reconnect you. ${NEW_INVITATION_REMEDY} See ` +
+  `${OUT_OF_SYNC_TOKENS_DOC_URL} for how.`;
 
 /**
  * The failure an initiator reports in place of the partner's abort stating

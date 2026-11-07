@@ -153,8 +153,8 @@ describe("the failure-cause catalog", () => {
       "This computer needs outbound access to relay.example.org on TCP port 8443: if this network allows only some ports out, have that port opened or run from a network that allows it.",
       "This computer needs outbound access to relay.example.org on TCP port 8443: if this network allows only some ports out, have that port opened or run from a network that allows it.",
       "Check the registrar address this exchange is configured with and that this computer's DNS resolves relay.example.org, then run again.",
-      "The registrar did not complete the request: check that it is running and reachable from this network, then run again.",
-      "The registrar did not complete the request: check that it is running and reachable from this network, then run again.",
+      "The registrar did not complete the request: ask whoever runs the relay to check that its registrar is running and reachable from this network, then run again.",
+      "The registrar did not complete the request: ask whoever runs the relay to check that its registrar is running and reachable from this network, then run again.",
     ]);
   });
 

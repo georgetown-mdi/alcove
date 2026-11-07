@@ -257,7 +257,7 @@ function notWritable(output: string, err: unknown): UsageError {
   return outputFolderError(
     output,
     `is not writable: ${errorText(err)}`,
-    "Restore write access to it -- in a container, the folder's owner as " +
-      "well as its permissions -- or name another folder as the output.",
+    "Restore write access to it - in a container, the folder's owner as " +
+      "well as its permissions - or name another folder as the output.",
   );
 }

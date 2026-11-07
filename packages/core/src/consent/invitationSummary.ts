@@ -127,7 +127,7 @@ const FUZZY_COMPARISON_LABELS: Record<
  */
 export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
   remove_non_ascii:
-    "Deletes every character outside the ASCII set before matching -- an accented letter, emoji, or symbol is dropped entirely, not simplified.",
+    "Deletes every character outside the ASCII set before matching. An accented letter, emoji, or symbol is dropped entirely, not simplified.",
   replace_separators_with_spaces:
     "Turns hyphens, dashes, apostrophes (straight or curly), ampersands, slashes, and underscores into spaces before matching.",
   squash_spaces:

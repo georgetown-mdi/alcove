@@ -12,6 +12,7 @@ import {
   relayCredentialForRun,
 } from "../connection/webrtc/weriftPeer";
 import { webSocketRelayDialsFor } from "../connection/webrtc/websocketRelayDial";
+import { RELAY_CHECK_DOC_URL, SHARED_FOLDER_CHECK_DOC_URL } from "../docLinks";
 import { runMountChecks } from "../doctor/mount";
 import { runProbe } from "../doctor/probe";
 import type { RelayCandidateGathering } from "../doctor/relay";
@@ -174,7 +175,7 @@ export function builder(cmd: Argv): Argv {
             "Reads the connection from the environment, not from flags: " +
               "SMB_SERVER, SMB_SHARE, and SMB_USER are required; SMB_PASS, " +
               "SMB_PATH, SMB_DOMAIN, SMB_DIALECT, SMB_MARKER, and SMB_TOKEN " +
-              "are optional. See docs/CLI.md, Checking a network shared folder.",
+              `are optional. See ${SHARED_FOLDER_CHECK_DOC_URL}`,
           ),
       probeHandler,
     )
@@ -193,7 +194,7 @@ export function builder(cmd: Argv): Argv {
           .epilog(
             "Reads SMB_MARKER and SMB_TOKEN from the environment to find the " +
               "marker a doctor probe left; without them the cross-check is " +
-              "skipped. See docs/CLI.md, Checking a network shared folder.",
+              `skipped. See ${SHARED_FOLDER_CHECK_DOC_URL}`,
           )
           .positional("directory", {
             type: "string",
@@ -227,7 +228,7 @@ export function builder(cmd: Argv): Argv {
               "enrolls at the registrar the invitation names, first " +
               "enrolls the exchange's relay key there, as a run does. It " +
               "contacts no other relay host. " +
-              "See docs/CLI.md, Checking the relay of a WebRTC exchange.",
+              `See ${RELAY_CHECK_DOC_URL}`,
           ),
       relayHandler,
     )

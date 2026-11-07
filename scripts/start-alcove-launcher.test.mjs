@@ -275,7 +275,7 @@ const NOT_READY = [
   "      MEANING: the folder cannot be written to, {even} as this account.",
   '      ACTION:  ask for write permission on "the folder".',
   "",
-  "NOT READY YET -- follow the ACTION lines above and run this again.",
+  "NOT READY YET - follow the ACTION lines above and run this again.",
 ].join("\n");
 
 const ALL_PASSED = ["OK: /rz is readable.", "", "ALL CHECKS PASSED"].join("\n");
@@ -285,16 +285,17 @@ const COULD_NOT_RUN = [
   "      MEANING: the folder the exchange runs in is not there, or is not a directory this process can list.",
   "      ACTION:  check that the volume is mounted at this path.",
   "",
-  "COULD NOT RUN THE CHECKS -- nothing was established either way.",
+  "COULD NOT RUN THE CHECKS - fix the failure above and run this again.",
 ].join("\n");
 
 // A read-only folder: read, and its writes refused.
 const READ_ONLY = [
   "OK: /rz is readable.",
   "FAIL: could not write and rename in this folder (EROFS).",
-  "      ACTION:  see the troubleshooting page, 'The folder cannot be written to'.",
+  "      ACTION:  see 'The folder cannot be written to' on the troubleshooting page,",
+  "               https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md",
   "",
-  "NOT READY YET -- follow the ACTION lines above and run this again.",
+  "NOT READY YET - follow the ACTION lines above and run this again.",
 ].join("\n");
 
 describe("the release stamp", () => {
@@ -894,7 +895,7 @@ describe("the doctor loop", () => {
 
     expect(run.status).not.toBe(0);
     expect(printed(run)).toContain(
-      "COULD NOT RUN THE CHECKS -- nothing was established either way.",
+      "COULD NOT RUN THE CHECKS - fix the failure above and run this again.",
     );
     expect(run.stdout).toMatch(/Follow the ACTION line above/);
     // Not offered again: a run that established nothing has no finding to fix.
@@ -991,7 +992,7 @@ describe("what each folder has to answer", () => {
   // one in place. Mounting that folder read-only is a documented setup, so the
   // checks' write findings must not decide whether the console starts.
   const WRITE_ACTION =
-    "ACTION:  see the troubleshooting page, 'The folder cannot be written to'.";
+    "ACTION:  see 'The folder cannot be written to' on the troubleshooting page,";
 
   const doctorRuns = (workspace) =>
     engineCalls(workspace)

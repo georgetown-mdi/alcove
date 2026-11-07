@@ -197,7 +197,32 @@ describe("shares whose semantics differ from a local disk", () => {
     const check = checkById(report, "write_rename");
     expect(check.status).toBe("fail");
     expect(check.summary).toContain("EACCES");
+    expect(check.action).toBe(
+      "see 'The folder cannot be written to' on the troubleshooting page, " +
+        "https://github.com/georgetown-mdi/alcove/blob/main/support/" +
+        "windows-network-filedrop/troubleshooting.md",
+    );
     expect(overallOf(report)).toBe("fix_and_retry");
+  });
+
+  test("one where the rename test cannot be staged says renaming was not tested", () => {
+    const noStaging: MountFs = {
+      ...nodeMountFs,
+      writeFile: (file, contents) => {
+        if (path.basename(file) === ".alcove-a.tmp")
+          throw Object.assign(new Error("denied"), { code: "EACCES" });
+        fs.writeFileSync(file, contents);
+      },
+    };
+    const directory = tempDirectory();
+    fs.writeFileSync(path.join(directory, MARKER), `${TOKEN}\n`);
+    const report = runMountChecks(directory, INPUT, noStaging);
+    const check = checkById(report, "rename_onto_existing");
+    expect(check.status).toBe("skipped");
+    expect(check.meaning).toBe(
+      "the files this check renames could not be created, so renaming was " +
+        "not tested.",
+    );
   });
 });
 
@@ -316,6 +341,9 @@ describe("every skipped record explains itself", () => {
       "renaming it into place",
     );
     expect(new Set(padded.map((check) => check.meaning)).size).toBe(1);
+    expect(padded[0].meaning).toBe(
+      "an earlier check failed and stopped the run.",
+    );
   });
 });
 

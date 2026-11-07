@@ -161,8 +161,8 @@ export function writeExchangeRecord(
     log.info(
       `wrote private verification keys to ${redactAndRenderOperatorSuppliedText(
         operatorSuppliedText(keysFilePath),
-      )}; keep them private -- ` +
-        "with the record they can open the commitments, but they hold only " +
+      )}; keep them private. ` +
+        "With the record they can open the commitments, but they hold only " +
         "per-commitment salts (no matched data)",
     );
     log.info(
@@ -206,7 +206,7 @@ export function writeExchangeRecord(
           operatorSuppliedText(keysFilePath),
         )} ` +
           "before this failure; they hold only salts (no matched data) but are " +
-          "still private -- delete them or keep them private",
+          "still private. Delete them or keep them private",
       );
     }
     return {

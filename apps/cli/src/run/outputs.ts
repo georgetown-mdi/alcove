@@ -298,8 +298,8 @@ export async function writeExchangeOutputs(params: {
       const skipped =
         `${resultFailure.notice}, so the post-exchange persistence ` +
         "step did not run: what this run would have saved after the result " +
-        "-- a configuration, a key file, or the payload set recorded for a " +
-        "later run -- did not reach disk, and your partner may have saved a " +
+        "- a configuration, a key file, or the payload set recorded for a " +
+        "later run - did not reach disk, and your partner may have saved a " +
         "recurring exchange this side did not. The exchange itself " +
         "completed, so do not re-run it; confirm with your partner what " +
         "each side saved before setting up a recurring exchange.";

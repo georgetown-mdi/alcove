@@ -79,7 +79,7 @@ export function builder(cmd: Argv): Argv {
       type: "string",
       describe:
         "how long to wait for the connection before giving up (e.g. 10s); " +
-        "enforced as the SSH ready timeout, and the whole wait -- " +
+        "enforced as the SSH ready timeout, and the whole wait - " +
         HOST_KEY_PROBE_DIALS_ONCE,
     })
     .option("json", {

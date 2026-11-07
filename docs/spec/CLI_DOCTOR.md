@@ -63,9 +63,9 @@ A new version is taken for any of: removing a field or a check id, changing what
 | ----- | ------- | -------------- |
 | `ok` | Nothing found here blocks an exchange. A `warn` check is reported under this value: it asks something of the operator without stopping them. | No check has status `fail`. |
 | `fix_and_retry` | The checks ran and at least one returned a verdict the operator can act on before running an exchange. | At least one `fail`, none of them a failure that made the checks unrunnable. A `fail` that ends the run early, leaving the checks after it `skipped`, still rolls up here. |
-| `fatal` | The checks could not be run, so nothing was established either way -- neither that the share works nor that it does not. | At least one `fail` that made the checks unrunnable: the `smbclient` binary missing from the image, or the mount directory not listable. |
+| `fatal` | The checks could not be run, so whether the share works is not known. | At least one `fail` that made the checks unrunnable: the `smbclient` binary missing from the image, or the mount directory not listable. |
 
-The two failure classes are distinguished by `overall` alone; which check was the unrunnable one is not itself a field. `fatal` outranks `fix_and_retry` because the two ask different things of the caller: a `fatal` verdict has no `action` to follow, since the checks that would have produced one never ran.
+The two failure classes are distinguished by `overall` alone; which check was the unrunnable one is not itself a field. `fatal` outranks `fix_and_retry` because it says less about the share: a `fix_and_retry` verdict comes from a check that tested the share and found something the operator can change, while a `fatal` verdict means the checks could not test the share at all, so whether it works is not known until the caller fixes that failure and runs the checks again.
 
 ## Check status
 

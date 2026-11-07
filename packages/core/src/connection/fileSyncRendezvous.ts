@@ -560,8 +560,8 @@ function isOwnPatternHelloName(
 
 const SHARED_PEER_ID_LIKELY_CAUSE =
   "The likely cause is that both parties set the same peer_id: set a " +
-  "different peer_id on one side, changing its text rather than only its " +
-  "% fields.";
+  "different peer_id on one side, changing its text rather than only " +
+  "fields such as %Y or %K.";
 
 // The writer id of a hello or joining sentinel a scan has already matched by
 // name, so it parses.

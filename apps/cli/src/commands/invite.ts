@@ -1559,7 +1559,7 @@ export function onlineWaitInvalidationNotice(
     "This invitation can be accepted only while this command is waiting. If " +
     "you cancel it (Ctrl-C), the connection times out, or the accept-timeout " +
     `(${acceptTimeoutSeconds}s) is reached before your partner accepts, the ` +
-    "invitation can no longer be accepted -- run 'alcove invite' again to " +
+    "invitation can no longer be accepted. Run 'alcove invite' again to " +
     "issue a fresh one."
   );
 }
@@ -1583,7 +1583,7 @@ export function offlineAbandonNotice(keyPath: string): string {
     `(${redactAndRenderOperatorSuppliedText(
       operatorSuppliedText(keyPath),
     )}); without it the invitation can no longer complete a ` +
-    "handshake. Delete only the key file -- leaving any configuration file in " +
+    "handshake. Delete only the key file. Leaving any configuration file in " +
     "place keeps an existing recurring exchange undisturbed."
   );
 }

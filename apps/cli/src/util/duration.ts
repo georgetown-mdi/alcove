@@ -122,7 +122,7 @@ function parseDurationFlagWith(
     const canonical = trimmed.replace(/^0+(?=\d)/, "");
     throw new UsageError(
       `${flag} no longer accepts a bare number of seconds; durations need a ` +
-        `unit suffix (s, m, h, or d) -- use ${canonical}s for ${canonical} ` +
+        `unit suffix (s, m, h, or d). Use ${canonical}s for ${canonical} ` +
         `seconds.`,
     );
   }

@@ -154,8 +154,7 @@ export function skipped(
  * JSON verdict, while the human rendering prints the shared one once.
  */
 export const SKIPPED_BY_FAILURE_MEANING =
-  "an earlier check failed and stopped the run, so nothing was established " +
-  "either way about what did not run.";
+  "an earlier check failed and stopped the run.";
 
 /**
  * Exit code per overall verdict, the closed set a caller may see from a run
@@ -346,8 +345,8 @@ export function verdictLines(report: DoctorReport): string[] {
     overall === "ok"
       ? "ALL CHECKS PASSED"
       : overall === "fix_and_retry"
-        ? "NOT READY YET -- follow the ACTION lines above and run this again."
-        : "COULD NOT RUN THE CHECKS -- nothing was established either way.",
+        ? "NOT READY YET - follow the ACTION lines above and run this again."
+        : "COULD NOT RUN THE CHECKS - fix the failure above and run this again.",
   );
   return lines;
 }

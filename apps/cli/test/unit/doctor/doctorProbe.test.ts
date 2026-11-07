@@ -32,6 +32,10 @@ import { currentWindowsUser, isOwnerOnly } from "../../windowsAcl";
 
 const PASSWORD = "correct horse battery";
 
+const TROUBLESHOOTING_URL =
+  "https://github.com/georgetown-mdi/alcove/blob/main/support/" +
+  "windows-network-filedrop/troubleshooting.md";
+
 const INPUT: SmbProbeInput = {
   server: "files.example.org",
   share: "exchange",
@@ -340,11 +344,72 @@ describe("staged failures", () => {
     const check = checkById(report, "authentication");
     expect(check.status).toBe("fail");
     expect(check.summary).toBe("NT_STATUS_LOGON_FAILURE");
-    expect(check.action).toContain("SMB_DOMAIN");
+    expect(check.action).toBe(
+      "if this is a domain account, give its domain: answer the Domain " +
+        "prompt of the Windows setup script, Setup-AlcoveFileDrop.ps1, or " +
+        "set SMB_DOMAIN if you are running this image yourself. Do not work " +
+        "through passwords one at a time. Each run is one failed sign-in " +
+        "against the account, and a handful of those locks it out. If the " +
+        "folder opens in File Explorer WITHOUT ever asking for a password, " +
+        "Windows is signing you in with Kerberos and there may be no " +
+        "password that works here. See 'The share never asks for a " +
+        "password' on the troubleshooting page, " +
+        TROUBLESHOOTING_URL,
+    );
     expect(checkById(report, "write").status).toBe("skipped");
     expect(report.checks.map((entry) => entry.id)).toEqual([
       ...PROBE_CHECK_IDS,
     ]);
+  });
+
+  test("an account barred from signing in points at the IT request", async () => {
+    const report = await runProbe(
+      INPUT,
+      deps((args) =>
+        args.includes("-L")
+          ? {
+              code: 1,
+              output: "session setup failed: NT_STATUS_ACCOUNT_DISABLED",
+            }
+          : healthyReply(args),
+      ),
+    );
+    expect(checkById(report, "authentication").action).toBe(
+      "ask whoever issued the account to lift that restriction, or ask for a " +
+        "service account instead. Without this, every later check would " +
+        "report the same status and blame your folder for it. The service " +
+        "account is item 1 of the request under 'What to ask your IT " +
+        "department for' on the troubleshooting page, " +
+        TROUBLESHOOTING_URL,
+    );
+  });
+
+  test("a share path the server calls a DFS link names the page section", async () => {
+    const report = await runProbe(
+      INPUT,
+      deps((args) =>
+        commandOf(args) === "ls" && !args.includes("-D")
+          ? {
+              code: 1,
+              output: "tree connect failed: NT_STATUS_PATH_NOT_COVERED",
+            }
+          : healthyReply(args),
+      ),
+    );
+    const check = checkById(report, "share_open");
+    expect(check.status).toBe("fail");
+    expect(check.meaning).toBe(
+      "the server reports that this path is a DFS link. It does not hold " +
+        "the data itself and expects the client to follow a referral to " +
+        "whichever server does. A volume mounted on this path cannot follow " +
+        "one.",
+    );
+    expect(check.action).toBe(
+      "find the real server by hand and pass it directly: open the folder in " +
+        "File Explorer, right-click, Properties, DFS tab, and read the " +
+        "referral. See 'Reading the real path from Windows' on the " +
+        `troubleshooting page, ${TROUBLESHOOTING_URL}`,
+    );
   });
 
   test("a nonexistent share fails at share_open, not at the credentials", async () => {
@@ -779,7 +844,10 @@ describe("a subfolder that is a DFS link stops the run before anything is writte
     expect(check.status).toBe("fail");
     expect(check.summary).toBe("NT_STATUS_PATH_NOT_COVERED");
     expect(check.meaning).toContain("DFS link");
-    expect(check.action).toContain("'Reading the real path from Windows'");
+    expect(check.action).toContain(
+      "See 'Reading the real path from Windows' on the troubleshooting " +
+        `page, ${TROUBLESHOOTING_URL}`,
+    );
   });
 
   test("the share root is not asked which share it is", async () => {

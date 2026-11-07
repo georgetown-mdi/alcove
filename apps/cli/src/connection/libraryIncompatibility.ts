@@ -1,3 +1,5 @@
+import { ISSUES_URL } from "@alcove/core";
+
 /**
  * Where an operator sends a report that this build and an installed transport
  * library do not fit together, and what to include with it.
@@ -10,6 +12,4 @@
  *
  * No trailing period: a caller inside a sentence adds its own.
  */
-export const REPORT_LIBRARY_INCOMPATIBILITY =
-  "report it at https://github.com/georgetown-mdi/alcove/issues with the " +
-  "version from 'alcove --version'";
+export const REPORT_LIBRARY_INCOMPATIBILITY = `report it at ${ISSUES_URL} with the version from 'alcove --version'`;

@@ -1066,7 +1066,7 @@ describe("handler: an acceptance that stops", () => {
     // The label's own line: the written configuration sends no column, the
     // record identifier included.
     expect(shown.split("\n")[0]).toBe(
-      `${OUTBOUND_SEND_LABEL}: (none) -- only matched records`,
+      `${OUTBOUND_SEND_LABEL}: (none) - only matched records`,
     );
     // The requested column is named where the display already names it, as
     // asked for rather than sent.

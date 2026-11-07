@@ -234,8 +234,8 @@ describe("the check", () => {
     expect((outcome as Error).message).toBe(
       "this run needs about 1.45 GB of memory for a PSI round over its " +
         "1,000,000 records, and this process has 0.51 GB (its container's " +
-        "memory limit). Give the run more memory -- a larger host, or a " +
-        "larger docker run --memory -- or split the input into smaller files " +
+        "memory limit). Give the run more memory - a larger host, or a " +
+        "larger docker run --memory - or split the input into smaller files " +
         "and run one exchange for each. Pass --allow-memory-shortfall to run " +
         "anyway; the exchange may then run out of memory partway through, " +
         "which fails it for both parties.",

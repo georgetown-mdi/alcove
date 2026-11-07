@@ -1494,7 +1494,7 @@ export class FileSyncMessageLoop {
               `[${deps.role()}] message from ${redactAndSanitizeForDisplay(peerId)} ` +
                 "disappeared between list and get; " +
                 (deps.options().retainFiles
-                  ? "unexpected in retain mode (files are never deleted) -- " +
+                  ? "unexpected in retain mode (files are never deleted) - " +
                     "possible external interference; retrying"
                   : "assuming peer cleaned up"),
             );
