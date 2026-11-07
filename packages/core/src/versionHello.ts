@@ -19,10 +19,10 @@ import {
 export const PROTOCOL_VERSION = 1;
 
 // The latest encrypted-channel envelope version: byte 0 of each AEAD envelope,
-// and on file-sync byte 0 of each message file after a party's first. Version 2
-// is the chunked AEAD envelope (docs/spec/CHANNEL_SECURITY.md, "The chunked
-// envelope, version 2"); version 1, which encrypts in one call, stays offered
-// for a partner on an earlier build.
+// and on file-sync byte 0 of each binary message file after a party's first.
+// Version 2 is the chunked AEAD envelope (docs/spec/CHANNEL_SECURITY.md, "The
+// chunked envelope, version 2"); version 1, which encrypts in one call, stays
+// offered for a partner on an earlier build.
 /** @internal exported for the envelope-version tests. */
 export const ENVELOPE_VERSION = 2;
 

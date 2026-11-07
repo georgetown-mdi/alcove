@@ -123,8 +123,9 @@ export interface MessageConnection {
   outboundFrameOverheadBytes?(frameBytes: number): number;
   /**
    * Optional: the envelope version the key exchange negotiated, which the
-   * transport writes on each frame after this party's first and requires on
-   * each partner frame after the partner's first. A transport whose frames
+   * transport writes on each binary frame after this party's first and
+   * requires on each partner frame after the partner's first, a JSON frame
+   * being written and read at version 1. A transport whose frames
    * hold no envelope version (WebRTC) omits it. See docs/spec/FILE_SYNC.md
    * ("Message body format").
    */

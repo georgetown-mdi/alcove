@@ -918,7 +918,7 @@ async function responderFailsOnAbort(
 
 // The versions both hellos select. With none in common in some layer, sends
 // `abort` and throws the fixed refusal; otherwise tells the transport the
-// envelope version for its frames after the first.
+// envelope version for its binary frames after the first.
 async function negotiateOrRefuse(
   conn: MessageConnection,
   supported: SupportedVersions,

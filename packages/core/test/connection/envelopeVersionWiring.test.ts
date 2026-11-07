@@ -18,8 +18,9 @@ import {
 import { makeMockClient } from "../utils/support";
 
 // The envelope-version wiring from the key exchange to the file-sync frames,
-// driven at this build's envelope version 2. Each party's first frame stays at
-// 1 whatever was negotiated (docs/spec/FILE_SYNC.md, "Message body format").
+// driven at this build's envelope version 2. Each party's first frame and every
+// JSON message stay at 1 whatever was negotiated (docs/spec/FILE_SYNC.md,
+// "Message body format").
 const NEGOTIATED = 2;
 const ID_A = "00000000-0000-4000-8000-000000000001";
 const ID_B = "ffffffff-ffff-4fff-bfff-ffffffffffff";
@@ -109,28 +110,42 @@ function deliveries(conn: FileSyncConnection) {
 }
 
 describe("the file-sync message loop with a negotiated envelope version", () => {
-  test("sends its first frame at 1 and every later frame at the negotiated version", async () => {
+  test("sends its first frame and every JSON message at 1, and every later binary frame at the negotiated version", async () => {
     const { connB, files } = await negotiatedPair({});
     const versions: number[] = [];
-    for (const data of [{ n: 0 }, { n: 1 }, new Uint8Array([1, 2, 3])]) {
+    for (const data of [
+      { n: 0 },
+      { n: 1 },
+      new Uint8Array([1, 2, 3]),
+      { kexMsg: "abort" },
+      new Uint8Array([4, 5, 6]),
+    ]) {
       const path = await sendAndFind(connB, files, data);
       versions.push(files.get(path)![0]!);
       // Consumes the message as the partner would, so the next send proceeds.
       files.delete(path);
     }
-    expect(versions).toEqual([1, NEGOTIATED, NEGOTIATED]);
+    expect(versions).toEqual([1, 1, NEGOTIATED, 1, NEGOTIATED]);
   });
 
   describe.each(MODES)("in $mode mode", ({ options }) => {
-    test("accepts the partner's first frame at 1 and later frames at the negotiated version", async () => {
+    test("accepts the partner's first frame at 1, later JSON messages at 1 and later binary frames at the negotiated version", async () => {
       const { connA, connB, files } = await negotiatedPair(options);
       const { received, errors, next } = deliveries(connA);
-      for (const [index, data] of [{ n: 0 }, { n: 1 }, { n: 2 }].entries()) {
+      const sent = [
+        { n: 0 },
+        new Uint8Array([1, 2, 3]),
+        { n: 1 },
+        new Uint8Array([4, 5, 6]),
+      ];
+      for (const [index, data] of sent.entries()) {
         await sendAndFind(connB, files, data);
         await runPoller(connA, next(index + 1));
         expect(errors).toEqual([]);
       }
-      expect(received).toEqual([{ n: 0 }, { n: 1 }, { n: 2 }]);
+      expect(
+        received.map((data) => (data instanceof Uint8Array ? [...data] : data)),
+      ).toEqual([{ n: 0 }, [1, 2, 3], { n: 1 }, [4, 5, 6]]);
     });
 
     test.each([
@@ -154,7 +169,7 @@ describe("the file-sync message loop with a negotiated envelope version", () => 
       },
     );
 
-    test("reads a later partner JSON frame at version 1, the version a party aborts at before it has negotiated", async () => {
+    test("reads a later partner JSON frame at version 1, the version every JSON message is written at", async () => {
       const { connA, connB, files } = await negotiatedPair(options);
       const { received, errors, next } = deliveries(connA);
       await sendAndFind(connB, files, { n: 0 });
