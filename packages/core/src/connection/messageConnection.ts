@@ -67,7 +67,9 @@ export interface MessageConnection {
    * lowers the bound below that. Where the lowered bound would not have
    * admitted the frames already queued, the connection fails with the inbound
    * overflow a frame past the bound gets, drops those frames, and throws that
-   * `ConnectionError`. Threaded through any decorator to the queue. The
+   * `ConnectionError`. On a connection that has already failed, it drops the
+   * queued frames and throws the error the connection failed with. Threaded
+   * through any decorator to the queue. The
    * receiver of a single-pass reply in parts sets it to the frames the reply
    * cap takes ({@link singlePassReplyQueueBytes}). See
    * docs/spec/TRANSPORT_BOUNDS.md ("WebRTC data-channel inbound bound").
@@ -845,11 +847,19 @@ export class QueuedMessageConnection implements MessageConnection {
 
   // Frames queued under a raised bound that the lowered one would not have
   // admitted are refused here, as deliver() refuses a frame past the bound,
-  // and dropped, so they are not held through the work that follows.
+  // and dropped, so they are not held through the work that follows. On a
+  // connection that has already failed, the queued frames are dropped and the
+  // error it failed with is raised, so a frame read later cannot report a
+  // different cause.
   holdInboundQueueBytes(minBytes: number | undefined): void {
     this.byteCapacity = Math.max(this.builtByteCapacity, minBytes ?? 0);
-    if (this.queue.length <= 1 || this.queuedBytes <= this.byteCapacity) return;
-    const error = inboundByteBoundOverflow(this.byteCapacity);
+    const failed = this.state?.kind === "failed" ? this.state.error : undefined;
+    if (
+      failed === undefined &&
+      (this.queue.length <= 1 || this.queuedBytes <= this.byteCapacity)
+    )
+      return;
+    const error = failed ?? inboundByteBoundOverflow(this.byteCapacity);
     this.queue.splice(0);
     this.queueBytes.splice(0);
     this.queuedBytes = 0;
