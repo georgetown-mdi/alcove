@@ -34,10 +34,12 @@ npm run build -w packages/cli-contract
 #
 # The template holds defaults. A setting changed inside the container (/model,
 # /config) survives a re-create; a setting never changed follows the template.
-# The template as last applied is kept beside settings.json so the two can be
-# told apart; with no such file the template is written whole. The merge reports
-# the settings it kept from the container, and sets an unreadable settings file
-# aside rather than failing this script.
+# The exception is the safety keys (permissions, hooks, disableAllHooks, env):
+# each is reset to the template on every create, and the log names any key
+# reset. The template as last applied is kept beside settings.json so the two
+# can be told apart; with no such file the template is written whole. The merge
+# reports the settings it kept from the container, and sets an unreadable
+# settings file aside rather than failing this script.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 mkdir -p "$CONFIG_DIR"

@@ -19,6 +19,7 @@ import {
   deepEqual,
   differingPaths,
   mergeSettings,
+  SAFETY_KEYS,
 } from "./merge-claude-settings.mjs";
 
 const script = join(
@@ -73,7 +74,7 @@ describe("applyTemplate", () => {
   it("writes the template as settings and as the base on a fresh volume", () => {
     const template = { model: "opus", nested: { a: 1 } };
     setTemplate(template);
-    expect(apply()).toEqual([]);
+    expect(apply().kept).toEqual([]);
     expect(readJson(SETTINGS_FILE)).toEqual(template);
     expect(readJson(APPLIED_TEMPLATE_FILE)).toEqual(template);
   });
@@ -86,7 +87,7 @@ describe("applyTemplate", () => {
       model: "sonnet",
       extra: true,
     });
-    expect(apply()).toEqual([]);
+    expect(apply().kept).toEqual([]);
     expect(readJson(SETTINGS_FILE)).toEqual({
       model: "opus",
       effortLevel: "xhigh",
@@ -100,7 +101,7 @@ describe("applyTemplate", () => {
       model: "sonnet",
     }));
     setTemplate({ model: "haiku", tui: "fullscreen" });
-    expect(apply()).toEqual(["model"]);
+    expect(apply().kept).toEqual(["model"]);
     expect(readJson(SETTINGS_FILE).model).toBe("sonnet");
     expect(readJson(APPLIED_TEMPLATE_FILE).model).toBe("haiku");
   });
@@ -108,7 +109,7 @@ describe("applyTemplate", () => {
   it("follows a template change to a key the operator left alone", () => {
     appliedThenEdited({ model: "opus", tui: "fullscreen" }, (s) => s);
     setTemplate({ model: "haiku", tui: "fullscreen" });
-    expect(apply()).toEqual([]);
+    expect(apply().kept).toEqual([]);
     expect(readJson(SETTINGS_FILE)).toEqual({
       model: "haiku",
       tui: "fullscreen",
@@ -118,14 +119,14 @@ describe("applyTemplate", () => {
   it("keeps a key the operator added and reports it", () => {
     appliedThenEdited({ model: "opus" }, (s) => ({ ...s, theme: "dark" }));
     setTemplate({ model: "haiku" });
-    expect(apply()).toEqual(["theme"]);
+    expect(apply().kept).toEqual(["theme"]);
     expect(readJson(SETTINGS_FILE)).toEqual({ model: "haiku", theme: "dark" });
   });
 
   it("drops an untouched key the template removed", () => {
     appliedThenEdited({ model: "opus", tui: "fullscreen" }, (s) => s);
     setTemplate({ model: "opus" });
-    expect(apply()).toEqual([]);
+    expect(apply().kept).toEqual([]);
     expect(readJson(SETTINGS_FILE)).toEqual({ model: "opus" });
   });
 
@@ -135,7 +136,7 @@ describe("applyTemplate", () => {
       ({ tui, ...rest }) => rest,
     );
     setTemplate({ model: "opus", tui: "fullscreen" });
-    expect(apply()).toEqual(["tui"]);
+    expect(apply().kept).toEqual(["tui"]);
     expect(readJson(SETTINGS_FILE)).toEqual({ model: "opus" });
   });
 
@@ -159,7 +160,7 @@ describe("applyTemplate", () => {
         "claude-sonnet-5-5": { effortLevel: "low" },
       },
     });
-    expect(apply()).toEqual([
+    expect(apply().kept).toEqual([
       "modelSettings.claude-opus-5-5.autoCompactWindow",
     ]);
     expect(readJson(SETTINGS_FILE).modelSettings).toEqual({
@@ -174,7 +175,7 @@ describe("applyTemplate", () => {
       nested: { b: [1, 2], a: 1 },
     }));
     setTemplate({ nested: { a: 2, b: [1, 2] }, model: "haiku" });
-    expect(apply()).toEqual([]);
+    expect(apply().kept).toEqual([]);
     expect(readJson(SETTINGS_FILE)).toEqual({
       nested: { a: 2, b: [1, 2] },
       model: "haiku",
@@ -236,6 +237,110 @@ describe("applyTemplate", () => {
   });
 });
 
+describe("safety keys", () => {
+  const template = {
+    model: "opus",
+    permissions: { defaultMode: "bypassPermissions" },
+    hooks: { PreToolUse: [{ matcher: "Bash", hooks: [] }] },
+    disableAllHooks: false,
+    env: { ALCOVE_FLAG: "1" },
+  };
+
+  it("covers permissions, hooks, disableAllHooks and env", () => {
+    expect(SAFETY_KEYS).toEqual([
+      "permissions",
+      "hooks",
+      "disableAllHooks",
+      "env",
+    ]);
+  });
+
+  it.each([
+    ["permissions", { defaultMode: "acceptEdits", allow: ["Bash"] }],
+    ["hooks", {}],
+    ["disableAllHooks", true],
+    ["env", { ALCOVE_FLAG: "0", EXTRA: "x" }],
+  ])("resets an edited %s to the template", (key, edited) => {
+    appliedThenEdited(template, (s) => ({ ...s, [key]: edited }));
+    expect(apply()).toEqual({ kept: [], reset: [key] });
+    expect(readJson(SETTINGS_FILE)).toEqual(template);
+  });
+
+  it.each(["permissions", "hooks", "disableAllHooks", "env"])(
+    "restores a deleted %s from the template",
+    (key) => {
+      appliedThenEdited(template, ({ [key]: _removed, ...rest }) => rest);
+      expect(apply().reset).toEqual([key]);
+      expect(readJson(SETTINGS_FILE)).toEqual(template);
+    },
+  );
+
+  it.each([
+    ["permissions", { defaultMode: "bypassPermissions" }],
+    ["hooks", { PreToolUse: [] }],
+    ["disableAllHooks", true],
+    ["env", { ALCOVE_FLAG: "1" }],
+  ])(
+    "removes %s the container added when the template has none",
+    (key, added) => {
+      appliedThenEdited({ model: "opus" }, (s) => ({ ...s, [key]: added }));
+      expect(apply()).toEqual({ kept: [], reset: [key] });
+      expect(readJson(SETTINGS_FILE)).toEqual({ model: "opus" });
+    },
+  );
+
+  it("replaces a nested key whole instead of merging it per leaf", () => {
+    appliedThenEdited(template, (s) => ({
+      ...s,
+      permissions: { defaultMode: "bypassPermissions", deny: [] },
+    }));
+    apply();
+    expect(readJson(SETTINGS_FILE).permissions).toEqual(template.permissions);
+  });
+
+  it("resets a key even when the template did not change it", () => {
+    appliedThenEdited(template, (s) => ({ ...s, disableAllHooks: true }));
+    apply();
+    apply();
+    expect(readJson(SETTINGS_FILE).disableAllHooks).toBe(false);
+    expect(apply().reset).toEqual([]);
+  });
+
+  it("resets a key on a volume with no base", () => {
+    setTemplate(template);
+    apply();
+    rmSync(join(configDir, APPLIED_TEMPLATE_FILE));
+    writeJson(join(configDir, SETTINGS_FILE), {
+      ...template,
+      env: { ALCOVE_FLAG: "0" },
+    });
+    expect(apply().reset).toEqual(["env"]);
+    expect(readJson(SETTINGS_FILE)).toEqual(template);
+  });
+
+  it("reports no reset when the container matches the template or is new", () => {
+    setTemplate(template);
+    expect(apply().reset).toEqual([]);
+    expect(apply().reset).toEqual([]);
+  });
+
+  it("still keeps an edited setting outside the safety keys", () => {
+    appliedThenEdited(template, (s) => ({
+      ...s,
+      model: "sonnet",
+      env: { ALCOVE_FLAG: "0" },
+    }));
+    expect(apply()).toEqual({ kept: ["model"], reset: ["env"] });
+    expect(readJson(SETTINGS_FILE).model).toBe("sonnet");
+  });
+
+  it("does not list a reset safety key as kept", () => {
+    appliedThenEdited(template, (s) => ({ ...s, model: "sonnet", hooks: {} }));
+    setTemplate({ ...template, model: "haiku" });
+    expect(apply()).toEqual({ kept: ["model"], reset: ["hooks"] });
+  });
+});
+
 describe("mergeSettings", () => {
   it("treats a non-object base as empty when current and template are objects", () => {
     expect(
@@ -276,5 +381,27 @@ describe("command line", () => {
       tui: "fullscreen",
     });
     expect(run()).toBe("post-create: kept container settings: model\n");
+  });
+
+  it("names each reset safety key in one line", () => {
+    setTemplate({
+      model: "opus",
+      permissions: { defaultMode: "bypassPermissions" },
+    });
+    const run = () =>
+      execFileSync("node", [script, templatePath, configDir], {
+        encoding: "utf8",
+      });
+    run();
+    writeJson(join(configDir, SETTINGS_FILE), {
+      model: "opus",
+      permissions: { defaultMode: "default" },
+      hooks: {},
+      env: { A: "1" },
+    });
+    expect(run()).toBe(
+      "post-create: reset container settings to the template: permissions, hooks, env\n",
+    );
+    expect(run()).toBe("");
   });
 });
