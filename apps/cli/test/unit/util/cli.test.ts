@@ -609,7 +609,7 @@ test("exitCodeForError: an unrecognized standardization function is EX_USAGE", (
   // The name is the partner's free text, so the refusal narrows it rather than
   // echoing it; what the operator is told is that this build does not know it.
   expect((refusal as Error).message).toBe(
-    "unknown standardization function: a function this build does not recognize",
+    "a transform step in the agreed terms cannot run on this version of Alcove (a function this build does not recognize). Update Alcove, or ask whoever wrote the terms to remove the step.",
   );
 });
 

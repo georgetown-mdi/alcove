@@ -2993,7 +2993,9 @@ describe("assessLinkageSatisfiability dead keys", () => {
       expect(
         () => buildKeyStrings(terms.linkageKeys[0], dataset, 0),
         JSON.stringify(inputFormat),
-      ).toThrow(/parse_date input_format must be text/);
+      ).toThrow(
+        `a transform step in the agreed terms cannot be built from the parameters it declares ("parse_date")`,
+      );
     }
   });
 
@@ -3229,7 +3231,7 @@ describe("assessLinkageSatisfiability dead keys", () => {
       );
       if (WRONG_TYPED_BOUNDS.has(label)) {
         expect(() => buildKeyStrings(key, dataset, 0), label).toThrow(
-          /substring (start|length) must be a whole number/,
+          `a transform step in the agreed terms cannot be built from the parameters it declares ("substring")`,
         );
         continue;
       }

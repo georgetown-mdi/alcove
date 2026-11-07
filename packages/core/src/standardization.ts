@@ -1632,17 +1632,18 @@ export function commitCompiledTransforms(
 }
 
 /**
- * The message both compile refusals hold, raised where terms are authored or
- * minted. `label` comes from {@link uncompilableStepLabel}, which narrows the
- * function name to a fixed literal, so no partner free text reaches the message;
- * the offending parameter is not named, since its name and value are
- * partner-controlled on the element-transform half. The two refusals share the
- * wording and differ only in error class, by whose content the fault is (see
- * `assertTransformsCompile`).
+ * The message both compile refusals hold, raised by `assertTransformsCompile`
+ * where terms are authored, minted, accepted, or changed by a terms update,
+ * before this party agrees to them. `label` is a {@link transformFunctionLabel},
+ * which narrows the function name to a fixed literal, so no partner free text
+ * reaches the message; the offending parameter is not named, since its name
+ * and value are partner-controlled on the element-transform half. The two
+ * refusals share the wording and differ only in error class, by whose content
+ * the fault is (see `assertTransformsCompile`).
  *
  * The remedy is the author's own -- correct the parameters or remove the step --
- * because this refusal is raised only where the party still holds the document
- * it is refusing, never after an invitation has gone out.
+ * because the terms are not yet agreed. The run, where they are, words its own
+ * refusals (`runStepCompileRefusalMessage`, `runUnknownStepFunctionMessage`).
  *
  * @internal composed by `assertTransformsCompile` in `linkageSatisfiability.ts`.
  */
@@ -1650,6 +1651,25 @@ export function stepCompileRefusalMessage(label: string): string {
   return (
     "a transform step cannot be built from the parameters it declares " +
     `(${label}). Correct that step's parameters, or remove the step.`
+  );
+}
+
+// The run's refusals for an element transform step that does not compile.
+// The terms are agreed by then and may be the partner's, so the remedy goes to
+// whoever wrote them; `label` is a transformFunctionLabel, as above.
+function runStepCompileRefusalMessage(label: string): string {
+  return (
+    "a transform step in the agreed terms cannot be built from the parameters " +
+    `it declares (${label}). Whoever wrote the terms must correct that step's ` +
+    "parameters or remove the step, which changes the agreed terms."
+  );
+}
+
+function runUnknownStepFunctionMessage(label: string): string {
+  return (
+    "a transform step in the agreed terms cannot run on this version of " +
+    `Alcove (${label}). Update Alcove, or ask whoever wrote the terms to ` +
+    "remove the step."
   );
 }
 
@@ -2707,10 +2727,21 @@ export function buildStandardizedDataset(
 
 // --- Key building ------------------------------------------------------------
 
-function cartesianProduct(arrays: string[][]): string[][] {
-  return arrays.reduce<string[][]>(
-    (acc, arr) => acc.flatMap((prefix) => arr.map((v) => [...prefix, v])),
-    [[]],
+/**
+ * Every combination of one candidate per element, concatenated in element
+ * order with the last element varying fastest. Each stage extends the previous
+ * stage's strings by one element, so the work is the element count times the
+ * combinations.
+ *
+ * @internal exported for the key-assembly test.
+ */
+export function assembleKeyStrings(
+  candidates: ReadonlyArray<ReadonlyArray<string>>,
+): string[] {
+  return candidates.reduce<string[]>(
+    (prefixes, values) =>
+      prefixes.flatMap((prefix) => values.map((value) => prefix + value)),
+    [""],
   );
 }
 
@@ -2740,13 +2771,31 @@ const compiledElementTransforms = new WeakMap<
 // The compiled steps for one element's transform, memoized as above. Reached
 // both by the run and by the pre-run classification below, so the fate a key's
 // crossing takes is read from the same compiled steps that will produce it.
+//
+// A step that does not compile is refused naming only its function label: the
+// factory's own message may quote a partner-authored parameter value, and these
+// terms may have reached the run without the accept boundary's check. A defect
+// of this build's own tables is not the terms' fault and passes as is.
 function compiledElementSteps(
   steps: TransformStep[] | undefined,
 ): CompiledStep[] {
   if (steps === undefined || steps.length === 0) return [];
   const memoized = compiledElementTransforms.get(steps);
   if (memoized !== undefined) return memoized;
-  const compiled = compileSteps(steps);
+  const compiled: CompiledStep[] = [];
+  for (const step of steps) {
+    try {
+      compiled.push(compileStep(step));
+    } catch (err) {
+      if (err instanceof InternalConsistencyError) throw err;
+      const label = transformFunctionLabel(step.function);
+      throw err instanceof UnknownStandardizationFunctionError
+        ? new UnknownStandardizationFunctionError(
+            runUnknownStepFunctionMessage(label),
+          )
+        : new UsageError(runStepCompileRefusalMessage(label));
+    }
+  }
   compiledElementTransforms.set(steps, compiled);
   return compiled;
 }
@@ -4188,8 +4237,8 @@ function readRowUnderPlan(
   // the case where concatenating two NFC parts crosses a base + combining-mark
   // boundary that itself composes (NFC is not closed under concatenation).
   const result = new DistinctValues({ scanUpTo: SCAN_UP_TO_VALUES });
-  for (const parts of cartesianProduct(elementValues))
-    result.add(parts.join("").normalize("NFC"));
+  for (const keyString of assembleKeyStrings(elementValues))
+    result.add(keyString.normalize("NFC"));
 
   // The swap's other order, from the lists already built: exchanging the pair's
   // two candidate lists is the authored order because the pair's two positions
@@ -4203,8 +4252,8 @@ function readRowUnderPlan(
     authoredOrder[idA] = elementValues[idB];
     authoredOrder[idB] = elementValues[idA];
     const swappedOrderOnly = result.size;
-    for (const parts of cartesianProduct(authoredOrder))
-      result.add(parts.join("").normalize("NFC"));
+    for (const keyString of assembleKeyStrings(authoredOrder))
+      result.add(keyString.normalize("NFC"));
     if (result.size > swappedOrderOnly) fuzzyWidened = true;
   }
 

@@ -2134,7 +2134,8 @@ describe("buildKeyStrings", () => {
 
   test("an element transform refuses a non-text param rather than building a key from a fallback", () => {
     // The key build is the last place such a step could reach; it refuses over
-    // the whole row rather than deriving keys the declared terms do not state.
+    // the whole row rather than deriving keys the declared terms do not state,
+    // naming the step's function and nothing the parameters hold.
     const dataset = makeDataset({ ssn: "123456789", last_name: "SMITH" });
     const key = (
       transform: Array<{ function: string; params?: Record<string, unknown> }>,
@@ -2142,43 +2143,31 @@ describe("buildKeyStrings", () => {
       name: "SSN+LN",
       elements: [{ field: "ssn", transform }, { field: "last_name" }],
     });
-    const cases: Array<{
-      step: { function: string; params: Record<string, unknown> };
-      message: RegExp;
-    }> = [
-      {
-        step: { function: "coalesce", params: { default: 42 } },
-        message: /coalesce default must be text/,
-      },
-      {
-        step: { function: "null_if", params: { values: [null] } },
-        message: /null_if values must hold only text/,
-      },
-      {
-        step: { function: "null_if", params: { value: 42 } },
-        message: /null_if value must be text/,
-      },
-      {
-        step: { function: "null_if", params: { values: 42 } },
-        message: /null_if values must be a list of text/,
-      },
-      {
-        step: {
+    const steps: Array<{ function: string; params: Record<string, unknown> }> =
+      [
+        { function: "coalesce", params: { default: 42 } },
+        { function: "null_if", params: { values: [null] } },
+        { function: "null_if", params: { value: 42 } },
+        { function: "null_if", params: { values: 42 } },
+        {
           function: "replace_regex",
           params: { pattern: "\\d", replacement: 42 },
         },
-        message: /replace_regex replacement must be text/,
-      },
-      {
-        step: { function: "pad_left", params: { length: 9, char: 42 } },
-        message: /pad_left char must be text/,
-      },
-    ];
-    for (const { step, message } of cases)
-      expect(
-        () => buildKeyStrings(key([step]), dataset, 0),
-        JSON.stringify(step),
-      ).toThrow(message);
+        { function: "pad_left", params: { length: 9, char: 42 } },
+      ];
+    for (const step of steps) {
+      let raised: unknown;
+      try {
+        buildKeyStrings(key([step]), dataset, 0);
+      } catch (err) {
+        raised = err;
+      }
+      expect(raised, JSON.stringify(step)).toBeInstanceOf(UsageError);
+      expect((raised as Error).message, JSON.stringify(step)).toBe(
+        `a transform step in the agreed terms cannot be built from the parameters it declares ("${step.function}"). ` +
+          "Whoever wrote the terms must correct that step's parameters or remove the step, which changes the agreed terms.",
+      );
+    }
     // The same steps with the params written as text build their keys.
     expect(
       buildKeyStrings(
@@ -4308,7 +4297,11 @@ describe("buildKeyStrings", () => {
     }
     expect(raised).toBeInstanceOf(Error);
     const message = (raised as Error).message;
-    expect(message).toContain("unknown standardization function");
+    expect(raised).toBeInstanceOf(UnknownStandardizationFunctionError);
+    expect(message).toBe(
+      "a transform step in the agreed terms cannot run on this version of Alcove (a function this build does not recognize). " +
+        "Update Alcove, or ask whoever wrote the terms to remove the step.",
+    );
     expect(message).not.toContain("nope");
     expect(message).toMatch(PRINTABLE_ASCII);
   });
