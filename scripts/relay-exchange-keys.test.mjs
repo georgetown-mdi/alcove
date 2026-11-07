@@ -1503,8 +1503,9 @@ const call = (port, method, path, { token, body, headers = {} } = {}) =>
   });
 
 // Writes raw requests on one connection and resolves with everything the
-// registrar sends back once it closes the connection.
-const callRaw = (port, requests) =>
+// registrar sends back once it closes the connection. `encoding` "latin1"
+// sends each character below 256 as its one byte.
+const callRaw = (port, requests, encoding = "utf8") =>
   new Promise((resolveText, reject) => {
     const socket = connect(
       {
@@ -1513,7 +1514,7 @@ const callRaw = (port, requests) =>
         servername: "relay.example",
         ca: readFileSync(join(certDir, "fullchain.pem")),
       },
-      () => socket.write(requests.join("")),
+      () => socket.write(requests.join(""), encoding),
     );
     let text = "";
     socket.on("data", (chunk) => {
@@ -2142,6 +2143,48 @@ conn.execute("ROLLBACK")`,
       headers: { "Transfer-Encoding": "chunked" },
     });
     expect(chunked.status).toBe(411);
+    expect(host.mapping()).toEqual([]);
+  });
+
+  it("reads Content-Length as ASCII digits only, answering every other value and journaling the request", async () => {
+    const host = fixtureHost();
+    const { port, log } = await startRegistrar(host);
+    const put = (length, headers) =>
+      [
+        "PUT /exchanges/exchange-1 HTTP/1.1",
+        "Host: relay.example",
+        ...headers,
+        `Content-Length: ${length}`,
+        "Connection: close",
+        "",
+        "",
+      ].join("\r\n");
+    const status = (text) => /^HTTP\/1\.1 (\d{3}) /.exec(text)?.[1];
+    const withToken = [`Authorization: Bearer ${REGISTRAR_TOKEN}`];
+    const cases = [
+      // The body is read: a length that is not ASCII digits is no length.
+      ["\xb2", withToken, "411"],
+      ["1\xb3", withToken, "411"],
+      ["99999", withToken, "413"],
+      ["9".repeat(5000), withToken, "413"],
+      // The body is never read: the refusal is answered whatever the length.
+      ["\xb2", [], "401"],
+      ["1\xb3", [], "401"],
+      ["9".repeat(5000), [], "401"],
+    ];
+    for (const [length, headers, expected] of cases) {
+      const text = await callRaw(port, [put(length, headers)], "latin1");
+      expect(status(text), JSON.stringify(length)).toBe(expected);
+    }
+    await vi.waitFor(() => {
+      const lines = log.stderr
+        .split("\n")
+        .filter((line) => line.startsWith("PUT "));
+      expect(lines).toEqual(
+        cases.map(([, , expected]) => `PUT /exchanges/exchange-1 ${expected}`),
+      );
+    });
+    expect(log.stderr).not.toContain("connection ended");
     expect(host.mapping()).toEqual([]);
   });
 

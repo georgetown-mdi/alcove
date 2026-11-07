@@ -196,6 +196,16 @@ valid_key = relay_table.valid_key
 valid_max_age_days = relay_table.valid_max_age_days
 
 
+def stated_length(value):
+    """The length a Content-Length value of ASCII digits states, or None for
+    any other value. A length past int()'s digit limit is past every bound
+    here, so it is returned as math.inf."""
+    if value is None or re.fullmatch(r"[0-9]+", value) is None:
+        return None
+    digits = value.lstrip("0") or "0"
+    return int(digits) if len(digits) <= 18 else math.inf
+
+
 def proof_key(relay_key):
     extracted = hmac.new(b"\x00" * 32, bytes.fromhex(relay_key), hashlib.sha256).digest()
     return hmac.new(extracted, PROOF_KEY_LABEL.encode("ascii") + b"\x01", hashlib.sha256).digest()
@@ -579,9 +589,9 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         # connection starts where this one ends, and because closing a socket
         # with unread data resets it and can lose the answer; any other body
         # ends the connection unread. Returns the headers the answer carries.
-        length = self.headers.get("Content-Length") or "0"
-        if "Transfer-Encoding" not in self.headers and length.isdigit() and int(length) <= MAX_BODY_BYTES:
-            self.rfile.read(int(length))
+        length = stated_length(self.headers.get("Content-Length") or "0")
+        if "Transfer-Encoding" not in self.headers and length is not None and length <= MAX_BODY_BYTES:
+            self.rfile.read(length)
             return ()
         self.close_connection = True
         return (("Connection", "close"),)
@@ -641,13 +651,14 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         length = self.headers.get("Content-Length")
         if length is None and empty_when_unsized and "Transfer-Encoding" not in self.headers:
             return b""
-        if length is None or not length.isdigit():
+        size = stated_length(length)
+        if size is None:
             self.refuse(411, "send the request body with a Content-Length")
             return None
-        if int(length) > MAX_BODY_BYTES:
+        if size > MAX_BODY_BYTES:
             self.refuse(413, "the request body is over %d bytes" % MAX_BODY_BYTES)
             return None
-        return self.rfile.read(int(length))
+        return self.rfile.read(size)
 
     def table_call(self, operation, extra_headers=()):
         """operation()'s result; a refusal or a table failure is answered here
