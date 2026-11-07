@@ -495,6 +495,57 @@ describe("per-run peer id derives fresh from the current secret", () => {
     const otherExpected = await deriveRendezvousPeerId(otherSecret, "inviter");
     expect(otherExpected).not.toBe(expected);
   });
+
+  test("the inviter's registered peer closes a connection from any id but the acceptor id of the current secret", async () => {
+    vi.stubGlobal("window", {
+      location: { hostname: "localhost", port: "3000", protocol: "http:" },
+    });
+    const secret = generateSharedSecret();
+    const previousAcceptorId = await deriveRendezvousPeerId(
+      generateSharedSecret(),
+      "acceptor",
+    );
+    const { listenAsInviter } = await import("@psi/transport/rendezvous");
+    const fake = new FakePeer();
+    const flows: ManagedRendezvousFlows = {
+      listenAsInviter: (s, endpoint, options) =>
+        listenAsInviter(s, endpoint, {
+          ...options,
+          peerFactory: () => {
+            queueMicrotask(() => fake.emit("open"));
+            return fake as unknown as Peer;
+          },
+        }),
+      dialAsAcceptor: () => {
+        throw new Error("acceptor flow must not run for side inviter");
+      },
+    };
+
+    const acquisition = await begin("inviter", secret, exchangeFile(), {
+      flows,
+    });
+    if (acquisition.side !== "inviter") throw new Error("not the inviter");
+    const { waitForIncomingConnection } =
+      await import("@psi/transport/waitForConnection");
+    const waiting = waitForIncomingConnection(acquisition.peer, {
+      timeoutMs: 1000,
+    });
+    const offered = (peer: string) => ({
+      peer,
+      serialization: "binary",
+      close: vi.fn(),
+    });
+    const fromAnotherSecret = offered(previousAcceptorId);
+    const fromCurrentSecret = offered(
+      await deriveRendezvousPeerId(secret, "acceptor"),
+    );
+    fake.emit("connection", fromAnotherSecret);
+    fake.emit("connection", fromCurrentSecret);
+
+    expect(await waiting).toBe(fromCurrentSecret);
+    expect(fromAnotherSecret.close).toHaveBeenCalledTimes(1);
+    expect(fromCurrentSecret.close).not.toHaveBeenCalled();
+  });
 });
 
 describe("beginManagedRendezvous: relay", () => {

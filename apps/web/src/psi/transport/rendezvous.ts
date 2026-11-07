@@ -34,6 +34,7 @@ import {
   withPeerRelaysLeftOut,
 } from "./iceGathering";
 import { boundPeerSignaling } from "./signalingBounds";
+import { guardInboundConnections } from "./inboundConnections";
 
 import type { DataConnection, PeerOptions } from "peerjs";
 import type { WebRTCEndpoint } from "@alcove/core";
@@ -428,6 +429,9 @@ export async function listenAsInviter(
     inviterId,
     buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
   );
+  // The acceptor of the secret this peer listens under is the one remote id
+  // a run takes a connection from.
+  guardInboundConnections(peer, acceptorId);
   recordRelaysLeftOut(
     peer,
     options?.relaysLeftOut ?? [],
@@ -709,6 +713,8 @@ export async function dialAsAcceptor(
     acceptorId,
     buildPeerOptions(loc, [inviterId, acceptorId], iceServers),
   );
+  // The acceptor dials, so it takes no inbound connection at all.
+  guardInboundConnections(peer, undefined);
   recordRelaysLeftOut(
     peer,
     options?.relaysLeftOut ?? [],

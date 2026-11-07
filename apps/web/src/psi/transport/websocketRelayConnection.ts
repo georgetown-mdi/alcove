@@ -1015,6 +1015,7 @@ function forwardingConnection(
       return {
         outboundWebRtcFrameBound: () => bounds.limits.maxFrameBytes,
         inboundPsiSetElementCeiling: () => BROWSER_PSI_SET_MAX_ELEMENTS,
+        requireBinaryFrames: () => bounds.requireBinaryFrames(),
         send: (data) => {
           const frame = sendQueue.then(() => sendFrame(data));
           sendQueue = frame.catch(() => {});

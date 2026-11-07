@@ -715,6 +715,124 @@ describe("boundChunkReassembly: decoding and dispatch", () => {
   );
 });
 
+describe("boundChunkReassembly: the datagram before it is scanned", () => {
+  test("refuses an unchunked datagram over the cap before it is unpacked", () => {
+    const conn = new FakeChunkedConnection();
+    const fail = install(conn, { maxFrameBytes: 8 });
+
+    // A structure, which the delivered-frame check does not measure.
+    conn._handleDataMessage({
+      data: new Uint8Array(pack([1, 2, 3, 4, 5, 6, 7, 8]) as ArrayBuffer),
+    });
+
+    expect(fail).toHaveBeenCalledTimes(1);
+    const err = fail.mock.calls[0][0] as ConnectionError;
+    expect(err.kind).toBe("protocol");
+    expect(err.message).toBe(
+      "inbound WebRTC frame exceeds its 8-byte size limit",
+    );
+    expect(conn.delivered).toEqual([]);
+  });
+});
+
+describe("boundChunkReassembly: binary frames only, once required", () => {
+  function packed(value: unknown): Uint8Array {
+    const bytes = pack(value as never);
+    if (bytes instanceof Promise) throw new Error("packed asynchronously");
+    return new Uint8Array(bytes);
+  }
+
+  function installBinaryOnly(conn: FakeChunkedConnection) {
+    const fail = vi.fn();
+    boundChunkReassembly(
+      conn as unknown as DataConnection,
+      fail,
+    ).requireBinaryFrames();
+    return fail;
+  }
+
+  test("delivers a binary frame and reads the close sentinel", () => {
+    const conn = new FakeChunkedConnection();
+    const fail = installBinaryOnly(conn);
+
+    conn._handleDataMessage({ data: packed(new Uint8Array([1, 2, 3])) });
+    conn._handleDataMessage({
+      data: packed({ __peerData: { type: "close" } }),
+    });
+
+    expect(fail).not.toHaveBeenCalled();
+    expect(conn.delivered).toHaveLength(1);
+    expect(conn.closes).toBe(1);
+  });
+
+  test("delivers a binary frame sent in chunks", () => {
+    const conn = new FakeChunkedConnection();
+    const fail = installBinaryOnly(conn);
+    const frame = packed(new Uint8Array(40).fill(9));
+    const half = Math.ceil(frame.byteLength / 2);
+
+    for (const [n, slice] of [
+      frame.subarray(0, half),
+      frame.subarray(half),
+    ].entries())
+      conn._handleDataMessage({
+        data: packed({ __peerData: 1, n, data: slice, total: 2 }),
+      });
+
+    expect(fail).not.toHaveBeenCalled();
+    expect(conn.delivered).toHaveLength(1);
+  });
+
+  test.each([
+    ["a map", { kexMsg: "1", hello: "x" }],
+    ["an array", [1, 2, 3]],
+    ["a string", "hello"],
+  ])(
+    "refuses %s as a security failure, delivering nothing",
+    (_label, value) => {
+      const conn = new FakeChunkedConnection();
+      const fail = installBinaryOnly(conn);
+
+      conn._handleDataMessage({ data: packed(value) });
+
+      expect(fail).toHaveBeenCalledTimes(1);
+      const err = fail.mock.calls[0][0] as ConnectionError;
+      expect(err.kind).toBe("security");
+      expect(err.message).toContain("not binary");
+      expect(conn.delivered).toEqual([]);
+    },
+  );
+
+  test("refuses chunks that reassemble into a structure, before it is unpacked", () => {
+    const conn = new FakeChunkedConnection();
+    const fail = installBinaryOnly(conn);
+    const frame = packed(Array.from({ length: 40 }, () => 1));
+    const half = Math.ceil(frame.byteLength / 2);
+
+    for (const [n, slice] of [
+      frame.subarray(0, half),
+      frame.subarray(half),
+    ].entries())
+      conn._handleDataMessage({
+        data: packed({ __peerData: 1, n, data: slice, total: 2 }),
+      });
+
+    expect(fail).toHaveBeenCalledTimes(1);
+    expect((fail.mock.calls[0][0] as ConnectionError).kind).toBe("security");
+    expect(conn.delivered).toEqual([]);
+  });
+
+  test("delivers a structure before binary frames are required", () => {
+    const conn = new FakeChunkedConnection();
+    const fail = install(conn);
+
+    conn._handleDataMessage({ data: packed({ kexMsg: "1" }) });
+
+    expect(fail).not.toHaveBeenCalled();
+    expect(conn.delivered).toEqual([{ kexMsg: "1" }]);
+  });
+});
+
 describe("boundChunkReassembly: deserialized-structure bound at the unpack chokepoint", () => {
   test("rejects a map keyed by a non-string, naming the map-key rule", () => {
     const conn = new FakeChunkedConnection();
@@ -1011,4 +1129,16 @@ describe("checkDeliveredFrameBound", () => {
     ).toBeUndefined();
     expect(checkDeliveredFrameBound([1, 2, 3], 1)).toBeUndefined();
   });
+
+  test.each([
+    ["an ArrayBuffer", new ArrayBuffer(64)],
+    ["a Uint8Array", new Uint8Array(64)],
+  ])(
+    "does not measure an object that only inherits from %s, and does not throw",
+    (_label, prototype) => {
+      expect(
+        checkDeliveredFrameBound(Object.create(prototype) as object, 1),
+      ).toBeUndefined();
+    },
+  );
 });

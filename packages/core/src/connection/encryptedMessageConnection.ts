@@ -8,6 +8,7 @@ import { deriveAeadKey, type AuthResult } from "../auth";
 import { enc } from "../utils/crypto";
 import { type MessageConnection } from "./messageConnection";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
+import { binaryBytes } from "./binaryValue";
 import { fileSyncMessageFileBytes } from "./fileSyncOutboundBound";
 import {
   parseBoundedJson,
@@ -511,13 +512,9 @@ export class EncryptedMessageConnection implements MessageConnection {
   // inner.receive propagates unchanged.
   private async handleInbound(data: unknown): Promise<unknown> {
     // The browser WebRTC transport hands a sent Uint8Array over as an
-    // ArrayBuffer, so that is read as the same bytes.
-    const bytes =
-      data instanceof Uint8Array
-        ? (data as Uint8Array<ArrayBuffer>)
-        : data instanceof ArrayBuffer
-          ? new Uint8Array(data)
-          : undefined;
+    // ArrayBuffer, so that is read as the same bytes. A value that only
+    // inherits from either is not binary.
+    const bytes = binaryBytes(data);
     if (bytes === undefined) {
       throw this.fail(
         new ConnectionError(

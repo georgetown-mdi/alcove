@@ -119,6 +119,24 @@ describe("openPeerMessageConnection", () => {
     expect((err as ConnectionError).message).toContain("exceeds");
   });
 
+  test("once binary frames are required, a frame that is not binary fails the connection as a security failure", async () => {
+    const { fake, conn } = makeConn();
+    const mc = await openPeerMessageConnection(conn);
+    mc.requireBinaryFrames?.();
+    const encoder = new PeerJsFrameEncoder();
+    for (const datagram of [
+      ...encoder.encode(new Uint8Array([8, 9])),
+      ...encoder.encode({ kexMsg: "1" }),
+    ])
+      fake._handleDataMessage({ data: datagram });
+
+    expect(Array.from((await mc.receive()) as Uint8Array)).toEqual([8, 9]);
+    await expect(mc.receive()).rejects.toMatchObject({
+      kind: "security",
+      message: expect.stringContaining("not binary"),
+    });
+  });
+
   test("accepts an at-cap delivered binary frame", async () => {
     const { fake, conn } = makeConn();
     const mc = await openPeerMessageConnection(conn, { maxFrameBytes: 8 });

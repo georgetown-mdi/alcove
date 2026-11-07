@@ -83,6 +83,7 @@ export const WEB_FILES = [
   "apps/web/src/psi/transport/relayFallback.ts",
   "apps/web/src/psi/transport/signalingAddress.ts",
   "apps/web/src/psi/transport/signalingBounds.ts",
+  "apps/web/src/psi/transport/inboundConnections.ts",
   "apps/web/src/utils/diagnostics.ts",
   "apps/web/src/utils/clientConfig.ts",
 ];

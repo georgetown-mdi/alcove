@@ -1,6 +1,7 @@
 import type { Connection } from "../types";
 import { ConnectionError, asConnectionError } from "../errors";
 import { MAX_WEBRTC_FRAME_BYTES } from "./binaryPackBounds";
+import { binaryByteLength } from "./binaryValue";
 
 /**
  * Pull-based transport abstraction. A consumer drives the conversation by
@@ -369,9 +370,7 @@ function inboundByteBoundOverflow(byteCapacity: number): ConnectionError {
 // What an in-memory pipe charges a message, which this process sent itself:
 // a binary message's length, and nothing for any other.
 function inMemoryMessageBytes(message: unknown): number {
-  if (ArrayBuffer.isView(message) || message instanceof ArrayBuffer)
-    return message.byteLength;
-  return 0;
+  return binaryByteLength(message) ?? 0;
 }
 
 // Maximum time a parked receive() will wait for the next inbound message

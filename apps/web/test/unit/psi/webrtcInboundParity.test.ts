@@ -263,8 +263,12 @@ describe("the web PeerJS wrap against the shared malformed datagrams", () => {
     for (const fixture of WEBRTC_MALFORMED_DATAGRAM_FIXTURES) {
       const conn = new FakePeerJsConnection();
       const failures: Array<ConnectionError> = [];
-      boundChunkReassembly(conn as unknown as DataConnection, (error) =>
-        failures.push(error),
+      boundChunkReassembly(
+        conn as unknown as DataConnection,
+        (error) => failures.push(error),
+        fixture.maxFrameBytes === undefined
+          ? undefined
+          : { maxFrameBytes: fixture.maxFrameBytes },
       );
       conn._handleDataMessage({
         data: fixture.datagram as unknown as Uint8Array,

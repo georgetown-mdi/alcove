@@ -1,5 +1,6 @@
 import { ConnectionError } from "@alcove/core";
 
+import { takeInboundConnection } from "./inboundConnections";
 import { watchIceGathering } from "./iceGathering";
 
 import type { DataConnection } from "peerjs";
@@ -75,14 +76,16 @@ const SIGNALING_ENDED_DURING_WAIT =
   "other party to connect";
 
 /**
- * Resolves with the first incoming {@link DataConnection} on `peer`, or
+ * Resolves with the incoming {@link DataConnection} `peer`'s inbound guard
+ * admits (`guardInboundConnections`, `./inboundConnections.ts`), or
  * rejects with a {@link PartnerNoShowError} at the deadline, with a
  * `transport`-kind {@link ConnectionError} of fixed text when the peer leaves
  * the coordination server, or with a plain abort error if `signal` aborts
  * first. No rejection holds text or fields from a PeerJS error. A settle-once
  * guard, independent of any caller's teardown, runs cleanup exactly once for
  * whichever of {connection, coordination server left, timeout, abort} wins,
- * even when two fire in the same tick.
+ * even when two fire in the same tick. A peer with no inbound guard rejects
+ * at once.
  *
  * @param peer     The local PeerJS peer awaiting an inbound connection.
  * @param options  `timeoutMs` overrides the {@link DEFAULT_PEER_WAIT_TIMEOUT_MS}
@@ -113,10 +116,11 @@ export function waitForIncomingConnection(
   const timeoutMs = Math.max(0, waitedUntil.getTime() - Date.now());
   return new Promise<DataConnection>((resolve, reject) => {
     let settled = false;
+    let stopTaking: (() => void) | undefined;
     const settle = (action: () => void) => {
       if (settled) return;
       settled = true;
-      peer.off("connection", onConnection);
+      stopTaking?.();
       peer.off("error", onPeerError);
       peer.off("disconnected", onDisconnected);
       clearTimeout(timer);
@@ -173,7 +177,12 @@ export function waitForIncomingConnection(
       onAbort();
       return;
     }
-    peer.once("connection", onConnection);
+    try {
+      stopTaking = takeInboundConnection(peer, onConnection);
+    } catch (error) {
+      settle(() => reject(error));
+      return;
+    }
     peer.on("error", onPeerError);
     peer.on("disconnected", onDisconnected);
     signal?.addEventListener("abort", onAbort);

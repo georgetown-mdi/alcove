@@ -206,11 +206,15 @@ describe("the CLI receive path against the shared malformed datagrams", () => {
     // The channel's message handler feeds every datagram through
     // `toFrameBytes` and then the reassembler, so both are driven here.
     for (const fixture of WEBRTC_MALFORMED_DATAGRAM_FIXTURES) {
+      const bounds =
+        fixture.maxFrameBytes === undefined
+          ? new BoundedInboundFrames()
+          : boundedInboundFramesWithBounds({
+              maxFrameBytes: fixture.maxFrameBytes,
+            });
       let outcome: unknown;
       try {
-        outcome = new BoundedInboundFrames().accept(
-          toFrameBytes(fixture.datagram),
-        );
+        outcome = bounds.accept(toFrameBytes(fixture.datagram));
       } catch (err) {
         if (!(err instanceof ConnectionError)) throw err;
         outcome = { kind: err.kind, message: err.message };

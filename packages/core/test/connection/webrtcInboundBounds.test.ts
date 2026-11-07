@@ -248,6 +248,124 @@ test("chunks that reassemble into another envelope are refused", () => {
   ).toContain("another envelope");
 });
 
+test("a retained chunk from a Buffer datagram holds only its own bytes", () => {
+  // werift delivers a datagram as a Node Buffer cut from a larger allocation,
+  // and a Buffer's slice is a view over that allocation, not a copy.
+  const datagram = chunk(7, 0, 2, new Uint8Array(1).fill(9));
+  const slab = Buffer.alloc(65_536 + datagram.byteLength);
+  const delivered = slab.subarray(4096, 4096 + datagram.byteLength);
+  delivered.set(datagram);
+
+  const bounds = new BoundedInboundFrames();
+  expect(bounds.accept(toFrameBytes(delivered))).toEqual({ kind: "pending" });
+  const inFlight = (
+    bounds as unknown as {
+      inFlight: Map<number, { parts: Array<Uint8Array | undefined> }>;
+    }
+  ).inFlight;
+  const retained = inFlight.get(7)?.parts[0];
+  expect(Array.from(retained ?? [])).toEqual([9]);
+  expect(retained?.buffer.byteLength).toBe(retained?.byteLength);
+});
+
+test("a datagram decoding to an object that inherits from a byte slice is refused", () => {
+  const impostor = Object.defineProperty({}, "__proto__", {
+    value: new Uint8Array(4),
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+  const { kind, message } = refusal(() =>
+    new BoundedInboundFrames().accept(packValue(impostor)),
+  );
+  expect(kind).toBe("protocol");
+  expect(message).toContain("inherits from binary data");
+});
+
+// --- binary frames only, once the encryption layer requires them ------------
+
+/** A reassembler that requires binary frames. */
+function binaryOnly(): BoundedInboundFrames {
+  const bounds = new BoundedInboundFrames();
+  bounds.requireBinaryFrames();
+  return bounds;
+}
+
+test("once binary frames are required, a binary frame is delivered whole and in chunks", () => {
+  const small = new Uint8Array(64).fill(3);
+  const [only] = new PeerJsFrameEncoder().encode(small);
+  const whole = binaryOnly().accept(only);
+  expect(whole.kind).toBe("frame");
+
+  const bounds = binaryOnly();
+  const datagrams = new PeerJsFrameEncoder().encode(
+    new Uint8Array(PEERJS_CHUNK_MTU * 3).fill(5),
+  );
+  expect(datagrams.length).toBeGreaterThan(2);
+  for (const datagram of datagrams.slice(0, -1))
+    expect(bounds.accept(datagram)).toEqual({ kind: "pending" });
+  const last = bounds.accept(datagrams[datagrams.length - 1]);
+  expect(last.kind).toBe("frame");
+  expect(toFrameBytes((last as { value: unknown }).value).byteLength).toBe(
+    PEERJS_CHUNK_MTU * 3,
+  );
+});
+
+test("once binary frames are required, the close sentinel is still read", () => {
+  expect(binaryOnly().accept(packCloseSentinel())).toEqual({ kind: "close" });
+});
+
+test.each([
+  ["a map", { kexMsg: "1", hello: "x" }],
+  ["an array of one-byte values", Array.from({ length: 64 }, () => 1)],
+  ["a string", "hello"],
+  ["a number", 7],
+  [
+    "a map of the chunk envelope's keys with no message id",
+    { n: 0, data: new Uint8Array(4), total: 2, __peerData: 0 },
+  ],
+])(
+  "once binary frames are required, %s is refused as a security failure",
+  (_label, value) => {
+    const { kind, message } = refusal(() =>
+      binaryOnly().accept(packValue(value)),
+    );
+    expect(kind).toBe("security");
+    expect(message).toContain("not binary");
+  },
+);
+
+test("once binary frames are required, a chunk envelope with a key beyond the envelope's is refused before it is decoded", () => {
+  const datagram = packValue({
+    __peerData: 1,
+    n: 0,
+    data: new Uint8Array(4),
+    total: 2,
+    extra: Array.from({ length: 64 }, () => 1),
+  });
+  expect(refusal(() => binaryOnly().accept(datagram)).kind).toBe("security");
+});
+
+test("once binary frames are required, chunks that reassemble into a structure are refused before it is decoded", () => {
+  const bounds = binaryOnly();
+  const datagrams = new PeerJsFrameEncoder().encode(
+    Array.from({ length: PEERJS_CHUNK_MTU * 2 }, () => 1),
+  );
+  expect(datagrams.length).toBeGreaterThan(1);
+  for (const datagram of datagrams.slice(0, -1))
+    expect(bounds.accept(datagram)).toEqual({ kind: "pending" });
+  const { kind } = refusal(() =>
+    bounds.accept(datagrams[datagrams.length - 1]),
+  );
+  expect(kind).toBe("security");
+});
+
+test("before binary frames are required, a structure is delivered", () => {
+  expect(
+    new BoundedInboundFrames().accept(packValue({ kexMsg: "1" })).kind,
+  ).toBe("frame");
+});
+
 test("a refusal has the limit and no peer-supplied bytes", () => {
   const marker = "PEER-CHOSEN-MARKER";
   const bounds = boundedInboundFramesWithBounds({ maxFrameBytes: 8 });

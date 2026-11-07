@@ -543,13 +543,54 @@ export interface WebrtcMalformedDatagramFixture {
   readonly label: string;
   readonly datagram: string | Uint8Array;
   readonly message: string;
+  /** The frame-size cap each side is driven with, where the fixture is
+   * measured against a cap lower than the production one. */
+  readonly maxFrameBytes?: number;
 }
 
 const MALFORMED_DATAGRAM_PREFIX = "the peer sent a malformed WebRTC frame: ";
 
+/** A datagram of one-byte values one byte over the cap it is measured against:
+ * not binary, so only a cap applied to the datagram before it is decoded refuses
+ * it, and the delivered-frame check never could. */
+const overCapDatagram = packWithLibrary(oneByteValues(1024));
+
+/** A chunk envelope declaring one chunk, whose slice is itself a packed chunk
+ * envelope: its reassembly completes on this one datagram, into another
+ * envelope rather than a frame. */
+const envelopeInsideEnvelope = packWithLibrary({
+  __peerData: 1,
+  n: 0,
+  data: packWithLibrary({
+    __peerData: 2,
+    n: 0,
+    data: new Uint8Array(4),
+    total: 2,
+  }),
+  total: 1,
+});
+
+/** A chunk envelope declaring one chunk, whose slice is a packed chunk envelope
+ * with a string message id: its reassembly completes into a malformed envelope,
+ * which is refused as malformed rather than as an envelope. */
+const malformedEnvelopeInsideEnvelope = packWithLibrary({
+  __peerData: 1,
+  n: 0,
+  data: packWithLibrary({
+    __peerData: "2",
+    n: 0,
+    data: new Uint8Array(4),
+    total: 2,
+  }),
+  total: 1,
+});
+
 /** The malformed datagrams both transports are held to: a text message, an empty
- * text message, an empty binary message, and a binary message whose string
- * declares more bytes than the message holds, which the real unpacker throws on. */
+ * text message, an empty binary message, a binary message whose string declares
+ * more bytes than the message holds, which the real unpacker throws on, a
+ * datagram over the frame-size cap, a chunk stream that reassembles into another
+ * envelope, one that reassembles into a malformed envelope, and a map whose
+ * `__proto__` key holds a byte slice. */
 export const WEBRTC_MALFORMED_DATAGRAM_FIXTURES: Array<WebrtcMalformedDatagramFixture> =
   [
     {
@@ -571,5 +612,29 @@ export const WEBRTC_MALFORMED_DATAGRAM_FIXTURES: Array<WebrtcMalformedDatagramFi
       label: "a string declaring more bytes than the datagram holds",
       datagram: new Uint8Array([0xd9, 0, 0, 0, 100, 0x61]),
       message: `${MALFORMED_DATAGRAM_PREFIX}its BinaryPack body could not be decoded`,
+    },
+    {
+      label: "a datagram one byte over the frame-size cap",
+      datagram: overCapDatagram,
+      message: `inbound WebRTC frame exceeds its ${overCapDatagram.byteLength - 1}-byte size limit`,
+      maxFrameBytes: overCapDatagram.byteLength - 1,
+    },
+    {
+      label: "a chunk stream that reassembles into another chunk envelope",
+      datagram: envelopeInsideEnvelope,
+      message:
+        "the peer sent an invalid WebRTC chunk stream: its chunks reassemble " +
+        "into another envelope rather than a frame",
+    },
+    {
+      label:
+        "a chunk stream that reassembles into an envelope with a string message id",
+      datagram: malformedEnvelopeInsideEnvelope,
+      message: `${MALFORMED_DATAGRAM_PREFIX}its chunk message id is not an integer`,
+    },
+    {
+      label: "a map whose __proto__ key holds a byte slice",
+      datagram: packWithLibrary(sliceAsPrototype()),
+      message: `${MALFORMED_DATAGRAM_PREFIX}it decodes to an object that inherits from binary data but is not binary`,
     },
   ];

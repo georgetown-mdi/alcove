@@ -16,7 +16,10 @@ import {
   dialAsAcceptor,
   listenAsInviter,
 } from "../../../src/psi/transport/rendezvous.js";
-import { PartnerNoShowError } from "../../../src/psi/transport/waitForConnection.js";
+import {
+  PartnerNoShowError,
+  waitForIncomingConnection,
+} from "../../../src/psi/transport/waitForConnection.js";
 
 import type { DataConnection, PeerOptions } from "peerjs";
 import type Peer from "peerjs";
@@ -420,6 +423,65 @@ describe("dialAsAcceptor", () => {
     expect(rejection).toBeInstanceOf(Error);
     expect((rejection as Error).message).not.toContain(inviterId);
     expect(fake.destroy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the inbound connections a registered peer holds", () => {
+  /** An inbound connection as PeerJS hands one out. */
+  function offered(peer: string, serialization = "binary") {
+    return { peer, serialization, close: vi.fn() };
+  }
+
+  test("the inviter takes one connection, from the acceptor id of its secret, and closes every other", async () => {
+    stubWindow();
+    const secret = generateSharedSecret();
+    const acceptorId = await deriveRendezvousPeerId(secret, "acceptor");
+    const fake = new FakePeer();
+    const promise = listenAsInviter(secret, endpoint, {
+      peerFactory: captureFactory(fake).factory,
+    });
+    await vi.waitFor(() =>
+      expect(fake.listenerCount("open")).toBeGreaterThan(0),
+    );
+    fake.emit("open", "inviter-id");
+    const peer = await promise;
+
+    const waiting = waitForIncomingConnection(peer, { timeoutMs: 1000 });
+    const foreign = offered("someone-else");
+    const json = offered(acceptorId, "json");
+    const taken = offered(acceptorId);
+    const second = offered(acceptorId);
+    for (const conn of [foreign, json, taken, second])
+      fake.emit("connection", conn);
+
+    expect(await waiting).toBe(taken);
+    expect(taken.close).not.toHaveBeenCalled();
+    for (const refused of [foreign, json, second])
+      expect(refused.close).toHaveBeenCalledTimes(1);
+  });
+
+  test("the acceptor closes every inbound connection, its partner's id included", async () => {
+    stubWindow();
+    const secret = generateSharedSecret();
+    const inviterId = await deriveRendezvousPeerId(secret, "inviter");
+    const fake = new FakePeer();
+    void dialAsAcceptor(secret, endpoint, {
+      peerFactory: captureFactory(fake).factory,
+    }).catch(() => undefined);
+    await vi.waitFor(() =>
+      expect(fake.listenerCount("open")).toBeGreaterThan(0),
+    );
+
+    const fromInviter = offered(inviterId);
+    const foreign = offered("someone-else");
+    fake.emit("connection", fromInviter);
+    fake.emit("connection", foreign);
+
+    expect(fromInviter.close).toHaveBeenCalledTimes(1);
+    expect(foreign.close).toHaveBeenCalledTimes(1);
+    await expect(
+      waitForIncomingConnection(fake as unknown as Peer, { timeoutMs: 10 }),
+    ).rejects.toBeInstanceOf(PartnerNoShowError);
   });
 });
 

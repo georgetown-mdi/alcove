@@ -2,6 +2,11 @@ import { unpack } from "peerjs-js-binarypack";
 
 import { ConnectionError } from "../errors";
 import { encodeBinaryPackValue } from "./binaryPackEncode";
+import {
+  binaryByteLength,
+  binaryBytes,
+  inheritsFromBinaryWithoutBeingBinary,
+} from "./binaryValue";
 import { PEERJS_CHUNK_MTU } from "./webrtcOutboundBound";
 
 /**
@@ -77,6 +82,137 @@ function malformedFrameError(detail: string): ConnectionError {
   );
 }
 
+/** What {@link classifyInboundValue} says of a value that inherits from binary
+ * data without being binary. The web app's PeerJS wrap refuses the same value
+ * in the same words. */
+const INHERITS_FROM_BINARY_DETAIL =
+  "it decodes to an object that inherits from binary data but is not binary";
+
+/**
+ * The refusal of a frame once the encryption layer requires binary frames
+ * ({@link admitsBinaryOnlyFrame}). Kind `security`, the class the encryption
+ * layer gives a frame that is not binary. It holds no peer-controlled bytes.
+ */
+export function nonBinaryFrameError(): ConnectionError {
+  return new ConnectionError(
+    "the peer sent a WebRTC frame that is not binary after the channel was " +
+      "encrypted, so it was refused",
+    "security",
+  );
+}
+
+/** Whether `marker` is a BinaryPack binary value's: `fixraw`, `raw16` or
+ * `raw32`. */
+function isRawMarker(marker: number | undefined): boolean {
+  return (
+    marker !== undefined &&
+    ((marker >= 0xa0 && marker <= 0xaf) || marker === 0xda || marker === 0xdb)
+  );
+}
+
+/** Where the binary value at `at` ends, or `undefined` if no binary value
+ * starts there or it runs past the end. */
+function rawEnd(bytes: Uint8Array, at: number): number | undefined {
+  const marker = bytes[at];
+  if (marker === undefined) return undefined;
+  let headerBytes: number;
+  let size: number;
+  if (marker >= 0xa0 && marker <= 0xaf) {
+    headerBytes = 1;
+    size = marker & 0x0f;
+  } else if (marker === 0xda && at + 3 <= bytes.length) {
+    headerBytes = 3;
+    size = (bytes[at + 1] << 8) | bytes[at + 2];
+  } else if (marker === 0xdb && at + 5 <= bytes.length) {
+    headerBytes = 5;
+    size =
+      ((bytes[at + 1] << 24) >>> 0) +
+      ((bytes[at + 2] << 16) | (bytes[at + 3] << 8) | bytes[at + 4]);
+  } else {
+    return undefined;
+  }
+  const end = at + headerBytes + size;
+  return end <= bytes.length ? end : undefined;
+}
+
+/** The bytes after each BinaryPack number marker that is not a fixint. */
+const NUMBER_MARKER_WIDTHS: ReadonlyMap<number, number> = new Map([
+  [0xca, 4],
+  [0xcb, 8],
+  [0xcc, 1],
+  [0xcd, 2],
+  [0xce, 4],
+  [0xcf, 8],
+  [0xd0, 1],
+  [0xd1, 2],
+  [0xd2, 4],
+  [0xd3, 8],
+]);
+
+function numberEnd(bytes: Uint8Array, at: number): number | undefined {
+  const marker = bytes[at];
+  if (marker === undefined) return undefined;
+  if (marker < 0x80 || marker >= 0xe0) return at + 1;
+  const width = NUMBER_MARKER_WIDTHS.get(marker);
+  if (width === undefined) return undefined;
+  const end = at + 1 + width;
+  return end <= bytes.length ? end : undefined;
+}
+
+/** The four keys of a chunk envelope, as the packer writes each: a `fixstr`. */
+const CHUNK_ENVELOPE_KEYS: ReadonlyArray<{
+  readonly name: string;
+  readonly packed: Uint8Array;
+}> = ["__peerData", "n", "data", "total"].map((name) => ({
+  name,
+  packed: packValue(name),
+}));
+
+/** The `fixmap` marker of a map of four entries, the chunk envelope's. */
+const FOUR_ENTRY_MAP_MARKER = 0x84;
+
+/** Whether `bytes` are one chunk envelope: a map of the four envelope keys,
+ * each once, `data` holding a binary value and the other three a number, and
+ * nothing after it. */
+function isChunkEnvelopeBytes(bytes: Uint8Array): boolean {
+  if (bytes[0] !== FOUR_ENTRY_MAP_MARKER) return false;
+  const seen = new Set<string>();
+  let at = 1;
+  for (let entry = 0; entry < 4; entry += 1) {
+    const key = CHUNK_ENVELOPE_KEYS.find(
+      ({ packed }) =>
+        at + packed.length <= bytes.length &&
+        packed.every((byte, offset) => bytes[at + offset] === byte),
+    );
+    if (key === undefined || seen.has(key.name)) return false;
+    seen.add(key.name);
+    at += key.packed.length;
+    const end = key.name === "data" ? rawEnd(bytes, at) : numberEnd(bytes, at);
+    if (end === undefined) return false;
+    at = end;
+  }
+  return at === bytes.length;
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((byte, index) => byte === b[index]);
+}
+
+/**
+ * Whether `bytes` are a frame a receiver admits once the encryption layer
+ * requires binary frames, read off the wire bytes before anything is decoded:
+ * a binary value at the root, or, for a datagram rather than a reassembled
+ * frame, a chunk envelope holding a binary slice or the close sentinel.
+ */
+export function admitsBinaryOnlyFrame(
+  bytes: Uint8Array,
+  position: "datagram" | "reassembled",
+): boolean {
+  if (isRawMarker(bytes[0])) return true;
+  if (position === "reassembled") return false;
+  return isChunkEnvelopeBytes(bytes) || sameBytes(bytes, CLOSE_SENTINEL_BYTES);
+}
+
 /**
  * Coerce a binary data-channel message to a `Uint8Array` view without
  * copying. werift's `onmessage` delivers a Node `Buffer` for binary, a
@@ -89,12 +225,8 @@ function malformedFrameError(detail: string): ConnectionError {
  * @throws {ConnectionError} of kind `protocol` on a non-binary or empty datagram.
  */
 export function toFrameBytes(data: unknown): Uint8Array {
-  let view: Uint8Array;
-  if (data instanceof ArrayBuffer) {
-    view = new Uint8Array(data);
-  } else if (ArrayBuffer.isView(data)) {
-    view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  } else {
+  const view = binaryBytes(data);
+  if (view === undefined) {
     throw malformedFrameError("it is not a binary datagram");
   }
   if (view.byteLength === 0) {
@@ -120,6 +252,9 @@ export function packValue(value: unknown): Uint8Array {
 export function packCloseSentinel(): Uint8Array {
   return packValue({ __peerData: { type: "close" } });
 }
+
+/** The close sentinel's bytes, which every sender packs identically. */
+const CLOSE_SENTINEL_BYTES = packCloseSentinel();
 
 /**
  * Split an already-packed frame into the chunk envelopes PeerJS would put on the
@@ -193,11 +328,18 @@ function isChunkOrdinal(value: unknown): value is number {
  * here -- they belong to `webrtcInboundBounds.ts`, which owns the memory
  * envelope.
  *
+ * A value that inherits from binary data without being binary is refused
+ * too: no sender packs one, and a receiver that took it for bytes would throw
+ * on reading them.
+ *
  * @throws {ConnectionError} of kind `protocol` if the value has a
  *         `__peerData` that is neither the close sentinel nor a well-formed
- *         chunk envelope.
+ *         chunk envelope, or inherits from binary data without being binary.
  */
 export function classifyInboundValue(unpacked: unknown): InboundValue {
+  if (inheritsFromBinaryWithoutBeingBinary(unpacked)) {
+    throw malformedFrameError(INHERITS_FROM_BINARY_DETAIL);
+  }
   if (!isPlainObject(unpacked)) return { kind: "data", value: unpacked };
   const peerData = unpacked.__peerData;
   if (!peerData) return { kind: "data", value: unpacked };
@@ -217,7 +359,7 @@ export function classifyInboundValue(unpacked: unknown): InboundValue {
   if (!isChunkOrdinal(n) || n >= total) {
     throw malformedFrameError("its chunk index is outside the declared count");
   }
-  if (!ArrayBuffer.isView(data) && !(data instanceof ArrayBuffer)) {
+  if (binaryByteLength(data) === undefined) {
     throw malformedFrameError("its chunk payload is not binary");
   }
   return {

@@ -8,6 +8,7 @@ import {
   generateSharedSecret,
   packCloseSentinel,
   sanitizeErrorForDisplay,
+  toFrameBytes,
 } from "@alcove/core";
 import {
   boundedInboundFramesWithBounds,
@@ -388,6 +389,25 @@ test("inbound datagrams are delivered as whole frames", async () => {
     channel.deliver(datagram);
   }
   expect(await connection.receive()).toEqual({ step: 2, ok: true });
+});
+
+test("once binary frames are required, a frame that is not binary fails the connection as a security failure after the frames before it", async () => {
+  const { channel, session } = harness();
+  const connection = webRtcMessageConnection(session);
+  connection.requireBinaryFrames?.();
+  const encoder = new PeerJsFrameEncoder();
+  for (const datagram of encoder.encode(new Uint8Array([1, 2, 3])))
+    channel.deliver(datagram);
+  for (const datagram of encoder.encode({ kexMsg: "1" }))
+    channel.deliver(datagram);
+
+  expect(Array.from(toFrameBytes(await connection.receive()))).toEqual([
+    1, 2, 3,
+  ]);
+  await expect(connection.receive()).rejects.toMatchObject({
+    kind: "security",
+    message: expect.stringContaining("not binary") as unknown,
+  });
 });
 
 test("the close sentinel half-closes: a queued frame is drained before it", async () => {

@@ -18,6 +18,7 @@ import {
   WEB_RELAY_FALLBACK,
   openRunConnectionWithRelayFallback,
 } from "@psi/transport/relayFallback";
+import { guardInboundConnections } from "@psi/transport/inboundConnections";
 
 import type {
   MessageConnection,
@@ -342,9 +343,11 @@ const PARTNER_WAIT_MS = 60_000;
 
 /**
  * The inviter's WebRTC open up to its wait for the partner's connection, on a
- * PeerJS peer the test drives.
+ * PeerJS peer the test drives, its inbound connections guarded as the
+ * rendezvous guards a registered inviter's.
  */
 function inviterWaitingOn(peer: EventEmitter) {
+  guardInboundConnections(peer as unknown as Peer, "acceptor-id");
   return async ({ signal, onPathFailed }: WebRtcPathHooks) => {
     await waitForIncomingConnection(peer as unknown as Peer, {
       signal,
