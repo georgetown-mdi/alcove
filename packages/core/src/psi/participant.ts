@@ -425,9 +425,10 @@ export class PSIParticipant {
     return this.sentRequest;
   }
 
-  // A response is held to the request this party sent, which this party held
-  // to its own set maximum before building it.
-  private assertResponseWithinRequest(responseBytes: Uint8Array): number {
+  // A response answers each element of the request this party sent once, so
+  // it is held to that request's bytes and to exactly its element count. The
+  // request was held to this party's own set maximum before it was built.
+  private assertResponseMatchesRequest(responseBytes: Uint8Array): number {
     const request = this.requestAnswered();
     this.sentRequest = undefined;
     if (responseBytes.byteLength > request.bytes)
@@ -436,14 +437,24 @@ export class PSIParticipant {
           `${responseBytes.byteLength} bytes, over the ${request.bytes} bytes ` +
           "of the request this party sent",
       );
-    return this.assertScanWithinCeiling("response", request.elements, () =>
-      countDeclaredPsiElements(
-        responseBytes,
-        "response",
-        request.elements,
-        PSI_ELEMENT_BYTES,
-      ),
+    const elements = this.assertScanWithinCeiling(
+      "response",
+      request.elements,
+      () =>
+        countDeclaredPsiElements(
+          responseBytes,
+          "response",
+          request.elements,
+          PSI_ELEMENT_BYTES,
+        ),
     );
+    if (elements !== request.elements)
+      throw new PartnerProtocolRefusalError(
+        `${this.id} protocol error: inbound PSI response has ${elements} ` +
+          `encrypted element(s), not the ${request.elements} of the request ` +
+          "this party sent",
+      );
+    return elements;
   }
 
   // A single-pass setup or request arrives whole in its message and is held
@@ -834,7 +845,7 @@ export class PSIParticipant {
   private computeAssociationTable(
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]> {
-    const elements = this.assertResponseWithinRequest(responseBytes);
+    const elements = this.assertResponseMatchesRequest(responseBytes);
     return this.reportProgress("computeAssociationTable", elements, () =>
       decodePsiBinaryFrame(this.id, "response", () =>
         this.engine.computeAssociationTable(responseBytes),
@@ -952,7 +963,7 @@ export class PSIParticipant {
     await sendPsiSet(conn, request);
 
     const response = await this.receiveRoundSet(conn, "response");
-    const elements = this.assertResponseWithinRequest(response);
+    const elements = this.assertResponseMatchesRequest(response);
     await this.reportProgress("computeIntersectionCardinality", elements, () =>
       decodePsiBinaryFrame(this.id, "response", () =>
         this.engine.matchPermutedRound(response),

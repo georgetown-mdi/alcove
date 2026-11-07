@@ -156,6 +156,7 @@ A declared length over the combined bound stays a `ProtocolRefusalError`; one wi
 - **A response is held to the request this party sent.**
   A response re-encrypts the request element for element and drops the request's framing, so it is never longer.
   A receiver refuses a response whose declared length exceeds the byte length of the request it sent, naming both lengths, at the first part before it allocates the joined buffer, and again before decode, where the element scan holds the response to the request's element count (`participant.ts`).
+  A response with fewer elements than the request, or none, is refused after the scan, before decode, naming both counts.
   A response arriving when every request this party sent has already been answered, or before it sent any, is refused.
   A partner can therefore make a party allocate no more for a response than the request that party built itself, below any receive ceiling it stated.
 - **The command-line application states the protocol's maximum** as its receive ceiling, so it holds every set to the combined bound, and its memory below that is checked against the partner's record count rather than stated ([FILE_SYNC.md, The partner's round](FILE_SYNC.md#the-partners-round)).
