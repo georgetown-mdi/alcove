@@ -548,9 +548,11 @@ POSIX that is an exclusive, non-following create
 `0600` on that descriptor, and the extended-ACL strip of the temp path,
 without following a link. On Windows it is an exclusive create whose ACL is
 narrowed while its handle stays open, the rows then written through that
-handle. A stale temp file a crashed run left is removed first. Closing the
-stream after its last row flushes the temp file's data, renames it onto the
-output path, and flushes the parent directory, as the
+handle. A temp file of the same name that a crashed run left is removed first;
+the name carries the process id and the result name changes each run, so a
+later run does not clear a different one. Closing the stream after its last
+row flushes the temp file's data, renames it onto the output path, and
+flushes the parent directory, as the
 [POSIX write discipline](#posix-write-discipline) does for the key file, and
 the write is reported complete only once that rename has returned.
 

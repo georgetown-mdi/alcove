@@ -878,10 +878,19 @@ export function createOwnerOnlyWriteStream(destPath: string): fs.WriteStream {
   // fsyncs the descriptor before it runs, so the data is durable before the
   // rename, as in writeFileOwnerOnly. Node requires `fsync` here under
   // `flush`; @types/node does not declare it, hence the separate object.
+  let syncFailed = false;
   const streamFs = {
     write: fs.write,
     writev: fs.writev,
-    fsync: fs.fsync,
+    fsync: (
+      syncFd: number,
+      callback: (err?: NodeJS.ErrnoException | null) => void,
+    ): void => {
+      fs.fsync(syncFd, (syncErr) => {
+        if (syncErr) syncFailed = true;
+        callback(syncErr);
+      });
+    },
     close: (
       closingFd: number,
       callback: (err?: NodeJS.ErrnoException | null) => void,
@@ -889,7 +898,7 @@ export function createOwnerOnlyWriteStream(destPath: string): fs.WriteStream {
       fs.close(closingFd, (closeErr) => {
         try {
           if (closeErr) throw closeErr;
-          if (stream.writableFinished) {
+          if (stream.writableFinished && !syncFailed) {
             fs.renameSync(tmp, destPath);
             fsyncParentDir(destPath);
           } else removeResultTemp(tmp);
@@ -917,7 +926,7 @@ function removeResultTemp(tmp: string): void {
   try {
     fs.unlinkSync(tmp);
   } catch {
-    /* best-effort: the stale-temp removal of a later run also clears it */
+    /* best-effort: a failed removal leaves the temp file in place */
   }
 }
 

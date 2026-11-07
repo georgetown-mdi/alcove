@@ -555,6 +555,24 @@ describe("createOwnerOnlyWriteStream", () => {
     },
   );
 
+  test("a failed flush is the stream's error, keeps the previous result and leaves no temp file", async () => {
+    const p = path.join(dir, "result.csv");
+    fs.writeFileSync(p, "previous,result\n");
+    vi.spyOn(fs, "fsync").mockImplementation(((
+      _fd: number,
+      callback: (err: NodeJS.ErrnoException | null) => void,
+    ) => {
+      callback(Object.assign(new Error("EIO: simulated"), { code: "EIO" }));
+    }) as typeof fs.fsync);
+
+    await expect(
+      writeAndClose(createOwnerOnlyWriteStream(p), "fresh,data\n"),
+    ).rejects.toThrow("EIO");
+
+    expect(fs.readFileSync(p, "utf8")).toBe("previous,result\n");
+    expect(fs.readdirSync(dir)).toEqual(["result.csv"]);
+  });
+
   test.skipIf(process.platform === "win32")(
     "preserves an existing file's content when the mode cannot be secured (POSIX)",
     () => {
