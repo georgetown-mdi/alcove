@@ -225,28 +225,17 @@ test("clearing a held byte bound on a connection that overflowed it raises that 
   await expect(conn.receive()).rejects.toBe(refusal);
 });
 
-test.each([
-  ["no frame", 0],
-  ["frames the built bound admits", 2],
-])(
-  "clearing a held byte bound on a failed connection holding %s drops them and raises the failure",
-  async (_case, frames) => {
-    const { conn, controls } = makeQueued({ byteCapacity: 10 });
-    conn.holdInboundQueueBytes(20);
-    for (let frame = 0; frame < frames; frame++)
-      controls.deliver(new Uint8Array(5), 5);
-    const lost = new ConnectionError("partner lost", "transport");
-    controls.fail(lost);
-    let raised: unknown;
-    try {
-      conn.holdInboundQueueBytes(undefined);
-    } catch (error) {
-      raised = error;
-    }
-    expect(raised).toBe(lost);
-    await expect(conn.receive()).rejects.toBe(lost);
-  },
-);
+test("clearing a held byte bound on a connection that failed from a transport error keeps the queued frames to be read before it", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  conn.holdInboundQueueBytes(20);
+  const abort = new Uint8Array(5);
+  controls.deliver(abort, 5);
+  const lost = new ConnectionError("partner lost", "transport");
+  controls.fail(lost);
+  expect(() => conn.holdInboundQueueBytes(undefined)).not.toThrow();
+  expect(await conn.receive()).toBe(abort);
+  await expect(conn.receive()).rejects.toBe(lost);
+});
 
 test("clearing a held byte bound keeps the frames the built bound would have admitted", async () => {
   const { conn, controls } = makeQueued({ byteCapacity: 10 });
