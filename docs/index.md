@@ -4,7 +4,7 @@ title: "Alcove"
 
 # Alcove
 
-Alcove is open-source software that lets two organizations find the people they have in common, and optionally exchange data about them, without either one revealing anything about the records the other does not have.
+Alcove is open-source software that lets two organizations find the people they have in common, and optionally exchange data about them, without either one revealing the records the other does not have; each learns how many records the other holds.
 It performs privacy-preserving record linkage (PPRL) with a cryptographic protocol called private set intersection (PSI).
 
 ## Three ways to use Alcove

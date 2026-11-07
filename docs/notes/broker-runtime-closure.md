@@ -19,8 +19,21 @@ not restate them.
 
 `packages/peerjs-broker` is the one process here that listens on the internet
 with no application around it: the standalone runner is a broker and nothing
-else. Its runtime closure was `ws` alone until it took a `@alcove/core`
-dependency for the display and redaction helpers its diagnostics write through.
+else. Apart from the TypeScript loader it runs under (below), its runtime
+closure was `ws` alone until it took a `@alcove/core` dependency for the display
+and redaction helpers its diagnostics write through.
+
+The package ships TypeScript source with no build step, and production runs
+that source: the host unit (`infra/broker/alcove-broker.service`) runs
+`npm start -w packages/peerjs-broker`, whose script is `tsx src/standalone.ts`.
+So tsx is in the production closure too. Started with that command, the broker
+is a Node process run with tsx's preflight (`--require tsx/dist/preflight.cjs`)
+and its ESM loader (`--import tsx/dist/loader.mjs`), with an esbuild service
+process (`esbuild --service`) beside it in the same process group: the loader
+compiles the TypeScript source through esbuild, a dependency of tsx, as it is
+loaded. The manifest declares tsx under `devDependencies`, so it is a
+package the broker reaches at run time that its manifest does not list as a
+runtime dependency.
 
 The package root reaches everything core declares, so the broker's closure
 became core's: the schema validator, the regex engine, the CSV and YAML parsers,
@@ -90,3 +103,6 @@ caller's:
   surface of its own.
 - The vendored server subset still reaches `ws`, which is a runtime dependency
   rather than a helper, and no narrowing here touches it.
+- tsx, its loader, and the esbuild service it starts stay in the production
+  closure while the broker runs from source; no narrowing here touches them
+  either.
