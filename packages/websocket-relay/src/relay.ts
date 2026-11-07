@@ -123,8 +123,12 @@ interface Party {
   rateTimer: ReturnType<typeof setTimeout> | undefined;
   controlFrames: ControlFrameLimit;
   /** The relay's pings sent since the socket's last pong, counted only while
-   * the relay is not holding the socket. */
+   * the relay is not holding the socket and its queue makes no progress. */
   unansweredPings: number;
+  /** The socket's `bufferedAmount` just before the relay's last ping. */
+  bufferedAtPing: number;
+  /** The payload bytes forwarded to the socket since the relay's last ping. */
+  forwardedSincePing: number;
 }
 
 interface Pairing {
@@ -501,6 +505,7 @@ export function attachWebSocketRelay(
   }
 
   function forward(source: Party, destination: Party, data: Buffer): void {
+    destination.forwardedSincePing += data.length;
     sendWithinWindow(
       destination.socket,
       data,
@@ -630,6 +635,8 @@ export function attachWebSocketRelay(
         terminate: () => socket.terminate(),
       }),
       unansweredPings: 0,
+      bufferedAtPing: 0,
+      forwardedSincePing: 0,
     };
     parties.add(party);
     unverified.add(party);
@@ -696,11 +703,20 @@ export function attachWebSocketRelay(
 
   // The idle and lone bounds are checked at each ping, so they close a pairing
   // up to one ping interval late. A socket the relay holds reads no pong, so
-  // its pings are not counted until the hold ends.
+  // its pings are not counted until the hold ends. Nor are they while its
+  // queue makes progress: a slow reader reads each ping only behind the data
+  // queued ahead of it. The queue made progress when its buffered bytes are
+  // fewer than just before the last ping plus those forwarded since, so a
+  // ping written and flushed between two ticks is not progress.
   const pingTimer = setInterval(() => {
     closeIdlePairings();
     for (const party of parties) {
-      if (party.holds.size > 0) {
+      const buffered = party.socket.bufferedAmount;
+      const progressed =
+        buffered < party.bufferedAtPing + party.forwardedSincePing;
+      party.bufferedAtPing = buffered;
+      party.forwardedSincePing = 0;
+      if (party.holds.size > 0 || progressed) {
         party.unansweredPings = 0;
       } else if (party.unansweredPings >= maxUnansweredPings) {
         party.socket.terminate();

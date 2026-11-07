@@ -182,6 +182,8 @@ export interface InMemoryConnection {
   serverWrites: Buffer[];
   /** The server's end of the in-memory stream. */
   serverSide: Duplex;
+  /** The party's end, whose reads a test can pause and resume. */
+  clientSide: Duplex;
 }
 
 /**
@@ -192,7 +194,10 @@ export interface InMemoryConnection {
 export async function connectInMemory(
   server: Server,
   url: string,
-  { recordServerWrites = true }: { recordServerWrites?: boolean } = {},
+  {
+    recordServerWrites = true,
+    autoPong = true,
+  }: { recordServerWrites?: boolean; autoPong?: boolean } = {},
 ): Promise<InMemoryConnection> {
   const [serverSide, clientSide] = duplexPair({ highWaterMark: 1 });
   const serverWrites: Buffer[] = [];
@@ -207,11 +212,12 @@ export async function connectInMemory(
   }
   server.emit("connection", serverSide);
   const socket = new WebSocket(url, {
+    autoPong,
     createConnection: () => clientSide as Socket,
   });
   const party = new Party(socket);
   await once(socket, "open");
-  return { party, serverWrites, serverSide };
+  return { party, serverWrites, serverSide, clientSide };
 }
 
 /** Two parties whose hellos verified and who both received `paired`. */

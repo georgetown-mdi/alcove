@@ -120,10 +120,10 @@ export const RELAY_PING_INTERVAL_MS = 30_000;
 
 /**
  * How many of the relay's pings in a row a socket may leave unanswered before
- * the relay drops it, while the relay is not holding the socket itself: 90 to
- * 120 seconds at {@link RELAY_PING_INTERVAL_MS}, so a role a lost socket held
- * is freed well within the clients' 10-minute rendezvous budget. A working
- * value.
+ * the relay drops it, while the relay is not holding the socket itself and
+ * sends none of the socket's queue: 90 to 120 seconds at
+ * {@link RELAY_PING_INTERVAL_MS}, so a role a lost socket held is freed well
+ * within the clients' 10-minute rendezvous budget. A working value.
  */
 export const RELAY_MAX_UNANSWERED_PINGS = 3;
 

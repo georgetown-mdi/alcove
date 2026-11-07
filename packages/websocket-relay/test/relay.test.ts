@@ -735,6 +735,58 @@ describe("keepalive", () => {
     );
     expect(inviter.socket.readyState).toBe(WebSocket.OPEN);
   });
+
+  it(`keeps a reader that answers no ping while its queue drains, and drops it once it stops draining and leaves ${RELAY_MAX_UNANSWERED_PINGS} more pings unanswered`, async () => {
+    const { url, server } = await relay({ testing: { pingIntervalMs: 40 } });
+    const inviter = await connect(url);
+    const {
+      party: acceptor,
+      serverWrites,
+      clientSide,
+      serverSide,
+    } = await connectInMemory(server, url, { autoPong: false });
+    // The relay's ping: an unmasked ping frame with no payload.
+    const pingsWritten = (): number =>
+      serverWrites.filter((chunk) => chunk[0] === 0x89 && chunk[1] === 0x00)
+        .length;
+    inviter.send(await helloFrame({ role: "inviter" }));
+    acceptor.send(await helloFrame({ role: "acceptor" }));
+    await inviter.receivedCount(1);
+    await acceptor.receivedCount(1);
+    inviter.send(START);
+    acceptor.send(START);
+    await inviter.receivedCount(2);
+    await acceptor.receivedCount(2);
+
+    // The acceptor reads one chunk of its queue every 15 ms, so the relay's
+    // pings wait behind the messages queued ahead of them.
+    clientSide.pause();
+    clientSide.on("data", () => clientSide.pause());
+    const messages = Array.from({ length: 64 }, (_, index) =>
+      Buffer.alloc(16_000, index),
+    );
+    for (const message of messages) inviter.send(message);
+    let pingsRead = 0;
+    acceptor.socket.on("ping", () => (pingsRead += 1));
+    const draining = setInterval(() => clientSide.resume(), 15);
+    await eventually(() => pingsWritten() >= 3 * RELAY_MAX_UNANSWERED_PINGS);
+    clearInterval(draining);
+    const pingsWhileDraining = pingsWritten();
+    expect(serverSide.destroyed).toBe(false);
+    expect(pingsRead).toBeLessThan(pingsWhileDraining);
+    expect(acceptor.received.length).toBeGreaterThan(2);
+    expect(acceptor.received.length).toBeLessThan(2 + messages.length);
+
+    expect((await inviter.closed).code).toBe(RelayCloseCode.partnerEnded);
+    expect(serverSide.destroyed).toBe(true);
+    const pingsAfterDraining = pingsWritten() - pingsWhileDraining;
+    expect(pingsAfterDraining).toBeGreaterThanOrEqual(
+      RELAY_MAX_UNANSWERED_PINGS,
+    );
+    expect(pingsAfterDraining).toBeLessThanOrEqual(
+      RELAY_MAX_UNANSWERED_PINGS + 1,
+    );
+  });
 });
 
 describe("close", () => {

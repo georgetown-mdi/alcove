@@ -2,7 +2,7 @@
 - - -> So is a proof that verifies but whose expiry is more than 305 seconds past the relay's clock: the proof's longest lifetime of 300 seconds (`RELAY_PROOF_MAX_LIFETIME_SECONDS`, core's `WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS`) and 5 seconds of slack (`RELAY_PROOF_EXPIRY_SLACK_SECONDS`, an arbitrary working value).
 - - -> The close reason is the relay's current Unix second in decimal, so a party whose clock has drifted either way can make another.
 - - -> Whatever clock made a proof, the relay takes it only in the 305 seconds of its own clock before the proof's expiry.
-- - -> A reader that has stopped reading answers no ping either, so until the relay notices the source's close it drops the reader once the reader has left three pings unanswered ([Keepalive](#keepalive)), 90 to 120 seconds after it stopped.
+- - -> A reader that has stopped reading answers no ping and takes no more of its queue, so until the relay notices the source's close it drops the reader once the reader has left three pings unanswered with none of its queue sent ([Keepalive](#keepalive)), 90 to 120 seconds after the relay last sent it part of its queue.
 - - -> Lone pairing | 10 minutes (`RELAY_LONE_PAIRING_TIMEOUT_MS`) | A pairing whose second party has not arrived within that long of its first verified hello is closed with 4009. The bound is checked at each ping, so it closes a pairing up to 30 seconds late. The clients' 10-minute rendezvous budget, the longest either keeps a socket parked at its defaults ([The web application's client](#the-web-applications-client), [The command-line client](#the-command-line-client), The waits). Each client counts that budget from before its hello, so its own expires first, and a command-line run given a longer peer timeout dials again on the 4009
 - - -> **A stated limit: the cap is shared by every key.**
 - - -> The relay caps pairings for the whole relay and counts nothing by address, so sockets under keys enrolled at the relay can hold every pairing the cap allows.
@@ -14,7 +14,9 @@
 - - -> The first refusal after a report starts a minute (`RELAY_FAULT_REPORT_WINDOW_MS`), at whose end the relay reports both counts for that minute, and their totals since it started, on its diagnostic stream ([infra/relay/README.md](../../infra/relay/README.md#the-websocket-relay), Logs).
 - - -> The report names no exchange id and no address.
 - - -> **An unanswered ping.**
-- - -> A socket that has left three of the relay's pings in a row unanswered (`RELAY_MAX_UNANSWERED_PINGS`) is dropped at the next, 90 to 120 seconds after its last answer, and its partner is closed with 4000.
+- - -> A socket that has left three of the relay's pings in a row unanswered (`RELAY_MAX_UNANSWERED_PINGS`), with none of its queue sent in that time, is dropped at the next, 90 to 120 seconds after its last answer or the last part of its queue sent, and its partner is closed with 4000.
+- - -> A ping waits behind the messages queued toward the socket ahead of it, so a slow reader answers it late: when the relay has sent some of a socket's queue since its last ping, the socket's count starts again, as an answer starts it.
+- - -> Some of the queue was sent when the socket's send buffer holds fewer bytes than just before the last ping plus the bytes forwarded to it since.
 - - -> A socket the relay holds for backpressure or the byte rate reads no pong, so its pings are not counted while the hold lasts, and its count starts again when the hold ends.
 - - -> Three is a working value: it frees a role a lost socket held well within the clients' 10-minute rendezvous budget, through which a party dials again on 4006 every 5 seconds.
 - - -> The command-line client answers pings from its main thread, whose longest measured hold is about 12 seconds ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-main-thread-on-an-open-channel)).
