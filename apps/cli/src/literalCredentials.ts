@@ -172,8 +172,8 @@ export function commandLineLiteralCredentials(
   if (fromFlags.length === 0 && !inUrl) {
     const example =
       invitation?.flag === undefined
-        ? "'@invitation.txt'"
-        : `${invitation.flag} '@invitation.txt'`;
+        ? '"@invitation.txt"'
+        : `${invitation.flag} "@invitation.txt"`;
     return {
       sources,
       remedy:

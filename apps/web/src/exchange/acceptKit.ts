@@ -278,7 +278,7 @@ function acceptCommand(version: string | undefined): string {
 }
 
 /** What the partner substitutes in the accept command, then how to keep the
- * code out of the shell history, where the `@` file name is single-quoted
+ * code out of the shell history, where the `@` file name is double-quoted
  * because Windows PowerShell parses a bare `@name` as splatting. Shared by
  * every body's accept step. */
 function acceptSubstitutionLines(): Array<string> {
@@ -292,7 +292,7 @@ function acceptSubstitutionLines(): Array<string> {
     "",
     "   To keep the invitation out of your command history, save it into",
     "   a file named invitation.txt next to your CSV and write",
-    "   '@invitation.txt', single quotes included, in its place.",
+    '   "@invitation.txt", double quotes included, in its place.',
     "",
   ];
 }

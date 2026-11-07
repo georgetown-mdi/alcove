@@ -51,8 +51,10 @@ The invitation expires one hour after it is created. If Agency B cannot accept a
 
 ### 3. Agency B: accept it
 
+Save the invitation Agency A sent in a file, `invitation.txt`, then run:
+
 ```sh
-alcove accept --identity "Agency B" INVITATION input.csv
+alcove accept --identity "Agency B" "@invitation.txt" input.csv
 ```
 
 Alcove shows what the exchange will disclose -- the columns each party sends, who receives the result -- and asks you to confirm. Read it before answering. On yes, it writes `alcove.yaml` and `.alcove.key`; on no, it writes nothing. Giving `input.csv` checks that your file has the columns the agreed terms need.
@@ -467,7 +469,7 @@ In these, `--peer-timeout`, `--inactivity-timeout`, and the other connection-opt
 alcove invite --identity IDENTITY [--accept-timeout=DURATION] [--expires-in DURATION] [--linkage-strategy STRATEGY] [--turn URL]... [--stun URL]... URL INPUT_FILE [OUTPUT_FOLDER]
 ```
 
-Like the [offline invitation](#offline-invitation), this prints an invitation and instructions to forward over a secure out-of-band channel. The instructions include an `alcove accept` template for the shared server (over WebRTC the partner types no server: [Inviting over WebRTC](#inviting-over-webrtc)); a `file://` folder appears as `file://<YOUR PATH TO THE SHARED FOLDER>`. The template shows the invitation as `<INVITATION>`: the invitation encodes the setup shared secret and is printed on stdout, while the template is a diagnostic on stderr or the `--log-file`. The invitation embeds a [credential-free connection endpoint](#invitations) from this connection -- host, port, and path, or the `inbound_path`/`outbound_path` pair -- so the acceptor supplies only its own credentials. The command then connects to the server and waits for the partner; over WebRTC it connects first and prints the invitation once the coordination server has answered.
+Like the [offline invitation](#offline-invitation), this prints an invitation and instructions to forward over a secure out-of-band channel. The instructions include an `alcove accept` template for the shared server (over WebRTC the partner types no server: [Inviting over WebRTC](#inviting-over-webrtc)); a `file://` folder appears as `file://<YOUR PATH TO THE SHARED FOLDER>`. The template names the invitation by the file the partner saves it in, `"@<INVITATION FILE>"`, which keeps it out of their shell history: the invitation encodes the setup shared secret and is printed on stdout, while the template is a diagnostic on stderr or the `--log-file`. The invitation embeds a [credential-free connection endpoint](#invitations) from this connection -- host, port, and path, or the `inbound_path`/`outbound_path` pair -- so the acceptor supplies only its own credentials. The command then connects to the server and waits for the partner; over WebRTC it connects first and prints the invitation once the coordination server has answered.
 
 ### Inviting over WebRTC
 
@@ -483,13 +485,13 @@ An invitation over the [`webrtc` channel](#webrtc-exchanges) names the PeerJS co
 
   An app that publishes no usable `/alcove.json` is refused before the invitation is created: a usage error (exit 64) when the app answers without one, a transport failure (exit 69) when it cannot be reached. The message names the address and the two forms that work instead, the coordination server's own `wss://` URL or `channel: webrtc` in `alcove.yaml`. What the file holds and what the command accepts: [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#the-published-coordination-server).
 
-  Since a partner invited this way may use the browser, stdout holds the app's accept link, `https://app.example.org/accept#<invitation>`, in place of the bare invitation. Both partners take the whole link: a browser user opens it, and a command-line user passes it to `alcove accept` in place of the invitation, in the template below.
+  Since a partner invited this way may use the browser, stdout holds the app's accept link, `https://app.example.org/accept#<invitation>`, in place of the bare invitation. Both partners take the whole link: a browser user opens it, and a command-line user saves it in the file the template below names.
 - **The coordination server itself**, as a `ws://` or `wss://` URL such as `wss://peers.example.org/psi`, for a coordination server no web app publishes. Stdout holds the bare invitation; a command-line partner passes it to `alcove accept`, and a browser partner pastes it under "Have an invitation? Paste it here" on the web app's start page.
 
 Either way the invitation holds the resolved host, port, and path as its connection endpoint, and the configuration saved at acceptance holds the same `server` block, so a later [offline invitation](#offline-invitation) from that configuration names the same server.
 
 - **The invitation is printed once the coordination server answers.** A server that does not accept the registration fails the run (exit 69) with no invitation shown.
-- **The partner needs no URL, and no second command.** The printed template is `alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> <INVITATION> <INPUT_FILE>`, run while this command waits. Accepting writes the connection block (coordination server and `role`) from the endpoint and dials it in the same invocation ([Accepting and running a WebRTC exchange](#accepting-and-running-a-webrtc-exchange)). The invitation holds no `role`: each command stamps its own end, `inviter` here and `acceptor` there.
+- **The partner needs no URL, and no second command.** The printed template is `alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> "@<INVITATION FILE>" <INPUT_FILE>`, run while this command waits, after the partner saves the invitation in that file. Accepting writes the connection block (coordination server and `role`) from the endpoint and dials it in the same invocation ([Accepting and running a WebRTC exchange](#accepting-and-running-a-webrtc-exchange)). The invitation holds no `role`: each command stamps its own end, `inviter` here and `acceptor` there.
 - **The URL names the location and nothing else.** A `ws://`/`wss://` URL holding a user, password, query, or fragment, a host or path that could move the signaling socket elsewhere (an `@`, `?`, `#`, `\`, or space, however written), or a port that is not dialable is a usage error (exit 64) before the invitation is created. For a coordination server that needs an API key, author `channel: webrtc` with `server.key` in `alcove.yaml` and use [`alcove exchange`](#webrtc-exchanges).
 - **The endpoint always names the path.** A bare-host URL such as `wss://peers.example.org` invites on the root path, and the invitation states it, so the partner's client does not fall back to a different default.
 - **A plaintext (`ws://`) coordination server cannot be conveyed.** An endpoint has no `secure` field, so a partner seeded from one dials `wss://`. The command warns, naming the `secure: false` the partner adds by hand, and proceeds.
@@ -609,7 +611,7 @@ Topics this command shares with the rest of the CLI have a section apiece below:
 
 `--invitation INVITATION` provisions the key file from an invitation (the one `alcove accept` takes) and then runs the exchange. It serves a party whose configuration holds no secret -- one composed in the web application and downloaded ([EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md)) -- and a re-invited party re-provisioning without `accept` ([Recovery](#recovery)).
 
-`@path` is supported: `--invitation '@invitation.txt'` keeps the invitation out of shell history. The invitation's checksum, schema, and expiry are checked before anything is written. The key file is written once every check the CLI makes before connecting has passed, just before the first network contact:
+`@path` is supported: `--invitation "@invitation.txt"` keeps the invitation out of shell history. The invitation's checksum, schema, and expiry are checked before anything is written. The key file is written once every check the CLI makes before connecting has passed, just before the first network contact:
 
 - **Refused before then**, the run leaves no key file; fix what it names and run the same command again.
 - **Failed after then** -- the server wake call, the host-key check, or the connection, including an SFTP private key the connection cannot read -- the key file is written; run the same command again without `--invitation`.

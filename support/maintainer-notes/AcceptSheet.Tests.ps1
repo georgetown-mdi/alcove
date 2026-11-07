@@ -40,7 +40,7 @@ BeforeAll {
     # The placeholder the sheet's accept command holds, and what its tip tells
     # the reader to write in its place.
     $script:invitationPlaceholder = 'PASTE_YOUR_INVITATION'
-    $script:invitationFileArgument = "'@invitation.txt'"
+    $script:invitationFileArgument = '"@invitation.txt"'
 
     . (Join-Path $PSScriptRoot 'DockerStandIn.ps1')
     $script:standIn = Enable-DockerStandIn
