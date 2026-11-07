@@ -216,22 +216,26 @@ describe("the front's TLS and capability set match the relay front's", () => {
     expect(twin.args[0].split(":")).not.toContain("AES256-SHA");
   });
 
-  it("drops every capability but the three nginx needs to bind its port and start its worker", () => {
-    const flags = (service) =>
-      readFileSync(service, "utf8")
+  it("drops every capability but the two nginx needs to start its worker, in the unit and in install.sh's nginx -t", () => {
+    const capabilityFlags = (command) =>
+      command
         .replace(/\\\n/g, " ")
-        .match(/^ExecStart=.*$/m)[0]
         .match(/--cap-(?:drop|add) \S+/g)
         .sort();
-    expect(flags(join(BROKER, "alcove-broker-tls.service"))).toEqual(
-      flags(join(here, "..", "infra/relay/alcove-relay-front-docker.service")),
+    const unitFlags = capabilityFlags(
+      readFileSync(join(BROKER, "alcove-broker-tls.service"), "utf8").match(
+        /^ExecStart=(?:.*\\\n)*.*$/m,
+      )[0],
     );
-    expect(flags(join(BROKER, "alcove-broker-tls.service"))).toEqual([
-      "--cap-add NET_BIND_SERVICE",
+    expect(unitFlags).toEqual([
       "--cap-add SETGID",
       "--cap-add SETUID",
       "--cap-drop ALL",
     ]);
+    const nginxTest = readFileSync(join(BROKER, "install.sh"), "utf8").match(
+      /^docker run (?:.*\\\n)*.*--entrypoint nginx.*$/m,
+    )[0];
+    expect(capabilityFlags(nginxTest)).toEqual(unitFlags);
   });
 });
 
