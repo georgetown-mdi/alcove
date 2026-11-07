@@ -1,4 +1,5 @@
 import {
+  COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   INVITATION_NEWER_REMEDY,
   InvitationDecodeError,
   KeyFoldCollisionError,
@@ -6,6 +7,8 @@ import {
   NodeCountExceededError,
   describeDecodeError,
   isNewerInvitationVersionError,
+  rawDecodeErrorDescription,
+  redactAndSanitizeForDisplay,
 } from "@alcove/core";
 import { ZodError } from "zod";
 
@@ -19,8 +22,9 @@ import type { Displayable } from "@alcove/core";
  * - `damaged` -- the string was cut or changed in transit (too short, not
  *   base64url, a checksum mismatch); copy the whole link again or ask for it
  *   again.
- * - `newer` -- a newer version of Alcove made the invitation; updating this
- *   one opens it ({@link NEWER_INVITATION_BODY}).
+ * - `newer` -- a newer version of Alcove made the invitation; reload for the
+ *   newest version, then ask the partner which version made it
+ *   ({@link NEWER_INVITATION_BODY}).
  * - `unreadable` -- the string arrived intact but is not an invitation this
  *   build reads; only a new one from the partner helps.
  * - `refused` -- a readable invitation this page will not run (expired, an
@@ -36,14 +40,31 @@ export type InvitationDecodeRefusal =
   | { kind: "unreadable"; detail: Displayable }
   | { kind: "refused"; message: Displayable };
 
-/** The body of the `newer` refusal: what happened, then the update remedy. */
+/** The body of the `newer` refusal: what happened, then the browser's remedy.
+ * A browser updates by reloading, and where the hosted build is itself older
+ * than the partner's tool only the partner can say which version to use, so
+ * core's update sentence (`INVITATION_NEWER_REMEDY`), which the command line
+ * states, is not the remedy here. */
 export const NEWER_INVITATION_BODY =
   "This invitation was made by a newer version of Alcove than this one. " +
-  INVITATION_NEWER_REMEDY;
+  "Reload this page to get the newest version, then open the invitation " +
+  "again. If it still fails, ask your partner which version of Alcove made " +
+  "the invitation.";
 
 const DAMAGED_FAILURES: ReadonlySet<InvitationDecodeError["failure"]> = new Set(
   ["tooShort", "notBase64Url", "checksumMismatch"],
 );
+
+/** The decoder's description of a newer-version refusal without core's update
+ * sentence, which the acceptor screen replaces with {@link NEWER_INVITATION_BODY}. */
+function newerInvitationDetail(error: unknown): Displayable {
+  const described = rawDecodeErrorDescription(error);
+  const remedy = ` ${INVITATION_NEWER_REMEDY}`;
+  return redactAndSanitizeForDisplay(
+    described.endsWith(remedy) ? described.slice(0, -remedy.length) : described,
+    { maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH },
+  );
+}
 
 /** Classify an error the accept route's decode threw. */
 export function invitationDecodeRefusal(
@@ -54,7 +75,7 @@ export function invitationDecodeRefusal(
       ? { kind: "damaged", detail: describeDecodeError(error) }
       : { kind: "unreadable", detail: describeDecodeError(error) };
   if (isNewerInvitationVersionError(error))
-    return { kind: "newer", detail: describeDecodeError(error) };
+    return { kind: "newer", detail: newerInvitationDetail(error) };
   if (
     error instanceof ZodError ||
     error instanceof KeyFoldCollisionError ||

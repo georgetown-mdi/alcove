@@ -45,6 +45,7 @@ const TIERS = Object.keys(
  * "nothing on this device explains why" is not an attestation. */
 const NON_DISCLOSURE_PHRASES: ReadonlyArray<RegExp> = [
   /nothing left this device/i,
+  /none of your records left this device/i,
   /nothing was exchanged/i,
   /partner was not contacted/i,
   /stopped before (reading|connecting)/i,

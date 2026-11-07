@@ -129,7 +129,9 @@ describe("the run surface reports its own data-exchange boundary", () => {
     await expect
       .element(page.getByText("Your partner did not arrive"))
       .toBeInTheDocument();
-    expect(app.container.textContent).toContain("nothing left this device");
+    expect(app.container.textContent).toContain(
+      "none of your records left this device",
+    );
   });
 
   test("a no-show past the boundary renders the neutral transport state", async () => {
@@ -150,6 +152,9 @@ describe("the run surface reports its own data-exchange boundary", () => {
       "Your partner did not arrive",
     );
     expect(app.container.textContent).not.toContain("nothing left this device");
+    expect(app.container.textContent).not.toContain(
+      "none of your records left this device",
+    );
   });
 
   test("asks for no peer-wait bound of its own", async () => {

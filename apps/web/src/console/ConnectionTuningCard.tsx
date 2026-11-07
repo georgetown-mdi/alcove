@@ -246,7 +246,7 @@ export function ConnectionTuningCard({
           <Alert
             color="blue"
             icon={<IconInfoCircle aria-hidden />}
-            title="Worth knowing about these settings"
+            title="How these settings affect the SFTP server"
           >
             <ul>
               {advisories.map((advisory) => (

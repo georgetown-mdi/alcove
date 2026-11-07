@@ -8,6 +8,10 @@
  */
 
 import {
+  automaticBackupOnMarker,
+  deriveManagedBackupState,
+} from "@psi/managed/managedBackupState";
+import {
   channelThisAppDoesNotRun,
   raisedStandingCondition,
   runnableManagedExchange,
@@ -18,7 +22,6 @@ import {
   readManagedFailure,
   storageReach,
 } from "@psi/managed/managedFailureTiers";
-import { deriveManagedBackupState } from "@psi/managed/managedBackupState";
 import { managedExchangeLapsed } from "@psi/managed/managedExpiry";
 import { tooLargeFailureClause } from "@psi/managed/managedFailureCopy";
 
@@ -47,6 +50,7 @@ import type {
   PartnerStorageReach,
   StorageReach,
 } from "@psi/managed/managedFailureTiers";
+import type { ManagedFolderBackupLocation } from "@psi/managed/managedBackupState";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
 /** This party's side, as the run list names it: the operator recognizes who
@@ -70,10 +74,15 @@ export function rowSideLabel(
 }
 
 /** The derived backup state a row shows, phrased for the list. `"backed-up"`
- * holds the date phrase for the quiet green line; `"backup-needed"` is the one
- * actionable state. */
+ * holds the date phrase for the quiet green line, and the automatic backup a
+ * scheduled run wrote where the marker records one; `"backup-needed"` is the
+ * one actionable state. */
 type SavedExchangeBackup =
-  | { kind: "backed-up"; asOf: string }
+  | {
+      kind: "backed-up";
+      asOf: string;
+      folderBackup?: ManagedFolderBackupLocation;
+    }
   | { kind: "backup-needed" }
   | { kind: "not-applicable" };
 
@@ -335,9 +344,52 @@ function lastRunStatus(
  * one actionable prompt. */
 function backupFor(local: ManagedLocalState | undefined): SavedExchangeBackup {
   const state = deriveManagedBackupState(local?.backup);
-  if (state.kind === "backed-up")
-    return { kind: "backed-up", asOf: dateLabel(new Date(state.backedUpAt)) };
+  if (state.kind === "backed-up") {
+    const folderBackup = automaticBackupOnMarker(local?.backup);
+    return {
+      kind: "backed-up",
+      asOf: dateLabel(new Date(state.backedUpAt)),
+      ...(folderBackup !== undefined ? { folderBackup } : {}),
+    };
+  }
   return { kind: "backup-needed" };
+}
+
+/** The line both backup notes end on: a rotation clears the backup marker, so
+ * a marked file holds the stored secret, the one the partner's copy uses. */
+const REMOVED_BACKUP_STILL_RUNS =
+  "Until your partner removes their copy of this exchange or replaces it " +
+  "with a new invitation, anyone who can read the file can run this " +
+  "exchange as you.";
+
+/**
+ * The remove confirmation's note on the backup the removal leaves behind:
+ * removing deletes only what this browser holds. `folderBackup` is the backup a
+ * scheduled run wrote into the working folder, named by folder and file; any
+ * other backup marker is a file the operator downloaded or imported from.
+ * `undefined` where `backedUp` is false and there is no folder backup.
+ */
+export function removedBackupNote(
+  backedUp: boolean,
+  folderBackup: ManagedFolderBackupLocation | undefined,
+): string | undefined {
+  if (folderBackup !== undefined) {
+    const folder =
+      folderBackup.folderName === undefined
+        ? "your working folder"
+        : `the folder "${folderBackup.folderName}"`;
+    return (
+      `After a scheduled run, this app wrote a backup of this exchange to ` +
+      `${folder} as "${folderBackup.fileName}". Removing the exchange here ` +
+      "leaves that file in place. Delete it yourself if you no longer want " +
+      `it. ${REMOVED_BACKUP_STILL_RUNS}`
+    );
+  }
+  if (!backedUp) return undefined;
+  return (
+    "Any backup file of this exchange you hold stays in your custody. Delete " +
+    `it yourself if you no longer want it. ${REMOVED_BACKUP_STILL_RUNS}`
+  );
 }
 
 /** The schedule lines for a row: where the recurrence stands at `now`, and the

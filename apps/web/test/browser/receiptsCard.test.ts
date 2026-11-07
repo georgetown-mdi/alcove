@@ -13,6 +13,7 @@ import {
   IDENTITY_DEFAULT_LOCATION_LABEL,
   IDENTITY_LABEL_REQUIRED_REASON,
   RECEIPTS_DEFAULT,
+  RECEIPT_LOCATION_NOTICE,
   RETENTION_NOTE_NOTICE,
   RETENTION_NOTE_PLACEHOLDER,
   SIGNING_IDENTITY_DIVERGENCE_POINTER,
@@ -666,6 +667,21 @@ describe("ReceiptsCard: the retention note", () => {
     await expect
       .element(retentionNote())
       .toHaveAttribute("placeholder", RETENTION_NOTE_PLACEHOLDER);
+  });
+});
+
+describe("ReceiptsCard: the notices on where files are kept", () => {
+  test("are titled by what they say", async () => {
+    stubSigningApi();
+    await renderCard();
+    await chooseCertificateMode();
+
+    await expect
+      .element(page.getByText("Where your signing key and receipt are kept"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(RECEIPT_LOCATION_NOTICE))
+      .toBeInTheDocument();
   });
 });
 

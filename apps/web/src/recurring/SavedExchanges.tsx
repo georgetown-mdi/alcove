@@ -81,12 +81,14 @@ import {
 import { BetweenVisitNotifications } from "./BetweenVisitNotifications";
 import { loadSavedExchanges } from "./savedExchangesLoad";
 import { managedImportGrantNotice } from "./managedImportGrantNotice";
+import { removedBackupNote } from "./savedExchangesModel";
 
 import type {
   ManagedPairImportOptions,
   ManagedStoredCopy,
 } from "@psi/managed/managedPairRecognition";
 import type { ManagedBackupImportOptions } from "@psi/managed/managedExchangeStore";
+import type { ManagedFolderBackupLocation } from "@psi/managed/managedBackupState";
 import type { ManagedImportGrantNotice } from "./managedImportGrantNotice";
 import type { ManagedImportResult } from "@psi/managed/managedExchangeImport";
 import type { RecoveryRow } from "./savedExchangesRecovery";
@@ -288,6 +290,11 @@ function SavedExchangesList({
                 id={row.id}
                 label={row.label}
                 backedUp={row.backup.kind === "backed-up"}
+                folderBackup={
+                  row.backup.kind === "backed-up"
+                    ? row.backup.folderBackup
+                    : undefined
+                }
                 configurationOnly={row.configurationOnly}
                 onDeleted={reload}
               />
@@ -428,8 +435,9 @@ function BackupLine({ row }: { row: SavedExchangeRow }) {
 /** The always-available per-row delete: a primary action with one simple confirm.
  * The confirm names the exchange, names what the delete takes with it that the
  * operator may still want -- the accounting of disclosures, and any results a
- * scheduled run left for them -- and states a custody note for an exported
- * backup file the delete leaves behind (the row's backed-up state). Deletion
+ * scheduled run left for them -- and states a custody note for the backup file
+ * the delete leaves behind (the row's backed-up state), naming the folder and
+ * file of one a scheduled run wrote ({@link removedBackupNote}). Deletion
  * removes everything the
  * browser holds for the exchange in one step ({@link deleteManagedExchange}),
  * local and unilateral, so the confirm says the partner is not notified.
@@ -438,6 +446,7 @@ export function DeleteExchangeButton({
   id,
   label,
   backedUp,
+  folderBackup,
   configurationOnly = false,
   unopenable = false,
   onDeleted,
@@ -451,6 +460,9 @@ export function DeleteExchangeButton({
   /** Whether a backup was exported for this exchange (the custody note shows only
    * then; a never-exported exchange has nothing under the operator's custody). */
   backedUp: boolean;
+  /** The backup a scheduled run wrote into the working folder, where the
+   * backup marker records one: the note names its folder and file instead. */
+  folderBackup?: ManagedFolderBackupLocation;
   /** Whether this exchange is configuration only -- imported from a command-line
    * configuration, holding no secret and no history of runs here. What the delete
    * takes is then the settings alone, and what it leaves is the exchange itself,
@@ -462,6 +474,7 @@ export function DeleteExchangeButton({
   const [deleting, setDeleting] = useState(false);
   const [deleteFailed, setDeleteFailed] = useState(false);
   const named = label === "" ? "this exchange" : `"${label}"`;
+  const backupNote = removedBackupNote(backedUp, folderBackup);
 
   function confirmDelete() {
     setDeleting(true);
@@ -541,12 +554,8 @@ export function DeleteExchangeButton({
             </p>
           </>
         )}
-        {backedUp && (
-          <p className={`${styles.small} ${styles.sub}`}>
-            A backup file you exported stays in your custody - delete it
-            yourself if you no longer want it. It remains a credential until the
-            partnership rotates past it.
-          </p>
+        {backupNote !== undefined && (
+          <p className={`${styles.small} ${styles.sub}`}>{backupNote}</p>
         )}
         {deleteFailed && (
           <Alert
@@ -724,6 +733,7 @@ function RecoveryListing({
                 id={row.id}
                 label={row.deleteLabel}
                 backedUp={row.backedUp}
+                folderBackup={row.folderBackup}
                 unopenable={!recoveryRowOpens(row)}
                 onDeleted={reload}
               />

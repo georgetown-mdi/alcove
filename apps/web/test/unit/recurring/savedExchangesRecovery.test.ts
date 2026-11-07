@@ -109,6 +109,29 @@ describe("recoveryRow", () => {
     expect(recoveryRow(readable({ backedUp: false })).backedUp).toBe(false);
   });
 
+  test("an entry threads the folder backup a scheduled run wrote through to the confirm", () => {
+    const folderBackup = {
+      kind: "folder" as const,
+      folderName: "Riverbend exchange",
+      fileName: "riverbend-backup.alcove.json",
+    };
+    expect(
+      recoveryRow({ ...readable({ backedUp: true }), folderBackup })
+        .folderBackup,
+    ).toEqual(folderBackup);
+    expect(
+      recoveryRow({
+        kind: "unreadable",
+        id: "bad-key",
+        backedUp: true,
+        folderBackup,
+      }).folderBackup,
+    ).toEqual(folderBackup);
+    expect(recoveryRow(readable({ backedUp: true }))).not.toHaveProperty(
+      "folderBackup",
+    );
+  });
+
   test("an unreadable entry shows the fixed label, an empty delete label, and its key", () => {
     const row = recoveryRow({
       kind: "unreadable",

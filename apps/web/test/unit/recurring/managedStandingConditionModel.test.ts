@@ -73,9 +73,12 @@ describe("managedStandingConditionView", () => {
     );
     expect(view?.clearance).toBe("confirmation");
     expect(view?.message).toMatch(/could not verify your partner/);
-    // It states that the runs after it settle nothing, so the operator does not
-    // read a green run as the all-clear.
-    expect(view?.message).toMatch(/do not settle it/);
+    // It states that the runs after it clear nothing, so the operator does not
+    // take a green run as the all-clear.
+    expect(view?.message).toMatch(
+      /That can be an ordinary problem on your partner's side, or a sign someone is interfering\. Confirm with your partner before you re-invite them\. A later run, even a successful one, does not clear this\.$/,
+    );
+    expect(view?.message).not.toMatch(/still here/);
   });
 
   test("a persist failure gets the re-invite recovery and no attack checklist", () => {
@@ -90,11 +93,11 @@ describe("managedStandingConditionView", () => {
     expect(view?.title).toBe(STORAGE_FAILURE_TITLE);
     expect(view?.clearance).toBe("acknowledge");
     expect(view?.message).toMatch(/Re-invite your partner to reconnect\.$/);
-    expect(view?.message).not.toMatch(/do not settle it/);
+    expect(view?.message).not.toMatch(/does not clear this/);
     expect(view?.reinvite).toBeUndefined();
   });
 
-  test("a persist failure a later failed handshake keeps past a success says runs do not settle it", () => {
+  test("a persist failure a later failed handshake keeps past a success says a later run does not clear it", () => {
     const auth = {
       at: LATER_AT,
       outcome: "failed",
@@ -114,7 +117,7 @@ describe("managedStandingConditionView", () => {
     );
     expect(view?.title).toBe(STORAGE_FAILURE_TITLE);
     expect(view?.message).toMatch(
-      /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+      /Re-invite your partner to reconnect\. A later run, even a successful one, does not clear this\.$/,
     );
   });
 
@@ -228,7 +231,7 @@ describe("managedStandingConditionView", () => {
       );
       expect(view?.message).not.toMatch(/same secret again/);
       expect(view?.message).toMatch(
-        /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+        /Re-invite your partner to reconnect\. A later run, even a successful one, does not clear this\.$/,
       );
       expect(view?.reinvite).toBeUndefined();
     });
@@ -250,7 +253,7 @@ describe("managedStandingConditionView", () => {
       );
       expect(view?.message).not.toMatch(/same secret again/);
       expect(view?.message).toMatch(
-        /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+        /Re-invite your partner to reconnect\. A later run, even a successful one, does not clear this\.$/,
       );
       expect(view?.reinvite).toBeUndefined();
     });
@@ -272,6 +275,12 @@ describe("managedStandingConditionView", () => {
     expect(view?.title).toBe(
       "This exchange was restored from a backup or key file",
     );
+    expect(view?.message).toContain(
+      "A restored copy can hold an older secret your partnership no longer " +
+        "uses, which would explain the failure. Re-invite your partner to " +
+        "reconnect.",
+    );
+    expect(view?.message).not.toMatch(/rotated past/);
   });
 
   test("the copy names the condition's instant, not the last run's", () => {
@@ -309,7 +318,7 @@ describe("managedStandingConditionView", () => {
       expect(view?.message).toMatch(
         /This device also kept the earlier secret your partner still holds, so the next run can still reach them\. If your partner's device can save the new secret this time, you are back in step\. If runs keep missing your partner or stopping, ask your partner to re-invite you\. Once a later run succeeds, you are both on the new secret and this alert clears itself\.$/,
       );
-      expect(view?.message).not.toMatch(/do not settle it/);
+      expect(view?.message).not.toMatch(/does not clear this/);
       expect(view?.reinvite).toBe("if-runs-keep-failing");
       expect(view?.clearance).toBe("acknowledge");
     });
@@ -374,7 +383,7 @@ describe("managedStandingConditionView", () => {
         expect(kept?.message).not.toMatch(/same secret again/);
         expect(kept?.message).not.toMatch(/clears itself/);
         expect(kept?.message).toMatch(
-          /This device also kept the earlier secret your partner still holds, so the next run can still reach them\..* Runs since then do not settle it, including any that succeeded\.$/,
+          /This device also kept the earlier secret your partner still holds, so the next run can still reach them\..* A later run, even a successful one, does not clear this\.$/,
         );
         expect(kept?.reinvite).toBe("if-runs-keep-failing");
         const notKept = managedStandingConditionView(
@@ -384,7 +393,7 @@ describe("managedStandingConditionView", () => {
         );
         expect(notKept?.message).not.toMatch(/same secret again/);
         expect(notKept?.message).toMatch(
-          /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+          /Re-invite your partner to reconnect\. A later run, even a successful one, does not clear this\.$/,
         );
         expect(notKept?.reinvite).toBeUndefined();
       },
@@ -410,7 +419,7 @@ describe("managedStandingConditionView", () => {
         );
         expect(view?.message).not.toMatch(/clears itself/);
         expect(view?.message).toMatch(
-          /Runs since then do not settle it, including any that succeeded\.$/,
+          /A later run, even a successful one, does not clear this\.$/,
         );
       },
     );

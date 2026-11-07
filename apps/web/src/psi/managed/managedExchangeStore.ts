@@ -66,6 +66,7 @@ import {
   parseManagedLocalStateOfKey,
   storableManagedLocalState,
 } from "./managedLocalStateShape";
+import { automaticBackupOnMarker } from "./managedBackupState";
 import { foldElapsedWindowsUnderResponse } from "./managedSchedule";
 
 import type { LinkageTerms, RelayRegistrar } from "@alcove/core";
@@ -73,6 +74,7 @@ import type { LinkageTerms, RelayRegistrar } from "@alcove/core";
 import type {
   ManagedBackupLocation,
   ManagedBackupMarker,
+  ManagedFolderBackupLocation,
 } from "./managedBackupState";
 import type {
   ManagedExchangeDiagnosticEssentials,
@@ -389,7 +391,8 @@ export async function listReadableManagedExchanges(): Promise<ManagedExchangeRea
  * without requiring a successful parse. Both also hold whether the sibling
  * local-state store states a backup (`backedUp`), so the delete confirm's custody
  * note shows on the recovery path exactly as on the normal list. A boolean
- * suffices for the backup marker, whose timestamp is never shown here. A
+ * suffices for the backup marker, whose timestamp is never shown here, beside
+ * the folder and file of a backup a scheduled run wrote (`folderBackup`). A
  * readable entry whose sibling entry does not parse holds `stateUnreadable`:
  * its page cannot load, so nothing it holds can be exported first. An
  * unreadable entry whose migration failed holds the refusal
@@ -403,15 +406,22 @@ export type ManagedExchangeDiagnosticEntry =
       kind: "readable";
       essentials: ManagedExchangeDiagnosticEssentials;
       backedUp: boolean;
+      folderBackup?: ManagedFolderBackupLocation;
       stateUnreadable?: true;
     }
   | {
       kind: "unreadable";
       id: string;
       backedUp: boolean;
+      folderBackup?: ManagedFolderBackupLocation;
       migrationFailure?: FormatMigrationError;
     }
-  | { kind: "later-version"; id: string; backedUp: boolean };
+  | {
+      kind: "later-version";
+      id: string;
+      backedUp: boolean;
+      folderBackup?: ManagedFolderBackupLocation;
+    };
 
 /**
  * Read every stored entry for the read-failed recovery listing, per-record and
@@ -465,10 +475,14 @@ export async function listManagedExchangesDiagnostic(): Promise<
           for (let index = 0; index < keys.length; index += 1) {
             const key = String(keys[index]);
             const sibling = custodyByKey.get(key);
+            const folderBackup =
+              sibling?.folderBackup !== undefined
+                ? { folderBackup: sibling.folderBackup }
+                : {};
             const custody =
               sibling?.siblingReadable === false
                 ? { backedUp: true, stateUnreadable: true as const }
-                : { backedUp: sibling?.backedUp ?? false };
+                : { backedUp: sibling?.backedUp ?? false, ...folderBackup };
             try {
               entries.push({
                 kind: "readable",
@@ -483,6 +497,7 @@ export async function listManagedExchangesDiagnostic(): Promise<
                   kind: "later-version",
                   id: key,
                   backedUp: custody.backedUp,
+                  ...folderBackup,
                 });
                 continue;
               }
@@ -490,6 +505,7 @@ export async function listManagedExchangesDiagnostic(): Promise<
                 kind: "unreadable",
                 id: key,
                 backedUp: custody.backedUp,
+                ...folderBackup,
                 ...(error instanceof FormatMigrationError
                   ? { migrationFailure: error }
                   : {}),
@@ -513,6 +529,7 @@ export async function listManagedExchangesDiagnostic(): Promise<
 interface ManagedExchangeDiagnosticCustody {
   siblingReadable: boolean;
   backedUp: boolean;
+  folderBackup?: ManagedFolderBackupLocation;
 }
 
 /** Derive each record's custody from the sibling store's parallel key and value
@@ -528,9 +545,11 @@ function siblingCustodyByKey(
     const key = String(keys[index]);
     try {
       const state = parseManagedLocalState(values[index], key);
+      const folderBackup = automaticBackupOnMarker(state?.backup);
       custodyByKey.set(key, {
         siblingReadable: true,
         backedUp: state?.backup !== undefined,
+        ...(folderBackup !== undefined ? { folderBackup } : {}),
       });
     } catch {
       custodyByKey.set(key, { siblingReadable: false, backedUp: true });

@@ -270,7 +270,8 @@ const STOPPED_FAILURE: ManagedRunFailure = {
 };
 
 /** The benign no-show state: the run spent its whole wait on the partner's runner
- * and never connected, so no handshake ran and nothing left this device. Not the
+ * and never connected, so no handshake ran and none of this party's records
+ * left this device; the wait itself reached the coordination server. Not the
  * transport copy, which would send the operator to check their own connection.
  * Recovery is `"none"`: nothing here is decided again, and the run control is
  * not gated by a classified state, so the operator runs it again once their
@@ -290,9 +291,10 @@ const MISSED_FAILURE: ManagedRunFailure = {
   title: "Your partner did not arrive",
   message:
     "This run waited for your partner and they never connected, so nothing was " +
-    "exchanged and nothing left this device. That is not a fault on this " +
-    "device: agree on a time with your partner over your usual channel, and run " +
-    `this exchange again when they are ready. ${RAN_ELSEWHERE_IMPORT_REMEDY} ` +
+    "exchanged and none of your records left this device. That is not a fault " +
+    "on this device: agree on a time with your partner over your usual " +
+    "channel, and run this exchange again when they are ready. " +
+    `${RAN_ELSEWHERE_IMPORT_REMEDY} ` +
     "If they were running their side at a time you agreed on and this keeps " +
     "happening, re-invite your partner to reconnect; the exchange keeps your " +
     "terms, gets a new secret, and uses the coordination server the new " +

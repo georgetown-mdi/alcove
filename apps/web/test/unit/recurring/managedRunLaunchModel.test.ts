@@ -609,6 +609,12 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.kind).toBe("missed");
     expect(failure.recovery).toBe("none");
     expect(failure.title).toMatch(/partner did not arrive/i);
+    // The wait reached the coordination server, so the copy attests to the
+    // party's records, not to everything the device sent.
+    expect(failure.message).toMatch(
+      /^This run waited for your partner and they never connected, so nothing was exchanged and none of your records left this device\. /,
+    );
+    expect(failure.message).not.toMatch(/nothing left this device/i);
     expect(failure.message).not.toMatch(/temporary connection problem/);
     expect(failure.message).not.toMatch(/attack|tamper|impersonat/i);
     expect(managedRunRetryable(failure)).toBe(false);
@@ -693,11 +699,12 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
       false,
     );
     expect(failure.kind).toBe("missed");
-    expect(failure.message).toMatch(/nothing left this device/i);
+    expect(failure.message).toMatch(/none of your records left this device/i);
   });
 
   test("an unrelated live failure against a standing missed outcome takes the transport copy", () => {
-    // The no-show copy claims nothing was exchanged and nothing left this device.
+    // The no-show copy claims nothing was exchanged and none of the party's
+    // records left this device.
     // That claim belongs to the failure being classified, not to the record: a
     // failed run's bookkeeping write is best-effort and can be swallowed, so the
     // host classifies against its pre-run record when the post-failure reload
@@ -714,7 +721,9 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
         dataExchangeStarted,
       );
       expect(failure.kind).toBe("transport");
-      expect(failure.message).not.toMatch(/nothing left this device/i);
+      expect(failure.message).not.toMatch(
+        /(nothing|none of your records) left this device/i,
+      );
       expect(failure.message).not.toMatch(/did not arrive|never connected/i);
     }
   });

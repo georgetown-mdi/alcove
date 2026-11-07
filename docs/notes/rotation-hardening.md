@@ -4,7 +4,7 @@ title: "Rotation Hardening Design"
 
 # Rotation hardening: recognizing a stale copy, and healing a one-sided rotation
 
-_Status: proposed for the maintainer's ratification; core stages 2 and 3 and the command-line item are built, and so is the web item's first part, the history and the two stale-copy readings; the web item's heal is not ([The build split and its reviews](#the-build-split-and-its-reviews)).
+_Status: proposed for the maintainer's ratification; core stages 2 and 3, the command-line item, and both parts of the web item, the history with the two stale-copy readings and the heal, are built ([The build split and its reviews](#the-build-split-and-its-reviews)).
 Decided by the maintainer's rulings: always accept the previous secret, keep the WebRTC stale-copy limit, send a random value from the responder after key confirmation inside terms message 2, store the next secret initiator first, and state the SC-12 row as it is, keeping that value's own wrap (questions 1 to 4, 7 and 8).
 Proposed, with recommendations for the maintainer to ratify: how the two values are drawn and whether the security review runs per stage (questions 5 and 6), and two choices no ruling covers ([Open questions](#open-questions)).
 Nothing here is normative.

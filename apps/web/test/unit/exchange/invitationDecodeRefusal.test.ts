@@ -73,7 +73,7 @@ test("an intact string that is not an invitation this build reads is unreadable"
   if (schema.kind === "unreadable") expect(schema.detail).toContain(":");
 });
 
-test("an invitation on a newer format version asks for an update, not a new invitation", async () => {
+test("an invitation on a newer format version asks for a reload, then the partner's version, not a new invitation", async () => {
   const newer = await refusalFor(
     await raw(
       JSON.stringify({
@@ -84,12 +84,18 @@ test("an invitation on a newer format version asks for an update, not a new invi
     ),
   );
   expect(newer.kind).toBe("newer");
-  if (newer.kind === "newer")
+  if (newer.kind === "newer") {
     expect(newer.detail).toContain("made by a newer version of Alcove");
+    expect(newer.detail).not.toContain(INVITATION_NEWER_REMEDY);
+  }
+  // A browser updates by reloading; the command line keeps core's sentence.
   expect(NEWER_INVITATION_BODY).toBe(
     "This invitation was made by a newer version of Alcove than this one. " +
-      INVITATION_NEWER_REMEDY,
+      "Reload this page to get the newest version, then open the invitation " +
+      "again. If it still fails, ask your partner which version of Alcove " +
+      "made the invitation.",
   );
+  expect(NEWER_INVITATION_BODY).not.toContain(INVITATION_NEWER_REMEDY);
   expect(INVITATION_NEWER_REMEDY).toMatch(/^Update Alcove/);
 });
 

@@ -11,6 +11,7 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import {
   relayRegistrationPendingLine,
+  removedBackupNote,
   savedExchangeRow,
   savedExchangeRows,
 } from "@recurring/savedExchangesModel";
@@ -274,6 +275,85 @@ describe("savedExchangeRow backup state", () => {
       NOW,
     );
     expect(row.backup.kind).toBe("backed-up");
+  });
+
+  test("a folder marker holds the folder and file a scheduled run wrote; a download's holds neither", () => {
+    const folder = savedExchangeRow(
+      record(),
+      {
+        backup: {
+          backedUpAt: "2026-07-10T09:00:00.000Z",
+          savedAs: {
+            kind: "folder",
+            folderName: "Riverbend exchange",
+            fileName: "riverbend-backup.alcove.json",
+          },
+        },
+      },
+      NOW,
+    );
+    expect(folder.backup).toMatchObject({
+      kind: "backed-up",
+      folderBackup: {
+        kind: "folder",
+        folderName: "Riverbend exchange",
+        fileName: "riverbend-backup.alcove.json",
+      },
+    });
+    const downloaded = savedExchangeRow(
+      record(),
+      {
+        backup: {
+          backedUpAt: "2026-07-10T09:00:00.000Z",
+          savedAs: { kind: "downloaded", fileName: "riverbend.alcove.json" },
+        },
+      },
+      NOW,
+    );
+    expect(downloaded.backup).not.toHaveProperty("folderBackup");
+  });
+});
+
+describe("removedBackupNote", () => {
+  const STILL_RUNS =
+    "Until your partner removes their copy of this exchange or replaces it " +
+    "with a new invitation, anyone who can read the file can run this " +
+    "exchange as you.";
+
+  test("names the folder and file a scheduled run wrote, and says this app wrote it", () => {
+    expect(
+      removedBackupNote(true, {
+        kind: "folder",
+        folderName: "Riverbend exchange",
+        fileName: "riverbend-backup.alcove.json",
+      }),
+    ).toBe(
+      "After a scheduled run, this app wrote a backup of this exchange to " +
+        'the folder "Riverbend exchange" as "riverbend-backup.alcove.json". ' +
+        "Removing the exchange here leaves that file in place. Delete it " +
+        `yourself if you no longer want it. ${STILL_RUNS}`,
+    );
+  });
+
+  test("names the working folder where the marker kept no folder name", () => {
+    expect(
+      removedBackupNote(true, {
+        kind: "folder",
+        fileName: "riverbend-backup.alcove.json",
+      }),
+    ).toContain(
+      "wrote a backup of this exchange to your working folder as " +
+        '"riverbend-backup.alcove.json".',
+    );
+  });
+
+  test("keeps the held-file wording for any other backup, and says nothing without one", () => {
+    expect(removedBackupNote(true, undefined)).toBe(
+      "Any backup file of this exchange you hold stays in your custody. " +
+        "Delete it yourself " +
+        `if you no longer want it. ${STILL_RUNS}`,
+    );
+    expect(removedBackupNote(false, undefined)).toBeUndefined();
   });
 });
 
