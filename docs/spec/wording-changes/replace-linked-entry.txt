@@ -25,4 +25,5 @@
 - - -> **What already holds the output path is replaced, not written through.**
 - - -> The residual window the POSIX write discipline records between the temp file's close and the rename applies here as well.
 - - -> A write, flush, close, or rename that fails once rows have been written removes the temp file the same way, and the failure ends the run.
+- - -> The one failure after the rename is the parent directory's flush: the output path then already holds the new rows, and the run still ends on that failure, since the rename may not survive a crash.
 - - -> A whole-file `put()` (flag `w`, the default) opens its destination without `O_TRUNC` and `fstat`s the handle: when the regular file there has more than one link, the handle is closed, the name unlinked, and a new file created at it with `O_EXCL` and `O_NOFOLLOW`, so the write replaces the name and leaves the file its other links name unchanged; otherwise the file is truncated through the open handle.

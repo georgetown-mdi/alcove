@@ -569,7 +569,7 @@ cannot be set (`EPERM`), an extended ACL that cannot be cleared, or an
 the temp file before the refusal is raised, so no row is written at relaxed
 permissions and a file already at the output path keeps its content. A write,
 flush, close, or rename that fails once rows have been written removes the
-temp file the same way, and the failure ends the run. A Windows narrowing
+temp file the same way, and the failure ends the run. The one failure after the rename is the parent directory's flush: the output path then already holds the new rows, and the run still ends on that failure, since the rename may not survive a crash. A Windows narrowing
 refusal is the one the credential writer raises: it names the path, states
 that no content was written and the path is unchanged, and gives the manual
 remedy. Writing the result to
