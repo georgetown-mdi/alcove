@@ -256,6 +256,7 @@ The critical control on the read path is not `O_NOFOLLOW` but the directory list
 `O_NOFOLLOW` is the primitive-level safety check there, for a symlink swapped in at a name the listing already committed as a regular file, a time-of-check/time-of-use race the filter alone cannot close.
 On the write path there is no such filter: `put()` and `createExclusive()` destinations are built from authenticated protocol state at predictable rendezvous names, never from a listing, so `O_NOFOLLOW` is the *primary* defense against a symlink pre-planted at one of those names, not a safety check.
 `createExclusive()` additionally opens with `O_EXCL`, which already refuses any pre-existing entry -- a planted symlink included -- so its `O_NOFOLLOW` is redundant defense in depth on the same open.
+A whole-file `put()` (flag `w`, the default) opens its destination without `O_TRUNC` and `fstat`s the handle: when the regular file there has more than one link, the handle is closed, the name unlinked, and a new file created at it with `O_EXCL` and `O_NOFOLLOW`, so the write replaces the name and leaves the file its other links name unchanged; otherwise the file is truncated through the open handle.
 
 Every exchange file is a regular file, and `openNoFollow` holds its opens to that.
 Each open also passes `O_NONBLOCK`, which is absent on Windows and has no effect on a regular file.

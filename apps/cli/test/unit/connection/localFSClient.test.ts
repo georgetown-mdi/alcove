@@ -1044,6 +1044,67 @@ describe("symlink refusal in the rendezvous directory", () => {
   );
 });
 
+// --- a destination that shares its file with another link ---------------------
+
+describe("put to a name that shares its file with another link", () => {
+  test.each([
+    ["an explicit w flag", { flags: "w" as const }],
+    ["the default flag", undefined],
+  ])(
+    "with %s, replaces the name and leaves the other link's file unchanged",
+    async (_label, options) => {
+      const other = path.join(dir, "other.txt");
+      await fs.writeFile(other, "original contents");
+      const dest = path.join(dir, "peer-1-message.bin");
+      await fs.link(other, dest);
+
+      await client.put(Buffer.from("message"), dest, options);
+
+      expect(await fs.readFile(other, "utf8")).toBe("original contents");
+      expect(await fs.readFile(dest, "utf8")).toBe("message");
+      expect((await fs.stat(dest)).nlink).toBe(1);
+      expect((await fs.stat(other)).nlink).toBe(1);
+    },
+  );
+
+  test("an empty write replaces the name rather than emptying the other file", async () => {
+    const other = path.join(dir, "other.txt");
+    await fs.writeFile(other, "original contents");
+    const dest = path.join(dir, "peer-1-ack.json");
+    await fs.link(other, dest);
+
+    await client.put(Buffer.alloc(0), dest, { flags: "w" });
+
+    expect(await fs.readFile(other, "utf8")).toBe("original contents");
+    expect((await fs.stat(dest)).size).toBe(0);
+  });
+
+  test("a chunk-list write replaces the name with the parts' concatenation", async () => {
+    const other = path.join(dir, "other.bin");
+    await fs.writeFile(other, Buffer.from([9, 9, 9, 9, 9, 9]));
+    const dest = path.join(dir, "peer-2-message.bin");
+    await fs.link(other, dest);
+
+    await client.put([Buffer.from([1]), Buffer.from([2, 3])], dest, {
+      flags: "w",
+    });
+
+    expect(await fs.readFile(other)).toEqual(Buffer.from([9, 9, 9, 9, 9, 9]));
+    expect(await fs.readFile(dest)).toEqual(Buffer.from([1, 2, 3]));
+  });
+
+  test("a file the name holds alone is overwritten in place and truncated", async () => {
+    const dest = path.join(dir, "self-hello.json");
+    await fs.writeFile(dest, "a much longer earlier body");
+    const inodeBefore = (await fs.stat(dest)).ino;
+
+    await client.put(Buffer.from("short"), dest, { flags: "w" });
+
+    expect(await fs.readFile(dest, "utf8")).toBe("short");
+    expect((await fs.stat(dest)).ino).toBe(inodeBefore);
+  });
+});
+
 // --- non-regular files -------------------------------------------------------
 
 describe("non-regular entries in the rendezvous directory", () => {

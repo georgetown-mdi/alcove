@@ -987,7 +987,7 @@ icacls $f
 
 This is what `writeFileOwnerOnly`, `writeFileAtomic` (owner-only mode), and `createOwnerOnlyWriteStream` all produce: they run `icacls <file> /inheritance:r /grant:r "$me:(M)"`, which strips inheritance and replaces the DACL with the single owner Modify grant.
 
-**`createOwnerOnlyWriteStream`'s overwrite path drops a pre-existing foreign explicit ACE.** The stream writer unlinks and recreates the destination as a fresh inode before narrowing, so a foreign principal's explicit (non-inherited) grant left on a prior file at that path does not survive the overwrite. Seed such a grant on a stand-in file, overwrite it by writing a result CSV to the same path, and confirm the foreign grant is gone:
+**`createOwnerOnlyWriteStream`'s overwrite path drops a pre-existing foreign explicit ACE.** The stream writer narrows a fresh temp file and renames it onto the destination, so a foreign principal's explicit (non-inherited) grant left on a prior file at that path does not survive the overwrite. Seed such a grant on a stand-in file, overwrite it by writing a result CSV to the same path, and confirm the foreign grant is gone:
 
 ```powershell
 # Seed a pre-existing file with an explicit grant for another principal

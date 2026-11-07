@@ -41,7 +41,7 @@ import {
 // writeFileOwnerOnly / writeFileAtomic hardening in fileUtils.ts.
 const OPEN_FLAGS = {
   r: fs.constants.O_RDONLY,
-  w: fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC,
+  wNoTruncate: fs.constants.O_WRONLY | fs.constants.O_CREAT,
   a: fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND,
   wx: fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
 } as const;
@@ -166,6 +166,30 @@ async function openNoFollow(filePath: string, flag: keyof typeof OPEN_FLAGS) {
     );
   }
   return handle;
+}
+
+/**
+ * Opens `filePath` for a whole-file write through {@link openNoFollow}, so
+ * the write lands in an entry that is this name's alone. A regular file the
+ * name shares with another link (`nlink > 1`) is not written: the handle is
+ * closed, the name unlinked, and a fresh file created at it with `O_EXCL`,
+ * leaving the other link's file unchanged. Otherwise the file is truncated
+ * through the open handle, never by name.
+ */
+async function openReplacingSharedEntry(filePath: string) {
+  const handle = await openNoFollow(filePath, "wNoTruncate");
+  let sharesItsFile: boolean;
+  try {
+    sharesItsFile = (await handle.stat()).nlink > 1;
+    if (!sharesItsFile) await handle.truncate(0);
+  } catch (err: unknown) {
+    await handle.close().catch(() => {});
+    throw err;
+  }
+  if (!sharesItsFile) return handle;
+  await handle.close();
+  await fs.unlink(filePath);
+  return openNoFollow(filePath, "wx");
 }
 
 /**
@@ -527,8 +551,8 @@ export class LocalFSClient implements FileTransportClient {
    */
   async put(src: PutSource, dest: string, options?: PutOptions): Promise<void> {
     const flag = options?.flags ?? "w";
-    // Drain a plain stream source to a Buffer BEFORE opening dest. The open
-    // below is O_CREAT|O_TRUNC, so opening first and then pulling from the
+    // Drain a plain stream source to a Buffer BEFORE opening dest. A "w" open
+    // below empties dest, so opening first and then pulling from the
     // stream would truncate dest up front and, if the source threw partway,
     // leave it truncated rather than untouched. A Buffer or [header, payload]
     // chunk list is already fully in memory, so it is written as-is.
@@ -538,7 +562,10 @@ export class LocalFSClient implements FileTransportClient {
     // refused rather than redirecting the write to the link's target. Opening
     // the handle here (rather than deferring the flag to fs.writeFile) is what
     // lets the numeric O_NOFOLLOW mask apply on every write branch.
-    const handle = await openNoFollow(dest, flag);
+    const handle =
+      flag === "a"
+        ? await openNoFollow(dest, "a")
+        : await openReplacingSharedEntry(dest);
     try {
       // A [header, payload] chunk list is written back-to-back with writev,
       // so the header is prepended without copying the payload; the on-disk

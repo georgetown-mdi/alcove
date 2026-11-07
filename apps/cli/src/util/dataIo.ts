@@ -338,10 +338,12 @@ async function writeResultToStdout(
  * and joining with another writes a file that does not read back. Pinned by the
  * write-then-read round trip in `test/unit/util/resultCsvEscaping.test.ts`.
  *
- * The file path is owned end to end: the returned promise resolves on the
- * stream's `'close'` (all rows flushed AND the descriptor closed) and rejects
- * on any `'error'`, so a mid-write or close failure (a full disk, a revoked
- * mount) is recoverable rather than crashing with no diagnostic, and the
+ * The file path is owned end to end: the returned promise settles on the
+ * stream's `'close'` -- resolving once all rows are flushed, the descriptor
+ * closed and the file renamed onto the output path, rejecting with the first
+ * `'error'` once the temp file is removed -- so a mid-write or close failure
+ * (a full disk, a revoked mount) is recoverable rather than crashing with no
+ * diagnostic, and the
  * caller can order a later write (the secondary exchange record) after the
  * result file is durable. Resolving on `'close'` rather than `'finish'`
  * matters: a networked or userspace filesystem (NFS/CIFS/FUSE) and a full
@@ -399,18 +401,22 @@ export function writeOutput(
     // (a missing parent dir, the fchmod/icacls refusal) rejects the promise too,
     // rather than throwing past it -- the caller sees one failure channel.
     const out = createOwnerOnlyWriteStream(output);
-    let failed = false;
+    // Settled on 'close' either way: that is when the rows are at the output
+    // path, or, after a failure, when the temp file holding them is removed.
+    let failure: { readonly error: unknown } | undefined;
     out.on("error", (err) => {
-      failed = true;
-      reject(err);
+      failure ??= { error: err };
     });
-    out.on("close", () => resolve());
+    out.on("close", () => {
+      if (failure === undefined) resolve();
+      else reject(failure.error);
+    });
     // Written under backpressure, each line built as it is reached, so the
     // stream never queues the whole result.
     const lines = resultLines(headers, rows, delimiter);
     const pump = (): void => {
       try {
-        while (!failed) {
+        while (failure === undefined) {
           const next = lines.next();
           if (next.done === true) {
             out.end();
@@ -422,9 +428,8 @@ export function writeOutput(
           }
         }
       } catch (err) {
-        failed = true;
+        failure = { error: err };
         out.destroy();
-        reject(err);
       }
     };
     pump();
