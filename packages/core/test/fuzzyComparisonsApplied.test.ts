@@ -731,6 +731,26 @@ describe("buildKeyStrings: the swap's sorted pair", () => {
       );
     }
   });
+
+  test("a swap pair declaring different generateFuzzyComparisons is refused in both roles", () => {
+    const mismatched: LinkageKey = {
+      name: "FN+LN",
+      elements: [
+        { field: "first_name", generateFuzzyComparisons: "transpositions" },
+        { field: "last_name" },
+      ],
+      swap: ["first_name", "last_name"],
+    };
+    const dataset = datasetOf({ first_name: "JOHN", last_name: "SMITH" });
+    for (const isReceiver of [true, false]) {
+      expect(() => buildKeyStrings(mismatched, dataset, 0, isReceiver)).toThrow(
+        UsageError,
+      );
+      expect(() => buildKeyStrings(mismatched, dataset, 0, isReceiver)).toThrow(
+        /do not declare the same transform and generate_fuzzy_comparisons/,
+      );
+    }
+  });
 });
 
 describe("buildKeyStrings: the accumulating bound over an expanded element", () => {
