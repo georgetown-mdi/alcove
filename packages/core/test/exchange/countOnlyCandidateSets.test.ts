@@ -36,8 +36,8 @@ import type {
 import type { PreparedExchange } from "../../src/exchange";
 import type { PsiProgress } from "../../src/psi/participant";
 
-// Count-only terms whose keys declare candidate sets -- a swapped key order, a
-// fuzzy comparison, a fan-out -- run through the PSI phase both parties enter
+// Count-only terms whose keys declare candidate sets -- a fuzzy comparison, a
+// fan-out -- beside a swapped key order, run through the PSI phase both parties enter
 // once the agreed terms are resolved, against a `psi` run over the same terms
 // and data (docs/spec/PROTOCOL.md, PSI-C, Candidate sets under count-only:
 // "Each round adds what the `psi` round accepts").
@@ -219,7 +219,7 @@ test("each round's sets are blocks of the party's width, real candidates unique 
     preparedParty("Sender Co", SECOND, terms),
   );
   const widths = countOnlyWidthsOfRounds(terms);
-  expect(widths.map((width) => width.receiverWidth)).toEqual([1, 2, 20, 129]);
+  expect(widths.map((width) => width.receiverWidth)).toEqual([1, 1, 20, 129]);
   expect(widths.map((width) => width.senderWidth)).toEqual([1, 1, 20, 129]);
   for (const [party, records] of [
     ["receiver", FIRST.length],
@@ -240,16 +240,17 @@ test("each round's sets are blocks of the party's width, real candidates unique 
         );
     });
   }
-  // The receiver's second round holds both orders of Cal's name.
-  const swapped = outcome.receiver.sets[1]!.values.filter((value) =>
-    value.startsWith("1:"),
-  );
-  expect(
-    swapped.some(
+  // Each party's second round holds Cal's name once, in sorted order.
+  for (const party of ["receiver", "sender"] as const) {
+    const cal = outcome[party].sets[1]!.values.filter(
       (value) =>
-        value.includes("ROSS") && value.indexOf("ROSS") < value.indexOf("CAL"),
-    ),
-  ).toBe(true);
+        value.startsWith("1:") &&
+        value.includes("ROSS") &&
+        value.includes("CAL"),
+    );
+    expect(cal).toHaveLength(1);
+    expect(cal[0]!.indexOf("CAL")).toBeLessThan(cal[0]!.indexOf("ROSS"));
+  }
 });
 
 describe("the sender's block is the receiver's width on a key combining a fan-out with a receiver-only expansion", () => {
@@ -370,12 +371,11 @@ describe("the sender's block is the receiver's width on a key combining a fan-ou
   });
 });
 
-// The key with each expansion only the receiver executes removed: its `swap`,
-// and each fuzzy kind expandsOnReceiverOnly names.
+// The key with each expansion only the receiver executes removed: each fuzzy
+// kind expandsOnReceiverOnly names.
 function withoutReceiverOnlyExpansions(key: LinkageKey): LinkageKey {
-  const { swap: _swap, ...rest } = key;
   return {
-    ...rest,
+    ...key,
     elements: key.elements.map((element) => {
       const kind = element.generateFuzzyComparisons;
       if (kind === undefined || !expandsOnReceiverOnly(kind)) return element;

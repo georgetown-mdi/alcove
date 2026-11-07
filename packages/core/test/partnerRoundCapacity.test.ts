@@ -81,19 +81,27 @@ afterEach(() => {
 
 const psiLibrary = await PSI();
 
-// Under a swapped key the PSI receiver assembles both orders of the pair and
-// the sender the authored order alone (docs/notes/one-sided-fuzzy-expansion.md).
-const swappedKey = {
-  name: "FN + LN",
-  elements: [{ field: "firstName" }, { field: "lastName" }],
-  swap: ["firstName", "lastName"] as [string, string],
+// A key of width 2 on the PSI receiver and 1 on the sender: the receiver alone
+// builds the one transposition of a two-character slice of the last name
+// (docs/notes/one-sided-fuzzy-expansion.md). Every row below gives that slice
+// two different characters, so the receiver realizes both.
+const receiverWidensKey = {
+  name: "LN slice + FN",
+  elements: [
+    {
+      field: "lastName",
+      transform: [{ function: "substring", params: { start: 3, length: 2 } }],
+      generateFuzzyComparisons: "transpositions" as const,
+    },
+    { field: "firstName" },
+  ],
 };
 
 function preparedRows(
   identity: string,
   rowCount: number,
   linkageStrategy: LinkageStrategy = "cascade",
-  swapped = false,
+  widened = false,
   sharedRows = 0,
   algorithm: Algorithm = "psi",
 ): PreparedExchange {
@@ -117,7 +125,7 @@ function preparedRows(
           { name: "firstName", type: "first_name" },
           { name: "lastName", type: "last_name" },
         ],
-        ...(swapped ? { linkageKeys: [swappedKey] } : {}),
+        ...(widened ? { linkageKeys: [receiverWidensKey] } : {}),
       },
       columns: ["first_name", "last_name"],
     },
@@ -151,7 +159,7 @@ async function runPair(params: {
   partnerSharedRows?: number;
   ceiling?: number;
   strategy?: LinkageStrategy;
-  swapped?: boolean;
+  widened?: boolean;
   options?: Partial<RunExchangeOptions>;
   /** Both parties' algorithm. */
   algorithm?: Algorithm;
@@ -167,7 +175,7 @@ async function runPair(params: {
         "Local Co",
         params.localRows,
         params.strategy,
-        params.swapped,
+        params.widened,
         0,
         params.algorithm,
       ),
@@ -180,7 +188,7 @@ async function runPair(params: {
         "Partner Co",
         params.partnerRows,
         params.strategy,
-        params.swapped,
+        params.widened,
         params.partnerSharedRows,
         params.algorithm,
       ),
@@ -192,7 +200,7 @@ async function runPair(params: {
 
 test("the partner's round is its record count times the widest key's declared width", () => {
   const keys = {
-    linkageKeys: [{ name: "a", elements: [{ field: "a" }] }, swappedKey],
+    linkageKeys: [{ name: "a", elements: [{ field: "a" }] }, receiverWidensKey],
   };
   expect(partnerRoundValues(1_000, keys)).toBe(2_000);
   expect(
@@ -242,7 +250,9 @@ describe("the partner's round is not under what a partner's key read realizes", 
     };
   }
 
-  test("a swapped key whose elements both declare split_on, 10 rows of 30 by 15 tokens", () => {
+  // A swap adds no value slot, so each role realizes the same count, up to
+  // the width the elements alone declare.
+  test("a swapped key whose elements both declare split_on, 10 rows of 20 by 20 tokens", () => {
     const key: LinkageKey = {
       name: "FN + LN",
       elements: [
@@ -254,17 +264,16 @@ describe("the partner's round is not under what a partner's key read realizes", 
     const { sender, receiver, weighed } = realizedAndWeighed(
       key,
       [],
-      30,
-      15,
+      20,
+      20,
       10,
     );
-    expect(sender).toBe(4_500);
-    expect(weighed).toBe(8_000);
-    expect(sender).toBeLessThanOrEqual(weighed);
-    expect(receiver).toBeLessThanOrEqual(weighed);
+    expect(sender).toBe(4_000);
+    expect(receiver).toBe(sender);
+    expect(weighed).toBe(4_000);
   });
 
-  test("a swapped key whose fields the partner's own cleaning splits, 10 rows of 6 by 6 tokens", () => {
+  test("a swapped key whose fields the partner's own cleaning splits, 10 rows of 4 by 5 tokens", () => {
     const key: LinkageKey = {
       name: "FN + LN",
       elements: [{ field: "firstName" }, { field: "lastName" }],
@@ -273,14 +282,13 @@ describe("the partner's round is not under what a partner's key read realizes", 
     const { sender, receiver, weighed } = realizedAndWeighed(
       key,
       split,
-      6,
-      6,
+      4,
+      5,
       10,
     );
-    expect(sender).toBe(360);
-    expect(weighed).toBe(400);
-    expect(sender).toBeLessThanOrEqual(weighed);
-    expect(receiver).toBeLessThanOrEqual(weighed);
+    expect(sender).toBe(200);
+    expect(receiver).toBe(sender);
+    expect(weighed).toBe(200);
   });
 });
 
@@ -295,7 +303,9 @@ test("the partner's round is held to the per-set maximum no sender exceeds", () 
     MAX_PSI_DECODE_ELEMENTS,
   );
   expect(
-    partnerRoundValues(MAX_PSI_DECODE_ELEMENTS, { linkageKeys: [swappedKey] }),
+    partnerRoundValues(MAX_PSI_DECODE_ELEMENTS, {
+      linkageKeys: [receiverWidensKey],
+    }),
   ).toBe(MAX_PSI_DECODE_ELEMENTS);
 });
 
@@ -542,7 +552,7 @@ test("a sender partner is weighed at the declared width", async () => {
     localRows: 5,
     partnerRows: 12,
     ceiling: 24,
-    swapped: true,
+    widened: true,
     options: { checkPartnerRoundCapacity: (values) => void seen.push(values) },
   });
   expect(seen).toEqual([24]);
@@ -550,14 +560,14 @@ test("a sender partner is weighed at the declared width", async () => {
   expect(partner.status).toBe("fulfilled");
 });
 
-test("a receiver partner counts its first round in both orders of a swapped key", async () => {
+test("a receiver partner counts its first round at the width it realizes", async () => {
   // The partner has fewer records, so it resolves to the PSI receiver, which
-  // assembles both orders of the pair: 5 records send 10 values.
+  // builds two values per record: 5 records send 10 values.
   const { partner } = await runPair({
     localRows: 12,
     partnerRows: 5,
     ceiling: 9,
-    swapped: true,
+    widened: true,
   });
   expect(partner.status).toBe("rejected");
   expect(((partner as PromiseRejectedResult).reason as Error).message).toBe(
@@ -918,8 +928,8 @@ describe("in a count-only exchange", () => {
     expect(partner.status).toBe("fulfilled");
   });
 
-  describe("against a partner stating the per-set maximum, with a swapped second key", () => {
-    // A swapped key has width 2 on the receiver and 1 on the sender, so 5
+  describe("against a partner stating the per-set maximum, with a receiver-widened second key", () => {
+    // The second key has width 2 on the receiver and 1 on the sender, so 5
     // records send 10 values as the receiver and 5 as the sender, against a
     // maximum of 6.
     const maximum = 6;
@@ -940,7 +950,7 @@ describe("in a count-only exchange", () => {
             ],
             linkageKeys: [
               { name: "FN", elements: [{ field: "firstName" }] },
-              swappedKey,
+              receiverWidensKey,
             ],
           },
           columns: ["first_name", "last_name"],

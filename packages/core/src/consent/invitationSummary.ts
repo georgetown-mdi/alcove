@@ -318,10 +318,9 @@ export interface InvitationKeySummary {
    */
   hasSwap: boolean;
   /**
-   * Whether today's exchange applies the swap: the verdict of
-   * {@link InvitationSummary.fanOutApplied}, since a strategy that resolves
-   * no candidate set refuses a swapped key. Meaningful only with
-   * {@link hasSwap}.
+   * Whether today's exchange applies the swap. Always true: both parties sort
+   * the pair's two values into one order, which every strategy and algorithm
+   * matches. Meaningful only with {@link hasSwap}.
    */
   swapApplied: boolean;
   /**
@@ -335,9 +334,9 @@ export interface InvitationKeySummary {
    * The always-visible one-liner of the fields this key matches on: a compact
    * label per element plus a breadth marker where it loosens matching ("last
    * name (partial)"), deduped by the full entry. An unresolved field falls back
-   * to its sanitized identifier. A swap re-attributes each marker to its
-   * partner's field, since each swapped element reads the other's value on the
-   * receiver (core's `swapElements`). The either-order note is
+   * to its sanitized identifier. Each marker stays on its declared field
+   * across a swap, since each element reads its own field on both parties.
+   * The either-order note is
    * {@link swapHeaderMarker}. A key with a missing-field condition ends with
    * that field marked as read only for whether it is present
    * (`matchedFieldEntry`).
@@ -345,8 +344,7 @@ export interface InvitationKeySummary {
   headerFields: Array<Displayable>;
   /**
    * Header suffix for a swapped key, present only when {@link hasSwap}: states
-   * the either-order match when {@link swapApplied}, else the refusal. Fixed
-   * copy; the remedy stays in the per-key swap caveat.
+   * the either-order match. Fixed copy.
    */
   swapHeaderMarker?: Displayable;
   /**
@@ -473,8 +471,8 @@ export interface InvitationSummary {
   fanOutApplied: boolean;
   /**
    * Whether a count-only (`psi-c`) exchange counts over a candidate set: its
-   * terms declare one from any producer (`swap`, fuzzy comparison,
-   * `split_on`). Selects `countOnlyCandidateSets`, which a count-only surface
+   * terms declare one from any producer (fuzzy comparison, `split_on`).
+   * Selects `countOnlyCandidateSets`, which a count-only surface
    * renders in place of the `psi` fan-out lines.
    */
   countOnlyCandidateSets: boolean;
@@ -495,7 +493,7 @@ export interface InvitationSummary {
    * hold two records no key links (docs/spec/PROTOCOL.md, The `many-to-many`
    * entity closure). False wherever that party cannot set the value, such as a
    * sole-receiver document. Unlike {@link fansOut}, it covers every
-   * candidate-set producer (`swap`, fuzzy comparison, `split_on`). The other
+   * candidate-set producer (fuzzy comparison, `split_on`). The other
    * party's value is not in these terms, so the sentence this selects is
    * conditional.
    */
@@ -1106,16 +1104,7 @@ function summarizeKey(
   );
 
   const hasSwap = key.swap !== undefined;
-  const swapApplied = fanOutMatches;
   let swap: [Displayable, Displayable] | undefined;
-  // Header-marker re-attribution across a swap: each swapped element maps to
-  // the marker its header entry shows instead of its own (an explicit
-  // `undefined` blanks it). Empty for a non-swap, a same-label swap, or a pair
-  // holding a refused rule.
-  const headerMarkerOverride = new Map<
-    LinkageKeyElement,
-    Displayable | undefined
-  >();
   if (key.swap !== undefined) {
     // A swap names two elements by identifier (`name ?? field`, unique within a
     // key by schema). The note names the fields only when both resolve with
@@ -1128,41 +1117,19 @@ function summarizeKey(
     if (first !== undefined && second !== undefined) {
       const firstLabel = labelForField(first.field);
       const secondLabel = labelForField(second.field);
-      if (firstLabel !== secondLabel) {
-        swap = [firstLabel, secondLabel];
-        // On the receiver each swapped element keeps its own rules but reads
-        // the other's field (core's `swapElements`), so each header entry shows
-        // its partner's marker. The exception is a refused fan-out: "not
-        // supported" names a step the operator must find and remove, which sits
-        // in the declaring element, so a refusal anywhere in the pair leaves
-        // both markers where declared.
-        const refusedFanOut =
-          !fanOutMatches && (declaresFanOut(first) || declaresFanOut(second));
-        if (!refusedFanOut) {
-          headerMarkerOverride.set(
-            first,
-            elementBreadthMarker(second, fanOutMatches),
-          );
-          headerMarkerOverride.set(
-            second,
-            elementBreadthMarker(first, fanOutMatches),
-          );
-        }
-      }
+      if (firstLabel !== secondLabel) swap = [firstLabel, secondLabel];
     }
   }
 
   // The always-visible field one-liner: a compact label per element with its
-  // marker (re-attributed across a swap), deduped by the full entry so a
-  // truncated element does not collapse onto a whole-value one of the same
-  // field, then a condition's field, which no element of the key reads.
+  // marker, deduped by the full entry so a truncated element does not collapse
+  // onto a whole-value one of the same field, then a condition's field, which
+  // no element of the key reads.
   const headerFields: Array<Displayable> = [];
   const seenHeaderFields = new Set<string>();
   for (const element of key.elements) {
     const label = compactLabelForField(element.field);
-    const marker = headerMarkerOverride.has(element)
-      ? headerMarkerOverride.get(element)
-      : elementBreadthMarker(element, fanOutMatches);
+    const marker = elementBreadthMarker(element, fanOutMatches);
     const entry =
       marker !== undefined ? displayText`${label} (${marker})` : label;
     if (seenHeaderFields.has(entry)) continue;
@@ -1178,9 +1145,7 @@ function summarizeKey(
     );
 
   const swapHeaderMarker = hasSwap
-    ? swapApplied
-      ? displayText`(matched in either order)`
-      : displayText`(either order not supported)`
+    ? displayText`(matched in either order)`
     : undefined;
   const lessCertain = linkageKeyIsLessCertain(key, fields);
   const conditionWords = missingFieldConditionWords(key, fieldByName);
@@ -1195,10 +1160,7 @@ function summarizeKey(
     elements,
     headerFields,
     hasSwap,
-    // A swapped key order is a candidate-set producer like the fuzzy expansion
-    // (`keyDeclaresCandidateSet`, fanOutFunctions.ts), so it applies where
-    // `fanOutMatches` does.
-    swapApplied,
+    swapApplied: true,
     swap,
     swapHeaderMarker,
     lessCertain,

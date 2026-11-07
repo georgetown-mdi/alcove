@@ -98,7 +98,7 @@ function splittingKeyToken(
 }
 
 // The sample token with the built-in keys that split a last name left out: the
-// shape whose only candidate sets are a swapped order and a fuzzy date.
+// shape whose only candidate sets are fuzzy dates.
 function nonSplittingToken(expires: string): InvitationToken {
   const token = sampleToken(expires);
   return {
@@ -794,7 +794,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     // The grouping the pair this party's own `deduplicate` completes makes of
     // records no linkage key links. It follows the candidate set rather than
     // the splitting element alone: the shipped default keys less their split
-    // keys still declare a swapped order and fuzzy dates, on which a prompt
+    // keys still declare fuzzy dates, on which a prompt
     // reading the fan-out register alone would say nothing.
     const log = getLogger("accept-display-chained-grouping-test");
     log.setLevel("silent");
@@ -956,7 +956,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     );
     expect(out).not.toContain(PROPOSED_NOT_APPLIED_NOTES.fuzzyComparisons);
     // The swap the two elements are matched under, unqualified for the same
-    // reason: the run builds the key in both orders.
+    // reason: both parties sort the pair into one order.
     expect(out).toContain(
       "      swap: First name and Last name may be matched in either order\n",
     );
@@ -994,10 +994,10 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
   });
 
   test("displayInvitation: a count-only invitation states the swap and the expansion it runs", () => {
-    // A swapped key order and a fuzzy expansion are candidate sets, which a
-    // count-only round runs, so both are stated unqualified, as a `psi`
-    // invitation states them, and the count-only tier adds what the run
-    // discloses over them. The shape is composed from the shared base's key,
+    // A count-only round runs a swapped key order and a fuzzy expansion, so
+    // both are stated unqualified, as a `psi` invitation states them, and the
+    // count-only tier adds what the run discloses over the fuzzy candidate
+    // set. The shape is composed from the shared base's key,
     // the same composition the web screen's pin uses.
     const log = getLogger("accept-display-count-only-swap-test");
     log.setLevel("silent");

@@ -866,16 +866,16 @@ const LinkageKeyConditionSchema: z.ZodType<LinkageKeyCondition> = z.object({
 /**
  * One linkage key: one round of matching with PSI, two for a key with a
  * `condition`, keys ordered most to least precise. A `swap` names two elements
- * the receiver builds in both orders,
- * catching reversed data entry (docs/notes/one-sided-fuzzy-expansion.md).
+ * whose values both parties build in sorted order, catching reversed data
+ * entry (docs/EXCHANGE_REFERENCE.md#swapped-keys).
  */
 export interface LinkageKey {
   name: string;
   /** Ordered list of field-derived elements combined to form the key. */
   elements: LinkageKeyElement[];
   /**
-   * Two element identifiers (element `name` or `field` name) the receiver
-   * swaps; sender uses un-swapped order.
+   * Two element identifiers (element `name` or `field` name) whose values both
+   * parties place in sorted order.
    */
   swap?: [string, string];
   /** Which records the key is built for; absent builds it for every record. */
@@ -1243,13 +1243,11 @@ const linkageTermsSchema = (
         path: ["linkageKeys"],
       },
     )
-    // A swap pair's two positions must declare the SAME fuzzy expansion. The
-    // swap moves only the field references and leaves each position's own
-    // `generateFuzzyComparisons` where it is, so a mismatched pair would
-    // apply one expansion to a column on the party that swaps and a
-    // different one on the party that does not. Binding the pair here is
-    // what lets the key-read layer resolve the expansion from the position
-    // it already holds (`planFuzzyExpansions`, standardization.ts).
+    // A swap pair's two positions must declare the SAME fuzzy expansion. Both
+    // parties sort the pair's two values, so a mismatched pair would place a
+    // value one expansion produced where its partner's value holds the
+    // other's candidates. Binding the pair here is what lets the sort compare
+    // like with like (`assembleKeyStrings`, standardization.ts).
     .refine((a) => !a.linkageKeys.some(swapPairFuzzyComparisonsDiffer), {
       message:
         "the two elements a linkage key swap names must declare the same " +

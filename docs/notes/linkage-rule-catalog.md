@@ -471,7 +471,7 @@ An age-cohort file behaves like a far larger file ([Coverage](#coverage)).
 Catches a first and last name recorded in the wrong fields.
 Name swaps were about 1.75% of true duplicate pairs (Just et al. 2016).
 How much it multiplies rule 31's chance agreement is unmeasured, and the multiplier is largest where the order of names varies by culture (reasoning).
-The receiving party sends both orders ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termslinkage_keys)), so the rule accepts what rule 31 accepts plus reversed names.
+Both parties sort the two names ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#swapped-keys)), so the rule accepts what rule 31 accepts plus reversed names.
 linkja (MRAIA 2020) and Cook County use the same device.
 
 #### 33. `split(LN) + FN + DOB`

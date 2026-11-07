@@ -904,28 +904,22 @@ describe("summarizeInvitation", () => {
     { function: "split_on", params: { delimiter: "-" } },
   ];
 
-  test("swaps each header marker to its partner's field across a swap", () => {
-    // One transform: on the receiver the first element reads the SECOND element's
-    // field value (core's `swapElements`), so the truncation runs on last name's
-    // value. "(partial)" therefore shows on "last name", not the declared "first
-    // name".
+  test("keeps each header marker on its declared field across a swap", () => {
+    // Each element reads its own field on both parties, and the pair is sorted
+    // after each element's transforms, so the truncation runs on first name's
+    // value and "(partial)" shows on "first name". A pair whose transforms
+    // differ is refused at decode; the summary states it as declared.
     const single = swapKey({ transform: partial }, {});
-    expect(single.headerFields).toEqual(["first name", "last name (partial)"]);
+    expect(single.headerFields).toEqual(["first name (partial)", "last name"]);
     expect(single.swap).toEqual(["First name", "Last name"]);
 
-    // Symmetric: a transform on the second element re-points to the first.
     const singleB = swapKey({}, { transform: partial });
-    expect(singleB.headerFields).toEqual(["first name (partial)", "last name"]);
+    expect(singleB.headerFields).toEqual(["first name", "last name (partial)"]);
 
-    // Both sides have transforms with DIFFERENT markers: each marker moves to the
-    // partner's field (substring truncates last name's value -> "partial" on last
-    // name; phonetic recodes first name's value -> "sound-alike" on first name).
-    // Leaving the markers on their declared fields would mis-state which of the
-    // acceptor's fields each rule hits.
     const bothDiff = swapKey({ transform: partial }, { transform: soundAlike });
     expect(bothDiff.headerFields).toEqual([
-      "first name (sound-alike)",
-      "last name (partial)",
+      "first name (partial)",
+      "last name (sound-alike)",
     ]);
 
     // Both have the SAME marker, so the swap is a visual no-op.
@@ -940,34 +934,28 @@ describe("summarizeInvitation", () => {
     expect(neither.headerFields).toEqual(["first name", "last name"]);
   });
 
-  test("swaps a header marker to the partner's field whatever its source", () => {
-    // A transform on one side, a fuzzy comparison on the other: each marker lands on
-    // the field the receiver applies it to. The substring truncates last name's value
-    // ("partial" -> last name); the fuzzy moves with its element, which reads first
-    // name's value, so it expands first name ("fuzzy" -> first name). The fuzzy
-    // axis has its own not-applied caveat in the detail.
+  test("keeps a header marker on its declared field whatever its source", () => {
+    // A transform on one side, a fuzzy comparison on the other: each element
+    // applies its own to its own field's value on both parties.
     const txAndFuzzy = swapKey(
       { transform: partial },
       { generateFuzzyComparisons: "edit_distances" },
     );
     expect(txAndFuzzy.headerFields).toEqual([
-      "first name (fuzzy)",
-      "last name (partial)",
+      "first name (partial)",
+      "last name (fuzzy)",
     ]);
 
-    // A fuzzy marker moves with its element even when no transform earns a marker:
-    // the whole element reads the partner's value on the receiver, so "fuzzy" shows
-    // on the partner's field, under the generic "matched in either order" note.
     const fuzzyOnly = swapKey(
       { generateFuzzyComparisons: "edit_distances" },
       {},
     );
-    expect(fuzzyOnly.headerFields).toEqual(["first name", "last name (fuzzy)"]);
+    expect(fuzzyOnly.headerFields).toEqual(["first name (fuzzy)", "last name"]);
   });
 
-  test("re-attributes a fan-out marker across a swap under count-only terms", () => {
-    // A count-only round runs the candidate set too, so the marker crosses the
-    // swap as under either `psi` strategy rather than staying as a refusal.
+  test("keeps a fan-out marker on its declared field across a swap under count-only terms", () => {
+    // A count-only round runs the candidate set too, so the marker states the
+    // breadth rather than a refusal.
     const countOnly: Partial<LinkageTerms> = { algorithm: "psi-c" };
     const lastNameFansOut = swapKey(
       { transform: soundAlike },
@@ -975,19 +963,17 @@ describe("summarizeInvitation", () => {
       countOnly,
     );
     expect(lastNameFansOut.headerFields).toEqual([
-      "first name (multiple)",
-      "last name (sound-alike)",
+      "first name (sound-alike)",
+      "last name (multiple)",
     ]);
     expect(
       swapKey({}, { transform: fanOut }, countOnly).headerFields,
     ).not.toContain("last name (not supported)");
   });
 
-  test("re-attributes a fan-out marker across a swap where the strategy matches candidates", () => {
-    // The other half of the rule above. Under single-pass the key does run, and
-    // what runs is the declaring element's candidate set against the OTHER
-    // element's field -- so the marker re-attributes like any other breadth, and
-    // the operator reads which field is matched on several values.
+  test("keeps a fan-out marker on its declared field across a swap where the strategy matches candidates", () => {
+    // Under single-pass the key runs, and the declaring element's candidate set
+    // is built from its own field's value.
     const key = summarizeInvitation(
       makeToken({
         linkageStrategy: "single-pass",
@@ -1008,14 +994,14 @@ describe("summarizeInvitation", () => {
       }),
     ).linkageKeys[0];
     expect(key.headerFields).toEqual([
-      "first name (multiple)",
-      "last name (sound-alike)",
+      "first name (sound-alike)",
+      "last name (multiple)",
     ]);
   });
 
   test("keeps a count-only fan-out marker on its own field without a swap", () => {
-    // The plain shape, where no re-attribution runs at all: the marker sits on the
-    // declaring element's field, and the sibling element keeps its own.
+    // The plain shape: the marker sits on the declaring element's field, and the
+    // sibling element keeps its own.
     const key = summarizeInvitation(
       makeToken({
         algorithm: "psi-c",
@@ -1040,10 +1026,9 @@ describe("summarizeInvitation", () => {
     ]);
   });
 
-  test("re-attributes only the swapped pair, leaving a third element's marker put", () => {
-    // Only first/last name are swapped; the un-swapped dob keeps its own "(fuzzy)"
-    // marker on its own field while the pair crosses (partial -> last name). Pins
-    // that the override touches only the two swapped elements.
+  test("keeps every marker put on a swapped key with a third element", () => {
+    // Only first/last name are swapped; each element, the pair's and dob's,
+    // keeps its marker on its own field.
     const key = summarizeInvitation(
       makeToken({
         linkageFields: [
@@ -1070,16 +1055,15 @@ describe("summarizeInvitation", () => {
       }),
     ).linkageKeys[0];
     expect(key.headerFields).toEqual([
-      "first name",
-      "last name (partial)",
+      "first name (partial)",
+      "last name",
       "date of birth (fuzzy)",
     ]);
   });
 
-  test("does not re-attribute a same-label (alias) swap, even with distinct markers", () => {
-    // Two first_name fields resolve to one "first name" label, so the swap resolves
-    // no distinct labels and nothing is re-attributed: each element keeps its own
-    // marker on its declared field (the re-attribution would be unobservable here).
+  test("keeps each marker of a same-label (alias) swap on its declared field", () => {
+    // Two first_name fields resolve to one "first name" label, so the swap
+    // resolves no distinct labels, and each element keeps its own marker.
     const key = summarizeInvitation(
       makeToken({
         linkageFields: [
@@ -1115,11 +1099,10 @@ describe("summarizeInvitation", () => {
     ]);
   });
 
-  test("keeps a re-attributed marker distinct from a same-label markerless element", () => {
+  test("keeps a swapped element's marker distinct from a same-label markerless element", () => {
     // A second last_name-typed field (not swapped) renders as a bare "last name".
-    // The swap re-attributes "(partial)" onto the first last_name slot; the
-    // full-entry dedup keeps "last name (partial)" and the bare "last name"
-    // distinct, so the re-attributed marker is never hidden behind the duplicate.
+    // The full-entry dedup keeps "last name (partial)" and the bare "last name"
+    // distinct, so the marker is never hidden behind the duplicate.
     const key = summarizeInvitation(
       makeToken({
         linkageFields: [
@@ -1131,13 +1114,13 @@ describe("summarizeInvitation", () => {
           {
             name: "Name",
             elements: [
+              { field: "first_name" },
               {
-                field: "first_name",
+                field: "last_name",
                 transform: [
                   { function: "substring", params: { start: 1, length: 3 } },
                 ],
               },
-              { field: "last_name" },
               { field: "ln2" },
             ],
             swap: ["first_name", "last_name"],

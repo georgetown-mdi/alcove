@@ -166,7 +166,7 @@ How the agreed linkage keys are matched. Both strategies produce the same associ
 
 Under `single-pass` the receiver learns the sender's full per-key duplicate structure, so it sees matches on less precise keys the cascade would have discarded; the emitted result is identical. Both parties must agree on the value or the exchange aborts. The wire shape and disclosure: [PROTOCOL.md](spec/PROTOCOL.md#linkage-strategies-cascade-and-single-pass); the ceiling: [PROTOCOL.md](spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
 
-Both strategies match on the several values a `split_on` produces, and on the several a `generate_fuzzy_comparisons` or a key declaring `swap` produces, reaching the same table on the same rows (see [Fan-out (multi-value fields)](#fan-out-multi-value-fields)). The count-only algorithm counts them under either strategy ([`linkage_terms.algorithm`](#linkage_termsalgorithm)). A both-sided `deduplicate` matches them under either strategy, grouping the records a key's several values reach (see [Deduplicating matches](#linkage_termsdeduplicate)).
+Both strategies match on the several values a `split_on` produces, and on the several a `generate_fuzzy_comparisons` produces, reaching the same table on the same rows (see [Fan-out (multi-value fields)](#fan-out-multi-value-fields)). The count-only algorithm counts them under either strategy ([`linkage_terms.algorithm`](#linkage_termsalgorithm)). A both-sided `deduplicate` matches them under either strategy, grouping the records a key's several values reach (see [Deduplicating matches](#linkage_termsdeduplicate)).
 
 ### `linkage_terms.output`
 
@@ -197,7 +197,7 @@ Whether to deduplicate the inputs of the party holding these terms. `true` says 
 
 > **Strategies:** many-to-one and many-to-many run under either [linkage strategy](#linkage_termslinkage_strategy), settled at the terms exchange after each party's record count is disclosed and before any linkage-key or payload data moves. Under `single-pass` the receiver resolves the pairing and reports the cluster diagnostic below; its partner receives the pairs alone.
 >
-> **Candidate sets:** a [`split_on`](#fan-out-multi-value-fields), a [`generate_fuzzy_comparisons`](#element-fields) expansion, or a [`swap`](#swapped-keys) key runs under a both-sided match with either strategy, and its clusters may join records that matched on different values of one key ([the entity closure](spec/PROTOCOL.md#the-many-to-many-entity-closure)). [The built-in rules](#the-built-in-rules) declare a swapped key.
+> **Candidate sets:** a [`split_on`](#fan-out-multi-value-fields) or a [`generate_fuzzy_comparisons`](#element-fields) expansion runs under a both-sided match with either strategy, and its clusters may join records that matched on different values of one key ([the entity closure](spec/PROTOCOL.md#the-many-to-many-entity-closure)). [The built-in rules](#the-built-in-rules) declare both.
 >
 > **The result:** the result file holds one row per matched pair under every cardinality. Where both parties group, the pairs resolve into [entity clusters](spec/PROTOCOL.md#the-many-to-many-entity-closure): a cluster formed on one matched value writes `m * n` rows for `m` of your records and `n` of your partner's, and one joined through a record that matched on several values writes one row per pair that matched. No column marks a cluster's boundary; a reader computes clusters from the pairs, and both parties compute the same ones.
 >
@@ -386,7 +386,7 @@ linkage_terms:
 |-------|------|----------|-------------|
 | `name` | string | yes | Human-readable name for this key |
 | `elements` | array | yes | Data elements combined to form the key |
-| `swap` | array | no | An array of two field names (or element `name` values) for which the receiver swaps their data elements for this key (see below) |
+| `swap` | array | no | An array of two field names (or element `name` values) whose values both parties place in sorted order for this key (see below) |
 | `condition` | object | no | `missing_field`: the name of a `date_of_birth` linkage field. The key then matches only pairs where one side's record has no valid value for that field ([Keys that run only where a field is missing](#keys-that-run-only-where-a-field-is-missing)) |
 
 #### Element fields
@@ -417,7 +417,9 @@ Each step in a `transform` array applies one function from the cleaning and stan
 
 #### Swapped keys
 
-When a `swap` array is present, the receiver transmits the linkage key in both orders - as authored, and with the two named elements exchanged - and the sender transmits the authored order alone, so records whose two values agree and records whose two values are reversed both match. For example, a key might match first name swapped with last name to catch names reversed at one agency. The result is the same whichever party resolves to the receiver ([one-sided-fuzzy-expansion.md](notes/one-sided-fuzzy-expansion.md)).
+When a `swap` array is present, both parties place the two named elements' values in sorted order before building the key: the value that sorts first takes the earlier of the two positions. Records whose two values agree and records whose two values are reversed build the same key value, so both match. For example, a key might match first name swapped with last name to catch names reversed at one agency. The values are sorted after each element's `transform` and `generate_fuzzy_comparisons`, so the order compared is the one the key holds ([PROTOCOL.md](spec/PROTOCOL.md#where-the-expansion-runs-after-the-element-transform-into-the-cross-product)).
+
+Two records in one file that hold the same two values in opposite orders build the same key value, so neither matches on that key, whichever party is the receiver. Both parties need a build that sorts: a partner on an earlier build sends or expects the key in other orders.
 
 A `swap` target names an element by its `name` if it declares one, otherwise by its `field`. The terms are rejected when they are decoded if:
 
@@ -425,7 +427,7 @@ A `swap` target names an element by its `name` if it declares one, otherwise by 
 - the two elements declare different [`generate_fuzzy_comparisons`](#element-fields) (both must declare the same value, or neither one);
 - the two elements declare different [`transform`](#element-fields) pipelines. An omitted `transform` and an empty list are the same pipeline, and `params` keys are compared without regard to order. Cleaning that belongs to one column rather than to the key goes in that column's [data standardizing transformation](#data-standardizing-transformations).
 
-A swapped key costs two candidate values per record toward the [`single-pass`](#linkage_termslinkage_strategy) dataset ceiling, in place of one, multiplied by whatever its elements declare. A count-only exchange pads every record to the same number of encrypted values for the key: the receiving party's to the key's width, the sending party's to the part of that width it expands itself, or to the full width where the key also has a `split_on` element ([PROTOCOL.md](spec/PROTOCOL.md#candidate-sets-under-count-only)).
+A swapped key costs what the same key without `swap` costs: sorting adds no value per record toward the [`single-pass`](#linkage_termslinkage_strategy) dataset ceiling or to a count-only exchange's padding.
 
 #### Keys that run only where a field is missing
 

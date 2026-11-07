@@ -87,7 +87,7 @@ Two things were not part of the ruling. `deduplicate` stays refused: what a coun
 
 *Ruled by the maintainer; built for `psi` and `psi-c`.* The rule for `psi` is in [Record-level resolution](../spec/PROTOCOL.md#record-level-resolution-canonical-order-and-tiebreak), and the count-only construction in [Candidate sets under count-only](../spec/PROTOCOL.md#candidate-sets-under-count-only). This section records why, and does not restate either.
 
-A candidate set -- a split surname, a swapped name pair, an adjacent or day/month-swapped date, a fuzzy variant -- lets one record match several partner records in one round, and a one-to-one rule has to choose among them.
+A candidate set -- a split surname, an adjacent or day/month-swapped date, a fuzzy variant -- lets one record match several partner records in one round, and a one-to-one rule has to choose among them.
 
 **Why a greedy sweep could not be matched.** A greedy sweep takes the round's pairs in file-row order and keeps each pair whose two records are both still free. Its count depends on that order. Take sender records `S0 {ab, cd}` and `S1 {ef}` against receiver records `R0 {ab, ef}` and `R1 {cd}`:
 

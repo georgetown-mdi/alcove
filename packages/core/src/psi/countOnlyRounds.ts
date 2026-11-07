@@ -169,8 +169,8 @@ export const ONE_ELEMENT_PER_RECORD: CountOnlyRoundWidths = {
  * The widths of a count-only round of `key` (docs/spec/PROTOCOL.md, Candidate
  * sets under count-only): `w_R` is the width the agreed terms declare for the
  * key ({@link declaredKeyWidth}). `w_S` is the same product with the factor of
- * each expansion only the receiver executes taken as 1 -- a `swap`, and a
- * fuzzy kind {@link expandsOnReceiverOnly} names -- except on a key with a
+ * each expansion only the receiver executes taken as 1 -- a fuzzy kind
+ * {@link expandsOnReceiverOnly} names -- except on a key with a
  * fan-out, where it is `w_R`, since a fan-out's own factor does not bound how
  * many values it realizes. Both are functions of the agreed terms alone, so
  * both parties derive them.

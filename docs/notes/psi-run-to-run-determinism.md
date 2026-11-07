@@ -4,8 +4,9 @@ title: "PSI Results From Run to Run: Where the Table Can Change on Unchanged Dat
 
 # How a psi result can change from run to run on unchanged data
 
-*Status: examined and measured; two rules built.
+*Status: examined and measured; three rules built.
 The sender's date-shape check (section 4) is built, and its stated limit is retired from [PROTOCOL.md](../spec/PROTOCOL.md).
+A `swap` key sorts its pair on both parties (section 2), so its collision drop is the same in both roles.
 The equal-count tie-break on file-sync and SFTP (section 5, narrow) is built on the two parties' `identity` names, on the maintainer's condition that nothing new is exchanged.
 He declined the record-level uniqueness drop, the width bound in both roles, the value-keyed sweep order, and the fixed role, which stay stated limits.
 See [docs/notes/README.md](README.md).*
@@ -86,7 +87,7 @@ It costs nothing in disclosure or traffic, and leaves the row-order dependence i
 ## 2. The uniqueness rule under a one-sided expansion
 
 **Mechanism.**
-`transpositions`, `adjacent_years`, `adjacent_days`, `day_month_swaps` and a key's `swap` expand on the receiver alone,
+`transpositions`, `adjacent_years`, `adjacent_days` and `day_month_swaps` expand on the receiver alone,
 and the within-round uniqueness rule then reads the expanded candidates,
 so a variant can collide with another of a party's own records only when that party receives.
 Code: `expandsOnReceiverOnly` and `expandFuzzyComparisons` (`packages/core/src/fuzzyComparisons.ts`);
@@ -98,12 +99,19 @@ and its count-only reading in [Candidate sets under count-only](../spec/PROTOCOL
 
 | Key | X's rows x0, x1 | Y's rows y0, yF | X receiver | X sender | Reproduced |
 | --- | --- | --- | --- | --- | --- |
-| `swap` on first and last name | (Carol, Smith), (Smith, Carol) | (Carol, Smith), (Henry, Brown) | no pair | x0-y0 | 20/20, both strategies |
+| `swap` on first and last name, measured on the 2026-11-04 build | (Carol, Smith), (Smith, Carol) | (Carol, Smith), (Henry, Brown) | no pair | x0-y0 | 20/20, both strategies |
 | `adjacent_years` on date of birth | 01/15/1990, 01/15/1991 | 01/15/1990, 06/15/1950 | no pair | x0-y0 | 20/20, both strategies |
 | either, under `psi-c` | as above | as above | count 0 | count 1 | 20/20 |
 
 Unlike the tie-break, this moves the number of pairs and the count.
-The realistic trigger is a party's own duplicate of one person entered with the names reversed, or with a one-year error in the date.
+The realistic trigger is a party's own duplicate of one person entered with a one-year error in the date, or with two characters transposed.
+
+**Deterministic rule for `swap`, built.**
+Both parties place a `swap` key's pair in sorted order ([Where the expansion runs](../spec/PROTOCOL.md#where-the-expansion-runs-after-the-element-transform-into-the-cross-product)), so the key expands on neither.
+X's two rows in the `swap` row above build one value, which the uniqueness rule drops in both roles:
+no pair in both roles under both strategies, and count 0 in both roles under `psi-c`,
+as [`roleSwapDeterminism.test.ts`](../../packages/core/test/roleSwapDeterminism.test.ts) pins.
+The same file pins the `transpositions` case of the limit, which stays.
 
 **Deterministic rule.**
 Drop at the record level over the would-be expansion, in either role:
@@ -166,8 +174,8 @@ as [`roleSwapDeterminism.test.ts`](../../packages/core/test/roleSwapDeterminism.
 - Where: as each round's values are built, not in a pass over every row before the rounds.
   A cascade round after the first reads only the rows still unmatched, and the receiver checks only those;
   a sender checking every row up front would refuse a run the receiver role completes, which is the role dependence the rule removes.
-- Read order: on a `swap` key the sender reads the elements in the receiver's swapped order and assembles the authored order from them,
-  so an empty value ends a row at the same element in both roles; read in the authored order, a row could end before the date in one role and reach it in the other.
+- Read order: both roles read a key's elements in their declared order, a `swap` key included,
+  so an empty value ends a row at the same element in both roles.
 - Residual: the sender does not spend the receiver's one-sided expansion of an element ahead of the date, so a row that expansion alone takes past a per-row bound ends on the receiver and reaches the date on the sender.
   Matching it would measure the would-be expansion in both roles, the approach declined for the width bound (section 3).
 - Disclosure: none; the check is local and the refusal is one the partner already meets from a receiver.

@@ -397,8 +397,8 @@ test("the built-in default terms link the records their keys relate", async () =
 });
 
 test("the built-in default terms run with both parties deduplicating", async () => {
-  // The shipped key set declares a candidate set of its own -- its swap key
-  // names both orders -- so the pair both parties deduplicating resolves to is
+  // The shipped key set declares candidate sets of its own -- its split and
+  // fuzzy-date keys -- so the pair both parties deduplicating resolves to is
   // the one the cascade matches over a round's blocks and closes into entity
   // clusters. It relates the same records the single-sided run does, each
   // cluster one record a side.

@@ -1472,10 +1472,9 @@ describe("buildKeyStrings: element-transform compilation reused across rows", ()
   });
 
   test("the swap path preserves the per-element compile cache (compiles per element, not per row)", () => {
-    // swapElements rebuilds the element wrapper objects on every receiver row but
-    // preserves each element's own `transform` array reference, so the WeakMap keyed
-    // on that array still hits across rows under swap. A swap that copied the steps
-    // would silently reintroduce per-row recompilation; pin that it does not.
+    // The WeakMap keyed on each element's `transform` array still hits across
+    // rows under swap. A swap that copied the steps would silently reintroduce
+    // per-row recompilation; pin that it does not.
     const key = {
       name: "SWAP",
       swap: ["a", "b"] as [string, string],
@@ -1489,8 +1488,8 @@ describe("buildKeyStrings: element-transform compilation reused across rows", ()
         },
         {
           // The pair declares one transform, which is what the schema requires
-          // of a swap and what the receiver re-checks before assembling both
-          // orders. The two arrays hold equal steps and are distinct objects, so
+          // of a swap and what each party re-checks before sorting the pair.
+          // The two arrays hold equal steps and are distinct objects, so
           // the WeakMap keyed on the array still sees two.
           name: "b",
           field: "second",
@@ -2178,22 +2177,87 @@ describe("buildKeyStrings", () => {
     ).toEqual(new Set(["00123456789SMITH"]));
   });
 
-  test("swap is applied when isReceiver is true", () => {
+  test("both roles build a swap pair's values in sorted order, one value per row", () => {
     const swapKey = {
       name: "FN+LN swapped",
       elements: [{ field: "first_name" }, { field: "last_name" }],
       swap: ["first_name", "last_name"] as [string, string],
     };
-    const dataset = makeDataset({ first_name: "JANE", last_name: "SMITH" });
-    // The sender builds the authored order alone; the receiver builds both, which
-    // is what makes the pair match in either order (fuzzySwapExchange.test.ts
+    // A record entered either way round builds the one string, in either role,
+    // which is what makes the pair match in either order (fuzzySwapExchange.test.ts
     // drives the property over a real exchange).
-    expect(buildKeyStrings(swapKey, dataset, 0, false)).toEqual(
-      new Set(["JANESMITH"]),
+    for (const isReceiver of [false, true]) {
+      for (const row of [
+        { first_name: "SMITH", last_name: "JANE" },
+        { first_name: "JANE", last_name: "SMITH" },
+      ])
+        expect(
+          buildKeyStrings(swapKey, makeDataset(row), 0, isReceiver),
+        ).toEqual(new Set(["JANESMITH"]));
+    }
+  });
+
+  test("a swap sorts only its named pair, wherever the pair sits in the key", () => {
+    // The pair sits first and third with a date between them: the date keeps
+    // its position, and the pair's two values take the outer positions sorted.
+    const key = {
+      name: "FN+DOB+LN",
+      elements: [
+        { field: "first_name" },
+        { field: "date_of_birth" },
+        { field: "last_name" },
+      ],
+      swap: ["last_name", "first_name"] as [string, string],
+    };
+    const dataset = makeDataset({
+      first_name: "SMITH",
+      last_name: "JANE",
+      date_of_birth: "19900115",
+    });
+    for (const isReceiver of [false, true])
+      expect(buildKeyStrings(key, dataset, 0, isReceiver)).toEqual(
+        new Set(["JANE19900115SMITH"]),
+      );
+  });
+
+  test("a swap pair under a receiver-only expansion sorts each combination it builds", () => {
+    // The receiver's transpositions of each name meet the sender's exact pair
+    // in either order: each candidate combination is sorted on its own.
+    // Two characters bound each value, so the declared width stays small.
+    const twoCharacters = [
+      { function: "substring", params: { start: 1, length: 2 } },
+    ];
+    const key = {
+      name: "FN+LN",
+      elements: [
+        {
+          field: "first_name",
+          transform: twoCharacters,
+          generateFuzzyComparisons: "transpositions" as const,
+        },
+        {
+          field: "last_name",
+          transform: twoCharacters,
+          generateFuzzyComparisons: "transpositions" as const,
+        },
+      ],
+      swap: ["first_name", "last_name"] as [string, string],
+    };
+    const sender = buildKeyStrings(
+      key,
+      makeDataset({ first_name: "BO", last_name: "AL" }),
+      0,
+      false,
     );
-    expect(buildKeyStrings(swapKey, dataset, 0, true)).toEqual(
-      new Set(["SMITHJANE", "JANESMITH"]),
+    expect(sender).toEqual(new Set(["ALBO"]));
+    // Entered reversed and with each name's letters transposed.
+    const receiver = buildKeyStrings(
+      key,
+      makeDataset({ first_name: "LA", last_name: "OB" }),
+      0,
+      true,
     );
+    expect(receiver).toEqual(new Set(["LAOB", "ALOB", "BOLA", "ALBO"]));
   });
 
   test("an empty transform is the identity, the same as declaring none", () => {
@@ -2213,12 +2277,9 @@ describe("buildKeyStrings", () => {
   });
 
   test("a swap pair the terms admit matches the same whichever party receives", () => {
-    // Only the receiver swaps, so a pair's two transforms have to agree for the
-    // swapped round to compare like with like: the terms schema binds them, and
-    // this is the property that binding buys. Role resolution is re-derived per
-    // run from the parties' record counts rather than held by the terms, so a
-    // pair without it would move the match set between runs of one agreed
-    // document.
+    // Both parties sort the pair's two values, so the two transforms have to
+    // agree for the sort to compare like with like: the terms schema binds
+    // them, and this is the property that binding buys.
     const swapKey = {
       name: "swap(FN, LN)",
       elements: [
@@ -2231,9 +2292,6 @@ describe("buildKeyStrings", () => {
     // disagreeing on case -- which is what the transform is there to decide.
     const partyA = makeDataset({ first_name: "John", last_name: "smith" });
     const partyB = makeDataset({ first_name: "smith", last_name: "john" });
-    // The two roles concatenate the pair in opposite orders, so the key STRING a
-    // match lands on differs between them; what must not differ is whether the
-    // record pair matches at all.
     const matches = (
       key: LinkageKey,
       sender: StandardizedDataset,
@@ -2249,10 +2307,9 @@ describe("buildKeyStrings", () => {
     // And the two agree on a MATCH, not on a shared miss.
     expect(matches(swapKey, partyA, partyB)).toBe(true);
 
-    // The same pair with its transforms differing would let role resolution
-    // decide the comparison -- the given name runs under the transform of
-    // whichever position the receiver's swap feeds it. The receiver refuses it
-    // rather than matching on a set neither order realizes.
+    // The same pair with its transforms differing would sort a value one
+    // transform produced against one the other did. Each party refuses it
+    // rather than matching on values from different transforms.
     const differing = {
       ...swapKey,
       elements: [swapKey.elements[0], { field: "last_name" }],
@@ -4510,13 +4567,12 @@ describe("buildKeyStrings", () => {
     }
   });
 
-  // --- the receiver's swapped locators ---------------------------------------
-  // A key declaring `swap` moves the two named elements' FIELDS on the receiver
-  // and leaves their transforms in place, so the position that reads a column
-  // differs there from the position that declares it. The pair below declares
-  // one transform on both positions, the shape the terms schema binds it to and
-  // the receiver re-checks before assembling both orders; what tells the two
-  // positions apart in a refusal's issue path is which column each is fed.
+  // --- a swapped key's locators ----------------------------------------------
+  // A key declaring `swap` sorts the pair's values at assembly and moves no
+  // field, so in both roles the position that reads a column is the one that
+  // declares it, and a refusal names the same position whichever party
+  // receives. The pair below declares one transform on both positions, the
+  // shape the terms schema binds it to.
 
   const swapKey = (transform?: LinkageKeyElement["transform"]) => ({
     name: "FN+LN swapped",
@@ -4527,28 +4583,22 @@ describe("buildKeyStrings", () => {
     swap: ["first_name", "last_name"] as [string, string],
   });
 
-  test("a swapped receiver's read refusal names the element declaring the column", () => {
+  test("a swapped key's read refusal names the element declaring the column in both roles", () => {
     const dataset = makeDataset({
       first_name: "JANE",
       last_name: "A".repeat(4097),
     });
-    // The sender reads last_name at its own declared position.
-    expect(() => buildKeyStrings(swapKey(), dataset, 0, false, 3)).toThrow(
-      /linkage_keys\[3\]\.elements\[1\]/,
-    );
-    // The receiver reads it at elements[0], but elements[1] is the position
-    // whose `field` names the column -- which is what the refusal's remedy,
-    // binding the element to a shorter column, has to point at.
-    expect(() => buildKeyStrings(swapKey(), dataset, 0, true, 3)).toThrow(
-      /linkage_keys\[3\]\.elements\[1\]/,
-    );
+    for (const isReceiver of [false, true])
+      expect(() =>
+        buildKeyStrings(swapKey(), dataset, 0, isReceiver, 3),
+      ).toThrow(/linkage_keys\[3\]\.elements\[1\]/);
   });
 
   // The accumulation locators are observable on the refusing fate alone -- a
   // dropped row logs the row and the key, never an issue path -- so the two
   // below drive the multi-value cell through an unlisted producer.
 
-  test("a swapped receiver's accumulation refusal names the element declaring the column", () => {
+  test("a swapped key's accumulation refusal names the element declaring the column", () => {
     // No step produced these candidates -- the element declares no transform, so
     // they are the field's own realized values -- which puts the refusal on the
     // same footing as the value-read one above: it names the position whose
@@ -4573,10 +4623,9 @@ describe("buildKeyStrings", () => {
     );
   });
 
-  test("a swapped receiver's accumulation refusal names the position fed the column", () => {
+  test("a swapped key's accumulation refusal names the position fed the column in both roles", () => {
     // The other half: an element transform amplified each of the field's values,
-    // and the swap moves only the column, so each role names the position its own
-    // element list feeds the offending field to.
+    // and each role names the position that reads the offending field.
     const amplifying = swapKey([
       {
         function: "replace_regex",
@@ -4596,17 +4645,13 @@ describe("buildKeyStrings", () => {
       new RegExp(
         `accumulated \\d+ characters of candidate values from row 0 of your data \\(linkage_keys\\[3\\]\\.elements\\[${element}\\]\\)`,
       );
-    expect(() => buildKeyStrings(amplifying, dataset(), 0, false, 3)).toThrow(
-      at(1),
-    );
-    expect(() => buildKeyStrings(amplifying, dataset(), 0, true, 3)).toThrow(
-      at(0),
-    );
+    for (const isReceiver of [false, true])
+      expect(() =>
+        buildKeyStrings(amplifying, dataset(), 0, isReceiver, 3),
+      ).toThrow(at(1));
   });
 
-  test("a swapped receiver's step refusal names the element declaring the step", () => {
-    // The swap does not move a transform, so the step's position is the
-    // element's own on both sides -- only the column it is fed changes.
+  test("a swapped key's step refusal names the element declaring the step in both roles", () => {
     const dataset = makeDataset({
       first_name: "J",
       last_name: "S".repeat(200),
@@ -4617,12 +4662,10 @@ describe("buildKeyStrings", () => {
         params: { pattern: "a*", replacement: substitutingReplacement },
       },
     ]);
-    expect(() => buildKeyStrings(amplifying, dataset, 0, false, 3)).toThrow(
-      /linkage_keys\[3\]\.elements\[1\]\.transform\[0\]/,
-    );
-    expect(() => buildKeyStrings(amplifying, dataset, 0, true, 3)).toThrow(
-      /linkage_keys\[3\]\.elements\[0\]\.transform\[0\]/,
-    );
+    for (const isReceiver of [false, true])
+      expect(() =>
+        buildKeyStrings(amplifying, dataset, 0, isReceiver, 3),
+      ).toThrow(/linkage_keys\[3\]\.elements\[1\]\.transform\[0\]/);
   });
 });
 

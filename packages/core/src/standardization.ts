@@ -1034,9 +1034,9 @@ export function fanOutReachedMatchingRefusal(): UsageError {
       "more than this round takes for one record, because the agreed linkage " +
       "terms and the standardization do not declare the expansion. Remove " +
       "the step that expands this record's " +
-      `value: a ${QUOTED_FAN_OUT_FUNCTION_NAMES} step, a fuzzy comparison, a ` +
-      "swapped key order, or a transform that expands one value without " +
-      "being a declared fan-out function.",
+      `value: a ${QUOTED_FAN_OUT_FUNCTION_NAMES} step, a fuzzy comparison, ` +
+      "or a transform that expands one value without being a declared " +
+      "fan-out function.",
   );
 }
 
@@ -2218,9 +2218,7 @@ export class StandardizedDataset {
   /**
    * @param fields - The standardized fields this dataset serves.
    * @param linkageKeys - The linkage keys the dataset will be read for, which
-   *   scope {@link declaresFanOut}. Pass them as AUTHORED: a `swap` only permutes
-   *   `field` among a key's own elements, so the authored elements already name
-   *   every field a swapped reading could reach.
+   *   scope {@link declaresFanOut}.
    * @param fillerMarkedFields - The `date_of_birth` fields, whose filler values
    *   {@link keyValues} leaves out.
    */
@@ -2733,16 +2731,48 @@ export function buildStandardizedDataset(
  * stage's strings by one element, so the work is the element count times the
  * combinations.
  *
+ * With `sortedPair`, the positions of a key's `swap` pair, lower first, each
+ * combination places the pair's two candidates in UTF-16 code unit order: the
+ * lesser at the lower position, whichever element it came from.
+ *
  * @internal exported for the key-assembly test.
  */
 export function assembleKeyStrings(
   candidates: ReadonlyArray<ReadonlyArray<string>>,
+  sortedPair?: readonly [number, number],
 ): string[] {
-  return candidates.reduce<string[]>(
-    (prefixes, values) =>
-      prefixes.flatMap((prefix) => values.map((value) => prefix + value)),
-    [""],
-  );
+  if (sortedPair === undefined)
+    return candidates.reduce<string[]>(
+      (prefixes, values) =>
+        prefixes.flatMap((prefix) => values.map((value) => prefix + value)),
+      [""],
+    );
+  const [low, high] = sortedPair;
+  const pairs: Array<readonly [string, string]> = [];
+  for (const first of candidates[low])
+    for (const second of candidates[high])
+      pairs.push(second < first ? [second, first] : [first, second]);
+  // Each partial string remembers which of `pairs` it took at the lower
+  // position, so the higher one appends that same pair's other value.
+  let partials: Array<{ prefix: string; pair: number }> = [
+    { prefix: "", pair: -1 },
+  ];
+  candidates.forEach((values, position) => {
+    if (position === low)
+      partials = partials.flatMap(({ prefix }) =>
+        pairs.map(([lesser], pair) => ({ prefix: prefix + lesser, pair })),
+      );
+    else if (position === high)
+      partials = partials.map(({ prefix, pair }) => ({
+        prefix: prefix + pairs[pair][1],
+        pair,
+      }));
+    else
+      partials = partials.flatMap(({ prefix, pair }) =>
+        values.map((value) => ({ prefix: prefix + value, pair })),
+      );
+  });
+  return partials.map(({ prefix }) => prefix);
 }
 
 // Compiled element transforms, memoized by the step array's identity. buildKeyStrings
@@ -2757,9 +2787,8 @@ export function assembleKeyStrings(
 // backtracking vector the linear-time engine closes. Compiling each element
 // transform once bounds total compile work to the (gate-bounded) distinct element
 // transforms, independent of row count. A WeakMap keys on the array so entries are
-// released with the terms; the swap path preserves the array reference, so a swapped
-// element still hits. The compiled steps are stateless (each factory closure builds a
-// fresh matcher per call), so reuse across rows is safe.
+// released with the terms. The compiled steps are stateless (each factory closure
+// builds a fresh matcher per call), so reuse across rows is safe.
 //
 // `uncompilableStepLabel` reads and fills the same entries, so the mint-boundary
 // compile check and the run compile one document's transforms once between them.
@@ -2934,17 +2963,11 @@ export function valueOverCeiling(result: FieldValue): number | undefined {
 // element-wise across the candidates and drops a candidate a null-producing step
 // filters -- the same execution the field-level pipeline uses, so the two
 // surfaces cannot drift.
-//
-// `site` locates the element the steps are declared at; `columnElementIndex`
-// locates the element that declares the COLUMN this value came from. The two
-// differ only on the receiver of a key whose `swap` moved the fields, where a
-// refusal on the value READ must name the column's own position.
 function applyElementTransform(
   value: string,
   steps: TransformStep[] | undefined,
   provenance: FanOutProvenance,
   site: CandidateAccumulationSite,
-  columnElementIndex: number,
   work: TransformWorkMeter,
 ): string[] {
   // The magnitude ceiling's base case, ahead of the no-steps early return so it
@@ -2953,7 +2976,7 @@ function applyElementTransform(
   if (value.length > MAX_TRANSFORMED_VALUE_LENGTH)
     throw elementValueTooLongRefusal(
       site.keyIndex,
-      columnElementIndex,
+      site.elementIndex,
       site.rowIndex,
       value.length,
     );
@@ -2981,47 +3004,22 @@ function applyElementTransform(
   return toValueSet(current);
 }
 
-// The receiver's element list for a key declaring `swap`, paired with the
-// positions whose fields it exchanged. The swap moves the field references and
-// leaves each element's own name and transforms where they are, so on the
-// receiver the position that READS a column and the position that DECLARES it
-// are different ones; `pair` is what lets a refusal name whichever of the two it
-// is about. Only the receiver swaps, so the pair's two transforms have to agree
-// for the round to compare like with like whichever party role resolution makes
-// receiver; the terms schema binds them (config/linkageTermsSchema.ts), which is what
-// lets the transform stay with the position here.
-//
-// This list is the SWAPPED order alone. The receiver assembles the authored
-// order beside it -- the swap's full variant, one-sided like the receiver-only
-// fuzzy kinds ({@link expandsOnReceiverOnly}) and gated with them -- by
-// exchanging the two positions' assembled candidate lists rather than reading
-// the key a second time (see the assembly in buildKeyStringsUnderPlan).
-function swapElements(
-  elements: LinkageKeyElement[],
-  [nameA, nameB]: [string, string],
-): { elements: LinkageKeyElement[]; pair: [number, number] | undefined } {
-  const idA = elements.findIndex((e) => (e.name ?? e.field) === nameA);
-  const idB = elements.findIndex((e) => (e.name ?? e.field) === nameB);
-  if (idA === -1 || idB === -1) return { elements, pair: undefined };
-  const exchanged = [...elements];
-  exchanged[idA] = { ...elements[idA], field: elements[idB].field };
-  exchanged[idB] = { ...elements[idB], field: elements[idA].field };
-  return { elements: exchanged, pair: [idA, idB] };
-}
-
-// The element position that DECLARES the column the element at `elementIndex`
-// reads -- the same position everywhere but the two swapped positions on a
-// receiver, where the value comes from the sibling's declared column while the
-// transform stays the element's own.
-function columnDeclaringElementIndex(
-  pair: [number, number] | undefined,
-  elementIndex: number,
-): number {
-  if (pair === undefined) return elementIndex;
-  const [idA, idB] = pair;
-  if (elementIndex === idA) return idB;
-  if (elementIndex === idB) return idA;
-  return elementIndex;
+// The two positions a key's `swap` names, lower first, whose values both
+// parties sort at assembly (assembleKeyStrings). Undefined for no swap, a
+// dangling target, or a swap naming one element twice. Each element still
+// reads its own field under its own transforms, so the sort compares like with
+// like only where the pair declares one transform and one expansion, which the
+// terms schema requires (config/linkageTermsSchema.ts).
+function swapPairPositions(
+  elements: ReadonlyArray<LinkageKeyElement>,
+  swap: readonly [string, string] | undefined,
+): [number, number] | undefined {
+  if (swap === undefined) return undefined;
+  const [idA, idB] = swap.map((name) =>
+    elements.findIndex((e) => (e.name ?? e.field) === name),
+  );
+  if (idA === -1 || idB === -1 || idA === idB) return undefined;
+  return idA < idB ? [idA, idB] : [idB, idA];
 }
 
 /**
@@ -3179,14 +3177,12 @@ type AccumulationFate = "drop" | "refuse";
  * such a key is the per-value ceiling on each of its elements
  * ({@link MAX_TRANSFORMED_VALUE_LENGTH}) rather than a crossing here.
  *
- * `swap` exchanges two elements' FIELDS while each keeps its own transforms, so
- * it re-pairs the producers below without adding or removing one: over ONE
- * dataset the sender and the receiver of a swapped key reach the same verdict,
- * and cannot end one run with a dropped row and the other with a refusal. That
- * scope is the dataset's, not the exchange's -- each party classifies from its
- * OWN local standardization's field pipelines, so two partners whose local
- * configs realize a key's fields differently can classify the same key
- * differently.
+ * Both roles classify the same authored elements, so over ONE dataset the
+ * sender and the receiver of a key reach the same verdict, and cannot end one
+ * run with a dropped row and the other with a refusal. That scope is the
+ * dataset's, not the exchange's -- each party classifies from its OWN local
+ * standardization's field pipelines, so two partners whose local configs
+ * realize a key's fields differently can classify the same key differently.
  */
 function keyAccumulationFate(
   elements: ReadonlyArray<LinkageKeyElement>,
@@ -3662,11 +3658,11 @@ function summarizeKeyRoundWideRows(
 }
 
 /**
- * How one party reads one key, all of it fixed for the whole run: the element
- * list this party's role selects (the receiver's swapped one for a key declaring
- * `swap`), the exchanged positions a refusal names, the fuzzy expansion each
- * position applies under that same role, and the fate a crossing of the
- * accumulating bound determines ({@link keyAccumulationFate}).
+ * How one party reads one key, all of it fixed for the whole run: the key's
+ * elements in authored order, the positions of a `swap` pair whose values are
+ * sorted at assembly, the fuzzy expansion each position applies under this
+ * party's role, and the fate a crossing of the accumulating bound determines
+ * ({@link keyAccumulationFate}).
  *
  * Nothing here varies with the row, so a caller iterating a key's rows
  * ({@link StandardizedKeyIterable}) reads it once rather than repeating the walk
@@ -3678,21 +3674,13 @@ function summarizeKeyRoundWideRows(
  */
 interface KeyReadPlan {
   readonly elements: LinkageKeyElement[];
-  readonly pair: [number, number] | undefined;
+  /**
+   * The two positions of a key's `swap`, lower first, whose values each
+   * assembled combination places in sorted order ({@link assembleKeyStrings}).
+   * The same on both parties, so neither builds a second order.
+   */
+  readonly sortedPair: [number, number] | undefined;
   readonly fuzzyExpansions: ReadonlyArray<GenerateFuzzyComparisons | undefined>;
-  /**
-   * The positions of {@link KeyReadPlan.elements} in the order this party reads
-   * them: the receiver's order on both parties ({@link receiverReadOrder}).
-   */
-  readonly readOrder: ReadonlyArray<number>;
-  /**
-   * Whether this party also assembles the key in the order the terms AUTHOR it,
-   * beside the swapped order {@link KeyReadPlan.elements} holds -- the swap's
-   * full variant, which is what makes a swapped key match the two elements in
-   * EITHER order rather than in the exchanged one alone. True on the receiver of
-   * a key whose `swap` resolves.
-   */
-  readonly assemblesSwapVariant: boolean;
   readonly fate: AccumulationFate;
   /**
    * The candidate values one record may contribute to this key's round: the
@@ -3716,11 +3704,7 @@ interface KeyReadPlan {
 // The expansion each element position actually applies, positionally aligned with
 // `elements`. A receiver-only kind ({@link expandsOnReceiverOnly}) resolves to
 // `undefined` on the sender, which builds that element's exact value alone; every
-// other declaration resolves to itself on both parties. The designation is bound
-// to the POSITION rather than to the column, which is why it is read off the
-// swapped list: `swapElements` moves the field references and leaves each
-// element's own expansion where it is (the terms schema requires a swap pair to
-// declare the same one, so the two readings agree).
+// other declaration resolves to itself on both parties.
 function planFuzzyExpansions(
   elements: ReadonlyArray<LinkageKeyElement>,
   isReceiver: boolean,
@@ -3732,34 +3716,14 @@ function planFuzzyExpansions(
   });
 }
 
-// The receiver reads its swapped list front to back. The sender reads its
-// authored positions with the swap pair's two exchanged: the same columns under
-// the same transforms in the same order, so an empty value ends a row at the
-// same element in both roles, ahead of the date-shape check or after it alike.
-// The pair agrees on transform and expansion; the receiver refuses the key
-// otherwise (assertSwapPairPositionsAgree).
-function receiverReadOrder(
-  key: LinkageKey,
-  isReceiver: boolean,
-): ReadonlyArray<number> {
-  const order = key.elements.map((_, position) => position);
-  if (isReceiver || key.swap === undefined) return order;
-  const { pair } = swapElements(key.elements, key.swap);
-  if (pair === undefined) return order;
-  const [idA, idB] = pair;
-  order[idA] = idB;
-  order[idB] = idA;
-  return order;
-}
-
-// The receiver assembles the authored order by exchanging the swap pair's two
-// assembled candidate lists, which is the authored order exactly when the pair's
+// Sorting the swap pair's values compares like with like only where the pair's
 // two positions declare the same transform and the same expansion -- the shape
-// the terms schema requires (config/linkageTermsSchema.ts). Reading it off the terms
-// again here rather than trusting that rule keeps the assumption a check: a key
-// assembled outside the schema is refused instead of matching on a set neither
-// order realizes. The key path locates the offender, as the width refusals do,
-// so the message echoes none of the partner's free text.
+// the terms schema requires (config/linkageTermsSchema.ts). Reading it off the
+// terms again here rather than trusting that rule keeps the assumption a check:
+// a key assembled outside the schema is refused on both parties instead of
+// sorting values from different transforms. The key path locates the offender,
+// as the width refusals do, so the message echoes none of the partner's free
+// text.
 function assertSwapPairPositionsAgree(
   key: LinkageKey,
   keyIndex: number | undefined,
@@ -3784,19 +3748,13 @@ function planKeyRead(
   isReceiver: boolean,
   keyIndex?: number,
 ): KeyReadPlan {
-  const { elements, pair } =
-    isReceiver && key.swap
-      ? swapElements(key.elements, key.swap)
-      : { elements: key.elements, pair: undefined };
-  const assemblesSwapVariant = pair !== undefined;
-  if (assemblesSwapVariant) assertSwapPairPositionsAgree(key, keyIndex);
+  const sortedPair = swapPairPositions(key.elements, key.swap);
+  if (sortedPair !== undefined) assertSwapPairPositionsAgree(key, keyIndex);
   return {
-    elements,
-    pair,
-    fuzzyExpansions: planFuzzyExpansions(elements, isReceiver),
-    readOrder: receiverReadOrder(key, isReceiver),
-    assemblesSwapVariant,
-    fate: keyAccumulationFate(elements, dataset),
+    elements: key.elements,
+    sortedPair,
+    fuzzyExpansions: planFuzzyExpansions(key.elements, isReceiver),
+    fate: keyAccumulationFate(key.elements, dataset),
     width:
       declaredKeyWidth(key, keyIndex) *
       localFanOutFactor(dataset.declaresFanOut),
@@ -3822,16 +3780,15 @@ function planKeyRead(
  * is responsible for preserving that association when adding entries to the PSI
  * set.
  *
- * `isReceiver` controls whether the key's `swap` directive is applied and which
- * fuzzy expansions run. The receiver builds keys with the named elements swapped
- * and applies every declared expansion; the sender does neither the swap nor an
- * expansion {@link expandsOnReceiverOnly} classifies (see
- * {@link planFuzzyExpansions}). The receiver assembles the key in BOTH orders
- * rather than the swapped one alone, which is what makes a swapped key match
- * the two elements in either order; one party assembling both is what the
- * whole set of one-transposition variants is for, and the second party
- * assembling them too would only double the work
- * (docs/notes/one-sided-fuzzy-expansion.md).
+ * `isReceiver` controls which fuzzy expansions run. The receiver applies every
+ * declared expansion; the sender does not apply one
+ * {@link expandsOnReceiverOnly} classifies (see {@link planFuzzyExpansions}),
+ * since one party building the whole set of one-transposition variants is what
+ * that set is for, and the second party building them too would only double
+ * the work (docs/notes/one-sided-fuzzy-expansion.md). A key's `swap` takes no
+ * role: both parties place the pair's two values in sorted order, so records
+ * whose two values agree and records whose two values are reversed build the
+ * same string.
  *
  * `keyIndex` is this key's position in the agreed terms' `linkageKeys`, kept
  * only so a magnitude refusal ({@link MAX_TRANSFORMED_VALUE_LENGTH},
@@ -3945,10 +3902,8 @@ function readRowUnderPlan(
   key: LinkageKey,
   {
     elements,
-    pair,
+    sortedPair,
     fuzzyExpansions,
-    readOrder,
-    assemblesSwapVariant,
     fate,
     width,
     drops,
@@ -3959,8 +3914,6 @@ function readRowUnderPlan(
   keyIndex: number | undefined,
   work: TransformWorkMeter,
 ): DistinctValues | null {
-  // Indexed by position, though filled in read order: the assembly below takes
-  // the positions in the order of `elements`.
   const elementValues: string[][] = [];
   // Whether a fuzzy expansion this party applies actually widened the row, which
   // is what routes the width bound below to its refusal. Measured on the
@@ -3987,26 +3940,16 @@ function readRowUnderPlan(
   // total would let the element count (MAX_KEY_ELEMENTS) multiply the cap.
   let rowCandidateCharacters = 0;
 
-  for (const elementIndex of readOrder) {
-    const element = elements[elementIndex];
+  for (const [elementIndex, element] of elements.entries()) {
     const field = dataset.getField(element.field);
     const raw = dataset.keyValues(element.field, index);
     if (raw.length === 0) return null;
     if (field?.fanOutFromUnlistedFunction(index))
       provenance.fromUnlistedFunction = true;
 
-    const columnElementIndex = columnDeclaringElementIndex(pair, elementIndex);
-    // The accumulation refusal names the element whose candidates these are: the
-    // position that declares the steps producing them, or -- where the element
-    // declares no transform and the candidates are the field's own realized
-    // values -- the position that declares the column they were read from, which
-    // on a swapped receiver is the sibling's.
     const site: CandidateAccumulationSite = {
       keyIndex,
-      elementIndex:
-        element.transform === undefined || element.transform.length === 0
-          ? columnElementIndex
-          : elementIndex,
+      elementIndex,
       rowIndex: index,
       fate,
     };
@@ -4031,7 +3974,6 @@ function readRowUnderPlan(
           element.transform,
           provenance,
           site,
-          columnElementIndex,
           work,
         );
         // Added one at a time, never spread into a call: a spread passes the
@@ -4180,16 +4122,12 @@ function readRowUnderPlan(
   // not take, by design (docs/spec/PROTOCOL.md, The width bound). Fuzzy
   // expansion keeps the refusal, the fate it takes at the width bound below too,
   // as does multiplicity from a function outside FAN_OUT_FUNCTION_NAMES.
-  // The swap's full variant assembles the key twice -- the swapped order and the
-  // authored one -- from the same candidate lists, so both projections below take
-  // the product times the number of orders assembled. The two orders can only
-  // collide, never diverge in size, so the doubled projection bounds the union
-  // exactly as the single one bounds the product.
-  const ordersAssembled = assemblesSwapVariant ? 2 : 1;
-
-  const projectedKeyStrings =
-    ordersAssembled *
-    elementValues.reduce((count, values) => count * values.length, 1);
+  // Sorting a swap pair reorders the values inside each combination and adds
+  // none, so the projections below bound a swapped key as they bound any other.
+  const projectedKeyStrings = elementValues.reduce(
+    (count, values) => count * values.length,
+    1,
+  );
   if (projectedKeyStrings > MAX_KEY_STRINGS_PER_ROW) {
     if (!dropsOnExceedance)
       throw keyStringFanOutCapRefusal(projectedKeyStrings, keyIndex);
@@ -4237,25 +4175,8 @@ function readRowUnderPlan(
   // the case where concatenating two NFC parts crosses a base + combining-mark
   // boundary that itself composes (NFC is not closed under concatenation).
   const result = new DistinctValues({ scanUpTo: SCAN_UP_TO_VALUES });
-  for (const keyString of assembleKeyStrings(elementValues))
+  for (const keyString of assembleKeyStrings(elementValues, sortedPair))
     result.add(keyString.normalize("NFC"));
-
-  // The swap's other order, from the lists already built: exchanging the pair's
-  // two candidate lists is the authored order because the pair's two positions
-  // declare one transform and one expansion, which planKeyRead checked before
-  // this row was read. A row whose two swapped values are equal realizes one
-  // order, not two, so the widening is measured on what the union RETAINED --
-  // the same footing the fuzzy expansion's own widening is measured on.
-  if (assemblesSwapVariant && pair !== undefined) {
-    const [idA, idB] = pair;
-    const authoredOrder = [...elementValues];
-    authoredOrder[idA] = elementValues[idB];
-    authoredOrder[idB] = elementValues[idA];
-    const swappedOrderOnly = result.size;
-    for (const keyString of assembleKeyStrings(authoredOrder))
-      result.add(keyString.normalize("NFC"));
-    if (result.size > swappedOrderOnly) fuzzyWidened = true;
-  }
 
   // The width bound is measured on the assembled, DEDUPLICATED candidate set,
   // which is what a record contributes to the round, and it binds both candidate

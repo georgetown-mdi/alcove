@@ -88,8 +88,8 @@ const boundToTranspositionWidth = [
   { function: "substring", params: { start: 1, length: 9 } },
 ];
 
-// The tighter bound a swap pair takes: the two positions' factors multiply and
-// the swapped order doubles the product, so each position is bounded to a width
+// The tighter bound a swap pair of transposing positions takes: the two
+// positions' factors multiply, so each position is bounded to a width
 // whose candidates one key still holds.
 const boundToSwappedTranspositionWidth = [
   { function: "substring", params: { start: 1, length: 7 } },

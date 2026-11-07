@@ -202,7 +202,7 @@ The multiple is set from two measurements on this build rather than asserted, as
 The first is what a pipeline spends, and every figure of it is a reading the tests take by running the shape (`packages/core/test/standardization.test.ts`) rather than the charge rule applied by hand.
 A pipeline at real authoring counts -- 32 elements, 16 steps each, over 256-code-unit values -- spends 270,336 code units, under one percent of the budget.
 An honest pipeline reaches the budget only at the schema's own maxima (`MAX_KEY_ELEMENTS` x `MAX_TRANSFORM_STEPS`, 256 elements of 256 steps, each step length-preserving) over values long enough to matter: 8,404,992 units over 64-code-unit values and 16,809,984 over 128-unit values are inside it, and 256-unit values cross it, refused at 33,554,688 spent.
-`transformWorkSpentDerivingKey` reads these pinned figures sender-side: a receiver-only fuzzy kind (`transpositions`, `adjacent_years`, `adjacent_days`, `day_month_swaps`) spends nothing in that reading, and a key declaring `swap` assembles a different order there than the receiver assembles.
+`transformWorkSpentDerivingKey` reads these pinned figures sender-side: a receiver-only fuzzy kind (`transpositions`, `adjacent_years`, `adjacent_days`, `day_month_swaps`) spends nothing in that reading.
 The budget binds identically at run time on the receiver; these figures do not cover those expansions.
 What sets the multiple's floor is the byte limb beside it: the row that limb's own boundary is pinned on, which retains exactly `MAX_ASSEMBLED_KEY_LENGTH_PER_ROW`, spends 25,357,744 units reaching it -- about six times what it keeps, since every retained character was produced, read and searched by a following step, and produced again -- so a smaller multiple would make that limb's own boundary unreachable rather than bounding anything new.
 
@@ -221,10 +221,10 @@ The accumulation refusal's path names the element the total was accumulating at 
 The step refusal extends that path with `.transform[k]` and the step's function name, narrowed to a literal this build recognizes before it is interpolated, as the fan-out refusals narrow theirs.
 The two assembly refusals, count limb and byte limb, name the key alone (`linkageKeys[i]`) with no element, step, or row - the projection is the row's rather than any one element's - and the row index appears on that path only in the warning a dropped row logs.
 A row dropped at the accumulation limb logs that same warning shape rather than an issue path: the row index, the total, and the key's partner-authored `name` escaped at that sink, which is what every drop warning states.
-On the receiver of a key declaring `swap` the position that reads a column and the position that declares it are different ones, since the swap moves the field references and leaves each element's name and transforms in place.
 A refusal on the value read names the position whose `field` is the offending column, so its remedy - bind the element to a shorter column - points where that column is written.
 A refusal on a step names the position the step is declared at.
-The accumulation refusal takes whichever of the two produced the candidates it was charging: the step-declared position where the element declares a transform, and the column-declaring position where it declares none and the candidates are the field's own realized values, so both parties name the same position for the same offending column.
+The accumulation refusal names the position whose candidates it was charging.
+Both parties read a key's elements in their declared order, a key declaring `swap` included, so the position that reads a column is the one that declares its steps, and both parties name the same position for the same offending column.
 The work refusal's path is the accumulation refusal's, taken at the element the budget ran out at, and its total is likewise the row's across the key's elements.
 
 The closer is the unilateral, local one.

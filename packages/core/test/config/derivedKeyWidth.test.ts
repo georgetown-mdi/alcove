@@ -13,7 +13,6 @@ import {
   FAN_OUT_CANDIDATES_PER_ELEMENT,
   keyDeclaresCandidateSet,
   MAX_KEY_CANDIDATE_WIDTH,
-  SWAP_VARIANT_WIDTH_FACTOR,
 } from "../../src/fanOutFunctions";
 import {
   expandFuzzyComparisons,
@@ -375,18 +374,18 @@ describe("the width a key declares", () => {
     expect(declaredEffectiveKeyCount(terms)).toBe(declaredCeiling(kind) + 1);
   });
 
-  test("a key declaring swap doubles the product of its elements' factors", () => {
-    // The receiver assembles the key in both orders, so a record contributes
-    // twice what its elements' factors alone would total, and the sender
-    // declares the same number for the role it may not hold.
+  test("a key declaring swap declares the product of its elements' factors alone", () => {
+    // Both parties sort the pair's two values into one order, so the swap
+    // adds no value slot and declares no candidate set of its own.
     const key: LinkageKey = {
       name: "FN+LN",
       elements: [{ field: "last_name" }, { field: "ssn" }],
     };
     expect(declaredKeyWidth(key)).toBe(1);
-    expect(declaredKeyWidth({ ...key, swap: ["last_name", "ssn"] })).toBe(
-      SWAP_VARIANT_WIDTH_FACTOR,
-    );
+    expect(declaredKeyWidth({ ...key, swap: ["last_name", "ssn"] })).toBe(1);
+    expect(
+      keyDeclaresCandidateSet({ ...key, swap: ["last_name", "ssn"] }),
+    ).toBe(false);
     const fuzzy: LinkageKey = {
       name: "FN+LN",
       elements: key.elements.map((element) => ({
@@ -396,7 +395,7 @@ describe("the width a key declares", () => {
       swap: ["last_name", "ssn"],
     };
     expect(declaredKeyWidth(fuzzy)).toBe(
-      SWAP_VARIANT_WIDTH_FACTOR * fuzzyCandidateCeiling("adjacent_years") ** 2,
+      fuzzyCandidateCeiling("adjacent_years") ** 2,
     );
   });
 

@@ -22,13 +22,26 @@ import { getLogger } from "../src/utils/logger";
 
 // The reference form: every combination of one candidate per element, built as
 // an array of parts and joined in element order.
-function referenceKeyStrings(candidates: string[][]): string[] {
+// With `sortedPair`, each combination's two parts at those positions are put
+// in sorted order before the join.
+function referenceKeyStrings(
+  candidates: string[][],
+  sortedPair?: readonly [number, number],
+): string[] {
   return candidates
     .reduce<string[][]>(
       (acc, arr) => acc.flatMap((prefix) => arr.map((v) => [...prefix, v])),
       [[]],
     )
-    .map((parts) => parts.join(""));
+    .map((parts) => {
+      if (sortedPair !== undefined) {
+        const [low, high] = sortedPair;
+        const pair = [parts[low], parts[high]].sort();
+        parts[low] = pair[0];
+        parts[high] = pair[1];
+      }
+      return parts.join("");
+    });
 }
 
 // A seeded generator, so a failing shape reproduces.
@@ -113,6 +126,27 @@ describe("assembleKeyStrings", () => {
     }
   });
 
+  test("with a sorted pair, yields the reference form's key strings", () => {
+    // The order of the strings is the builder's own; the set is what a row
+    // contributes, so the two are compared sorted.
+    const random = seededRandom(20261108);
+    for (const elementCount of [2, 3, 5, 16]) {
+      const pairs: Array<[number, number]> = [
+        [0, 1],
+        [0, elementCount - 1],
+        [elementCount - 2, elementCount - 1],
+      ];
+      for (const sortedPair of pairs)
+        for (const widths of widthShapes(elementCount).slice(0, 6)) {
+          const candidates = candidateLists(widths, random);
+          expect(
+            assembleKeyStrings(candidates, sortedPair).sort(),
+            `${elementCount} elements, pair ${sortedPair.join(",")}`,
+          ).toEqual(referenceKeyStrings(candidates, sortedPair).sort());
+        }
+    }
+  });
+
   test("agrees with the reference form at its edges", () => {
     expect(assembleKeyStrings([])).toEqual(referenceKeyStrings([]));
     expect(assembleKeyStrings([])).toEqual([""]);
@@ -192,7 +226,7 @@ describe("buildKeyStrings assembly", () => {
     }
   });
 
-  test("a swap key derives the reference set in each order it assembles", () => {
+  test("a swap key derives the reference set with its pair sorted, in both roles", () => {
     const split = [{ function: "split_on", params: { delimiter: "," } }];
     const key: LinkageKey = {
       name: "FN+LN+N",
@@ -218,10 +252,13 @@ describe("buildKeyStrings assembly", () => {
       );
       expect(first).toHaveLength(3);
       expect(last).toHaveLength(4);
-      const authored = expectedKeyStrings([first, last, n]);
-      const expected = isReceiver
-        ? new Set([...expectedKeyStrings([last, first, n]), ...authored])
-        : authored;
+      const expected = new Set(
+        referenceKeyStrings([first, last, n], [0, 1]).map((s) =>
+          s.normalize("NFC"),
+        ),
+      );
+      // Every one of the 12 combinations sorts to a distinct string.
+      expect(expected.size).toBe(12);
       expect(
         buildKeyStrings(key, dataset, 0, isReceiver),
         `${isReceiver}`,
