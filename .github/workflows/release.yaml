@@ -175,8 +175,16 @@ jobs:
         with:
           image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 
+      # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
+      # action's default floats on `buildx-stable-1`. Dependabot does not
+      # track this input: to move it, take the index digest
+      # `docker buildx imagetools inspect moby/buildkit:<version>` prints and
+      # set it in all four setup-buildx-action steps, in this workflow and in
+      # image_smoke.yaml.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
 
       # The scan gate, ahead of every registry step below on purpose: a release
       # whose image carries a fixable HIGH or CRITICAL vulnerability in an OS or
@@ -1132,8 +1140,16 @@ jobs:
         with:
           image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 
+      # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
+      # action's default floats on `buildx-stable-1`. Dependabot does not
+      # track this input: to move it, take the index digest
+      # `docker buildx imagetools inspect moby/buildkit:<version>` prints and
+      # set it in all four setup-buildx-action steps, in this workflow and in
+      # image_smoke.yaml.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
 
       - name: Build the release image for both platforms
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0

@@ -9,7 +9,8 @@
 - - -> The Pages deploy tool
 - - -> `cloudflare/wrangler-action` installs wrangler itself, with an unlocked `npm i wrangler@<version>`, unless the wrangler already installed in its `workingDirectory` reports the exact `wranglerVersion` the step passes (read from the action's source at the pinned commit, `src/wranglerAction.ts`, `installWrangler`; not driven here).
 - - -> So the deploy tool has a lockfile of its own:
-- - -> `.github/wrangler/` holds a `package.json` naming one exact wrangler version and an `overrides` entry holding `sharp` at `0.35.5`, and its `package-lock.json`, and nothing else.
+- - -> `.github/wrangler/` holds a `package.json` naming one exact wrangler version and an `overrides` entry holding `sharp` at `0.35.5` and `undici` at `7.30.2`, and its `package-lock.json`, and nothing else.
+- - -> Each override lifts a transitive package of the pinned wrangler to a release with no advisory at moderate or above, and comes out when a wrangler bump resolves that release or a later one on its own.
 - - -> Each of the five upload steps (two in `pages_deploy.yaml`, two in `release.yaml`, one in `site_deploy.yaml`) runs in a job that sparse-checks-out those two files alone, runs `npm ci` there, and passes that directory as `workingDirectory` with the locked version as `wranglerVersion`.
 - - -> An `npm` block in `.github/dependabot.yml` names that directory, so its updates come as Dependabot pull requests against the lockfile.
 - - -> `scripts/signed-build-inputs.test.mjs` holds the steps to the lockfile: it fails while a step's `wranglerVersion` differs from the version the lockfile installs, so a lockfile bump turns the check red until the same pull request moves all five steps.

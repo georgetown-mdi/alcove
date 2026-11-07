@@ -161,8 +161,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
+      # action's default floats on `buildx-stable-1`. Dependabot does not
+      # track this input: to move it, take the index digest
+      # `docker buildx imagetools inspect moby/buildkit:<version>` prints and
+      # set it in all four setup-buildx-action steps, in this workflow and in
+      # release.yaml.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
 
       # The layer cache is keyed by ISO week as well as by variant. A cached
       # layer is replayed until an instruction above it changes, and the
@@ -1043,8 +1051,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
+      # action's default floats on `buildx-stable-1`. Dependabot does not
+      # track this input: to move it, take the index digest
+      # `docker buildx imagetools inspect moby/buildkit:<version>` prints and
+      # set it in all four setup-buildx-action steps, in this workflow and in
+      # release.yaml.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
 
       - name: Compute the layer cache week
         id: cache_week

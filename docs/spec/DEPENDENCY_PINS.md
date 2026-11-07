@@ -413,8 +413,11 @@ from the action's source at the pinned commit, `src/wranglerAction.ts`,
 So the deploy tool has a lockfile of its own:
 
 - `.github/wrangler/` holds a `package.json` naming one exact wrangler version
-  and an `overrides` entry holding `sharp` at `0.35.5`, and its
-  `package-lock.json`, and nothing else.
+  and an `overrides` entry holding `sharp` at `0.35.5` and `undici` at
+  `7.30.2`, and its `package-lock.json`, and nothing else.
+  Each override lifts a transitive package of the pinned wrangler to a release
+  with no advisory at moderate or above, and comes out when a wrangler bump
+  resolves that release or a later one on its own.
 - Each of the five upload steps (two in `pages_deploy.yaml`, two in
   `release.yaml`, one in `site_deploy.yaml`) runs in a job that sparse-checks-out
   those two files alone, runs `npm ci` there, and passes that directory as

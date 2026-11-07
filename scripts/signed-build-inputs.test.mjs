@@ -318,8 +318,9 @@ describe("the deploy tool", () => {
       "private",
     ]);
     expect(manifest.dependencies).toEqual({ wrangler: lockedVersion });
-    expect(manifest.overrides).toEqual({ sharp: "0.35.5" });
+    expect(manifest.overrides).toEqual({ sharp: "0.35.5", undici: "7.30.2" });
     expect(lock.packages["node_modules/sharp"]?.version).toBe("0.35.5");
+    expect(lock.packages["node_modules/undici"]?.version).toBe("7.30.2");
     expect(lock.packages[""].dependencies).toEqual({ wrangler: lockedVersion });
   });
 
