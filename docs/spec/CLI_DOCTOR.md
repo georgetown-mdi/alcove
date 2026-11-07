@@ -65,7 +65,7 @@ A new version is taken for any of: removing a field or a check id, changing what
 | `fix_and_retry` | The checks ran and at least one returned a verdict the operator can act on before running an exchange. | At least one `fail`, none of them a failure that made the checks unrunnable. A `fail` that ends the run early, leaving the checks after it `skipped`, still rolls up here. |
 | `fatal` | The checks could not be run, so whether the share works is not known. | At least one `fail` that made the checks unrunnable: the `smbclient` binary missing from the image, or the mount directory not listable. |
 
-The two failure classes are distinguished by `overall` alone; which check was the unrunnable one is not itself a field. `fatal` outranks `fix_and_retry` because the two ask different things of the caller: a `fatal` verdict has no `action` to follow, since the checks that would have produced one never ran.
+The two failure classes are distinguished by `overall` alone; which check was the unrunnable one is not itself a field. `fatal` outranks `fix_and_retry` because the two ask different things of the caller: a `fatal` verdict asks the caller to fix the failure that made the checks unrunnable and run them again, since the checks after it never ran.
 
 ## Check status
 

@@ -801,12 +801,29 @@ describe("every terms-time pin refusal states its own next step and condition", 
     (kind) => {
       // The signing identity file holds the partner's private key; the
       // fingerprint is the only value that crosses to this party.
-      expect(PARTNER_CERTIFICATE_REFUSAL_MESSAGES[kind]).toContain(
-        "Ask your partner to make a new signing identity with 'alcove " +
-          "fingerprint --force' and send you only the fingerprint it prints",
+      const message = PARTNER_CERTIFICATE_REFUSAL_MESSAGES[kind];
+      expect(message).toContain(
+        "a new one with 'alcove fingerprint --force' and send you only the " +
+          "fingerprint it prints.",
+      );
+      expect(message).toContain(
+        "A new identity means anyone else who pinned their old fingerprint " +
+          "must pin the new one.",
       );
     },
   );
+
+  test("the unreadable refusal asks for a version check before a new identity", () => {
+    // Two builds that differ can each make a certificate the other cannot
+    // read, and a new identity from the same build does not change that.
+    const message = PARTNER_CERTIFICATE_REFUSAL_MESSAGES.unreadable;
+    const versionCheck = message.indexOf(
+      "Ask your partner to check that you both run the same Alcove version",
+    );
+    expect(versionCheck).toBeGreaterThan(-1);
+    expect(versionCheck).toBeLessThan(message.indexOf("fingerprint --force"));
+    expect(message).toContain('or set signing.mode to "none" to run unsigned.');
+  });
 
   test("an adopted first contact raises nothing to mark", async () => {
     const [conn] = createMessagePipe();

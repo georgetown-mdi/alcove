@@ -705,7 +705,7 @@ async function runExchangeStage(params: {
           redactAndDisplayPartyIdentity(partnerTerms.identity),
         ] as const;
         if (writeRecord && partnerTerms.identity === undefined) {
-          log.warn(...line, UNNAMED_PARTNER_ACCOUNTING_NOTE);
+          log.warn(`${line.join(" ")}.`, UNNAMED_PARTNER_ACCOUNTING_NOTE);
           emit((e) =>
             e.warning("unnamedPartnerRecord", UNNAMED_PARTNER_ACCOUNTING_NOTE),
           );

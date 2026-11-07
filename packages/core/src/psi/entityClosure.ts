@@ -441,7 +441,7 @@ function notRoundDiagonal(
     new InternalConsistencyError(
       `${id}: the matched table's entity clusters do not have the shape a ` +
         `cascade deduplicating on both sides produces: ${detail}. The ` +
-        `exchange stopped; report it at ${ISSUES_URL} with this message.`,
+        `exchange stopped. Report it at ${ISSUES_URL} with this message.`,
     ),
   );
 }

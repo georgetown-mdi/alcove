@@ -126,6 +126,7 @@ import {
 } from "./countOnlyRounds";
 
 import { getLoggerForVerbosity } from "../utils/logger";
+import { ISSUES_URL } from "../projectLinks";
 
 interface IndexIterationPair {
   theirIndex: number;
@@ -2030,7 +2031,7 @@ function singlePassReplyOverCapMessage(
     `${id}: single-pass built a reply of ${replyBytes} byte(s), above the ` +
     `${replyCap} byte(s) both parties derive from their declared sizes, ` +
     "though both datasets are within the single-pass limit. Report it " +
-    "with this message."
+    `at ${ISSUES_URL} with this message.`
   );
 }
 

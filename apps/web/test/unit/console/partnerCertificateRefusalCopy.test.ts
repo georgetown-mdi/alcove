@@ -129,17 +129,32 @@ describe("the console's copy states the cause and a step the operator holds", ()
     (kind) => {
       // The signing identity file holds the partner's private key; the
       // fingerprint is the only value the console takes from a partner.
-      expect(
-        consolePartnerCertificateRefusal(
-          PARTNER_CERTIFICATE_REFUSAL_MESSAGES[kind],
-        ),
-      ).toContain(
-        "Ask your partner to make a new signing identity with 'alcove " +
-          "fingerprint --force' and send you only the fingerprint it " +
-          "prints, then run the exchange again.",
+      const copy = consolePartnerCertificateRefusal(
+        PARTNER_CERTIFICATE_REFUSAL_MESSAGES[kind],
+      );
+      expect(copy).toContain(
+        "a new one with 'alcove fingerprint --force' and send you only the " +
+          "fingerprint it prints",
+      );
+      expect(copy).toContain(
+        "A new identity means anyone else who pinned their old fingerprint " +
+          "must pin the new one.",
       );
     },
   );
+
+  test("the unreadable copy asks for a version check before a new identity", () => {
+    // Two builds that differ can each make a certificate the other cannot
+    // read, and a new identity from the same build does not change that.
+    const copy = consolePartnerCertificateRefusal(
+      PARTNER_CERTIFICATE_REFUSAL_MESSAGES.unreadable,
+    )!;
+    const versionCheck = copy.indexOf(
+      "Ask your partner to check that you both run the same Alcove version",
+    );
+    expect(versionCheck).toBeGreaterThan(-1);
+    expect(versionCheck).toBeLessThan(copy.indexOf("fingerprint --force"));
+  });
 });
 
 describe("the seat shows the console's copy", () => {

@@ -216,7 +216,7 @@ export const TERMINATED_RECORD_UNBUILT_WARNING =
  * docs/COMPLIANCE.md#hipaa-considerations.
  */
 export const UNNAMED_PARTNER_ACCOUNTING_NOTE =
-  "- this exchange's record will hold no partner name, so an accounting of " +
+  "This exchange's record will hold no partner name, so an accounting of " +
   "disclosures drawn from it must take the recipient from your own records of " +
   "who this exchange was with.";
 

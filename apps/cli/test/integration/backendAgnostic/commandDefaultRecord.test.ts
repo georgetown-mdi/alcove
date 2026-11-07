@@ -593,13 +593,13 @@ describe("zero-setup", () => {
     // and the operator filing these toward an accounting of disclosures can
     // still re-run named at this point.
     expect(diagnostics).toContain(
-      `terms agreed, partner identity: ${UNNAMED_PARTY_LABEL} ` +
+      `terms agreed, partner identity: ${UNNAMED_PARTY_LABEL}. ` +
         UNNAMED_PARTNER_ACCOUNTING_NOTE,
     );
     // And the named partner's line stays an ordinary one: nothing is missing
     // from the record that reads it.
     expect(diagnostics).not.toContain(
-      `party-a ${UNNAMED_PARTNER_ACCOUNTING_NOTE}`,
+      `party-a. ${UNNAMED_PARTNER_ACCOUNTING_NOTE}`,
     );
 
     // Machine-interface parity: the same note rides a fd-3 warning event for

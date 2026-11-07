@@ -12,5 +12,4 @@ import { ISSUES_URL } from "@alcove/core";
  *
  * No trailing period: a caller inside a sentence adds its own.
  */
-export const REPORT_LIBRARY_INCOMPATIBILITY =
-  `report it at ${ISSUES_URL} with the ` + "version from 'alcove --version'";
+export const REPORT_LIBRARY_INCOMPATIBILITY = `report it at ${ISSUES_URL} with the version from 'alcove --version'`;

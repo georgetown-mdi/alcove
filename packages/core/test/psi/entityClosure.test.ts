@@ -126,7 +126,7 @@ describe("assertRoundDiagonalClosure", () => {
     // The message states its own next step, so the instance is tagged and the
     // CLI adds no second one.
     expect((thrown as Error).message).toContain(
-      "report it at https://github.com/georgetown-mdi/alcove/issues with this message",
+      "Report it at https://github.com/georgetown-mdi/alcove/issues with this message.",
     );
     expect(statesItsOwnNextStep(thrown, { ownOnly: true })).toBe(true);
     return thrown as InternalConsistencyError;
