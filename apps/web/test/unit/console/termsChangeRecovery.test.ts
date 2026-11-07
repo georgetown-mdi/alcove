@@ -135,6 +135,12 @@ describe("applying the proposal from the run step", () => {
     expect(
       await applyJobTermsProposal(
         "id",
+        respond(200, { status: "proposal-changed" }),
+      ),
+    ).toBe("proposal-changed");
+    expect(
+      await applyJobTermsProposal(
+        "id",
         respond(200, { status: "run-terms-differ" }),
       ),
     ).toBe("run-terms-differ");
@@ -154,6 +160,7 @@ describe("applying the proposal from the run step", () => {
     for (const outcome of [
       "busy",
       "configuration-changed",
+      "proposal-changed",
       "run-terms-differ",
       "refused",
       "unavailable",
@@ -166,6 +173,21 @@ describe("applying the proposal from the run step", () => {
     expect(termsApplyOutcomeText("run-terms-differ", RUN_FOLDER)).toContain(
       "open the configuration again",
     );
+  });
+
+  test("says the partner's proposed terms changed, the same for either proposal location", () => {
+    const expected =
+      "Your partner's proposed terms changed after this run showed them, " +
+      "so nothing was applied. Start over and run the exchange again to " +
+      "see the change.";
+    for (const proposal of [RUN_FOLDER, WORKING_FOLDER]) {
+      expect(termsApplyOutcomeMessage("proposal-changed", proposal)).toEqual({
+        message: expected,
+      });
+      expect(termsApplyOutcomeText("proposal-changed", proposal)).toBe(
+        expected,
+      );
+    }
   });
 
   test("names the apply as the command over the working folder for each system, on this run's proposal", () => {
@@ -195,6 +217,7 @@ describe("applying the proposal from the run step", () => {
     for (const outcome of [
       "busy",
       "configuration-changed",
+      "proposal-changed",
       "refused",
     ] as const) {
       const message = termsApplyOutcomeMessage(outcome, RUN_FOLDER);

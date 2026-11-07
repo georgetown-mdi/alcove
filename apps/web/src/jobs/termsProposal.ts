@@ -1,12 +1,18 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
-import { parseSensitiveYaml, safeParseExchangeSpec } from "@alcove/core";
+import {
+  MAX_ENCODED_INVITATION_LENGTH,
+  parseSensitiveYaml,
+  safeParseExchangeSpec,
+} from "@alcove/core";
 
 import {
   JOB_FILE_NAMES,
   TERMS_PROPOSAL_FILE_NAME,
 } from "@jobContract/intentSchemas";
+import { readBoundedMountedBytes } from "./boundedMountedFile";
 import { resolveWorkdirFile } from "./workdir";
 import { runCapturedCliChild } from "./capturedCliChild";
 
@@ -67,6 +73,30 @@ export function termsApplyArgv(args: {
     `--key-file=${args.keyPath}`,
     `@${args.proposalPath}`,
   ];
+}
+
+/**
+ * The most bytes a proposal file is read under. The CLI writes one encoded
+ * update, capped at the invitation's encoded length, and a newline; a larger
+ * file is no proposal it wrote.
+ */
+const MAX_TERMS_PROPOSAL_FILE_BYTES = 2 * MAX_ENCODED_INVITATION_LENGTH;
+
+/**
+ * The hex SHA-256 of the terms proposal file in `workdir`, or null where the
+ * name holds no regular file under {@link MAX_TERMS_PROPOSAL_FILE_BYTES} -- a
+ * link at the name included.
+ */
+export function termsProposalDigest(workdir: string): string | null {
+  const proposalPath = resolveWorkdirFile(workdir, TERMS_PROPOSAL_FILE_NAME);
+  if (proposalPath === null) return null;
+  const read = readBoundedMountedBytes(
+    proposalPath,
+    MAX_TERMS_PROPOSAL_FILE_BYTES,
+    { followLink: false },
+  );
+  if (read.outcome !== "read") return null;
+  return crypto.createHash("sha256").update(read.bytes).digest("hex");
 }
 
 function readOrNull(filePath: string): string | null {

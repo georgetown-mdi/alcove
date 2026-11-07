@@ -213,6 +213,77 @@ describe("applying the terms proposal a run of the opened configuration stopped 
     );
   });
 
+  test("refuses where the proposal file was replaced after the run stated its change, running nothing", async () => {
+    const root = mountedRoot();
+    const answerFile = path.join(scratchDir("answer"), "stdin");
+    const manager = managerFor(root, { STUB_APPLY_STDIN_FILE: answerFile });
+    manager.openMountedConfiguration();
+    const id = await manager.createJob(openedIntent());
+    const record = await settledRun(manager, id);
+    fs.writeFileSync(
+      path.join(record.workdir, TERMS_PROPOSAL_FILE_NAME),
+      "a second update\n",
+    );
+    const before = fs.readFileSync(path.join(root, "alcove.yaml"), "utf8");
+    expect(await manager.applyTermsProposal(id)).toEqual({
+      kind: "proposal-changed",
+    });
+    expect(fs.existsSync(answerFile)).toBe(false);
+    expect(fs.readFileSync(path.join(root, "alcove.yaml"), "utf8")).toBe(
+      before,
+    );
+    expect(record.termsProposal).toBe("available");
+  });
+
+  test("refuses where the proposal file is gone, running nothing", async () => {
+    const root = mountedRoot();
+    const answerFile = path.join(scratchDir("answer"), "stdin");
+    const manager = managerFor(root, { STUB_APPLY_STDIN_FILE: answerFile });
+    manager.openMountedConfiguration();
+    const id = await manager.createJob(openedIntent());
+    const record = await settledRun(manager, id);
+    fs.rmSync(path.join(record.workdir, TERMS_PROPOSAL_FILE_NAME));
+    const before = fs.readFileSync(path.join(root, "alcove.yaml"), "utf8");
+    expect(await manager.applyTermsProposal(id)).toEqual({
+      kind: "proposal-changed",
+    });
+    expect(fs.existsSync(answerFile)).toBe(false);
+    expect(fs.readFileSync(path.join(root, "alcove.yaml"), "utf8")).toBe(
+      before,
+    );
+  });
+
+  test("refuses a link at the proposal's name, even to the bytes it held", async () => {
+    const root = mountedRoot();
+    const manager = managerFor(root);
+    manager.openMountedConfiguration();
+    const id = await manager.createJob(openedIntent());
+    const record = await settledRun(manager, id);
+    const proposalPath = path.join(record.workdir, TERMS_PROPOSAL_FILE_NAME);
+    const elsewhere = path.join(scratchDir("elsewhere"), "proposal");
+    fs.copyFileSync(proposalPath, elsewhere);
+    fs.rmSync(proposalPath);
+    fs.symlinkSync(elsewhere, proposalPath);
+    const before = fs.readFileSync(path.join(root, "alcove.yaml"), "utf8");
+    expect(await manager.applyTermsProposal(id)).toEqual({
+      kind: "proposal-changed",
+    });
+    expect(fs.readFileSync(path.join(root, "alcove.yaml"), "utf8")).toBe(
+      before,
+    );
+  });
+
+  test("applies a proposal file rewritten with the bytes it held", async () => {
+    const root = mountedRoot();
+    const manager = managerFor(root);
+    manager.openMountedConfiguration();
+    const id = await manager.createJob(openedIntent());
+    const record = await settledRun(manager, id);
+    const proposalPath = path.join(record.workdir, TERMS_PROPOSAL_FILE_NAME);
+    fs.writeFileSync(proposalPath, fs.readFileSync(proposalPath));
+    expect(await manager.applyTermsProposal(id)).toEqual({ kind: "applied" });
+  });
+
   test("refuses where the run's terms are not the mounted configuration's, running nothing", async () => {
     const root = mountedRoot();
     const answerFile = path.join(scratchDir("answer"), "stdin");

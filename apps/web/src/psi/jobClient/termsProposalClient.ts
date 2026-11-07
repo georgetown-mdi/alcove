@@ -11,6 +11,8 @@ import {
  * - `refused`: `alcove apply` refused and changed nothing.
  * - `configuration-changed`: the mounted `alcove.yaml` changed after it was
  *   opened, so nothing was applied.
+ * - `proposal-changed`: the partner's proposed terms changed after the run
+ *   showed them, so nothing was applied.
  * - `run-terms-differ`: the run's linkage terms were not the mounted
  *   `alcove.yaml`'s, so nothing was applied.
  * - `busy`: an apply is running, or the run has not finished closing.
@@ -21,6 +23,7 @@ export type TermsProposalApplyOutcome =
   | "applied"
   | "refused"
   | "configuration-changed"
+  | "proposal-changed"
   | "run-terms-differ"
   | "busy"
   | "unavailable"
@@ -30,6 +33,7 @@ const ANSWERED_STATUSES: ReadonlySet<string> = new Set([
   "applied",
   "refused",
   "configuration-changed",
+  "proposal-changed",
   "run-terms-differ",
 ]);
 

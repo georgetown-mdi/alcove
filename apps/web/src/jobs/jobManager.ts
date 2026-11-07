@@ -106,6 +106,7 @@ import {
   signingIdentityTargetExists,
 } from "./signingIdentity";
 import { relayCheckOffer, runRelayCheck } from "./relayCheck";
+import { runTermsProposalApply, termsProposalDigest } from "./termsProposal";
 import { buildJobHandoff } from "./handoff";
 import { checkedMountedKeyFilePath } from "./mountedKeyFile";
 import { consoleOwnedCredentialField } from "./consoleOwnedFiles";
@@ -113,7 +114,6 @@ import { formatFirstIssue } from "./schemaIssueMessage";
 import { probeSftpHostKey } from "./sftpProbe";
 import { referencedCredentialPaths } from "./referencedCredentialFiles";
 import { removeSftpCredentialFile } from "./sftpScratch";
-import { runTermsProposalApply } from "./termsProposal";
 import { validateAuthoredSftpServer } from "./sftpServer";
 import { withConsolePayloadReceiveTakenNotice } from "./payloadReceiveTakenNotice";
 
@@ -616,6 +616,12 @@ export interface JobRecord {
    * `applied` once the mounted configuration took it on, `none` otherwise.
    */
   termsProposal: "none" | "available" | "applied";
+  /**
+   * The SHA-256 of the run's proposal file as it was when that terminal event
+   * arrived, the proposal whose change the event states and the console shows;
+   * null before then, or where no readable proposal file was there.
+   */
+  termsProposalDigest: string | null;
 }
 
 /**
@@ -1720,6 +1726,7 @@ export class JobManager {
           ? { keyPath: mountedKeyPath, openedSource: opened?.source }
           : null,
       termsProposal: "none",
+      termsProposalDigest: null,
     };
     this.slot = {
       phase: "active",
@@ -2086,8 +2093,12 @@ export class JobManager {
       event.type === "error" &&
       record.termsProposalBasis !== null &&
       statesWrittenTermsProposal(event)
-    )
+    ) {
       record.termsProposal = "available";
+      record.termsProposalDigest = termsProposalDigest(
+        this.termsProposalWorkdir(record),
+      );
+    }
     if (event.type === "result") {
       const stamp = stampOfResultPath(event.resultPath);
       if (stamp !== null) {
@@ -2109,14 +2120,17 @@ export class JobManager {
    * is running or the run's child has not exited; `configuration-changed`
    * where the mounted `alcove.yaml` is no longer the one the run was opened
    * from, so the change the operator was shown is not the one the file would
-   * take on; `run-terms-differ` where the run's own configuration states
+   * take on; `proposal-changed` where the proposal file is no longer the
+   * bytes it held when the run's terminal event stated the change, or cannot
+   * be read; `run-terms-differ` where the run's own configuration states
    * other linkage terms than that file, for the same reason.
    */
-  async applyTermsProposal(
-    id: string,
-  ): Promise<
+  async applyTermsProposal(id: string): Promise<
     | TermsProposalApplyResult
-    | { kind: "unavailable" | "busy" | "configuration-changed" }
+    | {
+        kind:
+          "unavailable" | "busy" | "configuration-changed" | "proposal-changed";
+      }
   > {
     if (this.shuttingDown) throw new ConsoleShuttingDownError();
     const record = this.getJob(id);
@@ -2134,13 +2148,19 @@ export class JobManager {
       !mountedConfigurationUnchanged(this.dataRoot, basis.openedSource)
     )
       return { kind: "configuration-changed" };
+    const workdir = this.termsProposalWorkdir(record);
+    if (
+      record.termsProposalDigest === null ||
+      termsProposalDigest(workdir) !== record.termsProposalDigest
+    )
+      return { kind: "proposal-changed" };
     this.termsApplyInFlight = true;
     try {
       const result = await this.runStoppableChild((stop) =>
         runTermsProposalApply({
           binaryPath: this.binaryPath,
           dataRoot: this.dataRoot,
-          workdir: record.runsInWorkingFolder ? this.dataRoot : record.workdir,
+          workdir,
           keyPath: basis.keyPath,
           ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
           stop,
@@ -2151,6 +2171,12 @@ export class JobManager {
     } finally {
       this.termsApplyInFlight = false;
     }
+  }
+
+  /** The directory the run's configuration and proposal file are in: the data
+   * root for a run in place, the job's workdir otherwise. */
+  private termsProposalWorkdir(record: JobRecord): string {
+    return record.runsInWorkingFolder ? this.dataRoot : record.workdir;
   }
 
   /**

@@ -70,6 +70,13 @@ export function termsApplyOutcomeMessage(
               "run started, so nothing was applied. Start over to open it " +
               "again.",
       };
+    case "proposal-changed":
+      return {
+        message:
+          "Your partner's proposed terms changed after this run showed " +
+          "them, so nothing was applied. Start over and run the exchange " +
+          "again to see the change.",
+      };
     case "run-terms-differ":
       return {
         message:

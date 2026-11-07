@@ -127,6 +127,11 @@ export const NODE_CRYPTO_USES = [
     reason: "a unique scratch file name",
   },
   {
+    file: "apps/web/src/jobs/termsProposal.ts",
+    members: ["createHash"],
+    reason: "a digest naming the terms proposal file a run stated",
+  },
+  {
     file: "apps/web/src/jobs/workdir.ts",
     members: ["randomUUID"],
     reason: "a unique job directory name",

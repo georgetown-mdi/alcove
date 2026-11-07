@@ -14,7 +14,7 @@ import { defineJobRoute } from "../../jobRoute";
  * proposal to apply; `409` (empty body) while an apply runs or the run's
  * child has not exited; `503` once the console is shutting down. A completed
  * attempt is `200 { "status" }`: `applied`, `refused`, `timeout`, `error`,
- * `configuration-changed`, or `run-terms-differ`.
+ * `configuration-changed`, `proposal-changed`, or `run-terms-differ`.
  */
 export const route = defineJobRoute({
   path: "/api/jobs/$jobId/apply-terms",
