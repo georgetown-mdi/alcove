@@ -359,8 +359,8 @@ describe("checkValueConstraints", () => {
   });
 
   test("a class over the weighted-size cap, checked without a parse, is not flagged", () => {
-    // Uncheckable, as a class that does not compile is: the check does not
-    // compile a pattern the schema would refuse.
+    // Uncheckable, as a class that does not compile is: the check reports no
+    // violation for a pattern the schema would refuse.
     for (const allowedCharacters of [
       CLOSED_CLASS_COUNTED_REPEATS,
       ESCAPED_CARET_COUNTED_REPEATS,

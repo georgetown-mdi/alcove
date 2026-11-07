@@ -94,8 +94,9 @@ interface ConstraintViolation {
  * (1) ReDoS: the class is compiled under the linear-time engine the
  * transform-regex paths use ({@link compileLinearRegex}, re2js), so no partner
  * pattern reaches the backtracking native engine. A pattern {@link
- * patternRefusal} refuses is treated as uncheckable and not compiled (no
- * violation, fail-open); the schema applies the same check to the same
+ * patternRefusal} refuses is treated as uncheckable (no violation,
+ * fail-open), and is compiled again on each call since a refused pattern is
+ * not cached; the schema applies the same check to the same
  * pattern, so that path is unreachable for a class that passed terms
  * validation.
  *

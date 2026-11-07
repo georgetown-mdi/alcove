@@ -1106,6 +1106,44 @@ export interface StandardizationFunctionDescriptor {
 /** Functions that take no params: their `params` schema accepts an empty object. */
 const noParams = z.object({});
 
+/** The string bounds every regular-expression param shares. */
+const regexPatternBaseSchema = z
+  .string()
+  .min(1)
+  .check(
+    maxCodeUnits(
+      MAX_TRANSFORM_PATTERN_LENGTH,
+      `must not exceed ${MAX_TRANSFORM_PATTERN_LENGTH} characters`,
+    ),
+  );
+
+/**
+ * Why a pattern param is refused beyond its length bounds, or `undefined`. An
+ * over-length source is refused without a compile: the ceiling in
+ * {@link regexPatternBaseSchema} does not abort (Zod string checks are
+ * non-aborting), and RE2 compile is super-linear in length, which a live
+ * editor preview must never pay on the main thread.
+ */
+function regexParamRefusal(pattern: string): PatternRefusal | undefined {
+  return pattern.length > MAX_TRANSFORM_PATTERN_LENGTH
+    ? { reason: "nonconformant" }
+    : patternRefusal(pattern);
+}
+
+function regexParamRefusalIssue(refusal: PatternRefusal): {
+  code: "custom";
+  message: string;
+} {
+  return {
+    code: "custom",
+    message:
+      refusal.reason === "size"
+        ? transformPatternSizeMessage(refusal.weightedSize)
+        : "must be a valid regular expression in the linear-time dialect " +
+          "(RE2 syntax; backreferences and lookaround are not supported)",
+  };
+}
+
 /**
  * A user-authored regular-expression param. Required, bounded in length, and
  * validated to compile under the linear-time dialect within the weighted-size
@@ -1124,50 +1162,29 @@ const noParams = z.object({});
  * length), by design, like substring's hazard rejections; the descriptor drift
  * test pins only short patterns, so this divergence does not break it.
  */
-const regexPatternSchema = z
-  .string()
-  .min(1)
-  .check(
-    maxCodeUnits(
-      MAX_TRANSFORM_PATTERN_LENGTH,
-      `must not exceed ${MAX_TRANSFORM_PATTERN_LENGTH} characters`,
-    ),
-  )
-  .superRefine((pattern, ctx) => {
-    // Skip the compile for an over-length source: the ceiling above does not
-    // abort (Zod string checks are non-aborting), and RE2 compile is
-    // super-linear in length, which a live editor preview must never pay on
-    // the main thread.
-    const refusal: PatternRefusal | undefined =
-      pattern.length > MAX_TRANSFORM_PATTERN_LENGTH
-        ? { reason: "nonconformant" }
-        : patternRefusal(pattern);
-    if (refusal === undefined) return;
-    ctx.addIssue({
-      code: "custom",
-      message:
-        refusal.reason === "size"
-          ? transformPatternSizeMessage(refusal.weightedSize)
-          : "must be a valid regular expression in the linear-time dialect " +
-            "(RE2 syntax; backreferences and lookaround are not supported)",
-    });
-  });
+const regexPatternSchema = regexPatternBaseSchema.superRefine(
+  (pattern, ctx) => {
+    const refusal = regexParamRefusal(pattern);
+    if (refusal !== undefined) ctx.addIssue(regexParamRefusalIssue(refusal));
+  },
+);
 
 /**
- * `split_on`'s delimiter: a {@link regexPatternSchema} that also refuses a
- * delimiter matching the empty string, as both decode paths and the factory do
- * ({@link splitDelimiterMatchesEmptyString}). The empty delimiter is left to
- * that schema's minimum length, and a delimiter it refuses for length,
- * dialect, or size is not compiled here.
+ * `split_on`'s delimiter: the {@link regexPatternSchema} checks plus a refusal
+ * of a delimiter matching the empty string, as both decode paths and the
+ * factory do ({@link splitDelimiterMatchesEmptyString}). One refinement reads
+ * {@link regexParamRefusal} once: a delimiter refused for length, dialect, or
+ * size gets that issue and nothing more, and one that is not is checked for an
+ * empty match. The empty delimiter is left to the minimum length.
  */
-const splitDelimiterSchema = regexPatternSchema.superRefine(
+const splitDelimiterSchema = regexPatternBaseSchema.superRefine(
   (delimiter, ctx) => {
-    if (
-      delimiter.length === 0 ||
-      delimiter.length > MAX_TRANSFORM_PATTERN_LENGTH ||
-      patternRefusal(delimiter) !== undefined
-    )
+    const refusal = regexParamRefusal(delimiter);
+    if (refusal !== undefined) {
+      ctx.addIssue(regexParamRefusalIssue(refusal));
       return;
+    }
+    if (delimiter.length === 0) return;
     if (splitDelimiterMatchesEmptyString(delimiter))
       ctx.addIssue({
         code: "custom",
