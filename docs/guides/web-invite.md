@@ -72,14 +72,7 @@ Alcove fills in each column's type and use from its name. It sends nothing by de
 
 Change any other column's use only as you agreed ([What each of you sends](./agree-on-terms.md#what-each-of-you-sends)).
 
-| Option | What it does | Pick it when |
-| --- | --- | --- |
-| **Used to match - not sent** | Matches on the column and never sends it | Usual: names, date of birth, SSN, ZIP code |
-| **Used to match - sent to your partner** | Matches on it, and sends its value for matched records | Your partner agreed to receive this column |
-| **Unique record identifier - not sent** | Starts each row of your result with your own ID | Usual: your own ID column, whatever it is called |
-| **Unique record identifier - sent to your partner** | Does the same, and sends the ID for matched records | Your partner agreed to receive your IDs |
-| **Sent to your partner** | Sends the value for matched records; not used to match | Your partner agreed to receive this column |
-| **Ignored** | Neither matches on it nor sends it | Usual: every other column |
+<!--@include: ./_tables.md#column-use-->
 
 **Your own columns in the result** changes only your own result file, never what your partner gets:
 
@@ -160,7 +153,7 @@ You should see: **Exchange complete** with the downloads below.
 | --- | --- | --- |
 | `results.csv` (**Download result**) | One row per matched record: your ID, `partner_row` (your partner's row number for that record, counting from 0, so row 0 is the first data row, row 2 in Excel), and the columns your partner sends. With no ID column set, the first column is `your_row`, your own row number, counted the same way. | Keep private |
 | `alcove-record-<time>.json` (**Download record (safe to share)**) | What you and your partner agreed to and what matched, for your disclosure log | Keep; not secret |
-| `alcove-record-<time>.keys.json` (**Download verification keys**, marked keep private) | The keys that check the record against your files. They cannot be recreated. | Keep private |
+<!--@include: ./_tables.md#keys-app-->
 
 Use your ID to join the result back to your file; you can ignore `partner_row`.
 

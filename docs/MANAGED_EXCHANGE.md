@@ -866,14 +866,12 @@ saved), the run reports that state and its re-invite recovery instead. Otherwise
 the no-show message says that a partner who was at their machine at an agreed
 time and still never arrived points to a re-invite rather than another wait.
 
-A rotation that never saved is detected by a marker: the run writes it once the
-partner connects and before the key exchange starts, and the write that stores
-the rotated secret removes it, so a tab closed or killed between the two leaves
-it behind ([the rotation-in-flight
-marker](spec/MANAGED_EXCHANGE_RECORD.md#the-rotation-in-flight-marker)). A
-run that refuses a change to the partner's terms also removes it, since such a
-refusal stores nothing on either side. A no-show after it reads as a probable
-partial rotation, with the re-invite recovery and no attack checklist.
+A run stopped partway through the key exchange, such as by a tab closed or
+killed, can leave a marker on this device that its rotated secret was never
+saved; which runs write it and what removes it: [the rotation-in-flight
+marker](spec/MANAGED_EXCHANGE_RECORD.md#the-rotation-in-flight-marker). A
+no-show after it reads as a probable partial rotation, with the re-invite
+recovery and no attack checklist.
 
 A restore is detected by the import marker, which a successful run clears
 ([the import

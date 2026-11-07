@@ -121,7 +121,7 @@ A run you start yourself writes the results file only, and offers **Download upd
 
 The first run may show **The exchange reported a warning** about which columns your partner sends. It records that list, and later runs refuse a different one. Nothing to do if the list is what you agreed on.
 
-If the folder could not be written, the exchange's page says "Results ready to download" and keeps the results in this browser for 30 days.
+If the folder could not be written, the exchange's page says "Results ready to download" and keeps the results in this browser, unencrypted. After 30 days they are no longer offered, and your next visit to the page deletes them, as does a later run that leaves results of its own. **Clear what is kept here** removes them at once, as does removing the exchange.
 
 ## Run it by hand instead
 

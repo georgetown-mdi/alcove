@@ -59,7 +59,7 @@ To practice, each party picks one of the files in [`test_data/`](test_data/) as 
 
 To exchange with the same partner on a schedule, choose **Save as a recurring exchange** on the exchange screen; see [Managed (recurring) web exchanges](https://data-bridge.org/docs/MANAGED_EXCHANGE).
 
-The step-by-step guide, for both the party who invites and the partner who receives the link, is the [web app guide](https://data-bridge.org/docs/WEB_APP). It also explains the exchange record you can download at the end and how to check it.
+The step-by-step guides are [Invite with the web app](https://data-bridge.org/web-invite), for the party who invites, and [Accept with the web app](https://data-bridge.org/web-accept), for the partner who receives the link. The [web app reference](https://data-bridge.org/docs/WEB_APP) explains each setting, the exchange record you can download at the end, and how to check it.
 
 ## CLI App Quickstart
 
@@ -161,89 +161,10 @@ Publishing to `127.0.0.1` keeps the unauthenticated console reachable only from 
 
 The `serve` role is the one that cannot instead be run as your own account with `--user`: it keeps container-internal state belonging to uid 1000, so what it leaves behind in the mounted directory belongs to uid 1000 as well, and `sudo` may be needed to move or delete it afterwards. See the uid 1000 guidance above, and [The user the image runs as](https://data-bridge.org/docs/DEPLOYMENT#the-user-the-image-runs-as).
 
-## Podman
+## More on the command line app
 
-[Podman](https://podman.io/) can be used as a drop-in replacement for Docker. The only change needed is to replace calls to the `docker` executable with calls to `podman`.
-
-## CLI App
-
-### SFTP parameters
-
-#### Passwords
-
-Read the password from a file with `--server-password=@PASSWORD_FILE`, as the quickstart does: the password then never appears on the command line or in your shell history, and its special characters need no escaping. See [Command line flags](#command-line-flags).
-
-If you put the password in the connection string instead, special characters in it can be interpreted incorrectly by your shell. To avoid this, encase the whole connection string in single-quotation marks or escape the problematic characters. As an example of an exchange running from the current directory (indicated by mounting `$PWD`, or **p**rinting the **w**orking **d**irectory):
-
-```sh
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest 'sftp://user:passw!rd@example.org/psi' input.csv ./results
-```
-
-or, in a Mac or Linux terminal only, where a backslash escapes the character:
-
-```sh
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest \
-   sftp://user:passw\!rd@example.org/psi input.csv ./results
-```
-
-#### Command line flags
-
-Connection parameters can also be specified individually as command line flags to the script. Among others, they include:
-   * `--server-port` - port number of the server
-   * `--server-username` - username for authentication
-   * `--server-password` - password for password-based user authentication; use `@path` to read from file
-   * `--server-private-key` - an SSH private key (OpenSSH format) for key-based (publickey) authentication; use `@path` to read from file
-   * `--server-private-key-passphrase` - for an encrypted private key, this is the passphrase used to decrypt it; use `@path` to read from file
-
-Using `@path`s specifies that the value should be read from a file. For example, to have the script read a password from the file `passwd` in the working directory, run:
-
-```sh
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
-```
-
-Note that because Docker prevents the container from accessing any path on your host system that isn't explicitly mounted, if you wish to use a pre-existing private key the program cannot access `~/.ssh` by default. In that case, either add a read-only mount to the key folder or copy the key to the working directory.
-
-### Windows
-
-#### Windows Subsystem for Linux
-
-Docker for Windows requires that the Windows Subsystem for Linux be installed. Docker will ask you to install this the first time it starts up.
-
-#### Docker terminal
-
-To execute commands, launch a terminal from within Docker Desktop by clicking on the `>_` icon on the lower-right of the application's status bar.
-
-### Paths and invocation
-
-Paths can be given to Docker using standard Windows-style back-slashes. One exception is at the very end of the string: a trailing back-slash can cause Docker to fail to understand the end of the string. It is safe to remove it as it will still be treated as a directory.
-
-A command in this README written on one line runs as written in PowerShell and in a Mac or Linux terminal. A command split over several lines, with a `\` at the end of each line, is for a Mac or Linux terminal only: PowerShell does not read the `\`. Put such a command on one line without the `\` marks instead. For example:
-
-```sh
-docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work docker.io/gumdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
-```
-
-A command that mounts `$PWD` or `${PWD}` needs a folder on a local drive. From a network location, a path starting with `\\`, PowerShell gives `$PWD` as `Microsoft.PowerShell.Core\FileSystem::\\server\share\...`, which Docker cannot mount. Docker cannot mount a folder on a network location by its path either, whether a `\\` path or a mapped drive such as `Z:\exchange`: it reaches that folder through a volume the Windows shared-folder setup makes, described in [Using a network file drop with Alcove on Windows](support/windows-network-filedrop/README.md). For a folder on a local drive, you can write its path in place of `$PWD`, as in the example above.
-
-### Docker run background
-
-The `docker run` command has two parts. The first is the Docker invocation, which connects your terminal to the container so Alcove can ask you to confirm the server's fingerprint, and mounts `WORK_PATH` at `/work` so the container can read your input and write the output there (see Docker's own docs for [`--rm`](https://docs.docker.com/reference/cli/docker/container/run/#rm) and [`--mount`](https://docs.docker.com/reference/cli/docker/container/run/#mount)):
-
-```sh
-docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work docker.io/gumdi/alcove:latest
-```
-
-The second part is the invocation of the Alcove script and includes any command line options you wish to use. In the first example above it is:
-
-```sh
-sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
-```
-
-However, you can place anything here you wish to pass on to the program. For example, to have it print all of its options, execute:
-
-```sh
-docker run --rm docker.io/gumdi/alcove:latest --help
-```
+- **Installing and typing commands.** [Install and run](https://data-bridge.org/cli-install) installs the image with Docker or Podman, gives the command form for each platform, and covers a password in an `sftp://` address, a Windows path, and a folder on a network location.
+- **Every command and setting.** The [command line guide](https://data-bridge.org/docs/CLI). `docker run --rm docker.io/gumdi/alcove:latest --help` prints the options.
 
 ## Documentation
 

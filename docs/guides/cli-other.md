@@ -83,7 +83,7 @@ Later runs use `alcove exchange input.csv ./` from the same folder, at a time yo
 | --- | --- | --- |
 | `alcove-results-<time>.csv` | Your matched records: your ID, `partner_row` (your partner's row number for that record, counting from 0), then the columns your partner sent. With no ID column, the first column is `your_row`, your own row number. In `./results` for a quick exchange. | Keep private |
 | `alcove-record-<time>.json` | The exchange record of this run. | Keep; not secret |
-| `alcove-record-<time>.keys.json` | The values that open the record's checks. | Keep private |
+<!--@include: ./_tables.md#keys-cli-->
 | `alcove-record-<time>.terms.json` | Both parties' terms. | Keep; not secret |
 | `link.txt` | The browser invitation's accept link, with its one-time secret. | Send to your partner only |
 | `alcove.yaml` | After a browser invitation: the terms and the coordination server. A quick exchange writes none. | Keep; not secret |

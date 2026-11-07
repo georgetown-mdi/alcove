@@ -111,8 +111,8 @@ Each scheduled run adds its own time-stamped files to the folder, beside earlier
 | --- | --- | --- |
 | `alcove-results-<time>.csv` | This run's matched records. | Keep private |
 | `alcove-record-<time>.json`, `.terms.json` | This run's exchange record and both parties' terms. | Keep; not secret |
-| `alcove-record-<time>.keys.json` | The values that open this record's checks. | Keep private |
-| `exchange.log` | Every run's log lines, appended. | Keep; not secret |
+<!--@include: ./_tables.md#keys-cli-->
+| `exchange.log` | Every run's log lines, appended. | Keep private |
 | `.alcove.key` | The shared secret, rewritten by each successful run. | Keep private |
 
 ## Never overlap runs
@@ -137,6 +137,7 @@ Act on the exit code alone. A `69` that comes quickly (the server or folder was 
 | --- | --- | --- | --- |
 | `0` | `0x0` | The exchange completed and its files were written. | Nothing. |
 | `64` | `0x40` | Bad input or configuration, or a refusal a retry repeats, such as an unpinned host key or your partner's changed terms. | Fix what the message names; do not retry unchanged. |
+| `65` | `0x41` | The key file is an older copy than your partner's, such as one restored from a backup. Nothing was sent. | Do not retry. Run from your newest copy of the key file, or re-invite. |
 | `66` | `0x42` | The input file is not there yet. | Retry once the input lands, then alert if it stays missing. |
 | `69` | `0x45` | The server, the shared folder or your partner could not be reached, or your partner never arrived; also a wrong SFTP password (`All configured authentication methods failed`), which a retry does not fix. | Retry up to a small fixed cap, then alert. |
 | `70` | `0x46` | A fault inside Alcove. | Report it with the message; do not retry. |
@@ -145,6 +146,6 @@ Act on the exit code alone. A `69` that comes quickly (the server or folder was 
 | `77` | `0x4D` | Authentication failed: the shared secret, or the SFTP host key did not match the pinned one. | Do not retry. Re-invite for the shared secret; verify the server out of band for the host key. Treat an unexpected one as a possible security event. |
 
 > [!WARNING]
-> Never retry `70`, `73`, `76` or `77`. A re-run of `73` runs a second exchange and sends your records again.
+> Never retry `65`, `70`, `73`, `76` or `77`. A re-run of `73` runs a second exchange and sends your records again.
 
 More detail: [Every exit code and its cases](../CLI.md#exit-codes), [Recovering an out-of-step secret](../CLI.md#out-of-sync-tokens).
