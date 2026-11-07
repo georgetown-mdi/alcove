@@ -9,7 +9,8 @@
 // runs from broker_front_logs.yaml on a hosted runner. It renders
 // infra/broker/nginx.conf.tmpl with render-config.sh, runs the image
 // infra/broker/Dockerfile pins as alcove-broker-tls.service runs it (host
-// network, read-only root, tmpfs /tmp), and stands in for the broker on
+// network, read-only root, tmpfs /tmp, and the unit's capability flags read from
+// it), and stands in for the broker on
 // 127.0.0.1:9411. Each request sends its own Host, Referer, User-Agent and
 // Origin values and query string, and the run prints, for each error-log and
 // access-log line the request wrote, which of those values the line contains.
@@ -39,6 +40,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  chmodSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -504,12 +506,37 @@ const message = (line) =>
     .replace(/^\S+ \S+ \[(\w+)\] \d+#\d+: (\*\d+ )?/, "[$1] ")
     .replace(/, client: .*$/, "");
 
+/** The `--cap-drop` and `--cap-add` arguments of the unit's ExecStart, in order. */
+const unitCapabilityArguments = () => {
+  const execStart = readFileSync(
+    join(BROKER, "alcove-broker-tls.service"),
+    "utf8",
+  )
+    .replace(/\\\n/g, " ")
+    .match(/^ExecStart=.*$/m)?.[0];
+  const flags = [...(execStart ?? "").matchAll(/--cap-(?:drop|add) (\S+)/g)];
+  if (!flags.length) {
+    throw new Error(
+      "infra/broker/alcove-broker-tls.service has no --cap-drop or --cap-add in its ExecStart",
+    );
+  }
+  return flags.flatMap((flag) => [flag[0].split(" ")[0], flag[1]]);
+};
+
 /**
  * Runs the image with one rendered configuration and collects what its two
  * log streams write, each line tagged with the stream it came from.
  */
 const startFront = (image, confPath, work) => {
   spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
+  // Without CAP_DAC_OVERRIDE the container's root reads only what others may read.
+  chmodSync(work, 0o755);
+  for (const path of [
+    confPath,
+    join(work, "privkey.pem"),
+    join(work, "fullchain.pem"),
+  ])
+    chmodSync(path, 0o644);
   const container = spawn("docker", [
     "run",
     "--rm",
@@ -520,6 +547,7 @@ const startFront = (image, confPath, work) => {
     "--read-only",
     "--tmpfs",
     "/tmp",
+    ...unitCapabilityArguments(),
     "-v",
     `${confPath}:/etc/nginx/nginx.conf:ro`,
     "-v",

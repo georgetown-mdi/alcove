@@ -34,10 +34,10 @@ One client address holds at most 32 connections at once on each path to it, a wo
 | path | what it is |
 | --- | --- |
 | `alcove-broker.service` | The broker: `npm start -w packages/peerjs-broker -- --path /api` from `/opt/alcove-broker/src`, as the system user `alcove-broker` under the sandbox in [Exposure](#exposure), on `127.0.0.1:9411` only |
-| `nginx.conf.tmpl` | The front's nginx configuration, with the host's name as `__ALCOVE_BROKER_NAME__`: TLS on 8443, `/api/` proxied to the broker with WebSocket upgrade, everything else `404` |
+| `nginx.conf.tmpl` | The front's nginx configuration, with the host's name as `__ALCOVE_BROKER_NAME__`: TLS on 8443 (TLS 1.2 limited to the ECDHE AEAD suites the relay front lists), `/api/` proxied to the broker with WebSocket upgrade, everything else `404` |
 | `render-config.sh` | Prints the template with the name from `broker.env` substituted; refuses a value that is not a DNS name |
 | `Dockerfile` | The front's nginx image, registry-qualified and pinned by digest: the one place it is named. Nothing builds it; `install.sh` reads its `FROM` line, refuses a reference without a digest, and writes the reference to `/etc/alcove-broker/front-image.env` for the front's unit, restarting the front when it changes |
-| `alcove-broker-tls.service` | The front: the pinned image under `docker run`, host network, read-only root, the rendered configuration and `/etc/alcove-broker/tls` mounted read-only, logging to the journal |
+| `alcove-broker-tls.service` | The front: the pinned image under `docker run`, host network, read-only root, every capability dropped but CHOWN, SETUID and SETGID, which nginx needs to give its worker the temp directories and start it, the rendered configuration and `/etc/alcove-broker/tls` mounted read-only, logging to the journal |
 | `renew.sh` | ACME DNS-01 issue and renewal through lego, installed as `/etc/alcove-broker/renew.sh`; then restarts each running unit whose inputs are newer than its start, whether or not the renewal succeeded, except under `install.sh`, which does that itself after its writes |
 | `unit-state.sh` | Sourced by both scripts and installed beside `renew.sh`: decides from systemd's state and file times which running units to restart |
 | `alcove-broker-cert.service`, `.timer` | Runs `renew.sh` daily at 08:15 UTC plus up to 5 minutes, after the relay's own renewal, under the relay host's maintenance lock ([`../relay/README.md`, The daily schedule](../relay/README.md#the-daily-schedule)) |

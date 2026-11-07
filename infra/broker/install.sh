@@ -132,6 +132,7 @@ fi
 docker pull -q "$IMAGE" >/dev/null
 printf '%s\n' "$RENDERED" > "$CANDIDATE"
 docker run --rm --network host --read-only --tmpfs /tmp \
+  --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID \
   -v "$CANDIDATE:/etc/nginx/nginx.conf:ro" \
   -v "$TLS:/etc/nginx/tls:ro" \
   --entrypoint nginx "$IMAGE" -t \

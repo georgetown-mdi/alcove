@@ -16,6 +16,7 @@ on:
     paths:
       - "infra/broker/nginx.conf.tmpl"
       - "infra/broker/Dockerfile"
+      - "infra/broker/alcove-broker-tls.service"
       - "infra/broker/render-config.sh"
       - "scripts/check-broker-front-logs.mjs"
       - ".github/workflows/broker_front_logs.yaml"

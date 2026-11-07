@@ -195,6 +195,51 @@ describe("nginx.conf.tmpl connection bounds", () => {
   });
 });
 
+describe("the front's TLS and capability set match the relay front's", () => {
+  const relay = (name) =>
+    readFileSync(resolve(here, "..", "infra/relay", name), "utf8");
+
+  it("restricts TLS 1.2 to the ECDHE AEAD suites the relay front lists, with no server preference", () => {
+    const server = template().filter(
+      ({ context, name }) =>
+        context.join(" ") === "http server" &&
+        /^ssl_(ciphers|prefer_server_ciphers)$/.test(name),
+    );
+    const twin = directives(relay("front.conf.tmpl")).find(
+      ({ name }) => name === "ssl_ciphers",
+    );
+    expect(server.map(({ name, args }) => [name, args])).toEqual([
+      ["ssl_ciphers", twin.args],
+      ["ssl_prefer_server_ciphers", ["off"]],
+    ]);
+    expect(twin.args).toHaveLength(1);
+    expect(twin.args[0].split(":")).not.toContain("AES256-SHA");
+  });
+
+  it("drops every capability but the three nginx needs to start its worker, in the unit and in install.sh's nginx -t", () => {
+    const capabilityFlags = (command) =>
+      command
+        .replace(/\\\n/g, " ")
+        .match(/--cap-(?:drop|add) \S+/g)
+        .sort();
+    const unitFlags = capabilityFlags(
+      readFileSync(join(BROKER, "alcove-broker-tls.service"), "utf8").match(
+        /^ExecStart=(?:.*\\\n)*.*$/m,
+      )[0],
+    );
+    expect(unitFlags).toEqual([
+      "--cap-add CHOWN",
+      "--cap-add SETGID",
+      "--cap-add SETUID",
+      "--cap-drop ALL",
+    ]);
+    const nginxTest = readFileSync(join(BROKER, "install.sh"), "utf8").match(
+      /^docker run (?:.*\\\n)*.*--entrypoint nginx.*$/m,
+    )[0];
+    expect(capabilityFlags(nginxTest)).toEqual(unitFlags);
+  });
+});
+
 const tmpDirs = [];
 
 afterEach(() => {
