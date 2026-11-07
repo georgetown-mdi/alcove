@@ -50,8 +50,14 @@ class FakeWorker {
     );
   }
 
-  postMessage(request: PsiWorkerRequest): void {
+  readonly transferLists: Array<ReadonlyArray<ArrayBuffer> | undefined> = [];
+
+  postMessage(
+    request: PsiWorkerRequest,
+    transferList?: ReadonlyArray<ArrayBuffer>,
+  ): void {
     this.posted.push(request);
+    this.transferLists.push(transferList);
   }
 
   terminate(): Promise<number> {
@@ -101,6 +107,22 @@ describe("createWorkerThreadHandle", () => {
         message: expect.stringContaining("exited with code 1"),
       }),
     );
+  });
+
+  test("moves the buffers a request lists, and copies one from Node's shared Buffer pool", () => {
+    const fake = new FakeWorker();
+    const handle = createWorkerThreadHandle(fake);
+    handle.setHandlers({ onMessage: vi.fn(), onError: vi.fn() });
+    const owned = new ArrayBuffer(8);
+    const pooled = Buffer.allocUnsafe(8).buffer as ArrayBuffer;
+    const request = (id: number): PsiWorkerRequest => ({
+      id,
+      body: { method: "completeServerSetup" },
+    });
+    handle.postMessage(request(0), [owned]);
+    handle.postMessage(request(1), [pooled]);
+    handle.postMessage(request(2));
+    expect(fake.transferLists).toEqual([[owned], undefined, undefined]);
   });
 
   test("an expected exit after terminate() is not reported as a fault", () => {
@@ -346,6 +368,56 @@ describe("the memory check before the worker takes a partner frame", () => {
       });
       await expect(call(engine)).rejects.toBe(refusal);
       expect(fake.posted).toEqual([]);
+      fake.emit("exit", 0);
+    },
+  );
+
+  const handedOver = [
+    [
+      "a request",
+      (engine: WorkerPsiEngine, bytes: Uint8Array) =>
+        engine.processClientRequest(bytes, undefined, undefined, {
+          transfer: true,
+        }),
+      "decode",
+      new Uint8Array(1),
+    ],
+    [
+      "a setup piece",
+      (engine: WorkerPsiEngine, bytes: Uint8Array) =>
+        engine.receiveServerSetupPiece(bytes, { transfer: true }),
+      "stream",
+      undefined,
+    ],
+    [
+      "a response",
+      (engine: WorkerPsiEngine, bytes: Uint8Array) =>
+        engine.computeAssociationTable(bytes, { transfer: true }),
+      "stream",
+      [[], []],
+    ],
+  ] as const;
+
+  test.each(handedOver)(
+    "%s handed over is weighed without the worker's copy and posted with its buffer moved",
+    async (_what, call, use, result) => {
+      const fake = new FakeWorker();
+      const weighed: Array<[number, number]> = [];
+      const engine = trackWorkerPsiEngine(fake, (frame, need) => {
+        weighed.push([frame, need]);
+      });
+      const bytes = frame();
+      const pending = call(engine, bytes);
+      expect(weighed).toEqual([
+        [FRAME_BYTES, psiFrameHandlingBytes(FRAME_BYTES, use, true)],
+      ]);
+      expect(psiFrameHandlingBytes(FRAME_BYTES, use, true)).toBe(
+        psiFrameHandlingBytes(FRAME_BYTES, use) -
+          FRAME_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.workerClone,
+      );
+      expect(fake.transferLists).toEqual([[bytes.buffer]]);
+      fake.emit("message", { id: fake.posted[0]!.id, ok: true, result });
+      await pending;
       fake.emit("exit", 0);
     },
   );

@@ -1,4 +1,5 @@
 import type { PSIParticipant, RoundGroupingExchange } from "./participant";
+import type { PsiFrameHandOff } from "./psiEngine";
 import {
   candidatePositionCount,
   describeLocalRoundGrouping,
@@ -2049,6 +2050,14 @@ function relieveTransientMemory(): void {
   (globalThis as typeof globalThis & { gc?: () => void }).gc?.();
 }
 
+// A file-sync message is read into a buffer of its own, which the connection
+// keeps no hold on once it delivers it, so the partner's request or reply is
+// moved to the engine rather than copied (docs/spec/FILE_SYNC.md, The hand-off
+// over file-sync). Elsewhere a frame may share its buffer.
+function handOffOverFileSync(fileSync: boolean): PsiFrameHandOff | undefined {
+  return fileSync ? { transfer: true } : undefined;
+}
+
 /**
  * Whether the single-pass receiver withholds the sender's association-table
  * half ({@link linkViaSinglePassPSI}'s message 3) entirely, so a blind
@@ -2416,7 +2425,11 @@ export async function linkViaSinglePassPSI(
     // Collect the setup-masking transients before the re-encryption masking.
     relieveTransientMemory();
     stage(SINGLE_PASS_STAGE_IDS.encryptingPartnerData);
-    const response = await participant.processClientRequest(request);
+    const requestBytes = request.byteLength;
+    const response = await participant.processClientRequest(
+      request,
+      handOffOverFileSync(fileSync),
+    );
     // createServerSetup sorted distinctValues; remap the index table into that
     // sorted order so its indices match the sorted setup message.
     const sortedDistinctValueIndices = getSortedDistinctValueIndices(
@@ -2443,7 +2456,7 @@ export async function linkViaSinglePassPSI(
       numLinkageKeys,
       senderSize,
       receiverSize,
-      request.byteLength,
+      requestBytes,
     );
     if (replyBytes > replyCap) {
       throw markStatesItsOwnNextStep(
@@ -2725,7 +2738,11 @@ export async function linkViaSinglePassPSI(
   const [receiverDistinctValueIds, senderDistinctValueIds] =
     setupBytes === undefined
       ? await participant.matchHeldServerSetup(responseBytes)
-      : await participant.computeValueMatches(setupBytes, responseBytes);
+      : await participant.computeValueMatches(
+          setupBytes,
+          responseBytes,
+          handOffOverFileSync(fileSync),
+        );
   // Keyed by the SENDER's value id, because the resolution sweep walks the
   // sender's rows in ascending order (see replaySinglePassCascade). The pairing is
   // a bijection over the matched values -- each party's values are distinct, and

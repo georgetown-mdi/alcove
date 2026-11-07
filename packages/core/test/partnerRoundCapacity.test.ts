@@ -739,6 +739,7 @@ describe("single-pass over file-sync, at the terms exchange", () => {
         webRtc: {
           partBytes: psiSetPartPayloadBytes(conn),
           outboundFrameBytes: singlePassRequestByteCap(receiver),
+          inboundInParts: false,
         },
       },
     ]);

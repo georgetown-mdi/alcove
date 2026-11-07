@@ -132,6 +132,22 @@ describe("createCappedSink", () => {
     expect((await result).toString()).toBe("hello");
   });
 
+  // A single-pass party moves a message's buffer to the PSI worker
+  // (docs/spec/FILE_SYNC.md, The hand-off over file-sync), so the buffer
+  // must hold that message alone, not the chunks it was read in.
+  test("resolves a message past Node's Buffer pool into a buffer of its own", async () => {
+    const bytes = 1 << 20;
+    const { sink, result, complete } = createCappedSink("/p/ok.bin", bytes);
+    const chunk = Buffer.alloc(bytes);
+    sink.write(chunk.subarray(0, bytes / 2));
+    sink.write(chunk.subarray(bytes / 2));
+    complete();
+    const message = await result;
+    expect(message.byteOffset).toBe(0);
+    expect(message.buffer.byteLength).toBe(bytes);
+    expect(message.buffer).not.toBe(chunk.buffer);
+  });
+
   test("rejects with FrameSizeExceededError the instant the cap is crossed", async () => {
     // No external 'error' listener is attached: createCappedSink attaches its
     // own no-op listener, so the cap-fire (which fails the write callback and

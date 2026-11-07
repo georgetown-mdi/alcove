@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import * as path from "node:path";
-import { Worker } from "node:worker_threads";
+import { Worker, isMarkedAsUntransferable } from "node:worker_threads";
 
 import {
   INBOUND_FRAME_MEMORY_MULTIPLES,
@@ -11,6 +11,7 @@ import {
   type InboundPsiFrameUse,
   type PsiEngine,
   type PsiEngineMode,
+  type PsiFrameHandOff,
   type PsiWorkerHandle,
   type PsiWorkerInit,
   type PsiWorkerRequest,
@@ -118,10 +119,11 @@ class MemoryCheckedWorkerPsiEngine extends WorkerPsiEngine {
     bytes: Uint8Array,
     use: InboundPsiFrameUse,
     run: () => Promise<T>,
+    handOff?: PsiFrameHandOff,
   ): Promise<T> {
     return this.#checked(
       bytes.byteLength,
-      psiFrameHandlingBytes(bytes.byteLength, use),
+      psiFrameHandlingBytes(bytes.byteLength, use, handOff?.transfer === true),
       run,
     );
   }
@@ -130,9 +132,19 @@ class MemoryCheckedWorkerPsiEngine extends WorkerPsiEngine {
     requestBytes: Uint8Array,
     declaredElements?: number,
     width?: number,
+    handOff?: PsiFrameHandOff,
   ): Promise<Uint8Array> {
-    return this.#checkedFrame(requestBytes, "decode", () =>
-      super.processClientRequest(requestBytes, declaredElements, width),
+    return this.#checkedFrame(
+      requestBytes,
+      "decode",
+      () =>
+        super.processClientRequest(
+          requestBytes,
+          declaredElements,
+          width,
+          handOff,
+        ),
+      handOff,
     );
   }
 
@@ -142,17 +154,27 @@ class MemoryCheckedWorkerPsiEngine extends WorkerPsiEngine {
     );
   }
 
-  override receiveServerSetupPiece(piece: Uint8Array): Promise<void> {
-    return this.#checkedFrame(piece, "stream", () =>
-      super.receiveServerSetupPiece(piece),
+  override receiveServerSetupPiece(
+    piece: Uint8Array,
+    handOff?: PsiFrameHandOff,
+  ): Promise<void> {
+    return this.#checkedFrame(
+      piece,
+      "stream",
+      () => super.receiveServerSetupPiece(piece, handOff),
+      handOff,
     );
   }
 
   override computeAssociationTable(
     responseBytes: Uint8Array,
+    handOff?: PsiFrameHandOff,
   ): Promise<[Array<number>, Array<number>]> {
-    return this.#checkedFrame(responseBytes, "stream", () =>
-      super.computeAssociationTable(responseBytes),
+    return this.#checkedFrame(
+      responseBytes,
+      "stream",
+      () => super.computeAssociationTable(responseBytes, handOff),
+      handOff,
     );
   }
 
@@ -183,7 +205,10 @@ interface WorkerThreadLike {
   on(event: "error", listener: (error: Error) => void): void;
   on(event: "messageerror", listener: (error: Error) => void): void;
   on(event: "exit", listener: (code: number) => void): void;
-  postMessage(value: PsiWorkerRequest): void;
+  postMessage(
+    value: PsiWorkerRequest,
+    transferList?: ReadonlyArray<ArrayBuffer>,
+  ): void;
   terminate(): unknown;
 }
 
@@ -228,9 +253,15 @@ export function createWorkerThreadHandle(
     void worker.terminate();
   };
   return {
-    postMessage: (request: PsiWorkerRequest) => {
+    postMessage: (request, transfer) => {
       inFlight.add(request.id);
-      worker.postMessage(request);
+      // Node marks the buffer pool small Buffers share untransferable, and
+      // refuses to move one, so a buffer marked that way is copied.
+      const movable = (transfer ?? []).filter(
+        (buffer) => !isMarkedAsUntransferable(buffer),
+      );
+      if (movable.length > 0) worker.postMessage(request, movable);
+      else worker.postMessage(request);
     },
     setHandlers: ({ onMessage, onError }) => {
       worker.on("message", (response: PsiWorkerResponse) => {

@@ -440,7 +440,11 @@ describe("the single-pass partner size at the terms exchange", () => {
       inboundFrameUse?: InboundPsiFrameUse;
       encrypted?: boolean;
       envelopeVersion?: number;
-      webRtc?: { partBytes: number; outboundFrameBytes: number };
+      webRtc?: {
+        partBytes: number;
+        outboundFrameBytes: number;
+        inboundInParts: boolean;
+      };
     },
     availableBytes: number,
     allowShortfall = false,
@@ -536,7 +540,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "stream",
       true,
       CHUNKED_ENVELOPE,
-      300_000_000,
+      220_000_000,
     ],
     [
       "a 100 MB unencrypted reply",
@@ -544,7 +548,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "stream",
       false,
       undefined,
-      300_000_000,
+      220_000_000,
     ],
     [
       "a 100 MB encrypted request under envelope version 1",
@@ -552,7 +556,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       SINGLE_CALL_ENVELOPE,
-      965_000_000,
+      865_000_000,
     ],
     [
       "a 100 MB encrypted request under envelope version 2",
@@ -560,7 +564,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       CHUNKED_ENVELOPE,
-      965_000_000,
+      865_000_000,
     ],
   ] as const)(
     "weighs %s the counts allow at the measured multiples",
@@ -590,12 +594,20 @@ describe("the single-pass partner size at the terms exchange", () => {
   it.each([
     [
       "a reply read in parts, past one part",
-      { inboundFrameBytes: 200_000_000, outboundFrameBytes: 1_000 },
+      {
+        inboundFrameBytes: 200_000_000,
+        outboundFrameBytes: 1_000,
+        inboundInParts: true,
+      },
       200_000_000 + WEBRTC_PART_MEMORY_MULTIPLES.read * PART,
     ],
     [
       "a reply read in parts and handed to the worker whole",
-      { inboundFrameBytes: 600_000_000, outboundFrameBytes: 1_000 },
+      {
+        inboundFrameBytes: 600_000_000,
+        outboundFrameBytes: 1_000,
+        inboundInParts: true,
+      },
       600_000_000 +
         (INBOUND_FRAME_MEMORY_MULTIPLES.workerClone +
           INBOUND_FRAME_MEMORY_MULTIPLES.streamedSetup) *
@@ -603,28 +615,37 @@ describe("the single-pass partner size at the terms exchange", () => {
     ],
     [
       "a reply read in one part",
-      { inboundFrameBytes: 40_000_000, outboundFrameBytes: 1_000 },
+      {
+        inboundFrameBytes: 40_000_000,
+        outboundFrameBytes: 1_000,
+        inboundInParts: false,
+      },
       Math.max(
         40_000_000 + WEBRTC_PART_MEMORY_MULTIPLES.read * 40_000_000,
-        40_000_000 +
-          (INBOUND_FRAME_MEMORY_MULTIPLES.workerClone +
-            INBOUND_FRAME_MEMORY_MULTIPLES.streamedSetup) *
-            40_000_000,
+        40_000_000 + INBOUND_FRAME_MEMORY_MULTIPLES.copiedReply * 40_000_000,
       ),
     ],
     [
       "a reply this party sends in parts",
-      { inboundFrameBytes: 1_000, outboundFrameBytes: 900_000_000 },
+      {
+        inboundFrameBytes: 1_000,
+        outboundFrameBytes: 900_000_000,
+        inboundInParts: false,
+      },
       900_000_000 + WEBRTC_PART_MEMORY_MULTIPLES.send * PART,
     ],
   ] as const)(
     "weighs %s over WebRTC at the measured part multiples",
-    (_what, { inboundFrameBytes, outboundFrameBytes }, needBytes) => {
+    (_what, webRtc, needBytes) => {
       const size = {
-        inboundFrameBytes,
+        inboundFrameBytes: webRtc.inboundFrameBytes,
         inboundFrameUse: "stream" as const,
         envelopeVersion: 2,
-        webRtc: { partBytes: PART, outboundFrameBytes },
+        webRtc: {
+          partBytes: PART,
+          outboundFrameBytes: webRtc.outboundFrameBytes,
+          inboundInParts: webRtc.inboundInParts,
+        },
       };
       expect(() => run(size, needBytes)).not.toThrow();
       expect(() => run(size, needBytes - 1)).toThrow(RoundCapacityError);
@@ -642,7 +663,11 @@ describe("the single-pass partner size at the terms exchange", () => {
           {
             inboundFrameBytes: 1_000,
             inboundFrameUse,
-            webRtc: { partBytes: PART, outboundFrameBytes: 900_000_000 },
+            webRtc: {
+              partBytes: PART,
+              outboundFrameBytes: 900_000_000,
+              inboundInParts: false,
+            },
           },
           1_000_000_000,
         ),

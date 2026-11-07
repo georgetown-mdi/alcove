@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   CHUNKED_OPEN_PEAK_BYTES,
+  fileSyncSinglePassHandOffBytes,
   INBOUND_FRAME_MEMORY_MULTIPLES,
   inboundFrameReadBytes,
   inboundPsiFramePeakBytes,
@@ -12,6 +13,7 @@ import {
   WEBRTC_PART_MEMORY_MULTIPLES,
   webRtcMessageReadBytes,
   webRtcMessageSendBytes,
+  webRtcSinglePassHandOffBytes,
 } from "../../src/connection/inboundFrameMemory";
 import {
   CHUNKED_ENVELOPE_VERSION,
@@ -42,6 +44,8 @@ describe("the measured multiples of an inbound frame", () => {
       psiDecode: 7.65,
       streamedSetup: 1,
       workerClone: 1,
+      handedOverReply: 1.2,
+      copiedReply: 3.9,
     });
     expect(specMultiples()).toEqual(INBOUND_FRAME_MEMORY_MULTIPLES);
   });
@@ -109,6 +113,16 @@ describe("the measured multiples of an inbound frame", () => {
     expect(psiFrameHandlingBytes(100, "stream")).toBe(200);
   });
 
+  test("a frame moved to the worker is weighed without the worker's copy", () => {
+    expect(psiFrameHandlingBytes(100, "decode", true)).toBe(765);
+    expect(psiFrameHandlingBytes(100, "stream", true)).toBe(100);
+  });
+
+  test("a single-pass hand-off over file-sync is the request moved and decoded, or the reply at the measured multiple", () => {
+    expect(fileSyncSinglePassHandOffBytes(100, "decode")).toBe(765);
+    expect(fileSyncSinglePassHandOffBytes(100, "stream")).toBe(120);
+  });
+
   test("a frame's peak is the larger of its read and of the frame with its hand-off", () => {
     expect(
       inboundPsiFramePeakBytes(
@@ -117,7 +131,7 @@ describe("the measured multiples of an inbound frame", () => {
         true,
         SINGLE_CALL_ENVELOPE_VERSION,
       ),
-    ).toBe(965);
+    ).toBe(865);
     expect(
       inboundPsiFramePeakBytes(
         100,
@@ -126,7 +140,54 @@ describe("the measured multiples of an inbound frame", () => {
         SINGLE_CALL_ENVELOPE_VERSION,
       ),
     ).toBe(400);
-    expect(inboundPsiFramePeakBytes(100, "stream", false, undefined)).toBe(300);
+    expect(inboundPsiFramePeakBytes(100, "stream", false, undefined)).toBe(220);
+  });
+
+  // Each measured run of a reply's hand-off, read from the spec's table: the
+  // frame, and the peak beyond it copied and handed over.
+  const handOffRuns = (): Array<{
+    frameBytes: number;
+    copied: number;
+    handedOver: number;
+  }> => {
+    const text = fs.readFileSync(SPEC, "utf8");
+    return text.split("\n").flatMap((line) => {
+      const row =
+        /^\| Reply, ([\d,]+) bytes [^|]+\| ([\d.]+) \| ([\d.]+) \|$/.exec(line);
+      return row === null
+        ? []
+        : [
+            {
+              frameBytes: Number(row[1]!.replaceAll(",", "")),
+              copied: Number(row[2]),
+              handedOver: Number(row[3]),
+            },
+          ];
+    });
+  };
+
+  test("the handed-over reply's multiple covers every measured run", () => {
+    const runs = handOffRuns();
+    expect(runs.length).toBeGreaterThanOrEqual(2);
+    for (const { frameBytes, handedOver } of runs)
+      expect(
+        fileSyncSinglePassHandOffBytes(frameBytes, "stream"),
+      ).toBeGreaterThan(frameBytes * handedOver);
+  });
+
+  test("a reply in one frame over WebRTC is charged at least each measured copied run", () => {
+    const runs = handOffRuns();
+    expect(runs.length).toBeGreaterThanOrEqual(2);
+    for (const { frameBytes, copied } of runs)
+      expect(
+        webRtcSinglePassHandOffBytes(frameBytes, "stream", false),
+      ).toBeGreaterThan(frameBytes * copied);
+  });
+
+  test("over WebRTC, a request or a reply in parts is the worker's copy and what the engine builds", () => {
+    expect(webRtcSinglePassHandOffBytes(100, "stream", false)).toBe(390);
+    expect(webRtcSinglePassHandOffBytes(100, "stream", true)).toBe(200);
+    expect(webRtcSinglePassHandOffBytes(100, "decode", false)).toBe(865);
   });
 
   test.each([
