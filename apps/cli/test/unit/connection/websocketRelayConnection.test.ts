@@ -537,6 +537,25 @@ test("a chunk sequence declaring more chunks than the cap is refused at its firs
   expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
 });
 
+test("once binary frames are required, a frame that is not binary fails the connection as a security failure", async () => {
+  const { connection, socket } = await startedConnection();
+  connection.requireBinaryFrames?.();
+  const encoder = new PeerJsFrameEncoder();
+  for (const datagram of encoder.encode(new Uint8Array([4, 5])))
+    socket.binary(datagram);
+  for (const datagram of encoder.encode({ kexMsg: "1" }))
+    socket.binary(datagram);
+
+  expect(new Uint8Array((await connection.receive()) as Uint8Array)).toEqual(
+    new Uint8Array([4, 5]),
+  );
+  await expect(connection.receive()).rejects.toMatchObject({
+    kind: "security",
+    message: expect.stringContaining("not binary") as unknown,
+  });
+  expect(socket.closeCalls).toEqual([RELAY_ABANDON_CLOSE_CODE]);
+});
+
 test("a text message once the exchange has started fails the connection", async () => {
   const { connection, socket } = await startedConnection();
   socket.text(JSON.stringify({ type: "start" }));

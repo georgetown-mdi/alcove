@@ -558,6 +558,22 @@ describe("the inbound path", () => {
     expect(Array.from(received)).toEqual(Array.from(frame));
   });
 
+  test("once binary frames are required, refuses a frame that is not binary as a security failure", async () => {
+    const { socket, mc } = await openStarted();
+    mc.requireBinaryFrames?.();
+    for (const datagram of partnerFrames(new Uint8Array([6, 7])))
+      socket.fromRelay(datagram);
+    for (const datagram of partnerFrames({ kexMsg: "1" }))
+      socket.fromRelay(datagram);
+
+    expect(Array.from((await mc.receive()) as Uint8Array)).toEqual([6, 7]);
+    await expect(mc.receive()).rejects.toMatchObject({
+      kind: "security",
+      message: expect.stringContaining("not binary"),
+    });
+    expect(socket.closedWith).toBe(4000);
+  });
+
   test("refuses a frame above the reassembler's size limit and delivers nothing", async () => {
     const { socket, mc } = await openStarted({
       inboundFrames: () =>

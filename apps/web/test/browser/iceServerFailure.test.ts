@@ -14,6 +14,7 @@ import { ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySw
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { failedWithDefaultRelayOff } from "@psi/transport/iceGathering";
 import { failureFor } from "@exchange/useInviterExchange";
+import { guardInboundConnections } from "@psi/transport/inboundConnections";
 import { openPeerMessageConnection } from "@psi/transport/peerMessageConnection";
 import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
 
@@ -86,6 +87,10 @@ test(
           ],
         },
       }),
+    );
+    guardInboundConnections(
+      inviterPeer,
+      await deriveRendezvousPeerId(secret, "acceptor"),
     );
     try {
       await new Promise<void>((resolve, reject) => {

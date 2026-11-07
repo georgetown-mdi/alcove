@@ -452,6 +452,29 @@ test("a non-binary envelope (the old base64url-in-JSON object) is rejected as a 
   await expectSecurity(recv.receive(), /invalid envelope/i);
 });
 
+test.each([
+  ["a byte slice", new Uint8Array(64)],
+  ["a buffer", new ArrayBuffer(64)],
+])(
+  "an object inheriting from %s is refused as an invalid envelope, latched on every later receive",
+  async (_label, prototype) => {
+    const [recv, peer] = await makeInjectable("responder");
+    // The shape BinaryPack's unpack gives a map whose `__proto__` key holds a
+    // binary value.
+    await peer.send(Object.create(prototype) as object);
+    const first = await expectSecurity(recv.receive(), /invalid envelope/i);
+    const second = await expectSecurity(recv.receive(), /invalid envelope/i);
+    expect(second).toBe(first);
+  },
+);
+
+test("a genuine typed-array view other than a Uint8Array is read as its bytes", async () => {
+  const [recv, peer] = await makeInjectable("responder");
+  const bytes = await sealRawBytes("initiator", 0, jsonPlaintext({ n: 7 }));
+  await peer.send(new DataView(bytes.buffer));
+  expect(await recv.receive()).toEqual({ n: 7 });
+});
+
 test("a malformed envelope shape is rejected as a security failure", async () => {
   const [recv, peer] = await makeInjectable("responder");
   await peer.send({ notEnc: "x" });

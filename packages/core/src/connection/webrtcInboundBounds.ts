@@ -10,7 +10,14 @@ import {
   scanFrameStructure,
 } from "./binaryPackBounds";
 
-import { classifyInboundValue, concatChunks, unpackFrame } from "./peerjsWire";
+import { binaryByteLength } from "./binaryValue";
+import {
+  admitsBinaryOnlyFrame,
+  classifyInboundValue,
+  concatChunks,
+  nonBinaryFrameError,
+  unpackFrame,
+} from "./peerjsWire";
 
 /**
  * The CLI's WebRTC data-channel inbound bound: the reassembler the transport
@@ -57,6 +64,11 @@ import { classifyInboundValue, concatChunks, unpackFrame } from "./peerjsWire";
  *    log-flood vector.
  * 6. The assembled frame meets the structural pre-scan again before its own
  *    `unpack`.
+ *
+ * Once the encryption layer requires binary frames ({@link
+ * BoundedInboundFrames.requireBinaryFrames}), a datagram must also be, on its
+ * wire bytes before the scan, a binary value, a chunk envelope over a binary
+ * slice or the close sentinel, and an assembled frame a binary value.
  *
  * Every breach is terminal and fail-closed: the offending bytes are never
  * unpacked and never delivered, and the failure names the rule that refused them
@@ -162,6 +174,7 @@ export class BoundedInboundFrames {
   // preserves insertion order and re-setting an existing key does not move it).
   private readonly inFlight = new Map<number, Reassembly>();
   private bytesInFlight = 0;
+  private binaryFramesRequired = false;
 
   /** Bytes currently retained across every incomplete reassembly. */
   retainedBytes(): number {
@@ -169,22 +182,40 @@ export class BoundedInboundFrames {
   }
 
   /**
+   * From this call on, refuse any frame that is not binary before decoding it
+   * (see `MessageConnection.requireBinaryFrames`), as a `security` failure.
+   * Admitted after it: a binary value, a chunk envelope over a binary slice
+   * whose chunks assemble into a binary value, and the close sentinel.
+   */
+  requireBinaryFrames(): void {
+    this.binaryFramesRequired = true;
+  }
+
+  /**
    * Bound, decode and dispatch one inbound datagram.
    *
    * @throws {ConnectionError} of kind `protocol` on a bound breach or a
-   *         malformed frame. The connection is terminal after one: the caller
-   *         latches the failure and stops feeding.
+   *         malformed frame, or of kind `security` on a frame that is not
+   *         binary once binary frames are required. The connection is
+   *         terminal after one: the caller latches the failure and stops
+   *         feeding.
    */
   accept(bytes: Uint8Array): InboundOutcome {
-    const value = this.decodeBounded(bytes);
+    const value = this.decodeBounded(bytes, "datagram");
     const classified = classifyInboundValue(value);
     if (classified.kind === "close") return { kind: "close" };
-    if (classified.kind === "data")
+    if (classified.kind === "data") {
+      if (
+        this.binaryFramesRequired &&
+        binaryByteLength(classified.value) === undefined
+      )
+        throw nonBinaryFrameError();
       return {
         kind: "frame",
         value: classified.value,
         receivedBytes: bytes.byteLength,
       };
+    }
 
     const assembled = this.acceptChunk(
       classified.messageId,
@@ -197,7 +228,7 @@ export class BoundedInboundFrames {
 
     // The assembled bytes get the same pre-scan the datagram got: they are a
     // frame the peer composed out of parts, and nothing has scanned them whole.
-    const inner = this.decodeBounded(assembled);
+    const inner = this.decodeBounded(assembled, "reassembled");
     const innerKind = classifyInboundValue(inner);
     if (innerKind.kind !== "data") {
       throw reassemblyProtocolError(
@@ -211,12 +242,19 @@ export class BoundedInboundFrames {
     };
   }
 
-  /** Wire-byte cap, then structural pre-scan, then `unpack`. In that order. */
-  private decodeBounded(bytes: Uint8Array): unknown {
+  /** Wire-byte cap, then the binary-only shape where it is required, then
+   * structural pre-scan, then `unpack`. In that order. */
+  private decodeBounded(
+    bytes: Uint8Array,
+    position: "datagram" | "reassembled",
+  ): unknown {
     if (bytes.byteLength > this.limits.maxFrameBytes) {
       throw frameRefusalError(
         `exceeds its ${this.limits.maxFrameBytes}-byte size limit`,
       );
+    }
+    if (this.binaryFramesRequired && !admitsBinaryOnlyFrame(bytes, position)) {
+      throw nonBinaryFrameError();
     }
     const refusal = scanFrameStructure(
       bytes,

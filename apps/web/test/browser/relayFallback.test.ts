@@ -25,6 +25,7 @@ import {
   openOneShotPeerConnection,
   runExchangeLifecycle,
 } from "@psi/exchangeLifecycle";
+import { guardInboundConnections } from "@psi/transport/inboundConnections";
 import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
 import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
@@ -209,6 +210,10 @@ function party(
             : [],
         },
       }),
+    );
+    guardInboundConnections(
+      peer,
+      await deriveRendezvousPeerId(secret, "acceptor"),
     );
     try {
       await new Promise<void>((resolve, reject) => {

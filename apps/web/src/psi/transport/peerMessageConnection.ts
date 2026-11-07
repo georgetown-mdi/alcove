@@ -110,7 +110,7 @@ export async function openPeerMessageConnection(
       // frame or a partial-reassembly flood fails closed (via controls.fail)
       // rather than allocating proportional to the peer-chosen size. The over-cap
       // error holds no peer id, so it needs no redaction.
-      boundChunkReassembly(conn, controls.fail, {
+      const inbound = boundChunkReassembly(conn, controls.fail, {
         maxFrameBytes,
         maxConcurrentReassemblies: options?.maxConcurrentReassemblies,
       });
@@ -159,6 +159,7 @@ export async function openPeerMessageConnection(
       return {
         outboundWebRtcFrameBound: () => maxFrameBytes,
         inboundPsiSetElementCeiling: () => BROWSER_PSI_SET_MAX_ELEMENTS,
+        requireBinaryFrames: inbound.requireBinaryFrames,
         send: (data) => conn.send(data),
         close: async (closeOptions) => {
           conn.off("data", onData);

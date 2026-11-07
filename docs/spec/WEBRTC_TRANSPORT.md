@@ -192,8 +192,9 @@ with no `EXPIRE`.
   repeats an offer the broker may still hold: PeerJS 1.5.5, given a second `OFFER` for a
   `connectionId` it already holds, closes that connection -- emitting no
   `close` while it is not yet open -- and builds a new one. A browser
-  inviter's app has already taken the first, so the data channel would open on
-  a connection the app never reads.
+  inviter's app has already taken the first, so it closes the new one as it is
+  handed out ([Connections a browser peer is offered](#connections-a-browser-peer-is-offered)),
+  and the data channel opens on neither.
 - An `EXPIRE` after the acceptor's offer is answered is ignored; the
   channel-open budget bounds a partner that left after answering.
 - A CLI inviter takes no action on an `EXPIRE`. It sends only in reply to an
@@ -210,6 +211,30 @@ misconfiguration (both parties set the same `role`), and an `ERROR` whose
 payload names an invalid key is the wrong `server.key`.
 
 A browser run removes the rendezvous peer ids from a coordination server's error only in its message and stack: a field the server adds to an ERROR frame, or a frame whose `__proto__` key replaces the error's prototype, brings an id the server put there into the run's error report, and an ERROR frame whose message or name cannot be turned into text and that has no stack fails the registration with a `TypeError` in place of the server's refusal; only a coordination server can do either, and it already holds the ids.
+
+### Connections a browser peer is offered
+
+A CLI party acts on a signaling frame only when its `src` is the id the other
+role derives, and on none once its channel has opened or its run has failed
+(`onBrokerMessage`, `apps/cli/src/connection/webrtc/weriftPeer.ts`). A browser
+party's PeerJS client instead builds a data connection for every `OFFER` that
+reaches its registration, whatever its `src`, of the class the offer's
+`serialization` names. The browser app therefore holds a registered peer's
+inbound connections to the one its run takes
+(`apps/web/src/psi/transport/inboundConnections.ts`), and closes every other one
+as PeerJS hands it out, before its channel can open:
+
+- An inviter takes the first connection offered from the acceptor's derived id
+  with `serialization` `binary` while its run waits for one. It closes one from
+  any other id, one of any other serialization, one offered while no run
+  waits, and every one after it has taken its own.
+- An acceptor dials and takes no inbound connection, so it closes every one.
+
+The connection a run takes is the one the
+[inbound bounds](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound) are
+installed on. Reaching a party's registration takes
+the id derived from the invitation secret, so, like the CLI's `src` check, this
+is depth beside the key exchange rather than the primary control.
 
 ### Compatibility of the broker socket
 
@@ -373,7 +398,7 @@ measurements behind the budgets here are in
 
 - **How the wait is divided.** Every attempt but the last runs the attempt budget. The last runs to the end of the rendezvous budget, taking a remainder of up to half an attempt budget rather than leaving it to an attempt of its own, so a wait at the default rendezvous budget is one attempt. The rendezvous budget is checked only as an attempt starts, so a last registration begun just before it ends can complete up to the broker registration budget after it, and an `OFFER` delivered with that `OPEN` engages the partner, who then gets the channel-open budget: the wait can meet a partner whose offer arrives up to the broker registration budget past the rendezvous budget.
 - **Where an attempt ends.** The attempt budget runs from the registration. Reached while the partner has not sent its session description, it ends the attempt, or on the last one fails the wait with the rendezvous budget's expiry. A partner that has sent its description is not cut off: the attempt continues for the channel-open budget from that point, and a channel still unopened then ends the attempt the same way, the last one failing with a message naming the description that arrived. The channel-open budget runs from the description's arrival whether or not the attempt budget has been reached, and on an attempt that another follows its expiry logs the ICE diagnosis below as a warning and starts the next attempt, so a long wait does not end on one negotiation that found no path.
-- **The acceptor's quiet period.** In the last part of an attempt that another follows (the attempt offer quiet period, table below) the acceptor sends no `OFFER`, neither on an `EXPIRE` nor on the unreported-offer re-send. A browser inviter's app takes the first offer handed to it, so an offer delivered as the attempt ends would be answered after this side had torn that connection down. The browser would then fail at its own channel-open bound, and the browser's client would answer the next attempt's offer on a connection its app never reads, so this party would report connected and then fail. The quiet period is above the broker's hold of an offer for an absent peer plus the partner's answer, so an offer a partner can take is answered inside the attempt that made it. The last attempt of a wait offers to its end. The quiet period is the acceptor's alone: an inviter answers an `OFFER` that arrives in the same part of its attempt, and a partner that has sent its description by the bound gets the channel-open budget, as above, rather than being torn down.
+- **The acceptor's quiet period.** In the last part of an attempt that another follows (the attempt offer quiet period, table below) the acceptor sends no `OFFER`, neither on an `EXPIRE` nor on the unreported-offer re-send. A browser inviter's app takes the first offer handed to it, so an offer delivered as the attempt ends would be answered after this side had torn that connection down. The browser would then fail at its own channel-open bound, and its app, having taken the first connection, would close the one the next attempt's offer builds, so that attempt would not connect either. The quiet period is above the broker's hold of an offer for an absent peer plus the partner's answer, so an offer a partner can take is answered inside the attempt that made it. The last attempt of a wait offers to its end. The quiet period is the acceptor's alone: an inviter answers an `OFFER` that arrives in the same part of its attempt, and a partner that has sent its description by the bound gets the channel-open budget, as above, rather than being torn down.
 - **Connection ids.** Each attempt's acceptor offers under a new `connectionId`, and each side drops an `ANSWER` or `CANDIDATE` naming a `connectionId` other than the one it holds. One naming none, or reaching an inviter that has not answered yet, is taken as current.
 - **A partner that starts over.** An inviter that has answered and receives an `OFFER` naming a new `connectionId` ends its attempt, since the acceptor has abandoned the connection it answered, and the next attempt answers that offer. The broker delivered it, so it sends no `EXPIRE` and holds nothing for the new registration, and a browser acceptor never sends an offer again: its dial fails at its own 30 s open timeout and is not retried, since it retries only on `peer-unavailable`. An `OFFER` repeating the current `connectionId` is re-answered. No floor applies: a partner re-offering under new connection ids sets the attempt cadence, and each restart costs one credential mint, one broker registration and, when relayed, one relay allocation held until it expires. The parties' agreement, not a minimum interval, bounds it.
 - **A broker socket that drops.** The registered socket closing or failing before the partner has sent its session description ends the attempt as reaching its budget does, logging a warning, and the next begins at once; on the last attempt the next runs to the end of the rendezvous budget, so the wait still fails only there, with the rendezvous budget's expiry. The next registration may meet the broker still holding the dropped socket's id, which the ID-taken retry below waits out. A drop once the partner has sent its description, a refusal or `ERROR` from the broker, and a frame that breaches a bound fail the wait. No floor applies here either: a broker that drops every socket once registered sets the attempt cadence until the rendezvous budget ends.

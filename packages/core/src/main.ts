@@ -198,9 +198,18 @@ export { PEERJS_CHUNK_MTU } from "./connection/webrtcOutboundBound";
 export {
   PEERJS_SERIALIZATION,
   PeerJsFrameEncoder,
+  admitsBinaryOnlyFrame,
+  nonBinaryFrameError,
   packCloseSentinel,
   toFrameBytes,
 } from "./connection/peerjsWire";
+// The brand check every receive path admits a frame as bytes by, the web
+// transport's PeerJS wrap among them.
+export {
+  binaryByteLength,
+  binaryBytes,
+  inheritsFromBinaryWithoutBeingBinary,
+} from "./connection/binaryValue";
 export { BoundedInboundFrames } from "./connection/webrtcInboundBounds";
 export type {
   InboundFrameLimits,

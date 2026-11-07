@@ -432,10 +432,21 @@ Eviction is silent and non-fatal: a legitimate exchange never has a second parti
 Before the structural scan, both transports refuse a datagram that is not binary and one of zero length: a data channel types each message on its own, so a text message can arrive on a binary channel, and BinaryPack decodes a text or an empty message to the number `0` (measured in Chromium) rather than refusing it.
 Both also refuse, rather than drop, a frame the real unpacker throws on, such as a string declaring more bytes than the frame holds, which the scan admits as a read past the end.
 Only a throw from the unpack call itself is refused this way: the web wrap decodes each frame itself and then routes it as PeerJS would, and a throw from a `data` listener or from PeerJS's close fails the connection with that error behind a `transport` wrap, keeping its own class rather than reporting a frame the peer did not send.
-Each refusal is a `protocol` failure worded the same on both transports (`the peer sent a malformed WebRTC frame: ...`); the shared parity fixtures (`WEBRTC_MALFORMED_DATAGRAM_FIXTURES`, `packages/core/src/connection/webrtcInboundFrameFixtures.ts`) hold both transports to the four shapes, and `apps/web/test/browser/webrtcInboundDatagramShapes.test.ts` sends them over a real data channel.
+Both hold a datagram to the wire-byte cap before the scan, so one over it is refused as an over-cap frame rather than scanned.
+Both refuse a chunk stream whose chunks reassemble into another chunk envelope rather than a frame.
+Both refuse a frame that decodes to an object inheriting from binary data without being binary, by the same brand check as a chunk's `data`.
+Each refusal is a `protocol` failure worded the same on both transports (beginning `the peer sent a malformed WebRTC frame:` for a datagram and `the peer sent an invalid WebRTC chunk stream:` for a chunk stream, an over-cap datagram taking the wire-byte cap's own wording); the shared parity fixtures (`WEBRTC_MALFORMED_DATAGRAM_FIXTURES`, `packages/core/src/connection/webrtcInboundFrameFixtures.ts`) hold both transports to each of these refusals, and `apps/web/test/browser/webrtcInboundDatagramShapes.test.ts` sends them over a real data channel.
+
+**Binary frames after the key exchange.**
+Once the channel-encryption layer takes over the connection (`EncryptedMessageConnection.create` calls `requireBinaryFrames` before its first await), every frame it reads must be an AEAD envelope, which the packer writes as one binary value.
+From then on both transports refuse, before the scan, a datagram that is not one of the shapes such a frame takes on the wire: a binary value at the root, a chunk envelope holding its four fields once each with binary chunk bytes and nothing after them, or the close sentinel's exact bytes.
+A reassembled frame must be a binary value at the root, and a frame that decodes to anything but binary data is refused before it is delivered.
+Each of these refusals is a terminal `security` failure (`the peer sent a WebRTC frame that is not binary after the channel was encrypted, so it was refused`), the class the encryption layer gives a frame that is not binary, and the WebSocket relay transports apply the same rule to the frames they read.
+So every frame admitted after the key exchange decodes to one binary value, and the retention envelope above (_The envelope these rules leave_) applies only to the frames before it.
+The key-exchange messages are not binary, so that window is held only to the rules of this section: no tighter cap for it is built, a stated limit of the control.
 
 **Delivered-frame safety check.**
-Finally, at the stable `data` event (`checkDeliveredFrameBound`): a fully delivered binary frame (a `Uint8Array`/`ArrayBuffer`) over the byte cap is refused there too, regardless of how -- or whether -- PeerJS chunked it, so the bound holds at the public layer even if the internal reassembly assumption below ever breaks.
+Finally, at the stable `data` event (`checkDeliveredFrameBound`): a fully delivered binary frame (a typed-array view or an `ArrayBuffer`, by the same brand check) over the byte cap is refused there too, regardless of how -- or whether -- PeerJS chunked it, so the bound holds at the public layer even if the internal reassembly assumption below ever breaks.
 A parsed object/array is not byte-measured here (the reassembly bounds above govern it before delivery, and core's count/structure bounds after); only binary frames are, which is exactly the raw set frame this is sized for.
 
 The bounds above are *per frame*.

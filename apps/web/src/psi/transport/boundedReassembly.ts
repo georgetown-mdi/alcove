@@ -16,8 +16,13 @@ import {
   MAX_WEBRTC_REASSEMBLY_DEPTH,
   MAX_WEBRTC_STRING_BYTES,
   MIN_CHUNK_RESIDENT_BYTES,
+  admitsBinaryOnlyFrame,
   asConnectionError,
+  binaryByteLength,
+  binaryBytes,
   describeFrameStructureRefusal,
+  inheritsFromBinaryWithoutBeingBinary,
+  nonBinaryFrameError,
   scanFrameStructure,
 } from "@alcove/core";
 
@@ -69,27 +74,6 @@ function isChunkOrdinal(value: unknown): value is number {
 }
 
 /**
- * The byte length of a genuine typed-array view or `ArrayBuffer`, or
- * `undefined` for any other value. A brand check rather than `instanceof`:
- * BinaryPack's `unpack` assigns a map's `__proto__` key as the object's
- * prototype, so a peer can send a plain object that inherits from a real
- * `ArrayBuffer`, whose `byteLength` getter then throws on it.
- */
-function binaryByteLength(value: unknown): number | undefined {
-  if (ArrayBuffer.isView(value)) return value.byteLength;
-  try {
-    const length: unknown = Reflect.get(
-      ArrayBuffer.prototype,
-      "byteLength",
-      value,
-    );
-    return typeof length === "number" ? length : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Returns the {@link PeerChunk} and its slice's byte length, or what is wrong
  * with the envelope. The same rule the CLI's receive dispatch applies
  * (`classifyInboundValue`, packages/core/src/connection/peerjsWire.ts), so
@@ -121,15 +105,6 @@ function readChunkEnvelope(
   return { chunk: received as PeerChunk, byteLength };
 }
 
-/** A `Uint8Array` view over a frame's bytes for the structural scan, without
- * copying, or `undefined` for a frame that is not a genuine view or buffer. */
-function toUint8(data: unknown): Uint8Array | undefined {
-  if (ArrayBuffer.isView(data))
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  if (binaryByteLength(data) === undefined) return undefined;
-  return new Uint8Array(data as ArrayBuffer);
-}
-
 /** A datagram no PeerJS binary sender emits, or one whose BinaryPack body the
  * unpacker throws on: the same refusal, in the same words, as the CLI's receive
  * path (`malformedFrameError`, packages/core/src/connection/peerjsWire.ts). */
@@ -138,6 +113,48 @@ function malformedDatagramError(detail: string): ConnectionError {
     `the peer sent a malformed WebRTC frame: ${detail}`,
     "protocol",
   );
+}
+
+/** A chunk stream no PeerJS sender produces: the same refusal, in the same
+ * words, as the CLI's reassembler (`reassemblyProtocolError`,
+ * packages/core/src/connection/webrtcInboundBounds.ts). */
+function chunkStreamError(detail: string): ConnectionError {
+  return new ConnectionError(
+    `the peer sent an invalid WebRTC chunk stream: ${detail}`,
+    "protocol",
+  );
+}
+
+/**
+ * The refusal of one decoded frame before it is routed, or `undefined` to
+ * route it, in the CLI's reassembler's words for each: a value inheriting from
+ * binary data without being binary, a reassembled frame that is itself an
+ * envelope, and, once binary frames are required, a frame to deliver that is
+ * not binary.
+ */
+function decodedFrameRefusal(
+  decoded: unknown,
+  reassembled: boolean,
+  binaryFramesRequired: boolean,
+): ConnectionError | undefined {
+  if (inheritsFromBinaryWithoutBeingBinary(decoded))
+    return malformedDatagramError(
+      "it decodes to an object that inherits from binary data but is not binary",
+    );
+  const peerData: unknown =
+    typeof decoded === "object" && decoded !== null
+      ? (decoded as { __peerData?: unknown }).__peerData
+      : undefined;
+  if (peerData) {
+    return reassembled
+      ? chunkStreamError(
+          "its chunks reassemble into another envelope rather than a frame",
+        )
+      : undefined;
+  }
+  if (binaryFramesRequired && binaryByteLength(decoded) === undefined)
+    return nonBinaryFrameError();
+  return undefined;
 }
 
 /**
@@ -196,15 +213,14 @@ function frameRefusalError(predicate: string): ConnectionError {
  * internal layer, refusing an over-cap `Uint8Array` regardless of how PeerJS
  * chunked it. A parsed object/array returns `undefined`: the reassembly
  * bounds govern it before delivery and core's count/structure bounds after.
+ * Binary is core's brand check (`binaryByteLength`), so an object that only
+ * inherits from binary data is not measured as one.
  */
 export function checkDeliveredFrameBound(
   data: unknown,
   maxBytes: number = MAX_WEBRTC_FRAME_BYTES,
 ): ConnectionError | undefined {
-  const size =
-    ArrayBuffer.isView(data) || data instanceof ArrayBuffer
-      ? data.byteLength
-      : undefined;
+  const size = binaryByteLength(data);
   return size !== undefined && size > maxBytes
     ? frameRefusalError(`exceeds its ${maxBytes}-byte size limit`)
     : undefined;
@@ -267,8 +283,15 @@ export function assertChunkReassemblySupported(conn: DataConnection): void {
  *   cap, the byte-backed-elements check, the cumulative element rule and the
  *   map-key rule before it is unpacked.
  * - The datagram itself, in `_handleDataMessage` before the scan: a text or
- *   empty datagram is refused, and so is a frame BinaryPack's unpack throws
- *   on, each in the words the CLI's receive path uses.
+ *   empty datagram is refused, and so is one over `maxFrameBytes` and a frame
+ *   BinaryPack's unpack throws on, each in the words the CLI's receive path
+ *   uses.
+ * - The decoded frame, before it is routed: a value inheriting from binary
+ *   data without being binary, and a reassembled frame that is itself an
+ *   envelope, each in the CLI reassembler's words.
+ * - Once the returned `requireBinaryFrames` is called, a frame that is not
+ *   binary, refused on its wire bytes before the scan as the CLI reassembler
+ *   refuses it (`BoundedInboundFrames.requireBinaryFrames`).
  *
  * A throw while handling a decoded frame -- from a `data` listener or from
  * PeerJS's close -- also fails the connection, with that error behind a
@@ -279,6 +302,8 @@ export function assertChunkReassemblySupported(conn: DataConnection): void {
  * @param fail   Latches a terminal failure (the connection's `controls.fail`).
  * @param options  Per-bound overrides defaulting to the fixed core constants;
  *                 set only by tests, never an operator-facing setting.
+ * @returns `requireBinaryFrames`, which the connection's hook of that name
+ *   calls (see `MessageConnection.requireBinaryFrames`).
  * @throws If the PeerJS internals are not as expected (a broken upgrade
  *   assumption).
  */
@@ -293,7 +318,7 @@ export function boundChunkReassembly(
     minChunkResidentBytes?: number;
     maxStringBytes?: number;
   },
-): void {
+): { requireBinaryFrames: () => void } {
   const maxFrameBytes = options?.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES;
   const maxConcurrent =
     options?.maxConcurrentReassemblies ?? MAX_CONCURRENT_REASSEMBLIES;
@@ -317,6 +342,8 @@ export function boundChunkReassembly(
   // Latched once a bound fails the connection: it is terminal, so every later
   // chunk and frame is dropped without bookkeeping, reassembly, or unpack.
   let failed = false;
+  let reassembling = false;
+  let binaryFramesRequired = false;
 
   // Terminal, so every partial is released here: nothing reassembles after it.
   const failClosed = (error: ConnectionError): void => {
@@ -394,7 +421,14 @@ export function boundChunkReassembly(
       ordinals,
     });
 
-    originalHandleChunk(chunk);
+    // PeerJS hands a completed frame back to `_handleDataMessage` from inside
+    // this call, which is how the replacement below tells it from a datagram.
+    reassembling = true;
+    try {
+      originalHandleChunk(chunk);
+    } finally {
+      reassembling = false;
+    }
 
     // PeerJS deletes the `_chunkedData` entry when the frame completes; mirror
     // that here so a completed frame's bytes are released from the running total.
@@ -423,13 +457,27 @@ export function boundChunkReassembly(
   // either to the number 0, which would reach the application as a frame.
   internals._handleDataMessage = (message: PeerDataMessage): void => {
     if (failed) return;
-    const bytes = toUint8(message.data);
+    const reassembled = reassembling;
+    const bytes = binaryBytes(message.data);
     if (bytes === undefined) {
       failClosed(malformedDatagramError("it is not a binary datagram"));
       return;
     }
     if (bytes.byteLength === 0) {
       failClosed(malformedDatagramError("it is an empty datagram"));
+      return;
+    }
+    if (bytes.byteLength > maxFrameBytes) {
+      failClosed(
+        frameRefusalError(`exceeds its ${maxFrameBytes}-byte size limit`),
+      );
+      return;
+    }
+    if (
+      binaryFramesRequired &&
+      !admitsBinaryOnlyFrame(bytes, reassembled ? "reassembled" : "datagram")
+    ) {
+      failClosed(nonBinaryFrameError());
       return;
     }
     const refusal = scanFrameStructure(bytes, maxDepth, maxStringBytes);
@@ -448,10 +496,25 @@ export function boundChunkReassembly(
       );
       return;
     }
+    const decodedRefusal = decodedFrameRefusal(
+      decoded,
+      reassembled,
+      binaryFramesRequired,
+    );
+    if (decodedRefusal !== undefined) {
+      failClosed(decodedRefusal);
+      return;
+    }
     try {
       dispatchDecodedFrame(conn, internals, decoded, bytes.byteLength);
     } catch (error) {
       failClosed(asConnectionError(error, "transport"));
     }
+  };
+
+  return {
+    requireBinaryFrames: () => {
+      binaryFramesRequired = true;
+    },
   };
 }

@@ -327,6 +327,7 @@ export function webRtcMessageConnection(
 
       return {
         outboundWebRtcFrameBound: () => bounds.limits.maxFrameBytes,
+        requireBinaryFrames: () => bounds.requireBinaryFrames(),
         send: (data) => {
           const frame = sendQueue.then(() => sendFrame(data));
           sendQueue = frame.catch(() => {});

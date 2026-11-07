@@ -10,14 +10,41 @@ import {
   waitForIncomingConnection,
 } from "../../../src/psi/transport/waitForConnection.js";
 
-import type { DataConnection } from "peerjs";
+import { guardInboundConnections } from "../../../src/psi/transport/inboundConnections.js";
+
 import type Peer from "peerjs";
 
 class FakePeer extends EventEmitter {}
 
+/** The remote id the fake peer's inbound guard admits. */
+const REMOTE_ID = "acceptor-id";
+
+/** A fake peer whose inbound connections are guarded as the rendezvous
+ * guards a registered inviter's. */
 function makePeer(): { fake: FakePeer; peer: Peer } {
   const fake = new FakePeer();
-  return { fake, peer: fake as unknown as Peer };
+  const peer = fake as unknown as Peer;
+  guardInboundConnections(peer, REMOTE_ID);
+  return { fake, peer };
+}
+
+/** An inbound connection as PeerJS hands one out, admissible unless
+ * `overrides` change it. */
+function offered(overrides: Record<string, unknown> = {}) {
+  return {
+    peer: REMOTE_ID,
+    serialization: "binary",
+    close: vi.fn(),
+    ...overrides,
+  };
+}
+
+/** Asserts no wait takes a connection from `fake` any more: an admissible
+ * connection offered now is closed. */
+function expectNoWaitTaking(fake: FakePeer): void {
+  const conn = offered();
+  fake.emit("connection", conn);
+  expect(conn.close).toHaveBeenCalledTimes(1);
 }
 
 describe("waitForIncomingConnection", () => {
@@ -25,10 +52,73 @@ describe("waitForIncomingConnection", () => {
     const { fake, peer } = makePeer();
     const promise = waitForIncomingConnection(peer, { timeoutMs: 1000 });
 
-    const conn = { id: "c1" } as unknown as DataConnection;
+    const conn = offered();
     fake.emit("connection", conn);
 
     expect(await promise).toBe(conn);
+    expect(conn.close).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["from another remote id", { peer: "someone-else" }],
+    ["offered with json serialization", { serialization: "json" }],
+    ["offered with raw serialization", { serialization: "raw" }],
+  ])(
+    "closes a connection %s and goes on waiting for the run's",
+    async (_label, overrides) => {
+      const { fake, peer } = makePeer();
+      const promise = waitForIncomingConnection(peer, { timeoutMs: 1000 });
+
+      const refused = offered(overrides);
+      fake.emit("connection", refused);
+      expect(refused.close).toHaveBeenCalledTimes(1);
+
+      const conn = offered();
+      fake.emit("connection", conn);
+      expect(await promise).toBe(conn);
+    },
+  );
+
+  test("closes every connection after the one the run took", async () => {
+    const { fake, peer } = makePeer();
+    const promise = waitForIncomingConnection(peer, { timeoutMs: 1000 });
+    const taken = offered();
+    fake.emit("connection", taken);
+    await promise;
+
+    const second = offered();
+    fake.emit("connection", second);
+    expect(second.close).toHaveBeenCalledTimes(1);
+    expect(taken.close).not.toHaveBeenCalled();
+    // A later wait on the same registration takes nothing either.
+    const later = waitForIncomingConnection(peer, { timeoutMs: 10 });
+    const third = offered();
+    fake.emit("connection", third);
+    expect(third.close).toHaveBeenCalledTimes(1);
+    await expect(later).rejects.toBeInstanceOf(PartnerNoShowError);
+  });
+
+  test("closes a connection offered while no wait is running", () => {
+    const { fake } = makePeer();
+    const early = offered();
+    fake.emit("connection", early);
+    expect(early.close).toHaveBeenCalledTimes(1);
+  });
+
+  test("closes a connection whose offer chose a class with no close, without throwing", () => {
+    const { fake, peer } = makePeer();
+    void waitForIncomingConnection(peer, { timeoutMs: 10 }).catch(
+      () => undefined,
+    );
+    expect(() => fake.emit("connection", new String("peer"))).not.toThrow();
+  });
+
+  test("rejects at once on a peer whose inbound connections are not guarded", async () => {
+    const fake = new FakePeer();
+    await expect(
+      waitForIncomingConnection(fake as unknown as Peer, { timeoutMs: 10_000 }),
+    ).rejects.toThrow("not guarded");
+    expect(fake.listenerCount("error")).toBe(0);
   });
 
   test("rejects if no connection arrives within the timeout", async () => {
@@ -106,7 +196,7 @@ describe("waitForIncomingConnection", () => {
       () => undefined,
     );
 
-    expect(fake.listenerCount("connection")).toBe(0);
+    expectNoWaitTaking(fake);
   });
 
   test("rejects and tears down when the signal aborts", async () => {
@@ -120,7 +210,7 @@ describe("waitForIncomingConnection", () => {
     controller.abort();
 
     await expect(promise).rejects.toThrow("aborted");
-    expect(fake.listenerCount("connection")).toBe(0);
+    expectNoWaitTaking(fake);
   });
 
   test("rejects immediately if the signal is already aborted", async () => {
@@ -131,7 +221,7 @@ describe("waitForIncomingConnection", () => {
     await expect(
       waitForIncomingConnection(peer, { signal: controller.signal }),
     ).rejects.toThrow("aborted");
-    expect(fake.listenerCount("connection")).toBe(0);
+    expectNoWaitTaking(fake);
   });
 
   test("settles exactly once when a connection arrives after an abort", async () => {
@@ -145,7 +235,7 @@ describe("waitForIncomingConnection", () => {
     controller.abort();
     // A connection arriving after the abort must not overturn the settled
     // rejection: the settle-once guard already removed the listener.
-    fake.emit("connection", { id: "late" });
+    fake.emit("connection", offered());
 
     await expect(promise).rejects.toThrow("aborted");
   });
@@ -204,7 +294,7 @@ describe("waitForIncomingConnection", () => {
     expect(rejection).toMatchObject(SIGNALING_FAILED);
     expect(rejection).not.toBe(lost);
     expect(rejection).not.toBeInstanceOf(PartnerNoShowError);
-    expect(fake.listenerCount("connection")).toBe(0);
+    expectNoWaitTaking(fake);
     expect(fake.listenerCount("error")).toBe(0);
     expect(fake.listenerCount("disconnected")).toBe(0);
   });
@@ -371,7 +461,7 @@ describe("waitForIncomingConnection", () => {
         expect(outcome).toMatchObject(SIGNALING_ENDED);
         expect(ownText(outcome)).not.toContain("inviter-derived-id");
         expect(vi.getTimerCount()).toBe(0);
-        expect(fake.listenerCount("connection")).toBe(0);
+        expectNoWaitTaking(fake);
         expect(fake.listenerCount("error")).toBe(0);
         expect(fake.listenerCount("disconnected")).toBe(0);
         expect(removeListener).toHaveBeenCalledWith(
@@ -390,7 +480,7 @@ describe("waitForIncomingConnection", () => {
       "error",
       Object.assign(new Error("negotiation"), { type: "webrtc" }),
     );
-    const conn = { id: "c1" } as unknown as DataConnection;
+    const conn = offered();
     fake.emit("connection", conn);
 
     expect(await promise).toBe(conn);

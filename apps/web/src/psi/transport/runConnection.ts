@@ -105,8 +105,8 @@ export async function openPeerRunConnection(
     throw new Error("opening the connection to the other party was aborted");
   }
   if (closeChannelOnAbort) signal.addEventListener("abort", abandon);
-  if (dropBrokerOnFirstFrame) conn.once("data", dropBroker);
   try {
+    if (dropBrokerOnFirstFrame) conn.once("data", dropBroker);
     const connection = await openPeerMessageConnection(conn, {
       onCloseOutcome,
       signal,

@@ -19,6 +19,7 @@ import {
 } from "@psi/transport/waitForConnection";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
+import { guardInboundConnections } from "@psi/transport/inboundConnections";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { timeOfDayLabel } from "@exchange/exchangeRun";
 
@@ -218,6 +219,7 @@ describe("the inviting seat's wait for its partner", () => {
   test("the share screen states the time the listening wait actually ends", async () => {
     await createInvitation();
     const peer = { on: vi.fn(), once: vi.fn(), off: vi.fn(), destroy: vi.fn() };
+    guardInboundConnections(peer as never, "acceptor-id");
     vi.mocked(listenAsInviter).mockResolvedValue(peer as never);
 
     const controller = new AbortController();
@@ -231,7 +233,9 @@ describe("the inviting seat's wait for its partner", () => {
         onRunNotice: () => undefined,
       })
       .catch(() => undefined);
-    await vi.waitFor(() => expect(peer.once).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(peer.on).toHaveBeenCalledWith("error", expect.any(Function)),
+    );
 
     const until = vi.mocked(waitForIncomingConnection).mock.lastCall?.[1]
       ?.until;

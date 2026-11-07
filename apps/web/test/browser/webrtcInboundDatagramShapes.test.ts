@@ -35,7 +35,12 @@ for (const fixture of WEBRTC_MALFORMED_DATAGRAM_FIXTURES) {
       addressInfo,
     );
     try {
-      const receiverMc = await openPeerMessageConnection(pair.inviterConn);
+      const receiverMc = await openPeerMessageConnection(
+        pair.inviterConn,
+        fixture.maxFrameBytes === undefined
+          ? undefined
+          : { maxFrameBytes: fixture.maxFrameBytes },
+      );
       const channel = pair.acceptorConn.dataChannel;
       if (typeof fixture.datagram === "string") channel.send(fixture.datagram);
       else channel.send(fixture.datagram as Uint8Array<ArrayBuffer>);
