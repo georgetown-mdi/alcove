@@ -45,6 +45,12 @@ const readRepo = (path) => readFileSync(resolve(repoRoot, path), "utf8");
 const GATE_WORKFLOW = ".github/workflows/web_build_and_test.yaml";
 // The staging and the production upload of the hosted app.
 const APP_DEPLOY_WORKFLOWS = [DEPLOY_WORKFLOW, RELEASE_WORKFLOW];
+// The release's uploads also wait on its comparison with main
+// (release-upload-order.test.mjs).
+const UPLOAD_CONDITIONS = {
+  [RELEASE_WORKFLOW]: "steps.compare-main.outputs.upload == 'true'",
+};
+const DEMO_CONDITION = "vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''";
 const gateScope = () =>
   pathScope(workflowDocument(repoRoot, GATE_WORKFLOW), GATE_WORKFLOW);
 
@@ -498,7 +504,8 @@ describe("wiring", () => {
         deploy.steps.filter(usesStep("actions/download-artifact@"));
       expect(extraUploads).toEqual([]);
       expect(extraDownloads).toEqual([]);
-      expect(siteUpload.if).toBeUndefined();
+      const uploadCondition = UPLOAD_CONDITIONS[deployWorkflow];
+      expect(siteUpload.if).toBe(uploadCondition);
       expect(siteUpload.with.command).toContain(
         `pages deploy ${siteDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_PAGES_PROJECT }} `,
       );
@@ -509,7 +516,11 @@ describe("wiring", () => {
         `pages deploy ${demoDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} `,
       );
       for (const step of [demoDownload, demoUpload]) {
-        expect(step.if).toBe("vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''");
+        expect(step.if).toBe(
+          uploadCondition === undefined
+            ? DEMO_CONDITION
+            : `${uploadCondition} && ${DEMO_CONDITION}`,
+        );
       }
       const order = (step) => deploy.steps.indexOf(step);
       expect(order(siteUpload)).toBeLessThan(order(demoDownload));

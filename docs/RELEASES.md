@@ -282,11 +282,12 @@ The publish sequence signs each image immediately after its own push, verifies t
 
 **The hosted web application's production deployment.** The same workflow builds the hosted web application and the demo site from the tag and runs the web suites a `staging` deploy runs. Once the publish job has finished, it uploads both as the production deployment of their Pages projects ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)). A tag the publish job refuses deploys nothing. A push to `main` also deploys production, from `pages_deploy.yaml`, so the next push replaces the tag's deployment.
 
-Right before the upload, the `deploy-order` job compares the tag's commit with `main` as it is then (`scripts/release-deploy-order.mjs`):
+Right before the upload, a step of the upload job asks GitHub how `main` compares with the tag's commit:
 
 - **`main`'s tip is the tag's commit or an ancestor of it:** the upload goes ahead, since every build a push to `main` can have deployed is of a commit the tag's holds.
-- **`main` holds a commit the tag's commit lacks:** the upload is skipped, so a release run that finishes after a newer push to `main` has deployed never moves production back to the older tag. Production keeps the build `main` deployed last, whose footer shows its commit hash rather than the tag's version. That holds even when `main`'s newer commits change nothing the site is built from.
-- **A push to `main` after the job reads it** is not seen: should that push's run upload before this one's, the release's upload replaces it.
+- **`main` holds a commit the tag's commit lacks:** the upload is skipped, so a release run that finishes after a newer push to `main` has deployed never moves production back to the older tag. The run's notice and summary say so. Production keeps the build `main` deployed last, whose footer shows its commit hash rather than the tag's version. That holds even when `main`'s newer commits change nothing the site is built from.
+- **The comparison fails:** the upload job fails and uploads nothing.
+- **A push to `main` after the comparison** is not seen: should that push's run upload between the comparison and this run's upload, the release's upload replaces it.
 
 Each site is built once, from a clean install of the lockfile rather than a restored cache, and the manifest is made from the same build artifacts the upload takes. The build reports each artifact's id and a SHA-256 over its files; the `hosted-manifest` job and the upload download each artifact by that id and stop on a tree whose digest differs. The `hosted-manifest` job lists every file of both builds with its SHA-256. The `hosted-manifest-sign` job then signs that list with Cosign, verifies the signature with the command under [Hosted web application](#hosted-web-application), and attests its build provenance. The upload waits for that job, so production never serves a release build without a signed manifest. The `hosted-manifest-publish` job attaches the manifest and its bundle to the draft release once the launchers are attached.
 
