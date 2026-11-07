@@ -56,7 +56,9 @@ the coordination server its re-invites name, its TURN, STUN and WebSocket relay
 urls, and, on a site that offers its own relay switched off, the **Use this
 site's relay server** switch. Its runs use these. An exchange saved from a
 run in this browser starts with the Connection settings that run used
-([WEB_APP.md](WEB_APP.md#connection-settings)).
+([WEB_APP.md](WEB_APP.md#connection-settings)). **Check the relays**, below
+them, checks the relays its runs list with the settings as last saved
+([WEB_APP.md](WEB_APP.md#checking-the-relays)).
 
 ### The relays a saved exchange may use
 

@@ -200,6 +200,77 @@ export function runListsRelay(
   return turn.length + websocket.length > 0;
 }
 
+/** The relay hosts a browser run may contact, read before it contacts any. */
+export interface RunRelayHosts {
+  /** The default relay's registrar, where the run enrolls there: it uses
+   * the default relay and the allowed relays keep one of its urls. */
+  registrar?: string;
+  /** The TURN urls the run may list, in its order, less those the allowed
+   * relays leave out. */
+  turn: ReadonlyArray<string>;
+  /** The WebSocket relay urls the run may list, likewise. */
+  websocket: ReadonlyArray<string>;
+  /** The default relay's urls among those above, which the run lists only
+   * once its enrollment at {@link registrar} confirms. */
+  listedOnceEnrolled: ReadonlyArray<string>;
+  /** The urls the allowed relays leave out, which the run does not contact. */
+  leftOut: ReadonlyArray<string>;
+}
+
+/**
+ * The relay hosts {@link relayPlanForRun} may contact for the same
+ * arguments, read with no contact and no enrollment: the TURN and WebSocket
+ * relay urls it lists, the default relay's last and only once enrolled, and
+ * the registrar it enrolls at.
+ */
+export function runRelayHosts(
+  invitationRelay: RelayUrls | undefined,
+  allowedRelays: ReadonlyArray<string> | undefined,
+  dependencies: Pick<
+    RunRelayPlanDependencies,
+    "build" | "switchedOn" | "readOwn" | "setting"
+  > = {},
+): RunRelayHosts {
+  const own = dependencies.readOwn?.() ?? NO_OWN_RELAY;
+  const { site } = defaultRelayListed(invitationRelay, own, dependencies);
+  const listed = relayUrlsListed(own, invitationRelay, site);
+  const siteUrls =
+    site === undefined
+      ? []
+      : [
+          site.turnUrl,
+          ...(site.websocketUrl !== undefined ? [site.websocketUrl] : []),
+        ];
+  const siteLast = (urls: Array<string>): Array<string> => [
+    ...urls.filter((url) => !siteUrls.includes(url)),
+    ...urls.filter((url) => siteUrls.includes(url)),
+  ];
+  const turn = siteLast(
+    listed.turn.filter((url) => turnUrlIsAllowed(url, allowedRelays)),
+  );
+  const websocket = siteLast(
+    listed.websocket.filter((url) =>
+      webSocketRelayUrlIsAllowed(url, allowedRelays),
+    ),
+  );
+  const listedOnceEnrolled = [...turn, ...websocket].filter((url) =>
+    siteUrls.includes(url),
+  );
+  return {
+    ...(site !== undefined &&
+      listedOnceEnrolled.length > 0 && { registrar: site.registrarUrl }),
+    turn,
+    websocket,
+    listedOnceEnrolled,
+    leftOut: [
+      ...listed.turn.filter((url) => !turnUrlIsAllowed(url, allowedRelays)),
+      ...listed.websocket.filter(
+        (url) => !webSocketRelayUrlIsAllowed(url, allowedRelays),
+      ),
+    ],
+  };
+}
+
 // The default relay a run lists, `site`: the one `defaultRelayForRun` finds
 // in use, invited, or named by the exchange's own relay, or `setting`'s where
 // it is given, which replaces that choice and leaves `forRun` absent.

@@ -164,16 +164,28 @@ export async function buildIceServers(
       ? [...new Set(relay.stun)]
       : DEFAULT_STUN_URLS;
   const iceServers: Array<RTCIceServer> = [{ urls: [...stun] }];
-  if (relay !== undefined && relay.turn.length > 0) {
-    const { username, credential } = await mintRelayCredential({
-      key: await deriveRelayKey(sharedSecret),
-      label: RELAY_CREDENTIAL_LABEL,
-      ttlSeconds: RELAY_CREDENTIAL_TTL_SECONDS,
-      now,
-    });
-    iceServers.push({ urls: [...relay.turn], username, credential });
-  }
+  if (relay !== undefined && relay.turn.length > 0)
+    iceServers.push(await turnIceServer(relay.turn, sharedSecret, now));
   return iceServers;
+}
+
+/**
+ * The ICE server entry of `turn`, holding the credential a run mints at `now`
+ * from the relay key the exchange's shared secret derives: the entry
+ * {@link buildIceServers} lists, and the one the relay check presents.
+ */
+export async function turnIceServer(
+  turn: ReadonlyArray<string>,
+  sharedSecret: string,
+  now: Date,
+): Promise<RTCIceServer> {
+  const { username, credential } = await mintRelayCredential({
+    key: await deriveRelayKey(sharedSecret),
+    label: RELAY_CREDENTIAL_LABEL,
+    ttlSeconds: RELAY_CREDENTIAL_TTL_SECONDS,
+    now,
+  });
+  return { urls: [...turn], username, credential };
 }
 
 /**

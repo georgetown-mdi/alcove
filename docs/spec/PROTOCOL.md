@@ -2202,6 +2202,23 @@ A web application build may name a default relay: a TURN url and its registrar's
 - **What the run lists.** The invitation's TURN urls after its own relay's ([Which relay a run uses](#the-invitations-relay-locator)), whether or not it enrolled there or its enrollment confirmed, since the partner derives the same key and id and may have enrolled them. A `relay_registrar` of its own is registered as [above](#registering-the-rotated-relay-key) whatever the enrollment's outcome.
 - **The cap on each client.** The registrar holds at most 70 rows enrolled without a token for each client address ([infra/relay/README.md](../../infra/relay/README.md#enrollment-without-a-token)), so a host running more exchanges at once than that can be refused. The refusal is a 429, reported as above.
 
+### The web application's relay check
+
+The web application checks the relays of an exchange an acceptor is reviewing, and of a saved exchange, in that exchange's Connection settings ([WEB_APP.md](../WEB_APP.md#checking-the-relays)). The browser side is `apps/web/src/psi/transport/exchangeRelayCheck.ts`.
+
+- **What it contacts.** Before any contact it states the hosts a run of the exchange may contact (`runRelayHosts` in `apps/web/src/psi/transport/runRelayPlan.ts`): every TURN url and WebSocket relay url the run lists, less those the allowed relays leave out, and the default relay's registrar where the run enrolls there. It contacts none of them until the user starts it, and never the coordination server or a STUN server.
+- **The enrollment.** It takes the run's own relay plan, `relayPlanForRun`, so it enrolls at the default relay's registrar exactly where a run of the exchange would, under the id and key derived from the exchange's current secret ([Enrolling at a default relay](#enrolling-at-a-default-relay)). A repeated check repeats that enrollment, which the registrar confirms as a same-key repeat. A default relay url the plan leaves out because its enrollment failed is reported as not enrolled, and is not contacted.
+- **The TURN request.** For each TURN url the plan lists, two peer connections in the page, each held to relay candidates and given that url alone with the credential a run mints from the exchange's current secret (`turnIceServer` in `apps/web/src/psi/transport/rendezvous.ts`). One opens a data channel and sends one message; the other returns it.
+- **The WebSocket relay request.** For each WebSocket relay the plan lists under the current secret, one socket in each role through the run's relay client, under the exchange id and relay key a run uses there. Once the relay pairs the two, both send their start and one message passes from one to the other. Where one socket is paired and the other is refused as role taken (4006), another party of the exchange is waiting at the relay: both sockets close with no start sent, and the relay is reported as admitted.
+- **The bound.** The requests run at once under one timer of 30 seconds (`RELAY_CHECK_BOUND_MS`), started once the enrollment has ended.
+- **The outcomes.** A relay works when its message comes back. Otherwise it does not work, with one cause:
+  - credential refused, where the browser reports a TURN error 401 or 441 for the url, or the WebSocket relay refuses the proof with 4004 or 4005;
+  - not enrolled, where the default relay's enrollment failed, or the WebSocket relay holds no key for the exchange (4003);
+  - no relayed path, where the relay gave both TURN connections a relay candidate, or paired both WebSocket sockets, and no message passed;
+  - not reached, for anything else.
+- **The words.** Each cause's meaning and remedy are the ones `alcove doctor relay` states for the same cause, from `packages/core/src/relayCheckWords.ts` ([CLI_DOCTOR.md](CLI_DOCTOR.md#the-relay-check)), and for a default relay that did not enroll the exchange, the web run's own notice. A url shown is escaped and bounded for display.
+- **The stated limit.** A browser reports a TURN relay's refusal only through the peer connection's candidate errors, so a refusal it does not report is not reached. The inviter of an invitation this page creates is not offered the check.
+
 # Post-linkage steps
 
 ## Third-party-verifiable proof of a data flow

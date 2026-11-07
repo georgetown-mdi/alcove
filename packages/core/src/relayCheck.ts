@@ -213,8 +213,13 @@ function sourceLabel(server: RunTurnServer): string {
 
 const REGISTRAR_NAMED = "The relay registrar your partner's invitation names";
 
-const RELAY_DISCLOSURE =
+/** What a host statement says a relay the check contacts learns. */
+export const RELAY_DISCLOSURE =
   "Whoever runs that relay learns this machine's network address.";
+
+/** What a host statement says a registrar the check contacts learns. */
+export const REGISTRAR_DISCLOSURE =
+  "Whoever runs that registrar learns this machine's network address.";
 
 function capitalized(sentence: string): string {
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
@@ -301,7 +306,7 @@ export function relayHostStatement(
         `${REGISTRAR_NAMED}. Before it asks the relay, the check enrolls ` +
           "this exchange's relay key there, as a run does just before it " +
           "connects.",
-        "Whoever runs that registrar learns this machine's network address.",
+        REGISTRAR_DISCLOSURE,
       ],
     });
   const skippedHosts: RelayHostStatementEntry[] = [
@@ -468,6 +473,15 @@ const WEBSOCKET_RELAY_REFUSALS: ReadonlyMap<number, string> = new Map([
  */
 export function isWebSocketRelayRefusal(code: number): boolean {
   return WEBSOCKET_RELAY_REFUSALS.has(code);
+}
+
+/**
+ * What the WebSocket relay's refusal of a hello with `code` means, as a
+ * check's headline states it; undefined for a code that is not such a
+ * refusal ({@link isWebSocketRelayRefusal}).
+ */
+export function webSocketRelayRefusalClause(code: number): string | undefined {
+  return WEBSOCKET_RELAY_REFUSALS.get(code);
 }
 
 /** The closed fields of one check of a `relay` verdict, as `--json` has them. */

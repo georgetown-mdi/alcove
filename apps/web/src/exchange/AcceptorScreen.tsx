@@ -85,6 +85,7 @@ import {
   runDiagnosticsProblems,
 } from "@psi/runDiagnosticsModel";
 import { byteSizeLabel } from "@psi/formatting";
+import { exchangeRelayCheckSubject } from "@psi/transport/exchangeRelayCheck";
 import { ownRelayRead } from "@psi/transport/ownRelaySetting";
 import { runListsRelay } from "@psi/transport/runRelayPlan";
 import { seedRows } from "@psi/inviterEditor";
@@ -172,6 +173,7 @@ import { AcceptorColumnsStep } from "./AcceptorColumnsStep";
 import { AcceptorExchangeSection } from "./AcceptorExchangeSection";
 import { DefaultRelayNotice } from "./DefaultRelayNotice";
 import { ExchangeConnectionSettings } from "./ExchangeConnectionSettings";
+import { ExchangeRelayCheck } from "./ExchangeRelayCheck";
 import { WorkShell } from "./WorkShell";
 import { createdFromSampleInThisBrowser } from "./sampleInvitationRecord";
 import { samplePartnerFile } from "./sampleData";
@@ -1490,6 +1492,23 @@ function AcceptorInvitationScreen({
                       invitationRelay: decode.invitation.endpoint.relay,
                     })}
                   />
+                  {(allowedRelaysFixed ||
+                    (connectionRead.ok && allowedRelayLines.ok)) && (
+                    <ExchangeRelayCheck
+                      subject={exchangeRelayCheckSubject(
+                        decode.invitation.token.sharedSecret,
+                        decode.invitation.endpoint.relay,
+                        markedAllowedRelays,
+                        {
+                          readOwn: () => ownRelayRead(draftOwnRelay),
+                          switchedOn: () => draftSwitchedOn,
+                        },
+                      )}
+                      {...(decode.invitation.endpoint.relay !== undefined && {
+                        invitationRelay: decode.invitation.endpoint.relay,
+                      })}
+                    />
+                  )}
                 </>
               )}
             {acceptOffersAllowedRelays(

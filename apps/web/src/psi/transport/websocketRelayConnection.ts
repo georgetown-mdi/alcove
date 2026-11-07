@@ -136,6 +136,9 @@ export interface WebSocketRelayConnectionOptions {
   /** Reports how a flushing close's wait for the partner's relayed close
    * ended, once; a non-flushing close reports nothing. */
   onCloseOutcome?: (outcome: PeerCloseOutcome) => void;
+  /** Receives the code of each close of a socket before the exchange
+   * begins on it, the close a socket dialed again follows included. */
+  onSetupClose?: (code: number) => void;
   /** Builds the socket; tests only. */
   createSocket?: (url: string) => WebSocket;
   /** The clock the proof's expiry counts from; tests only. */
@@ -775,6 +778,7 @@ class ParkedRelay implements ParkedWebSocketRelayConnection {
   }
 
   private onSetupClose(current: RelaySocket, event: CloseEvent): void {
+    this.options.onSetupClose?.(event.code);
     current.detach();
     this.current = undefined;
     const wasPaired = this.paired;
