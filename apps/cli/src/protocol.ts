@@ -210,6 +210,8 @@ export interface AuthPersist extends Authentication {
 export interface SigningPersist {
   /** This party's long-lived signing identity (private key + certificate). */
   identity: SigningIdentity;
+  /** The file {@link identity} was read from (`signing.identity_file`). */
+  identityFilePath: string;
   /** The pinned partner certificate fingerprint (`signing.partner_fingerprint`);
    * absent means this run is a first authenticated contact, which adopts the
    * certificate the partner presents at the terms exchange and records its

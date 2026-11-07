@@ -690,6 +690,33 @@ describe("handler: an acceptance that stops", () => {
     expect(stderr).not.toContain("requests columns from you");
   });
 
+  test("an invitation given as typed gets the command-line notice naming its @path form, and an @path one none", async () => {
+    const encoded = await encodeInvitation(requestingToken([]));
+    const notice =
+      "the command line holds a credential as typed in the INVITATION " +
+      "argument, which other users of this machine can see while the " +
+      "command runs and your shell may keep in its history. Put each value " +
+      "in a file of its own and pass its path with a leading @, e.g. " +
+      "@invitation.txt.";
+    const typed = await runHandler(
+      handlerArgv([encoded, writeInput()], {
+        "consent-to-terms": true,
+        run: false,
+      }),
+    );
+    expect(typed.split(notice)).toHaveLength(2);
+
+    const invitationFile = path.join(dir, "invitation.txt");
+    fs.writeFileSync(invitationFile, encoded);
+    const referenced = await runHandler(
+      handlerArgv([`@${invitationFile}`, writeInput()], {
+        "consent-to-terms": true,
+        run: false,
+      }),
+    );
+    expect(referenced).not.toContain("the command line holds");
+  });
+
   test("--no-run on a URL writes the URL's connection and the invitation's secret", async () => {
     const token = requestingToken([], undefined);
     const encoded = await encodeInvitation(token);

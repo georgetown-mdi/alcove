@@ -134,15 +134,25 @@ function urlWithoutPassword(url: URL): string {
   return redactAndRenderOperatorSuppliedText(operatorSuppliedText(copy.href));
 }
 
+/** An invitation a command takes on its command line. */
+export interface CommandLineInvitation {
+  /** The invitation as given, or undefined when none was. */
+  value: string | undefined;
+  /** The flag it is given with; absent for the INVITATION argument. */
+  flag?: string;
+}
+
 /**
  * The credentials the command line holds as typed: those of `definedFlags`
  * (the credential flags the command defines) given a value not beginning with
- * `@`, and the password of `url`. Undefined when it holds none.
+ * `@`, the password of `url`, and `invitation` when it does not begin with
+ * `@`. Undefined when it holds none.
  */
 export function commandLineLiteralCredentials(
   argv: Readonly<Record<string, unknown>>,
   url: URL | undefined,
   definedFlags: readonly string[],
+  invitation?: CommandLineInvitation,
 ): CommandLineLiteralCredentials | undefined {
   const fromFlags = CREDENTIAL_FIELDS.filter((field) => {
     if (!definedFlags.includes(field.flag)) return false;
@@ -151,11 +161,26 @@ export function commandLineLiteralCredentials(
   });
   const password = urlPassword(url);
   const inUrl = password !== undefined && !password.startsWith("@");
-  if (fromFlags.length === 0 && !inUrl) return undefined;
+  const invitationTyped =
+    invitation?.value !== undefined && !invitation.value.startsWith("@");
+  if (fromFlags.length === 0 && !inUrl && !invitationTyped) return undefined;
   const sources = [
     ...(inUrl ? ["the URL"] : []),
     ...fromFlags.map((field) => field.flag),
+    ...(invitationTyped ? [invitation?.flag ?? "the INVITATION argument"] : []),
   ];
+  if (fromFlags.length === 0 && !inUrl) {
+    const example =
+      invitation?.flag === undefined
+        ? "@invitation.txt"
+        : `${invitation.flag} @invitation.txt`;
+    return {
+      sources,
+      remedy:
+        "Put each value in a file of its own and pass its path with a " +
+        `leading @, e.g. ${example}.`,
+    };
+  }
   const passwordField = CREDENTIAL_FIELDS[0];
   if (fromFlags.length === 0 && !definedFlags.includes(passwordField.flag))
     return {

@@ -261,6 +261,63 @@ describe("runFilesInSharedFolderWarnings", () => {
     ]);
   });
 
+  test("a signing identity file inside the shared folder is named", () => {
+    const shared = sharedFolder();
+    const signingIdentityFilePath = path.join(shared, "identity.json");
+    const warnings = runFilesInSharedFolderWarnings({
+      connection: { channel: "filedrop", path: shared },
+      output: path.join(dir, "results"),
+      writeRecord: true,
+      keyFilePath: path.join(dir, ".alcove.key"),
+      signingIdentityFilePath,
+      logFilePath: path.join(dir, "alcove.log"),
+    });
+    expect(warnings).toEqual([
+      `the signing identity file ${signingIdentityFilePath} is inside the ` +
+        `shared folder ${shared}, so anyone who can read that folder, your ` +
+        "partner included, can read the private key that signs your " +
+        "receipts. Move it outside the folder and set " +
+        "signing.identity_file to its new path.",
+    ]);
+  });
+
+  test("a log file inside a split-directory outbound folder is named", () => {
+    const outbound = sharedFolder();
+    const logFilePath = path.join(outbound, "alcove.log");
+    const warnings = runFilesInSharedFolderWarnings({
+      connection: {
+        channel: "filedrop",
+        inboundPath: path.join(dir, "inbound"),
+        outboundPath: outbound,
+      },
+      output: path.join(dir, "results"),
+      writeRecord: true,
+      keyFilePath: path.join(dir, ".alcove.key"),
+      signingIdentityFilePath: path.join(dir, "identity.json"),
+      logFilePath,
+    });
+    expect(warnings).toEqual([
+      `the log file ${logFilePath} is inside the shared folder ${outbound}, ` +
+        "so anyone who can read that folder, your partner included, can " +
+        "read what this run logs. Name a log file outside it with " +
+        "--log-file.",
+    ]);
+  });
+
+  test("a signing identity file and a log file outside the shared folder get no warning", () => {
+    const shared = sharedFolder();
+    expect(
+      runFilesInSharedFolderWarnings({
+        connection: { channel: "filedrop", path: shared },
+        output: path.join(dir, "results"),
+        writeRecord: true,
+        keyFilePath: path.join(dir, ".alcove.key"),
+        signingIdentityFilePath: path.join(dir, "identity.json"),
+        logFilePath: path.join(dir, "alcove.log"),
+      }),
+    ).toEqual([]);
+  });
+
   test("the working directory counts when the run writes its record there", () => {
     const shared = sharedFolder();
     const cwd = process.cwd();

@@ -55,6 +55,7 @@ import {
   preflightOutputFolder,
   runFilesInSharedFolderWarnings,
 } from "../resultFile";
+import { normalizeLogFilePath } from "../util/logging";
 import {
   openEventStream,
   reportLogFileLoss,
@@ -744,6 +745,9 @@ export async function prepareTransport(
     output,
     writeRecord,
     keyFilePath: checked.trimmedKeyFilePath,
+    signingIdentityFilePath: signing?.identityFilePath,
+    logFilePath:
+      logFile === undefined ? undefined : normalizeLogFilePath(logFile),
   }))
     log.warn(warning);
   if (connection.channel === "webrtc") {

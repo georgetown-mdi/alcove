@@ -4631,9 +4631,11 @@ const MISSING_RECEIPT_WARNING =
 
 function signingPersistFixture(
   configPath = path.join(tmpDir, "alcove.yaml"),
+  identityFilePath = path.join(tmpDir, "identity.json"),
 ): SigningPersist {
   return {
     identity: signingIdentityFixture,
+    identityFilePath,
     configPath,
   };
 }
@@ -4756,6 +4758,43 @@ test("a completed signed run does not warn about a missing receipt", async () =>
   expect(
     mockState.warnings.some((m) => m.includes(MISSING_RECEIPT_WARNING)),
   ).toBe(false);
+}, 20_000);
+
+test("a filedrop run warns once each for a signing identity and a log file inside the shared folder", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const identityFile = path.join(dropDir, "identity.json");
+  const logFile = path.join(dropDir, "alcove.log");
+
+  const [resultA, resultB] = await Promise.allSettled([
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath: keyFileA },
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      logFile,
+      loggerName: "test-a",
+      writeRecord: false,
+      signing: signingPersistFixture(undefined, identityFile),
+    }),
+    runSigningParty(keyFileB, "test-b"),
+  ]);
+  expect(resultA.status).toBe("fulfilled");
+  expect(resultB.status).toBe("fulfilled");
+
+  const shared = mockState.warnings.filter((m) =>
+    m.includes("is inside the shared folder"),
+  );
+  expect(shared).toHaveLength(2);
+  expect(shared[0]).toContain(`the signing identity file ${identityFile}`);
+  expect(shared[1]).toContain(`the log file ${logFile}`);
 }, 20_000);
 
 // A minimal schema-valid signed receipt: the receipt an exchange that

@@ -68,7 +68,8 @@ function isSameOrInside(child: string, parent: string): boolean {
  * The warnings a file-drop run gets for each of its own files placed inside a
  * folder the channel shares (`path`, `inbound_path` or `outbound_path`): the
  * output folder, or the working directory when the run writes its record
- * there, and the key file. Empty on any other channel or placement.
+ * there, the key file, the signing identity file, and the log file. Empty on
+ * any other channel or placement.
  */
 export function runFilesInSharedFolderWarnings(params: {
   connection: {
@@ -80,8 +81,17 @@ export function runFilesInSharedFolderWarnings(params: {
   output: string | undefined;
   writeRecord: boolean;
   keyFilePath: string | undefined;
+  signingIdentityFilePath?: string;
+  logFilePath?: string;
 }): string[] {
-  const { connection, output, writeRecord, keyFilePath } = params;
+  const {
+    connection,
+    output,
+    writeRecord,
+    keyFilePath,
+    signingIdentityFilePath,
+    logFilePath,
+  } = params;
   if (connection.channel !== "filedrop") return [];
   const shared = [
     connection.path,
@@ -122,6 +132,27 @@ export function runFilesInSharedFolderWarnings(params: {
         `${shown(keyFileShared)}, so anyone who can read that folder, your ` +
         "partner included, can read the shared secret it holds. Move it " +
         "outside the folder and pass its new path with --key-file.",
+    );
+  const identityFileShared =
+    signingIdentityFilePath !== undefined
+      ? sharedFolderHolding(signingIdentityFilePath)
+      : undefined;
+  if (signingIdentityFilePath !== undefined && identityFileShared !== undefined)
+    warnings.push(
+      `the signing identity file ${shown(signingIdentityFilePath)} is ` +
+        `inside the shared folder ${shown(identityFileShared)}, so anyone ` +
+        "who can read that folder, your partner included, can read the " +
+        "private key that signs your receipts. Move it outside the folder " +
+        "and set signing.identity_file to its new path.",
+    );
+  const logFileShared =
+    logFilePath !== undefined ? sharedFolderHolding(logFilePath) : undefined;
+  if (logFilePath !== undefined && logFileShared !== undefined)
+    warnings.push(
+      `the log file ${shown(logFilePath)} is inside the shared folder ` +
+        `${shown(logFileShared)}, so anyone who can read that folder, your ` +
+        "partner included, can read what this run logs. Name a log file " +
+        "outside it with --log-file.",
     );
   return warnings;
 }
