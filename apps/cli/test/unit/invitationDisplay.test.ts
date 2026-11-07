@@ -163,7 +163,7 @@ function outboundSendEntries(lines: ReadonlyArray<string>): Array<string> {
 // the direction's declared total is a parameter, so looking a heading up by exact
 // text asserts the rendered total as well as the wording.
 const declaredSendHeading = (declaredTotal: number): string =>
-  `  columns you will receive (your partner's word, ${declaredTotal} declared):`;
+  `  columns you will receive (enforced, ${declaredTotal} declared):`;
 const declaredReceiveHeading = (declaredTotal: number): string =>
   "  columns the inviting party requests from you " +
   `(your partner's word, ${declaredTotal} declared):`;
@@ -275,9 +275,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
         linkageTerms: { ...base.linkageTerms, payload: send },
       });
     const named = lines({ send: [{ name: "diagnosis" }, { name: "notes" }] });
-    expect(named).toContain(
-      "columns you will receive (your partner's word, 2 declared):",
-    );
+    expect(named).toContain("columns you will receive (enforced, 2 declared):");
     expect(named).toContain("\n    - diagnosis");
     expect(named).toContain("\n    - notes");
     // The empty set is a bare "(none)", with nothing after it: the line renders only
@@ -286,7 +284,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     // enforcement register is what the label's marker holds. What the declaration
     // commits its party to is stated at length in docs/CLI.md, not on the prompt.
     expect(lines({ send: [] }).split("\n")).toContain(
-      "  columns you will receive (your partner's word, 0 declared): (none)",
+      "  columns you will receive (enforced, 0 declared): (none)",
     );
     expect(lines(undefined)).not.toContain("columns you will receive");
   });
@@ -2340,7 +2338,7 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
 
     expect(lines).toContain(`  ${OUTBOUND_SEND_LABEL}:`);
     expect(lines).toContain(
-      "  columns you will receive (your partner's word, 1 declared):",
+      "  columns you will receive (enforced, 1 declared):",
     );
     expect(lines).toContain(
       "  columns the inviting party requests from you " +

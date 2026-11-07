@@ -190,6 +190,21 @@ test.each([
   expectProtocolRefusal(() => decodeRagged(words), message);
 });
 
+test("the ragged table is refused as truncated when it ends where a cell's count word belongs", () => {
+  // One key of width 2 over two records: the first cell's single index is the
+  // last word, so the second record's count word is missing.
+  const decodeOneKey = (words: Array<number>) =>
+    decodeRaggedIndexTable("client", Int32Array.from(words), [2], 2, 4);
+  expectProtocolRefusal(
+    () => decodeOneKey([1, 0]),
+    /truncated inside a cell it declared/,
+  );
+  const cells = decodeOneKey([1, 0, 0]);
+  expect(cells[0].count(0)).toBe(1);
+  expect(cells[0].valueAt(0, 0)).toBe(0);
+  expect(cells[0].count(1)).toBe(0);
+});
+
 // The same guards under a width vector whose keys DIFFER. Every fixture above is
 // uniform, so a decode reading the first key's width for every cell reads them
 // all correctly; agreed terms produce a mixed vector as soon as one key declares

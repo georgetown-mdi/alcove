@@ -3196,6 +3196,8 @@ export function decodeRaggedIndexTable(
     const keyStarts = new Offsets(numRecords + 1);
     keyStarts[0] = written;
     for (let row = 0; row < numRecords; ++row) {
+      if (read >= words.length)
+        refuse("is truncated inside a cell it declared");
       const width = words[read++];
       if (width < 0 || width > keyWidths[j])
         refuse("declares a cell wider than the agreed terms declare for a key");
