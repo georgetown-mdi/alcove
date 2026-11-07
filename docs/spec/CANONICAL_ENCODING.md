@@ -260,7 +260,9 @@ A linkage terms document is held to safe integers by schema too: every parse
 of one refuses an integer-valued number outside the safe range anywhere in the
 document, a transform parameter's value included, naming its path and the
 string-encoding remedy (`UNSAFE_INTEGER_MESSAGE`,
-`packages/core/src/config/linkageTermsSchema.ts`).
+`packages/core/src/config/linkageTermsSchema.ts`). Every parse also refuses a
+number that is not finite, naming its path (`NON_FINITE_NUMBER_MESSAGE`, same
+file).
 
 ### Strings
 

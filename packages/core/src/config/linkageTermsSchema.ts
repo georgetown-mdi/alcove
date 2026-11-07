@@ -168,6 +168,13 @@ export const NESTING_DEPTH_MESSAGE = `a linkage terms value must not nest deeper
 export const UNSAFE_INTEGER_MESSAGE =
   "a linkage terms integer must be within the safe range (|n| <= 2^53 - 1); string-encode it";
 
+/**
+ * Shared refusal message for a terms number that is not finite, which the
+ * canonical encoding refuses. A fixed literal.
+ */
+export const NON_FINITE_NUMBER_MESSAGE =
+  "a linkage terms number must be finite";
+
 // Declared in linkageTermsBounds.js to avoid an evaluation cycle with the
 // fan-out derivation, and re-exported here for consumers.
 export { MAX_LINKAGE_ENTRIES };
@@ -260,10 +267,10 @@ const recordedFreeTextValue = (schema: z.ZodString) =>
 export const nameValue = (schema: z.ZodString) =>
   schema.regex(NAME_SHAPE_PATTERN, NAME_SHAPE_MESSAGE);
 
-/** A string or key with an unpaired surrogate, an integer outside the safe
- * range, or a value nested too deep. */
+/** A string or key with an unpaired surrogate, a number that is not finite, an
+ * integer outside the safe range, or a value nested too deep. */
 type WellFormednessRefusal = {
-  reason: "lone-surrogate" | "unsafe-integer" | "too-deep";
+  reason: "lone-surrogate" | "non-finite" | "unsafe-integer" | "too-deep";
   path: PropertyKey[];
 };
 
@@ -272,15 +279,16 @@ const WELL_FORMEDNESS_MESSAGES: Record<
   string
 > = {
   "lone-surrogate": LONE_SURROGATE_MESSAGE,
+  "non-finite": NON_FINITE_NUMBER_MESSAGE,
   "unsafe-integer": UNSAFE_INTEGER_MESSAGE,
   "too-deep": NESTING_DEPTH_MESSAGE,
 };
 
 /**
  * The first string or key in `value` with an unpaired UTF-16 surrogate, the
- * first integer-valued number outside the safe range, or the first value
- * nested past {@link MAX_NESTING_DEPTH}, or undefined. A walk, so
- * it reaches `params` keys and arbitrary param values. Its width is bounded by
+ * first number that is not finite, the first integer-valued number outside the
+ * safe range, or the first value nested past {@link MAX_NESTING_DEPTH}, or
+ * undefined. A walk, so it reaches `params` keys and arbitrary param values. Its width is bounded by
  * the camelize pre-pass on every partner-reachable path. Its depth bound is its
  * own, since `LinkageTermsSchema` is also used bare and a deep value would
  * otherwise overflow the recursion.
@@ -294,10 +302,12 @@ function firstWellFormednessRefusal(
     return loneSurrogateIndex(value) >= 0
       ? { reason: "lone-surrogate", path }
       : undefined;
-  if (typeof value === "number")
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return { reason: "non-finite", path };
     return Number.isInteger(value) && !Number.isSafeInteger(value)
       ? { reason: "unsafe-integer", path }
       : undefined;
+  }
   if (value === null || typeof value !== "object") return undefined;
   if (depth >= MAX_NESTING_DEPTH) return { reason: "too-deep", path };
   if (Array.isArray(value)) {
@@ -1322,10 +1332,11 @@ const linkageTermsSchema = (
           path: [...refusal.path],
         });
     })
-    // Refuse an ill-formed UTF-16 string or an integer outside the safe range
-    // anywhere in the document. The terms are canonically encoded WHOLE -- by
-    // validateCompatibility and by computeTermsHash, which runs after the
-    // exchange has disclosed -- and the encoder refuses both, so a document
+    // Refuse an ill-formed UTF-16 string, a number that is not finite or an
+    // integer outside the safe range anywhere in the document. The terms are
+    // canonically encoded WHOLE -- by validateCompatibility and by
+    // computeTermsHash, which runs after the exchange has disclosed -- and the
+    // encoder refuses all three, so a document
     // admitted here ends the run with neither a receipt nor the record of that
     // disclosure. Every parse path inherits it, and a document too deeply
     // nested for the walk to finish is refused under its own message. Full

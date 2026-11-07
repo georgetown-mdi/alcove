@@ -8,3 +8,4 @@
 - - -> A partner payload whose rows are not the partner records the table pairs ends the run the same way, before the receipt, and its message states counts and no row index.
 - - -> The exchange holds a received payload's rows to the partner rows the table pairs before the receipt, so such a payload ends the run there first, as an `exchange` failure with exit code 76, and the table build's refusal is a second check of the same shape.
 - - -> A linkage terms document is held to safe integers by schema too: every parse of one refuses an integer-valued number outside the safe range anywhere in the document, a transform parameter's value included, naming its path and the string-encoding remedy (`UNSAFE_INTEGER_MESSAGE`, `packages/core/src/config/linkageTermsSchema.ts`).
+- - -> Every parse also refuses a number that is not finite, naming its path (`NON_FINITE_NUMBER_MESSAGE`, same file).

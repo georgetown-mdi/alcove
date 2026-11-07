@@ -22,6 +22,7 @@ import {
   LONE_SURROGATE_MESSAGE,
   LinkageTermsSchema,
   NESTING_DEPTH_MESSAGE,
+  NON_FINITE_NUMBER_MESSAGE,
   UNSAFE_INTEGER_MESSAGE,
   MAX_LINKAGE_ENTRIES,
   MAX_PARAMS_ENTRIES,
@@ -1040,6 +1041,55 @@ describe("an integer-valued number outside the safe range", () => {
     expect(
       safeParseLinkageTerms(withParams({ extra: 2 ** 53 - 1 })).success,
     ).toBe(true);
+  });
+});
+
+describe("a number that is not finite", () => {
+  const withParams = (params: Record<string, unknown>): unknown => ({
+    ...base,
+    linkageFields: [{ name: "ssn", type: "ssn" }],
+    linkageKeys: [
+      {
+        name: "SSN",
+        elements: [{ field: "ssn", transform: [{ function: "noop", params }] }],
+      },
+    ],
+  });
+  const paramPath = [
+    "linkageKeys",
+    0,
+    "elements",
+    0,
+    "transform",
+    0,
+    "params",
+    "extra",
+  ];
+
+  test.each([
+    ["Infinity", JSON.parse("1e999") as number],
+    ["-Infinity", -Infinity],
+  ])("%s is refused on every parse path, with its path", (_name, extra) => {
+    const raw = withParams({ extra });
+    expect(() => parseLinkageTerms(raw)).toThrow(NON_FINITE_NUMBER_MESSAGE);
+    for (const parse of [
+      safeParseLinkageTerms,
+      safeParseStoredLinkageTerms,
+      safeParseLinkageTermsTheReaderWrote,
+    ]) {
+      const result = parse(raw);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.issues).toHaveLength(1);
+      expect(result.error.issues[0].message).toBe(NON_FINITE_NUMBER_MESSAGE);
+      expect(result.error.issues[0].path).toEqual(paramPath);
+    }
+  });
+
+  test("leaves a fraction to parse", () => {
+    expect(safeParseLinkageTerms(withParams({ extra: 1.5 })).success).toBe(
+      true,
+    );
   });
 });
 

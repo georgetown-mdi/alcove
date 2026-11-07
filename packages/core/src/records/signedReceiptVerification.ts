@@ -16,6 +16,7 @@ import type { DualSignedRecord, SignedReceiptParty } from "./signedReceipt.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import type { HandshakeRole } from "../types.js";
 import { InternalConsistencyError } from "../errors.js";
+import { CanonicalEncodingError } from "../utils/canonical.js";
 
 // The verification consumer for the DUAL-SIGNED record (the signed evidence
 // bundle the signed-receipt step produces): per party it checks the record's
@@ -315,7 +316,8 @@ export async function signedRecordExpectations(
   let expectedTermsHash: string;
   try {
     expectedTermsHash = await computeTermsHash(localTerms, partnerTerms);
-  } catch {
+  } catch (err) {
+    if (!(err instanceof CanonicalEncodingError)) throw err;
     // Terms outside the canonical encoding domain cannot reproduce the hash:
     // a mismatch, not a throw, as for the unsigned record.
     expectedTermsHash = UNENCODABLE_TERMS_HASH;
