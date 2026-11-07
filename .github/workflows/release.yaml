@@ -123,6 +123,11 @@ jobs:
             echo "::error::Tag ${ALCOVE_TAG} names ${tagged}, but this run builds ${GITHUB_SHA}."
             exit 1
           fi
+          named="$(git -C "$repo" for-each-ref --format='%(tag)' "refs/tags/${ALCOVE_TAG}")"
+          if [ "$named" != "$ALCOVE_TAG" ]; then
+            echo "::error::Tag ${ALCOVE_TAG} is the signed tag object for ${named:-no tag}, not for ${ALCOVE_TAG}."
+            exit 1
+          fi
           git -C "$repo" -c gpg.ssh.allowedSignersFile="$signers" verify-tag "$ALCOVE_TAG"
 
   publish:

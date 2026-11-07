@@ -150,6 +150,7 @@ describe("the tag signature gate run against a repository", () => {
   const mainCommit = git("rev-parse", "HEAD");
   signTag("v1.0.0", maintainer);
   git("tag", "v1.0.1");
+  git("update-ref", "refs/tags/v9.9.9", git("rev-parse", "v1.0.0"));
   git("checkout", "--quiet", "-b", "release/v1.0.2");
   writeSigners(maintainer.signer + added.signer);
   git("commit", "--quiet", "-am", "Add a second signer");
@@ -225,6 +226,14 @@ describe("the tag signature gate run against a repository", () => {
   it("refuses a signed tag naming a commit other than the one the run builds", () => {
     const result = runGate("v1.0.0", addingCommit);
     expect(result.stdout).toMatch(/names \w+, but this run builds \w+/);
+    expect(result.status).not.toBe(0);
+  });
+
+  it("refuses a signed tag object pushed under another tag's name", () => {
+    const result = runGate("v9.9.9", mainCommit);
+    expect(result.stdout).toMatch(
+      /signed tag object for v1\.0\.0, not for v9\.9\.9/,
+    );
     expect(result.status).not.toBe(0);
   });
 });

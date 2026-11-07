@@ -533,6 +533,8 @@ done
 
 The fingerprint git printed must be one of these, and one of the two listed above.
 
+The signature does not say which release the tag object was made for, so also check its own name: `git for-each-ref --format='%(tag)' refs/tags/vX.Y.Z` must print `vX.Y.Z`. Any other name means a signed tag from another release was pushed under this one, and the check has failed.
+
 ## Software Bill of Materials (SBOM)
 
 An SBOM in CycloneDX format is generated as part of the release checklist (step 9) and attached to each GitHub Release. It covers the npm dependency tree and no other layer. Each image's OS packages are covered by the attribution lists beside `NOTICE`, per [CONTAINER_IMAGES.md](spec/CONTAINER_IMAGES.md#the-os-layer-attribution-lists), and by the [image vulnerability scan](#image-vulnerability-scan) for advisories against them.
