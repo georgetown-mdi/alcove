@@ -3150,6 +3150,52 @@ test("an unkeyed run uses the version the real rendezvous selected", async () =>
   expect(exchangeOptions.map((o) => o.unkeyedProtocolVersion)).toEqual([1, 1]);
 });
 
+test.each([
+  { channel: "sftp" as const, server: { host: "sftp.example.org" } },
+  { channel: "filedrop" as const, path: "/drop" },
+])(
+  "a $channel exchange breaks an equal-count role tie on identity",
+  async (block) => {
+    const spies = [
+      vi
+        .spyOn(FileSyncConnection.prototype, "open")
+        .mockResolvedValue(undefined),
+      vi
+        .spyOn(FileSyncConnection.prototype, "synchronize")
+        .mockImplementation(async function (this: FileSyncConnection) {
+          this.handshakeRole = "initiator";
+        }),
+      vi
+        .spyOn(FileSyncConnection.prototype, "start")
+        .mockImplementation(() => {}),
+      vi
+        .spyOn(FileSyncConnection.prototype, "close")
+        .mockResolvedValue(undefined),
+    ];
+    vi.mocked(runExchange).mockImplementationOnce((async () => ({
+      associationTable: [[], []],
+      partnerPayload: {},
+      matching: STUB_MATCHING,
+    })) as never);
+    try {
+      await runProtocol({
+        connection: block,
+        auth: null,
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test",
+      });
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+    expect(vi.mocked(runExchange)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runExchange).mock.calls[0]?.[3]).toMatchObject({
+      breakRoleTieOnIdentity: true,
+    });
+  },
+);
+
 test("an unkeyed run whose connection reports no selected versions leaves the protocol version unset", async () => {
   const { exchangeOptions } = await runPairRecordingVersionWiring(
     () => null,
