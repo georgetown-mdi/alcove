@@ -47,6 +47,10 @@ import {
   sanitizeForDisplay,
 } from "../../src/utils/sanitizeForDisplay";
 import {
+  CLOSED_CLASS_COUNTED_REPEATS,
+  ESCAPED_CARET_COUNTED_REPEATS,
+} from "../utils/oversizedPatterns";
+import {
   encodeRawInvitation,
   encodeRawInvitationPayload,
 } from "../utils/support";
@@ -301,6 +305,33 @@ test("the author's mint and the acceptor's decode give one verdict on the transf
   await expect(
     decodeInvitation(await encodeRawInvitation(pastCap)),
   ).rejects.toThrow(sizeRefusal);
+});
+
+test("decodeInvitation refuses an allowed_characters class over the weighted-size cap", async () => {
+  for (const allowedCharacters of [
+    CLOSED_CLASS_COUNTED_REPEATS,
+    ESCAPED_CARET_COUNTED_REPEATS,
+  ]) {
+    const token: InvitationToken = {
+      ...baseToken,
+      linkageTerms: {
+        ...baseTerms,
+        linkageFields: [
+          {
+            name: "last",
+            type: "last_name",
+            constraints: { allowedCharacters },
+          },
+          ...baseTerms.linkageFields,
+        ],
+      },
+    };
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(
+      /allowed_characters is too large: its size is \d+ \(.*\), over the limit of 1000\./,
+    );
+  }
 });
 
 test("decodeInvitation refuses a transform pattern declared as an object", async () => {

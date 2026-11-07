@@ -19,6 +19,10 @@ import {
   hmacSha256,
   toBase64Url,
 } from "../src/utils/crypto";
+import {
+  CLOSED_CLASS_COUNTED_REPEATS,
+  ESCAPED_CARET_COUNTED_REPEATS,
+} from "./utils/oversizedPatterns";
 
 const terms = getDefaultLinkageTerms("Agency A");
 
@@ -228,6 +232,60 @@ describe("terms update", () => {
     const err = await refusal(await authenticated(content, secret), secret);
     expect(err.check).toBe("format");
     expect(err.message).toContain('has the field "linkage_rule_set"');
+  });
+
+  describe("an allowed_characters class", () => {
+    async function updateWithLastNameClass(
+      allowedCharacters: string,
+      secret: string,
+    ): Promise<string> {
+      const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
+      const content = body(encoded);
+      const linkageTerms = content["linkageTerms"] as Record<string, unknown>;
+      const fields = linkageTerms["linkageFields"] as Array<
+        Record<string, unknown>
+      >;
+      content["linkageTerms"] = {
+        ...linkageTerms,
+        linkageFields: fields.map((field) =>
+          field["type"] === "last_name"
+            ? {
+                ...field,
+                constraints: { allowedCharacters },
+              }
+            : field,
+        ),
+      };
+      return authenticated(content, secret);
+    }
+
+    test("within the weighted-size cap is read", async () => {
+      const secret = generateSharedSecret();
+      const decoded = await decodeTermsUpdate(
+        await updateWithLastNameClass("A-Za-z '-", secret),
+        secret,
+      );
+      expect(
+        decoded.linkageTerms.linkageFields.filter(
+          (field) =>
+            field.type === "last_name" &&
+            field.constraints?.allowedCharacters === "A-Za-z '-",
+        ),
+      ).not.toHaveLength(0);
+    });
+
+    test.each([CLOSED_CLASS_COUNTED_REPEATS, ESCAPED_CARET_COUNTED_REPEATS])(
+      "over the weighted-size cap is refused by the format check (%#)",
+      async (allowedCharacters) => {
+        const secret = generateSharedSecret();
+        const err = await refusal(
+          await updateWithLastNameClass(allowedCharacters, secret),
+          secret,
+        );
+        expect(err.check).toBe("format");
+        expect(err.madeByNewerAlcove).toBe(false);
+      },
+    );
   });
 
   test("an unknown member of the about block is skipped, the MAC checked over the bytes as sent", async () => {

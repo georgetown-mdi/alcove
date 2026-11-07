@@ -27,7 +27,10 @@
 //     exact, collision-free set.
 
 import { compileLinearRegex } from "./utils/linearRegex.js";
-import type { CompiledLinearRegex } from "./utils/linearRegex.js";
+import {
+  allowedCharactersPattern,
+  patternRefusal,
+} from "./config/transformRegexDialect.js";
 import { referencedLinkageFieldNames } from "./config/linkageTermsSchema.js";
 import type {
   LinkageField,
@@ -80,19 +83,21 @@ interface ConstraintViolation {
 
 /** Whether `value` contains only characters in the field's `allowedCharacters`
  * class. `allowedCharacters` is partner-controlled (it arrives in the invitation
- * token), and {@link NameConstraintsSchema} only checks that it compiles as
- * the body of a `[...]` class -- not that it cannot break out of one. A
- * crafted value can close the class and inject regex structure (e.g.
- * `x](a+)+b[y`).
+ * token), and {@link NameConstraintsSchema} checks that the pattern this check
+ * compiles ({@link allowedCharactersPattern}) compiles within the transform
+ * patterns' weighted-size cap -- not that the class cannot break out of its
+ * brackets. A crafted value can close the class and inject regex structure
+ * (e.g. `x](a+)+b[y`).
  *
  * Two hazards, both guarded here:
  *
  * (1) ReDoS: the class is compiled under the linear-time engine the
  * transform-regex paths use ({@link compileLinearRegex}, re2js), so no partner
- * pattern reaches the backtracking native engine. A pattern that engine cannot
- * compile is treated as uncheckable (no violation, fail-open); {@link
- * NameConstraintsSchema} validates the class under the same engine, so that
- * fail-open path is unreachable for a class that passed terms validation.
+ * pattern reaches the backtracking native engine. A pattern {@link
+ * patternRefusal} refuses is treated as uncheckable and not compiled (no
+ * violation, fail-open); the schema applies the same check to the same
+ * pattern, so that path is unreachable for a class that passed terms
+ * validation.
  *
  * (2) Warning suppression, three sub-cases:
  *   - A breakout that injects a multi-character span or an empty-matchable
@@ -100,8 +105,8 @@ interface ConstraintViolation {
  *     one code point at a time as a FULL, anchored match (re2js `matches()`),
  *     not an unanchored find.
  *   - A leading `^`, which re2js treats as class negation, is closed by
- *     escaping it (and a following `-`) to a literal. A class that fails to
- *     compile once escaped is over-flagged rather than failed open.
+ *     escaping it (and a following `-`) to a literal; a class that no longer
+ *     compiles once escaped is refused at parse.
  *   - A class or branch that genuinely admits the single code point (a
  *     shorthand or Unicode property class, or an effective allow-all reached
  *     via breakout) is accepted as a limit rather than closed: it is
@@ -114,32 +119,9 @@ interface ConstraintViolation {
  * character must be in the class). The empty string trivially conforms.
  */
 function withinAllowedCharacters(value: string, allowed: string): boolean {
-  // A leading `^` is class NEGATION in re2js (`[^...]`), which would invert this
-  // check and suppress the advisory on every UNLISTED character. Escape it to a
-  // literal caret; escape a `-` immediately after it too, or `\^-X` would read as a
-  // range instead of a literal caret. If the escaped class still will not compile
-  // (an exotic leading-`^` combination), the catch over-flags rather than failing
-  // open. See the header (2) for the families this does and does not close.
-  let classBody = allowed;
-  if (allowed.startsWith("^-")) classBody = `\\^\\-${allowed.slice(2)}`;
-  else if (allowed.startsWith("^")) classBody = `\\^${allowed.slice(1)}`;
-  let oneOf: CompiledLinearRegex;
-  try {
-    oneOf = compileLinearRegex(`^[${classBody}]$`);
-  } catch {
-    // The escaped form did not compile. If the raw class does (an exotic leading-`^`
-    // combination such as `^]A[`, where the literal `\^` lets a following `]` close
-    // the class), our escape -- not the partner's class -- broke it: over-flag
-    // rather than fail open, which would suppress the advisory on every value,
-    // as a leading-`^` negation would otherwise achieve. A class that compiles
-    // neither way is genuinely uncheckable: fail open, as header (1) describes.
-    try {
-      compileLinearRegex(`^[${allowed}]$`);
-    } catch {
-      return true;
-    }
-    return false;
-  }
+  const pattern = allowedCharactersPattern(allowed);
+  if (patternRefusal(pattern) !== undefined) return true;
+  const oneOf = compileLinearRegex(pattern);
   for (const character of value) if (!oneOf.matches(character)) return false;
   return true;
 }

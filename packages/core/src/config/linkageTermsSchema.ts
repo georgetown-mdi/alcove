@@ -8,10 +8,11 @@ import { camelizeKeys, MAX_NESTING_DEPTH } from "../utils/camelizeKeys.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
 import { droppedSettingIssues } from "./unreadKeys.js";
 import { boundedArray } from "../utils/boundedArray.js";
-import { patternConformsToDialect } from "../utils/linearRegex.js";
 import {
+  allowedCharactersPattern,
   emptyMatchingDelimiterMessage,
   findTransformRegexRefusal,
+  patternRefusal,
   regexStepPatternParam,
   transformPatternSizeMessage,
 } from "./transformRegexDialect.js";
@@ -348,18 +349,25 @@ interface NameConstraints {
 }
 
 const NameConstraintsSchema: z.ZodType<NameConstraints> = z.object({
-  // Must compile as a class under the engine that runs it (re2js,
-  // valueConstraints.ts), a leading `^` escaped. An over-length value skips the
-  // compile and is refused by the ceiling alone
+  // The pattern the check in valueConstraints.ts compiles must compile under
+  // its engine within the transform patterns' weighted-size cap. An
+  // over-length value skips the compile and is refused by the ceiling alone
   // (docs/spec/TRANSFORM_REGEX_DIALECT.md#name-constraint-character-class).
   allowedCharacters: z
     .string()
     .check(maxCodeUnits(MAX_NAME_LENGTH))
-    .refine(
-      (val) =>
-        val.length > MAX_NAME_LENGTH || patternConformsToDialect(`[${val}]`),
-      { message: "allowed_characters must be a valid regex character class" },
-    )
+    .superRefine((val, ctx) => {
+      if (val.length > MAX_NAME_LENGTH) return;
+      const refusal = patternRefusal(allowedCharactersPattern(val));
+      if (refusal === undefined) return;
+      ctx.addIssue({
+        code: "custom",
+        message:
+          refusal.reason === "size"
+            ? `allowed_characters ${transformPatternSizeMessage(refusal.weightedSize)}`
+            : "allowed_characters must be a valid regex character class",
+      });
+    })
     .optional(),
   affixesAllowed: z.boolean().optional(),
   exclude: ExcludeSchema.optional(),

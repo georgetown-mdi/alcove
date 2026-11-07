@@ -54,6 +54,10 @@ import {
   MAX_NODE_COUNT,
   NestingDepthExceededError,
 } from "../../src/utils/camelizeKeys";
+import {
+  CLOSED_CLASS_COUNTED_REPEATS,
+  ESCAPED_CARET_COUNTED_REPEATS,
+} from "../utils/oversizedPatterns";
 
 const base = {
   version: "1.0.0",
@@ -309,6 +313,85 @@ test("allowedCharacters rejects a class the runtime engine cannot compile", () =
     if (result.success) continue;
     expect(result.error.issues[0].message).toMatch(/character class/);
   }
+});
+
+function termsWithAllowedCharacters(allowedCharacters: string) {
+  return {
+    ...base,
+    linkageFields: [
+      {
+        name: "lastName",
+        type: "last_name",
+        constraints: { allowedCharacters },
+      },
+    ],
+    linkageKeys: [{ name: "Last Name", elements: [{ field: "lastName" }] }],
+  };
+}
+
+function allowedCharactersMessages(allowedCharacters: string): string[] {
+  const result = safeParseLinkageTerms(
+    termsWithAllowedCharacters(allowedCharacters),
+  );
+  return result.success ? [] : result.error.issues.map((i) => i.message);
+}
+
+const ALLOWED_CHARACTERS_SIZE_MESSAGE =
+  /allowed_characters is too large: its size is \d+ \(.*\), over the limit of 1000\./;
+
+describe("allowedCharacters is held to the transform patterns' weighted-size cap", () => {
+  test("a class whose compiled pattern is over the cap is refused with the size message", () => {
+    expect(CLOSED_CLASS_COUNTED_REPEATS).toHaveLength(251);
+    const messages = allowedCharactersMessages(CLOSED_CLASS_COUNTED_REPEATS);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatch(ALLOWED_CHARACTERS_SIZE_MESSAGE);
+  });
+
+  test("the size is read from the pattern the check compiles, its leading caret escaped", () => {
+    expect(ESCAPED_CARET_COUNTED_REPEATS.length).toBeLessThanOrEqual(
+      MAX_NAME_LENGTH,
+    );
+    const messages = allowedCharactersMessages(ESCAPED_CARET_COUNTED_REPEATS);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatch(ALLOWED_CHARACTERS_SIZE_MESSAGE);
+  });
+
+  test("a class that no longer compiles once its leading caret is escaped is refused", () => {
+    expect(allowedCharactersMessages("^]A[")).toEqual([
+      "allowed_characters must be a valid regex character class",
+    ]);
+  });
+
+  test("the refusal holds on the parse of partner terms off the wire", () => {
+    expect(() =>
+      parseLinkageTerms(
+        termsWithAllowedCharacters(CLOSED_CLASS_COUNTED_REPEATS),
+      ),
+    ).toThrow(ALLOWED_CHARACTERS_SIZE_MESSAGE);
+    expect(() =>
+      parseLinkageTerms(
+        termsWithAllowedCharacters(ESCAPED_CARET_COUNTED_REPEATS),
+      ),
+    ).toThrow(ALLOWED_CHARACTERS_SIZE_MESSAGE);
+  });
+
+  test.each([
+    "A-Z ",
+    "A-Za-z '-",
+    "\\p{L}",
+    "\\p{L} '-",
+    "^A-Z",
+    "^-Z",
+    "A-Z^",
+    "a-z",
+    "]|\\w|[",
+  ])("the class %s still parses", (allowedCharacters) => {
+    expect(allowedCharactersMessages(allowedCharacters)).toEqual([]);
+  });
+
+  test("a class at the length ceiling of plain characters parses", () => {
+    expect(allowedCharactersMessages("a".repeat(MAX_NAME_LENGTH))).toEqual([]);
+  });
 });
 
 // --- parse vs safeParse ------------------------------------------------------

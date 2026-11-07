@@ -11,17 +11,15 @@ import {
   frozenLookupTable,
   frozenLookupTableEntry,
 } from "./utils/frozenLookupTable.js";
-import {
-  compileLinearRegex,
-  patternConformsToDialect,
-} from "./utils/linearRegex.js";
+import { compileLinearRegex } from "./utils/linearRegex.js";
 import {
   EMPTY_MATCHING_DELIMITER_FIELD_MESSAGE,
   emptyMatchingDelimiterMessage,
+  patternRefusal,
   splitDelimiterMatchesEmptyString,
-  transformPatternOverSizeCap,
   transformPatternSizeMessage,
 } from "./config/transformRegexDialect.js";
+import type { PatternRefusal } from "./config/transformRegexDialect.js";
 import {
   declaredTransformParamType,
   transformParamEntryTypeMessage,
@@ -1053,8 +1051,8 @@ export function fanOutReachedMatchingRefusal(): UsageError {
  *   expression. These patterns run under the linear-time engine (see
  *   utils/linearRegex.ts), so an unbounded pattern cannot hang on
  *   adversarial input; the tier instead marks raw-pattern inputs an editor should
- *   validate against the dialect ({@link patternConformsToDialect}, the same
- *   check {@link regexPatternSchema} applies) and present with extra care, since a
+ *   validate against the dialect ({@link patternRefusal}, the same check
+ *   {@link regexPatternSchema} applies) and present with extra care, since a
  *   pattern still shapes which records match.
  */
 type StandardizationFunctionTier = "standard" | "regex";
@@ -1110,8 +1108,8 @@ const noParams = z.object({});
 
 /**
  * A user-authored regular-expression param. Required, bounded in length, and
- * validated to compile under the linear-time dialect ({@link patternConformsToDialect})
- * within the weighted-size cap ({@link transformPatternOverSizeCap}) -- the same
+ * validated to compile under the linear-time dialect within the weighted-size
+ * cap ({@link patternRefusal}, one compile for both) -- the same
  * engine and the same checks the linkage-terms gate applies, so the editor accepts
  * the patterns an exchange will execute and rejects what RE2 drops (backreferences,
  * lookaround) or what the gate would refuse as too large. See docs/spec/PROTOCOL.md.
@@ -1140,39 +1138,34 @@ const regexPatternSchema = z
     // abort (Zod string checks are non-aborting), and RE2 compile is
     // super-linear in length, which a live editor preview must never pay on
     // the main thread.
-    if (
-      pattern.length > MAX_TRANSFORM_PATTERN_LENGTH ||
-      !patternConformsToDialect(pattern)
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message:
-          "must be a valid regular expression in the linear-time dialect " +
-          "(RE2 syntax; backreferences and lookaround are not supported)",
-      });
-      return;
-    }
-    const weightedSize = transformPatternOverSizeCap(pattern);
-    if (weightedSize !== undefined)
-      ctx.addIssue({
-        code: "custom",
-        message: transformPatternSizeMessage(weightedSize),
-      });
+    const refusal: PatternRefusal | undefined =
+      pattern.length > MAX_TRANSFORM_PATTERN_LENGTH
+        ? { reason: "nonconformant" }
+        : patternRefusal(pattern);
+    if (refusal === undefined) return;
+    ctx.addIssue({
+      code: "custom",
+      message:
+        refusal.reason === "size"
+          ? transformPatternSizeMessage(refusal.weightedSize)
+          : "must be a valid regular expression in the linear-time dialect " +
+            "(RE2 syntax; backreferences and lookaround are not supported)",
+    });
   });
 
 /**
  * `split_on`'s delimiter: a {@link regexPatternSchema} that also refuses a
  * delimiter matching the empty string, as both decode paths and the factory do
  * ({@link splitDelimiterMatchesEmptyString}). The empty delimiter is left to
- * that schema's minimum length, and a delimiter it refuses for length or
- * dialect is not compiled here.
+ * that schema's minimum length, and a delimiter it refuses for length,
+ * dialect, or size is not compiled here.
  */
 const splitDelimiterSchema = regexPatternSchema.superRefine(
   (delimiter, ctx) => {
     if (
       delimiter.length === 0 ||
       delimiter.length > MAX_TRANSFORM_PATTERN_LENGTH ||
-      !patternConformsToDialect(delimiter)
+      patternRefusal(delimiter) !== undefined
     )
       return;
     if (splitDelimiterMatchesEmptyString(delimiter))
