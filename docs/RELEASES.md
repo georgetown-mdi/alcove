@@ -400,7 +400,7 @@ cosign verify \
 
 Either works for an image pulled from either registry, because the signature covers the digest and both registries serve the same digest under each tag. Run the one naming a registry your network reaches, and check that the digest it reports is the one you pulled. Both `--certificate-` arguments are required:
 
-- `--certificate-identity-regexp` pins the signer. The certificate's identity is the workflow file's path in this repository plus the ref it ran from, so an anchored pattern refuses a signature produced by a different workflow here, by a branch run of this one, or by a fork.
+- `--certificate-identity-regexp` pins the signer. The certificate's identity is the workflow file's path in this repository plus the ref it ran from, so an anchored pattern refuses a signature produced by a different workflow here, by a branch run of this one, or by a fork. It accepts a signature from any release, though, so it does not bind a tag to its version: a registry tag moved to an older signed image still verifies. The digest comparison above is what binds the image you pulled to this release.
 - `--certificate-oidc-issuer` pins who vouched for that identity to GitHub Actions: verification compares the certificate's issuer for equality and refuses any mismatch.
 
 Omitting either, or loosening the pattern to something unanchored, accepts signatures a release did not produce.

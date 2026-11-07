@@ -289,8 +289,9 @@ export type ManagedExchangeRunOutcome =
  * benign too: its remedy is terms agreed on with the partner through a terms
  * update. A `"partner-protocol-refusal"` stop (this party refused what the
  * partner sent as not following the exchange protocol) can be met at any point
- * after the handshake, after sets of this party's may have moved, and is
- * benign too. */
+ * from the version hello on, after sets of this party's may have moved, and is
+ * benign too; a version refusal comes before the key exchange authenticates
+ * anything, so whoever passes frames between the parties can cause it. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"

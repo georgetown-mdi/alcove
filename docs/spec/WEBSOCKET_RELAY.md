@@ -59,6 +59,10 @@ A captured hello replayed before its expiry, at most 300 seconds after it was ma
 Whatever clock made a proof, the relay takes it only in the 305 seconds of its own clock before the proof's expiry.
 It exposes no data: the key exchange inside the relayed channel still needs the shared secret.
 
+**A stated limit: a refusal shows whether an id is enrolled.** The relay refuses a hello under an exchange id with no key as not enrolled (4003) before it checks the proof, and one under an enrolled id whose proof fails as 4004 or 4005.
+So anyone who can reach the relay learns from the close code whether an exchange id is enrolled there, as the registrar's answers show ([The registrar request proof](PROTOCOL.md#the-registrar-request-proof)).
+An exchange id an operator chooses should reveal nothing about the parties.
+
 ## The key table
 
 - **Where.** The relay reads the per-exchange keys from the SQLite file coturn reads its secrets from ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)): the runner's `--key-table`, else `ALCOVE_RELAY_TURNDB`, else `/var/lib/alcove-relay/turndb`.
@@ -76,6 +80,7 @@ It exposes no data: the key exchange inside the relayed channel still needs the 
 - **Nothing before both starts.** The relay forwards nothing until both parties have sent their start. A binary message before then, a second start, a second hello, and any other text frame are refused (4002).
 - **The first binary message.** A party sends it only once it has sent its own start and received its partner's.
 - **The end of a pairing.** A pairing ends at the first close of either socket, and the key may then pair again.
+- **A stated limit: the start a party receives is the relay's.** Nothing shows that the partner sent it, so a relay can send `paired` and `start` to a party whose partner never sent its start, and that ends the party's WebRTC wait ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay)). Sent to both parties, it moves onto the relay an exchange whose WebRTC path would have opened; sent to one, it fails a run that would have completed. The exchange's content stays under the application-layer encryption, and the relay sees the size and timing of each message it forwards.
 
 ## Forwarding
 
@@ -128,6 +133,7 @@ Given `--counters-file`, the standalone runner also keeps both totals in that fi
 - **The code.** A close with code 1000, or with no code, closes the partner with 1000. Any other end of a party's socket, a refusal included, closes the partner with 4000. A party closes with 1000 only on a clean close, so its partner never takes a failure for delivery.
 - **The wait.** A partner closed this way has 300 seconds, the close drain budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)), to read what is queued for it and answer the close, and is then dropped (`RELAY_CLOSE_WAIT_MS`). A socket the relay refuses has 10 seconds (`RELAY_REFUSAL_CLOSE_WAIT_MS`).
 - **Delivery.** TCP acknowledges a message to the relay, not to the partner, so a party knows its last message reached the partner only when the partner's close reaches it through the relay ([COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown)). When both parties close at once, the party whose close the relay reads first receives the relay's own close in answer. Its confirmation states that the relay received its frames and forwarded them in order, not that the partner read them; the other party's confirmation is the partner's close, as stated.
+- **A stated limit: the confirmation is the relay's word.** A party takes a 1000 close, or the partner's close sentinel, as the partner's close, and the relay can write either. A relay that withholds a party's last message and sends one makes that party's close report the message delivered, while the partner, still waiting for it, fails at its own inactivity bound. Only an authenticated end-of-stream acknowledgement would close this, and it is not built ([CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#end-of-stream-and-truncated-tail-detection)).
 
 ## Close codes
 

@@ -182,6 +182,10 @@ Verification applies to the CLI `sftp` channel only.
 A file-drop makes no SSH connection, so it runs no ssh2 `hostVerifier`.
 An attacker cannot induce the unpinned state to inject their own key, because the pin is configured out-of-band (or established on first use, below) and the invitation endpoint schema rejects a `host_key_fingerprint` field outright (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#transport-layer-authentication)).
 
+**A stated limit: the host-key types offered include `ssh-rsa`.**
+The host-key types a connection offers are not configurable: `provider_options.algorithms` admits no `serverHostKey` (`SFTP_ALGORITHMS_ALLOWED_SUBKEYS`, `packages/core/src/connection/sftpConnect.ts`), and the offer includes `ssh-rsa`, whose signature uses SHA-1.
+A server that offers only `ssh-rsa` is negotiated with, and a pin binds the server's key, not the signature algorithm ([FIPS_SFTP_PROFILE.md](../FIPS_SFTP_PROFILE.md#host-key-types-cannot-be-constrained)).
+
 **No-pin default: fail-closed.**
 When no fingerprint is pinned, `FileSyncConnection.open` installs the fail-closed verifier, which refuses the connection before authentication (so no credential reaches an unverified server) with an error naming the presented fingerprint to pin.
 An unpinned connection is never warn-and-proceed: a key nothing has verified is never trusted, and the recovery from the refusal is the first-use flow below, which is what makes a pin obtainable for an operator who has none.

@@ -420,9 +420,8 @@ describe("session recovery", () => {
 
   test("resolves a re-issued rename whose destination already exists", async () => {
     // A pre-drop rename that landed leaves the source gone (code 2) on the
-    // re-issue; because every rename destination is self-prefixed, a present
-    // destination is unambiguously our own landed attempt, so the resolver
-    // confirms it via exists(dest) and resolves as success.
+    // re-issue; the resolver takes a present destination as our own landed
+    // attempt, confirming it via exists(dest), and resolves as success.
     const wrapper = sessionWrapper();
     const { client, connect, state } = droppable(wrapper);
     let renameCalls = 0;

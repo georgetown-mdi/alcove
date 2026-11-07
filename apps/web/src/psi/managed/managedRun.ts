@@ -532,8 +532,10 @@ export function rerunFailureLastRun(
  * after the terms exchange, `"partner-set-too-large"`,
  * `"partner-refused-set"` and `"partner-storage"` after the terms exchange,
  * `"partner-refused-terms"`
- * at the terms exchange, `"partner-protocol-refusal"` at any point after the
- * handshake, `"relay-registration"` before connecting, once the registrar
+ * at the terms exchange, `"partner-protocol-refusal"` at any point from the
+ * version hello on (a version refusal is unauthenticated, so whoever passes
+ * frames between the parties can cause it), `"relay-registration"` before
+ * connecting, once the registrar
  * did not confirm a pending registration, and `"stopped"` before the
  * rotation-in-flight marker, once this window's re-invite or relay
  * enrollment stopped the run. */

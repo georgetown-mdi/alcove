@@ -303,7 +303,7 @@ It reads two secrets and six variables. The release upload and the upload from a
 
 | Name | Kind | Set on | What it is |
 | ---- | ---- | ------ | ---------- |
-| `CLOUDFLARE_API_TOKEN` | Secret | Environments `Production` and `Staging` | An API token scoped to Account -> Cloudflare Pages -> Edit on the one account, and nothing else |
+| `CLOUDFLARE_API_TOKEN` | Secret | Environments `Production` and `Staging` | An API token scoped to Account -> Cloudflare Pages -> Edit on the one account, and nothing else. The grant is account-wide, so `Staging`'s token can deploy production too, without a signed manifest: the environment rule keeps a staging job from `Production`'s token, not from production. After a token incident, rotate the token on both environments |
 | `CLOUDFLARE_ACCOUNT_ID` | Secret | Environments `Production` and `Staging` | The Cloudflare account the project is in |
 | `CLOUDFLARE_PAGES_PROJECT` | Variable | Environments `Production` and `Staging` | The Pages project's name |
 | `CLOUDFLARE_DEMO_PAGES_PROJECT` | Variable | Environments `Production` and `Staging` | The demo site's Pages project's name; unset, the job skips the demo site's upload |
