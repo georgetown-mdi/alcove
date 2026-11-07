@@ -137,7 +137,7 @@ A 33rd connection from one address, such as a 33rd party behind one network addr
 On 8443 nginx counts a request once its headers have arrived, so a direct connection that has not sent them is bounded instead by the TLS front's 30-second `client_header_timeout`.
 
 The broker's TLS front holds **512** connections (`worker_connections`), 256 WebSocket clients at two connections each, the most the 443 front's 1024 connections pass at four each.
-So one address holds at most an eighth of those clients on each path.
+So one address holds at most an eighth of those clients on each path once their headers have arrived; before that, direct connections on 8443 are bounded only by the 30-second header timeout, so one address can hold every free connection for that long.
 The value is sized against the relay host's memory, read on the host on 2026-11-07 with `free -m` and `systemctl show`: 412 MiB in total, 121 MiB of it available, and 1435 MiB of swap, with the TLS front's unit using 6.3 MiB while it was configured for 256 connections.
 The front's memory with all 512 in use is not yet measured on that host; `scripts/check-broker-front-logs.mjs` prints it for the pinned image on its CI runner.
 
