@@ -25,6 +25,7 @@ import {
 } from "../../src/errors";
 import { runKex } from "../../src/kex";
 import * as BoundedJson from "../../src/utils/boundedJson";
+import { encodeHello, helloWire, readHello } from "../../src/versionHello";
 import { makeMockClient } from "../utils/support";
 
 vi.mock("../../src/utils/boundedJson", async (importOriginal) => {
@@ -170,8 +171,9 @@ describe.each(MODES)("message 3 failing after $mode", ({ opts }) => {
 });
 
 // A message 2 whose hello does not parse: the initiator aborts before it has
-// negotiated, so at envelope version 1, while the responder has negotiated
-// version 2 (docs/spec/FILE_SYNC.md, "Message body format").
+// negotiated, at envelope version 1 as every JSON message is, while the
+// responder has negotiated version 2 (docs/spec/FILE_SYNC.md, "Message body
+// format").
 describe.each(MODES)("message 2 failing after $mode", ({ opts }) => {
   test("the responder reads the initiator's pre-negotiation abort and fails with the generic failure, not an incompatible version", async () => {
     const files = new Map<string, Buffer>();
@@ -206,3 +208,87 @@ describe.each(MODES)("message 2 failing after $mode", ({ opts }) => {
     ]);
   });
 });
+
+// Rewrites the hello of one key-exchange message on the wire to offer envelope
+// version 1 alone, so the two parties adopt different envelope versions before
+// either tag is checked.
+function narrowHelloToEnvelope1(
+  conn: MessageConnection,
+  kexMsg: "1" | "2",
+): void {
+  const send = conn.send.bind(conn);
+  conn.send = (message: unknown) => {
+    const msg = message as { kexMsg?: string; hello?: string };
+    if (msg.kexMsg !== kexMsg || msg.hello === undefined) return send(message);
+    const hello = readHello(msg.hello);
+    if (hello === undefined) throw new Error("the test's hello did not parse");
+    return send({
+      ...msg,
+      hello: helloWire(encodeHello({ ...hello.versions, envelope: [1] })),
+    });
+  };
+}
+
+// Each side writes every JSON message at envelope version 1, so the abort and
+// its reply are read and consumed whichever envelope version each side adopted
+// (docs/spec/FILE_SYNC.md, "Message body format").
+describe.each(MODES)(
+  "a hello narrowed to envelope version 1 after $mode",
+  ({ opts }) => {
+    test.each([
+      { kexMsg: "1" as const, closing: "initiator" },
+      { kexMsg: "2" as const, closing: "responder" },
+    ])(
+      "in message $kexMsg, both sides fail with the generic failure and the $closing's close does not wait out the drain",
+      async ({ kexMsg, closing }) => {
+        expect(CLOSE_WITHIN_MS).toBeLessThan(TERMINAL_FRAME_DRAIN_TIMEOUT_MS);
+        const files = new Map<string, Buffer>();
+        const a = party(ID_A, files, opts);
+        const b = party(ID_B, files, opts);
+        await Promise.all([a.synchronize(), b.synchronize()]);
+        const initiatorConn = fromEventConnection(a, {
+          inactivityTimeoutMs: 3000,
+        });
+        const responderConn = fromEventConnection(b, {
+          inactivityTimeoutMs: 3000,
+        });
+        a.start();
+        b.start();
+        narrowHelloToEnvelope1(
+          kexMsg === "1" ? initiatorConn : responderConn,
+          kexMsg,
+        );
+
+        const [initiatorFailure, responderFailure] = await Promise.all([
+          runKex(initiatorConn, "initiator", PSK, true).catch(
+            (e: unknown) => e,
+          ),
+          runKex(responderConn, "responder", PSK, true).catch(
+            (e: unknown) => e,
+          ),
+        ]);
+
+        for (const failure of [initiatorFailure, responderFailure]) {
+          expect(failure).toBeInstanceOf(AuthenticationError);
+          expect((failure as AuthenticationError).kind).toBe("security");
+          expect(failure).not.toBeInstanceOf(PartnerProtocolRefusalError);
+        }
+
+        const closingSide = closing === "initiator" ? a : b;
+        const started = Date.now();
+        const outcome = await Promise.race([
+          closingSide.close().then(() => "closed"),
+          delay(CLOSE_WITHIN_MS).then(() => "still waiting"),
+        ]);
+        expect(
+          outcome,
+          `${closing} close after ${Date.now() - started} ms`,
+        ).toBe("closed");
+        await Promise.all([
+          initiatorConn.close().catch(() => {}),
+          responderConn.close().catch(() => {}),
+        ]);
+      },
+    );
+  },
+);

@@ -43,6 +43,7 @@ import {
   MESSAGE_TYPE_BINARY,
   MESSAGE_HEADER_BYTES,
   envelopeVersionForFrame,
+  envelopeVersionToWrite,
   messageTypeLabel,
   serializeFileSyncMessageHeader,
   deserializeFileSyncMessage,
@@ -439,7 +440,8 @@ export class FileSyncMessageLoop {
   private inboundFrameCap: number | undefined;
 
   // The envelope version the key exchange negotiated, and whether the
-  // partner's first message has been delivered; see envelopeVersionForFrame.
+  // partner's first message has been delivered; see envelopeVersionForFrame
+  // and envelopeVersionToWrite.
   private negotiatedEnvelopeVersion: number | undefined;
   private partnerFirstFrameDelivered = false;
 
@@ -694,7 +696,7 @@ export class FileSyncMessageLoop {
       const header = serializeFileSyncMessageHeader(
         type,
         seq,
-        envelopeVersionForFrame(seq === 0, this.negotiatedEnvelopeVersion),
+        envelopeVersionToWrite(type, seq === 0, this.negotiatedEnvelopeVersion),
       );
       const byteLength = MESSAGE_HEADER_BYTES + payloadBytes.length;
       const outName = messageFilename({
@@ -1637,8 +1639,8 @@ export class FileSyncMessageLoop {
       : MAX_FRAME_SIZE_BYTES;
   }
 
-  // The negotiated envelope version for frames after each party's first. Only
-  // a version this build implements is accepted.
+  // The negotiated envelope version for binary frames after each party's
+  // first. Only a version this build implements is accepted.
   useEnvelopeVersion(version: number): void {
     if (!OFFERED_ENVELOPE_VERSIONS.includes(version))
       throw new InternalConsistencyError(

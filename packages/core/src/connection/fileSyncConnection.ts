@@ -1185,8 +1185,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
    *
    * A run with no key exchange passes `selectVersions`: the hellos then offer
    * this build's protocol and envelope versions, the two parties select from
-   * them ({@link selectedVersions}), and every message frame after this
-   * party's first uses the selected envelope version.
+   * them ({@link selectedVersions}), and every binary message frame after
+   * this party's first uses the selected envelope version.
    */
   async synchronize(options: SynchronizeOptions = {}) {
     const scope = this.validateSynchronizeEntry();

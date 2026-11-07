@@ -8,16 +8,18 @@
 // See docs/spec/FILE_SYNC.md#file-taxonomy.
 //
 // MESSAGE_ENVELOPE_VERSION is byte 0 of each party's first message file, the
-// one that holds its version hello, and stays 1 permanently so a reader of any
-// version reads that frame; later frames hold the version the key exchange
-// negotiated (envelopeVersionForFrame).
+// one that holds its version hello, and of every JSON message, and stays 1
+// permanently so a reader of any version reads those frames; later binary
+// frames hold the version the key exchange negotiated (envelopeVersionToWrite).
 /** @internal */
 export const MESSAGE_ENVELOPE_VERSION = 1;
+/** @internal */
+export const MESSAGE_TYPE_OBJECT = 0;
 
 /**
- * The envelope version of a message file: {@link MESSAGE_ENVELOPE_VERSION} for
- * a party's first, and the negotiated version for each later one where the
- * key exchange negotiated one.
+ * The envelope version a reader expects on a message file:
+ * {@link MESSAGE_ENVELOPE_VERSION} for a party's first, and the negotiated
+ * version for each later one where the key exchange negotiated one.
  *
  * @internal exported for the envelope-version test.
  */
@@ -29,8 +31,24 @@ export function envelopeVersionForFrame(
     ? MESSAGE_ENVELOPE_VERSION
     : (negotiated ?? MESSAGE_ENVELOPE_VERSION);
 }
-/** @internal */
-export const MESSAGE_TYPE_OBJECT = 0;
+
+/**
+ * The envelope version a party writes on a message file:
+ * {@link MESSAGE_ENVELOPE_VERSION} for every JSON message, so a key-exchange
+ * abort is read as one whichever version each party adopted, and
+ * {@link envelopeVersionForFrame} for a binary frame.
+ *
+ * @internal exported for the envelope-version test.
+ */
+export function envelopeVersionToWrite(
+  type: number,
+  firstFrame: boolean,
+  negotiated: number | undefined,
+): number {
+  return type === MESSAGE_TYPE_OBJECT
+    ? MESSAGE_ENVELOPE_VERSION
+    : envelopeVersionForFrame(firstFrame, negotiated);
+}
 /** @internal */
 export const MESSAGE_TYPE_BINARY = 1;
 /** @internal */
@@ -110,8 +128,8 @@ export class IncompatibleEnvelopeVersionError extends Error {
  * structural failure. The payload is not decoded, so a frame past Node's
  * maximum string length can be read. A JSON message at
  * {@link MESSAGE_ENVELOPE_VERSION} is read in place of `expectedVersion`: it
- * is how a party sends an abort before it has negotiated, and every envelope
- * version shares this layout (docs/spec/FILE_SYNC.md, "Message body format").
+ * is the version every JSON message is written at, and every envelope version
+ * shares this layout (docs/spec/FILE_SYNC.md, "Message body format").
  */
 export function deserializeFileSyncMessage(
   raw: Uint8Array,

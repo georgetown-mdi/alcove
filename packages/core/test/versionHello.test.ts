@@ -31,7 +31,10 @@ import {
 import { EncryptedMessageConnection } from "../src/connection/encryptedMessageConnection";
 import {
   MESSAGE_ENVELOPE_VERSION,
+  MESSAGE_TYPE_BINARY,
+  MESSAGE_TYPE_OBJECT,
   envelopeVersionForFrame,
+  envelopeVersionToWrite,
 } from "../src/connection/fileSyncFraming";
 import { enc, fromBase64Url, toBase64Url } from "../src/utils/crypto";
 import { deriveKeyAgreement } from "../src/kex";
@@ -480,14 +483,33 @@ describe("the negotiated envelope version", () => {
     expect(envelopeVersionForFrame(false, undefined)).toBe(1);
   });
 
-  test("this build offers envelope versions 1 and 2, keeping 1, the version a party aborts at before it has negotiated", () => {
+  test("a party writes every JSON message at version 1 whatever was negotiated, and a binary frame at the version due", () => {
+    for (const firstFrame of [true, false])
+      for (const negotiated of [undefined, 1, 2, 7])
+        expect(
+          envelopeVersionToWrite(MESSAGE_TYPE_OBJECT, firstFrame, negotiated),
+        ).toBe(MESSAGE_ENVELOPE_VERSION);
+    for (const negotiated of [1, 2, 7]) {
+      expect(
+        envelopeVersionToWrite(MESSAGE_TYPE_BINARY, true, negotiated),
+      ).toBe(1);
+      expect(
+        envelopeVersionToWrite(MESSAGE_TYPE_BINARY, false, negotiated),
+      ).toBe(negotiated);
+    }
+    expect(envelopeVersionToWrite(MESSAGE_TYPE_BINARY, false, undefined)).toBe(
+      1,
+    );
+  });
+
+  test("this build offers envelope versions 1 and 2, keeping 1, the version every JSON message is written at", () => {
     for (const approvedKexSuitesOnly of [false, true])
       expect(
         supportedVersions({ approvedKexSuitesOnly }).envelope,
-        "A party that aborts before it has negotiated sends that abort at " +
-          "envelope version 1, which a reader takes on a JSON message in " +
-          "place of the negotiated version (docs/spec/FILE_SYNC.md, Message " +
-          "body format); a build dropping version 1 settles that first.",
+        "Every JSON message is written at envelope version 1, which a " +
+          "reader takes on a JSON message in place of the negotiated " +
+          "version (docs/spec/FILE_SYNC.md, Message body format); a build " +
+          "dropping version 1 settles that first.",
       ).toEqual([MESSAGE_ENVELOPE_VERSION, ENVELOPE_VERSION]);
   });
 });
