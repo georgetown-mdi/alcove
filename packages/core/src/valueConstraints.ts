@@ -83,11 +83,12 @@ interface ConstraintViolation {
 
 /** Whether `value` contains only characters in the field's `allowedCharacters`
  * class. `allowedCharacters` is partner-controlled (it arrives in the invitation
- * token), and {@link NameConstraintsSchema} checks that the pattern this check
- * compiles ({@link allowedCharactersPattern}) compiles within the transform
- * patterns' weighted-size cap -- not that the class cannot break out of its
- * brackets. A crafted value can close the class and inject regex structure
- * (e.g. `x](a+)+b[y`).
+ * token), and the linkage-terms schema's regex walk ({@link
+ * findNameClassRefusal}) checks that the pattern this check compiles ({@link
+ * allowedCharactersPattern}) compiles within the transform patterns'
+ * weighted-size cap -- not that the class cannot break out of its brackets. A
+ * crafted value can close the class and inject regex structure (e.g.
+ * `x](a+)+b[y`).
  *
  * Two hazards, both guarded here:
  *

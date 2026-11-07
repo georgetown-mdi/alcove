@@ -1,5 +1,6 @@
+import { RE2JS } from "re2js";
 import { ZodError } from "zod";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   deriveAcceptedLinkageTerms,
@@ -33,9 +34,15 @@ import {
   MAX_KEY_ELEMENTS,
   MAX_PAYLOAD_ENTRIES,
 } from "../../src/config/linkageTermsSchema";
-import type { LinkageKey } from "../../src/config/linkageTermsSchema";
+import type {
+  LinkageField,
+  LinkageKey,
+} from "../../src/config/linkageTermsSchema";
 import { ExchangeSpecSchema } from "../../src/config/exchangeSpec";
 import {
+  allowedCharactersPattern,
+  findNameClassRefusal,
+  findTransformRegexRefusal,
   MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE,
   transformPatternSizeMessage,
 } from "../../src/config/transformRegexDialect";
@@ -391,6 +398,129 @@ describe("allowedCharacters is held to the transform patterns' weighted-size cap
 
   test("a class at the length ceiling of plain characters parses", () => {
     expect(allowedCharactersMessages("a".repeat(MAX_NAME_LENGTH))).toEqual([]);
+  });
+});
+
+describe("the document's name-constraint classes are checked in one walk", () => {
+  function termsWithClasses(classAt: (fieldIndex: number) => string) {
+    return {
+      ...base,
+      linkageFields: Array.from({ length: MAX_LINKAGE_ENTRIES }, (_, i) => ({
+        name: `lastName${i}`,
+        type: "last_name",
+        constraints: { allowedCharacters: classAt(i) },
+      })),
+      linkageKeys: [{ name: "Last Name", elements: [{ field: "lastName0" }] }],
+    };
+  }
+
+  // Each call is counted against the built patterns `classes` holds, so a
+  // compile the rest of the parse makes is not counted.
+  function overCapCompiles(classes: string[]): {
+    issues: { path: PropertyKey[]; message: string }[];
+    compiles: number;
+  } {
+    const builtPatterns = new Set(classes.map(allowedCharactersPattern));
+    const compile = vi.spyOn(RE2JS, "compile");
+    try {
+      const result = safeParseLinkageTerms(termsWithClasses((i) => classes[i]));
+      return {
+        issues: result.success ? [] : result.error.issues,
+        compiles: compile.mock.calls.filter(([pattern]) =>
+          builtPatterns.has(pattern),
+        ).length,
+      };
+    } finally {
+      compile.mockRestore();
+    }
+  }
+
+  test("one over-cap class in every name field is refused at the first field and compiled once", () => {
+    const { issues, compiles } = overCapCompiles(
+      Array.from(
+        { length: MAX_LINKAGE_ENTRIES },
+        () => CLOSED_CLASS_COUNTED_REPEATS,
+      ),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual([
+      "linkageFields",
+      0,
+      "constraints",
+      "allowedCharacters",
+    ]);
+    expect(issues[0].message).toMatch(ALLOWED_CHARACTERS_SIZE_MESSAGE);
+    expect(compiles).toBe(1);
+  });
+
+  test("distinct over-cap classes in every name field are refused at the first field with one over-cap compile", () => {
+    const classes = Array.from(
+      { length: MAX_LINKAGE_ENTRIES },
+      (_, i) =>
+        `${CLOSED_CLASS_COUNTED_REPEATS}${String.fromCodePoint(0x100 + i)}`,
+    );
+    expect(new Set(classes).size).toBe(MAX_LINKAGE_ENTRIES);
+    const { issues, compiles } = overCapCompiles(classes);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual([
+      "linkageFields",
+      0,
+      "constraints",
+      "allowedCharacters",
+    ]);
+    expect(issues[0].message).toMatch(ALLOWED_CHARACTERS_SIZE_MESSAGE);
+    expect(compiles).toBe(1);
+  });
+
+  test("a class left when the walk's budget runs out is refused as a transform pattern is", () => {
+    const linkageFields: LinkageField[] = [
+      { name: "ssn", type: "ssn" },
+      {
+        name: "lastName",
+        type: "last_name",
+        constraints: { allowedCharacters: "A-Z" },
+      },
+    ];
+    expect(findNameClassRefusal({ linkageFields })).toBeUndefined();
+    expect(
+      findNameClassRefusal({ linkageFields }, { totalBudgetMs: 0 }),
+    ).toEqual({ reason: "nonconformant", fieldIndex: 1 });
+    expect(
+      findTransformRegexRefusal(
+        {
+          linkageKeys: [
+            {
+              name: "Last Name",
+              elements: [
+                {
+                  field: "lastName",
+                  transform: [
+                    { function: "filter_regex", params: { pattern: "A-Z" } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        { totalBudgetMs: 0 },
+      ),
+    ).toEqual({ reason: "nonconformant" });
+  });
+
+  test("a walk given an earlier walk's start shares its budget", () => {
+    const linkageFields: LinkageField[] = [
+      {
+        name: "lastName",
+        type: "last_name",
+        constraints: { allowedCharacters: "A-Z" },
+      },
+    ];
+    expect(
+      findNameClassRefusal(
+        { linkageFields },
+        { totalBudgetMs: 60_000, startedAt: performance.now() - 60_000 },
+      ),
+    ).toEqual({ reason: "nonconformant", fieldIndex: 0 });
   });
 });
 

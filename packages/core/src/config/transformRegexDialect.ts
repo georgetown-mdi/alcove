@@ -41,9 +41,10 @@ export function regexStepPatternParam(
 }
 
 /**
- * Monotonic-clock budget, in milliseconds, for the conformance walk over one
- * terms set, since keys x elements x steps can make compilation itself a
- * denial of service; patterns left when it runs out are refused.
+ * Monotonic-clock budget, in milliseconds, for the conformance walks over one
+ * terms set, its transform patterns and then its name-constraint classes,
+ * since keys x elements x steps can make compilation itself a denial of
+ * service; patterns left when it runs out are refused.
  */
 const REGEX_DIALECT_TOTAL_BUDGET_MS = 2000;
 
@@ -150,6 +151,11 @@ interface RegexDialectBudget {
    * only), none is refused.
    */
   maxPatternLength?: number;
+  /**
+   * The `performance.now()` reading the budget runs from, so walks over one
+   * document share one budget; omitted, the walk's own start.
+   */
+  startedAt?: number;
 }
 
 /** Why {@link findTransformRegexRefusal} refused a terms set. */
@@ -195,7 +201,7 @@ export function findTransformRegexRefusal(
   const totalBudgetMs = budget.totalBudgetMs ?? REGEX_DIALECT_TOTAL_BUDGET_MS;
   const maxPatternLength = budget.maxPatternLength ?? Infinity;
   // Monotonic, so a backward system-clock step cannot leave the walk unbounded.
-  const startedAt = performance.now();
+  const startedAt = budget.startedAt ?? performance.now();
 
   for (const [keyIndex, key] of terms.linkageKeys.entries()) {
     for (const [elementIndex, element] of key.elements.entries()) {
@@ -235,6 +241,54 @@ export function findTransformRegexRefusal(
           };
       }
     }
+  }
+  return undefined;
+}
+
+/** Optional overrides for {@link findNameClassRefusal}. */
+interface NameClassBudget extends Pick<
+  RegexDialectBudget,
+  "totalBudgetMs" | "startedAt"
+> {
+  /**
+   * Longest class compiled; a longer one is skipped, since the field's own
+   * length ceiling refuses it. The schema passes MAX_NAME_LENGTH; omitted
+   * (unit tests only), none is skipped.
+   */
+  maxClassLength?: number;
+}
+
+/**
+ * Why {@link findNameClassRefusal} refused the `allowedCharacters` class of
+ * `linkageFields[fieldIndex]`: a {@link PatternRefusal} of its built pattern,
+ * or `nonconformant` for a class left when the time budget ran out.
+ */
+export type NameClassRefusal = PatternRefusal & { fieldIndex: number };
+
+/**
+ * The first name field whose `allowedCharacters` class is refused, or
+ * `undefined`: its {@link allowedCharactersPattern} fails {@link
+ * patternRefusal}, or it is left when the time budget runs out. Passing the
+ * transform walk's `startedAt` puts both walks under one budget.
+ */
+export function findNameClassRefusal(
+  terms: Pick<LinkageTerms, "linkageFields">,
+  budget: NameClassBudget = {},
+): NameClassRefusal | undefined {
+  const totalBudgetMs = budget.totalBudgetMs ?? REGEX_DIALECT_TOTAL_BUDGET_MS;
+  const maxClassLength = budget.maxClassLength ?? Infinity;
+  const startedAt = budget.startedAt ?? performance.now();
+
+  for (const [fieldIndex, field] of terms.linkageFields.entries()) {
+    if (field.type !== "first_name" && field.type !== "last_name") continue;
+    const allowedCharacters = field.constraints?.allowedCharacters;
+    if (typeof allowedCharacters !== "string") continue;
+    if (allowedCharacters.length > maxClassLength) continue;
+
+    if (performance.now() - startedAt >= totalBudgetMs)
+      return { reason: "nonconformant", fieldIndex };
+    const refusal = patternRefusal(allowedCharactersPattern(allowedCharacters));
+    if (refusal !== undefined) return { ...refusal, fieldIndex };
   }
   return undefined;
 }
