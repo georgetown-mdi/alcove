@@ -8,6 +8,7 @@ import logLibrary from "loglevel";
 
 import {
   ConnectionError,
+  EncryptedMessageConnection,
   PEERJS_CHUNK_MTU,
   generateSharedSecret,
   packCloseSentinel,
@@ -665,6 +666,41 @@ test("an over-cap inbound frame fails the connection closed", async () => {
   expect(refusal?.kind).toBe("protocol");
   expect(refusal?.message).toContain("4096");
 }, 120_000);
+
+test.each([1, 2])(
+  "an over-cap inbound frame under envelope version %i reaches the caller of the encrypted connection as a protocol failure",
+  async (envelope) => {
+    const common = partyOptions(generateSharedSecret());
+    const [inviter, acceptor] = await Promise.all([
+      openWebRtcMessageConnection({
+        ...common,
+        role: "inviter",
+        inboundFrames: () =>
+          boundedInboundFramesWithBounds({ maxFrameBytes: 4_096 }),
+      }),
+      openWebRtcMessageConnection({ ...common, role: "acceptor" }),
+    ]);
+    openConnections.push(inviter, acceptor);
+    const keying = {
+      sessionKey: new Uint8Array(32).fill(0x3c) as Uint8Array<ArrayBuffer>,
+      negotiated: { kex: 3, protocol: 1, envelope },
+    };
+    const [receiving, sending] = await Promise.all([
+      EncryptedMessageConnection.create(inviter, keying, "initiator"),
+      EncryptedMessageConnection.create(acceptor, keying, "responder"),
+    ]);
+
+    await sending.send(new Uint8Array(64 * 1024));
+    const refusal = await receiving.receive().then(
+      () => undefined,
+      (err: unknown) => err as ConnectionError,
+    );
+    expect(refusal).toBeInstanceOf(ConnectionError);
+    expect(refusal?.kind).toBe("protocol");
+    expect(refusal?.message).toContain("exceeds its 4096-byte size limit");
+  },
+  120_000,
+);
 
 test("a peer that reads the in-band close closes the channel behind it", async () => {
   // What a browser partner is waiting on: PeerJS reads delivery off its own

@@ -471,6 +471,43 @@ test("a partner sending past the raised queue bound is still refused", async () 
   );
 });
 
+test("a partner sending past the raised queue bound behind a reply under its cap is refused with that overflow at the restore", async () => {
+  let raised = 0;
+  let leftQueued = 0;
+  const error = await queuedReceiverAgainst(async (conn, request, receiver) => {
+    raised = singlePassReplyQueueBytes(
+      receiver,
+      singlePassReplyByteCap(1, senderSize, receiverSize, request.byteLength),
+    );
+    const sender = makeParticipant(psiLibrary, "starter");
+    const { setup } = await sender.createServerSetup(senderSet.slice(0, 2));
+    const response = await sender.processClientRequest(request);
+    let queued = 0;
+    for (const frame of singlePassReplyParts(
+      setup,
+      response,
+      encodeSinglePassReplyTail(2, [-1, -1]),
+      psiSetPartPayloadBytes(receiver),
+    )) {
+      queued += frame.byteLength;
+      await conn.send(frame);
+    }
+    const replyBytes = queued;
+    while (queued <= raised) {
+      queued += LOWERED_FRAME_BOUND;
+      await conn.send(new Uint8Array(LOWERED_FRAME_BOUND));
+    }
+    leftQueued = queued - LOWERED_FRAME_BOUND - replyBytes;
+  });
+  // What the reply leaves queued is past the built bound, so the restore
+  // refuses it.
+  expect(leftQueued).toBeGreaterThan(LOWERED_QUEUE_BYTES);
+  expect(error).toBeInstanceOf(ConnectionError);
+  expect(String(error)).toContain(
+    `inbound buffer overflow: over the ${raised}-byte bound`,
+  );
+});
+
 test("the receiver raises its queue bound only after the request's last part is sent", async () => {
   const events: Array<string> = [];
   const [a, b] = createMessagePipe({ byteCapacity: LOWERED_QUEUE_BYTES });

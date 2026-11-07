@@ -204,6 +204,39 @@ test("clearing a held byte bound under frames the built bound would not have adm
   await expect(conn.receive()).rejects.toBe(refusal);
 });
 
+test("clearing a held byte bound on a connection that overflowed it raises that overflow, not one at the built bound", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  conn.holdInboundQueueBytes(20);
+  for (let frame = 0; frame < 4; frame++)
+    controls.deliver(new Uint8Array(5), 5); // 20 bytes queued
+  controls.deliver(new Uint8Array(5), 5); // past the held 20: fails
+  expect(await conn.receive()).toHaveLength(5); // 15 bytes still queued
+  let refusal: unknown;
+  try {
+    conn.holdInboundQueueBytes(undefined);
+  } catch (error) {
+    refusal = error;
+  }
+  expect(refusal).toBeInstanceOf(ConnectionError);
+  expect(String(refusal)).toContain(
+    "inbound buffer overflow: over the 20-byte bound",
+  );
+  await expect(conn.terminated()).resolves.toBe(refusal);
+  await expect(conn.receive()).rejects.toBe(refusal);
+});
+
+test("clearing a held byte bound on a connection that failed from a transport error keeps the queued frames to be read before it", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  conn.holdInboundQueueBytes(20);
+  const abort = new Uint8Array(5);
+  controls.deliver(abort, 5);
+  const lost = new ConnectionError("partner lost", "transport");
+  controls.fail(lost);
+  expect(() => conn.holdInboundQueueBytes(undefined)).not.toThrow();
+  expect(await conn.receive()).toBe(abort);
+  await expect(conn.receive()).rejects.toBe(lost);
+});
+
 test("clearing a held byte bound keeps the frames the built bound would have admitted", async () => {
   const { conn, controls } = makeQueued({ byteCapacity: 10 });
   conn.holdInboundQueueBytes(40);
