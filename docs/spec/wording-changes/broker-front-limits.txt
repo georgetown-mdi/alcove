@@ -1,0 +1,23 @@
+- - -> **No bound on frame rate.**
+- - -> The broker bounds each frame's size and structure, and what waits for a slow reader (the relay send-buffer bound below), but not how many frames a second one socket sends.
+- - -> Each frame a registered client sends is parsed and re-serialized on the broker's one thread, and a relayed frame can be up to 4.4 times its wire size, so a client sending at its link's full rate takes processor time and outbound bandwidth that other clients' frames wait behind.
+- - -> This is a stated limit, within the residual resource-exhaustion concern the **Channel security** overview in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security) names: no per-socket rate bound is built, and the delay it adds to another client's frames is not measured.
+- - -> **The project's front.**
+- - -> The project's own deployment applies that per-address limit at **32** connections from one client address, DEPLOYMENT.md's reference value, an arbitrary working value raised on request.
+- - -> It applies it once on each path to the broker:
+- - -> A client reaching the broker through the relay host's 443 front is counted at that front's route hop, by the address the PROXY header from 443 names, every service routed through the hop counted together (`infra/relay/front.conf.tmpl`).
+- - -> The hop closes a further connection unanswered.
+- - -> A client reaching the broker's TLS front on 8443 directly is counted there by its own address, and a further request is answered `503` (`infra/broker/nginx.conf.tmpl`).
+- - -> Every connection through the route hop arrives from `127.0.0.1`, which is not counted there.
+- - -> A 33rd connection from one address, such as a 33rd party behind one network address translator, is refused until one of the 32 closes.
+- - -> On 8443 nginx counts a request once its headers have arrived, so a direct connection that has not sent them is bounded instead by the TLS front's 30-second `client_header_timeout`.
+- - -> The broker's TLS front holds **512** connections (`worker_connections`), 256 WebSocket clients at two connections each, the most the 443 front's 1024 connections pass at four each.
+- - -> So one address holds at most an eighth of those clients on each path once their headers have arrived; before that, direct connections on 8443 are bounded only by the 30-second header timeout, so one address can hold every free connection for that long.
+- - -> The value is sized against the relay host's memory, read on the host on 2026-11-07 with `free -m` and `systemctl show`: 412 MiB in total, 121 MiB of it available, and 1435 MiB of swap, with the TLS front's unit using 6.3 MiB while it was configured for 256 connections.
+- - -> The front's memory with all 512 in use is not yet measured on that host; `scripts/check-broker-front-logs.mjs` prints it for the pinned image on its CI runner.
+- - -> **The heap limit binds before the global ceiling.**
+- - -> The 512 MiB global ceiling bounds the queues, not the broker process.
+- - -> The project's broker runs under Node's default heap limit, which V8 sets from the host's memory, and its host has 412 MiB of memory in total, so there the heap limit binds before the queue caps do.
+- - -> Held frames that fill the heap end the broker process, its unit starts it again 5 seconds later (`Restart=always`, `RestartSec=5` in `infra/broker/alcove-broker.service`), and every rendezvous live at that moment is dropped and has to be started again.
+- - -> This is a stated limit: no unit memory limit is set, since it would end the broker after less held data than the heap limit does, and no lower queue cap is set.
+- - -> The heap limit on the host, and the held data that reaches it, are not yet measured.

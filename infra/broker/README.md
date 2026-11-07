@@ -20,6 +20,15 @@ A connection through 443 reaches this front from `127.0.0.1`, so its access log 
 
 The front listens on IPv4 only.
 
+## Connection limits
+
+The front holds 512 connections at once (`worker_connections`), two for each WebSocket client.
+One client address holds at most 32 connections at once on each path to it, a working value raised on request ([SIGNALING_SERVER_BOUNDS.md, The project's front](../../docs/spec/SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds)):
+
+- **Through 443**, the relay front's route hop counts each client by the address the PROXY header names, and closes a further connection unanswered ([`../relay/README.md`, The 443 front](../relay/README.md#the-443-front)).
+- **On 8443 directly**, this front counts each client by its own address and answers a further request `503`. It does not count `127.0.0.1`, which every connection through the hop arrives from.
+  nginx counts a request only once its headers have arrived, so until then a direct connection is bounded only by the 30-second `client_header_timeout`, and one address can hold every free connection of the front's 512 for that long ([SIGNALING_SERVER_BOUNDS.md, The project's front](../../docs/spec/SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds)).
+
 ## The files
 
 | path | what it is |
@@ -121,9 +130,9 @@ All three services write to the host's journal, under the retention the relay's 
 - **The front's access log names the request path and never its query string.**
   A signaling URL's query contains the rendezvous identifier and the client token, so the log format writes `$request_method $uri $server_protocol`, not `$request`.
   [`scripts/broker-front.test.mjs`](../../scripts/broker-front.test.mjs) fails if a log format in the template writes any variable outside the documented fields, or if the template drops the `http`-level access log and so falls back to nginx's built-in format, which writes the query string.
-- **The front's error log** is at `crit`, and the test fails below `crit`.
+- **The front's error log** is at `emerg`, and the test fails at any other level.
   At `warn`, nginx writes a line about a refused, reset, timed-out, too-large or buffered request, and at `error` about each of them but the buffered one; the line holds the request line with its query string and the client's address.
-  At `crit` none of those requests writes a line ([PRIVACY.md](../../PRIVACY.md)).
+  At `emerg` none of those requests writes a line ([PRIVACY.md](../../PRIVACY.md)).
 - **The access log shows what became of a request passed to the broker**, in place of the error log: `request_bytes` (`$request_length`), `upstream_status`, `upstream_connect` (the time to connect to the broker, `-` when no connection was made) and `upstream_dur`.
   Each failure has its own reading:
 
@@ -133,9 +142,11 @@ All three services write to the host's journal, under the retention the relay's 
   | the broker closed or reset it before answering | 502 | 502 | a time | |
   | the broker did not answer within 300 s (`proxy_read_timeout`) | 504 | 504 | a time | |
   | the body is over 1 MiB (`client_max_body_size`), refused before reaching the broker | 413 | `-` | `-` | |
+  | a direct client on 8443 already holds 32 requests ([Connection limits](#connection-limits)) | 503 | `-` | `-` | |
   | a body over the default `client_body_buffer_size` (two memory pages, 8 KiB on x86-64), buffered to a file under `/tmp` | | | | over 8192, headers included |
 
   [`scripts/check-broker-front-logs.mjs`](../../scripts/check-broker-front-logs.mjs), run by `broker_front_logs.yaml` on a pull request that changes the template or the image, drives each of these through the pinned image and fails if any log line holds a request's query string, if any of them writes an error-log line, or if a failure's access-log line does not match its row.
+  It also holds upgrades from `127.0.0.1` until the front has no connection left, and fails if that writes an error-log line.
 
 The front closes a WebSocket idle for 300 s (`proxy_read_timeout`); the PeerJS client sends a heartbeat every 5 s by default (`pingInterval = 5000` in `node_modules/peerjs/dist/peerjs.js`, peerjs 1.5.5, not overridden in `apps/` or `packages/`), so a live connection stays open.
 

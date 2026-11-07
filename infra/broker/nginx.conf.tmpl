@@ -5,13 +5,16 @@
 # URL's query contains the rendezvous identifier and the client token.
 # scripts/broker-front.test.mjs fails if a log format here writes it.
 #
-# The error log is at crit because nginx writes the request line, query string
-# included, into an error or warn line about a request. The access log's
-# upstream fields show what the broker did with a request instead.
+# The error log is at emerg because nginx writes the request line, query
+# string included, into a warn, error, crit or alert line about a request. The
+# access log's upstream fields show what the broker did with a request instead.
 worker_processes 1;
-error_log /dev/stderr crit;
+error_log /dev/stderr emerg;
 pid /tmp/nginx.pid;
-events { worker_connections 256; }
+# Two connections for each WebSocket client, so 256 clients: the most the relay
+# front's 1024 connections pass from 443 at four each. A working value, sized
+# in docs/spec/SIGNALING_SERVER_BOUNDS.md, The project's front.
+events { worker_connections 512; }
 http {
   log_format conn '$time_iso8601 $remote_addr "$request_method $uri $server_protocol" $status upgrade=$http_upgrade bytes=$bytes_sent dur=$request_time request_bytes=$request_length upstream_status=$upstream_status upstream_connect=$upstream_connect_time upstream_dur=$upstream_response_time';
   access_log /dev/stdout conn;
@@ -22,9 +25,20 @@ http {
   scgi_temp_path /tmp/scgi;
   server_tokens off;
   map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+  # A client reaching 8443 directly holds at most 32 requests from its address
+  # at once, a further one answered 503. A connection through 443 arrives from
+  # 127.0.0.1 and is counted by its own address at the relay front's route
+  # hop instead, so 127.0.0.1 has no key here. 32 is an arbitrary working
+  # value, raised on request.
+  map $remote_addr $alcove_direct_client {
+    127.0.0.1 "";
+    default $binary_remote_addr;
+  }
+  limit_conn_zone $alcove_direct_client zone=alcove_broker_direct:1m;
   server {
     listen 8443 ssl;
     server_name __ALCOVE_BROKER_NAME__;
+    limit_conn alcove_broker_direct 32;
     ssl_certificate /etc/nginx/tls/fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;

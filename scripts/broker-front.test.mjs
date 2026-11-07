@@ -147,14 +147,51 @@ describe("nginx.conf.tmpl logging", () => {
     }
   });
 
-  // nginx writes the request line into its error and warn lines about a
-  // request; check-broker-front-logs.mjs drives that against the image.
-  it("keeps the error log at crit and above, at the main level too", () => {
+  // nginx writes the request line into its warn, error, crit and alert lines
+  // about a request; check-broker-front-logs.mjs drives that against the image.
+  it("keeps the error log at emerg, at the main level too", () => {
     const errorLogs = template().filter(({ name }) => name === "error_log");
     expect(errorLogs.some(({ context }) => context.length === 0)).toBe(true);
     for (const { args } of errorLogs) {
-      expect(["crit", "alert", "emerg"]).toContain(args[1]);
+      expect(args[1]).toBe("emerg");
     }
+  });
+});
+
+describe("nginx.conf.tmpl connection bounds", () => {
+  it("holds 32 requests from each direct client address and exempts the route hop's 127.0.0.1", () => {
+    const parsed = template();
+    const zones = parsed.filter(({ name }) => name === "limit_conn_zone");
+    expect(zones.map(({ args, context }) => [context, args])).toEqual([
+      [["http"], ["$alcove_direct_client", "zone=alcove_broker_direct:1m"]],
+    ]);
+    const limits = parsed.filter(({ name }) => name === "limit_conn");
+    expect(limits.map(({ args, context }) => [context, args])).toEqual([
+      [
+        ["http", "server"],
+        ["alcove_broker_direct", "32"],
+      ],
+    ]);
+    const map = parsed.filter(({ context }) => context.at(-1) === "map");
+    expect(map.map(({ name, args }) => [name, ...args])).toEqual(
+      expect.arrayContaining([
+        ["127.0.0.1", ""],
+        ["default", "$binary_remote_addr"],
+      ]),
+    );
+  });
+
+  it("runs one worker of 512 connections", () => {
+    const parsed = template();
+    expect(
+      parsed.filter(({ name }) => name === "worker_processes")[0].args,
+    ).toEqual(["1"]);
+    const connections = parsed.filter(
+      ({ name }) => name === "worker_connections",
+    );
+    expect(connections.map(({ args, context }) => [context, args])).toEqual([
+      [["events"], ["512"]],
+    ]);
   });
 });
 
