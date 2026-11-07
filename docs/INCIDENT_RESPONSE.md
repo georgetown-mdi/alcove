@@ -1,17 +1,19 @@
 ---
 title: "Security Incident Response Runbook"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-05"
+last_reviewed: "2026-11-07"
 ---
 
 # Security incident response runbook
 
 This is the responder's side of [SECURITY.md](../SECURITY.md), in the order the work happens: from a report arriving to an advisory published. SECURITY.md is the authority on scope, timelines, and disclosure terms. Release mechanics are in [RELEASES.md](RELEASES.md), and the threat model and control descriptions in [SECURITY_DESIGN.md](SECURITY_DESIGN.md).
 
+An incident on a service the project runs for the hosted web application -- a compromised host or credential, a deploy that serves unintended code, or a service that keeps more than documented -- takes its own path, [Incidents on a project-run service](#incidents-on-a-project-run-service).
+
 Two roles appear throughout:
 
 - **The maintainer** holds commit access and a release signing key, and does the technical work.
-- **The co-owner** is the organization's other owner, and holds the second release signing key. When the maintainer is unavailable, the co-owner covers intake and reporter communication, and can ship a fix; see [When the maintainer is unavailable](#when-the-maintainer-is-unavailable).
+- **The co-owner** is the organization's other owner, and holds the second release signing key. When the maintainer is unavailable, the co-owner covers intake and reporter communication, and can ship a fix; see [When the maintainer is unavailable](#when-the-maintainer-is-unavailable). On an incident on a project-run service, the co-owner acts when the maintainer cannot; see [Who acts](#who-acts).
 
 A leaked shared secret between two exchange partners is not handled here: the partners run [SECURITY_DESIGN.md#compromise-response](SECURITY_DESIGN.md#compromise-response) themselves, and it needs nothing from this project.
 
@@ -151,9 +153,91 @@ I will escalate immediately.
 
 The co-owner can ship a fix without the maintainer when waiting is not viable, as step 5 above defines it. Follow [RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases) for the fix and the release steps, except that the review before merging is waived on this path: say so in the pull request. Opening that pull request, or for an older-line hotfix pushing its tag, is the disclosure, so merge, tag, release and publish the advisory in one sitting, as [4. Fix privately, then release](#4-fix-privately-then-release) and [5. Draft the advisory and request a CVE](#5-draft-the-advisory-and-request-a-cve) set out. At the tag step, sign the tag with your own SSH key, whose fingerprint is listed in [RELEASES.md#source-integrity](RELEASES.md#source-integrity), with git set to sign with it in that clone (`git config gpg.format ssh` and `git config user.signingkey <path to the key>`), and push it: the release workflow runs on that push and needs no approval from the maintainer.
 
+## Incidents on a project-run service
+
+This path is for an incident on a service the project runs for the hosted web application, not for a flaw reported in the software. It sets no response time: the project runs these services on a best-effort basis, with no uptime commitment ([SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md#hosted-web-application)).
+
+The services, and where each one's deploy path is documented:
+
+- **The pages.** Cloudflare Pages serves the hosted web application at `psi.data-bridge.org`, its `staging` previews at `staging.data-bridge.org`, the demo site at `demo.data-bridge.org`, and the project site at `data-bridge.org`. Each is uploaded by a workflow ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages), [The project site](DEPLOYMENT.md#the-project-site)).
+- **The relay host.** One AWS instance in `us-west-2` runs the coordination server, the TURN relay, the WebSocket relay, the relay registrar, and the 443 front and TLS front before them ([DEPLOYMENT.md](DEPLOYMENT.md#the-projects-hosted-web-deployment)). It takes each new commit of `main` through [the host pull](../infra/host-pull/README.md).
+
+What each service sees and keeps is stated in [PRIVACY.md](../PRIVACY.md#hosted-web-application).
+
+### What counts as one
+
+- **A compromised host or credential.** Someone else has run code on the relay host, or holds a credential that deploys or administers a service: the Pages deploy token, a secret the relay host holds, or an account that administers the Cloudflare account or the AWS account.
+- **A deploy that serves unintended code.** A service serves a build that no deploy workflow made from a commit on its branch: a served file that does not match its build's signed manifest ([RELEASES.md](RELEASES.md#hosted-web-application)), or a Pages upload that no workflow run made.
+- **A service that logs or keeps more than documented.** It records something PRIVACY.md does not list for it, or keeps it longer than PRIVACY.md states.
+
+A flaw in the software these services run is a vulnerability, handled from [step 1](#1-receive-and-acknowledge). When a build serving it has to come down before the fix ships, the rollback below applies to it as well.
+
+### Who acts
+
+The maintainer acts first. When the maintainer cannot, the co-owner takes the same steps. Each step needs an account or access, named in [The access each step needs](#the-access-each-step-needs); this runbook does not record who holds it.
+
+Record the dates as you go, as step 1 does: noticed, stopped or rolled back, users told.
+
+### Stop or roll back the pages
+
+The pages are rolled back, not stopped: no deploy path takes a Pages project offline, and the OpenTofu root refuses to remove one (`prevent_destroy`, [infra/hosted/README.md](../infra/hosted/README.md#what-it-describes)).
+
+1. **Roll production back to the last deploy with a signed manifest.** Re-run the `pages_deploy.yaml` run on `main` that deployed the last build known good. The re-run deploys that run's build to production, the demo site's with it, and publishes that build's signed manifest ([RELEASES.md](RELEASES.md#the-manifest-of-a-main-deploy)). Where GitHub no longer offers that run's re-run, revert the cause on `staging` and promote `main`: the push deploys a build of the reverted commit, with a signed manifest of its own.
+2. **Take the cause out of `main`.** The next push to `main` deploys its tip, so after a re-run the cause is reverted on `staging` before the next promotion.
+3. **Roll back the staging previews and the project site** by reverting the cause on `staging`, and for the project site promoting `main`: a push redeploys each ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages), [The project site](DEPLOYMENT.md#the-project-site)). Neither has a signed manifest, so neither has a signed deploy to roll back to.
+4. **Delete the deployments that serve the affected build.** Every upload stays served at its own address, `<hash>.<project>.pages.dev`, after a later one replaces it, so a rollback alone leaves the affected build reachable there. From a checkout, with the locked deploy tool and a token in `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` set:
+
+   ```sh
+   cd .github/wrangler && npm ci
+   npx wrangler pages deployment list --project-name <project>
+   npx wrangler pages deployment delete <deployment-id> --project-name <project>
+   ```
+
+   Each workflow upload names its commit (`--commit-hash`), which identifies the affected deployments. `--force` deletes one that still has an alias. Repeat for each Pages project the affected build reached.
+
+### Stop or roll back the relay host
+
+- **Stop it** by stopping the instance, in the EC2 console or with `aws ec2 stop-instances --instance-ids <the host's instance id> --region us-west-2`. That stops the coordination server, the TURN relay, the WebSocket relay, and the registrar together. While it is stopped, an exchange that needs the project's coordination server or relays cannot connect.
+- **Roll it back** by reverting the cause on `staging` and promoting `main`. Once the tip's push-triggered runs have passed and its core build is on the `broker-core-build` prerelease, run the pull by hand in a Session Manager session on the host, `systemctl start alcove-host-pull.service`, and read its outcome in `/var/lib/alcove-host-pull/status` ([the host pull](../infra/host-pull/README.md#outcomes)). The pull verifies that commit's signed core build before it installs it. A host that was stopped is started first, and runs the affected commit until the pull finishes.
+- **There is no redeploy of an earlier signed build.** The prerelease holds the build of the latest commit on `main` alone ([RELEASES.md](RELEASES.md#the-broker-core-build)), so the host's rollback is the revert, deployed with the next signed build.
+- **Replace a compromised host rather than cleaning it.** Launch a new instance from [`infra/relay/aws/provision.md`](../infra/relay/aws/provision.md), install it as [`infra/relay/README.md`](../infra/relay/README.md#order-of-operations) and [`infra/broker/README.md`](../infra/broker/README.md#install) describe, and move the elastic address to it. Replace every secret the old host held, each one [What is not tracked](../infra/relay/README.md#what-is-not-tracked) lists: the TURN static secret, the registrar token, the DNS provider credential, and the certificates' keys.
+
+### Rotate a leaked credential
+
+- **The Pages deploy token.** One `CLOUDFLARE_API_TOKEN` is set on both the `Production` and `Staging` environments, and its grant covers every Pages project on the account, production included, so a token incident rotates both. Create a new token at the scope [DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages) states, set it on both environments, and delete the old token in Cloudflare. Then list each project's deployments, as step 4 above does, and treat any upload that no workflow run made as a deploy that serves unintended code.
+- **The OpenTofu tokens and the state credentials** are the maintainer's, outside the repository ([infra/hosted/README.md](../infra/hosted/README.md#state-and-credentials)). Replace them in Cloudflare and AWS.
+- **A secret the relay host holds** goes with the host: replace the host as above.
+
+### Remove what a service kept
+
+For a service that kept more than documented, first stop it or roll back the build that added the record. Then delete from the host what it kept beyond what PRIVACY.md states, and state in PRIVACY.md what was kept, over which window, and when it was deleted, as its [Hosted web application](../PRIVACY.md#hosted-web-application) section does for earlier log lines.
+
+### Tell users
+
+The project has no accounts and no list of users, so it tells them in three places:
+
+1. **A GitHub security advisory**, drafted and published from the repository's Security tab as [step 5](#5-draft-the-advisory-and-request-a-cve) describes. It names the service, what happened, the window from its start to the stop or rollback, what the service could have seen or served in that window by PRIVACY.md, and what a user should do. A CVE is requested only when the cause is a vulnerability in the software.
+2. **A dated note in [SECURITY.md](../SECURITY.md)**, under a heading for hosted-service incidents that the first note adds, linking the advisory. It is merged into `staging` and reaches readers when `main` is promoted.
+3. **A notice on the hosted site, in the same deploy as the fix, when the pages are intact.** The pages are intact when a deploy can again be trusted to serve what the workflows built; after a deploy-token incident, that is once the token is rotated. The web application has no notice component, so the notice is a change to it, merged into `staging` with the revert where there is one, and promoted with it. A re-run of an older run deploys an existing build and cannot include the notice, which ships with the revert that follows.
+
+### The access each step needs
+
+| Step | The account or access it needs |
+| ---- | ------------------------------ |
+| Re-run a deploy run | Write access to the repository, to re-run a workflow run |
+| Revert and promote, and the note in SECURITY.md | The rights to merge into `staging` and promote `main` |
+| Delete Pages deployments | A Cloudflare API token holding Account -> Cloudflare Pages -> Edit on the project's account, created by a member of that account |
+| Stop the relay host | An AWS principal in the project's AWS account allowed to stop the host's instance |
+| Run the pull by hand, or delete records on the host | A Session Manager session on the host, which is administered through SSM ([provision.md](../infra/relay/aws/provision.md#the-instance-role)) |
+| Replace the relay host | An AWS principal allowed to launch an instance and move the elastic address, and the DNS provider's credential for the zone |
+| Rotate the Pages deploy token | Membership of the Cloudflare account to create and delete the token, and admin access to the repository to set environment secrets |
+| Publish the advisory | A repository role that can publish a security advisory |
+
 ## Exercise record
 
 This runbook is walked once a year against a simulated report, and again after any change to the release or disclosure process that would alter the sequence. Each gap an exercise finds is fixed here, or referred to the maintainer when the fix is not a documentation change.
+
+The [path for an incident on a project-run service](#incidents-on-a-project-run-service) has not yet been walked. The next exercise walks it as well as the report path, against a simulated incident on one of those services.
 
 | Date       | Scenario                                                            | Result                                              |
 | ---------- | ------------------------------------------------------------------- | --------------------------------------------------- |

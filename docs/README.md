@@ -63,7 +63,7 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 - [ACCESSIBILITY.md](ACCESSIBILITY.md) - the web application's WCAG 2.1 A and AA self-assessment: each criterion's evidence and the open gaps
 - [SERVICE_FACT_SHEET.md](SERVICE_FACT_SHEET.md) - one page of facts, for counsel, about each service the project runs for the hosted web application
 - [COMMUNICATION.md](COMMUNICATION.md) - how an exchange proceeds: the channels, synchronization, the web invitation and consent screens, message delivery, error handling, and the supporting services
-- [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) - how the maintainer handles a reported vulnerability, behind [SECURITY.md](../SECURITY.md), and the tabletop exercise record
+- [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) - how the maintainer handles a reported vulnerability, behind [SECURITY.md](../SECURITY.md), and an incident on a service the project runs, with the tabletop exercise record
 - [RELEASES.md](RELEASES.md) - the versioning policy, the release checklist, and verifying the published artifacts
 - [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) - replacing the vendored native PSI build: the integrity controls, the procedure, and chain of custody
 - [TESTING.md](TESTING.md) - where a test goes, the integration backends and profiles, the console check, the browser suite, and coverage
