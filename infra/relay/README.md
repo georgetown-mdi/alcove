@@ -980,7 +980,12 @@ stops and disables it where that is unset.
   warning when the key table cannot be read and the faults
   [WEBSOCKET_RELAY.md, The key table](../../docs/spec/WEBSOCKET_RELAY.md#the-key-table)
   names, each limited to one a minute; a fault about one exchange's key
-  names that exchange's id.
+  names that exchange's id. Once a minute in which it refused any, it also
+  writes how many hellos it refused at its pairing cap (4008) and upgrades
+  at its cap on sockets awaiting a hello (503), with their totals since it
+  started
+  ([WEBSOCKET_RELAY.md, Quotas](../../docs/spec/WEBSOCKET_RELAY.md#quotas));
+  that line names no exchange and no address.
 - **Memory.** The unit sets a resource limit on the relay and systemd
   restarts it on failure. On the project's host, the relay's
   resident set peaked at about 81 MB and its cgroup at about 94 MiB through
@@ -1307,6 +1312,12 @@ nothing on a quiet run.
 | `alcove-relay-tokenless-enrollments` | `Alcove/Relay` `tokenless_enrollments`, sum over 6 hours | 30 times `ALCOVE_RELAY_TOTAL_QUOTA` |
 | `alcove-relay-rate-limit-refusals`, `alcove-relay-client-cap-refusals`, `alcove-relay-tokenless-ceiling-refusals` | `Alcove/Relay` `rate_limit_refusals`, `client_cap_refusals` and `tokenless_ceiling_refusals` in turn, sum over 1 hour | 0 |
 | `alcove-relay-busy-refusals` | `Alcove/Relay` `busy_refusals`, sum over 1 hour | 0 |
+
+The WebSocket relay's refusals at its caps have no alarm: the relay writes
+their counts to its journal ([The WebSocket relay](#the-websocket-relay),
+Logs), which the publisher does not read. `journalctl -u
+alcove-relay-websocket.service --since -1h | grep 'at its pairing cap'`
+lists the last hour's.
 
 `alcove-relay-publisher-heartbeat` watches the publisher itself:
 `Alcove/Relay` `publisher_heartbeat`, sum over 1 day, firing when two

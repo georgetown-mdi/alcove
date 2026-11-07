@@ -50,12 +50,13 @@ The relay checks a hello in this order, refusing at the first check it fails wit
 
 1. **Its form.** Any other first message, a hello with another key or a value outside the forms above, and a hello whose proof does not parse ([What a check refuses](PROTOCOL.md#the-websocket-relay-proof)) are refused as malformed (4001).
 2. **The key.** The relay reads the relay key enrolled under `exchangeId` ([The key table](#the-key-table)). No key is refused as not enrolled (4003). A hello the relay could not check is refused with 1011: its key table could not be read, the enrolled key is not 64 lowercase hex characters, or the check failed in some other way.
-3. **The proof.** The relay checks the proof under the proof key derived from that relay key, for the claimed role, against its own clock. A proof for the other role, or whose tag is not the proof key's, does not verify (4004). A proof whose expiry has passed is expired (4005), and the close reason is the relay's current Unix second in decimal, so a party whose clock has drifted can make another.
+3. **The proof.** The relay checks the proof under the proof key derived from that relay key, for the claimed role, against its own clock. A proof for the other role, or whose tag is not the proof key's, does not verify (4004). A proof whose expiry has passed is expired (4005). So is a proof that verifies but whose expiry is more than 305 seconds past the relay's clock: the proof's longest lifetime of 300 seconds (`RELAY_PROOF_MAX_LIFETIME_SECONDS`, core's `WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS`) and 5 seconds of slack (`RELAY_PROOF_EXPIRY_SLACK_SECONDS`, an arbitrary working value). The close reason is the relay's current Unix second in decimal, so a party whose clock has drifted either way can make another.
 4. **The role.** A socket already holding the claimed role under that relay key refuses this one as role taken (4006), the broker's `ID-TAKEN` for this path.
 5. **The cap.** A hello under a relay key that holds no pairing yet, while the relay holds as many pairings as its cap ([Quotas](#quotas)), is refused as full (4008).
 
 **Replay.** The hello does not bind the proof to its connection, since the proof's message holds only the role and the expiry.
 A captured hello replayed before its expiry, at most 300 seconds after it was made, can take the role under the key first, and the party it was captured from is then refused as role taken.
+Whatever clock made a proof, the relay takes it only in the 305 seconds of its own clock before the proof's expiry.
 It exposes no data: the key exchange inside the relayed channel still needs the shared secret.
 
 ## The key table
@@ -87,7 +88,7 @@ It exposes no data: the key exchange inside the relayed channel still needs the 
 - **The queue limit.** Once the messages queued toward a party count above 1,310,720 bytes (`RELAY_QUEUE_LIMIT_BYTES`, 1.25 MiB), the relay ends the pairing. It closes the party that sent them with 4010, and the party they are queued for with 4000 behind every message already queued for it, and forwards nothing more. The limit is 256 KiB over the high mark, set from the counted queues of honest rounds ([Measured counted queues](#measured-counted-queues)). Since each message counts its 1,024 bytes of overhead, a run of small messages passes the limit on a few kilobytes of payload, so the relay keeps no separate limit on the number of messages. For the same reason a burst of small messages in one read can pass the limit and end the pairing even toward a party that reads at once: 1,277 one-byte messages, each counted 1,027 bytes, pass it, and one 64 KiB read holds thousands of them. The clients send no such burst, as the honest rounds show ([Measured counted queues](#measured-counted-queues)).
 - **The queued-message bound.** The relay holds at most 1,738,245 bytes (`RELAY_QUEUED_BOUND_BYTES`) for one party's queue and its source. That is the queue up to the limit, the one message whose queueing passes it, counted as above, the read the relay is parsing, a message still arriving, and the paused source's read-ahead. A message still arriving counts four 64 KiB reads, 262,144 bytes, and its later pieces, up to the 16,384-byte cap ([Measured fragments](#measured-fragments)). When a held source closes, the relay forwards its read-ahead too, but only until the queue passes the limit.
 - **The restated bounds.** A pairing's two parties together are at most 3,476,490 bytes, and the 12 pairings the relay holds at once ([Quotas](#quotas)) at most 41,717,880 bytes. The relay counts nothing by client address ([The endpoint](#the-endpoint)); behind the reference deployment's front, which holds at most 8 sockets from one address, that address's sockets reach at most 8 such bounds, 13,905,960 bytes. These bounds hold for the server `createWebSocketRelayServer` makes, which the standalone runner uses; a relay attached to another server reads ahead under that server's own mark.
-- **How long a queue outlives its source.** A source held at the high mark reads nothing, its own close included, so the relay notices the close only when a ping to it fails, at or after its next ping (30 seconds, `RELAY_PING_INTERVAL_MS`). The queue toward the stalled reader is then held for the close wait (300 seconds, `RELAY_CLOSE_WAIT_MS`) before the reader is dropped. Measured at about 357 seconds from the source's close to the reader's drop at those two values.
+- **How long a queue outlives its source.** A source held at the high mark reads nothing, its own close included, so the relay notices the close only when a ping to it fails, at or after its next ping (30 seconds, `RELAY_PING_INTERVAL_MS`). The queue toward the stalled reader is then held for the close wait (300 seconds, `RELAY_CLOSE_WAIT_MS`) before the reader is dropped. Measured at about 357 seconds from the source's close to the reader's drop at those two values. A reader that has stopped reading answers no ping either, so until the relay notices the source's close it drops the reader once the reader has left three pings unanswered ([Keepalive](#keepalive)), 90 to 120 seconds after it stopped.
 
 ## Quotas
 
@@ -100,13 +101,24 @@ The quotas key on the exchange's relay key, not on a client's address: behind th
 | Concurrent pairings | 12 (`RELAY_MAX_PAIRINGS`) | The pairings the relay holds at once, each counted from its first verified hello until every socket it admitted has closed, the close wait included. A hello that would start one more is refused (4008); one joining a pairing already held is not. A new pairing under a key ends at once the sockets the key's earlier pairing still holds, so a key holds at most one pairing's sockets; a socket ended this way loses any message still queued to it and closes abnormally (1006) |
 | Byte rate | 2,000,000 bytes a second from each party of a pairing (`RELAY_PAIRING_BYTES_PER_SECOND`), after a burst of 2,000,000 bytes (`RELAY_PAIRING_BURST_BYTES`) | A party that sends faster is not read again until the rate has paid back the excess, as backpressure holds a source, so it is paced and not disconnected. coturn's `max-bps` |
 | Idle bound | 65 minutes (`RELAY_IDLE_TIMEOUT_MS`) | A pairing no message has crossed either way for that long, a party still waiting for its partner included, is closed with 4009 on each socket. A ping or a pong is not a message here. The bound is checked at each ping, so it closes a pairing up to 30 seconds late. The one-hour parked-receive budget plus the five-minute close drain budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)), so a party's own budget expires first |
+| Lone pairing | 10 minutes (`RELAY_LONE_PAIRING_TIMEOUT_MS`) | A pairing whose second party has not arrived within that long of its first verified hello is closed with 4009. The bound is checked at each ping, so it closes a pairing up to 30 seconds late. The clients' 10-minute rendezvous budget, the longest either keeps a socket parked at its defaults ([The web application's client](#the-web-applications-client), [The command-line client](#the-command-line-client), The waits). Each client counts that budget from before its hello, so its own expires first, and a command-line run given a longer peer timeout dials again on the 4009 |
 
 **A stated limit: every rendezvous holds a pairing.** A party parks its socket on each relay its run lists as its rendezvous starts ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay)), so every rendezvous that names the relay counts toward the concurrent pairings from its first verified hello until its sockets close, a rendezvous that WebRTC carries included. One past the cap is refused (4008) and has no fallback through this relay, while its WebRTC path still runs. The cap has not been measured against that use.
+
+**A stated limit: the cap is shared by every key.** The relay caps pairings for the whole relay and counts nothing by address, so sockets under keys enrolled at the relay can hold every pairing the cap allows.
+A pairing whose two roles are both held is not lone, so only the idle bound ends it, and it lasts while a message crosses it within each bound.
+Lone pairings opened again as each ends hold the cap the same way, from as many addresses as the front's bound on sockets from one address requires ([The endpoint](#the-endpoint)).
+While the cap is held, every hello that would start another pairing is refused (4008), and the relay's counts of its refusals at the caps show it.
+
+**Refusals at the caps.** The relay counts the hellos it refuses at the pairing cap (4008) and the upgrades it refuses at the cap on sockets awaiting a hello (503, [The endpoint](#the-endpoint)).
+The first refusal after a report starts a minute (`RELAY_FAULT_REPORT_WINDOW_MS`), at whose end the relay reports both counts for that minute, and their totals since it started, on its diagnostic stream ([infra/relay/README.md](../../infra/relay/README.md#the-websocket-relay), Logs).
+The report names no exchange id and no address.
 
 ## Keepalive
 
 - **A party's ping.** The relay answers it with a pong and forwards nothing, counting the answer toward the ping sender's queue like a message and answering only when the answer fits under the high mark ([Forwarding](#forwarding)); the library's own automatic answer is off.
 - **The relay's ping.** The relay pings every socket it holds every 30 seconds (`RELAY_PING_INTERVAL_MS`), a tenth of the 300-second idle timeout of the reference deployment's front, since a browser's `WebSocket` cannot send a ping but answers one.
+- **An unanswered ping.** A socket that has left three of the relay's pings in a row unanswered (`RELAY_MAX_UNANSWERED_PINGS`) is dropped at the next, 90 to 120 seconds after its last answer, and its partner is closed with 4000. A socket the relay holds for backpressure or the byte rate reads no pong, so its pings are not counted while the hold lasts, and its count starts again when the hold ends. Three is a working value: it frees a role a lost socket held well within the clients' 10-minute rendezvous budget, through which a party dials again on 4006 every 5 seconds. The command-line client answers pings from its main thread, whose longest measured hold is about 12 seconds ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-main-thread-on-an-open-channel)).
 - **The control frame limit.** The relay counts at most 60 control frames from one socket between two of its pings (`RELAY_MAX_CONTROL_FRAMES`): each ping and each pong that answers none of the relay's pings, from the socket's upgrade on. A pong answering a ping the relay sent is not counted for up to two of its pings left unanswered at a time, so a client answering one or two pings at once stays within the limit. A socket past the limit is closed with 4011, dropped if it sends another control frame while the relay waits on its close, and its control frames after that are ignored. The clients send no ping and answer each of the relay's pings: Node v26.13's `WebSocket`, the command-line client's, sent one pong for each ping in measurement, idle and while sending. The limit allows two a second.
 
 ## Close
@@ -132,11 +144,11 @@ Every close reason is empty except 4005's.
 | 4002 | the sender | A message the relay does not take at that point |
 | 4003 | the sender | No relay key is enrolled under the hello's exchange id |
 | 4004 | the sender | The proof does not verify under the exchange's relay key for the claimed role |
-| 4005 | the sender | The proof has expired; the reason is the relay's current Unix second |
+| 4005 | the sender | The proof has expired, or its expiry is more than 305 seconds past the relay's clock; the reason is the relay's current Unix second |
 | 4006 | the sender | Another socket holds the claimed role under the exchange's relay key |
 | 4007 | the sender | No hello within 10 seconds of the upgrade |
 | 4008 | the sender of a hello | The relay holds as many pairings as its cap |
-| 4009 | both parties | No message crossed the pairing within the idle bound |
+| 4009 | both parties | No message crossed the pairing within the idle bound, or its second party did not arrive within the lone-pairing bound |
 | 4010 | the sender | The messages it sent that its partner has not read counted above the queue limit; the partner is closed with 4000 |
 | 4011 | the sender | It sent more control frames than the control frame limit ([Keepalive](#keepalive)); the partner is closed with 4000 |
 
@@ -210,7 +222,7 @@ Its values are working values, as the relay's are.
   - 4003, since the partner may enroll the exchange's key later;
   - 4006, since an earlier socket of this side may still hold the role;
   - 1000 or 4000, the partner leaving the pairing;
-  - 4009, the relay's idle bound;
+  - 4009, the relay's idle or lone-pairing bound;
   - any code the [Close codes](#close-codes) table does not list, as when the connection drops, and a socket that does not open within 30 seconds (`DEFAULT_RELAY_OPEN_TIMEOUT_MS`, an arbitrary working value).
 
   Every other close ends the attempt, and so does any close once the rendezvous budget has ended.
@@ -234,7 +246,7 @@ Its values are working values, as the relay's are.
   - 4003, since the partner may enroll the exchange's key later;
   - 4006, since an earlier socket of this side may still hold the role;
   - 1000 or 4000, the partner leaving the pairing;
-  - 4009, the relay's idle bound;
+  - 4009, the relay's idle or lone-pairing bound;
   - any code the [Close codes](#close-codes) table does not list, as when the connection drops, and a socket that does not open within 30 seconds.
 
   Every other close ends the attempt, and so does any close once the rendezvous budget has ended.

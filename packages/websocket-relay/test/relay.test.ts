@@ -5,9 +5,14 @@ import { connect as connectTcp } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
 
+import { WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS } from "@alcove/core";
+
 import {
   PAIRED_FRAME,
   RELAY_MAX_MESSAGE_BYTES,
+  RELAY_MAX_UNANSWERED_PINGS,
+  RELAY_PROOF_EXPIRY_SLACK_SECONDS,
+  RELAY_PROOF_MAX_LIFETIME_SECONDS,
   RelayCloseCode,
   START_FRAME,
 } from "../src/protocol.ts";
@@ -250,6 +255,57 @@ describe("refusals", () => {
     const serverTime = Number(closed.reason);
     expect(serverTime).toBeGreaterThanOrEqual(before);
     expect(serverTime).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+  });
+
+  it("refuses a proof expiring past its longest lifetime on the relay's clock, with the relay's Unix second, and takes one made at that second", async () => {
+    const { url } = await relay();
+    const aheadBy = RELAY_PROOF_MAX_LIFETIME_SECONDS * 1000;
+    const party = await connect(url);
+    party.send(
+      await helloFrame({
+        role: "inviter",
+        ttlSeconds: RELAY_PROOF_MAX_LIFETIME_SECONDS,
+        now: new Date(Date.now() + aheadBy),
+      }),
+    );
+    const closed = await party.closed;
+    expect(closed.code).toBe(RelayCloseCode.proofExpired);
+    expect(closed.reason).toMatch(/^[1-9][0-9]*$/);
+
+    const again = await connect(url);
+    again.send(
+      await helloFrame({
+        role: "inviter",
+        ttlSeconds: RELAY_PROOF_MAX_LIFETIME_SECONDS,
+        now: new Date(Number(closed.reason) * 1000),
+      }),
+    );
+    const acceptor = await connect(url);
+    acceptor.send(await helloFrame({ role: "acceptor" }));
+    expect(await again.receivedCount(1)).toEqual([{ text: PAIRED_FRAME }]);
+  });
+
+  it("takes a proof expiring within the slack past its longest lifetime on the relay's clock", async () => {
+    const { url } = await relay();
+    const party = await connect(url);
+    party.send(
+      await helloFrame({
+        role: "inviter",
+        ttlSeconds: RELAY_PROOF_MAX_LIFETIME_SECONDS,
+        now: new Date(
+          Date.now() + (RELAY_PROOF_EXPIRY_SLACK_SECONDS - 1) * 1000,
+        ),
+      }),
+    );
+    const acceptor = await connect(url);
+    acceptor.send(await helloFrame({ role: "acceptor" }));
+    expect(await party.receivedCount(1)).toEqual([{ text: PAIRED_FRAME }]);
+  });
+
+  it("bounds a proof by the lifetime core gives one", () => {
+    expect(RELAY_PROOF_MAX_LIFETIME_SECONDS).toBe(
+      WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS,
+    );
   });
 
   it("refuses an exchange id no key is enrolled under", async () => {
@@ -620,6 +676,64 @@ describe("keepalive", () => {
     party.send(await helloFrame({ role: "inviter" }));
     await once(party.socket, "ping");
     expect(party.received).toEqual([]);
+  });
+
+  it(`drops a socket that leaves ${RELAY_MAX_UNANSWERED_PINGS} pings unanswered, freeing its role and closing its partner`, async () => {
+    const { url } = await relay({ testing: { pingIntervalMs: 50 } });
+    const silent = new Party(new WebSocket(url, { autoPong: false }));
+    await once(silent.socket, "open");
+    let pings = 0;
+    silent.socket.on("ping", () => (pings += 1));
+    silent.send(await helloFrame({ role: "inviter" }));
+    const acceptor = await connect(url);
+    acceptor.send(await helloFrame({ role: "acceptor" }));
+    await acceptor.receivedCount(1);
+
+    expect((await acceptor.closed).code).toBe(RelayCloseCode.partnerEnded);
+    expect((await silent.closed).code).toBe(1006);
+    expect(pings).toBe(RELAY_MAX_UNANSWERED_PINGS);
+    const { inviter } = await pairedParties(url);
+    expect(inviter.received).toEqual([{ text: PAIRED_FRAME }]);
+  });
+
+  it("keeps open a pairing whose sockets answer every ping, across many pings", async () => {
+    const { url } = await relay({ testing: { pingIntervalMs: 20 } });
+    const parties = await pairedParties(url);
+    let pings = 0;
+    parties.inviter.socket.on("ping", () => (pings += 1));
+    await eventually(() => pings >= 5 * RELAY_MAX_UNANSWERED_PINGS);
+    expect(parties.inviter.socket.readyState).toBe(WebSocket.OPEN);
+    expect(parties.acceptor.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("keeps a socket it holds at the byte rate past the pings it cannot read the answers to", async () => {
+    const events: string[] = [];
+    const pingIntervalMs = 20;
+    const { url } = await relay({
+      testing: {
+        pingIntervalMs,
+        bytesPerSecond: 100_000,
+        burstBytes: 16_384,
+        observer: {
+          held: (role, reason) => events.push(`${role} ${reason} held`),
+          released: (role, reason) => events.push(`${role} ${reason} released`),
+        },
+      },
+    });
+    const { inviter, acceptor } = await forwardingParties(url);
+    const messages = Array.from({ length: 6 }, (_, index) =>
+      Buffer.alloc(16_000, index),
+    );
+    const startedAt = performance.now();
+    for (const message of messages) inviter.send(message);
+    const received = await acceptor.receivedCount(2 + messages.length);
+    expect(receivedInOrder(received.slice(2), messages)).toBe(true);
+    expect(events).toContain("inviter rate held");
+    // Held for most of the run, many times the pings it may leave unanswered.
+    expect(performance.now() - startedAt).toBeGreaterThan(
+      4 * RELAY_MAX_UNANSWERED_PINGS * pingIntervalMs,
+    );
+    expect(inviter.socket.readyState).toBe(WebSocket.OPEN);
   });
 });
 
