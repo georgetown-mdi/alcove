@@ -156,13 +156,21 @@ jobs:
       # FIPS variant's base comes from ECR Public, pulled anonymously either way.
       - name: Log in to Docker Hub
         if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
+      # action's default floats on `buildx-stable-1`. Dependabot does not
+      # track this input: to move it, take the index digest
+      # `docker buildx imagetools inspect moby/buildkit:<version>` prints and
+      # set it in all four setup-buildx-action steps, in this workflow and in
+      # release.yaml.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
 
       # The layer cache is keyed by ISO week as well as by variant. A cached
       # layer is replayed until an instruction above it changes, and the
@@ -184,7 +192,7 @@ jobs:
       # concern. The cache is scoped per variant: the two images share no layer,
       # so one scope would have them evicting each other.
       - name: Build image (amd64, load into local Docker)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -956,7 +964,7 @@ jobs:
       - name: Scan the image for vulnerable packages
         id: vulnerability_scan
         if: ${{ !cancelled() }}
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: ${{ matrix.tag }}
@@ -1038,20 +1046,28 @@ jobs:
 
       - name: Log in to Docker Hub
         if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
+      # action's default floats on `buildx-stable-1`. Dependabot does not
+      # track this input: to move it, take the index digest
+      # `docker buildx imagetools inspect moby/buildkit:<version>` prints and
+      # set it in all four setup-buildx-action steps, in this workflow and in
+      # release.yaml.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
 
       - name: Compute the layer cache week
         id: cache_week
         run: echo "week=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"
 
       - name: Build image (amd64, load into local Docker)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: packages/sftp-relay/Dockerfile
@@ -1135,7 +1151,7 @@ jobs:
 
       - name: Scan the image for vulnerable packages
         if: ${{ !cancelled() }}
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: ${{ env.IMAGE }}
@@ -1225,7 +1241,7 @@ jobs:
       # theirs. A run without the token, a fork's, pulls anonymously.
       - name: Log in to Docker Hub
         if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -1577,7 +1593,7 @@ jobs:
       - name: Scan the published image for vulnerable packages
         id: published_vulnerability_scan
         if: ${{ !cancelled() }}
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: ghcr.io/georgetown-mdi/alcove:latest

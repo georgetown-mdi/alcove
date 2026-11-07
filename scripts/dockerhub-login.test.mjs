@@ -135,4 +135,19 @@ describe("Docker Hub logins in the workflows", () => {
     }
     expect(new Set(images).size).toBe(1);
   });
+
+  it("pins every BuildKit builder image to one digest", () => {
+    const options = jobs.flatMap(({ job }) =>
+      job.steps
+        .filter((step) => /^docker\/setup-buildx-action@/.test(step.uses ?? ""))
+        .map((step) => step.with?.["driver-opts"]),
+    );
+    expect(options.length).toBeGreaterThan(0);
+    for (const option of options) {
+      expect(option).toMatch(
+        /^image=moby\/buildkit:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/,
+      );
+    }
+    expect(new Set(options).size).toBe(1);
+  });
 });
