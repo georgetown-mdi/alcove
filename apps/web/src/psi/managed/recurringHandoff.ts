@@ -290,14 +290,14 @@ function shellDoubleQuoteToken(token: string): string {
 }
 
 /**
- * Join a command's argv tokens into one line quoted for cmd.exe, for the Windows
- * Task Scheduler example. cmd.exe does not honor the POSIX single quotes {@link
- * shellJoinCommand} emits, so a token with a space or a cmd metacharacter is
- * wrapped in double quotes (any internal `"` doubled) and a token with none is
- * emitted bare, unless `alwaysQuote` holds for it: a token holding a
- * placeholder the operator replaces with a path that may contain a space.
- * Display shaping for the same server-composed, secret-free tokens, not a
- * security boundary.
+ * Join a command's argv tokens into one line quoted for cmd.exe, for the
+ * Windows Task Scheduler action, which runs under `cmd /c`. cmd.exe does not
+ * honor the POSIX single quotes {@link shellJoinCommand} emits, so a token with
+ * a space or a cmd metacharacter is wrapped in double quotes (any internal `"`
+ * doubled) and a token with none is emitted bare, unless `alwaysQuote` holds
+ * for it: a token holding a placeholder the operator replaces with a path that
+ * may contain a space. Display shaping for the same server-composed,
+ * secret-free tokens, not a security boundary.
  */
 export function windowsJoinCommand(
   argv: ReadonlyArray<string>,
@@ -314,4 +314,46 @@ function windowsQuoteToken(token: string, alwaysQuote: boolean): string {
   if (!alwaysQuote && token.length > 0 && !CMD_NEEDS_QUOTING.test(token))
     return token;
   return `"${token.replace(/"/g, '""')}"`;
+}
+
+/** `text` as a PowerShell double-quoted string: each double quote doubled,
+ * and a backtick before each character that would end or expand it, the
+ * typographic double quotes PowerShell also reads as quotes included. */
+export function powerShellString(text: string): string {
+  const escaped = text.replace(/["\u201C\u201D\u201E`$]/g, (character) =>
+    character === '"' ? '""' : `\`${character}`,
+  );
+  return `"${escaped}"`;
+}
+
+/** A word left bare in a PowerShell line: it starts with a letter, `_`, `/`
+ * or a `.` followed by one of those, so it cannot start a number, an operator, a splat or a comment, and
+ * holds none of the characters PowerShell expands or ends a word at. */
+const POWERSHELL_BARE_WORD = /^(?:[A-Za-z_/]|\.[A-Za-z_/])[\w./:=@-]*$/;
+
+/** An option left bare in a PowerShell line: only letters, digits and hyphens
+ * after its dashes, since PowerShell parses a dash-led word as a parameter. */
+const POWERSHELL_BARE_OPTION = /^--?[A-Za-z][A-Za-z0-9-]*$/;
+
+/**
+ * Join a command's argv tokens into one line for PowerShell, for the one-off
+ * Windows command. A token that is not a bare word or option is a PowerShell
+ * double-quoted string ({@link powerShellString}),
+ * so a `;`, `$`, `$(...)` or backtick in it reaches the program as text, and so
+ * is a token `alwaysQuote` accepts: one holding a placeholder the operator
+ * replaces with a path that may contain a space. Windows PowerShell 5.1 does
+ * not pass a `"` inside an argument to a program intact.
+ */
+export function powerShellJoinCommand(
+  argv: ReadonlyArray<string>,
+  alwaysQuote: (token: string) => boolean = () => false,
+): string {
+  return argv
+    .map((token) =>
+      !alwaysQuote(token) &&
+      (POWERSHELL_BARE_WORD.test(token) || POWERSHELL_BARE_OPTION.test(token))
+        ? token
+        : powerShellString(token),
+    )
+    .join(" ");
 }

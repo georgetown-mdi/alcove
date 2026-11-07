@@ -1,3 +1,5 @@
+import { powerShellString } from "@psi/managed/recurringHandoff";
+
 /**
  * The schedule half of the lines a hand-off surface shows an operator: the
  * cron fields and the Windows Task Scheduler registration that run an Alcove
@@ -117,16 +119,6 @@ export function cronIntervalGuard(schedule: RunSchedule | undefined): string {
     `[ $(( (${clock} / ${SECONDS_PER_DAY} - ${schedule.anchorDay}) ` +
     `% ${schedule.intervalDays} )) -eq 0 ] && `
   );
-}
-
-/** `text` as a PowerShell double-quoted string: each double quote doubled,
- * and a backtick before each character that would end or expand it, the
- * typographic double quotes PowerShell also reads as quotes included. */
-function powerShellString(text: string): string {
-  const escaped = text.replace(/["\u201C\u201D\u201E`$]/g, (character) =>
-    character === '"' ? '""' : `\`${character}`,
-  );
-  return `"${escaped}"`;
 }
 
 /** Today at `hour`:`minute`, as a PowerShell expression. A daily or weekly

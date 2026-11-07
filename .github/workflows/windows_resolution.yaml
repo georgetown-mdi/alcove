@@ -21,7 +21,9 @@ name: Windows Path Resolution
 #            generator's output, so a change to them reaches this job. The
 #            docker lines README.md, docs/CONSOLE.md, and the console's
 #            shared-folder notice print run the same way, from a file a
-#            repository script test keeps equal to them. The Command Prompt
+#            repository script test keeps equal to them, and so do the web
+#            app's Windows run commands, from a file a web unit test keeps
+#            equal to their generator. The Command Prompt
 #            setup script run end to end against docker and podman stand-ins,
 #            for the engine it chooses. And a smoke of the VM
 #            pass driver: console input into set /p, and its Read-Host
@@ -82,6 +84,7 @@ on:
       - "support/maintainer-notes/DockerLines.Tests.ps1"
       - "support/maintainer-notes/DockerStandIn.ps1"
       - "support/maintainer-notes/docker-lines.txt"
+      - "support/maintainer-notes/windows-run-lines.txt"
       - "support/maintainer-notes/ScheduleLines.Tests.ps1"
       - "support/maintainer-notes/schedule-lines.txt"
       - "support/maintainer-notes/ci-resolution-tests.ps1"

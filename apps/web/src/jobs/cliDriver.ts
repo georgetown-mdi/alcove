@@ -411,7 +411,9 @@ function runCliChild(
 ): CliDriverHandle {
   const child = spawn(process.execPath, argv, {
     cwd: workdir,
-    stdio: ["ignore", "pipe", "pipe", "pipe"],
+    // Nothing reads the child's stdout, and an unread pipe would stall a child
+    // writing past the pipe buffer short of its exit.
+    stdio: ["ignore", "ignore", "pipe", "pipe"],
     shell: false,
     env: { ...sanitizedChildEnv(), ...extraEnv },
   });

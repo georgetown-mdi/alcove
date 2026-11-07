@@ -27,6 +27,7 @@ import {
 import {
   handoffCaveats,
   parseHandoff,
+  powerShellJoinCommand,
   shellJoinCommand,
   unsetSigningSettingsCaveat,
   windowsJoinCommand,
@@ -805,6 +806,69 @@ describe("parseHandoff and shellJoinCommand (browser reader)", () => {
     ).toBe('alcove "--identity=Agency A" input.csv');
     // A token bearing a literal double quote is wrapped with the inner quote doubled.
     expect(windowsJoinCommand(['a"b'])).toBe('"a""b"');
+  });
+
+  test("powerShellJoinCommand leaves plain words and options bare", () => {
+    expect(
+      powerShellJoinCommand([
+        "docker",
+        "run",
+        "--rm",
+        "-it",
+        "ghcr.io/georgetown-mdi/alcove:1.2.3",
+        "sftp://user@example.org/psi",
+        "JOB_DATA_ROOT=/work",
+        ".alcove-signing-identity.json",
+        "./",
+      ]),
+    ).toBe(
+      "docker run --rm -it ghcr.io/georgetown-mdi/alcove:1.2.3 " +
+        "sftp://user@example.org/psi JOB_DATA_ROOT=/work " +
+        ".alcove-signing-identity.json ./",
+    );
+  });
+
+  test.each([
+    ["a statement separator", "--csv-delimiter=;", '"--csv-delimiter=;"'],
+    ["a variable", "--identity=$env:X", '"--identity=`$env:X"'],
+    [
+      "a subexpression",
+      "--outbound-path=$(whoami)",
+      '"--outbound-path=`$(whoami)"',
+    ],
+    ["a backtick", "a`b", '"a``b"'],
+    ["a double quote", 'a"b', '"a""b"'],
+    [
+      "typographic double quotes",
+      "\u201Ca\u201D\u201E",
+      '"`\u201Ca`\u201D`\u201E"',
+    ],
+    ["a single quote and a space", "O'Brien & Co", '"O\'Brien & Co"'],
+    ["a comma", "type=bind,src=/a,dst=/work", '"type=bind,src=/a,dst=/work"'],
+    [
+      "a leading @",
+      "@run/alcove.proposed-terms",
+      '"@run/alcove.proposed-terms"',
+    ],
+    ["a leading #", "#1", '"#1"'],
+    ["a leading digit", "0x10", '"0x10"'],
+    [
+      "a dash-led word with a dot",
+      "--log-file=exchange.log",
+      '"--log-file=exchange.log"',
+    ],
+    ["nothing", "", '""'],
+  ])("powerShellJoinCommand quotes %s", (_name, token, quoted) => {
+    expect(powerShellJoinCommand(["docker", token])).toBe(`docker ${quoted}`);
+  });
+
+  test("powerShellJoinCommand quotes a token alwaysQuote accepts", () => {
+    expect(
+      powerShellJoinCommand(
+        ["docker", "NAME", "run"],
+        (token) => token === "NAME",
+      ),
+    ).toBe('docker "NAME" run');
   });
 });
 
