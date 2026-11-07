@@ -513,6 +513,47 @@ describe("refusals", () => {
   });
 });
 
+describe("the endpoint", () => {
+  it("answers a plain request with 404 and closes its connection", async () => {
+    const { url, server } = await relay();
+    const socket = connectTcp(Number(new URL(url).port), "127.0.0.1");
+    try {
+      await once(socket, "connect");
+      let answer = "";
+      socket.on("data", (chunk: Buffer) => (answer += chunk.toString()));
+      const sentAt = performance.now();
+      socket.write("GET / HTTP/1.1\r\nHost: relay\r\n\r\n");
+      await once(socket, "close");
+
+      expect(answer).toMatch(/^HTTP\/1\.1 404 /);
+      expect(answer).toMatch(/\r\nConnection: close\r\n/i);
+      // The server's keep-alive bound, which closes a kept connection.
+      expect(performance.now() - sentAt).toBeLessThan(server.keepAliveTimeout);
+    } finally {
+      socket.destroy();
+    }
+  });
+
+  it("negotiates no per-message compression when a client offers it", async () => {
+    const { url } = await relay();
+    const socket = new WebSocket(url, { perMessageDeflate: true });
+    const party = new Party(socket);
+    await once(socket, "open");
+    expect(socket.extensions).toBe("");
+    socket.close();
+    await party.closed;
+  });
+
+  it("ignores the query string on its path", async () => {
+    const { url } = await relay();
+    const { inviter, acceptor } = await forwardingParties(`${url}?q=1`);
+    inviter.send(Buffer.from("through the query"));
+    expect((await acceptor.receivedCount(3))[2]).toEqual({
+      binary: Buffer.from("through the query"),
+    });
+  });
+});
+
 /** Open a socket to the relay: the open party, or the status of the answer
  * that refused the upgrade. */
 async function attemptUpgrade(

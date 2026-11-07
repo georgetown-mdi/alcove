@@ -152,6 +152,9 @@ const OTHER_ROLE: Record<RendezvousRole, RendezvousRole> = {
 // `close()` with no arguments sends one.
 const NORMAL_CLOSE_CODES = new Set([1000, 1005]);
 
+/** The form of a relay key core derives a proof key from. */
+const RELAY_KEY_PATTERN = /^[0-9a-f]{64}$/;
+
 function requestPath(url: string | undefined): string {
   if (url === undefined) return "";
   const queryAt = url.search(/[?#]/);
@@ -175,7 +178,8 @@ function refuseUpgrade(
 
 /**
  * An HTTP server for {@link attachWebSocketRelay} that answers every plain
- * request with 404 and reads at most one read ahead from a paused socket
+ * request with 404 and closes its connection, and reads at most one read
+ * ahead from a paused socket
  * ({@link RELAY_READ_HIGH_WATER_MARK_BYTES}), the read-ahead the relay's
  * stated bounds count.
  */
@@ -183,7 +187,7 @@ export function createWebSocketRelayServer(): Server {
   return createServer(
     { highWaterMark: RELAY_READ_HIGH_WATER_MARK_BYTES },
     (_request, response) => {
-      response.writeHead(404);
+      response.writeHead(404, { Connection: "close" });
       response.end();
     },
   );
@@ -388,6 +392,14 @@ export function attachWebSocketRelay(
     const key = lookUpKey(hello.exchangeId);
     if (key === null) return refuse(party, RelayCloseCode.internalError);
     if (key === undefined) return refuse(party, RelayCloseCode.notEnrolled);
+    if (!RELAY_KEY_PATTERN.test(key)) {
+      if (malformedKeyReports.admit(hello.exchangeId)) {
+        reportFault(
+          `the relay key enrolled under exchange id ${hello.exchangeId} is not 64 lowercase hex characters`,
+        );
+      }
+      return refuse(party, RelayCloseCode.internalError);
+    }
     const now = new Date();
     try {
       await checkWebSocketRelayProof({
@@ -397,14 +409,9 @@ export function attachWebSocketRelay(
         now,
       });
     } catch (error) {
-      if (!(error instanceof WebSocketRelayProofRefusedError)) {
-        if (malformedKeyReports.admit(hello.exchangeId)) {
-          reportFault(
-            `the relay key enrolled under exchange id ${hello.exchangeId} is not 64 lowercase hex characters`,
-          );
-        }
-        return refuse(party, RelayCloseCode.internalError);
-      }
+      // Any other failure is reported, and the hello refused, where `verify`
+      // is called.
+      if (!(error instanceof WebSocketRelayProofRefusedError)) throw error;
       if (error.reason === "expired") {
         const serverTime = String(Math.floor(now.getTime() / 1000));
         return refuse(party, RelayCloseCode.proofExpired, serverTime);

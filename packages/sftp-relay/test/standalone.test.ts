@@ -1,12 +1,19 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { Server as HttpServer } from "node:http";
 import { createRequire } from "node:module";
-import { createServer } from "node:net";
+import { connect as connectTcp, createServer } from "node:net";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
+
+import {
+  SIGNALING_HEADERS_TIMEOUT_MS,
+  SIGNALING_PREHANDSHAKE_IDLE_MS,
+  SIGNALING_REQUEST_TIMEOUT_MS,
+} from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
 import { SFTP_RELAY_PATH, SftpRelayCloseCode } from "../src/protocol.ts";
 
@@ -35,18 +42,30 @@ afterEach(async () => {
   }
 });
 
-function spawnRunner(argv: string[]): ChildProcess {
+// Reports the bounds on the runner's own HTTP server (`probeLine` below).
+const SERVER_BOUNDS_PROBE = join(packageRoot, "test", "serverBoundsProbe.mjs");
+
+function spawnRunner(
+  argv: string[],
+  { probeServerBounds = false } = {},
+): ChildProcess {
+  const env = probeServerBounds
+    ? {
+        ...process.env,
+        NODE_OPTIONS: `--import=${pathToFileURL(SERVER_BOUNDS_PROBE).href}`,
+      }
+    : process.env;
   const child = spawn(
     process.execPath,
     [require.resolve("tsx/cli"), "src/standalone.ts", ...argv],
-    { cwd: packageRoot, stdio: ["ignore", "pipe", "pipe"] },
+    { cwd: packageRoot, env, stdio: ["ignore", "pipe", "pipe"] },
   );
   children.push(child);
   return child;
 }
 
-async function startRunner(argv: string[]) {
-  const child = spawnRunner(argv);
+async function startRunner(argv: string[], { probeServerBounds = false } = {}) {
+  const child = spawnRunner(argv, { probeServerBounds });
   let stdout = "";
   let stderr = "";
   child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
@@ -92,6 +111,29 @@ async function startTarget() {
   return { port: (server.address() as AddressInfo).port, sockets };
 }
 
+/** Resolves once `condition` holds, polled every 10 ms, or rejects at `ms`. */
+async function eventually(condition: () => boolean, ms = 5000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`not met within ${ms} ms`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+/** What the server bounds probe wrote about `subject`, once it has. */
+async function probeLine(
+  stderr: () => string,
+  subject: "server" | "connection",
+): Promise<unknown> {
+  const prefix = `probe ${subject} `;
+  const line = () =>
+    stderr()
+      .split("\n")
+      .find((candidate) => candidate.startsWith(prefix));
+  await eventually(() => line() !== undefined);
+  return JSON.parse((line() ?? "").slice(prefix.length));
+}
+
 describe("the standalone runner", () => {
   it(
     "forwards an allowed origin's messages to its target and back, and refuses another origin",
@@ -130,6 +172,55 @@ describe("the standalone runner", () => {
       runner.child.kill("SIGTERM");
       const [code] = await once(runner.child, "exit");
       expect(code).toBe(0);
+    },
+  );
+
+  it(
+    "answers a plain request with 404 and closes its connection",
+    { timeout: 60_000 },
+    async () => {
+      const runner = await startRunner([
+        "--target",
+        "127.0.0.1:22",
+        "--allowed-origin",
+        ORIGIN,
+      ]);
+      const socket = connectTcp(Number(new URL(runner.url).port), "127.0.0.1");
+      cleanups.push(() => socket.destroy());
+      await once(socket, "connect");
+      let answer = "";
+      socket.on("data", (chunk: Buffer) => (answer += chunk.toString()));
+      const sentAt = performance.now();
+      socket.write("GET / HTTP/1.1\r\nHost: relay\r\n\r\n");
+      await once(socket, "close");
+
+      expect(answer).toMatch(/^HTTP\/1\.1 404 /);
+      expect(answer).toMatch(/\r\nConnection: close\r\n/i);
+      // Node's own keep-alive bound, which closes a kept connection.
+      expect(performance.now() - sentAt).toBeLessThan(
+        new HttpServer().keepAliveTimeout,
+      );
+    },
+  );
+
+  it(
+    "applies the signaling broker's pre-upgrade bounds to its server",
+    { timeout: 60_000 },
+    async () => {
+      const runner = await startRunner(
+        ["--target", "127.0.0.1:22", "--allowed-origin", ORIGIN],
+        { probeServerBounds: true },
+      );
+      expect(await probeLine(runner.stderr, "server")).toEqual({
+        headersTimeout: SIGNALING_HEADERS_TIMEOUT_MS,
+        requestTimeout: SIGNALING_REQUEST_TIMEOUT_MS,
+      });
+      const socket = connectTcp(Number(new URL(runner.url).port), "127.0.0.1");
+      cleanups.push(() => socket.destroy());
+      await once(socket, "connect");
+      expect(await probeLine(runner.stderr, "connection")).toEqual({
+        timeout: SIGNALING_PREHANDSHAKE_IDLE_MS,
+      });
     },
   );
 

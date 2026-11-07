@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { Socket } from "node:net";
+import { Socket, createServer as createTcpServer } from "node:net";
 
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
@@ -14,6 +14,7 @@ import type { AddressInfo } from "node:net";
 // the TCP handshake reliably, so the relay is given a socket that never
 // connects in place of its connection to the target. Every other close row
 // runs against real targets in apps/cli/test/integration/sftpRelay.test.ts.
+// The endpoint's compression test runs against a loopback echo target.
 
 const ORIGIN = "https://app.example.org";
 const CONNECT_TIMEOUT_MS = 100;
@@ -66,5 +67,42 @@ describe("the connect timeout", () => {
     expect(faults).toEqual([
       `the SFTP relay could not connect to 192.0.2.1 port 22: no answer within ${CONNECT_TIMEOUT_MS} ms`,
     ]);
+  });
+});
+
+describe("the endpoint", () => {
+  it("negotiates no per-message compression when a browser offers it", async () => {
+    const target = createTcpServer((socket) => {
+      cleanups.push(() => socket.destroy());
+      socket.pipe(socket);
+    });
+    target.listen(0, "127.0.0.1");
+    await once(target, "listening");
+    cleanups.push(() => target.close());
+    const server = createServer();
+    const relay = attachSftpRelay(server, {
+      target: {
+        host: "127.0.0.1",
+        port: (target.address() as AddressInfo).port,
+      },
+      allowedOrigins: [ORIGIN],
+      reportFault: () => {},
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    cleanups.push(() => {
+      relay.close();
+      server.closeAllConnections();
+      server.close();
+    });
+    const { port } = server.address() as AddressInfo;
+
+    const socket = new WebSocket(`ws://127.0.0.1:${port}${SFTP_RELAY_PATH}`, {
+      headers: { Origin: ORIGIN },
+      perMessageDeflate: true,
+    });
+    cleanups.push(() => socket.terminate());
+    await once(socket, "open");
+    expect(socket.extensions).toBe("");
   });
 });
