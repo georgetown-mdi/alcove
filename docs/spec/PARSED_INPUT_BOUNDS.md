@@ -155,6 +155,8 @@ Each cap's worst case is static: the last column is the most a body at the cap w
 | Server provisioning answer (`serverProvision.ts`) | 32,768 bytes (`MAX_PROVISION_RESPONSE_BYTES`) | The widest answer the schema admits, every character escaped, is 26,632 bytes | 1.3 MB |
 
 A file-sync message over its cap is a terminal `UsageError` that leaves the file in place, and a relay control frame over its cap ends the relay connection as a `protocol` failure.
+A signaling frame over its cap, or one that is not text, ends the CLI's signaling socket as a `transport` failure.
+The CLI checks that cap on a frame already received whole: Node's `WebSocket` sets no message limit below its own 128 MiB, so a coordination server can make the CLI hold one frame of up to that size before the socket ends, measured at about 410 MiB of resident memory above the process's baseline on Node 26.13.0.
 
 The severity is defense-in-depth, not a live vulnerability: the counterparty is authenticated and can already abort the exchange trivially, and most of these sites already report a clean refusal rather than an ungraceful throw - a `receiveParsed` / `parseOrProtocolError` wrap reports a `ConnectionError("protocol")` from whatever `schema.parse` throws, and the linkage-terms parse-error catch aborts the same way.
 The stack-overflow `RangeError` is what `parse` throws, so the wrap catches it directly; the string-length `RangeError` is not, since the `ZodError` message builds lazily - the wrap sees only the unread `ZodError`, and that `RangeError`, if the issue list is that large, fires only where the cause's message is first read.

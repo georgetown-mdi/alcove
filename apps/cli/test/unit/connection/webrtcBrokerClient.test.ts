@@ -83,6 +83,11 @@ class FakeSocket {
     });
   }
 
+  /** One inbound frame, its data exactly as given. */
+  emitMessage(data: unknown): void {
+    this.emit("message", { data });
+  }
+
   fail(): void {
     this.emit("error", {});
   }
@@ -556,6 +561,37 @@ test("a non-JSON frame ends the connection without echoing the body", async () =
   expect(closes).toHaveLength(1);
   expect(closes[0]?.kind).toBe("transport");
   expect(closes[0]?.message).not.toContain("NOT-JSON-MARKER");
+  expect(socket.closed).toBe(true);
+});
+
+test.each([
+  ["a Blob", () => new Blob(["{}"])],
+  ["an ArrayBuffer", () => new TextEncoder().encode("{}").buffer],
+])("a frame that is not text, as %s, ends the connection", async (_, data) => {
+  const { socket, messages, closes } = await register();
+  socket.emitMessage(data());
+  expect(messages).toHaveLength(0);
+  expect(closes).toHaveLength(1);
+  expect(closes[0]?.kind).toBe("transport");
+  expect(closes[0]?.message).toBe(
+    "the coordination server sent a frame that is not text",
+  );
+  expect(socket.closed).toBe(true);
+});
+
+test("a frame that is not text ends a registration still waiting on OPEN", async () => {
+  const pending = connectToBroker({
+    location: LOCATION,
+    id: LOCAL_ID,
+    handlers: { onMessage: () => {}, onClose: () => {} },
+    socketFactory,
+  });
+  const socket = sockets[sockets.length - 1];
+  socket.open();
+  socket.emitMessage(new Blob(["{}"]));
+  await expect(pending).rejects.toThrow(
+    "the coordination server sent a frame that is not text",
+  );
   expect(socket.closed).toBe(true);
 });
 

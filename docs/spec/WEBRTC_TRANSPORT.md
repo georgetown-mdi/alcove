@@ -1118,6 +1118,13 @@ applied cap from the moment it is handed to the ICE agent until the agent
 settles it, so a burst of candidates the agent will reject, arriving in
 one tick, can hold the budget until they settle.
 
+A signaling frame over 256 KiB, or one that is not text, ends the signaling
+socket as a `transport` failure. The frame cap is checked on a frame already
+received whole: Node's `WebSocket` sets no message limit below its own
+128 MiB, so a coordination server can make the CLI hold one frame of up to
+that size before the socket ends, measured at about 410 MiB of resident
+memory above the process's baseline on Node 26.13.0.
+
 The browser peer holds its own signaling intake to the first two bounds: a
 frame over 256 KiB of UTF-8 is refused unparsed, the peer reporting a
 `server-error` naming the limit and leaving the signaling server; and at most

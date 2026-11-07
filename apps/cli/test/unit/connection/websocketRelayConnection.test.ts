@@ -12,6 +12,7 @@ import {
   deriveWebSocketRelayProofKey,
   packCloseSentinel,
   parseWebSocketRelayProof,
+  sanitizeErrorForDisplay,
   statesItsOwnNextStep,
 } from "@alcove/core";
 import {
@@ -730,6 +731,53 @@ test("a proof refused as expired with no relay clock is not made again", async (
   first.open();
   first.closedByRelay(4005, "soon");
   await expect(opening).rejects.toThrow("Correct this computer's clock");
+  expect(sockets).toHaveLength(1);
+});
+
+test("an expired-proof close after the rendezvous budget ends the attempt without dialing again", async () => {
+  const { relay, sockets } = await parkedRelay({
+    rendezvousTimeoutMs: 20,
+    redialIntervalMs: 1,
+  });
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.control("paired");
+  await sleep(40);
+  expect(relay.failure).toBeUndefined();
+
+  socket.closedByRelay(4005, String(NOW_SECONDS + 3_600));
+  expect(relay.failure).toBeInstanceOf(ConnectionError);
+  expect(relay.failure?.message).toContain(
+    "refused this side's proof as expired, so this computer's clock",
+  );
+  await sleep(20);
+  expect(sockets).toHaveLength(1);
+});
+
+test("a proof time on the relay's clock past the last date is refused naming the relay and the invitation", async () => {
+  let reads = 0;
+  const { sockets, options } = harness({
+    now: () => new Date(NOW.getTime() + reads++ * 2_000),
+  });
+  const opening = openWebSocketRelayMessageConnection(
+    await relayDial(),
+    options,
+  );
+  const first = await socketDialed(sockets);
+  first.open();
+  first.closedByRelay(4005, "8639999999999");
+  const error = await opening.catch((err: unknown) => err);
+  expect(error).toBeInstanceOf(ConnectionError);
+  expect((error as ConnectionError).message).toBe(
+    "could not build this side's proof for the WebSocket relay at " +
+      "wss://relay.example.org/relay from the exchange's relay key. Check " +
+      "that both parties use the current invitation, and run the exchange " +
+      "again.",
+  );
+  expect(sanitizeErrorForDisplay(error)).not.toContain(
+    "buildWebSocketRelayProof",
+  );
+  expect(statesItsOwnNextStep(error)).toBe(true);
   expect(sockets).toHaveLength(1);
 });
 
