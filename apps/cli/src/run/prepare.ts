@@ -338,7 +338,7 @@ export function checkRunMemoryBudget(params: {
  * ({@link preflightOutputFolder}), the shared secret's readiness and its
  * key-file path, the memory the round needs
  * ({@link checkRunMemoryBudget}, skipped when `memoryBudgetReported`), the
- * first round's size against one message on the channel, and on webrtc the
+ * first round's size against the protocol's per-set maximum, and on webrtc the
  * rendezvous resolution. None of them contacts the network, so
  * {@link preflightRun} runs them ahead of a command's own first network
  * contact as well.

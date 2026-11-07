@@ -3865,6 +3865,19 @@ test("a payload receive list naming a column twice parses to one entry", () => {
   ]);
 });
 
+test("a payload send list keeps names that differ by case, whitespace or normalization form", () => {
+  // Two entries name one column only when their strings are equal code unit
+  // for code unit (docs/spec/CANONICAL_ENCODING.md).
+  const send = [
+    { name: "dose" },
+    { name: "Dose" },
+    { name: "dose " },
+    { name: "caf\u00e9" },
+    { name: "cafe\u0301" },
+  ];
+  expect(parseLinkageTerms(sendTerms(send)).payload?.send).toEqual(send);
+});
+
 test("a payload send list over the maximum count is rejected by its authored count, not normalized under it", () => {
   // The count gate stands ahead of the normalization: a list padded with one
   // name repeated is refused for the count it was authored with rather than

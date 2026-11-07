@@ -1228,6 +1228,11 @@ test("the single-pass sender holds the request to the cap the counts derive, bef
   ]);
   const sender = makeParticipant(psiLibrary, "starter");
   const processed = vi.spyOn(sender, "processClientRequest");
+  const createServerSetup = sender.createServerSetup.bind(sender);
+  vi.spyOn(sender, "createServerSetup").mockImplementation((values) => {
+    events.push("setup");
+    return createServerSetup(values);
+  });
   const fake: MessageConnection = {
     send: async () => {},
     receive: async () => {
@@ -1255,9 +1260,11 @@ test("the single-pass sender holds the request to the cap the counts derive, bef
       "their declared sizes",
   );
   // The read gate takes the message file around the request: its header and
-  // the encryption envelope.
+  // the encryption envelope. It is set before the setup is masked, since the
+  // partner can write its request while the sender masks.
   expect(events).toEqual([
     `cap:${requestCap + 10 + 30}`,
+    "setup",
     "receive",
     "cap:undefined",
   ]);

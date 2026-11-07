@@ -1089,8 +1089,7 @@ interface ParseSchema<T> {
  * `RangeError` built over a pathological-count payload, which this wrap
  * catches directly. The "Invalid string length" half is not thrown here at
  * all: the `ZodError` message builds lazily, so it fires only where the
- * cause's message is later read. Both are also forestalled at the schema by
- * the single-issue array bounds (utils/singleIssueArray.ts).
+ * cause's message is later read.
  */
 export function parseOrProtocolError<T>(
   schema: ParseSchema<T>,

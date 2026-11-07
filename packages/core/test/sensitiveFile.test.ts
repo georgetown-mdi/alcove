@@ -310,6 +310,46 @@ test("an unresolved alias has no position and keeps the path-only message", () =
   );
 });
 
+describe("the alias expansion bound", () => {
+  // Driven well short of and well past the bound, not at its edge, which is
+  // the library's to count: on yaml 2.9.1, 99 references parse and 100 are
+  // refused.
+  const termsWithAliases = (references: number): string =>
+    [
+      `identity: &party ${SECRET}`,
+      "linkage_fields:",
+      ...Array.from(
+        { length: references },
+        (_, i) => `  - { name: f${i}, type: *party }`,
+      ),
+    ].join("\n") + "\n";
+
+  test("a document with a few aliases to one anchor parses", () => {
+    const parsed = parseSensitiveYaml(termsWithAliases(3), LABEL) as {
+      linkage_fields: Array<{ type: string }>;
+    };
+    expect(parsed.linkage_fields.map((field) => field.type)).toEqual([
+      SECRET,
+      SECRET,
+      SECRET,
+    ]);
+  });
+
+  test("a document with 150 aliases to one anchor is refused with the path-only label", () => {
+    let caught: unknown;
+    try {
+      parseSensitiveYaml(termsWithAliases(150), LABEL);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(SensitiveYamlParseError);
+    expect((caught as Error).message).toBe(
+      `${LABEL} could not be parsed as YAML`,
+    );
+    expect(sanitizeErrorForDisplay(caught)).not.toContain(SECRET);
+  });
+});
+
 test("describeYamlSyntaxPosition writes the kind, then the line and column", () => {
   expect(
     describeYamlSyntaxPosition({ line: 3, column: 7, kind: "a duplicate key" }),

@@ -855,7 +855,7 @@ export const MAX_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
  * the connect-retry loop's 1-second inter-attempt delay times
  * {@link MAX_TIMEOUT_SECONDS} (604800 s), so the count cannot outlast that same
  * ~7-day wall clock against a fast-refusing endpoint (ECONNREFUSED on sftp,
- * EACCES/ENOENT on filedrop). Bounds only that fast-fail case: a
+ * EACCES on filedrop). Bounds only that fast-fail case: a
  * slow-but-answering endpoint is already held per-attempt by
  * `serverConnectTimeoutMs`. Defined in core because both the schema's `.max()`
  * and the CLI's `nonNegativeIntFlag` parse guard must agree on it. An

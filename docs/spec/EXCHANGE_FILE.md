@@ -120,7 +120,7 @@ that promises, and what it does not, is bounded:
 - **Not round-trippable: the file's own presentation.** An operator's own
   comments, their key order, their quoting and flow style, and a `tab` or `\t`
   `csv_delimiter` spelling `normalizeCsvDelimiter`
-  (`packages/core/src/config/exchangeSpec.ts`) folds to the character are
+  (`packages/core/src/csvDelimiter.ts`) folds to the character are
   properties of the file rather than of the document, and a read-and-write
   cycle states the document. The promise is a file byte-compatible with what
   Alcove writes for those settings, not with an arbitrary hand-authored file.

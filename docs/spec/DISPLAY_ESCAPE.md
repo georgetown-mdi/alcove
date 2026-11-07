@@ -135,8 +135,13 @@ The accept screen's decode-error field is declared `Displayable` rather than `st
 Both routes are pinned at the RENDERED boundary rather than on a raw `.message`: the invitation route in `packages/core/test/config/invitation.test.ts` and, through the real decode wrapper and both CLI sinks, `apps/cli/test/unit/decodeErrorEscaping.test.ts`; the browser route in `apps/web/test/browser/accept.test.ts`, against the mounted screen; the partner linkage-terms route in `packages/core/test/termsExchange.test.ts`.
 Each asserts the rendered text against ONE escape of the partner's own bytes, so a second pass anywhere on either route fails it.
 
-One route still escapes at composition and is escaped again at its sink, so a value crossing it makes two passes.
-It predates the assignment above and is recorded rather than closed, because the fix changes a published surface this section's rule does not by itself decide: what the `@alcove/core` return contract promises about text a consumer escapes again.
+These routes still escape at composition and are escaped again at a later sink, so a value crossing one makes more than one pass.
+Each is a stated limit, recorded rather than closed:
+
+- The relayed terminal `error` event's terms change -- the column names it lists and its other-terms diagnostics -- and its failure cause's folder path or registrar host: the CLI escapes each where it builds the event (`apps/cli/src/eventStream.ts`), and the console's relay escapes each again as it rebuilds the field (`relayedTermsChange` and `relayedFailureCause` in `apps/web/src/jobs/cliDriver.ts`; [SERVER_JOB_API.md, Relay validation at the trust boundary](SERVER_JOB_API.md#relay-validation-at-the-trust-boundary)).
+- The `stages` event's stage labels: the CLI redacts and escapes each (`buildStagesEvent`), and the relay escapes every string the event holds again (`validateAndSanitizeEvent`).
+- The relayed terminal error's cause chain: the CLI's `message` is the escaped rendering stderr receives, the relay escapes each link of it again into `messageChain`, and the console seat escapes each link once more where it shows the failure (`sanitizedFailureMessage` in `apps/web/src/exchange/useInviterExchange.ts`), so one literal backslash in a cause link shows as eight (`apps/web/test/unit/jobs/relayedErrorChainEscape.unit.test.ts`).
+- The compatibility `warnings` below, which predate the assignment above; the fix changes a published surface this section's rule does not by itself decide: what the `@alcove/core` return contract promises about text a consumer escapes again.
 
 The compatibility `warnings` that `validateCompatibility` returns are handed to the caller as display text, so that composition is their sink, while each warning is escaped again where it reaches a log line, the machine-interface event stream's `message`, and -- through the event's `unescapedMessage`, which holds the composition as core returned it -- the console seat.
 This one is inert: every value interpolated into a warning is schema-constrained to a shape the escape does not rewrite, which is enforced by a test rather than assumed.
