@@ -2994,7 +2994,7 @@ describe("assessLinkageSatisfiability dead keys", () => {
         () => buildKeyStrings(terms.linkageKeys[0], dataset, 0),
         JSON.stringify(inputFormat),
       ).toThrow(
-        `a transform step cannot be built from the parameters it declares ("parse_date")`,
+        `a transform step in the agreed terms cannot be built from the parameters it declares ("parse_date")`,
       );
     }
   });
@@ -3231,7 +3231,7 @@ describe("assessLinkageSatisfiability dead keys", () => {
       );
       if (WRONG_TYPED_BOUNDS.has(label)) {
         expect(() => buildKeyStrings(key, dataset, 0), label).toThrow(
-          `a transform step cannot be built from the parameters it declares ("substring")`,
+          `a transform step in the agreed terms cannot be built from the parameters it declares ("substring")`,
         );
         continue;
       }

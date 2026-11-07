@@ -1632,22 +1632,44 @@ export function commitCompiledTransforms(
 }
 
 /**
- * The message both compile refusals hold, raised where terms are authored,
- * minted or accepted, and again by the run for an element transform that
- * reached it without that check. `label` is a {@link transformFunctionLabel},
+ * The message both compile refusals hold, raised by `assertTransformsCompile`
+ * where terms are authored, minted, accepted, or changed by a terms update,
+ * before this party agrees to them. `label` is a {@link transformFunctionLabel},
  * which narrows the function name to a fixed literal, so no partner free text
  * reaches the message; the offending parameter is not named, since its name
  * and value are partner-controlled on the element-transform half. The two
  * refusals share the wording and differ only in error class, by whose content
  * the fault is (see `assertTransformsCompile`).
  *
- * @internal composed by `assertTransformsCompile` in `linkageSatisfiability.ts`
- * and by the run's element-transform compile.
+ * The remedy is the author's own -- correct the parameters or remove the step --
+ * because the terms are not yet agreed. The run, where they are, words its own
+ * refusals (`runStepCompileRefusalMessage`, `runUnknownStepFunctionMessage`).
+ *
+ * @internal composed by `assertTransformsCompile` in `linkageSatisfiability.ts`.
  */
 export function stepCompileRefusalMessage(label: string): string {
   return (
     "a transform step cannot be built from the parameters it declares " +
     `(${label}). Correct that step's parameters, or remove the step.`
+  );
+}
+
+// The run's refusals for an element transform step that does not compile.
+// The terms are agreed by then and may be the partner's, so the remedy goes to
+// whoever wrote them; `label` is a transformFunctionLabel, as above.
+function runStepCompileRefusalMessage(label: string): string {
+  return (
+    "a transform step in the agreed terms cannot be built from the parameters " +
+    `it declares (${label}). Whoever wrote the terms must correct that step's ` +
+    "parameters or remove the step, which changes the agreed terms."
+  );
+}
+
+function runUnknownStepFunctionMessage(label: string): string {
+  return (
+    "a transform step in the agreed terms cannot run on this version of " +
+    `Alcove (${label}). Update Alcove, or ask whoever wrote the terms to ` +
+    "remove the step."
   );
 }
 
@@ -2706,31 +2728,21 @@ export function buildStandardizedDataset(
 // --- Key building ------------------------------------------------------------
 
 /**
- * Every combination of one candidate per element, each concatenated in element
- * order, the last element varying fastest. Each string is built by walking one
- * index per element, so assembly costs one append per element per combination
- * and copies no partial combination: its work is linear in what it yields.
+ * Every combination of one candidate per element, concatenated in element
+ * order with the last element varying fastest. Each stage extends the previous
+ * stage's strings by one element, so the work is the element count times the
+ * combinations.
  *
- * @internal exported so the key-assembly test compares it with the
- * array-product form it replaces.
+ * @internal exported for the key-assembly test.
  */
-export function* assembleKeyStrings(
+export function assembleKeyStrings(
   candidates: ReadonlyArray<ReadonlyArray<string>>,
-): Generator<string> {
-  if (candidates.some((values) => values.length === 0)) return;
-  const indices = new Array<number>(candidates.length).fill(0);
-  for (;;) {
-    let assembled = "";
-    for (let element = 0; element < candidates.length; element++)
-      assembled += candidates[element][indices[element]];
-    yield assembled;
-    let element = candidates.length - 1;
-    while (element >= 0 && ++indices[element] === candidates[element].length) {
-      indices[element] = 0;
-      element--;
-    }
-    if (element < 0) return;
-  }
+): string[] {
+  return candidates.reduce<string[]>(
+    (prefixes, values) =>
+      prefixes.flatMap((prefix) => values.map((value) => prefix + value)),
+    [""],
+  );
 }
 
 // Compiled element transforms, memoized by the step array's identity. buildKeyStrings
@@ -2760,10 +2772,10 @@ const compiledElementTransforms = new WeakMap<
 // both by the run and by the pre-run classification below, so the fate a key's
 // crossing takes is read from the same compiled steps that will produce it.
 //
-// A step that does not compile is refused in the accept boundary's words, and
-// the factory's own message is dropped: it may quote a partner-authored
-// parameter value, and these terms may have reached the run without that check.
-// A defect of this build's own tables is not the terms' fault and passes as is.
+// A step that does not compile is refused naming only its function label: the
+// factory's own message may quote a partner-authored parameter value, and these
+// terms may have reached the run without the accept boundary's check. A defect
+// of this build's own tables is not the terms' fault and passes as is.
 function compiledElementSteps(
   steps: TransformStep[] | undefined,
 ): CompiledStep[] {
@@ -2776,12 +2788,12 @@ function compiledElementSteps(
       compiled.push(compileStep(step));
     } catch (err) {
       if (err instanceof InternalConsistencyError) throw err;
-      const message = stepCompileRefusalMessage(
-        transformFunctionLabel(step.function),
-      );
+      const label = transformFunctionLabel(step.function);
       throw err instanceof UnknownStandardizationFunctionError
-        ? new UnknownStandardizationFunctionError(message)
-        : new UsageError(message);
+        ? new UnknownStandardizationFunctionError(
+            runUnknownStepFunctionMessage(label),
+          )
+        : new UsageError(runStepCompileRefusalMessage(label));
     }
   }
   compiledElementTransforms.set(steps, compiled);

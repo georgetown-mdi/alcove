@@ -2164,8 +2164,8 @@ describe("buildKeyStrings", () => {
       }
       expect(raised, JSON.stringify(step)).toBeInstanceOf(UsageError);
       expect((raised as Error).message, JSON.stringify(step)).toBe(
-        `a transform step cannot be built from the parameters it declares ("${step.function}"). ` +
-          "Correct that step's parameters, or remove the step.",
+        `a transform step in the agreed terms cannot be built from the parameters it declares ("${step.function}"). ` +
+          "Whoever wrote the terms must correct that step's parameters or remove the step, which changes the agreed terms.",
       );
     }
     // The same steps with the params written as text build their keys.
@@ -4298,7 +4298,10 @@ describe("buildKeyStrings", () => {
     expect(raised).toBeInstanceOf(Error);
     const message = (raised as Error).message;
     expect(raised).toBeInstanceOf(UnknownStandardizationFunctionError);
-    expect(message).toContain("(a function this build does not recognize)");
+    expect(message).toBe(
+      "a transform step in the agreed terms cannot run on this version of Alcove (a function this build does not recognize). " +
+        "Update Alcove, or ask whoever wrote the terms to remove the step.",
+    );
     expect(message).not.toContain("nope");
     expect(message).toMatch(PRINTABLE_ASCII);
   });

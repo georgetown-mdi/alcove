@@ -17,11 +17,11 @@ import {
   PRINTABLE_ASCII,
   RLO,
 } from "../src/consent/displayEscapingFixtures";
-import { UsageError } from "../src/errors";
+import { UnknownStandardizationFunctionError, UsageError } from "../src/errors";
 import { getLogger } from "../src/utils/logger";
 
-// The array-product form the assembler replaced, kept as the reference: every
-// combination of one candidate per element, joined in element order.
+// The reference form: every combination of one candidate per element, built as
+// an array of parts and joined in element order.
 function referenceKeyStrings(candidates: string[][]): string[] {
   return candidates
     .reduce<string[][]>(
@@ -106,7 +106,7 @@ describe("assembleKeyStrings", () => {
         expect(product).toBeLessThanOrEqual(MAX_COMBINATIONS);
         const candidates = candidateLists(widths, random);
         expect(
-          [...assembleKeyStrings(candidates)],
+          assembleKeyStrings(candidates),
           `${elementCount} elements, widths ${widths.filter((w) => w > 1).join("x")}`,
         ).toEqual(referenceKeyStrings(candidates));
       }
@@ -114,10 +114,10 @@ describe("assembleKeyStrings", () => {
   });
 
   test("agrees with the reference form at its edges", () => {
-    expect([...assembleKeyStrings([])]).toEqual(referenceKeyStrings([]));
-    expect([...assembleKeyStrings([])]).toEqual([""]);
+    expect(assembleKeyStrings([])).toEqual(referenceKeyStrings([]));
+    expect(assembleKeyStrings([])).toEqual([""]);
     for (const candidates of [[[]], [["A"], []], [[], ["A", "B"]]])
-      expect([...assembleKeyStrings(candidates)]).toEqual(
+      expect(assembleKeyStrings(candidates)).toEqual(
         referenceKeyStrings(candidates),
       );
   });
@@ -231,10 +231,12 @@ describe("buildKeyStrings assembly", () => {
 });
 
 describe("an element transform that does not compile at the run", () => {
-  test("is refused naming its function and no parameter value", () => {
-    // A document parsed afresh has not been through the accept boundary's
-    // compile check, so the run is where its transforms first compile.
-    const algorithm = `metaphone${ESC}[31m${RLO}x`;
+  // A document parsed afresh has not been through the accept boundary's
+  // compile check, so the run is where its transforms first compile.
+  const refusalAtTheRun = (step: {
+    function: string;
+    params?: Record<string, unknown>;
+  }): unknown => {
     const decoded = safeParseLinkageTerms({
       version: "1.0.0",
       identity: "Test Party",
@@ -249,34 +251,57 @@ describe("an element transform that does not compile at the run", () => {
           elements: [
             {
               field: "ssn",
-              transform: [{ function: "phonetic", params: { algorithm } }],
+              transform: [step],
             },
           ],
         },
       ],
     });
     expect(decoded.success).toBe(true);
-    if (!decoded.success) return;
+    if (!decoded.success) return undefined;
     const terms = decoded.data;
-    expect(terms.linkageKeys[0].elements[0].transform?.[0].params).toEqual({
-      algorithm,
-    });
+    expect(terms.linkageKeys[0].elements[0].transform?.[0]).toEqual(step);
     const dataset = new StandardizedDataset(
       [new StandardizedField("ssn", "SSN", [], [{ SSN: "123456789" }])],
       terms.linkageKeys,
     );
-    let raised: unknown;
     try {
       buildKeyStrings(terms.linkageKeys[0], dataset, 0);
     } catch (err) {
-      raised = err;
+      return err;
     }
+    return undefined;
+  };
+
+  test("a step whose parameters do not build sends whoever wrote the terms to correct it", () => {
+    const algorithm = `metaphone${ESC}[31m${RLO}x`;
+    const raised = refusalAtTheRun({
+      function: "phonetic",
+      params: { algorithm },
+    });
     expect(raised).toBeInstanceOf(UsageError);
+    expect(raised).not.toBeInstanceOf(UnknownStandardizationFunctionError);
     const message = (raised as Error).message;
     expect(message).toBe(
-      'a transform step cannot be built from the parameters it declares ("phonetic"). ' +
-        "Correct that step's parameters, or remove the step.",
+      'a transform step in the agreed terms cannot be built from the parameters it declares ("phonetic"). ' +
+        "Whoever wrote the terms must correct that step's parameters or remove the step, which changes the agreed terms.",
     );
+    expect(message).not.toContain("metaphone");
+    expect(message).toMatch(PRINTABLE_ASCII);
+    expect((raised as Error).cause).toBeUndefined();
+  });
+
+  test("a step whose function this build does not have says to update or remove it", () => {
+    // The parse refuses a control character in a function name, so the name
+    // holding one is driven unparsed, in standardization.test.ts.
+    const raised = refusalAtTheRun({ function: "nope_evil" });
+    expect(raised).toBeInstanceOf(UnknownStandardizationFunctionError);
+    const message = (raised as Error).message;
+    expect(message).toBe(
+      "a transform step in the agreed terms cannot run on this version of Alcove (a function this build does not recognize). " +
+        "Update Alcove, or ask whoever wrote the terms to remove the step.",
+    );
+    expect(message).not.toContain("nope");
     expect(message).toMatch(PRINTABLE_ASCII);
     expect((raised as Error).cause).toBeUndefined();
   });
