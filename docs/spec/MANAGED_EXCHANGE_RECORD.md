@@ -1524,6 +1524,18 @@ None of them is a line break to cron, so none can split a crontab entry; the
 limit is that such a character can still appear in the mount text the
 operator copies.
 
+The one-off Windows command is a PowerShell command
+(`powerShellJoinCommand`), where the Task Scheduler line's action is quoted
+for `cmd.exe`. A token is left bare only when it starts with a letter, `_`,
+`/` or `./` and holds only letters, digits, `_`, `.`, `/`, `:`, `=`, `@` and
+`-`, or is an option of only letters, digits and hyphens after its dashes.
+Every other token, and every token holding a placeholder, is a PowerShell
+double-quoted string with a backtick before each `$`, backtick and
+typographic double quote and each `"` doubled, so a `;`, `$` or backtick
+in it reaches `docker` as text. The Windows CI suite
+(`DockerLines.Tests.ps1`) runs generated lines holding each of those under
+Windows PowerShell 5.1 against a `docker` stand-in.
+
 The note on a path or name pasted between double quotes
 (`PASTED_TEXT_ESCAPING_NOTE`) covers a Linux or macOS shell and PowerShell.
 It has each exclamation mark written as `"\!"`, outside the double quotes,

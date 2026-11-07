@@ -27,6 +27,8 @@
 //                     CLI prints before its event stream is open. The real CLI
 //                     escapes this route too, so the same spelling is used.
 //   STUB_STDOUT       Text written to stdout before exit.
+//   STUB_STDOUT_BYTES That many bytes written to stdout before exit, for an
+//                     output past what one environment variable can hold.
 //   STUB_OUTPUT_FILE  When set, the result is written with this content (so the
 //                     result route has a file): as alcove-results-<time>.csv
 //                     inside the output positional (last argv) where that names
@@ -388,6 +390,11 @@ function runExchangeStub() {
     writeStdio(process.stderr, withConfigFile(process.env.STUB_STDERR));
   if (process.env.STUB_STDOUT !== undefined)
     writeStdio(process.stdout, process.env.STUB_STDOUT);
+  if (process.env.STUB_STDOUT_BYTES !== undefined)
+    writeStdio(
+      process.stdout,
+      "x".repeat(Number.parseInt(process.env.STUB_STDOUT_BYTES, 10)),
+    );
 
   const exitCode = Number.parseInt(process.env.STUB_EXIT_CODE ?? "0", 10);
 

@@ -1,6 +1,7 @@
 import { sanitizeForDisplay } from "@alcove/core";
 
 import {
+  powerShellJoinCommand,
   shellJoinCommand,
   windowsJoinCommand,
 } from "@psi/managed/recurringHandoff";
@@ -213,40 +214,49 @@ function installedCronLine(
 }
 
 /**
- * The `docker run` command a person runs once by hand on Windows, which
- * Docker Desktop runs without an account option. It mounts the folder alone,
- * since a Windows path cannot be mounted at the same path inside the
- * container; the panel names each bind path to mount by hand. The mount naming
- * the folder is quoted, so a folder path with a space stays one argument.
- * Undefined when a bind path cannot be mounted.
+ * The `docker run` argv for Windows, which Docker Desktop runs without an
+ * account option. It mounts the folder alone, since a Windows path cannot be
+ * mounted at the same path inside the container; the panel names each bind
+ * path to mount by hand. Undefined when a bind path cannot be mounted.
  */
+function windowsRunArgv(source: ScheduledRunSource): Array<string> | undefined {
+  return dockerRunArgv(source, "docker", WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER, {
+    mountBindPaths: false,
+  });
+}
+
+/** Whether a Windows line's token holds the exchange folder placeholder, which
+ * is quoted so a folder path with a space stays one argument. */
+function holdsWindowsFolderPlaceholder(token: string): boolean {
+  return token.includes(WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER);
+}
+
+/** The `docker run` command a person runs once by hand on Windows, in
+ * PowerShell ({@link windowsRunArgv}). Undefined when a bind path cannot be
+ * mounted. */
 export function dockerWindowsRunCommand(
   source: ScheduledRunSource,
 ): string | undefined {
-  const argv = dockerRunArgv(
-    source,
-    "docker",
-    WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER,
-    { mountBindPaths: false },
-  );
+  const argv = windowsRunArgv(source);
   return argv === undefined
     ? undefined
-    : windowsJoinCommand(argv, (token) =>
-        token.includes(WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER),
-      );
+    : powerShellJoinCommand(argv, holdsWindowsFolderPlaceholder);
 }
 
 /** The Task Scheduler registration running the image over the exchange folder
- * ({@link dockerWindowsRunCommand}). Undefined when a bind path cannot be
+ * ({@link windowsRunArgv}) under `cmd /c`. Undefined when a bind path cannot be
  * mounted. */
 export function dockerTaskSchedulerLine(
   source: ScheduledRunSource,
   schedule?: RunSchedule,
 ): string | undefined {
-  const command = dockerWindowsRunCommand(source);
-  return command === undefined
+  const argv = windowsRunArgv(source);
+  return argv === undefined
     ? undefined
-    : taskSchedulerLine(command, schedule);
+    : taskSchedulerLine(
+        windowsJoinCommand(argv, holdsWindowsFolderPlaceholder),
+        schedule,
+      );
 }
 
 /**

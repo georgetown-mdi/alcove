@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { afterEach, describe, expect, test } from "vitest";
 
 import {
@@ -12,11 +14,13 @@ import {
   classifyExit,
   outputFolderArgument,
   resolveCliBinaryPath,
+  spawnExchangeJob,
   validateAndSanitizeEvent,
 } from "@jobs/cliDriver";
 
 import {
   STUB_CLI_PATH,
+  awaitJobTerminalState,
   captureZeroSetupArgv,
   trackScratchDirs,
 } from "../../utils/jobFixtures";
@@ -305,5 +309,42 @@ describe("spawnZeroSetupJob drives the literal $0 form", () => {
     expect(argv).toContain("--identity=--save");
     expect(argv).not.toContain("--save");
     expect(argv).not.toContain("--identity");
+  });
+});
+
+describe("a driven exchange child's stdout", () => {
+  const { scratchDir, cleanup } = trackScratchDirs();
+  afterEach(cleanup);
+
+  test("a child writing 1 MiB to stdout still reaches its terminal", async () => {
+    const workdir = scratchDir("stdout-flood");
+    const terminal = await awaitJobTerminalState((onTerminal) =>
+      spawnExchangeJob({
+        binaryPath: STUB_CLI_PATH,
+        configPath: path.join(workdir, "alcove.yaml"),
+        keyPath: path.join(workdir, ".alcove.key"),
+        inputPath: path.join(workdir, "input.csv"),
+        workdir,
+        eventStream: true,
+        runControls: { sweepExchangeFiles: false, logFilePath: undefined },
+        extraEnv: {
+          STUB_STDOUT_BYTES: String(1024 * 1024),
+          STUB_FD3_EVENTS: JSON.stringify([
+            { v: 1, type: "result", resultWritten: true },
+          ]),
+          STUB_EXIT_CODE: "0",
+        },
+        handlers: {
+          onEvent: () => undefined,
+          onDegraded: () => undefined,
+          onTerminal,
+        },
+      }),
+    );
+    expect(terminal).toEqual({
+      outcome: "succeeded",
+      exitCode: 0,
+      signal: null,
+    });
   });
 });

@@ -10,8 +10,8 @@ import {
   operatorAccountOption,
 } from "./containerAccount";
 import {
+  powerShellJoinCommand,
   shellJoinCommand,
-  windowsJoinCommand,
 } from "./managed/recurringHandoff";
 
 import type { ContainerEngine } from "./containerAccount";
@@ -243,19 +243,6 @@ export interface WorkingFolderCommandLines {
 }
 
 /**
- * Whether PowerShell needs `token` quoted though cmd would not: a `--mount`
- * value, whose commas PowerShell reads as an array, a leading `@`, which it
- * reads as splatting, and a token holding a placeholder the operator replaces.
- */
-function powerShellQuotes(token: string): boolean {
-  return (
-    token.startsWith("type=bind,") ||
-    token.startsWith("@") ||
-    holdsOneOffPlaceholder(token)
-  );
-}
-
-/**
  * The command running `alcove` with `args` once from the image over the
  * operator's working folder, as the console's copy names a command-line step:
  * the folder mounted at the image's working directory, so a file name in
@@ -305,7 +292,7 @@ export function workingFolderCommand(
     throw new Error("a working-folder command names an unmountable path");
   return {
     runCommand: shellJoinRunArgv(posix, holdsOneOffPlaceholder),
-    windowsRunCommand: windowsJoinCommand(windows, powerShellQuotes),
+    windowsRunCommand: powerShellJoinCommand(windows, holdsOneOffPlaceholder),
     podmanRunCommand: shellJoinRunArgv(podman, holdsOneOffPlaceholder),
   };
 }

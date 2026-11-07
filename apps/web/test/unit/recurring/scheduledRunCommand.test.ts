@@ -188,11 +188,35 @@ describe("the console hand-off's command lines", () => {
     expect(lines.windowsRunCommand).toBe(
       "docker run --rm --mount " +
         '"type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work" ' +
-        `${IMAGE} exchange --log-file=exchange.log clients.csv ./`,
+        `${IMAGE} exchange "--log-file=exchange.log" clients.csv ./`,
     );
     expect(lines.windowsRunCommand).not.toContain("--user");
     expect(lines.windowsRunCommand).not.toContain("$(");
     expect(lines.windowsRunCommand).not.toContain("shared-directory");
+  });
+
+  test("the Windows run command quotes each token PowerShell would split or expand", () => {
+    const source: ScheduledRunSource = {
+      argv: [
+        "alcove",
+        "exchange",
+        "--csv-delimiter=;",
+        "--identity=$env:USERNAME",
+        "--outbound-path=$(Get-Date)",
+        "--log-file=a`b.log",
+        "clients.csv",
+        "./",
+      ],
+      bindPaths: [],
+      image: IMAGE,
+    };
+    expect(shownLines(source).windowsRunCommand).toBe(
+      "docker run --rm --mount " +
+        '"type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work" ' +
+        `${IMAGE} exchange "--csv-delimiter=;" ` +
+        '"--identity=`$env:USERNAME" "--outbound-path=`$(Get-Date)" ' +
+        '"--log-file=a``b.log" clients.csv ./',
+    );
   });
 
   test("no Windows run command is shown where a path cannot be mounted", () => {
@@ -751,6 +775,47 @@ describe("the Task Scheduler lines the Windows CI suite registers", () => {
       "shell: PowerShell",
       `trigger: ${trigger}`,
       dockerTaskSchedulerLine(source, schedule) ?? "",
+      ...tokens.slice(1).map((token) => `  [${token}]`),
+    ].join("\n");
+  }
+
+  test("match the file the suite reads", async () => {
+    const entries = FIXTURES.map(entry);
+    await expect(`${entries.join("\n\n")}\n`).toMatchFileSnapshot(LINES_FILE);
+  });
+});
+
+describe("the Windows run commands the Windows CI suite runs", () => {
+  // support/maintainer-notes/DockerLines.Tests.ps1 runs each line under
+  // Windows PowerShell 5.1 against a docker stand-in and compares the
+  // arguments it receives with the ones listed under it.
+  const LINES_FILE =
+    "../../../../../support/maintainer-notes/windows-run-lines.txt";
+  const WINDOWS_FOLDER = "C:\\path\\to\\your\\exchange-folder";
+
+  const FIXTURES: ReadonlyArray<ReadonlyArray<string>> = [
+    ["--log-file=exchange.log"],
+    [
+      "--csv-delimiter=;",
+      "--identity=$env:USERNAME",
+      "--outbound-path=$(Write-Output expanded)",
+      "--log-file=a`b.log",
+    ],
+    ["--csv-delimiter=|", "--identity=O'Brien & Co, #1 @home"],
+  ];
+
+  function entry(args: ReadonlyArray<string>): string {
+    const source: ScheduledRunSource = {
+      argv: ["alcove", "exchange", ...args, "input.csv", "./"],
+      bindPaths: [],
+      image: IMAGE,
+    };
+    const tokens =
+      dockerRunArgv(source, "docker", WINDOWS_FOLDER, {
+        mountBindPaths: false,
+      }) ?? [];
+    return [
+      dockerWindowsRunCommand(source) ?? "",
       ...tokens.slice(1).map((token) => `  [${token}]`),
     ].join("\n");
   }

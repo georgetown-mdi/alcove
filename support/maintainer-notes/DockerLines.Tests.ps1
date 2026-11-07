@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
     Pester suite that runs the docker lines README.md and docs/CONSOLE.md
-    print, and the line the console's shared-folder notice gives, under Windows
-    PowerShell and checks the arguments each one hands to docker.
-    Maintainer-facing.
+    print, the line the console's shared-folder notice gives, and the web
+    app's Windows run commands under Windows PowerShell and checks the
+    arguments each one hands to docker. Maintainer-facing.
 
 .DESCRIPTION
     The commands are read from docker-lines.txt, each followed by the arguments
@@ -13,6 +13,12 @@
     bash and sh; rewrite it with `npx vitest run -u` on that test. Only the
     lines printed on one line are here: a line continued with a trailing
     backslash is for a Mac or Linux shell, and the README says so above it.
+
+    The web app's Windows run commands are read from windows-run-lines.txt, in
+    the same form. The web unit test
+    apps/web/test/unit/recurring/scheduledRunCommand.test.ts writes that file
+    from the command generator and compares it on every run; rewrite it with
+    `npx vitest run -u` on that test.
 
     Every command runs from a local folder whose name contains a space, which
     is what <working folder> in the file stands for. docker is the stand-in
@@ -34,12 +40,13 @@ BeforeDiscovery {
             } elseif ($line -match '^  \[(.*)\]$' -and $null -ne $current) {
                 [void] $current.Arguments.Add($Matches[1])
             } elseif ($line.Trim().Length -ne 0) {
-                throw "docker-lines.txt holds a line that is neither a command nor an argument: $line"
+                throw "$(Split-Path -Leaf $Path) holds a line that is neither a command nor an argument: $line"
             }
         }
         $entries
     }
     $dockerLines = @(Read-DockerLine -Path (Join-Path $PSScriptRoot 'docker-lines.txt'))
+    $windowsRunLines = @(Read-DockerLine -Path (Join-Path $PSScriptRoot 'windows-run-lines.txt'))
 }
 
 BeforeAll {
@@ -81,6 +88,18 @@ Describe 'The README and console docker lines in Windows PowerShell' {
         $received = @(Get-DockerArgument -CommandLine $Command)
         $intended = @($Arguments | ForEach-Object { $_.Replace('<working folder>', $script:workingFolder) })
         ($received -join ' | ') | Should -Be ($intended -join ' | ')
+    }
+}
+
+Describe 'The web app''s Windows run commands in Windows PowerShell' {
+    It 'reads at least one command from the generated file' {
+        @(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'windows-run-lines.txt') |
+            Where-Object { $_.StartsWith('docker ') }).Count | Should -BeGreaterThan 0
+    }
+
+    It 'hands docker each token as written: <Command>' -ForEach $windowsRunLines {
+        $received = @(Get-DockerArgument -CommandLine $Command)
+        ($received -join ' | ') | Should -Be (@($Arguments) -join ' | ')
     }
 }
 
