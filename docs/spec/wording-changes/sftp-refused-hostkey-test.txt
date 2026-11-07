@@ -1,0 +1,3 @@
+- - -> That test is `apps/cli/test/unit/connection/sftpFatalInflight.test.ts`, which drives all three handlers by answering a `READDIR` with a malformed `NAME`, an `OPEN` with a malformed `HANDLE` and a `READ` with a malformed `DATA`, and asserts the in-flight call is not settled by `cleanupRequests`.
+- - -> Assumption (1) is driven in `apps/cli/test/integration/sftpConnection.test.ts` on the in-process backend: the no-pin refusal, the wrong-pin refusal and the first-use probe each dial a server that counts the userauth requests it receives, and fail unless that count is zero.
+- - -> The zero-userauth-request assertions in `apps/cli/test/integration/sftpConnection.test.ts` named in the probe bullet above are what drive that ordering.

@@ -15,6 +15,9 @@ import type { SFTPConnectionConfig } from "@alcove/core";
 import Ssh2SftpClient from "ssh2-sftp-client";
 
 import { SSH2SFTPClientAdapter } from "../../src/connection/ssh2SftpAdapter";
+import { selectedBackend } from "../sftpServer";
+import type { SftpServerHandle } from "../sftpServer";
+import { startInProcessSftpServer } from "../sftpServer/inProcessServer";
 import {
   ensureNamespace,
   localPath,
@@ -633,60 +636,92 @@ inProcessOnly(
 
 // --- host-key verification over real SFTP ------------------------------------
 
+// Run a host-key refusal against a server and, once it settles, assert the
+// server was never offered a credential. The shared server lives in the
+// globalSetup process, out of reach of its authentication events, so on the
+// in-process backend the refusal dials a worker-local instance whose userauth
+// count is read here. The count is asserted even when the dial itself threw, and
+// its failure wins over the dial's, so a client that authenticates before the
+// verdict is reported as that. A native sshd exposes no such count: its
+// refusals still run against the shared server and make only the dial's own
+// assertions.
+async function againstRefusingServer<T>(
+  dial: (server: SftpServerHandle) => Promise<T>,
+): Promise<T> {
+  if (selectedBackend() !== "in-process") return dial(srv);
+  const own = await startInProcessSftpServer();
+  try {
+    return await dial(own.handle);
+  } finally {
+    try {
+      expect(own.authenticationEvents()).toBe(0);
+    } finally {
+      await own.stop();
+    }
+  }
+}
+
 test("an unpinned connection fails closed over real SFTP (the no-pin default)", async () => {
-  const conn = new FileSyncConnection(new SSH2SFTPClientAdapter(), {
-    verbose: -1,
-    pollingFrequency: 10,
+  await againstRefusingServer(async (server) => {
+    const conn = new FileSyncConnection(new SSH2SFTPClientAdapter(), {
+      verbose: -1,
+      pollingFrequency: 10,
+    });
+    conn.on("error", () => {});
+    // Spell out the credentials and OMIT the host-key pin (serverAuth would add
+    // it), so this exercises the no-pin path: core refuses the connection before
+    // authenticating and the error names the missing pin.
+    const auth =
+      server.usera.password !== undefined
+        ? { password: server.usera.password }
+        : { privateKey: server.usera.privateKey };
+    try {
+      await expect(
+        conn.open({
+          channel: "sftp",
+          server: {
+            host: server.host,
+            port: server.port,
+            username: server.usera.username,
+            ...auth,
+            path: SFTP_PATH,
+          },
+          // One attempt: a host-key refusal is terminal, so retrying only slows it.
+          options: { maxReconnectAttempts: 0 },
+        }),
+      ).rejects.toThrow(/no host_key_fingerprint is pinned/);
+    } finally {
+      await conn.close().catch(() => {});
+    }
   });
-  conn.on("error", () => {});
-  // Spell out the credentials and OMIT the host-key pin (serverAuth would add
-  // it), so this exercises the no-pin path: core refuses the connection before
-  // authenticating and the error names the missing pin.
-  const auth =
-    srv.usera.password !== undefined
-      ? { password: srv.usera.password }
-      : { privateKey: srv.usera.privateKey };
-  await expect(
-    conn.open({
-      channel: "sftp",
-      server: {
-        host: srv.host,
-        port: srv.port,
-        username: srv.usera.username,
-        ...auth,
-        path: SFTP_PATH,
-      },
-      // One attempt: a host-key refusal is terminal, so retrying only slows it.
-      options: { maxReconnectAttempts: 0 },
-    }),
-  ).rejects.toThrow(/no host_key_fingerprint is pinned/);
-  await conn.close().catch(() => {});
 });
 
 test("probeHostKeyFingerprint returns the server's real fingerprint without authenticating", async () => {
-  const conn = new FileSyncConnection(new SSH2SFTPClientAdapter(), {
-    verbose: -1,
-    pollingFrequency: 10,
+  await againstRefusingServer(async (server) => {
+    const conn = new FileSyncConnection(new SSH2SFTPClientAdapter(), {
+      verbose: -1,
+      pollingFrequency: 10,
+    });
+    // Credentials are present (as in production: first-use establishes the host
+    // key, not the credentials) but never used -- the probe refuses at host-key
+    // verification, before auth. The host key is presented during the KEX that
+    // precedes auth, so the fingerprint the probe learns equals the pin the suite
+    // computed for this server; the pin itself is omitted, which is the point.
+    const auth =
+      server.usera.password !== undefined
+        ? { password: server.usera.password }
+        : { privateKey: server.usera.privateKey };
+    const presented = await conn.probeHostKeyFingerprint({
+      channel: "sftp",
+      server: {
+        host: server.host,
+        port: server.port,
+        username: server.usera.username,
+        ...auth,
+      },
+    });
+    expect(presented.fingerprint).toBe(server.hostKeyFingerprint);
   });
-  // Credentials are present (as in production: first-use establishes the host
-  // key, not the credentials) but never used -- the probe refuses at host-key
-  // verification, before auth. The host key is presented during the KEX that
-  // precedes auth, so the fingerprint the probe learns equals the pin the suite
-  // computed for this server; the pin itself is omitted, which is the point.
-  const auth =
-    srv.usera.password !== undefined
-      ? { password: srv.usera.password }
-      : { privateKey: srv.usera.privateKey };
-  const presented = await conn.probeHostKeyFingerprint({
-    channel: "sftp",
-    server: {
-      host: srv.host,
-      port: srv.port,
-      username: srv.usera.username,
-      ...auth,
-    },
-  });
-  expect(presented.fingerprint).toBe(srv.hostKeyFingerprint);
 });
 
 test("the peer-identification diagnosis leaves a real SSH server's probe alone", async () => {
@@ -735,45 +770,47 @@ test("a wrong pinned host-key fingerprint is rejected before auth over real SFTP
   // only thing that can fail this connect is the wrong pin; ssh2 invokes the
   // verifier at host-key verification and reaches userauth only after
   // verify(true), so the rejection necessarily precedes auth.
-  const conn = new FileSyncConnection(new SSH2SFTPClientAdapter(), {
-    verbose: -1,
-    pollingFrequency: 10,
-  });
-  conn.on("error", () => {});
-  const auth = serverAuth(srv.usera);
-  const err = await conn
-    .open({
-      channel: "sftp",
-      server: {
-        host: srv.host,
-        port: srv.port,
-        ...auth,
-        // Same server, wrong pin: well-formed SHA256, wrong digest.
-        hostKeyFingerprint: wrongFingerprint(auth.hostKeyFingerprint),
-        path: SFTP_PATH,
-      },
-      // One attempt (mirrors the no-pin test above): a host-key refusal is
-      // terminal in the adapter -- its retry predicate treats ssh2's "Host
-      // denied" as non-retryable -- so retries would only re-run the same key
-      // exchange against the same untrusted host. This test pins the live
-      // mismatch rejection; the retry classification itself is the adapter's
-      // concern and is not what this assertion exercises.
-      options: { maxReconnectAttempts: 0 },
-    })
-    .catch((e: unknown) => e);
-  await conn.close().catch(() => {});
+  await againstRefusingServer(async (server) => {
+    const conn = new FileSyncConnection(new SSH2SFTPClientAdapter(), {
+      verbose: -1,
+      pollingFrequency: 10,
+    });
+    conn.on("error", () => {});
+    const auth = serverAuth(server.usera);
+    const err = await conn
+      .open({
+        channel: "sftp",
+        server: {
+          host: server.host,
+          port: server.port,
+          ...auth,
+          // Same server, wrong pin: well-formed SHA256, wrong digest.
+          hostKeyFingerprint: wrongFingerprint(auth.hostKeyFingerprint),
+          path: SFTP_PATH,
+        },
+        // One attempt (mirrors the no-pin test above): a host-key refusal is
+        // terminal in the adapter -- its retry predicate treats ssh2's "Host
+        // denied" as non-retryable -- so retries would only re-run the same key
+        // exchange against the same untrusted host. This test pins the live
+        // mismatch rejection; the retry classification itself is the adapter's
+        // concern and is not what this assertion exercises.
+        options: { maxReconnectAttempts: 0 },
+      })
+      .catch((e: unknown) => e);
+    await conn.close().catch(() => {});
 
-  // A rejection, not a resolved connection: catches a regression that stopped
-  // rejecting at the pin check (pinning the wrong key would then connect).
-  expect(err).toBeInstanceOf(Error);
-  // Specifically the pin mismatch -- not the no-pin refusal ("no
-  // host_key_fingerprint is pinned") and not an unrelated connect/auth error --
-  // so a regression that rejected at the handshake instead of the pin check is
-  // caught.
-  expect((err as Error).message).toMatch(/SFTP host-key verification failed/);
-  expect((err as Error).message).toMatch(
-    /does not match the pinned fingerprint/,
-  );
+    // A rejection, not a resolved connection: catches a regression that stopped
+    // rejecting at the pin check (pinning the wrong key would then connect).
+    expect(err).toBeInstanceOf(Error);
+    // Specifically the pin mismatch -- not the no-pin refusal ("no
+    // host_key_fingerprint is pinned") and not an unrelated connect/auth error --
+    // so a regression that rejected at the handshake instead of the pin check is
+    // caught.
+    expect((err as Error).message).toMatch(/SFTP host-key verification failed/);
+    expect((err as Error).message).toMatch(
+      /does not match the pinned fingerprint/,
+    );
+  });
 });
 
 inProcessOnly(

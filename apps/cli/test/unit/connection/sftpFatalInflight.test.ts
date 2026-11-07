@@ -99,6 +99,7 @@ describe("malformed in-flight SFTP reply", () => {
     // cannot leak into the next test on the shared server instance.
     srv.inject.malformedNameOnNextReaddir = false;
     srv.inject.malformedDataOnNextRead = false;
+    srv.inject.malformedHandleOnNextOpen = false;
     srv.inject.oversizeNameOnNextReaddir = null;
     srv.inject.nameReplyFilenameBytesOnNextReaddir = null;
     srv.inject.withholdOn = null;
@@ -136,6 +137,19 @@ describe("malformed in-flight SFTP reply", () => {
     adapters.push(adapter);
 
     srv.inject.malformedDataOnNextRead = true;
+    const tracked = track(adapter.get(remote("/file"), { maxBytes: 64 }));
+    await delay(300);
+    expect(tracked.settled()).toBe(false);
+  });
+
+  test("does not crash and does not settle the in-flight get() promptly on a malformed open reply", async () => {
+    // Same proof on the open path: a malformed HANDLE reply to the in-flight OPEN
+    // is not failed by cleanupRequests, so get() stays pending.
+    await fsp.writeFile(path.join(backingNamespace, "file"), Buffer.alloc(8));
+    const adapter = await connectAdapter(srv);
+    adapters.push(adapter);
+
+    srv.inject.malformedHandleOnNextOpen = true;
     const tracked = track(adapter.get(remote("/file"), { maxBytes: 64 }));
     await delay(300);
     expect(tracked.settled()).toBe(false);

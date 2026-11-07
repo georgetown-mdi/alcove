@@ -86,6 +86,8 @@ export interface SftpFaultInjection {
   malformedNameOnNextReaddir: boolean;
   /** Answer the next READ with a malformed DATA packet (the read-path fatal-error case). */
   malformedDataOnNextRead: boolean;
+  /** Answer the next OPEN with a malformed HANDLE packet (the open-path fatal-error case). */
+  malformedHandleOnNextOpen: boolean;
   /**
    * Answer the next READDIR with a well-formed NAME batch containing this
    * single over-length filename, then EOF, so the directory-listing length
@@ -497,4 +499,10 @@ export interface SftpSessionControls {
 export interface InProcessSftpServer extends SftpTestServer {
   inject: SftpFaultInjection;
   sessionControls: SftpSessionControls;
+  /**
+   * How many userauth requests the server has received since it started, of any
+   * method and outcome. A client that refuses the host key must leave this at
+   * zero: no request means no credential was sent.
+   */
+  authenticationEvents(): number;
 }
