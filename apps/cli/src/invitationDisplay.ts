@@ -533,13 +533,7 @@ function displayLinkageKey(
       key.swap !== undefined
         ? `      swap: ${key.swap[0]} and ${key.swap[1]} may be matched in either order`
         : "      swap: two of these elements may be matched in either order";
-    // The caveat renders only for a swap the run would not apply: one under a
-    // linkage strategy that resolves no candidate set.
-    emit(
-      key.swapApplied
-        ? swapNote
-        : `${swapNote} ${PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder}`,
-    );
+    emit(swapNote);
   }
 }
 

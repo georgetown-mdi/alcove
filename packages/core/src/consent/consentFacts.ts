@@ -932,10 +932,6 @@ export const PROPOSED_NOT_APPLIED_NOTES = {
     "(The exchange will refuse to run these terms, because the agreed " +
     "linkage strategy cannot match approximate variants. Ask your partner " +
     "for an invitation that drops the approximate matching.)",
-  swappedKeyOrder:
-    "(The exchange will refuse to run these terms, because the agreed " +
-    "linkage strategy cannot match in either order. Ask your partner for an " +
-    "invitation that drops the swapped key order.)",
 } as const;
 
 /**

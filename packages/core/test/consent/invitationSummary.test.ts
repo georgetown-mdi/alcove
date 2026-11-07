@@ -355,7 +355,6 @@ describe("the consent summary's fan-out register", () => {
         linkageTerms: { ...baseTerms, linkageKeys: swapKeys, linkageStrategy },
       });
       expect(summary.linkageKeys[0].hasSwap).toBe(true);
-      expect(summary.linkageKeys[0].swapApplied).toBe(true);
       expect(summary.linkageKeys[0].swapHeaderMarker).toBe(
         "(matched in either order)",
       );
@@ -375,7 +374,6 @@ describe("the consent summary's fan-out register", () => {
       },
     });
     expect(summary.linkageKeys[0].hasSwap).toBe(true);
-    expect(summary.linkageKeys[0].swapApplied).toBe(true);
     expect(summary.linkageKeys[0].swapHeaderMarker).toBe(
       "(matched in either order)",
     );

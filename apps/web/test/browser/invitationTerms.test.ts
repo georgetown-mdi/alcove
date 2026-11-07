@@ -3102,9 +3102,6 @@ describe("InvitationTerms: a qualifying sentence sits at its headline's visibili
       "given name, family name, and date of birth",
     );
     expect(panel.textContent).toContain("may be matched in either order");
-    expect(app.container.textContent).not.toContain(
-      PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder,
-    );
     expect(app.container.textContent).toContain(
       CONSENT_FACTS.countOnlyCandidateSets.note,
     );
@@ -3132,9 +3129,6 @@ describe("InvitationTerms: a qualifying sentence sits at its headline's visibili
       "given name, family name, and date of birth",
     );
     expect(panel.textContent).toContain("may be matched in either order");
-    expect(app.container.textContent).not.toContain(
-      PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder,
-    );
   });
 
   test("a setting that matches the run has no not-yet-applied caveat", async () => {

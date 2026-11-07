@@ -318,12 +318,6 @@ export interface InvitationKeySummary {
    */
   hasSwap: boolean;
   /**
-   * Whether today's exchange applies the swap. Always true: both parties sort
-   * the pair's two values into one order, which every strategy and algorithm
-   * matches. Meaningful only with {@link hasSwap}.
-   */
-  swapApplied: boolean;
-  /**
    * The two swapped elements' field labels, present only when both references
    * resolve to elements with distinct labels. Otherwise absent and the renderer
    * shows a generic note keyed off {@link hasSwap}; an unresolved swap
@@ -1160,7 +1154,6 @@ function summarizeKey(
     elements,
     headerFields,
     hasSwap,
-    swapApplied: true,
     swap,
     swapHeaderMarker,
     lessCertain,

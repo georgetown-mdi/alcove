@@ -960,7 +960,6 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     expect(out).toContain(
       "      swap: First name and Last name may be matched in either order\n",
     );
-    expect(out).not.toContain(PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder);
     // The per-field data standards, under a heading marking them as the inviter's
     // own undertaking rather than rules the exchange applies, with the
     // partner-authored character class shown raw after a fixed first-party label
@@ -1011,7 +1010,6 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     expect(out).toContain(
       "      swap: First name and Last name may be matched in either order\n",
     );
-    expect(out).not.toContain(PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder);
     expect(out).not.toContain(PROPOSED_NOT_APPLIED_NOTES.fuzzyComparisons);
     expect(out).toContain("(matched in either order)");
     expect(out).not.toContain("(either order not supported)");
