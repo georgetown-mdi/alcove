@@ -156,8 +156,8 @@ The canonical-form rule catches every other rewrite the parser makes, such as an
 
 - **The partner.** The url in the token is remote partner content, judged at decode and at mint.
   It is never dialed by this build: no browser SFTP transport exists yet, and the CLI and the console connect to the server over TCP and do not read it.
-- **The browser party.** A setting for the party's own SFTP relay url is part of the unbuilt browser SFTP transport: nothing in this build sets or reads it.
-  When that transport is built, the url is to be kept in that browser's local storage for the origin (`apps/web/src/psi/transport/sftpRelaySetting.ts` holds the storage functions, which no screen or run calls yet), set from a screen the transport adds, and judged at entry and again each time it is read; where one is set it replaces the invitation's (`sftpRelayForExchange`), and where the stored value cannot be read, neither is chosen.
+- **The browser party.** A setting for the party's own SFTP relay url is part of the browser SFTP transport, which is not built yet.
+  That transport is to keep the url in that browser's local storage for the origin (`apps/web/src/psi/transport/sftpRelaySetting.ts` holds the storage functions), set it from a screen the transport adds, and judge it at entry and again each time it is read; where one is set it replaces the invitation's (`sftpRelayForExchange`), and where the stored value cannot be read, neither is chosen.
 
 **What the relay sees.**
 The relay forwards the bytes of each connection unread, and SSH runs end to end through it.
