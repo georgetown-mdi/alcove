@@ -24,7 +24,8 @@ import type { WebRTCEndpoint } from "@alcove/core";
  * The connections a registered peer is offered past the one a run takes, in
  * real Chromium over the standalone broker: the inviter closes a second offer
  * from its partner's peer and an offer from any other peer id, the acceptor
- * closes every inbound offer, and a frame on the run's own connection still
+ * closes every inbound offer, one arriving while it dials included, without
+ * its peer raising an error, and a frame on the run's own connection still
  * arrives afterwards.
  *
  * Every peer runs on one machine, so each is built with no ICE server: a
@@ -61,16 +62,15 @@ function hermeticPeer(id: string, options: PeerOptions): Peer {
   return peer;
 }
 
-/** A peer the broker names, registered as no party of the run. */
+/** A peer registered as no party of the run. Its id is chosen here: the
+ * broker serves signaling over WebSocket only, so PeerJS cannot fetch one. */
 async function strangerPeer(): Promise<Peer> {
-  const peer = new Peer({
+  const peer = hermeticPeer(`stranger-${crypto.randomUUID()}`, {
     host: brokerHost,
     port: brokerPort,
     path: "/api/",
-    config: { iceServers: [] },
     debug: 0,
   });
-  peers.push(peer);
   await new Promise<void>((resolve, reject) => {
     peer.once("open", () => resolve());
     peer.once("error", reject);
@@ -110,24 +110,44 @@ test(
         `PeerJS coordination server at ${hostString} unreachable`,
       );
     const secret = generateSharedSecret();
+    const stranger = await strangerPeer();
     const inviterPeer = await listenAsInviter(secret, endpoint, {
       peerFactory: hermeticPeer,
     });
     const inbound = waitForIncomingConnection(inviterPeer);
+
+    // The stranger offers to the acceptor as soon as it registers, so the
+    // guard closes that offer while the acceptor's own dial is in flight, and
+    // every error the acceptor's peer emits from its construction on is kept.
+    const acceptorErrors: Array<unknown> = [];
+    const toAcceptor: Array<DataConnection> = [];
+    let strangerIntoAcceptor: DataConnection | undefined;
     const [acceptorPeer, acceptorConn] = await dialAsAcceptor(
       secret,
       endpoint,
-      { peerFactory: hermeticPeer },
+      {
+        peerFactory: (id, options) => {
+          const peer = hermeticPeer(id, options);
+          peer.on("error", (error) => acceptorErrors.push(error));
+          peer.on("connection", (conn) => toAcceptor.push(conn));
+          peer.once("open", () => {
+            strangerIntoAcceptor = stranger.connect(id, {
+              serialization: PEERJS_SERIALIZATION,
+              reliable: true,
+            });
+          });
+          return peer;
+        },
+      },
     );
     const inviterConn = await inbound;
+    expect(strangerIntoAcceptor).toBeDefined();
     const toInviter = offeredTo(inviterPeer);
-    const toAcceptor = offeredTo(acceptorPeer);
 
     const second = acceptorPeer.connect(inviterPeer.id, {
       serialization: PEERJS_SERIALIZATION,
       reliable: true,
     });
-    const stranger = await strangerPeer();
     const fromStranger = stranger.connect(inviterPeer.id, {
       serialization: PEERJS_SERIALIZATION,
       reliable: true,
@@ -137,16 +157,26 @@ test(
       reliable: true,
     });
     const opened = await Promise.all(
-      [second, fromStranger, intoAcceptor].map(openedWithin),
+      [
+        second,
+        fromStranger,
+        intoAcceptor,
+        strangerIntoAcceptor as DataConnection,
+      ].map(openedWithin),
     );
-    expect(opened).toEqual([false, false, false]);
+    expect(opened).toEqual([false, false, false, false]);
 
     expect(toInviter.map((conn) => conn.peer).sort()).toEqual(
       [acceptorPeer.id, stranger.id].sort(),
     );
     for (const conn of toInviter) expectRefused(inviterPeer, conn);
-    expect(toAcceptor.map((conn) => conn.peer)).toEqual([inviterPeer.id]);
+    expect(toAcceptor.map((conn) => conn.peer).sort()).toEqual(
+      [inviterPeer.id, stranger.id].sort(),
+    );
     for (const conn of toAcceptor) expectRefused(acceptorPeer, conn);
+    // From the acceptor's construction to the end of the open window after
+    // the last offer: closing the offers it was handed raised no peer error.
+    expect(acceptorErrors).toEqual([]);
 
     const [inviterSide, acceptorSide] = await Promise.all([
       openPeerMessageConnection(inviterConn),
