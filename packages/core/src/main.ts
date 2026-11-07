@@ -79,7 +79,11 @@ export {
 export { loadPsiBackend } from "./psi/psiBackend";
 export type { PsiBackendOptions, PsiBackendSelection } from "./psi/psiBackend";
 export { InProcessPsiEngine } from "./psi/psiEngine";
-export type { PsiEngine, PsiEngineMode } from "./psi/psiEngine";
+export type {
+  PsiEngine,
+  PsiEngineMode,
+  PsiFrameHandOff,
+} from "./psi/psiEngine";
 // Named because published signatures use them: the declaration chunk the entry
 // points share can refer only to a type one of them exports.
 export type {

@@ -536,7 +536,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "stream",
       true,
       CHUNKED_ENVELOPE,
-      300_000_000,
+      220_000_000,
     ],
     [
       "a 100 MB unencrypted reply",
@@ -544,7 +544,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "stream",
       false,
       undefined,
-      300_000_000,
+      220_000_000,
     ],
     [
       "a 100 MB encrypted request under envelope version 1",
@@ -552,7 +552,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       SINGLE_CALL_ENVELOPE,
-      965_000_000,
+      865_000_000,
     ],
     [
       "a 100 MB encrypted request under envelope version 2",
@@ -560,7 +560,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       CHUNKED_ENVELOPE,
-      965_000_000,
+      865_000_000,
     ],
   ] as const)(
     "weighs %s the counts allow at the measured multiples",

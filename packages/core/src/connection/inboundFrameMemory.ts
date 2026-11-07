@@ -21,6 +21,11 @@ export const INBOUND_FRAME_MEMORY_MULTIPLES = {
   streamedSetup: 1,
   /** The copy of a frame the PSI worker holds. */
   workerClone: 1,
+  /**
+   * A single-pass reply handed to the PSI worker over file-sync, beyond the
+   * frame: its setup in pieces and its response moved, not copied.
+   */
+  handedOverReply: 1.2,
 } as const;
 
 /**
@@ -48,17 +53,35 @@ export function inboundFrameReadBytes(
 
 /**
  * The memory handing a frame already read to the PSI worker adds: the
- * worker's copy, and what the engine builds from it.
+ * worker's copy, unless the frame is `transferred` rather than copied, and
+ * what the engine builds from it.
  */
 export function psiFrameHandlingBytes(
   frameBytes: number,
   use: InboundPsiFrameUse,
+  transferred: boolean = false,
 ): number {
   const { workerClone, psiDecode, streamedSetup } =
     INBOUND_FRAME_MEMORY_MULTIPLES;
   return (
-    frameBytes * (workerClone + (use === "decode" ? psiDecode : streamedSetup))
+    frameBytes *
+    ((transferred ? 0 : workerClone) +
+      (use === "decode" ? psiDecode : streamedSetup))
   );
+}
+
+/**
+ * The memory handing a single-pass request or reply read over file-sync to
+ * the PSI worker adds, beyond the frame: the request moved and decoded, or
+ * the reply at the measured `handedOverReply` multiple.
+ */
+export function fileSyncSinglePassHandOffBytes(
+  frameBytes: number,
+  use: InboundPsiFrameUse,
+): number {
+  return use === "decode"
+    ? psiFrameHandlingBytes(frameBytes, use, true)
+    : frameBytes * INBOUND_FRAME_MEMORY_MULTIPLES.handedOverReply;
 }
 
 /**
@@ -103,11 +126,13 @@ export function webRtcMessageSendBytes(
 }
 
 /**
- * The most memory a PSI frame of `frameBytes` takes from its read to the end
- * of its handling: the larger of the read, charged as the file-sync read gate
- * charges it ({@link inboundFrameReadBytes}), and of the frame held beside its
- * handling. The two do not add, since a collection between them releases
- * the read's copies (docs/spec/FILE_SYNC.md, "Memory an inbound frame takes").
+ * The most memory a single-pass frame of `frameBytes` read over file-sync
+ * takes from its read to the end of its handling: the larger of the read,
+ * charged as the file-sync read gate charges it ({@link inboundFrameReadBytes}),
+ * and of the frame held beside its hand-off
+ * ({@link fileSyncSinglePassHandOffBytes}). The two do not add, since a
+ * collection between them releases the read's copies (docs/spec/FILE_SYNC.md,
+ * "Memory an inbound frame takes").
  */
 export function inboundPsiFramePeakBytes(
   frameBytes: number,
@@ -117,6 +142,6 @@ export function inboundPsiFramePeakBytes(
 ): number {
   return Math.max(
     inboundFrameReadBytes(frameBytes, encrypted, envelopeVersion),
-    frameBytes + psiFrameHandlingBytes(frameBytes, use),
+    frameBytes + fileSyncSinglePassHandOffBytes(frameBytes, use),
   );
 }

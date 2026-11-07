@@ -1,0 +1,31 @@
+- - -> A single-pass reply handed over to the PSI worker over file-sync, beyond the frame (`handedOverReply`) | 1.2 | 1.17 at most, for replies of 156,035,017 and 312,035,018 bytes, in the development container under Node 26.13.0 on the native library (2026-11-07; [The hand-off over file-sync](#the-hand-off-over-file-sync))
+- - -> A frame moved to the worker rather than copied ([The hand-off over file-sync](#the-hand-off-over-file-sync)) is weighed without `workerClone`.
+- That frame is weighed at the larger of its read, charged under the negotiated envelope version as the read gate charges it (`inboundFrameReadBytes`), and of the frame with its handling (`inboundPsiFramePeakBytes`), and at no less than the reply's index table. -> That frame is weighed at the larger of its read, charged under the negotiated envelope version as the read gate charges it (`inboundFrameReadBytes`), and of the frame with its hand-off (`inboundPsiFramePeakBytes`), and at no less than the reply's index table.
+- - -> The hand-off is the request at `psiDecode`, since it is moved to the worker rather than copied, and the reply at `handedOverReply` (`fileSyncSinglePassHandOffBytes`).
+- - -> The hand-off over file-sync
+- - -> A file-sync message is read into a buffer of its own, which the connection keeps no reference to once it delivers the message.
+- - -> A single-pass party therefore moves the partner's frame to the PSI worker rather than copying it (`PsiFrameHandOff`, `packages/core/src/psi/psiEngine.ts`):
+- - -> **The request.**
+- - -> The sender moves the request's buffer to the worker once the element scan has held the request to its bound.
+- - -> **The reply.**
+- - -> The receiver hands the setup to the engine in pieces of 16 MiB, each copied out of the reply and moved, once the element scan has held the setup to its bound.
+- - -> The engine checks each piece as it checks a setup received in parts, and frees the pieces it took on a refusal.
+- - -> The response then moves with the reply's buffer, once it is held to the request this party sent.
+- - -> **After authentication.**
+- - -> Either is handed over only once the connection has returned the frame: under envelope version 2 after every chunk's tag has verified, under version 1 after the frame's tag.
+- - -> **A small message.**
+- - -> Node refuses to move a buffer from its shared Buffer pool, which can hold a small message's bytes, so the command line copies such a buffer instead (`createWorkerThreadHandle`, `apps/cli/src/psiWorkerHost.ts`).
+- - -> Over WebRTC, and in every cascade and count-only round, a frame is copied to the worker.
+- - -> A frame posted as a view copies the view's whole buffer, so a reply in one frame copies the frame once for its setup and again for its response.
+- - -> Measured 2026-11-07 in the development container (aarch64 Linux, Node v26.13.0, the native library).
+- - -> A `WorkerPsiEngine` over a `worker_threads` worker running core's worker, driven through the participant's own calls, took a frame built in another process, written to a file and read whole, laid out as a decrypted version-2 envelope.
+- - -> The resident set was sampled every 10 ms from a baseline taken after a forced collection with the frame already held.
+- - -> Each figure is the peak beyond the frame, over the frame's size:
+- - -> Frame | Copied | Handed over
+- - -> Reply, 156,035,017 bytes (a 4,000,000-element setup) | 3.80 | 1.17
+- - -> Reply, 312,035,018 bytes (an 8,000,000-element setup) | 3.80 | 1.01
+- - -> Request, 140,000,002 bytes (4,000,000 elements), its masking included | 28.31 | 26.65
+- - -> Each reply answered a request of 1,000 elements, so the frame is almost all setup.
+- - -> The request's peak is mostly the engine masking it, which this table does not split from the hand-off: moving the request lowered that peak by 1.66 times the frame, more than the one frame, `workerClone`, its charge drops.
+- - -> The worker's copy alone, by the method `workerClone` was measured with: a 536,870,888-byte view posted to a worker held 1.00 times its size there and 1.98 at the post's peak; moved, it held nothing; and a view of half that buffer copied the whole buffer.
+- Each party weighs the message it will read and the message it will send, each at the measured multiple of one part, and the hand-off to the PSI worker as over file-sync ([FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes)). -> Each party weighs the message it will read and the message it will send, each at the measured multiple of one part, and the hand-off to the PSI worker at the worker's copy and what the engine builds (`psiFrameHandlingBytes`, [FILE_SYNC.md, Memory an inbound frame takes](FILE_SYNC.md#memory-an-inbound-frame-takes)): a message over WebRTC is copied to the worker, not moved to it as over file-sync.

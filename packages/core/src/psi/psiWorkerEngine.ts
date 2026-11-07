@@ -12,6 +12,7 @@ import {
   type InProcessPsiEngineOptions,
   type PsiEngine,
   type PsiEngineMode,
+  type PsiFrameHandOff,
   type PsiProcessedElementsReporter,
 } from "./psiEngine";
 import type { PSIParticipant } from "./participant";
@@ -150,7 +151,15 @@ export type PsiWorkerResponse =
  * handed over as a fault and stand as that top line on its own.
  */
 export interface PsiWorkerHandle {
-  postMessage(request: PsiWorkerRequest): void;
+  /**
+   * Posts `request`, moving each buffer in `transfer` to the worker rather
+   * than copying it. A handle that moves none copies them, as structured
+   * clone does.
+   */
+  postMessage(
+    request: PsiWorkerRequest,
+    transfer?: ReadonlyArray<ArrayBuffer>,
+  ): void;
   setHandlers(handlers: {
     onMessage: (response: PsiWorkerResponse) => void;
     onError: (error: Error) => void;
@@ -159,6 +168,17 @@ export interface PsiWorkerHandle {
 }
 
 const DISPOSED_MESSAGE = "PSI worker engine is disposed";
+
+// The buffer to move with `bytes` where the caller gave it up; a shared
+// buffer cannot move, so it is copied.
+function transferList(
+  bytes: Uint8Array,
+  handOff: PsiFrameHandOff | undefined,
+): ReadonlyArray<ArrayBuffer> | undefined {
+  return handOff?.transfer === true && bytes.buffer instanceof ArrayBuffer
+    ? [bytes.buffer]
+    : undefined;
+}
 
 /**
  * A {@link PsiEngine} that runs the crypto in a worker reached through `handle`.
@@ -233,7 +253,10 @@ export class WorkerPsiEngine implements PsiEngine {
     this.pending.clear();
   }
 
-  private call<T>(body: PsiWorkerRequestBody): Promise<T> {
+  private call<T>(
+    body: PsiWorkerRequestBody,
+    transfer?: ReadonlyArray<ArrayBuffer>,
+  ): Promise<T> {
     if (this.disposed)
       return Promise.reject(new InternalConsistencyError(DISPOSED_MESSAGE));
     // A worker crash left the engine terminal: fail fast with the crash cause
@@ -254,7 +277,7 @@ export class WorkerPsiEngine implements PsiEngine {
         resolve: resolve as (value: unknown) => void,
         reject,
       });
-      this.handle.postMessage({ id, body, stopFlag: this.stopFlag });
+      this.handle.postMessage({ id, body, stopFlag: this.stopFlag }, transfer);
     });
   }
 
@@ -268,13 +291,17 @@ export class WorkerPsiEngine implements PsiEngine {
     requestBytes: Uint8Array,
     declaredElements?: number,
     width?: number,
+    handOff?: PsiFrameHandOff,
   ): Promise<Uint8Array> {
-    return this.call({
-      method: "processClientRequest",
-      requestBytes,
-      declaredElements,
-      width,
-    });
+    return this.call(
+      {
+        method: "processClientRequest",
+        requestBytes,
+        declaredElements,
+        width,
+      },
+      transferList(requestBytes, handOff),
+    );
   }
 
   createClientRequest(
@@ -288,8 +315,14 @@ export class WorkerPsiEngine implements PsiEngine {
     return this.call({ method: "receiveServerSetup", setupBytes });
   }
 
-  receiveServerSetupPiece(piece: Uint8Array): Promise<void> {
-    return this.call({ method: "receiveServerSetupPiece", piece });
+  receiveServerSetupPiece(
+    piece: Uint8Array,
+    handOff?: PsiFrameHandOff,
+  ): Promise<void> {
+    return this.call(
+      { method: "receiveServerSetupPiece", piece },
+      transferList(piece, handOff),
+    );
   }
 
   completeServerSetup(): Promise<void> {
@@ -302,8 +335,12 @@ export class WorkerPsiEngine implements PsiEngine {
 
   computeAssociationTable(
     responseBytes: Uint8Array,
+    handOff?: PsiFrameHandOff,
   ): Promise<[Array<number>, Array<number>]> {
-    return this.call({ method: "computeAssociationTable", responseBytes });
+    return this.call(
+      { method: "computeAssociationTable", responseBytes },
+      transferList(responseBytes, handOff),
+    );
   }
 
   createPermutedSetup(

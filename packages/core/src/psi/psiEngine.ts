@@ -145,6 +145,16 @@ function fromLibrary<T>(call: () => T): T {
  */
 export type PsiProcessedElementsReporter = (processed: number) => void;
 
+/** How a caller hands a partner frame's bytes to a {@link PsiEngine}. */
+export interface PsiFrameHandOff {
+  /**
+   * The caller gives up the bytes' whole buffer, which no other reader holds:
+   * a worker engine moves the buffer to its worker rather than copying it,
+   * which leaves it detached here. An in-process engine ignores it.
+   */
+  readonly transfer: boolean;
+}
+
 /**
  * The PSI crypto core behind {@link ./participant.PSIParticipant}: it owns the
  * library's `server` / `client` objects, and with them the secret key, and
@@ -190,6 +200,7 @@ export interface PsiEngine {
     requestBytes: Uint8Array,
     declaredElements?: number,
     width?: number,
+    handOff?: PsiFrameHandOff,
   ): Promise<Uint8Array>;
   /**
    * Encrypts this party's values once under the client key. Client role. A
@@ -217,7 +228,10 @@ export interface PsiEngine {
    * A refusal discards the setup received so far. A piece while a completed
    * setup awaits its match is refused as an internal fault.
    */
-  receiveServerSetupPiece(piece: Uint8Array): Promise<void>;
+  receiveServerSetupPiece(
+    piece: Uint8Array,
+    handOff?: PsiFrameHandOff,
+  ): Promise<void>;
   /**
    * Ends the setup the pieces above started, refusing one that is not a whole
    * Raw data structure whose elements are strictly ascending, and holds it for
@@ -248,6 +262,7 @@ export interface PsiEngine {
    */
   computeAssociationTable(
     responseBytes: Uint8Array,
+    handOff?: PsiFrameHandOff,
   ): Promise<[Array<number>, Array<number>]>;
   /**
    * Encrypts `values`, one block of `width` consecutive values per sender

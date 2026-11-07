@@ -380,6 +380,18 @@ test("get reads an existing file as a Buffer", async () => {
   expect(buf.toString()).toBe("contents");
 });
 
+// A single-pass party moves a message's buffer to the PSI worker
+// (docs/spec/FILE_SYNC.md, The hand-off over file-sync), so the buffer must
+// hold that file alone.
+test("get reads a file past Node's Buffer pool into a buffer of its own", async () => {
+  const filePath = path.join(dir, "message.bin");
+  const bytes = 1 << 20;
+  await fs.writeFile(filePath, Buffer.alloc(bytes, 7));
+  const buf = await client.get(filePath, { maxBytes: bytes });
+  expect(buf.byteOffset).toBe(0);
+  expect(buf.buffer.byteLength).toBe(bytes);
+});
+
 test("get rejects when file does not exist", async () => {
   await expect(
     client.get(path.join(dir, "missing.txt"), { maxBytes: 1024 }),

@@ -40,7 +40,11 @@ import {
   type CountOnlyRoundWidths,
 } from "./countOnlyRounds";
 import { decodePsiBinaryFrame, receivePsiBinaryFrame } from "./psiBinaryFrame";
-import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
+import {
+  InProcessPsiEngine,
+  type PsiEngine,
+  type PsiFrameHandOff,
+} from "./psiEngine";
 import { PsiOperationStoppedError } from "./psiWorkerEngine";
 import {
   ownSetOverPartnerCeilingMessage,
@@ -107,6 +111,10 @@ export interface RoundGroupingExchange {
 }
 
 const DEFAULT_VERBOSITY = 1;
+
+// The setup bytes each piece of a handed-over single-pass setup copies, so
+// the copy held at once is one piece rather than the frame.
+const SETUP_HAND_OFF_PIECE_BYTES = 16_777_216;
 
 /**
  * How far along one step of an exchange is, for a progress display. The list of
@@ -694,26 +702,35 @@ export class PSIParticipant {
 
   /**
    * Doubly-encrypts the partner's request under the server key, returning the
-   * serialized response. Requires the `"starter"` role.
+   * serialized response. Requires the `"starter"` role. With `handOff`, the
+   * request is handed to the engine as {@link PsiFrameHandOff} states, after
+   * its element count is held to the bound.
    */
   public async processClientRequest(
     requestBytes: Uint8Array,
+    handOff?: PsiFrameHandOff,
   ): Promise<Uint8Array> {
     const elements = this.assertSinglePassElementBound(
       "request",
       requestBytes,
       this.elementBounds.request,
     );
-    return this.answerClientRequest(requestBytes, elements);
+    return this.answerClientRequest(requestBytes, elements, handOff);
   }
 
   private answerClientRequest(
     requestBytes: Uint8Array,
     elements: number,
+    handOff?: PsiFrameHandOff,
   ): Promise<Uint8Array> {
     return this.reportProgress("processClientRequest", elements, () =>
       decodePsiBinaryFrame(this.id, "request", () =>
-        this.engine.processClientRequest(requestBytes),
+        this.engine.processClientRequest(
+          requestBytes,
+          undefined,
+          undefined,
+          handOff,
+        ),
       ),
     );
   }
@@ -757,13 +774,26 @@ export class PSIParticipant {
    * what turns them into record pairs. The partner's index is in the library's
    * internal sorted order; map it back to input order with the permutation from
    * {@link createServerSetup}. Requires the `"joiner"` role.
+   *
+   * With `handOff`, the two are views of one buffer this party gives up: the
+   * setup goes to the engine in pieces, each a copy the engine takes over, and
+   * the response with the buffer, as {@link PsiFrameHandOff} states.
    */
   public async computeValueMatches(
     setupBytes: Uint8Array,
     responseBytes: Uint8Array,
+    handOff?: PsiFrameHandOff & {
+      /** @internal */
+      setupPieceBytes?: number;
+    },
   ): Promise<[Array<number>, Array<number>]> {
-    await this.receiveServerSetup(setupBytes);
-    return this.computeAssociationTable(responseBytes);
+    if (handOff?.transfer === true)
+      await this.handOverServerSetup(
+        setupBytes,
+        handOff.setupPieceBytes ?? SETUP_HAND_OFF_PIECE_BYTES,
+      );
+    else await this.receiveServerSetup(setupBytes);
+    return this.computeAssociationTable(responseBytes, handOff);
   }
 
   /**
@@ -842,13 +872,45 @@ export class PSIParticipant {
     );
   }
 
+  // The same setup, held to the same guard, handed to the engine in pieces of
+  // `pieceBytes`, each copied out and moved to the engine, so the buffer the
+  // setup is a view of is never copied whole. The engine takes a setup cut at
+  // any byte, and frees the pieces it took on a refusal.
+  private async handOverServerSetup(
+    setupBytes: Uint8Array,
+    pieceBytes: number,
+  ): Promise<void> {
+    this.assertSinglePassElementBound(
+      "serverSetup",
+      setupBytes,
+      this.elementBounds.setup,
+    );
+    try {
+      let at = 0;
+      do {
+        const piece = setupBytes.slice(at, at + pieceBytes);
+        await decodePsiBinaryFrame(this.id, "serverSetup", () =>
+          this.engine.receiveServerSetupPiece(piece, { transfer: true }),
+        );
+        at += pieceBytes;
+      } while (at < setupBytes.byteLength);
+      await decodePsiBinaryFrame(this.id, "serverSetup", () =>
+        this.engine.completeServerSetup(),
+      );
+    } catch (error) {
+      await this.engine.discardServerSetup().catch(() => undefined);
+      throw error;
+    }
+  }
+
   private computeAssociationTable(
     responseBytes: Uint8Array,
+    handOff?: PsiFrameHandOff,
   ): Promise<[Array<number>, Array<number>]> {
     const elements = this.assertResponseMatchesRequest(responseBytes);
     return this.reportProgress("computeAssociationTable", elements, () =>
       decodePsiBinaryFrame(this.id, "response", () =>
-        this.engine.computeAssociationTable(responseBytes),
+        this.engine.computeAssociationTable(responseBytes, handOff),
       ),
     );
   }
