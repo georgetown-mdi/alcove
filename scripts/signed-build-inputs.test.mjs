@@ -310,7 +310,16 @@ describe("the deploy tool", () => {
 
   it("locks the wrangler its manifest names", () => {
     expect(lockedVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(Object.keys(manifest).sort()).toEqual([
+      "dependencies",
+      "description",
+      "name",
+      "overrides",
+      "private",
+    ]);
     expect(manifest.dependencies).toEqual({ wrangler: lockedVersion });
+    expect(manifest.overrides).toEqual({ sharp: "0.35.5" });
+    expect(lock.packages["node_modules/sharp"]?.version).toBe("0.35.5");
     expect(lock.packages[""].dependencies).toEqual({ wrangler: lockedVersion });
   });
 

@@ -4,5 +4,8 @@
   "description": "The wrangler the Cloudflare Pages upload jobs install with npm ci before cloudflare/wrangler-action runs. Its version is the wranglerVersion those steps pass.",
   "dependencies": {
     "wrangler": "4.147.0"
+  },
+  "overrides": {
+    "sharp": "0.35.5"
   }
 }

@@ -300,12 +300,13 @@ The rest are limits rather than refusals:
 
 Every action a workflow uses is pinned by ref. The `actions/*` and `github/*`
 actions take a floating major tag (`actions/checkout@v7`). The `docker/*`,
-`aquasecurity/*` and `sigstore/*` actions, which run in the jobs holding the
-release signing identity (`id-token: write`) or the Docker Hub publish token,
-and `cloudflare/wrangler-action`, which holds the Pages deploy token, are
-pinned to a commit with the release tag in a trailing comment
-(`docker/build-push-action@<commit> # v7.4.0`), at every occurrence, so one
-action has one ref across the workflows. The
+`aquasecurity/*` and `sigstore/*` actions, and `cloudflare/wrangler-action`,
+which holds the Pages deploy token, are pinned to a commit with the release tag
+in a trailing comment (`docker/build-push-action@<commit> # v7.4.0`), at every
+occurrence, so one action has one ref across the workflows. The rule pins by
+organization, not by job: GitHub's own `actions/*` actions stay on tags, the
+steps among them that run beside the release signing identity
+(`id-token: write`) or the Docker Hub publish token included. The
 `github-actions` block in `.github/dependabot.yml` is configured against
 `.github/workflows`, and its `ignore` entries hold two orgs (`actions/*`,
 `github/*`) to major bumps only, so a within-major re-pin of a floating major
@@ -412,7 +413,8 @@ from the action's source at the pinned commit, `src/wranglerAction.ts`,
 So the deploy tool has a lockfile of its own:
 
 - `.github/wrangler/` holds a `package.json` naming one exact wrangler version
-  and its `package-lock.json`, and nothing else.
+  and an `overrides` entry holding `sharp` at `0.35.5`, and its
+  `package-lock.json`, and nothing else.
 - Each of the five upload steps (two in `pages_deploy.yaml`, two in
   `release.yaml`, one in `site_deploy.yaml`) runs in a job that sparse-checks-out
   those two files alone, runs `npm ci` there, and passes that directory as

@@ -200,8 +200,9 @@ updates:
 
   # The wrangler the Cloudflare Pages upload jobs install from
   # .github/wrangler/package-lock.json before cloudflare/wrangler-action runs.
-  # A bump here also moves the wranglerVersion those steps pass, which
-  # scripts/signed-build-inputs.test.mjs holds equal to the locked version.
+  # A bump here does not move the wranglerVersion those steps pass:
+  # scripts/signed-build-inputs.test.mjs holds it equal to the locked version
+  # and fails until the same pull request edits all five steps by hand.
   - package-ecosystem: npm
     directory: "/.github/wrangler"
     target-branch: "staging"
