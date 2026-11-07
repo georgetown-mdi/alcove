@@ -132,7 +132,7 @@ Each scheduled run writes its files into the exchange folder, under that run's t
 | --- | --- | --- |
 | `alcove-results-<time>.csv` | That run's matched records | Keep private |
 | `alcove-record-<time>.json` | What that run disclosed, for your disclosure log | Keep; not secret |
-| `alcove-record-<time>.keys.json` | The keys that check that run's record | Keep private |
+<!--@include: ./_tables.md#keys-cli-->
 | `alcove-record-<time>.terms.json` | Both parties' agreed terms | Keep; not secret |
 | `exchange.log` | Every run's log, added to each time | Keep private |
 | `.alcove.key` | The shared secret, replaced at every run | Keep private |

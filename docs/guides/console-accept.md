@@ -75,14 +75,7 @@ Alcove fills in each column's type and use from its name. It sends nothing by de
 
 Change **How it is used** only as you agreed ([What each of you sends](./agree-on-terms.md#what-each-of-you-sends)):
 
-| Option | What it does | Pick it when |
-| --- | --- | --- |
-| **Used to match - not sent** | Matches on the column and never sends it | Usual: names, date of birth, SSN, ZIP code |
-| **Used to match - sent to your partner** | Matches on it, and sends its value for matched records | Your partner agreed to receive this column |
-| **Unique record identifier - not sent** | Starts each row of your result with your own ID | Usual: your own ID column, whatever it is called |
-| **Unique record identifier - sent to your partner** | Does the same, and sends the ID for matched records | Your partner agreed to receive your IDs |
-| **Sent to your partner** | Sends the value for matched records; not used to match | Your partner agreed to receive this column |
-| **Ignored** | Neither matches on it nor sends it | Usual: every other column |
+<!--@include: ./_tables.md#column-use-->
 
 ### 5. Connect
 
@@ -130,7 +123,7 @@ The result screen offers the downloads. The same files are in this run's folder 
 | --- | --- | --- |
 | `alcove-results-<time>.csv` (**Download result**) | One row per matched record: your record ID, your partner's row number, and any columns your partner sends | Keep private |
 | `alcove-record-<time>.json` (**Download record (safe to share)**) | What you agreed on and what matched, for your disclosure log | Keep; not secret |
-| `alcove-record-<time>.keys.json` (**Download verification keys**, marked keep private) | The keys that check the record against your files | Keep private |
+<!--@include: ./_tables.md#keys-app-->
 | `alcove-record-<time>.terms.json` | Both parties' agreed terms | Keep; not secret |
 | `alcove.yaml` | The configuration the console wrote for this run | Keep; not secret |
 | `.alcove.key` | The shared secret your next run needs; it changes at every run | Keep private |

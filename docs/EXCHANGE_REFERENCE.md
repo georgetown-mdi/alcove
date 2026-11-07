@@ -500,7 +500,10 @@ A party that declares it receives no output (`output.expects_output: false`) may
   - Where you declared `expects_output: false`, your partner sends no payload, so the empty `receive` required of you there contradicts nothing.
   - To go ahead with columns a strict `receive` refuses, list them in your `receive`, or remove `receive` so a recurring exchange sets it on its next run; to go ahead with none, have your partner mark them `is_payload: false` (or `role: ignored`).
 
-Each list names a column once. A column named twice, in your own file or in a partner's invitation, is read once: the first entry stands, with its description, and the exchange does not fail.
+Each list names a column once. A column named twice is handled by where it is written:
+
+- **In your own file**, a later entry that states nothing the first does not is read once with it. A later entry that states more, such as a description the first entry lacks or a different value for a key the first states, is refused, and the message names both entries.
+- **In a partner's invitation**, the first entry stands, with its description, and the exchange does not fail.
 
 How the terms exchange holds both lists, and how an unset `payload.receive` is filled on the first run, are specified in [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#payload-disclosure-consent).
 
@@ -1268,7 +1271,7 @@ The block is validated **strictly**, as the document's top level is: an unrecogn
 
 `alcove exchange` requires `shared_secret`: with no key file, the CLI aborts before any connection is attempted. Quick exchanges (the subcommand-less invocation) use no key file and rely on transport-layer authentication. The block itself is never required in a configuration file.
 
-**Provisioning the key file from an invitation.** A configuration downloaded from the web application, like every `alcove.yaml`, holds no secret. Pass `--invitation CODE` to `alcove exchange` (the same invitation `alcove accept` takes) to write your key file from it and run the exchange in one command: the CLI validates the invitation (checksum, schema, and expiry), writes the key file with its shared secret and expiry, and then runs. Use the `@`-file form, `--invitation '@invitation.txt'`, to keep it out of shell history. A malformed or expired invitation fails before anything is written. `--invitation` is refused if a key file already exists at the key path, since the secret rotates after the first exchange; run without it, or re-invite. See [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md).
+**Provisioning the key file from an invitation.** A configuration downloaded from the web application, like every `alcove.yaml`, holds no shared secret: that is in the key file. An `alcove.yaml` holds a credential, such as an SFTP password, only where one was written into it as a value rather than as an [`@`-file reference](#file-references). Pass `--invitation CODE` to `alcove exchange` (the same invitation `alcove accept` takes) to write your key file from it and run the exchange in one command: the CLI validates the invitation (checksum, schema, and expiry), writes the key file with its shared secret and expiry, and then runs. Use the `@`-file form, `--invitation '@invitation.txt'`, to keep it out of shell history. A malformed or expired invitation fails before anything is written. `--invitation` is refused if a key file already exists at the key path, since the secret rotates after the first exchange; run without it, or re-invite. See [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md).
 
 **Rotation.** The shared secret rotates at the terms exchange that follows each successful authentication handshake, before the data exchange: both parties derive the replacement from the handshake's key agreement and a random value from each party, with no extra round trip, and save it one after the other ([The rotation at the terms exchange](spec/PROTOCOL.md#the-rotation-at-the-terms-exchange)). The CLI persists it; a library consumer of `runExchange` persists it through the `store` of its `rotation` option.
 
@@ -1889,11 +1892,10 @@ A refused cell has one of these reasons:
 
 ## Full example
 
-The configuration below is a complete `alcove.yaml` exactly as the web application exports it from a recurring exchange's **Run this from the command line** panel ([Exporting to the command line](MANAGED_EXCHANGE.md#exporting-to-the-command-line)). It is the inviting party's side of a WebRTC exchange between two agencies, matching on five keys and sending one column to the partner.
+The configuration below is a complete `alcove.yaml` of the kind the web application exports from a recurring exchange's **Run this from the command line** panel ([Exporting to the command line](MANAGED_EXCHANGE.md#exporting-to-the-command-line)). It is the inviting party's side of a WebRTC exchange between two agencies, matching on five keys and sending one column to the partner.
 
-- **Build.** Exported by Alcove 0.1.0 (the version in `apps/cli/package.json`) at commit `5bf2258d947dd80ffd4531f573db6b722b2ff498`.
 - **How the exchange was set up.** An invitation created in the web application's editor from an input file with the columns `client_id`, `first_name`, `last_name`, `dob`, `ssn`, `zip`, and `enrollment_date`: `enrollment_date` set to be sent to the partner, a legal agreement attached, and five of the keys broader matching selects left on. After the exchange it was saved as a recurring exchange with a 90-day limit on the shared secret's age and a retention note, then exported.
-- **Placeholders.** `signaling.example.org`, `Example County Health Department`, and `EXAMPLE-MOU-0001` are placeholders, entered in place of a real server, name, and agreement before the export. The file contains no secret, since the shared secret is exported beside it in `.alcove.key`, and no value from the input file. Nothing in the file was edited after the export, and the comments in it are the ones the export writes.
+- **Placeholders.** `signaling.example.org`, `Example County Health Department`, and `EXAMPLE-MOU-0001` are placeholders, entered in place of a real server, name, and agreement before the export. The file contains no secret, since the shared secret is exported beside it in `.alcove.key`, and no value from the input file. A current export can differ from it in its comments and in settings added since.
 
 ```yaml
 format_version: 1
@@ -1915,7 +1917,6 @@ connection:
   #   peer_timeout_ms: 600000
   #   inactivity_timeout_ms: 3600000
 linkage_terms:
-  version: 1.0.0
   identity: Example County Health Department
   date: 2026-11-01
   algorithm: psi
@@ -2379,7 +2380,6 @@ Each field of the example, and where its reference entry is:
 | `connection.server` | The peer coordination server the invitation named, by `host`, `port`, and `path`. | [`connection.server`](#connectionserver) |
 | `connection.role` | `inviter`: this party's side, written by the export. The partner's configuration has `acceptor`. | [`connection.role`](#connectionrole) |
 | `connection.options` (commented out) | The two timeouts at their WebRTC defaults, for you to uncomment and change. | [`connection.options`](#connectionoptions) |
-| `linkage_terms.version` | A retired field the build above wrote. Alcove keeps it as written and does not compare it. | [`linkage_terms.version`](#linkage_termsversion) |
 | `linkage_terms.identity` | This party's self-asserted name, shown to the partner and written into both exchange records. | [`linkage_terms.identity`](#linkage_termsidentity) |
 | `linkage_terms.date` | The day the terms were made. A different date on the partner's side only warns. | [`linkage_terms.date`](#linkage_termsdate) |
 | `linkage_terms.algorithm` | `psi`: the matched records are revealed, not only how many there are. | [`linkage_terms.algorithm`](#linkage_termsalgorithm) |

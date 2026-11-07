@@ -297,7 +297,7 @@ More detail: [How host-key pinning works](../CLI.md#sftp-host-key-trust), [Every
 | `.alcove.key` | The shared secret. It changes after every run. | Keep private |
 | `alcove-results-<time>.csv` | Your matched records: your ID, `partner_row` (your partner's row number for that record, counting from 0), then the columns your partner sends. | Keep private |
 | `alcove-record-<time>.json` | The exchange record of this run. | Keep; not secret |
-| `alcove-record-<time>.keys.json` | The values that open the record's checks. | Keep private |
+<!--@include: ./_tables.md#keys-cli-->
 | `alcove-record-<time>.terms.json` | Both parties' agreed terms. | Keep; not secret |
 
 A count-only run writes no results CSV. All files: [Install and run](./cli-install.md#what-you-get).

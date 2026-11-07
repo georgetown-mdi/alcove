@@ -26,7 +26,7 @@ Docker Engine needs `--user "$(id -u):$(id -g)"` on every run, which the command
 
 == Windows
 
-Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it. On a work laptop, installing Docker Desktop needs administrator rights, and Docker's terms may require a paid subscription for your organization: check with your IT department before the agreed date.
+Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it. On a work laptop, installing Docker Desktop needs administrator rights, and Docker's terms may require a paid subscription for your organization: check with your IT department before the agreed date. Docker Desktop needs the Windows Subsystem for Linux, and asks to install it the first time it starts.
 
 Open PowerShell and pull the image:
 
@@ -132,7 +132,13 @@ podman run -it --rm --userns=keep-id:uid=1000,gid=1000 -v "$PWD":/work docker.io
 
 :::
 
-The container reads and writes only that folder, so keep your input file, any password file and the results in it.
+The container reads and writes only that folder, so keep your input file, any password file and the results in it. An SSH key in `~/.ssh` is outside it too: copy the key into the folder.
+
+Check three things before you run a command:
+
+- **A password in an `sftp://` address.** Your shell can change a special character in it, such as `!`. Put the whole address in single quotes, as in `'sftp://user:passw!rd@example.org/psi'`. Better, keep the password in a file and pass `--server-password=@passwd`: it then stays out of the command and your shell history, and needs no quoting.
+- **A Windows path that ends in `\`.** Docker can misread where the path ends. Leave the last `\` off; the path still names the folder.
+- **A folder on a network location.** Docker cannot mount a mapped drive (`Z:\exchange`) or a network path (`\\fileserver\exchange`), and `${PWD}` taken there is a path Docker cannot use. Work from a folder on a local drive, or follow [Using a network file drop with Alcove on Windows](../../support/windows-network-filedrop/README.md).
 
 `-it` gives the command a terminal, which `alcove accept` and a first SFTP run need to ask you a question. Leave `-it` out in two places:
 
@@ -172,7 +178,7 @@ Every run writes into the folder you name as its output (`./` on these pages). E
 | --- | --- | --- |
 | `alcove-results-<time>.csv` | One row per matched record: your ID column, `partner_row` (your partner's row number for that record, counting from 0), then the columns your partner sends. With no ID column, the first column is `your_row`, your own row number. | Keep private |
 | `alcove-record-<time>.json` | The exchange record: both names, the method, the columns sent and received, your record count, and the match count when the terms give both of you the result. You wrote it; your partner did not sign it. | Keep; not secret |
-| `alcove-record-<time>.keys.json` | The values that open the record's checks, for `alcove verify-receipt`. | Keep private |
+<!--@include: ./_tables.md#keys-cli-->
 | `alcove-record-<time>.terms.json` | Both parties' agreed terms, for `alcove verify-receipt`. | Keep; not secret |
 | `alcove-receipt-<time>.json` | A receipt signed by both of you. Written only when the exchange is set up to sign (`signing.mode: certificate`). | Keep; not secret |
 | `alcove.yaml` | This exchange's configuration. | Keep; not secret if credentials are `@` file references |

@@ -101,55 +101,6 @@ docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/wor
   [docker.io/gumdi/alcove:latest]
   [serve]
 
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest 'sftp://user:passw!rd@example.org/psi' input.csv ./results
-  [run]
-  [-it]
-  [--rm]
-  [--mount]
-  [type=bind,src=<working folder>,dst=/work]
-  [docker.io/gumdi/alcove:latest]
-  [sftp://user:passw!rd@example.org/psi]
-  [input.csv]
-  [./results]
-
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
-  [run]
-  [-it]
-  [--rm]
-  [--mount]
-  [type=bind,src=<working folder>,dst=/work]
-  [docker.io/gumdi/alcove:latest]
-  [sftp://user@example.org/psi]
-  [--server-password=@passwd]
-  [input.csv]
-  [./results]
-
-docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work docker.io/gumdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
-  [run]
-  [-it]
-  [--rm]
-  [--mount]
-  [type=bind,src=C:\Users\me\Documents\alcove,dst=/work]
-  [docker.io/gumdi/alcove:latest]
-  [sftp://user@example.org/psi]
-  [--server-password=@passwd]
-  [input.csv]
-  [./results]
-
-docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work docker.io/gumdi/alcove:latest
-  [run]
-  [-it]
-  [--rm]
-  [--mount]
-  [type=bind,src=WORK_PATH,dst=/work]
-  [docker.io/gumdi/alcove:latest]
-
-docker run --rm docker.io/gumdi/alcove:latest --help
-  [run]
-  [--rm]
-  [docker.io/gumdi/alcove:latest]
-  [--help]
-
 docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=shared-folder -v "/path/to/shared-folder:/shared" docker.io/gumdi/alcove:latest serve
   [run]
   [--rm]
