@@ -1083,8 +1083,8 @@ jobs:
               ;;
             *)
               echo "upload=false" >>"$GITHUB_OUTPUT"
-              echo "::notice::Skipped the production upload: main has moved past the release commit (compare status ${status}), so production keeps main's last build."
-              echo "Skipped the production upload: \`main\` has moved past the release commit ${GITHUB_SHA} (compare status \`${status}\`), so production keeps \`main\`'s last build." >>"$GITHUB_STEP_SUMMARY"
+              echo "::notice::Skipped the production upload: main holds a commit the release commit lacks (compare status ${status}), so production keeps main's last build."
+              echo "Skipped the production upload: \`main\` holds a commit the release commit ${GITHUB_SHA} lacks (compare status \`${status}\`), so production keeps \`main\`'s last build." >>"$GITHUB_STEP_SUMMARY"
               ;;
           esac
       # As in pages_deploy.yaml: wrangler gets the command as arguments with no

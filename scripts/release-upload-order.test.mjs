@@ -143,10 +143,10 @@ describe("the comparison step's run text", () => {
       expect(result.status).toBe(0);
       expect(result.output).toBe("upload=false\n");
       expect(result.stdout).toMatch(
-        /^::notice::Skipped the production upload: main has moved past the release commit/m,
+        /^::notice::Skipped the production upload: main holds a commit the release commit lacks/m,
       );
       expect(result.summary).toContain(
-        `Skipped the production upload: \`main\` has moved past the release commit ${SHA}`,
+        `Skipped the production upload: \`main\` holds a commit the release commit ${SHA} lacks`,
       );
       expect(result.summary).toContain(`\`${status}\``);
       expect(result.summary).toContain("production keeps `main`'s last build");
