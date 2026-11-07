@@ -27,9 +27,10 @@ const {
   sftp: { OPEN_MODE, STATUS_CODE },
 } = utils;
 
-// SSH_FXP_NAME and SSH_FXP_DATA response packet types (RESPONSE.NAME / .DATA in
-// ssh2/lib/protocol/SFTP.js). Used to frame the malformed replies the adversarial
-// tests inject straight onto the channel.
+// SSH_FXP_HANDLE, SSH_FXP_NAME and SSH_FXP_DATA response packet types
+// (RESPONSE.HANDLE / .NAME / .DATA in ssh2/lib/protocol/SFTP.js). Used to frame
+// the malformed replies the adversarial tests inject straight onto the channel.
+const RESPONSE_HANDLE = 102;
 const RESPONSE_NAME = 104;
 const RESPONSE_DATA = 103;
 
@@ -145,6 +146,15 @@ function malformedDataPacket(reqid: number): Buffer {
   return frame(RESPONSE_DATA, reqid, body);
 }
 
+// A HANDLE packet whose declared string length (0xffffffff) overruns the buffer,
+// so ssh2's parser returns undefined and falls into
+// doFatalSFTPError('Malformed HANDLE packet').
+function malformedHandlePacket(reqid: number): Buffer {
+  const body = Buffer.alloc(4);
+  body.writeUInt32BE(0xffffffff, 0); // bogus handle length
+  return frame(RESPONSE_HANDLE, reqid, body);
+}
+
 // Two distinct parties, each with a password and a keypair, so the suite can
 // drive either auth method against the backend; the keypairs also differ so
 // public-key auth is a real credential check, not a rubber stamp.
@@ -205,6 +215,7 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
   const inject: SftpFaultInjection = {
     malformedNameOnNextReaddir: false,
     malformedDataOnNextRead: false,
+    malformedHandleOnNextOpen: false,
     get oversizeNameOnNextReaddir(): string | null {
       return oversizeName;
     },
@@ -246,10 +257,16 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
     userb: publicKeyOf(parties.userb.key),
   };
 
+  // Every userauth request the server has received, of any method and outcome.
+  let authenticationEvents = 0;
+
   // Track live connections so stop() can force them closed: server.close() only
   // fires its callback once every connection has ended, so a still-connected
   // adapter at teardown would otherwise hang the runner indefinitely.
   const clients = new Set<Connection>();
+
+  // Resolvers of acceptedConnectionsClosed() calls waiting for `clients` to empty.
+  let closedWaiters: (() => void)[] = [];
 
   const server = new Server({ hostKeys: [hostKey.private] }, (client) => {
     clients.add(client);
@@ -272,10 +289,17 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
     // 'error' on the connection; without a listener it would crash the test
     // process. There is nothing to recover here -- the connection is going away.
     client.on("error", () => {});
-    client.on("close", () => clients.delete(client));
+    client.on("close", () => {
+      clients.delete(client);
+      if (clients.size > 0) return;
+      const waiters = closedWaiters;
+      closedWaiters = [];
+      for (const resolveWaiter of waiters) resolveWaiter();
+    });
     client.on("close", () => sessionControls.releaseConnection(client));
 
     client.on("authentication", (ctx) => {
+      authenticationEvents += 1;
       const party =
         ctx.username === "usera"
           ? parties.usera
@@ -416,6 +440,26 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
     handle,
     inject,
     sessionControls,
+    authenticationEvents: () => authenticationEvents,
+    acceptedConnectionsClosed(timeoutMs = 5_000): Promise<void> {
+      if (clients.size === 0) return Promise.resolve();
+      return new Promise<void>((resolve, reject) => {
+        const waiter = (): void => {
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          closedWaiters = closedWaiters.filter((w) => w !== waiter);
+          reject(
+            new Error(
+              `in-process SFTP server: ${clients.size} accepted connection(s) ` +
+                `still open ${timeoutMs} ms after the client dial settled`,
+            ),
+          );
+        }, timeoutMs);
+        closedWaiters.push(waiter);
+      });
+    },
     async stop() {
       // Disarm the withheld-close control and hand the real closers back to the
       // sockets it silenced: end() below reaches those sockets, and a silenced one
@@ -596,6 +640,10 @@ function attachSftpHandlers(
 
   sftp.on("OPEN", (reqid: number, filename: string, flags: number) => {
     if (inject.withholdOn === "OPEN") return;
+    if (inject.malformedHandleOnNextOpen) {
+      inject.malformedHandleOnNextOpen = false;
+      return injectRaw(malformedHandlePacket(reqid));
+    }
     if (flags & OPEN_MODE.WRITE) inject.pathsOpenedForWrite.push(filename);
     fs.open(resolve(filename), openFlagsToFsFlags(flags), (err, fd) => {
       if (err) {
