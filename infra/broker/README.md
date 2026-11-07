@@ -27,6 +27,7 @@ One client address holds at most 32 connections at once on each path to it, a wo
 
 - **Through 443**, the relay front's route hop counts each client by the address the PROXY header names, and closes a further connection unanswered ([`../relay/README.md`, The 443 front](../relay/README.md#the-443-front)).
 - **On 8443 directly**, this front counts each client by its own address and answers a further request `503`. It does not count `127.0.0.1`, which every connection through the hop arrives from.
+  nginx counts a request only once its headers have arrived, so until then a direct connection is bounded only by the 30-second `client_header_timeout`, and one address can hold every free connection of the front's 512 for that long ([SIGNALING_SERVER_BOUNDS.md, The project's front](../../docs/spec/SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds)).
 
 ## The files
 
