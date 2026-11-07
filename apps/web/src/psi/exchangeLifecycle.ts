@@ -113,9 +113,17 @@ export type { ExchangeErrorCategory } from "@alcove/cli-contract";
  * run's certificate/terms refusal -- falls through to `"exchange"` instead,
  * since its message is not guaranteed to be local-only there. The CLI's
  * `classifyTerminalError` drops the phase, since its category has to agree
- * with an exit code this alert has no counterpart for. See {@link
- * ExchangeErrorCategory} for what each category means and for {@link
- * LinkageTermsUnsatisfiableError}'s membership. */
+ * with an exit code this alert has no counterpart for. In the alert,
+ * `"exchange"` invites a re-run, `"output"` (the exchange succeeded, only
+ * local results-file generation failed) never does, `"security"` shows as an
+ * authentication failure, and `"config"` shows the message, which names only
+ * this party's own configuration; a sibling prepare-phase `UsageError`, whose
+ * message can embed partner-influenced values (e.g. the accept side's
+ * disclosure check), stays `"exchange"`. {@link
+ * LinkageTermsUnsatisfiableError} also classifies `"config"`, for the no-retry
+ * affordance only: its message names the agreed terms' key and field names,
+ * partner-authored on every accept path, so the alert builder supplies fixed
+ * copy instead of rendering it. */
 function classifyExchangeFailure(
   error: unknown,
   phase: "prepare" | "run",
