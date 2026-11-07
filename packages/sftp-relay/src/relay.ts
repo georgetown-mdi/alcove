@@ -8,6 +8,10 @@ import {
   pongWithinWindow,
   sendWithinWindow,
 } from "@alcove/websocket-relay/forwarding";
+import {
+  refuseUpgrade,
+  requestPath,
+} from "@alcove/websocket-relay/upgradeRefusal";
 
 import {
   SFTP_RELAY_CLOSE_WAIT_MS,
@@ -107,25 +111,6 @@ interface Connection {
 }
 
 const NO_PENDING = Buffer.alloc(0);
-
-function requestPath(url: string | undefined): string {
-  if (url === undefined) return "";
-  const queryAt = url.search(/[?#]/);
-  return queryAt === -1 ? url : url.slice(0, queryAt);
-}
-
-function refuseUpgrade(
-  socket: Duplex,
-  status: "403 Forbidden" | "404 Not Found" | "503 Service Unavailable",
-): void {
-  // The HTTP server detaches its own listeners from an upgrade's socket, so
-  // an error here would otherwise be thrown.
-  socket.on("error", () => socket.destroy());
-  socket.end(
-    `HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
-    () => socket.destroy(),
-  );
-}
 
 /**
  * Whether `request` holds exactly one `Origin` header and its value is one of

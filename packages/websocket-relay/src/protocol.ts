@@ -6,6 +6,7 @@ import {
 
 import {
   QUEUED_MESSAGE_OVERHEAD_BYTES,
+  READ_BYTES,
   pausedReadAheadBytes,
 } from "./forwarding.ts";
 
@@ -54,8 +55,7 @@ export const RELAY_QUEUE_LIMIT_BYTES = 1280 * 1024;
  * 65,535 bytes and at least 126. */
 const MESSAGE_HEADER_BYTES = 4;
 
-/** Node's read size, in bytes. */
-export const READ_BYTES = 64 * 1024;
+export { READ_BYTES } from "./forwarding.ts";
 
 /**
  * The read high-water mark, in bytes, of each socket the relay's HTTP server

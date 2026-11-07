@@ -1,7 +1,13 @@
 import { createServer } from "node:http";
 
-import { redactAndSanitizeForDisplay } from "@alcove/core/websocket-relay";
 import { applyStandaloneUpgradeBounds } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
+import {
+  exitOnSignal,
+  refuseToStart,
+  UNAVAILABLE_EXIT_CODE,
+  USAGE_EXIT_CODE,
+  writeLine,
+} from "@alcove/websocket-relay/standaloneRunner";
 
 import { attachSftpRelay } from "./relay.ts";
 import {
@@ -22,31 +28,12 @@ import type { SftpRelayRunnerOptions } from "./standaloneOptions.ts";
 const READY_PREFIX = "alcove-sftp-relay";
 const DIAGNOSTIC_CONTEXT = "sftp-relay";
 
-/** The CLI's usage exit (docs/CLI.md). */
-const USAGE_EXIT_CODE = 64;
-
-/** A bind the operating system refused, or a later fault on the listener. */
-const UNAVAILABLE_EXIT_CODE = 69;
-
-/** Write one line to stderr, escaping the raw text once, here at the sink. */
-function writeLine(level: "INFO" | "WARN" | "ERROR", message: string): void {
-  const timestamp = new Date().toISOString();
-  process.stderr.write(
-    `[${timestamp}] [${level}] [${DIAGNOSTIC_CONTEXT}] ${redactAndSanitizeForDisplay(message)}\n`,
-  );
-}
-
-function refuseToStart(message: string, code: number): never {
-  writeLine("ERROR", message);
-  process.exit(code);
-}
-
 function readOptions(): SftpRelayRunnerOptions {
   try {
     return resolveSftpRelayOptions(process.argv.slice(2));
   } catch (error) {
     if (!(error instanceof SftpRelayOptionError)) throw error;
-    refuseToStart(error.message, USAGE_EXIT_CODE);
+    refuseToStart(DIAGNOSTIC_CONTEXT, error.message, USAGE_EXIT_CODE);
   }
 }
 
@@ -62,11 +49,12 @@ applyStandaloneUpgradeBounds(server);
 const relay = attachSftpRelay(server, {
   target: options.target,
   allowedOrigins: options.allowedOrigins,
-  reportFault: (message) => writeLine("WARN", message),
+  reportFault: (message) => writeLine(DIAGNOSTIC_CONTEXT, "WARN", message),
 });
 
 server.on("error", (error: Error) => {
   refuseToStart(
+    DIAGNOSTIC_CONTEXT,
     `the SFTP relay could not serve ${options.host} port ${options.port}: ${error.message}`,
     UNAVAILABLE_EXIT_CODE,
   );
@@ -75,18 +63,11 @@ server.on("error", (error: Error) => {
 server.listen(options.port, options.host, () => {
   const address = server.address() as AddressInfo;
   writeLine(
+    DIAGNOSTIC_CONTEXT,
     "INFO",
     `forwarding to ${options.target.host} port ${options.target.port} for ${options.allowedOrigins.join(", ")}`,
   );
   process.stdout.write(`${READY_PREFIX} ${address.port}\n`);
 });
 
-for (const signal of ["SIGTERM", "SIGINT"] as const) {
-  process.on(signal, () => {
-    relay.close();
-    server.close(() => process.exit(0));
-    // A socket still answering its close keeps `close` from completing; do not
-    // wait on it past the grace window.
-    setTimeout(() => process.exit(0), 500).unref();
-  });
-}
+exitOnSignal(server, relay);
