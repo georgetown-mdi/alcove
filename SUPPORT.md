@@ -14,7 +14,7 @@ Do not open a public issue. Follow the private reporting process in [SECURITY.md
 
 Open a [GitHub issue](https://github.com/georgetown-mdi/alcove/issues). Please include:
 
-- The Alcove version: the Docker image tag or the output of `alcove --version`, or for the hosted web application the date you used it
+- The Alcove version: the Docker image tag or the output of `alcove --version`, or for the hosted web application the version or commit shown in the page footer
 - The transport channel (`webrtc`, `sftp`, or `filedrop`)
 - The operating system and version
 - A minimal reproducing case, if possible

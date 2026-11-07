@@ -26,7 +26,7 @@ One responsibility precedes both and is the same in each: the decision to disclo
 
 Both deployments are suitable for real exchanges. This one runs every component on infrastructure you control.
 
-- **The project operates no part of it.** The container runs on hardware the agency controls, connects only to the endpoints the exchange's configuration names, plus Google's public STUN server for a WebRTC exchange that names no STUN server ([PRIVACY.md](../PRIVACY.md#container-deployment-cli-and-local-console)), and no component of it reports back.
+- **The project operates no part of it.** The container runs on hardware the agency controls, connects only to the endpoints the exchange's configuration names, plus Google's public STUN server for a WebRTC exchange that names no STUN server and, for an invitation made at a web app's address, one read of that app's public `/alcove.json` ([PRIVACY.md](../PRIVACY.md#container-deployment-cli-and-local-console)), and no component of it reports back.
 - **No agency data is transmitted to, stored on, or accessible from project-operated infrastructure** -- an exchange over SFTP or a shared folder touches none, and a WebRTC exchange touches it only where it uses the project's coordination server or relays ([PRIVACY.md](../PRIVACY.md#container-deployment-cli-and-local-console)). Otherwise the project receives no data, no metadata, and no record that an exchange took place.
 - **Even the registry the image comes from is not project-operated.** It is a public one ([PRIVACY.md](../PRIVACY.md#what-supporting-services-can-observe)).
 
