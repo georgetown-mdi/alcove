@@ -162,6 +162,49 @@ describe("render-front.sh", () => {
     expect(result.stdout).not.toContain("__WEBSOCKET");
   });
 
+  it.each([
+    ["without the WebSocket relay", [], 3],
+    [
+      "with the WebSocket relay",
+      [
+        "ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org",
+        'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"',
+      ],
+      4,
+    ],
+  ])(
+    "renders the route hop's 32-connection limit, keyed on the address the PROXY header names, %s",
+    (_label, envLines, serverCount) => {
+      const result = render(envLines);
+      expect(result.status, result.stderr).toBe(0);
+      const servers = renderedServerBlocks(result.stdout);
+      expect(servers).toHaveLength(serverCount);
+      const hops = servers.filter((server) =>
+        server.includes(`listen ${HOP} proxy_protocol;`),
+      );
+      expect(hops).toHaveLength(1);
+      const [hop] = hops;
+      expect(hop).toContain("set_real_ip_from 127.0.0.1;");
+      expect(hop.filter((line) => line.startsWith("limit_conn"))).toEqual([
+        HOP_LIMIT,
+        HOP_LIMIT_LOG_LEVEL,
+      ]);
+      expect(
+        settings(result.stdout).filter((line) =>
+          line.startsWith("limit_conn_zone "),
+        ),
+      ).toEqual(serverCount === 4 ? [HOP_ZONE, WEBSOCKET_ZONE] : [HOP_ZONE]);
+      for (const server of servers.filter((other) => other !== hop)) {
+        const isWebsocket = server.includes(
+          `listen ${WEBSOCKET_TLS} ssl proxy_protocol;`,
+        );
+        expect(server.filter((line) => line.startsWith("limit_conn"))).toEqual(
+          isWebsocket ? [WEBSOCKET_LIMIT, WEBSOCKET_LIMIT_LOG_LEVEL] : [],
+        );
+      }
+    },
+  );
+
   it("passes the WebSocket relay's connections to 8446 when its port is unset", () => {
     const result = render(["ALCOVE_RELAY_WEBSOCKET_NAME=wsrelay.example.org"]);
     expect(result.status, result.stderr).toBe(0);
