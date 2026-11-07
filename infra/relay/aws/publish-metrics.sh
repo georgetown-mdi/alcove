@@ -182,9 +182,14 @@ record_websocket() {
 }
 
 if [ -f "$WEBSOCKET_COUNTERS_FILE" ]; then
-  WEBSOCKET_CURRENT="$(head -c 4096 "$WEBSOCKET_COUNTERS_FILE")"
-  WEBSOCKET_STARTED="$(optional_field "$WEBSOCKET_CURRENT" started "$STARTED_PATTERN")"
-  if [ -z "$WEBSOCKET_STARTED" ]; then
+  WEBSOCKET_READABLE=1
+  WEBSOCKET_CURRENT="$(head -c 4096 "$WEBSOCKET_COUNTERS_FILE" 2>/dev/null)" || WEBSOCKET_READABLE=0
+  if [ "$WEBSOCKET_READABLE" = 1 ]; then
+    WEBSOCKET_STARTED="$(optional_field "$WEBSOCKET_CURRENT" started "$STARTED_PATTERN")"
+  fi
+  if [ "$WEBSOCKET_READABLE" = 0 ]; then
+    note "$WEBSOCKET_COUNTERS_FILE could not be read, so none of its counts are published"
+  elif [ -z "$WEBSOCKET_STARTED" ]; then
     note "$WEBSOCKET_COUNTERS_FILE has no single started line holding a UTC time, so none of its counts are published"
   else
     WEBSOCKET_LAST=""

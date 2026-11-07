@@ -120,6 +120,7 @@ const fixtureHost = ({ region = "us-west-2", websocketName = "" } = {}) => {
     websocketStateFile: `${stateFile}-websocket`,
     write: (text) => writeFileSync(countersFile, text),
     writeWebsocket: (text) => writeFileSync(websocketCountersFile, text),
+    makeWebsocketUnreadable: () => chmodSync(websocketCountersFile, 0o000),
     awsFails: (fails) =>
       fails ? writeFileSync(failFlag, "") : rmSync(failFlag, { force: true }),
     // The last heartbeat as published on an earlier UTC day.
@@ -538,6 +539,28 @@ describe("publish-metrics.sh", () => {
         const run = host.run();
         expect(run.status, run.stderr).toBe(0);
         expect(run.stderr).toContain("websocket-counters has no single");
+        expect(run.awsCalls).toEqual([
+          "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
+            "MetricName=client_cap_refusals,Value=5,Unit=Count",
+        ]);
+      },
+    );
+
+    it.skipIf(process.getuid?.() === 0)(
+      "publishes the registrar's rise past a relay file it cannot read, and names the file",
+      () => {
+        const host = fixtureHost();
+        host.write(counters(START, {}));
+        host.writeWebsocket(websocketCounters(START, {}));
+        host.run();
+        host.write(counters(START, { client_cap_refusals: 5 }));
+        host.writeWebsocket(websocketCounters(START, {}));
+        host.makeWebsocketUnreadable();
+        const run = host.run();
+        expect(run.status, run.stderr).toBe(0);
+        expect(run.stderr).toContain(
+          "websocket-counters could not be read, so none of its counts are published",
+        );
         expect(run.awsCalls).toEqual([
           "cloudwatch put-metric-data --region us-west-2 --namespace Alcove/Relay --metric-data " +
             "MetricName=client_cap_refusals,Value=5,Unit=Count",
