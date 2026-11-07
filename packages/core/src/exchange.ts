@@ -1218,6 +1218,14 @@ export interface RunExchangeOptions {
    */
   saveIntent?: boolean;
   /**
+   * Break an equal-count role tie on the two parties' agreed-terms `identity`
+   * names before the handshake role ({@link resolveRole}). Set it from
+   * `breaksRoleTieOnIdentity` (`protocolSetup.ts`) for the run's channel: both
+   * parties of an exchange must set it alike, or they can resolve the same
+   * role. Absent, the tie goes to the handshake initiator.
+   */
+  breakRoleTieOnIdentity?: boolean;
+  /**
    * This party's observed SFTP host key (fingerprint + key type), advertised in
    * the post-handshake terms exchange so the two parties can reconcile their
    * independent views of the server's identity. Pass it ONLY on the
@@ -1851,6 +1859,9 @@ export async function runExchange(
     partnerTerms.output,
     declaredRecordCount,
     partnerRecordCount,
+    options.breakRoleTieOnIdentity === true
+      ? { local: linkageTerms.identity, partner: partnerTerms.identity }
+      : undefined,
   );
   const isReceiver = resolvedRole === "receiver";
 

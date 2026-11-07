@@ -562,6 +562,7 @@ export type {
 } from "./linkageTermsNegotiation";
 export {
   TermsChangeRefusedError,
+  breaksRoleTieOnIdentity,
   releasableTermsRotation,
   termsDifferenceLocalKeys,
   termsDifferenceRefusedBy,
