@@ -341,11 +341,11 @@ describe("the canonical-encode gate (the byte form both parties hash)", () => {
     const authored = withFirstElementTransform(draft, [
       { function: "substring", params: { start: 2 ** 53, length: 4 } },
     ]);
-    // The assumptions: the terms schema admits the value (a transform param is
-    // `z.unknown()` there), and the encoder is what refuses it -- so the message
-    // below is this gate's answer rather than one the schema would have given.
+    // The encoder refuses the value, and so does the terms schema, on the
+    // linkageKeys path the generic mapping would word as a key-list problem --
+    // so the message below is this gate's answer, as for the non-finite case.
     const terms = buildAdvancedTerms(authored);
-    expect(safeParseLinkageTerms(terms).success).toBe(true);
+    expect(safeParseLinkageTerms(terms).success).toBe(false);
     expect(() => canonicalString(terms)).toThrow(CanonicalEncodingError);
 
     const result = validateAdvancedInvite(authored, seed, now);

@@ -31,6 +31,7 @@ import type {
   Payload,
 } from "../src/config/linkageTermsSchema";
 import type { PartnerPayload } from "../src/payloadExchange";
+import type { AssociationTable } from "../src/types";
 
 import { createMessagePipe } from "../src/connection/messageConnection";
 import type { MessageConnection } from "../src/connection/messageConnection";
@@ -2352,7 +2353,31 @@ test("buildOutputTable: a partner payload missing a row grouped onto several of 
   };
   expect(() =>
     buildOutputTable(MANY_SIDE_TABLE, rawRows, metaNoId, partnerPayload),
-  ).toThrow("association table indices: 1");
+  ).toThrow("association table indices: 1 (1 missing)");
+});
+
+test("buildOutputTable: a partner payload missing every paired row states the count and the first few indices", () => {
+  const pairs = 10_000;
+  const table: AssociationTable = [
+    Array.from({ length: pairs }, (_, i) => i),
+    Array.from({ length: pairs }, (_, i) => i + 100),
+  ];
+  const partnerPayload: PartnerPayload = {
+    columns: ["diagnosis"],
+    rowIndices: [],
+    rows: [],
+  };
+  let message = "";
+  try {
+    buildOutputTable(table, [], metaNoId, partnerPayload);
+  } catch (error) {
+    message = (error as Error).message;
+  }
+  expect(message).toBe(
+    "partner payload is missing rows for association table indices: " +
+      "100, 101, 102, 103, 104 and 9995 more (10000 missing)",
+  );
+  expect(message.length).toBeLessThan(200);
 });
 
 // --- buildOutputTable: this party's own columns ------------------------------

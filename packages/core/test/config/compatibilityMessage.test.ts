@@ -755,9 +755,10 @@ const SWEPT: readonly SweptDiagnostic[] = [
               elements: [
                 {
                   field: "ssn",
-                  // A transform param beyond 2^53 survives schema parsing and
-                  // then fails to canonicalize; the encoder's message names the
-                  // offending JSON path, whose last segment is this key.
+                  // A transform param beyond 2^53, which every parse refuses,
+                  // in terms built past the schema: it fails to canonicalize,
+                  // and the encoder's message names the offending JSON path,
+                  // whose last segment is this key.
                   transform: [
                     { function: "noop", params: { [value]: 2 ** 53 } },
                   ],

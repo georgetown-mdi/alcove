@@ -110,10 +110,9 @@ const EMPTY_AUTHORED_KEYS_MESSAGE =
 /** Shown when the value the built terms cannot canonically encode sits in an
  * enabled key element's transform -- the one such value this editor authors, via
  * the `substring` and `pad_left` numeric params the element editor writes into the
- * draft. The terms schema does not catch it (a transform param is `z.unknown()`
- * there), and a non-finite param's schema issue collapses to "Enable at least one
- * linkage key." on a draft whose keys are all enabled, so this message must be set
- * ahead of that mapping to be the one the operator reads. Names neither the key
+ * draft. The terms schema refuses such a param too, but its issue collapses to
+ * "Enable at least one linkage key." on a draft whose keys are all enabled, so
+ * this message must be set ahead of that mapping to be the one the operator reads. Names neither the key
  * nor the parameter: an imported key's names are partner-influenceable, the same
  * reason {@link UNSUPPLYABLE_KEY_MESSAGE} names no field; the element editor marks
  * the offending input where the operator fixes it. */

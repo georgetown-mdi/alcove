@@ -22,6 +22,7 @@ import {
   LONE_SURROGATE_MESSAGE,
   LinkageTermsSchema,
   NESTING_DEPTH_MESSAGE,
+  UNSAFE_INTEGER_MESSAGE,
   MAX_LINKAGE_ENTRIES,
   MAX_PARAMS_ENTRIES,
   MAX_PAD_LEFT_LENGTH,
@@ -959,30 +960,87 @@ test("a swap pair whose transform params cannot be canonically encoded is refuse
     { function: "to_upper_case", params: { scale: 2 ** 53 } },
   ];
   expect(() => canonicalString(unencodable)).toThrow(CanonicalEncodingError);
-  // The same pipeline on both positions of an unswapped key passes the schema,
-  // so the refusal below is the pair comparison's.
-  expect(
-    safeParseLinkageTerms({
-      ...swappedTransforms(unencodable, unencodable),
-      linkageKeys: [
-        {
-          name: "Unswapped",
-          elements: [
-            { field: "firstName", transform: unencodable },
-            { field: "lastName", transform: unencodable },
-          ],
-        },
-      ],
-    }).success,
-  ).toBe(true);
+  // The same pipeline on both positions of an unswapped key is refused by the
+  // document-wide number rule alone.
+  const unswapped = safeParseLinkageTerms({
+    ...swappedTransforms(unencodable, unencodable),
+    linkageKeys: [
+      {
+        name: "Unswapped",
+        elements: [
+          { field: "firstName", transform: unencodable },
+          { field: "lastName", transform: unencodable },
+        ],
+      },
+    ],
+  });
+  expect(unswapped.success).toBe(false);
+  if (unswapped.success) return;
+  expect(unswapped.error.issues.map((issue) => issue.message)).toEqual([
+    UNSAFE_INTEGER_MESSAGE,
+  ]);
 
   const result = safeParseLinkageTerms(
     swappedTransforms(unencodable, unencodable),
   );
   expect(result.success).toBe(false);
   if (result.success) return;
-  expect(result.error.issues).toHaveLength(1);
-  expect(result.error.issues[0].message).toMatch(/same transform/);
+  expect(result.error.issues.map((issue) => issue.message)).toEqual([
+    expect.stringMatching(/same transform/),
+    UNSAFE_INTEGER_MESSAGE,
+  ]);
+});
+
+describe("an integer-valued number outside the safe range", () => {
+  const withParams = (params: Record<string, unknown>): unknown => ({
+    ...base,
+    linkageFields: [{ name: "ssn", type: "ssn" }],
+    linkageKeys: [
+      {
+        name: "SSN",
+        elements: [{ field: "ssn", transform: [{ function: "noop", params }] }],
+      },
+    ],
+  });
+
+  test("is refused anywhere in the document, with its path and the remedy", () => {
+    const result = safeParseLinkageTerms(withParams({ extra: 1e300 }));
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toHaveLength(1);
+    expect(result.error.issues[0].message).toBe(UNSAFE_INTEGER_MESSAGE);
+    expect(result.error.issues[0].message).toMatch(/string-encode it$/);
+    expect(result.error.issues[0].path).toEqual([
+      "linkageKeys",
+      0,
+      "elements",
+      0,
+      "transform",
+      0,
+      "params",
+      "extra",
+    ]);
+  });
+
+  test("is refused on every parse path", () => {
+    const raw = withParams({ extra: -(2 ** 53) });
+    expect(() => parseLinkageTerms(raw)).toThrow(UNSAFE_INTEGER_MESSAGE);
+    for (const parse of [
+      safeParseLinkageTerms,
+      safeParseStoredLinkageTerms,
+      safeParseLinkageTermsTheReaderWrote,
+    ])
+      expect(parse(raw).success).toBe(false);
+  });
+
+  test("leaves a fraction and the largest safe integer to parse", () => {
+    expect(safeParseLinkageTerms(withParams({ extra: 1.5 })).success).toBe(
+      true,
+    );
+    expect(
+      safeParseLinkageTerms(withParams({ extra: 2 ** 53 - 1 })).success,
+    ).toBe(true);
+  });
 });
 
 test("a transform outside a swap pair is unaffected", () => {

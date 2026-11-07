@@ -498,6 +498,25 @@ describe("verifyDualSignedRecord", () => {
     expect(report.responder.signature).toBe("failed");
   });
 
+  test("a certificate key that is not a curve point is a failure, not a throw", async () => {
+    const record = await signedRecord();
+    const { publicKey } = record.responder.certificate;
+    const parsed = parseDualSignedRecord({
+      ...record,
+      responder: {
+        ...record.responder,
+        certificate: {
+          ...record.responder.certificate,
+          publicKey: { ...publicKey, y: publicKey.x },
+        },
+      },
+    });
+    const report = await verifyDualSignedRecord(parsed, fullyAnchored);
+    expect(report.responder.certificateBinding).toBe("failed");
+    expect(report.responder.signature).toBe("failed");
+    expect(report.outcome).toBe("failed");
+  });
+
   test("swapped signature blocks do not verify", async () => {
     // Each party signs bytes naming its own fingerprint and role, so the two
     // blocks are not interchangeable.
@@ -771,6 +790,55 @@ describe("signedRecordExpectations", () => {
     });
     expect(fromRecord.expectedIdentities).toBeUndefined();
     expect(fromRecord.expectedTermsHash).toBeDefined();
+  });
+
+  test("reports a terms mismatch, never a throw, for terms the canonical encoding refuses", async () => {
+    // Built past the schema, which refuses such a number at every parse.
+    const unencodable: LinkageTerms = {
+      ...termsB,
+      linkageKeys: [
+        {
+          name: "SSN",
+          elements: [
+            {
+              field: "ssn",
+              transform: [{ function: "noop", params: { extra: 1e300 } }],
+            },
+          ],
+        },
+      ],
+    };
+    const expectations = await signedRecordExpectations({
+      localTerms: termsA,
+      partnerTerms: unencodable,
+    });
+    expect(expectations.expectedIdentities).toEqual(["Party A", "Party B"]);
+    expect(expectations.expectedTermsHash).toBeDefined();
+
+    const report = await verifyDualSignedRecord(await signedRecord(), {
+      ...fullyAnchored,
+      ...expectations,
+    });
+    expect(report.termsHash).toBe("mismatch");
+    expect(report.outcome).toBe("failed");
+  });
+
+  test("the value standing for unencodable terms is no terms hash a receipt parse admits", async () => {
+    const expectations = await signedRecordExpectations({
+      localTerms: { ...termsA, date: "\ud800" },
+      partnerTerms: termsB,
+    });
+    const record = await signedRecord();
+    expect(() => parseDualSignedRecord(record)).not.toThrow();
+    expect(() =>
+      parseDualSignedRecord({
+        ...record,
+        content: {
+          ...record.content,
+          termsHash: expectations.expectedTermsHash,
+        },
+      }),
+    ).toThrow();
   });
 
   test("supplies nothing when neither artifact is in hand", async () => {

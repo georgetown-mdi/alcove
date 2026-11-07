@@ -283,6 +283,11 @@ export function partnerTermsForVerification(
   return supplied ?? receipt?.partnerTerms;
 }
 
+// The expected terms hash for terms the canonical encoding refuses. No
+// receipt's terms hash equals it: the receipt schema admits only a non-empty
+// base64url string there.
+const UNENCODABLE_TERMS_HASH = "";
+
 /**
  * The {@link DualSignedRecordVerificationInputs} fields a verifier draws from the
  * artifacts it already holds, so every surface anchors the signature checks to
@@ -307,9 +312,17 @@ export async function signedRecordExpectations(
       recordReceiptBinder: record.receiptBinder ?? null,
     };
   if (localTerms === undefined || partnerTerms === undefined) return {};
+  let expectedTermsHash: string;
+  try {
+    expectedTermsHash = await computeTermsHash(localTerms, partnerTerms);
+  } catch {
+    // Terms outside the canonical encoding domain cannot reproduce the hash:
+    // a mismatch, not a throw, as for the unsigned record.
+    expectedTermsHash = UNENCODABLE_TERMS_HASH;
+  }
   return {
     ...namedPair(localTerms.identity, partnerTerms.identity),
-    expectedTermsHash: await computeTermsHash(localTerms, partnerTerms),
+    expectedTermsHash,
   };
 }
 

@@ -1225,7 +1225,13 @@ export async function exchangeTerms(
       protocolVersion,
     );
 
-    const msg = parseOrProtocolError(termsWithDecisionMessage, rawMsg);
+    let msg: z.infer<typeof termsWithDecisionMessage>;
+    try {
+      msg = parseOrProtocolError(termsWithDecisionMessage, rawMsg);
+    } catch (parseErr) {
+      await sendTermsAbort(conn, ["partner terms reply failed to parse"]);
+      throw parseErr;
+    }
 
     if (msg.decision === "abort") {
       const abortTerms = safeParseLinkageTerms(msg.linkageTerms);

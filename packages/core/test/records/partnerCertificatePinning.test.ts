@@ -9,6 +9,7 @@ import {
 } from "../../src/exchange/signingChecks";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import { ReceiptVerificationError } from "../../src/records/signedReceipt";
+import { PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON } from "../../src/partnerAbortFrame";
 import { statesItsOwnNextStep } from "../../src/errors";
 import {
   computeCertificateFingerprint,
@@ -192,8 +193,9 @@ describe("a first authenticated contact adopts the partner's certificate", () =>
           psiLibrary,
           signingIdentity: identityA,
           sessionKey,
-          onPartnerCertificatePinned: (fingerprint) =>
-            adopted.initiator.push(fingerprint),
+          onPartnerCertificatePinned: (fingerprint) => {
+            adopted.initiator.push(fingerprint);
+          },
         },
       ),
       runExchange(
@@ -204,8 +206,9 @@ describe("a first authenticated contact adopts the partner's certificate", () =>
           psiLibrary,
           signingIdentity: identityB,
           sessionKey,
-          onPartnerCertificatePinned: (fingerprint) =>
-            adopted.responder.push(fingerprint),
+          onPartnerCertificatePinned: (fingerprint) => {
+            adopted.responder.push(fingerprint);
+          },
         },
       ),
     ]);
@@ -242,8 +245,9 @@ describe("a first authenticated contact adopts the partner's certificate", () =>
           signingIdentity: identityA,
           partnerFingerprint: fingerprintB,
           sessionKey,
-          onPartnerCertificatePinned: (fingerprint) =>
-            adopted.push(fingerprint),
+          onPartnerCertificatePinned: (fingerprint) => {
+            adopted.push(fingerprint);
+          },
         },
       ),
       runExchange(
@@ -261,6 +265,60 @@ describe("a first authenticated contact adopts the partner's certificate", () =>
     expect(adopted).toEqual([]);
     expect(resInit.signedReceipt).toBeDefined();
   });
+});
+
+describe("a recorder that cannot record the adopted pin stops the run", () => {
+  for (const refusingRole of ["initiator", "responder"] as const) {
+    test(`an async recorder's rejection stops the ${refusingRole}, which aborts and discloses nothing`, async () => {
+      const partnerRole: HandshakeRole =
+        refusingRole === "initiator" ? "responder" : "initiator";
+      const refusing = seat(refusingRole);
+      const partnerSeat = seat(partnerRole);
+      const recorderFailure = new Error("the pin could not be written");
+      const [rawRefusing, rawPartner] = createMessagePipe();
+      const refusingSide = recording(rawRefusing);
+      const partner = runExchange(
+        rawPartner,
+        partnerRole,
+        prepared(partnerSeat.name, partnerSeat.rows),
+        {
+          psiLibrary,
+          signingIdentity: partnerSeat.identity,
+          partnerFingerprint: partnerSeat.partnerFingerprint,
+          sessionKey,
+        },
+      ).catch((reason: unknown) => reason);
+      const raised = await runExchange(
+        refusingSide.conn,
+        refusingRole,
+        prepared(refusing.name, refusing.rows),
+        {
+          psiLibrary,
+          signingIdentity: refusing.identity,
+          sessionKey,
+          onPartnerCertificatePinned: async () => {
+            await Promise.resolve();
+            throw recorderFailure;
+          },
+        },
+      ).then(
+        () => {
+          throw new Error("expected the recorder's rejection to stop the run");
+        },
+        (reason: unknown) => reason,
+      );
+
+      expect(raised).toBe(recorderFailure);
+      expect(abortReasons(refusingSide.sent)).toEqual([
+        PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON,
+      ]);
+      expect(disclosingFrames(refusingSide.sent)).toEqual([]);
+
+      await rawRefusing.close();
+      await rawPartner.close();
+      expect(await partner).toBeInstanceOf(Error);
+    });
+  }
 });
 
 describe("a certificate that does not verify under its own key is not adopted", () => {
@@ -299,8 +357,9 @@ describe("a certificate that does not verify under its own key is not adopted", 
           psiLibrary,
           signingIdentity: refusing.identity,
           sessionKey,
-          onPartnerCertificatePinned: (fingerprint) =>
-            adopted.push(fingerprint),
+          onPartnerCertificatePinned: (fingerprint) => {
+            adopted.push(fingerprint);
+          },
         },
       ).then(
         () => {
@@ -359,8 +418,9 @@ describe("a certificate bound away from the partner's agreed terms is not adopte
           psiLibrary,
           signingIdentity: refusing.identity,
           sessionKey,
-          onPartnerCertificatePinned: (fingerprint) =>
-            adopted.push(fingerprint),
+          onPartnerCertificatePinned: (fingerprint) => {
+            adopted.push(fingerprint);
+          },
         },
       ).then(
         () => {
@@ -550,8 +610,9 @@ describe("a configured pin that is not a fingerprint is refused, never matched",
             signingIdentity: refusing.identity,
             partnerFingerprint: pin,
             sessionKey,
-            onPartnerCertificatePinned: (fingerprint) =>
-              adopted.push(fingerprint),
+            onPartnerCertificatePinned: (fingerprint) => {
+              adopted.push(fingerprint);
+            },
           },
         ).then(
           () => {

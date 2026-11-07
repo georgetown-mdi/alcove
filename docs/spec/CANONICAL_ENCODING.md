@@ -256,6 +256,12 @@ counts) are **safe integers by schema** -- they are validated as safe integers
 before a receipt is assembled -- so for those fields the number format reduces
 to a plain decimal integer with no exponent.
 
+A linkage terms document is held to safe integers by schema too: every parse
+of one refuses an integer-valued number outside the safe range anywhere in the
+document, a transform parameter's value included, naming its path and the
+string-encoding remedy (`UNSAFE_INTEGER_MESSAGE`,
+`packages/core/src/config/linkageTermsSchema.ts`).
+
 ### Strings
 
 Strings are serialized exactly as ECMAScript `JSON.stringify` serializes a

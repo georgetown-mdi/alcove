@@ -542,6 +542,29 @@ describe("whether the initiator may hold a next secret the responder has not sto
     expect(run.responder.partnerMayHold).toEqual([true, false]);
   });
 
+  test("a terms message 2 that fails its parse at the agreed version gets an abort, which withdraws it", async () => {
+    const run = await runRotating({
+      rewriteResponder: rewriteTermsReply((frame) => ({
+        ...frame,
+        recordCount: -1,
+      })),
+    });
+    const err = rejection(run.settled[0]);
+    expect(err).toBeInstanceOf(ConnectionError);
+    expect((err as ConnectionError).kind).toBe("protocol");
+    expect(run.a.sent.map((frame) => frame.decision)).toEqual([
+      undefined,
+      "abort",
+    ]);
+    expect(abortReasonsSent(run.a.sent)).toEqual([
+      "partner terms reply failed to parse",
+    ]);
+    expect(rejection(run.settled[1])).toBeInstanceOf(ProtocolRefusalError);
+    expect(run.responder.partnerMayHold).toEqual([true, false]);
+    expect(run.initiator.stored).toEqual([]);
+    expect(run.responder.stored).toEqual([]);
+  });
+
   test("a lost proceed leaves it reported", async () => {
     const [rawA, rawB] = createMessagePipe();
     const inputs = handshakeInputs();
