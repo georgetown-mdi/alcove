@@ -5,9 +5,11 @@
 //   - The CREDENTIAL_WORKFLOWS hold the only deploys. A job uploads with
 //     DEPLOY_ACTION, names a Cloudflare secret or runs in a GitHub environment
 //     in exactly one job of each of them and in no other workflow; each such
-//     job runs no repository code (no `run` step, no checkout, no local
-//     action, no called workflow); and no workflow passes `secrets: inherit`
-//     or `toJSON(secrets)`.
+//     job runs no repository code beyond the deploy tool's lockfile (it may
+//     run inline `run` steps and check out DEPLOY_TOOL_PATTERNS alone, in the
+//     shape isDeployToolCheckout reads, but runs no other checkout, no local
+//     action and no called workflow); and no workflow passes
+//     `secrets: inherit` or `toJSON(secrets)`.
 //   - One job is not such a holder: RELEASE_JOB, whose `environment` is exactly
 //     the string RELEASE_ENVIRONMENT, which holds the Docker Hub publish token.
 //     It may run inline `run` steps but checks nothing out, runs no local action
@@ -159,6 +161,35 @@ export const BUILD_PRODUCTS = [
 /** The action that uploads a Pages deployment. */
 export const DEPLOY_ACTION = "cloudflare/wrangler-action@";
 
+/** The directory holding the deploy tool's manifest and lockfile, alone. */
+export const DEPLOY_TOOL_DIR = ".github/wrangler";
+
+/** The files of DEPLOY_TOOL_DIR an upload job checks out, as sparse patterns. */
+export const DEPLOY_TOOL_PATTERNS = [
+  `/${DEPLOY_TOOL_DIR}/package.json`,
+  `/${DEPLOY_TOOL_DIR}/package-lock.json`,
+];
+
+/**
+ * Whether a step checks out DEPLOY_TOOL_PATTERNS and nothing else: a non-cone
+ * sparse checkout naming exactly those patterns, keeping no credential.
+ */
+export function isDeployToolCheckout(step) {
+  if (!String(step?.uses ?? "").startsWith("actions/checkout@")) return false;
+  const inputs = step.with ?? {};
+  const patterns = String(inputs["sparse-checkout"] ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  return (
+    Object.keys(inputs).sort().join(",") ===
+      "persist-credentials,sparse-checkout,sparse-checkout-cone-mode" &&
+    inputs["persist-credentials"] === false &&
+    inputs["sparse-checkout-cone-mode"] === false &&
+    patterns.join("\n") === DEPLOY_TOOL_PATTERNS.join("\n")
+  );
+}
+
 const DEPLOY_SECRET = /\bsecrets\.CLOUDFLARE_/;
 const ALL_SECRETS = /\btoJSON\(\s*secrets\s*\)/;
 
@@ -229,20 +260,26 @@ export function deployCredentialFindings(workflows) {
       `No job outside ${credentialWorkflowList} may ${holding}; found ${named(outside).join(", ")}.`,
     );
   }
-  const codeIn = (job, steps, { inlineRun }) => {
+  const codeIn = (job, steps, { deployToolCheckout }) => {
     const code = [];
     if (job?.uses !== undefined) code.push(`calls ${job.uses}`);
     for (const step of steps) {
       const uses = String(step?.uses ?? "");
-      if (inlineRun && step?.run !== undefined) code.push("has a run step");
       if (uses.startsWith("./")) code.push(`uses the local action ${uses}`);
-      if (uses.startsWith("actions/checkout@"))
-        code.push("checks out the repository");
+      if (
+        uses.startsWith("actions/checkout@") &&
+        !(deployToolCheckout && isDeployToolCheckout(step))
+      )
+        code.push(
+          deployToolCheckout
+            ? `checks out the repository beyond ${DEPLOY_TOOL_PATTERNS.join(" and ")}`
+            : "checks out the repository",
+        );
     }
     return [...new Set(code)];
   };
   for (const { path, id, job, steps } of holders) {
-    const code = codeIn(job, steps, { inlineRun: true });
+    const code = codeIn(job, steps, { deployToolCheckout: true });
     if (code.length > 0) {
       findings.push(
         `${path} job ${id} holds the deploy credentials and runs repository code: it ${code.join(", ")}.`,
@@ -250,7 +287,7 @@ export function deployCredentialFindings(workflows) {
     }
   }
   for (const { path, id, job, steps } of releaseJobs) {
-    const code = codeIn(job, steps, { inlineRun: false });
+    const code = codeIn(job, steps, { deployToolCheckout: false });
     if (code.length > 0) {
       findings.push(
         `${path} job ${id} holds the Docker Hub publish token and runs repository code: it ${code.join(", ")}.`,

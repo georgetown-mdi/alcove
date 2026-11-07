@@ -99,16 +99,48 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "26"
+      # By id, so a later upload under the same name is not what this job
+      # reads, and checked against the digest the package job reported.
       - name: Download the site
         uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.build-and-test.outputs.artifactName }}
+          artifact-ids: ${{ needs.build-and-test.outputs.artifactId }}
           path: ${{ runner.temp }}/site
+      - name: Check the site against the package job's digest
+        env:
+          TREE: ${{ runner.temp }}/site
+          EXPECTED_SHA256: ${{ needs.build-and-test.outputs.artifactSha256 }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::the package job reported no SHA-256 digest for ${TREE}" >&2
+            exit 1
+          fi
+          digest="$(cd "${TREE}" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum -- | sha256sum)"
+          if [ "${digest%% *}" != "${EXPECTED_SHA256}" ]; then
+            echo "::error::${TREE} does not match the digest the package job reported" >&2
+            exit 1
+          fi
       - name: Download the demo site
         uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.build-and-test.outputs.demoArtifactName }}
+          artifact-ids: ${{ needs.build-and-test.outputs.demoArtifactId }}
           path: ${{ runner.temp }}/demo-site
+      - name: Check the demo site against the package job's digest
+        env:
+          TREE: ${{ runner.temp }}/demo-site
+          EXPECTED_SHA256: ${{ needs.build-and-test.outputs.demoArtifactSha256 }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::the package job reported no SHA-256 digest for ${TREE}" >&2
+            exit 1
+          fi
+          digest="$(cd "${TREE}" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum -- | sha256sum)"
+          if [ "${digest%% *}" != "${EXPECTED_SHA256}" ]; then
+            echo "::error::${TREE} does not match the digest the package job reported" >&2
+            exit 1
+          fi
       - name: Write the manifest and check both sites against it
         id: write
         env:
@@ -158,7 +190,7 @@ jobs:
       ALCOVE_MANIFEST_SHA256: ${{ needs.hosted-manifest.outputs.sha256 }}
     steps:
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.4
 
@@ -213,9 +245,11 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # The only job given the Cloudflare credentials. It checks out nothing and
-  # runs no repository code: it downloads the sites the gate built and tested,
-  # and uploads them. On main it also waits for the manifest's signature, so
+  # The only job given the Cloudflare credentials. It checks out the deploy
+  # tool's lockfile alone and runs no other repository code: it installs
+  # wrangler from that lockfile, downloads the sites the gate built and tested
+  # by id, checks each against the digest the package job reported, and
+  # uploads them. On main it also waits for the manifest's signature, so
   # production never serves a main build without a signed manifest; off main
   # that job is skipped and the deploy waits for the build alone.
   deploy:
@@ -227,24 +261,53 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
-    permissions: {}
+    # The checkout of the deploy tool's lockfile.
+    permissions:
+      contents: read
     outputs:
       siteUrl: ${{ steps.deploy.outputs.deployment-url }}
       demoUrl: ${{ steps.deploy-demo.outputs.deployment-url }}
       demoOutcome: ${{ steps.deploy-demo.outcome }}
     steps:
+      # The wrangler-action steps below find this install and skip their own
+      # unlocked `npm i`, since it is the wranglerVersion they pass.
+      - name: Check out the deploy tool's lockfile
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/wrangler/package.json
+            /.github/wrangler/package-lock.json
+      - name: Install the deploy tool from its lockfile
+        working-directory: .github/wrangler
+        run: npm ci --no-audit --no-fund
       - name: Download the site
         uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.build-and-test.outputs.artifactName }}
-          path: site
+          artifact-ids: ${{ needs.build-and-test.outputs.artifactId }}
+          path: ${{ runner.temp }}/site
+      - name: Check the site against the package job's digest
+        env:
+          TREE: ${{ runner.temp }}/site
+          EXPECTED_SHA256: ${{ needs.build-and-test.outputs.artifactSha256 }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::the package job reported no SHA-256 digest for ${TREE}" >&2
+            exit 1
+          fi
+          digest="$(cd "${TREE}" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum -- | sha256sum)"
+          if [ "${digest%% *}" != "${EXPECTED_SHA256}" ]; then
+            echo "::error::${TREE} does not match the digest the package job reported" >&2
+            exit 1
+          fi
       # The action hands the command to wrangler as arguments with no shell, so
       # environment variables are never expanded and the values go in as
       # expressions; the project name is a variable only a repository admin
-      # sets, the branch is main or staging under the job's gate, and the sha
-      # is hex, so none can add an argument.
-      # Pinned to a commit because the step holds the deploy token, and to an
-      # exact wrangler so the step does not install the newest wrangler 4.
+      # sets, the branch is main or staging under the job's gate, the sha is
+      # hex and the path is the runner's, so none can add an argument.
+      # Pinned to a commit because the step holds the deploy token.
       - name: Deploy
         id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
@@ -252,7 +315,8 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
-          command: pages deploy site --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+          workingDirectory: .github/wrangler
+          command: pages deploy ${{ runner.temp }}/site --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
       # The demo site, after the site above, so a failed demo upload leaves
       # the site deployed and fails the run. Skipped while the job's
       # environment sets no CLOUDFLARE_DEMO_PAGES_PROJECT, which is set once
@@ -261,8 +325,24 @@ jobs:
         if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
         uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.build-and-test.outputs.demoArtifactName }}
-          path: demo-site
+          artifact-ids: ${{ needs.build-and-test.outputs.demoArtifactId }}
+          path: ${{ runner.temp }}/demo-site
+      - name: Check the demo site against the package job's digest
+        if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
+        env:
+          TREE: ${{ runner.temp }}/demo-site
+          EXPECTED_SHA256: ${{ needs.build-and-test.outputs.demoArtifactSha256 }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::the package job reported no SHA-256 digest for ${TREE}" >&2
+            exit 1
+          fi
+          digest="$(cd "${TREE}" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum -- | sha256sum)"
+          if [ "${digest%% *}" != "${EXPECTED_SHA256}" ]; then
+            echo "::error::${TREE} does not match the digest the package job reported" >&2
+            exit 1
+          fi
       - name: Deploy the demo site
         id: deploy-demo
         if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
@@ -271,7 +351,8 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
-          command: pages deploy demo-site --project-name=${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+          workingDirectory: .github/wrangler
+          command: pages deploy ${{ runner.temp }}/demo-site --project-name=${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
 
   # After the deploy rather than before it, so the prerelease never names a
   # build production does not yet serve, nor one whose upload failed. The
@@ -298,7 +379,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.4
 

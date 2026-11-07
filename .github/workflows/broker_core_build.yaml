@@ -100,7 +100,7 @@ jobs:
       ALCOVE_ARCHIVE_SHA256: ${{ needs.build.outputs.sha256 }}
     steps:
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Fetch the unsigned archive
         uses: actions/download-artifact@v8
@@ -172,7 +172,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Fetch the signed archive and its bundle
         uses: actions/download-artifact@v8

@@ -198,10 +198,30 @@ updates:
       # ecosystems; the semver-*-days keys are supported for npm only.
       default-days: 7
 
-  # GitHub Actions used by the workflows in .github/workflows. Every action is
-  # tag-pinned (e.g. actions/checkout@v7) except cloudflare/wrangler-action,
-  # which holds the Pages deploy token and is pinned to a commit with its
-  # release tag in a trailing comment. This block is configured against that path.
+  # The wrangler the Cloudflare Pages upload jobs install from
+  # .github/wrangler/package-lock.json before cloudflare/wrangler-action runs.
+  # A bump here also moves the wranglerVersion those steps pass, which
+  # scripts/signed-build-inputs.test.mjs holds equal to the locked version.
+  - package-ecosystem: npm
+    directory: "/.github/wrangler"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 5
+
+  # GitHub Actions used by the workflows in .github/workflows. The actions/*
+  # and github/* actions are pinned to a floating major tag (e.g.
+  # actions/checkout@v7). The docker/*, aquasecurity/* and sigstore/* actions,
+  # which run in the jobs holding the release signing identity or a registry
+  # publish credential, and cloudflare/wrangler-action, which holds the Pages
+  # deploy token, are pinned to a commit with their release tag in a trailing
+  # comment. This block is configured against that path.
   #
   # A pin that also appears in a composite action under .github/actions is not
   # relied upon to be tracked there. Coverage reaches it through the workflow
@@ -235,16 +255,12 @@ updates:
       # of freezing under an ignore that suppresses its every update.
       #
       # An org whose actions are not floating-major pinned must stay off this
-      # list for its bumps to be reported -- sigstore is absent because
-      # cosign-installer publishes no floating major tag, so it stays
-      # exact-pinned (@v4.1.2) and its patch bumps are legitimate, reviewable
-      # updates to the release-signing tool.
+      # list for its bumps to be reported -- docker, aquasecurity, sigstore and
+      # cloudflare are absent because their actions are pinned to a commit, so
+      # no update to them, within a major included, is suppressed here.
       #
       # A new floating-major action from another org should be added here.
       - dependency-name: "actions/*"
-        update-types:
-          ["version-update:semver-minor", "version-update:semver-patch"]
-      - dependency-name: "docker/*"
         update-types:
           ["version-update:semver-minor", "version-update:semver-patch"]
       - dependency-name: "github/*"

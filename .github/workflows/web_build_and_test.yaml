@@ -19,14 +19,23 @@ on:
   pull_request:
     branches: [main, staging]
 
+  # A caller downloads each site by its id and checks the downloaded tree
+  # against its digest, so it deploys and signs the bytes this run's package
+  # job uploaded.
   workflow_call:
     outputs:
-      artifactName:
-        description: "Name of the uploaded hosted static site artifact"
-        value: ${{jobs.package.outputs.artifactName}}
-      demoArtifactName:
-        description: "Name of the uploaded demo site artifact"
-        value: ${{jobs.package.outputs.demoArtifactName}}
+      artifactId:
+        description: "Id of the uploaded hosted static site artifact"
+        value: ${{jobs.package.outputs.artifactId}}
+      artifactSha256:
+        description: "SHA-256 over the uploaded hosted static site's files"
+        value: ${{jobs.package.outputs.artifactSha256}}
+      demoArtifactId:
+        description: "Id of the uploaded demo site artifact"
+        value: ${{jobs.package.outputs.demoArtifactId}}
+      demoArtifactSha256:
+        description: "SHA-256 over the uploaded demo site's files"
+        value: ${{jobs.package.outputs.demoArtifactSha256}}
 
 # Cancel a superseded PR run when a newer commit lands on the same PR/branch.
 # NOT keyed on github.workflow: in a workflow_call invocation the github context
@@ -134,14 +143,22 @@ jobs:
     # short.
     timeout-minutes: 15
     outputs:
-      artifactName: ${{steps.artifact-name.outputs.artifactName}}
-      demoArtifactName: ${{steps.artifact-name.outputs.demoArtifactName}}
+      artifactId: ${{steps.upload-site.outputs.artifact-id}}
+      artifactSha256: ${{steps.site-digest.outputs.sha256}}
+      demoArtifactId: ${{steps.upload-demo.outputs.artifact-id}}
+      demoArtifactSha256: ${{steps.demo-digest.outputs.sha256}}
     steps:
       - name: Checkout source code
         uses: actions/checkout@v7
       # Pins Node, installs from the lockfile, and builds @alcove/core.
+      # Uncached off a pull request: these artifacts are deployed and signed,
+      # so they are built from an install of the lockfile rather than a cache
+      # entry any run in the repository could have written. In a
+      # workflow_call run, github.event_name is the caller's event.
       - name: Set up and build core
         uses: ./.github/actions/setup
+        with:
+          cache: ${{ github.event_name == 'pull_request' }}
       # The deploy-trigger coverage check (check:deploy-trigger-graph) runs in
       # the repo-wide static checks, not here. The build refuses to run without
       # the signaling broker's address, a repository variable.
@@ -158,15 +175,26 @@ jobs:
           # The default WebSocket relay, set only beside the two above.
           VITE_DEFAULT_RELAY_WEBSOCKET_URL: ${{ vars.VITE_DEFAULT_RELAY_WEBSOCKET_URL }}
         run: npm run build -w apps/web
-      # Hidden files carry .well-known/security.txt; .vite/manifest.json is a
-      # test input, not a served file.
+      # .vite/manifest.json is a test input, not a served file, so it is
+      # removed before the digest. The digest is a SHA-256 over the sorted
+      # sha256sum listing of every file in the tree; each job downloading the
+      # artifact computes it with the same command.
+      - name: Record the site's digest
+        id: site-digest
+        env:
+          TREE: apps/web/dist/hosted
+        run: |
+          set -euo pipefail
+          rm -rf "${TREE}/.vite"
+          digest="$(cd "${TREE}" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum -- | sha256sum)"
+          echo "sha256=${digest%% *}" >>"$GITHUB_OUTPUT"
+      # Hidden files carry .well-known/security.txt.
       - name: Upload artifact
+        id: upload-site
         uses: actions/upload-artifact@v7
         with:
           name: ${{env.ARTIFACT_NAME}}
-          path: |
-            apps/web/dist/hosted
-            !apps/web/dist/hosted/.vite
+          path: apps/web/dist/hosted
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -181,21 +209,24 @@ jobs:
           # The demo site lists the default relay in every browser exchange.
           VITE_DEFAULT_RELAY_MODE: "on"
         run: npm run build -w apps/web
+      - name: Record the demo site's digest
+        id: demo-digest
+        env:
+          TREE: apps/web/dist/hosted
+        run: |
+          set -euo pipefail
+          rm -rf "${TREE}/.vite"
+          digest="$(cd "${TREE}" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum -- | sha256sum)"
+          echo "sha256=${digest%% *}" >>"$GITHUB_OUTPUT"
       - name: Upload the demo site artifact
+        id: upload-demo
         uses: actions/upload-artifact@v7
         with:
           name: ${{env.DEMO_ARTIFACT_NAME}}
-          path: |
-            apps/web/dist/hosted
-            !apps/web/dist/hosted/.vite
+          path: apps/web/dist/hosted
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
-      - name: Output artifact names
-        id: artifact-name
-        run: |
-          echo "artifactName=${{env.ARTIFACT_NAME}}" >> "$GITHUB_OUTPUT"
-          echo "demoArtifactName=${{env.DEMO_ARTIFACT_NAME}}" >> "$GITHUB_OUTPUT"
 
   # The four suites this gate runs share no mutable state, so they run as
   # parallel legs of one matrix rather than as serial steps of one job, and the

@@ -19,7 +19,9 @@ import {
   classifyGraph,
   collectGraph,
   compileFilter,
+  DEPLOY_TOOL_PATTERNS,
   deployCredentialFindings,
+  isDeployToolCheckout,
   moduleIdToPath,
   parsedWorkflows,
   readTriggerPaths,
@@ -414,10 +416,11 @@ describe("wiring", () => {
   });
 
   // The Pages deploy job holds the Cloudflare token, so it runs after the web
-  // suite, builds nothing and checks nothing out: it uploads the site the gate
-  // built and tested, which is the build this check reads.
+  // suite, builds nothing and checks out the deploy tool's lockfile alone: it
+  // uploads the site the gate built and tested, which is the build this check
+  // reads, taking it by the id the gate's package job reported.
   it.each(APP_DEPLOY_WORKFLOWS)(
-    "%s uploads to Pages the site the gate built, from a job that checks nothing out",
+    "%s uploads to Pages the site the gate built, from a job that checks out only the deploy tool",
     (deployWorkflow) => {
       const workflow = workflowDocument(repoRoot, deployWorkflow);
       const jobs = Object.entries(workflow.jobs);
@@ -440,24 +443,23 @@ describe("wiring", () => {
           ),
         ),
       ).toEqual([]);
-      expect(
-        deploy.steps.every(
-          (step) =>
-            step.run === undefined &&
-            !(step.uses ?? "").startsWith("actions/checkout@"),
-        ),
-      ).toBe(true);
+      const checkouts = deploy.steps.filter((step) =>
+        (step.uses ?? "").startsWith("actions/checkout@"),
+      );
+      expect(checkouts).toHaveLength(1);
+      expect(isDeployToolCheckout(checkouts[0])).toBe(true);
       const download = deploy.steps.find((step) =>
         (step.uses ?? "").startsWith("actions/download-artifact@"),
       );
-      expect(download.with.name).toBe(
-        `\${{ needs.${gate}.outputs.artifactName }}`,
+      expect(download.with.name).toBeUndefined();
+      expect(download.with["artifact-ids"]).toBe(
+        `\${{ needs.${gate}.outputs.artifactId }}`,
       );
 
       const gateWorkflow = workflowDocument(repoRoot, GATE_WORKFLOW);
       const output =
-        gateWorkflow.on.workflow_call.outputs.artifactName.value.match(
-          /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.artifactName\s*\}\}$/,
+        gateWorkflow.on.workflow_call.outputs.artifactId.value.match(
+          /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.artifactId\s*\}\}$/,
         );
       expect(output).not.toBeNull();
       const packager = gateWorkflow.jobs[output[1]];
@@ -500,8 +502,8 @@ describe("wiring", () => {
       expect(siteUpload.with.command).toContain(
         `pages deploy ${siteDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_PAGES_PROJECT }} `,
       );
-      expect(demoDownload.with.name).toBe(
-        `\${{ needs.${gate}.outputs.demoArtifactName }}`,
+      expect(demoDownload.with["artifact-ids"]).toBe(
+        `\${{ needs.${gate}.outputs.demoArtifactId }}`,
       );
       expect(demoUpload.with.command).toContain(
         `pages deploy ${demoDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} `,
@@ -515,8 +517,8 @@ describe("wiring", () => {
 
       const gateWorkflow = workflowDocument(repoRoot, GATE_WORKFLOW);
       const output =
-        gateWorkflow.on.workflow_call.outputs.demoArtifactName.value.match(
-          /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.demoArtifactName\s*\}\}$/,
+        gateWorkflow.on.workflow_call.outputs.demoArtifactId.value.match(
+          /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.demoArtifactId\s*\}\}$/,
         );
       expect(output).not.toBeNull();
       const packager = gateWorkflow.jobs[output[1]];
@@ -655,9 +657,50 @@ describe("the deploy-credential rule", () => {
     );
   });
 
+  const deployToolCheckout = (inputs = {}) => ({
+    uses: "actions/checkout@v7",
+    with: {
+      "persist-credentials": false,
+      "sparse-checkout-cone-mode": false,
+      "sparse-checkout": `${DEPLOY_TOOL_PATTERNS.join("\n")}\n`,
+      ...inputs,
+    },
+  });
+
+  it("admits the upload job checking out the deploy tool's lockfile and running inline steps", () => {
+    const job = uploadJob();
+    job.steps = [
+      deployToolCheckout(),
+      { run: "npm ci", "working-directory": ".github/wrangler" },
+      ...job.steps,
+    ];
+    expect(deployCredentialFindings(deployWorkflows(job))).toEqual([]);
+  });
+
   it.each([
-    ["a run step", { run: "npm ci" }, /has a run step/],
     ["a checkout", { uses: "actions/checkout@v7" }, /checks out/],
+    [
+      "a sparse checkout naming another path",
+      deployToolCheckout({
+        "sparse-checkout": `${DEPLOY_TOOL_PATTERNS.join("\n")}\n/scripts/\n`,
+      }),
+      /checks out the repository beyond/,
+    ],
+    [
+      "a sparse checkout in cone mode",
+      deployToolCheckout({ "sparse-checkout-cone-mode": true }),
+      /checks out the repository beyond/,
+    ],
+    [
+      "a sparse checkout keeping its credential",
+      deployToolCheckout({ "persist-credentials": true }),
+      /checks out the repository beyond/,
+    ],
+    [
+      "a sparse checkout of another ref",
+      deployToolCheckout({ ref: "main" }),
+      /checks out the repository beyond/,
+    ],
     ["a local action", { uses: "./.github/actions/setup" }, /local action/],
   ])("refuses the upload job carrying %s", (_label, step, message) => {
     const job = uploadJob();
@@ -708,7 +751,7 @@ describe("the deploy-credential rule", () => {
       ).join("\n");
       expect(findings).toMatch(/Exactly one job in .*release\.yaml.*found 2/);
       expect(findings).toMatch(
-        /release\.yaml job second holds the deploy credentials and runs repository code/,
+        /release\.yaml job second runs in the Release environment, which only/,
       );
     });
 
@@ -791,7 +834,7 @@ describe("the deploy-credential rule", () => {
           withRelease({ [RELEASE_JOB.id]: dockerhubJob({ environment }) }),
         ).join("\n");
         expect(findings).toMatch(
-          /release\.yaml job dockerhub holds the deploy credentials and runs repository code: it has a run step/,
+          /Exactly one job in .*release\.yaml may .*found 2: .*release\.yaml job pages, .*release\.yaml job dockerhub\./,
         );
       },
     );

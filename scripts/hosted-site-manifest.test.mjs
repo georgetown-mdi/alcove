@@ -385,10 +385,10 @@ describe("the release workflow's one build", () => {
       .filter((step) =>
         (step.uses ?? "").startsWith("actions/download-artifact@"),
       )
-      .map((step) => step.with?.name);
+      .map((step) => step.with?.["artifact-ids"]);
   const ARTIFACTS = [
-    "${{ needs.web.outputs.artifactName }}",
-    "${{ needs.web.outputs.demoArtifactName }}",
+    "${{ needs.web.outputs.artifactId }}",
+    "${{ needs.web.outputs.demoArtifactId }}",
   ];
 
   it("hashes the artifacts the pages job deploys", () => {
@@ -466,12 +466,12 @@ describe("the main deploy's manifest", () => {
   const downloads = (job) =>
     steps(job)
       .filter(usesPrefix("actions/download-artifact@"))
-      .map((step) => step.with?.name);
+      .map((step) => step.with?.["artifact-ids"] ?? step.with?.name);
   const indexOfRun = (job, pattern) =>
     steps(job).findIndex((step) => pattern.test(step.run ?? ""));
   const ARTIFACTS = [
-    "${{ needs.build-and-test.outputs.artifactName }}",
-    "${{ needs.build-and-test.outputs.demoArtifactName }}",
+    "${{ needs.build-and-test.outputs.artifactId }}",
+    "${{ needs.build-and-test.outputs.demoArtifactId }}",
   ];
 
   for (const job of MAIN_JOBS) {
@@ -614,7 +614,7 @@ describe("the main deploy's manifest", () => {
     expect(jobs["hosted-manifest-publish"].permissions).toEqual({
       contents: "write",
     });
-    expect(jobs.deploy.permissions).toEqual({});
+    expect(jobs.deploy.permissions).toEqual({ contents: "read" });
     for (const [id, job] of Object.entries(jobs)) {
       const permissions = job.permissions ?? {};
       if (id !== "hosted-manifest-sign") {

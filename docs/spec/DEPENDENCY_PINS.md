@@ -231,7 +231,7 @@ The credential check is byte equality with a literal held in the freeze test: an
 
 Two properties of that literal are checked beside the equality, covering the one path equality does not: an editor who changes the file and the literal together. It must contain no CR, which is what makes the check that it states the four policy lines and nothing else an enumeration of the same lines npm reads. And it must contain no URL userinfo (`https://user:secret@host/`, including under an `@scope:registry` key), which npm turns into an `Authorization: Basic` header for that registry -- no policy key takes a URL, so that is what stands over the value of a URL-valued key later joining them. A credential reaching the builder any other way -- a base image's `~/.npmrc`, a build secret, an `npm config set` in a `RUN` -- is outside all of it, as is an uncommitted one: the check and `docker build` read the same working tree, so it speaks for the committed file only on a clean checkout.
 
-The file is worth binding at all because the release and smoke builds export every builder layer to a shared cache (`cache-to: type=gha,mode=max`), so a credential copied into the builder is cached rather than discarded with the stage.
+The file is worth binding at all because the smoke builds and the release dry run export every builder layer to a shared cache (`cache-to: type=gha,mode=max`), so a credential copied into the builder is cached rather than discarded with the stage.
 
 **The npm floor.** The install-side policy arrives in npm 11.16.0, the release that follows 11.15.0 in the registry's version list. Measured 2026-10-01:
 
@@ -298,13 +298,22 @@ The rest are limits rather than refusals:
 
 ## GitHub Action pins and the composite mirror
 
-Every action a workflow uses is pinned by ref (`actions/checkout@v7`,
-`docker/build-push-action@v7`, `sigstore/cosign-installer@v4.1.2`). The
+Every action a workflow uses is pinned by ref. The `actions/*` and `github/*`
+actions take a floating major tag (`actions/checkout@v7`). The `docker/*`,
+`aquasecurity/*` and `sigstore/*` actions, which run in the jobs holding the
+release signing identity (`id-token: write`) or the Docker Hub publish token,
+and `cloudflare/wrangler-action`, which holds the Pages deploy token, are
+pinned to a commit with the release tag in a trailing comment
+(`docker/build-push-action@<commit> # v7.4.0`), at every occurrence, so one
+action has one ref across the workflows. The
 `github-actions` block in `.github/dependabot.yml` is configured against
-`.github/workflows`, and its `ignore` entries hold three orgs (`actions/*`,
-`docker/*`, `github/*`) to major bumps only, so a within-major re-pin does not
-open a pull request. `cosign-installer` is absent by design
-from that list, so its patch bumps show up.
+`.github/workflows`, and its `ignore` entries hold two orgs (`actions/*`,
+`github/*`) to major bumps only, so a within-major re-pin of a floating major
+does not open a pull request. The commit-pinned orgs are absent by design from
+that list, so none of their updates is suppressed there.
+`scripts/signed-build-inputs.test.mjs` (run by `npm run test:scripts`, a CI
+static check) fails on a `docker/`, `aquasecurity/` or `sigstore/` reference
+that is not a commit followed by its `# vX.Y.Z` tag.
 
 Two invariants keep that configuration accurate, each held by a check rather than
 by this document: the composite mirror below, and
@@ -392,6 +401,34 @@ exact-pinned under a `github/*` ignore, and an observation of whether a bump
 opens. Observing this repository's own Dependabot pull requests does not
 determine it: its `github/codeql-action` pins are bare majors, so under either
 reading there may be nothing to open.
+
+### The Pages deploy tool
+
+`cloudflare/wrangler-action` installs wrangler itself, with an unlocked
+`npm i wrangler@<version>`, unless the wrangler already installed in its
+`workingDirectory` reports the exact `wranglerVersion` the step passes (read
+from the action's source at the pinned commit, `src/wranglerAction.ts`,
+`installWrangler`; not driven here).
+So the deploy tool has a lockfile of its own:
+
+- `.github/wrangler/` holds a `package.json` naming one exact wrangler version
+  and its `package-lock.json`, and nothing else.
+- Each of the five upload steps (two in `pages_deploy.yaml`, two in
+  `release.yaml`, one in `site_deploy.yaml`) runs in a job that sparse-checks-out
+  those two files alone, runs `npm ci` there, and passes that directory as
+  `workingDirectory` with the locked version as `wranglerVersion`.
+- An `npm` block in `.github/dependabot.yml` names that directory, so its
+  updates come as Dependabot pull requests against the lockfile.
+
+`scripts/signed-build-inputs.test.mjs` holds the steps to the lockfile: it
+fails while a step's `wranglerVersion` differs from the version the lockfile
+installs, so a lockfile bump turns the check red until the same pull request
+moves all five steps.
+The lockfile fixes which package versions install and then run inside the
+upload step, where the token is; it does not review them.
+`npm ci` there runs without `--ignore-scripts`, so the install scripts of the
+locked packages run in the same job, and whether `wrangler pages deploy` works
+with those scripts skipped is unmeasured.
 
 ## npm resolution residuals
 

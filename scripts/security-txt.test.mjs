@@ -36,20 +36,18 @@ const SECURITY_TXT_FILES = [
 /**
  * The artifact uploads that carry each site's build to its deploy job. The
  * web app and the demo site upload the same build output, rebuilt between the
- * two. `excluded` names the hidden entries of the build left out.
+ * two. Each upload names its output directory whole.
  */
 const SITE_UPLOADS = [
   {
     workflow: `${WORKFLOW_DIR}/web_build_and_test.yaml`,
     output: BUILD_OUTPUT,
     uploads: 2,
-    excluded: [".vite"],
   },
   {
     workflow: SITE_DEPLOY_WORKFLOW,
     output: "docs/.vitepress/dist",
     uploads: 1,
-    excluded: [],
   },
 ];
 
@@ -149,7 +147,7 @@ describe("the served security.txt files", () => {
 describe("each site's artifact upload", () => {
   it.each(SITE_UPLOADS)(
     "in $workflow carries hidden files",
-    ({ workflow, output, uploads, excluded }) => {
+    ({ workflow, output, uploads }) => {
       const steps = Object.values(
         workflowDocument(repoRoot, workflow).jobs,
       ).flatMap((job) => job.steps ?? []);
@@ -161,10 +159,7 @@ describe("each site's artifact upload", () => {
       expect(siteUploads).toHaveLength(uploads);
       for (const upload of siteUploads) {
         expect(upload.with["include-hidden-files"]).toBe(true);
-        expect(upload.with.path.split("\n").filter(Boolean)).toEqual([
-          output,
-          ...excluded.map((entry) => `!${output}/${entry}`),
-        ]);
+        expect(upload.with.path.split("\n").filter(Boolean)).toEqual([output]);
       }
     },
   );
