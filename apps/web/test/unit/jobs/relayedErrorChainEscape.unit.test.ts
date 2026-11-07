@@ -1,10 +1,6 @@
 import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 
-import {
-  joinErrorCauseChain,
-  sanitizeErrorChainLinks,
-  sanitizeErrorForDisplay,
-} from "@alcove/core";
+import { sanitizeErrorForDisplay } from "@alcove/core";
 
 import {
   RelayedTerminalError,
@@ -12,6 +8,7 @@ import {
   createServerJobReattachDriver,
 } from "@psi/jobClient/serverJobExchangeDriver";
 import { JobManager } from "@jobs/jobManager";
+import { sanitizedFailureMessage } from "@exchange/useInviterExchange";
 
 import { route as EventsRoute } from "../../../server/console/routes/$jobId/events";
 
@@ -96,8 +93,7 @@ async function sseBody(id: string): Promise<string> {
 }
 
 /** The failure text a seat renders for the job's terminal error, by the
- * seat's own step for a relayed chain (`sanitizedFailureMessage` in
- * apps/web/src/exchange/useInviterExchange.ts, not exported). */
+ * seat's own step (`sanitizedFailureMessage`). */
 async function seatFailure(id: string, body: string): Promise<string> {
   const fetchImpl: typeof fetch = (input) =>
     Promise.resolve(
@@ -123,9 +119,7 @@ async function seatFailure(id: string, body: string): Promise<string> {
     onWarning: () => undefined,
   });
   expect(failure).toBeInstanceOf(RelayedTerminalError);
-  return joinErrorCauseChain(
-    sanitizeErrorChainLinks((failure as RelayedTerminalError).message),
-  );
+  return sanitizedFailureMessage(failure);
 }
 
 describe("a relayed terminal error's cause chain in a console seat", () => {

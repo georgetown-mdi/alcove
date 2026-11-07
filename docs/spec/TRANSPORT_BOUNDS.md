@@ -322,7 +322,7 @@ The total spans every in-flight reassembly, so this single bound caps a single o
 Like the file-sync frame-size cap it is a chosen memory bound rather than a derived platform ceiling, but sized against a different envelope: this one is a browser-tab *memory envelope*, in the spirit of the directory-listing cap -- above the realistic largest legitimate frame, below a tab-crashing allocation.
 The largest legitimate inbound frame is the raw set frame above, sent as binary with no base64url 4/3 inflation (both this wire and the file-sync wire send a frame as raw bytes).
 A set over one frame, the first round's included, goes in parts each within this cap (_Sender-side sizing_ below), so this bound meets a larger frame only from a partner that does not size its frames.
-So 256 MiB -- which at that element size admits about 7.67 million elements -- is half the file-sync 512 MiB cap in deference to the tab's smaller heap.
+256 MiB -- which at that element size admits about 7.67 million elements -- is half the file-sync 512 MiB cap in deference to the tab's smaller heap.
 Under the application encryption the refusal reaches the caller of the encrypted connection unchanged, as a `protocol` failure; `apps/cli/test/integration/webrtc/transport.test.ts` holds that on the command-line application's receive path under both envelope versions.
 This counts *wire* bytes; what those bytes unpack to is a multiple of them, stated next.
 

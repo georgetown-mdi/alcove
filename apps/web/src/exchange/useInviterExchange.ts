@@ -231,7 +231,7 @@ function retryDispositionFor(
  * framing is the renderer's own newline, laid out as a line break by
  * `FailureMessage` in `./RunSurface`.
  */
-function sanitizedFailureMessage(error: unknown): string {
+export function sanitizedFailureMessage(error: unknown): string {
   return error instanceof RelayedTerminalError
     ? joinErrorCauseChain(sanitizeErrorChainLinks(error.message))
     : sanitizeErrorForDisplay(error);
