@@ -64,17 +64,27 @@ describe("deriveEditedExpiry", () => {
     expect(result).toBe(new Date(NOW + 30 * MS_PER_DAY).toISOString());
   });
 
-  test("clear: dropping the policy clears the bound", () => {
+  test("clear: dropping the policy keeps the current bound", () => {
     expect(
       deriveEditedExpiry(
         { expires: EXPIRES_90, tokenMaxAgeDays: 90 },
         null,
         NOW,
       ),
-    ).toBeNull();
+    ).toBe(EXPIRES_90);
   });
 
-  test("clear on a record that had no bound is still a cleared bound", () => {
+  test("clear keeps a bound held without a policy", () => {
+    expect(
+      deriveEditedExpiry(
+        { expires: EXPIRES_90, tokenMaxAgeDays: undefined },
+        null,
+        NOW,
+      ),
+    ).toBe(EXPIRES_90);
+  });
+
+  test("clear on a record that had no bound leaves it with none", () => {
     expect(
       deriveEditedExpiry(
         { expires: undefined, tokenMaxAgeDays: undefined },

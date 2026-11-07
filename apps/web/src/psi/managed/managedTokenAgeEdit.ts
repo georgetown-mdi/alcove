@@ -18,9 +18,9 @@ import type { ManagedExchangeRecord } from "./managedExchangeRecord";
 /**
  * Derive the `expires` bound a local edit of `tokenMaxAgeDays` should write,
  * conservatively (never later than the current bound; see the spec section the
- * module header cites). Returns the ISO 8601 UTC instant to set, or `null` to clear
- * any standing bound (a cleared policy, or an add-where-none whose stamp is somehow
- * unrepresentable).
+ * module header cites). Returns the ISO 8601 UTC instant to set, or `null` for no
+ * bound (a cleared policy on a record holding none, or an add-where-none whose stamp
+ * is somehow unrepresentable).
  *
  * @param record The record before the edit; its current `expires` and
  *   `tokenMaxAgeDays` are the anchor inputs.
@@ -33,9 +33,9 @@ export function deriveEditedExpiry(
   nextTokenMaxAgeDays: number | null,
   now: number,
 ): string | null {
-  // A cleared policy drops the bound: a dropped policy must not leave a stale
-  // instant armed (the same clear the rotation write-back applies for `null`).
-  if (nextTokenMaxAgeDays === null) return null;
+  // A cleared policy is an unbounded lengthen: it keeps the current bound, and
+  // the next rotation's write-back clears it.
+  if (nextTokenMaxAgeDays === null) return record.expires ?? null;
 
   const currentExpiresMs =
     record.expires === undefined ? undefined : Date.parse(record.expires);

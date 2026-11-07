@@ -534,18 +534,62 @@ describe("the coordination server a re-invite names", () => {
   });
 });
 
-describe("the re-invite rotation's expires provenance", () => {
-  test("the composed re-invite's rotation reflects the record's max-age policy", async () => {
-    const record = inviterRecord({ tokenMaxAgeDays: 30 });
-    const reinvite = await composeManagedReinvite(record, location, seams);
-    expect(reinvite.rotation.expires).toBe(
-      new Date(NOW + 30 * 86_400_000).toISOString(),
+describe("the re-invite rotation's expires", () => {
+  test("a record with no policy takes the invitation's expiry", async () => {
+    const reinvite = await composeManagedReinvite(
+      inviterRecord(),
+      location,
+      seams,
     );
-    // The token's own setup expiry is the short bounded lifetime, distinct from the
-    // record's max-age stamp -- the setup lifetime rides the token, not the record.
     const token: InvitationToken = await decodeInvitation(reinvite.encoded);
+    expect(reinvite.tokenExpires).toBe(new Date(NOW + 3_600_000).toISOString());
     expect(token.expires).toBe(reinvite.tokenExpires);
-    expect(token.expires).not.toBe(reinvite.rotation.expires);
+    expect(reinvite.rotation.expires).toBe(reinvite.tokenExpires);
+  });
+
+  test("a policy stamp later than the invitation's expiry takes the invitation's expiry", async () => {
+    const reinvite = await composeManagedReinvite(
+      inviterRecord({ tokenMaxAgeDays: 30 }),
+      location,
+      seams,
+    );
+    expect(reinvite.rotation.expires).toBe(reinvite.tokenExpires);
+  });
+
+  test("a policy stamp earlier than the invitation's expiry takes the policy stamp", async () => {
+    const reinvite = await composeManagedReinvite(
+      inviterRecord({ tokenMaxAgeDays: 1 }),
+      location,
+      { ...seams, lifetimeSeconds: 7 * 86_400 },
+    );
+    expect(reinvite.tokenExpires).toBe(
+      new Date(NOW + 7 * 86_400_000).toISOString(),
+    );
+    expect(reinvite.rotation.expires).toBe(
+      new Date(NOW + 86_400_000).toISOString(),
+    );
+  });
+
+  test("a longer invitation lifetime is the record's bound with no policy", async () => {
+    const reinvite = await composeManagedReinvite(inviterRecord(), location, {
+      ...seams,
+      lifetimeSeconds: 7 * 86_400,
+    });
+    expect(reinvite.rotation.expires).toBe(
+      new Date(NOW + 7 * 86_400_000).toISOString(),
+    );
+  });
+
+  test("the rotated record holds the bound, replacing an unbounded record's absence", async () => {
+    const record = inviterRecord();
+    expect(record).not.toHaveProperty("expires");
+    const reinvite = await composeManagedReinvite(record, location, seams);
+    const reinvited = applyManagedExchangeReinviteRotation(
+      record,
+      reinvite.rotation,
+      TEST_RETIRED,
+    );
+    expect(reinvited.expires).toBe(reinvite.tokenExpires);
   });
 });
 
