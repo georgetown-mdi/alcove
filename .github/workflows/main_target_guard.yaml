@@ -29,7 +29,7 @@ on:
 
 # Cancel a superseded run when a newer event lands on the same PR.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 # Read-only: the job uses no token scope.

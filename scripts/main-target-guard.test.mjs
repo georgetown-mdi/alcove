@@ -124,4 +124,10 @@ describe("the main target guard workflow", () => {
       BASE_REPO: "${{ github.repository }}",
     });
   });
+
+  it("keeps each pull request's runs in a group of their own", () => {
+    expect(document.concurrency.group).toBe(
+      "${{ github.workflow }}-${{ github.event.pull_request.number }}",
+    );
+  });
 });
