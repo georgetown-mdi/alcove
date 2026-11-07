@@ -516,7 +516,9 @@ describe("StandardizedKeyIterable — an element transform that cannot compile",
 
   test("refuses at the first row read rather than at construction", () => {
     const iter = new StandardizedKeyIterable(key, dataset, rawRows.length);
-    expect(() => iter.at(0)).toThrow("unknown standardization function");
+    expect(() => iter.at(0)).toThrow(
+      "a transform step cannot be built from the parameters it declares (a function this build does not recognize)",
+    );
   });
 });
 

@@ -1632,19 +1632,17 @@ export function commitCompiledTransforms(
 }
 
 /**
- * The message both compile refusals hold, raised where terms are authored or
- * minted. `label` comes from {@link uncompilableStepLabel}, which narrows the
- * function name to a fixed literal, so no partner free text reaches the message;
- * the offending parameter is not named, since its name and value are
- * partner-controlled on the element-transform half. The two refusals share the
- * wording and differ only in error class, by whose content the fault is (see
- * `assertTransformsCompile`).
+ * The message both compile refusals hold, raised where terms are authored,
+ * minted or accepted, and again by the run for an element transform that
+ * reached it without that check. `label` is a {@link transformFunctionLabel},
+ * which narrows the function name to a fixed literal, so no partner free text
+ * reaches the message; the offending parameter is not named, since its name
+ * and value are partner-controlled on the element-transform half. The two
+ * refusals share the wording and differ only in error class, by whose content
+ * the fault is (see `assertTransformsCompile`).
  *
- * The remedy is the author's own -- correct the parameters or remove the step --
- * because this refusal is raised only where the party still holds the document
- * it is refusing, never after an invitation has gone out.
- *
- * @internal composed by `assertTransformsCompile` in `linkageSatisfiability.ts`.
+ * @internal composed by `assertTransformsCompile` in `linkageSatisfiability.ts`
+ * and by the run's element-transform compile.
  */
 export function stepCompileRefusalMessage(label: string): string {
   return (
@@ -2707,11 +2705,32 @@ export function buildStandardizedDataset(
 
 // --- Key building ------------------------------------------------------------
 
-function cartesianProduct(arrays: string[][]): string[][] {
-  return arrays.reduce<string[][]>(
-    (acc, arr) => acc.flatMap((prefix) => arr.map((v) => [...prefix, v])),
-    [[]],
-  );
+/**
+ * Every combination of one candidate per element, each concatenated in element
+ * order, the last element varying fastest. Each string is built by walking one
+ * index per element, so assembly costs one append per element per combination
+ * and copies no partial combination: its work is linear in what it yields.
+ *
+ * @internal exported so the key-assembly test compares it with the
+ * array-product form it replaces.
+ */
+export function* assembleKeyStrings(
+  candidates: ReadonlyArray<ReadonlyArray<string>>,
+): Generator<string> {
+  if (candidates.some((values) => values.length === 0)) return;
+  const indices = new Array<number>(candidates.length).fill(0);
+  for (;;) {
+    let assembled = "";
+    for (let element = 0; element < candidates.length; element++)
+      assembled += candidates[element][indices[element]];
+    yield assembled;
+    let element = candidates.length - 1;
+    while (element >= 0 && ++indices[element] === candidates[element].length) {
+      indices[element] = 0;
+      element--;
+    }
+    if (element < 0) return;
+  }
 }
 
 // Compiled element transforms, memoized by the step array's identity. buildKeyStrings
@@ -2740,13 +2759,31 @@ const compiledElementTransforms = new WeakMap<
 // The compiled steps for one element's transform, memoized as above. Reached
 // both by the run and by the pre-run classification below, so the fate a key's
 // crossing takes is read from the same compiled steps that will produce it.
+//
+// A step that does not compile is refused in the accept boundary's words, and
+// the factory's own message is dropped: it may quote a partner-authored
+// parameter value, and these terms may have reached the run without that check.
+// A defect of this build's own tables is not the terms' fault and passes as is.
 function compiledElementSteps(
   steps: TransformStep[] | undefined,
 ): CompiledStep[] {
   if (steps === undefined || steps.length === 0) return [];
   const memoized = compiledElementTransforms.get(steps);
   if (memoized !== undefined) return memoized;
-  const compiled = compileSteps(steps);
+  const compiled: CompiledStep[] = [];
+  for (const step of steps) {
+    try {
+      compiled.push(compileStep(step));
+    } catch (err) {
+      if (err instanceof InternalConsistencyError) throw err;
+      const message = stepCompileRefusalMessage(
+        transformFunctionLabel(step.function),
+      );
+      throw err instanceof UnknownStandardizationFunctionError
+        ? new UnknownStandardizationFunctionError(message)
+        : new UsageError(message);
+    }
+  }
   compiledElementTransforms.set(steps, compiled);
   return compiled;
 }
@@ -4188,8 +4225,8 @@ function readRowUnderPlan(
   // the case where concatenating two NFC parts crosses a base + combining-mark
   // boundary that itself composes (NFC is not closed under concatenation).
   const result = new DistinctValues({ scanUpTo: SCAN_UP_TO_VALUES });
-  for (const parts of cartesianProduct(elementValues))
-    result.add(parts.join("").normalize("NFC"));
+  for (const keyString of assembleKeyStrings(elementValues))
+    result.add(keyString.normalize("NFC"));
 
   // The swap's other order, from the lists already built: exchanging the pair's
   // two candidate lists is the authored order because the pair's two positions
@@ -4203,8 +4240,8 @@ function readRowUnderPlan(
     authoredOrder[idA] = elementValues[idB];
     authoredOrder[idB] = elementValues[idA];
     const swappedOrderOnly = result.size;
-    for (const parts of cartesianProduct(authoredOrder))
-      result.add(parts.join("").normalize("NFC"));
+    for (const keyString of assembleKeyStrings(authoredOrder))
+      result.add(keyString.normalize("NFC"));
     if (result.size > swappedOrderOnly) fuzzyWidened = true;
   }
 

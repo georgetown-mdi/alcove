@@ -609,7 +609,7 @@ test("exitCodeForError: an unrecognized standardization function is EX_USAGE", (
   // The name is the partner's free text, so the refusal narrows it rather than
   // echoing it; what the operator is told is that this build does not know it.
   expect((refusal as Error).message).toBe(
-    "unknown standardization function: a function this build does not recognize",
+    "a transform step cannot be built from the parameters it declares (a function this build does not recognize). Correct that step's parameters, or remove the step.",
   );
 });
 
