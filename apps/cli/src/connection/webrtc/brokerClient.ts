@@ -87,11 +87,10 @@ export const BROKER_OPEN_TIMEOUT_MS = 30_000;
  * even with every interface's candidates inlined -- so this is orders of
  * magnitude of headroom and cannot reject a real one.
  *
- * Its limit, stated rather than glossed: Node's built-in `WebSocket` exposes no
- * per-socket maximum payload, so the frame has already been read into memory by
- * the time this refuses it. The cap bounds what is PARSED (where a pathological
- * body would cost far more than its wire size), not what a hostile signaling
- * server can make the socket allocate once.
+ * Its limit: Node's built-in `WebSocket` exposes no per-socket maximum payload,
+ * so a frame up to Node's own 128 MiB message limit has already been read into
+ * memory by the time this refuses it. The cap bounds what is parsed, and the
+ * refusal, like that of a frame that is not text, ends the socket.
  */
 export const MAX_SIGNALING_FRAME_BYTES = 256 * 1024;
 
@@ -506,10 +505,14 @@ function registrationToken(): string {
  * refusal is `transport`-kind: the signaling server sent the frame, not the
  * partner, so it is a server fault (exit 69) rather than a partner refusal.
  */
-function parseSignalingFrame(raw: unknown): BrokerMessage | undefined {
-  const text = typeof raw === "string" ? raw : undefined;
-  if (text === undefined) return undefined;
-  if (Buffer.byteLength(text, "utf8") > MAX_SIGNALING_FRAME_BYTES) {
+function parseSignalingFrame(data: unknown): BrokerMessage | undefined {
+  if (typeof data !== "string") {
+    throw new ConnectionError(
+      "the coordination server sent a frame that is not text",
+      "transport",
+    );
+  }
+  if (Buffer.byteLength(data, "utf8") > MAX_SIGNALING_FRAME_BYTES) {
     throw new ConnectionError(
       `the coordination server sent a frame larger than the ` +
         `${MAX_SIGNALING_FRAME_BYTES}-byte limit`,
@@ -518,7 +521,7 @@ function parseSignalingFrame(raw: unknown): BrokerMessage | undefined {
   }
   let parsed: unknown;
   try {
-    parsed = parseBoundedJson(text);
+    parsed = parseBoundedJson(data);
   } catch {
     // The parser's own error can echo a span of the body, which is server- and
     // peer-controlled; replace it rather than wrap it.
@@ -753,7 +756,7 @@ export function connectToBroker(
         end(err as ConnectionError);
         return;
       }
-      // A frame that is not a signaling message at all is dropped rather than
+      // A JSON frame that is not a signaling message is dropped rather than
       // fatal: the broker is entitled to add message types, and an unknown one
       // is not evidence of an attack.
       if (message === undefined) return;

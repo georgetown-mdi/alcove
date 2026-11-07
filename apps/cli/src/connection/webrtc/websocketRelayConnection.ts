@@ -484,6 +484,20 @@ function proofExpiredOnRelayClockError(url: string): ConnectionError {
   );
 }
 
+/**
+ * The failure a proof this side cannot make becomes, as when a proof time on
+ * the relay's clock falls past the last date a JavaScript `Date` can hold.
+ */
+function proofNotBuiltError(url: string): ConnectionError {
+  return withNextStep(
+    "could not build this side's proof for the WebSocket relay at " +
+      `${url}: the relay stated a time this side cannot use. Run the ` +
+      "exchange again, and if it fails the same way, tell whoever runs the " +
+      "relay.",
+    "transport",
+  );
+}
+
 /** One socket of a {@link ParkedRelay}, from its dial until it closes or starts. */
 interface RelaySocket {
   socket: WebSocket;
@@ -603,8 +617,8 @@ class ParkedRelay implements ParkedWebSocketRelay {
         this.dial,
         new Date(now.getTime() + this.clockOffsetMs),
       );
-    } catch (err) {
-      this.fail(asConnectionError(err, "transport"));
+    } catch {
+      this.fail(proofNotBuiltError(this.url));
       return;
     }
     if (this.state !== "dialing") return;
@@ -734,7 +748,7 @@ class ParkedRelay implements ParkedWebSocketRelay {
           : new Date(refusal.relayNowSeconds * 1000).getTime();
       if (this.clockCorrected) {
         this.fail(proofExpiredOnRelayClockError(this.url));
-      } else if (Number.isNaN(relayNowMs)) {
+      } else if (Number.isNaN(relayNowMs) || this.rendezvousEnded) {
         this.fail(refusal);
       } else {
         this.clockCorrected = true;

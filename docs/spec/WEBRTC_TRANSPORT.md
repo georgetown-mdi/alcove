@@ -1118,6 +1118,11 @@ applied cap from the moment it is handed to the ICE agent until the agent
 settles it, so a burst of candidates the agent will reject, arriving in
 one tick, can hold the budget until they settle.
 
+A signaling frame over 256 KiB, or one that is not text, ends the signaling
+socket as a `transport` failure. The CLI checks that cap on a frame already
+received whole; [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md) states the
+memory one such frame costs.
+
 The browser peer holds its own signaling intake to the first two bounds: a
 frame over 256 KiB of UTF-8 is refused unparsed, the peer reporting a
 `server-error` naming the limit and leaving the signaling server; and at most
