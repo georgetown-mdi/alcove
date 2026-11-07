@@ -303,6 +303,7 @@ interface LoopFixture {
     verify: () => Promise<boolean>;
     verifyCalls: number;
     emitDataThrows: boolean;
+    peerId: string;
   };
   // The peer-inactivity budget send() arms per wait, mutable so a case can give
   // the wait a budget it can actually spend within the test.
@@ -345,6 +346,7 @@ function makeLoop(
     verify: async () => false,
     verifyCalls: 0,
     emitDataThrows: false,
+    peerId: PEER,
   };
   // The loop reference is needed inside emit to read pollerActive at emit time,
   // so it is filled in after construction.
@@ -361,7 +363,7 @@ function makeLoop(
     inactivityBudgetMs: () => budget.ms,
     path: () => DIR,
     outbound: () => undefined,
-    peerId: () => PEER,
+    peerId: () => state.peerId,
     helloNames: () => HELLO_NAMES,
     connected: () => state.connected,
     abortArmed: () => state.abortArmed,
@@ -412,9 +414,10 @@ function makeLoop(
 function plantDeleteMessage(
   files: Map<string, Buffer>,
   payload: unknown,
+  peer = PEER,
 ): void {
   const body = objectMessage(payload, 0);
-  files.set(`${DIR}/${PEER}-${body.length}.json`, body);
+  files.set(`${DIR}/${peer}-${body.length}.json`, body);
 }
 
 // A retain-mode peer message file (<peer>-<ts>-000-<byteCount>.json), whose NNN
@@ -2637,6 +2640,27 @@ describe("FileSyncMessageLoop delete-mode consume failure", () => {
     expect(rendered).toContain("retain_files: true");
     expect(rendered).toContain("permission denied");
     expect(f.files.size).toBe(1);
+  });
+
+  // Checked on the error object, not the rendering: the display sink redacts
+  // every link again, so only the raw link shows where redaction ran.
+  test("the message file detail redacts a key marker in the name where it is composed", async () => {
+    const f = makeLoop({ pollingFrequency: 1 });
+    f.state.peerId = "-----BEGIN RSA PRIVATE KEY-----";
+    plantDeleteMessage(f.files, { hi: true }, f.state.peerId);
+    f.client.delete = async () => {
+      throw new Error("permission denied");
+    };
+
+    await runOnVirtualClock(f, 100);
+
+    const errors = f.emitted.filter((e) => e.event === "error");
+    expect(errors).toHaveLength(1);
+    const err = errors[0].arg as Error;
+    expect(err.message).toContain("could not delete a partner message");
+    expect((err.cause as Error).message).toBe(
+      "message file: [redacted private key]",
+    );
   });
 
   test.each([

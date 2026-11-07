@@ -307,10 +307,8 @@ export async function readControlFileWithGate(
   // refuses a UsageError on the bare flag (I5b), so a UsageError here would
   // turn a bounded read into a hard refusal.
   //
-  // Leads with the operative sentence and recovery step, trailing the
-  // path, because sanitizeErrorForDisplay truncates each cause-chain link;
-  // the fixed text and the path share one 256-character link, so the
-  // budget each leaves is pinned by a test, not asserted here.
+  // The path rides a detail link of its own, so the display cap on a long
+  // path cuts only that link and never the recovery step.
   //
   // Neither text claims which of the two causes applies -- residue, or a
   // live peer still writing -- since the recovery step (re-run, remove
@@ -321,10 +319,14 @@ export async function readControlFileWithGate(
     provenance === "presentAtEntry"
       ? "peer hello never became readable; it predates this run and may be " +
           "left over. Re-run; remove only if it persists and no other " +
-          `exchange uses this path: ${filePath}`
+          "exchange uses its folder."
       : "peer hello never became readable; it appeared during this run, so a " +
-          "peer may still be writing it. Re-run; remove only if it persists: " +
-          `${filePath}`,
+          "peer may still be writing it. Re-run; remove only if it persists.",
+    {
+      cause: chainDetailCauses([
+        `peer hello: ${redactPrivateKeyMaterial(filePath)}`,
+      ]),
+    },
   );
 }
 
@@ -2286,7 +2288,7 @@ export class FileSyncRendezvous {
                 "peer hello present at start never answered; it may be " +
                   "left over, not a live peer. Re-run; remove only if it " +
                   "persists and no other exchange uses this path: " +
-                  `${peerHello.name}`,
+                  `${redactPrivateKeyMaterial(peerHello.name)}`,
               );
             deps
               .log()
