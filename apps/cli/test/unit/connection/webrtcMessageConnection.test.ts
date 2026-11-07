@@ -381,6 +381,40 @@ test("a second wait on the send window while one is pending throws", async () =>
 
 // --- receive ----------------------------------------------------------------
 
+test("with no inactivity_timeout_ms set, a receive waits the budget the exchange raises it to", async () => {
+  vi.useFakeTimers();
+  try {
+    const { channel, session } = harness();
+    const connection = webRtcMessageConnection(session);
+    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
+    const received = connection.receive();
+    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000 - 1);
+    for (const datagram of new PeerJsFrameEncoder().encode({ step: 3 }))
+      channel.deliver(datagram);
+    expect(await received).toEqual({ step: 3 });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a set inactivity_timeout_ms is not raised", async () => {
+  vi.useFakeTimers();
+  try {
+    const { session } = harness();
+    const connection = webRtcMessageConnection(session, {
+      inactivityTimeoutMs: 10_000,
+    });
+    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
+    const received = connection.receive().catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(((await received) as ConnectionError).message).toContain(
+      "no message arrived within 10000 ms (the limit inactivity_timeout_ms sets)",
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("inbound datagrams are delivered as whole frames", async () => {
   const { channel, session } = harness();
   const connection = webRtcMessageConnection(session);

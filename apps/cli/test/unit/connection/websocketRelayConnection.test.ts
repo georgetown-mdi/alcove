@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   BoundedInboundFrames,
@@ -234,6 +234,28 @@ test("a frame the relay forwards directly behind the partner's start is delivere
   const connection = await opening;
   expect(await connection.receive()).toEqual({ first: 1 });
   expect(socket.binaryType).toBe("arraybuffer");
+});
+
+test("with no inactivity_timeout_ms set, a receive waits the budget the exchange raises it to", async () => {
+  const { connection, socket } = await startedConnection();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
+    const received = connection.receive();
+    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000 - 1);
+    socket.binary(packValue({ late: true }));
+    expect(await received).toEqual({ late: true });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a set inactivity_timeout_ms is not raised", async () => {
+  const { connection } = await startedConnection({ inactivityTimeoutMs: 30 });
+  connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
+  await expect(connection.receive()).rejects.toThrow(
+    /no message arrived within 30 ms/,
+  );
 });
 
 test("a frame larger than one chunk crosses as chunk envelopes the reassembler takes", async () => {

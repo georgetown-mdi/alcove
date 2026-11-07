@@ -2,6 +2,7 @@ import type { Connection } from "../types";
 import { ConnectionError, asConnectionError } from "../errors";
 import { MAX_WEBRTC_FRAME_BYTES } from "./binaryPackBounds";
 import { binaryByteLength } from "./binaryValue";
+import { MAX_TIMER_MS } from "../utils/promise";
 
 /**
  * Pull-based transport abstraction. A consumer drives the conversation by
@@ -144,6 +145,16 @@ export interface MessageConnection {
    * close does not wait on the peer omits it.
    */
   markLastSentUnread?(): void;
+  /**
+   * Optional: raise the inactivity budget that bounds a parked
+   * {@link receive} and each send's hand-off to `minMs` where it is lower,
+   * while the transport's own default is in force. A budget the operator set
+   * is left as set, and the call never lowers one; a receive already parked
+   * waits the raised budget afresh. An exchange calls it once after the terms
+   * exchange with `partnerStepWaitMs`. See docs/spec/WEBRTC_TRANSPORT.md
+   * ("The wait through a partner's PSI step").
+   */
+  raiseInactivityTimeout?(minMs: number): void;
 }
 
 /** The transport's interface to push inbound events into the queue. */
@@ -433,7 +444,10 @@ export class QueuedMessageConnection implements MessageConnection {
   private readonly capacity: number;
   private readonly builtByteCapacity: number;
   private byteCapacity: number;
-  private readonly inactivityTimeoutMs: number | undefined;
+  private inactivityTimeoutMs: number | undefined;
+  // Set by a transport whose budget is its own default rather than one the
+  // operator configured; only then does raiseInactivityTimeout lengthen it.
+  private readonly inactivityTimeoutRaisable: boolean;
   // Transport-supplied clause appended to the peer-silence inactivity error.
   // Kept here (rather than baked into the message) so the generic core layer
   // stays transport-agnostic: a caller that knows the transport supplies
@@ -471,6 +485,7 @@ export class QueuedMessageConnection implements MessageConnection {
       capacity?: number;
       byteCapacity?: number;
       inactivityTimeoutMs?: number;
+      inactivityTimeoutRaisable?: boolean;
       inactivityHint?: string | ((limitNamed: boolean) => string);
       inactivityTimeoutSetting?: string;
     },
@@ -480,6 +495,8 @@ export class QueuedMessageConnection implements MessageConnection {
       options?.byteCapacity ?? DEFAULT_QUEUE_BYTE_CAPACITY;
     this.byteCapacity = this.builtByteCapacity;
     this.inactivityTimeoutMs = options?.inactivityTimeoutMs;
+    this.inactivityTimeoutRaisable =
+      options?.inactivityTimeoutRaisable ?? false;
     this.inactivityHint = options?.inactivityHint;
     this.inactivityTimeoutSetting = options?.inactivityTimeoutSetting;
     this.terminal = new Promise((resolve) => {
@@ -884,6 +901,22 @@ export class QueuedMessageConnection implements MessageConnection {
   markLastSentUnread(): void {
     this.hooks.markLastSentUnread?.();
   }
+
+  raiseInactivityTimeout(minMs: number): void {
+    const current = this.inactivityTimeoutMs;
+    if (
+      !this.inactivityTimeoutRaisable ||
+      current === undefined ||
+      !Number.isFinite(minMs) ||
+      minMs <= current
+    )
+      return;
+    this.inactivityTimeoutMs = Math.min(Math.ceil(minMs), MAX_TIMER_MS);
+    if (this.idleTimer !== undefined) {
+      this.disarmIdle();
+      this.armIdle();
+    }
+  }
 }
 
 /**
@@ -1053,11 +1086,14 @@ export async function receiveParsed<T>(
  * Creates a connected in-memory pair of {@link MessageConnection}s. Messages
  * sent on one side are delivered asynchronously to the other; closing one side
  * causes a `transport` {@link ConnectionError} on the other. Intended for
- * tests and local protocol exercises.
+ * tests and local protocol exercises. No inactivity budget applies unless
+ * `inactivityTimeoutMs` is given.
  */
 export function createMessagePipe(options?: {
   capacity?: number;
   byteCapacity?: number;
+  inactivityTimeoutMs?: number;
+  inactivityTimeoutRaisable?: boolean;
 }): [MessageConnection, MessageConnection] {
   const link: { a?: TransportControls; b?: TransportControls } = {};
   const peerClosed = () =>

@@ -1,0 +1,41 @@
+- Otherwise a send whose frame has not all been handed over fails once the parked-receive budget below has elapsed from the send's start (1 h, or `inactivity_timeout_ms`): core bounds every send's hand-off by that value, and the failure tears the connection down without sending the close sentinel. -> Otherwise a send whose frame has not all been handed over fails once the parked-receive budget below has elapsed from the send's start (1 h or the wait the terms exchange raises it to, or `inactivity_timeout_ms`): core bounds every send's hand-off by that value, and the failure tears the connection down without sending the close sentinel.
+- Parked receive | 1 h | Peer silence on an open channel; it bounds the peer's single-threaded PSI compute, which sends no keepalive while it runs -> Parked receive | 1 h, raised at the terms exchange ([The wait through a partner's PSI step](#the-wait-through-a-partners-psi-step)) | Peer silence on an open channel; it bounds the peer's single-threaded PSI compute, which sends no keepalive while it runs
+- Idle bound | 65 minutes (`RELAY_IDLE_TIMEOUT_MS`) | A pairing no message has crossed either way for that long, a party still waiting for its partner included, is closed with 4009 on each socket. A ping or a pong is not a message here. The bound is checked at each ping, so it closes a pairing up to 30 seconds late. The one-hour parked-receive budget plus the five-minute close drain budget ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets)), so a party's own budget expires first -> Idle bound | 8,739.4 seconds, about 2 hours 26 minutes (`RELAY_IDLE_TIMEOUT_MS`) | A pairing no message has crossed either way for that long, a party still waiting for its partner included, is closed with 4009 on each socket. A ping or a pong is not a message here. The bound is checked at each ping, so it closes a pairing up to 30 seconds late. The parked-receive budget of an exchange at the browser's receive ceiling a side, 8,439.4 seconds ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)), plus the five-minute close drain budget, so at those sizes and below a party's own budget expires first. An exchange whose two parties' value slots together pass 16,777,216 can wait longer than that budget, and the relay can close it first
+- - -> Creating the request, at 4,219.7 s, is the slowest rate a value slot recorded for a PSI step since the match was streamed, and the rate the parked-receive budget is raised by at the terms exchange ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)).
+- - -> The wait through a partner's PSI step
+- - -> A partner computing a PSI step sends nothing until the step ends, so the parked-receive budget bounds that step.
+- - -> Once the terms exchange has fixed both parties' sizes, each party raises its budget, before its PSI phase waits on the partner, to
+- - -> W = max(1 h, 4,219.7 s / 8,388,608 value slots * (n_local + n_partner))
+- - -> **The counts.**
+- - -> `n_local` and `n_partner` are the two parties' value slots (`effectiveKeyCount * recordCount`), each held to the receive ceiling the other party states and to `MAX_PSI_DECODE_ELEMENTS`, since no set a party sends may hold more.
+- - -> **The rate.**
+- - -> 4,219.7 s at 8,388,608 value slots, about 503.0 microseconds a value slot, is the slowest rate recorded for a PSI step since the match was streamed: a browser party creating its single-pass request in the development container ([PROTOCOL.md](PROTOCOL.md#what-a-browser-tab-can-match), "Single-pass in a browser").
+- - -> No factor is applied above it.
+- - -> The steps recorded on the x86-64 host ran at 289.0 to 355.2 microseconds a value slot.
+- - -> An earlier build's match, which matched in setup slices, ran at 700.8 microseconds a value slot at 7,500,000 a side; the streamed match replaced it.
+- - -> **Why the sum.**
+- - -> A single-pass receiver waits through the sender's setup and its answer back to back, one step over each party's set.
+- - -> A cascade or count-only party waits through one step at a time.
+- - -> **The values.**
+- - -> 1 h up to 7,156,667 value slots together, so a smaller exchange keeps the default.
+- - -> 8,439.4 s at the browser's receive ceiling, 8,388,608 value slots a side.
+- - -> 16,878.8 s at most, at `MAX_PSI_DECODE_ELEMENTS` a side.
+- - -> **Where it applies.**
+- - -> The web and CLI WebRTC transports and both WebSocket relay clients, and only while the transport's own default is in force: a CLI run given `inactivity_timeout_ms` waits that value.
+- - -> The raise never lowers a budget.
+- - -> Each send's hand-off is bounded by the raised budget too ([Outbound pacing](#outbound-pacing)).
+- - -> The file-sync channels are not raised.
+- - -> **Through the WebSocket relay.**
+- - -> The relay's idle bound is W at the browser's receive ceiling a side plus the close drain ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#quotas)).
+- - -> A run whose W is longer, only between two parties whose value slots together pass 16,777,216, can be closed by the relay (4009) before its own budget expires.
+- - -> **A stated limit.**
+- - -> The rate is the slowest recorded, not a bound on every host.
+- - -> A host slower than the development container under the load recorded there can run a step past W, and the run then ends with the peer-inactivity refusal.
+- - -> What ends the wait on a partner that has gone is whichever comes first:
+- - -> **The transport's own detection of a partner that closed or was lost.**
+- - -> On the web transport a partner page's teardown arrives as an immediate channel close ([The clean close](#the-clean-close)), which fails the waiting receive with `peer connection closed`.
+- - -> A partner that crashes or loses its network is reported by PeerJS closing the connection when ICE fails; how long Chromium takes to report it mid-exchange is not measured.
+- - -> On the CLI any departure from `connected` fails the connection, about 30 s after a partner disappears (measured, [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)).
+- - -> Through the WebSocket relay, a partner whose socket ends closes this side with 4000 at once, and a lost socket is dropped 90 to 120 s after its last answer ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#keepalive)).
+- - -> **W itself**, with the peer-inactivity refusal (`no message arrived within W ms; the partner appears to have gone silent`).
+- - -> It alone ends the wait on a partner still connected that sends nothing.

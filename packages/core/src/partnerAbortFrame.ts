@@ -286,6 +286,7 @@ const FORWARDED_CONNECTION_MEMBERS = {
   useEnvelopeVersion: true,
   requireBinaryFrames: true,
   markLastSentUnread: true,
+  raiseInactivityTimeout: true,
 } as const satisfies Record<keyof MessageConnection, true>;
 
 /**

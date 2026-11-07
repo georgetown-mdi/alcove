@@ -1476,6 +1476,38 @@ test("holdInboundQueueBytes reaches the inner connection's queue", async () => {
   await conn.close();
 });
 
+test("raiseInactivityTimeout reaches the inner connection, and is a no-op over one without it", async () => {
+  const [, rawLocal] = createMessagePipe();
+  const raised: Array<number> = [];
+  const inner: MessageConnection = {
+    send: (data) => rawLocal.send(data),
+    receive: (timeoutMs) => rawLocal.receive(timeoutMs),
+    close: () => rawLocal.close(),
+    raiseInactivityTimeout: (minMs) => raised.push(minMs),
+  };
+  const conn = await EncryptedMessageConnection.create(
+    inner,
+    V1_KEYING,
+    "responder",
+  );
+  conn.raiseInactivityTimeout(8_439_400);
+  expect(raised).toEqual([8_439_400]);
+  await conn.close();
+
+  const [, plainLocal] = createMessagePipe();
+  const plain = await EncryptedMessageConnection.create(
+    {
+      send: (data) => plainLocal.send(data),
+      receive: (timeoutMs) => plainLocal.receive(timeoutMs),
+      close: () => plainLocal.close(),
+    },
+    V1_KEYING,
+    "responder",
+  );
+  expect(() => plain.raiseInactivityTimeout(8_439_400)).not.toThrow();
+  await plain.close();
+});
+
 test("under a cap above the AEAD's limit, the length check admits the largest version-1 envelope and refuses one byte more", async () => {
   // An envelope of about 2 GiB cannot be allocated here, so a 64-byte one
   // reports the length under test. Its version byte is wrong, so an envelope

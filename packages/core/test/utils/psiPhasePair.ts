@@ -45,6 +45,8 @@ export interface PhaseOutcome {
   readonly sent: Array<unknown>;
   readonly stages: Array<string>;
   readonly sets: Array<EngineSet>;
+  /** Each budget the phase raised its connection's inactivity budget to. */
+  readonly raisedTo: Array<number>;
 }
 
 // The engine, with every set it is handed to encrypt recorded first.
@@ -75,6 +77,7 @@ function recordingSets(engine: PsiEngine, sets: Array<EngineSet>): PsiEngine {
 function recording(
   conn: MessageConnection,
   sent: Array<unknown>,
+  raisedTo: Array<number>,
   fileSyncFrameBound: number | undefined,
 ): MessageConnection {
   return {
@@ -84,6 +87,10 @@ function recording(
     },
     receive: (timeoutMs?: number) => conn.receive(timeoutMs),
     close: () => conn.close(),
+    raiseInactivityTimeout: (minMs) => {
+      raisedTo.push(minMs);
+      conn.raiseInactivityTimeout?.(minMs);
+    },
     ...(fileSyncFrameBound === undefined
       ? {}
       : { outboundFileSyncFrameBound: () => fileSyncFrameBound }),
@@ -104,7 +111,7 @@ export type EngineFor = (
  * by default in process over `psiLibrary`. Given `fileSyncFrameBound`, each
  * party's connection states it as its file-sync frame bound. Given
  * `valueSlotCeiling`, both parties hold a single-pass run to it, as where a
- * browser is a party.
+ * browser is a party. `pipeOptions` builds both ends of the in-memory pipe.
  */
 export async function runPsiPhasePair(
   psiLibrary: PSILibrary,
@@ -115,8 +122,9 @@ export async function runPsiPhasePair(
     new InProcessPsiEngine(psiLibrary, role, id, mode),
   fileSyncFrameBound?: number,
   valueSlotCeiling?: number,
+  pipeOptions?: Parameters<typeof createMessagePipe>[0],
 ): Promise<{ receiver: PhaseOutcome; sender: PhaseOutcome }> {
-  const [receiverEnd, senderEnd] = createMessagePipe();
+  const [receiverEnd, senderEnd] = createMessagePipe(pipeOptions);
   const countOnly = terms.algorithm === "psi-c";
   const rounds = linkageRounds(terms.linkageKeys);
   const effectiveKeyCount = declaredEffectiveKeyCount(terms);
@@ -134,7 +142,8 @@ export async function runPsiPhasePair(
     const sent: Array<unknown> = [];
     const stages: Array<string> = [];
     const sets: Array<EngineSet> = [];
-    const conn = recording(end, sent, fileSyncFrameBound);
+    const raisedTo: Array<number> = [];
+    const conn = recording(end, sent, raisedTo, fileSyncFrameBound);
     const result = await runPsiPhase({
       conn,
       psiLibrary,
@@ -148,6 +157,8 @@ export async function runPsiPhasePair(
       roundsSentInParts: !runsSinglePassLink(terms),
       localReceiveCeiling: MAX_PSI_DECODE_ELEMENTS,
       partnerReceiveCeiling: MAX_PSI_DECODE_ELEMENTS,
+      localValueSlots: effectiveKeyCount * own.rowCount,
+      partnerValueSlots: effectiveKeyCount * partner.rowCount,
       linkageKeyIterables: rounds.map((round) =>
         roundKeyIterable(round, own.dataset, own.rowCount, isReceiver),
       ),
@@ -174,7 +185,7 @@ export async function runPsiPhasePair(
         return { status: "rejected" as const, reason };
       },
     );
-    return { result, sent, stages, sets };
+    return { result, sent, stages, sets, raisedTo };
   };
 
   const [receiverOutcome, senderOutcome] = await Promise.all([

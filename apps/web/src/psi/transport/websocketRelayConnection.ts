@@ -1045,6 +1045,7 @@ function forwardingConnection(
       byteCapacity: BROWSER_QUEUE_BYTE_CAPACITY,
       inactivityTimeoutMs:
         options.inactivityTimeoutMs ?? DEFAULT_RELAY_INACTIVITY_TIMEOUT_MS,
+      inactivityTimeoutRaisable: options.inactivityTimeoutMs === undefined,
     },
   );
   return {

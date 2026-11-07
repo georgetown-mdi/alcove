@@ -2017,6 +2017,8 @@ export async function runExchange(
     roundsSentInParts,
     localReceiveCeiling,
     partnerReceiveCeiling,
+    localValueSlots: valueSlots(localSize),
+    partnerValueSlots: valueSlots(partnerSize),
     linkageKeyIterables,
     linkageTerms,
     partnerTerms,
