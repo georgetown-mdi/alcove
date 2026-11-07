@@ -111,7 +111,13 @@ template as last applied is stored on the volume as
 volume with no such file (an older volume, or one where it was deleted) gets
 the template written whole once. A setting kept from the container is named in
 the post-create log (`post-create: kept container settings: model`); to return
-one to the template default, set it back to the template value. The
+one to the template default, set it back to the template value. Four keys are
+the exception: `permissions`, `hooks`, `disableAllHooks` and `env` are reset to
+the template on every create, whatever the container held, and a key the
+template lacks is removed. The post-create log names each one it reset
+(`post-create: reset container settings to the template: permissions`). A
+lasting change to these four goes through a pull request to
+`claude-settings.json`. The
 `modelSettings` entry is keyed by a model id, so it stops applying when the
 `opus` alias moves to a newer model. An unparsable settings file is renamed
 aside with a `.unreadable` suffix and replaced by the template. The volume is
