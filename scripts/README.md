@@ -26,6 +26,9 @@ check off it. Beside them:
   `broker_core_build.yaml` archives, signs, and publishes;
 - the newest-release-line decision `release.yaml` reads before it deploys
   production or moves the `latest` image tags;
+- the comparison of a release tag's commit with `main` that `release.yaml`
+  reads before it deploys production, skipping the upload once `main` has
+  moved past the tag;
 - the hosted web application's manifest writer, which `release.yaml` runs on
   the builds it deploys and a partner runs to compare a served site against
   the signed manifest;
