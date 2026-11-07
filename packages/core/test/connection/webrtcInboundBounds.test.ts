@@ -248,6 +248,26 @@ test("chunks that reassemble into another envelope are refused", () => {
   ).toContain("another envelope");
 });
 
+test("a retained chunk from a Buffer datagram holds only its own bytes", () => {
+  // werift delivers a datagram as a Node Buffer cut from a larger allocation,
+  // and a Buffer's slice is a view over that allocation, not a copy.
+  const datagram = chunk(7, 0, 2, new Uint8Array(1).fill(9));
+  const slab = Buffer.alloc(65_536 + datagram.byteLength);
+  const delivered = slab.subarray(4096, 4096 + datagram.byteLength);
+  delivered.set(datagram);
+
+  const bounds = new BoundedInboundFrames();
+  expect(bounds.accept(toFrameBytes(delivered))).toEqual({ kind: "pending" });
+  const inFlight = (
+    bounds as unknown as {
+      inFlight: Map<number, { parts: Array<Uint8Array | undefined> }>;
+    }
+  ).inFlight;
+  const retained = inFlight.get(7)?.parts[0];
+  expect(Array.from(retained ?? [])).toEqual([9]);
+  expect(retained?.buffer.byteLength).toBe(retained?.byteLength);
+});
+
 test("a datagram decoding to an object that inherits from a byte slice is refused", () => {
   const impostor = Object.defineProperty({}, "__proto__", {
     value: new Uint8Array(4),

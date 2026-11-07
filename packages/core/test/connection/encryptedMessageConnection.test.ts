@@ -39,6 +39,24 @@ vi.mock("../../src/connection/frameSize", async (importOriginal) => {
   };
 });
 
+// Views that state a length they do not hold. `binaryBytes` builds a fresh
+// view of every value, which reads the real length, so these few are handed
+// through as they are; every other value takes the real `binaryBytes`.
+const statedLengthViews = vi.hoisted(() => new WeakSet<object>());
+vi.mock("../../src/connection/binaryValue", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/connection/binaryValue")>();
+  return {
+    ...actual,
+    binaryBytes: (value: unknown) =>
+      typeof value === "object" &&
+      value !== null &&
+      statedLengthViews.has(value)
+        ? (value as Uint8Array<ArrayBuffer>)
+        : actual.binaryBytes(value),
+  };
+});
+
 // Fixed 32-byte session key for deterministic tests.
 const SESSION_KEY = new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>;
 
@@ -1466,6 +1484,7 @@ test("under a cap above the AEAD's limit, the length check admits the largest ve
   const statingLength = (length: number) => {
     const bytes = new Uint8Array(64).fill(0x63) as Uint8Array<ArrayBuffer>;
     Object.defineProperty(bytes, "length", { value: length });
+    statedLengthViews.add(bytes);
     return bytes;
   };
   for (const [length, refusal] of [

@@ -570,11 +570,27 @@ const envelopeInsideEnvelope = packWithLibrary({
   total: 1,
 });
 
+/** A chunk envelope declaring one chunk, whose slice is a packed chunk envelope
+ * with a string message id: its reassembly completes into a malformed envelope,
+ * which is refused as malformed rather than as an envelope. */
+const malformedEnvelopeInsideEnvelope = packWithLibrary({
+  __peerData: 1,
+  n: 0,
+  data: packWithLibrary({
+    __peerData: "2",
+    n: 0,
+    data: new Uint8Array(4),
+    total: 2,
+  }),
+  total: 1,
+});
+
 /** The malformed datagrams both transports are held to: a text message, an empty
  * text message, an empty binary message, a binary message whose string declares
  * more bytes than the message holds, which the real unpacker throws on, a
  * datagram over the frame-size cap, a chunk stream that reassembles into another
- * envelope, and a map whose `__proto__` key holds a byte slice. */
+ * envelope, one that reassembles into a malformed envelope, and a map whose
+ * `__proto__` key holds a byte slice. */
 export const WEBRTC_MALFORMED_DATAGRAM_FIXTURES: Array<WebrtcMalformedDatagramFixture> =
   [
     {
@@ -609,6 +625,12 @@ export const WEBRTC_MALFORMED_DATAGRAM_FIXTURES: Array<WebrtcMalformedDatagramFi
       message:
         "the peer sent an invalid WebRTC chunk stream: its chunks reassemble " +
         "into another envelope rather than a frame",
+    },
+    {
+      label:
+        "a chunk stream that reassembles into an envelope with a string message id",
+      datagram: malformedEnvelopeInsideEnvelope,
+      message: `${MALFORMED_DATAGRAM_PREFIX}its chunk message id is not an integer`,
     },
     {
       label: "a map whose __proto__ key holds a byte slice",

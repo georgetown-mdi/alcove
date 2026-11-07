@@ -142,6 +142,26 @@ function reassemblyProtocolError(detail: string): ConnectionError {
   );
 }
 
+/**
+ * The application value of a completed reassembly's decoded frame, classified
+ * as a datagram is, so a malformed envelope draws the same malformed-frame
+ * refusal either way. The web app's PeerJS wrap
+ * (apps/web/src/psi/transport/boundedReassembly.ts) refuses through it too.
+ *
+ * @throws {ConnectionError} of kind `protocol` if `decoded` is a malformed
+ *         value ({@link classifyInboundValue}) or is itself a close sentinel
+ *         or chunk envelope rather than a frame.
+ */
+export function reassembledFrameValue(decoded: unknown): unknown {
+  const classified = classifyInboundValue(decoded);
+  if (classified.kind !== "data") {
+    throw reassemblyProtocolError(
+      "its chunks reassemble into another envelope rather than a frame",
+    );
+  }
+  return classified.value;
+}
+
 /** One frame mid-reassembly: its slices by ordinal, plus what it has cost. */
 interface Reassembly {
   readonly total: number;
@@ -229,15 +249,9 @@ export class BoundedInboundFrames {
     // The assembled bytes get the same pre-scan the datagram got: they are a
     // frame the peer composed out of parts, and nothing has scanned them whole.
     const inner = this.decodeBounded(assembled, "reassembled");
-    const innerKind = classifyInboundValue(inner);
-    if (innerKind.kind !== "data") {
-      throw reassemblyProtocolError(
-        "its chunks reassemble into another envelope rather than a frame",
-      );
-    }
     return {
       kind: "frame",
-      value: innerKind.value,
+      value: reassembledFrameValue(inner),
       receivedBytes: assembled.byteLength,
     };
   }

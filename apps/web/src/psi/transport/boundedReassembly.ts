@@ -23,6 +23,7 @@ import {
   describeFrameStructureRefusal,
   inheritsFromBinaryWithoutBeingBinary,
   nonBinaryFrameError,
+  reassembledFrameValue,
   scanFrameStructure,
 } from "@alcove/core";
 
@@ -115,42 +116,35 @@ function malformedDatagramError(detail: string): ConnectionError {
   );
 }
 
-/** A chunk stream no PeerJS sender produces: the same refusal, in the same
- * words, as the CLI's reassembler (`reassemblyProtocolError`,
- * packages/core/src/connection/webrtcInboundBounds.ts). */
-function chunkStreamError(detail: string): ConnectionError {
-  return new ConnectionError(
-    `the peer sent an invalid WebRTC chunk stream: ${detail}`,
-    "protocol",
-  );
-}
-
 /**
  * The refusal of one decoded frame before it is routed, or `undefined` to
  * route it, in the CLI's reassembler's words for each: a value inheriting from
- * binary data without being binary, a reassembled frame that is itself an
- * envelope, and, once binary frames are required, a frame to deliver that is
- * not binary.
+ * binary data without being binary, a reassembled frame that is a malformed
+ * envelope or an envelope at all (core's `reassembledFrameValue`, which the
+ * CLI's reassembler calls), and, once binary frames are required, a frame to
+ * deliver that is not binary.
  */
 function decodedFrameRefusal(
   decoded: unknown,
   reassembled: boolean,
   binaryFramesRequired: boolean,
 ): ConnectionError | undefined {
-  if (inheritsFromBinaryWithoutBeingBinary(decoded))
-    return malformedDatagramError(
-      "it decodes to an object that inherits from binary data but is not binary",
-    );
-  const peerData: unknown =
-    typeof decoded === "object" && decoded !== null
-      ? (decoded as { __peerData?: unknown }).__peerData
-      : undefined;
-  if (peerData) {
-    return reassembled
-      ? chunkStreamError(
-          "its chunks reassemble into another envelope rather than a frame",
-        )
-      : undefined;
+  if (reassembled) {
+    try {
+      reassembledFrameValue(decoded);
+    } catch (error) {
+      return asConnectionError(error, "protocol");
+    }
+  } else {
+    if (inheritsFromBinaryWithoutBeingBinary(decoded))
+      return malformedDatagramError(
+        "it decodes to an object that inherits from binary data but is not binary",
+      );
+    const peerData: unknown =
+      typeof decoded === "object" && decoded !== null
+        ? (decoded as { __peerData?: unknown }).__peerData
+        : undefined;
+    if (peerData) return undefined;
   }
   if (binaryFramesRequired && binaryByteLength(decoded) === undefined)
     return nonBinaryFrameError();
@@ -287,8 +281,8 @@ export function assertChunkReassemblySupported(conn: DataConnection): void {
  *   BinaryPack's unpack throws on, each in the words the CLI's receive path
  *   uses.
  * - The decoded frame, before it is routed: a value inheriting from binary
- *   data without being binary, and a reassembled frame that is itself an
- *   envelope, each in the CLI reassembler's words.
+ *   data without being binary, and a reassembled frame that is a malformed
+ *   envelope or an envelope at all, each in the CLI reassembler's words.
  * - Once the returned `requireBinaryFrames` is called, a frame that is not
  *   binary, refused on its wire bytes before the scan as the CLI reassembler
  *   refuses it (`BoundedInboundFrames.requireBinaryFrames`).

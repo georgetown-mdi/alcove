@@ -210,7 +210,10 @@ export {
   binaryBytes,
   inheritsFromBinaryWithoutBeingBinary,
 } from "./connection/binaryValue";
-export { BoundedInboundFrames } from "./connection/webrtcInboundBounds";
+export {
+  BoundedInboundFrames,
+  reassembledFrameValue,
+} from "./connection/webrtcInboundBounds";
 export type {
   InboundFrameLimits,
   InboundOutcome,

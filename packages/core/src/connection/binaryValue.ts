@@ -38,13 +38,13 @@ export function binaryByteLength(value: unknown): number | undefined {
 /**
  * A `Uint8Array` over the bytes of a genuine typed-array view or
  * `ArrayBuffer`, without copying, or `undefined` for any other value
- * ({@link binaryByteLength}). A genuine `Uint8Array` is returned as it is.
+ * ({@link binaryByteLength}). The result is always a plain `Uint8Array`, never
+ * the value itself, so a Node `Buffer` (whose `slice` returns a view, not a
+ * copy) is not handed on as one.
  */
 export function binaryBytes(
   value: unknown,
 ): Uint8Array<ArrayBuffer> | undefined {
-  if (ArrayBuffer.isView(value) && value instanceof Uint8Array)
-    return value as Uint8Array<ArrayBuffer>;
   if (ArrayBuffer.isView(value))
     return new Uint8Array(
       value.buffer as ArrayBuffer,
