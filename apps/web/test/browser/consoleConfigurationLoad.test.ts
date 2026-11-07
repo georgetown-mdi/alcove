@@ -8,7 +8,11 @@ import { createElement } from "react";
 
 import "@mantine/core/styles.css";
 
-import { getDefaultLinkageTerms, precisionFloorLabel } from "@alcove/core";
+import {
+  getDefaultLinkageTerms,
+  precisionFloorLabel,
+  sanitizeForDisplay,
+} from "@alcove/core";
 
 import {
   AUTHORED_KEYS_FLOOR_NOTE,
@@ -477,6 +481,43 @@ describe("the open configuration over the files it is derived across", () => {
       .not.toBeInTheDocument();
   });
 
+  test("a refused save of a held run shows the refusal escaped", async () => {
+    const refusal = "Change\u202e them\u200b.";
+    stubConfigRoute(
+      {
+        status: 200,
+        body: {
+          ...(openedBody({
+            channel: "webrtc",
+            signalingServer: "wss://signal.example.org/api/",
+            linkageTerms: CONFIG_DOCUMENT.linkageTerms,
+            metadata: STATED_COLUMNS,
+          }) as Record<string, unknown>),
+          keyFileFault: "absent",
+        },
+      },
+      { files: [CLIENTS_FILE], saveRefusal: { error: refusal } },
+    );
+    app.render(createElement(InviterScreen));
+    await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
+    await openConfiguration();
+    await commitFile();
+    await page
+      .getByRole("button", { name: "Continue to matching & sharing" })
+      .click();
+    await page
+      .getByRole("button", { name: "Continue to review & create" })
+      .click();
+    await page
+      .getByRole("button", { name: "Save changes to alcove.yaml" })
+      .click();
+    await expect
+      .element(page.getByText(sanitizeForDisplay(refusal), { exact: true }))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain("\u202e");
+    expect(app.container.textContent).not.toContain("\u200b");
+  });
+
   /** The relay an in-place webrtc configuration states: none unless
    * `relayTurnUrls` names its TURN urls, and no `connection.allowed_relays`
    * unless `allowedRelays` is set. */
@@ -837,6 +878,19 @@ describe("the open configuration over the files it is derived across", () => {
     await expect
       .element(page.getByText("Your changes were not saved to alcove.yaml"))
       .not.toBeInTheDocument();
+  });
+
+  test("a refused save at the start shows the refusal escaped", async () => {
+    const refusal = "Change\u202e them\u200b.";
+    await reviewInPlaceRun({ saveRefusal: { error: refusal } });
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await expect
+      .element(page.getByText(sanitizeForDisplay(refusal)).first())
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain("\u202e");
+    expect(app.container.textContent).not.toContain("\u200b");
   });
 
   test("any other refused save offers no reopening", async () => {

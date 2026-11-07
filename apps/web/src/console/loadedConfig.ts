@@ -50,6 +50,7 @@ import {
 import {
   CONNECTION_TUNING_DEFAULT,
   DURATION_FIELD_UNITS,
+  byTimeoutField,
   durationFieldForMs,
 } from "./connectionTuningModel";
 import { EMPTY_SFTP_FORM, hostKeyFingerprintField } from "./sftpConnectionForm";
@@ -159,15 +160,7 @@ export function connectionTuningFromOptions(
   const stated = options ?? {};
   return {
     pollInterval: durationField(stated.pollIntervalMs, "pollInterval"),
-    peerTimeout: durationField(stated.peerTimeoutMs, "peerTimeout"),
-    inactivityTimeout: durationField(
-      stated.inactivityTimeoutMs,
-      "inactivityTimeout",
-    ),
-    serverConnectTimeout: durationField(
-      stated.serverConnectTimeoutMs,
-      "serverConnectTimeout",
-    ),
+    ...byTimeoutField((row) => durationField(stated[row.optionKey], row.field)),
     maxReconnectAttempts:
       stated.maxReconnectAttempts === undefined
         ? CONNECTION_TUNING_DEFAULT.maxReconnectAttempts

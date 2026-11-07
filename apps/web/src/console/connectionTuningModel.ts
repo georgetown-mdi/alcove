@@ -59,26 +59,6 @@ export const POLL_INTERVAL_UNITS: ReadonlyArray<DurationUnit> = [
  * the value the operator authored. */
 export const TIMEOUT_UNITS: ReadonlyArray<DurationUnit> = ["s", "m", "h"];
 
-/** The duration fields of {@link ConnectionTuningDraft}. */
-export type DurationFieldName =
-  | "pollInterval"
-  | "peerTimeout"
-  | "inactivityTimeout"
-  | "serverConnectTimeout"
-  | "ignoreFilesOlderThan";
-
-/** The units each duration field offers. */
-export const DURATION_FIELD_UNITS: Record<
-  DurationFieldName,
-  ReadonlyArray<DurationUnit>
-> = {
-  pollInterval: POLL_INTERVAL_UNITS,
-  peerTimeout: TIMEOUT_UNITS,
-  inactivityTimeout: TIMEOUT_UNITS,
-  serverConnectTimeout: TIMEOUT_UNITS,
-  ignoreFilesOlderThan: TIMEOUT_UNITS,
-};
-
 const COARSEST_FIRST: ReadonlyArray<DurationUnit> = ["h", "m", "s", "ms"];
 
 /** The coarsest of `candidates` in which `ms` is a whole number. */
@@ -153,12 +133,143 @@ export interface DurationField {
   unit: DurationUnit;
 }
 
-/** The operator's authored connection-tuning choices for one exchange. */
-export interface ConnectionTuningDraft {
+/**
+ * The longest wait a timeout field may state: core's seven-day
+ * {@link MAX_TIMEOUT_SECONDS}, in the milliseconds the job intent speaks. On a
+ * zero-setup run each timeout is passed as the CLI's `--peer-timeout`,
+ * `--inactivity-timeout` or `--connection-timeout`, where the same ceiling is
+ * a usage error (exit 64); a larger value here would create a job whose child
+ * exits immediately.
+ */
+const MAX_TIMEOUT_MS = MAX_TIMEOUT_SECONDS * 1000;
+
+/** The draft fields that are plain timeouts, in the card's order. */
+const TIMEOUT_FIELD_NAMES = [
+  "peerTimeout",
+  "inactivityTimeout",
+  "serverConnectTimeout",
+] as const;
+
+/** One of {@link TIMEOUT_FIELD_NAMES}. */
+export type TimeoutFieldName = (typeof TIMEOUT_FIELD_NAMES)[number];
+
+/** Everything the model, the card and the configuration loader need to know
+ * about one timeout field. */
+export interface TimeoutFieldRow {
+  /** The draft field the row describes. */
+  field: TimeoutFieldName;
+  /** The job intent option, and the opened configuration's, it states. */
+  optionKey: "peerTimeoutMs" | "inactivityTimeoutMs" | "serverConnectTimeoutMs";
+  /** The control's label. */
+  label: string;
+  /** What the field's form problems call it. */
+  problemSubject: string;
+  units: ReadonlyArray<DurationUnit>;
+  /** The field as a fresh card holds it: blank, in the unit core's default
+   * for it reads naturally in. */
+  defaultDraft: DurationField;
+  /** Core's default for the field on the flow's channel. */
+  defaultMs: (capabilities: ConnectionTuningCapabilities) => number;
+  /** The longest value the field may state, in milliseconds. */
+  ceilingMs: number;
+  description: (capabilities: ConnectionTuningCapabilities) => string;
+  /** The placeholder where it states more than {@link defaultMs} does. */
+  placeholder?: (
+    capabilities: ConnectionTuningCapabilities,
+    unit: DurationUnit,
+  ) => string;
+}
+
+/** The placeholder a timeout field shows in `unit` on the flow's channel. */
+export function timeoutFieldPlaceholder(
+  row: TimeoutFieldRow,
+  capabilities: ConnectionTuningCapabilities,
+  unit: DurationUnit,
+): string {
+  return (
+    row.placeholder?.(capabilities, unit) ??
+    defaultPlaceholder(row.defaultMs(capabilities), unit)
+  );
+}
+
+/** The timeout fields, keyed by draft field. */
+const TIMEOUT_FIELDS: {
+  [F in TimeoutFieldName]: TimeoutFieldRow & { field: F };
+} = {
+  peerTimeout: {
+    field: "peerTimeout",
+    optionKey: "peerTimeoutMs",
+    label: PEER_TIMEOUT_LABEL,
+    problemSubject: "The wait for your partner",
+    units: TIMEOUT_UNITS,
+    defaultDraft: { magnitude: "", unit: "m" },
+    defaultMs: peerTimeoutDefaultMs,
+    ceilingMs: MAX_TIMEOUT_MS,
+    description: () =>
+      "How long this side waits for the other to start its half before it gives up.",
+  },
+  inactivityTimeout: {
+    field: "inactivityTimeout",
+    optionKey: "inactivityTimeoutMs",
+    label: "How long your partner may go quiet",
+    problemSubject: "The wait while your partner is quiet",
+    units: TIMEOUT_UNITS,
+    defaultDraft: { magnitude: "", unit: "m" },
+    defaultMs: () => DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
+    ceilingMs: MAX_TIMEOUT_MS,
+    description: inactivityTimeoutDescription,
+    placeholder: inactivityTimeoutPlaceholder,
+  },
+  serverConnectTimeout: {
+    field: "serverConnectTimeout",
+    optionKey: "serverConnectTimeoutMs",
+    label: "How long to wait for each connection attempt",
+    problemSubject: "The connection attempt timeout",
+    units: TIMEOUT_UNITS,
+    defaultDraft: { magnitude: "", unit: "s" },
+    defaultMs: () => DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+    ceilingMs: MAX_TIMEOUT_MS,
+    description: () =>
+      "How long one attempt to reach the server may take before it counts as failed. Applies to each attempt, not to all of them together.",
+  },
+};
+
+/** The timeout fields in the card's order, for the card, the model and the
+ * configuration loader to loop over. */
+export const TIMEOUT_FIELD_ROWS: ReadonlyArray<TimeoutFieldRow> =
+  TIMEOUT_FIELD_NAMES.map((name) => TIMEOUT_FIELDS[name]);
+
+/** One column of the timeout table, keyed by draft field. */
+export function byTimeoutField<T>(
+  column: (row: TimeoutFieldRow) => T,
+): Record<TimeoutFieldName, T> {
+  // Complete by construction: TimeoutFieldName is read off TIMEOUT_FIELD_NAMES.
+  return Object.fromEntries(
+    TIMEOUT_FIELD_NAMES.map((name) => [name, column(TIMEOUT_FIELDS[name])]),
+  ) as Record<TimeoutFieldName, T>;
+}
+
+/** The duration fields of {@link ConnectionTuningDraft}. */
+export type DurationFieldName =
+  "pollInterval" | TimeoutFieldName | "ignoreFilesOlderThan";
+
+/** The units each duration field offers. */
+export const DURATION_FIELD_UNITS: Record<
+  DurationFieldName,
+  ReadonlyArray<DurationUnit>
+> = {
+  pollInterval: POLL_INTERVAL_UNITS,
+  ...byTimeoutField((row) => row.units),
+  ignoreFilesOlderThan: TIMEOUT_UNITS,
+};
+
+/** The operator's authored connection-tuning choices for one exchange: a
+ * {@link DurationField} per timeout field, beside the fields below. */
+export interface ConnectionTuningDraft extends Record<
+  TimeoutFieldName,
+  DurationField
+> {
   pollInterval: DurationField;
-  peerTimeout: DurationField;
-  inactivityTimeout: DurationField;
-  serverConnectTimeout: DurationField;
   /** The retry budget as raw field text; blank means unset. Not a duration: it is
    * a count, exactly as the CLI's `--max-reconnect-attempts` is. */
   maxReconnectAttempts: string;
@@ -178,9 +289,7 @@ export interface ConnectionTuningDraft {
  */
 export const CONNECTION_TUNING_DEFAULT: ConnectionTuningDraft = {
   pollInterval: { magnitude: "", unit: "s" },
-  peerTimeout: { magnitude: "", unit: "m" },
-  inactivityTimeout: { magnitude: "", unit: "m" },
-  serverConnectTimeout: { magnitude: "", unit: "s" },
+  ...byTimeoutField((row) => row.defaultDraft),
   maxReconnectAttempts: "",
   connectionPerPoll: false,
   ignoreFilesOlderThan: { magnitude: "", unit: "m" },
@@ -248,16 +357,6 @@ function durationMs(field: DurationField): number | undefined | null {
 }
 
 /**
- * The longest wait a timeout field may state: core's seven-day
- * {@link MAX_TIMEOUT_SECONDS}, in the milliseconds the job intent speaks. On a
- * zero-setup run each timeout is passed as the CLI's `--peer-timeout`,
- * `--inactivity-timeout` or `--connection-timeout`, where the same ceiling is
- * a usage error (exit 64); a larger value here would create a job whose child
- * exits immediately.
- */
-const MAX_TIMEOUT_MS = MAX_TIMEOUT_SECONDS * 1000;
-
-/**
  * The poll interval's value in milliseconds, held to core's
  * {@link MAX_TIMER_MS}: the CLI refuses a longer `--polling-frequency` with a
  * usage error (exit 64), so a job holding one would exit at once. `null` for
@@ -270,15 +369,18 @@ function pollIntervalMsOf(field: DurationField): number | undefined | null {
 }
 
 /**
- * A timeout field's value in milliseconds, held to {@link MAX_TIMEOUT_MS} on top
- * of {@link durationMs}'s shape rule. `null` for either refusal;
+ * A timeout field's value in milliseconds, held to `ceilingMs` on top of
+ * {@link durationMs}'s shape rule. `null` for either refusal;
  * {@link connectionTuningProblems} distinguishes the two so the operator is told
  * which rule the value broke.
  */
-function timeoutMs(field: DurationField): number | undefined | null {
+function timeoutMs(
+  field: DurationField,
+  ceilingMs: number = MAX_TIMEOUT_MS,
+): number | undefined | null {
   const ms = durationMs(field);
   if (typeof ms !== "number") return ms;
-  return ms > MAX_TIMEOUT_MS ? null : ms;
+  return ms > ceilingMs ? null : ms;
 }
 
 /**
@@ -309,18 +411,16 @@ export function connectionTuningOptions(
   const pollIntervalMs = capabilities.pollInterval
     ? pollIntervalMsOf(draft.pollInterval)
     : undefined;
-  const peerTimeoutMs = timeoutMs(draft.peerTimeout);
-  const inactivityTimeoutMs = timeoutMs(draft.inactivityTimeout);
-  const serverConnectTimeoutMs = timeoutMs(draft.serverConnectTimeout);
   const maxReconnectAttempts = reconnectAttempts(draft.maxReconnectAttempts);
   const ignoreFilesOlderThanMs = ignoreFilesOlderThanOf(draft, capabilities);
+  const timeouts: JobExchangeOptions = {};
+  for (const row of TIMEOUT_FIELD_ROWS) {
+    const ms = timeoutMs(draft[row.field], row.ceilingMs);
+    if (typeof ms === "number") timeouts[row.optionKey] = ms;
+  }
   const stated: JobExchangeOptions = {
     ...(typeof pollIntervalMs === "number" ? { pollIntervalMs } : {}),
-    ...(typeof peerTimeoutMs === "number" ? { peerTimeoutMs } : {}),
-    ...(typeof inactivityTimeoutMs === "number" ? { inactivityTimeoutMs } : {}),
-    ...(typeof serverConnectTimeoutMs === "number"
-      ? { serverConnectTimeoutMs }
-      : {}),
+    ...timeouts,
     ...(typeof maxReconnectAttempts === "number"
       ? { maxReconnectAttempts }
       : {}),
@@ -383,11 +483,11 @@ function durationProblem(label: string): string {
   return `${label} must be a whole number greater than zero, or left blank for the default.`;
 }
 
-/** The problem a timeout field past {@link MAX_TIMEOUT_MS} reports, stated in the
- * whole days the ceiling is set in. */
-function timeoutCeilingProblem(label: string): string {
+/** The problem a timeout field past its ceiling reports, stated in the whole
+ * days the ceiling is set in. */
+function timeoutCeilingProblem(label: string, ceilingMs: number): string {
   return (
-    `${label} cannot be longer than ${MAX_TIMEOUT_SECONDS / 86_400} days, ` +
+    `${label} cannot be longer than ${ceilingMs / 86_400_000} days, ` +
     "the longest wait an exchange accepts."
   );
 }
@@ -400,9 +500,11 @@ function timeoutCeilingProblem(label: string): string {
 function timeoutProblem(
   field: DurationField,
   label: string,
+  ceilingMs: number = MAX_TIMEOUT_MS,
 ): string | undefined {
   if (durationMs(field) === null) return durationProblem(label);
-  if (timeoutMs(field) === null) return timeoutCeilingProblem(label);
+  if (timeoutMs(field, ceilingMs) === null)
+    return timeoutCeilingProblem(label, ceilingMs);
   return undefined;
 }
 
@@ -433,21 +535,14 @@ export function connectionTuningProblems(
           "the longest interval an exchange accepts.",
       );
   }
-  const peerProblem = timeoutProblem(
-    draft.peerTimeout,
-    "The wait for your partner",
-  );
-  if (peerProblem !== undefined) problems.push(peerProblem);
-  const silenceProblem = timeoutProblem(
-    draft.inactivityTimeout,
-    "The wait while your partner is quiet",
-  );
-  if (silenceProblem !== undefined) problems.push(silenceProblem);
-  const connectProblem = timeoutProblem(
-    draft.serverConnectTimeout,
-    "The connection attempt timeout",
-  );
-  if (connectProblem !== undefined) problems.push(connectProblem);
+  for (const row of TIMEOUT_FIELD_ROWS) {
+    const problem = timeoutProblem(
+      draft[row.field],
+      row.problemSubject,
+      row.ceilingMs,
+    );
+    if (problem !== undefined) problems.push(problem);
+  }
   if (
     holdsExchangeFolder(capabilities) &&
     !draft.ignoreFilesOlderThanInfinite
@@ -544,9 +639,9 @@ export function connectionTuningSummary(
 ): string {
   const touched =
     (capabilities.pollInterval && draft.pollInterval.magnitude.trim() !== "") ||
-    draft.peerTimeout.magnitude.trim() !== "" ||
-    draft.inactivityTimeout.magnitude.trim() !== "" ||
-    draft.serverConnectTimeout.magnitude.trim() !== "" ||
+    TIMEOUT_FIELD_ROWS.some(
+      (row) => draft[row.field].magnitude.trim() !== "",
+    ) ||
     draft.maxReconnectAttempts.trim() !== "" ||
     (capabilities.connectionPerPoll && draft.connectionPerPoll) ||
     (holdsExchangeFolder(capabilities) &&
@@ -574,16 +669,6 @@ export function defaultPlaceholder(
   return `default ${natural.magnitude} ${natural.unit}`;
 }
 
-/** Core's default for each duration field but the check interval and the peer
- * timeout, keyed by the draft field it belongs to, so the card's placeholders
- * show the values the run actually applies rather than restating them. The
- * other two differ by channel: {@link pollIntervalDefaultMs} and
- * {@link peerTimeoutDefaultMs}. */
-export const TUNING_DEFAULT_MS = {
-  inactivityTimeout: DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
-  serverConnectTimeout: DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
-} as const;
-
 /** The quiet-partner field's placeholder: core's default, which on `webrtc` is
  * only the least wait, since a blank field there leaves the run to set the
  * wait from both parties' record counts. */
@@ -592,7 +677,7 @@ export function inactivityTimeoutPlaceholder(
   unit: DurationUnit,
 ): string {
   const placeholder = defaultPlaceholder(
-    TUNING_DEFAULT_MS.inactivityTimeout,
+    DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
     unit,
   );
   return capabilities.channel === "webrtc"

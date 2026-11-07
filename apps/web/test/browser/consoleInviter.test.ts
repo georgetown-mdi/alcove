@@ -9,7 +9,7 @@ import { createElement } from "react";
 // Load Mantine's stylesheet so components render with their real geometry.
 import "@mantine/core/styles.css";
 
-import { decodeInvitation } from "@alcove/core";
+import { decodeInvitation, sanitizeForDisplay } from "@alcove/core";
 
 import {
   NO_RECORD_CONFIRM_BODY,
@@ -684,6 +684,25 @@ describe("console inviter transports and sample data", () => {
       .toBeInTheDocument();
     // No remote picker: the operator selects nothing.
     expect(page.getByLabelText("SFTP server").query()).toBeNull();
+  });
+
+  test("the authored connection's host and paths are shown escaped", async () => {
+    const host = "sftp.example\u202egov";
+    const inboundPath = "/in\u200b";
+    const outboundPath = "/out\u0007";
+    stubJobApi({
+      sftp: { configured: true, host, port: 2222, inboundPath, outboundPath },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    const label = sanitizeForDisplay(
+      `${host}:2222 in ${inboundPath} out ${outboundPath}`,
+    );
+    await expect
+      .element(page.getByText(label, { exact: true }))
+      .toBeInTheDocument();
+    for (const raw of ["\u202e", "\u200b", "\u0007"])
+      expect(app.container.textContent).not.toContain(raw);
   });
 
   test("with a rendezvous mount and no sftp server the filedrop card runs here by default", async () => {

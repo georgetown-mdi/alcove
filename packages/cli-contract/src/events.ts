@@ -58,8 +58,30 @@ export function isEventType(type: unknown): type is EventType {
 }
 
 /**
- * The terminal-error categories, the same as the web app's
- * `ExchangeErrorCategory`. See docs/spec/CLI_EVENTS.md#error-categories.
+ * The terminal-error categories, shared by the CLI's `error` event and the web
+ * app's run lifecycle, so a UI can choose its alert from either.
+ * The CLI's classification rules: docs/spec/CLI_EVENTS.md#error-categories.
+ *
+ * In the web app's run lifecycle, `"exchange"` (acquire/open/run) invites a
+ * re-run. `"output"` means the
+ * exchange already succeeded and only local results-file generation failed --
+ * never re-run. `"security"` is the trust-boundary subset of an exchange
+ * failure: the authenticated key exchange (or the AEAD layer over the
+ * exchange) reported a wrong secret, tamper, or replay, so the UI shows it as
+ * an authentication failure rather than a retryable transport drop.
+ * `"config"` is an `OperatorConfigError` raised in the prepare phase (inside
+ * `acquire`, before any peer connection), whose message names only this
+ * party's own configuration -- not a transport drop, so retrying as-is fails
+ * identically and the message is safe to show. Scoped to that type only: a
+ * sibling prepare-phase `UsageError` whose message can embed
+ * partner-influenced values (e.g. the accept side's disclosure check) stays
+ * the generic `"exchange"`.
+ *
+ * `LinkageTermsUnsatisfiableError` also classifies `"config"`, for the
+ * no-retry affordance rather than the message: it is a deterministic
+ * pre-connection refusal whose message names the agreed terms' own key and
+ * field names, partner-authored on every accept path, so the alert builder
+ * supplies fixed copy instead of rendering it.
  */
 export type ExchangeErrorCategory =
   "exchange" | "output" | "security" | "config";

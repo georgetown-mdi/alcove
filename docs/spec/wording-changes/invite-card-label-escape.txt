@@ -1,0 +1,1 @@
+- The four categories are the web front end's `ExchangeErrorCategory` vocabulary (`apps/web/src/psi/exchangeLifecycle.ts`), so a consumer reads one set of names across both. -> The four categories are one `ExchangeErrorCategory` type (`packages/cli-contract/src/events.ts`), which the web front end's run lifecycle re-exports, so a consumer reads one set of names across both.
