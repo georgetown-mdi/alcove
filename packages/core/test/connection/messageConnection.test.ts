@@ -17,10 +17,16 @@ import {
   MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
 } from "../../src/connection/frameSize";
+import { matchedListPartByteBound } from "../../src/psi/matchedListParts";
 import {
   psiSetByteBound,
   psiSetPartPayloadBytes,
 } from "../../src/psi/psiSetParts";
+import { roundGroupingBound } from "../../src/psi/roundTableParts";
+import {
+  INDEX_LIST_LAYOUT,
+  wordListEntryBytes,
+} from "../../src/psi/uint32ListParts";
 import {
   BROWSER_PSI_SET_WEBRTC_FRAMES,
   BROWSER_QUEUE_BYTE_CAPACITY,
@@ -340,6 +346,35 @@ test("the byte capacities are the count-only crossing's frames at the per-frame 
   expect(countOnlyRunAheadBytes(MAX_PSI_SET_WEBRTC_FRAMES, 16_384)).toBe(
     7 * 16_384,
   );
+});
+
+test("a round's association table, two index lists and grouping stay within both byte bounds", () => {
+  // Each index list names at most the round's set, sent in one part on
+  // WebRTC; the grouping is held to the frame bound over all its parts.
+  const indexList = matchedListPartByteBound(
+    MAX_PSI_DECODE_ELEMENTS,
+    wordListEntryBytes(INDEX_LIST_LAYOUT),
+  );
+  expect(indexList).toBeLessThanOrEqual(
+    psiSetPartPayloadBytes({
+      outboundWebRtcFrameBound: () => MAX_WEBRTC_FRAME_BYTES,
+      outboundFrameOverheadBytes: () => AEAD_ENVELOPE_OVERHEAD_BYTES,
+    } as unknown as MessageConnection),
+  );
+  const grouping = roundGroupingBound(
+    MAX_PSI_DECODE_ELEMENTS,
+    {
+      maxPositionsPerRecord: MAX_PSI_DECODE_ELEMENTS,
+      partnerRecordCount: MAX_PSI_DECODE_ELEMENTS,
+      ownerLists: true,
+    },
+    MAX_WEBRTC_FRAME_BYTES,
+  ).listBytes?.(1);
+  expect(grouping).toBeDefined();
+  const table = 2 * indexList + (grouping ?? Number.NaN);
+  expect(table).toBe(402_653_232);
+  expect(table).toBeLessThan(DEFAULT_QUEUE_BYTE_CAPACITY);
+  expect(table).toBeLessThan(BROWSER_QUEUE_BYTE_CAPACITY);
 });
 
 test("file-sync read-ahead stays within the default byte bound", () => {

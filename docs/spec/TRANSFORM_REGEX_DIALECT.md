@@ -47,7 +47,7 @@ The refusal locates the pattern by key, element and step index and states its si
 The conformance check and the size read come from one compile, and the engine's compile cache (`packages/core/src/utils/linearRegex.ts`) keeps only a pattern within the cap, so a pattern refused for size is not retained once its refusal returns; the step editor's pattern check takes the same path.
 
 - Calibration, measured 2026-10-01 on the host above: the worst of the engine calls the regex steps make (`test`, a first match with its groups, `replaceAll`, `split`) over random `[a-z0-9 ]` values, by a script kept outside the repository.
-- Admitted: every bundled default pattern and documented example, the largest weighing 34 (`^1(\d{10})$`).
+- Admitted: every bundled default pattern, each held under the cap by a test ("every raw-pattern step in every default pipeline is in the linear-time dialect and under the size cap", `packages/core/test/defaultStandardization.test.ts`), and every documented example.
   At the cap, the worst shapes measured (an alternation of 332 two-character literals; 55 `.{0,9}` under `(?i)`) cost about 5 ms per row at 200 characters and about 50 ms at the 4096-character ceiling.
 - Refused: the two worst cases above, weighing about 19,800,000 and 246,000.
 - Capture-heavy shapes at the cap measured at most 8 ms at 4096 characters, below the capture-free worst, so the capture weight errs toward refusal.

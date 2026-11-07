@@ -87,6 +87,23 @@ describe("describeExchangeOutcome", () => {
     expect(line).not.toContain("\x1b");
     expect(line).toContain("/data/<1b>[31m.csv");
   });
+
+  it("redacts a private-key marker in the result path and still names the record", () => {
+    const line = describeExchangeOutcome({
+      result: {
+        kind: "file",
+        matchedRows: 2,
+        path: "/data/-----BEGIN OPENSSH PRIVATE KEY-----abc.csv",
+      },
+      record: { kind: "written", path: "/data/alcove-record.json" },
+      rotatedKeyFilePath: undefined,
+    });
+    expect(line).toContain("result written to /data/[redacted private key];");
+    expect(line).not.toContain("BEGIN OPENSSH PRIVATE KEY");
+    expect(line).toContain(
+      "exchange record written to /data/alcove-record.json",
+    );
+  });
 });
 
 describe("zeroMatchWarning", () => {

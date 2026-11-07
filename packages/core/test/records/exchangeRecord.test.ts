@@ -1047,6 +1047,82 @@ describe("parse input bounds (untrusted read path)", () => {
   });
 });
 
+describe("parse value refusals (untrusted read path)", () => {
+  async function governanceRecord() {
+    const { record } = await buildExchangeRecord(
+      governanceInputs,
+      fixedRandomness,
+    );
+    expect(() => parseExchangeRecord(record)).not.toThrow();
+    return record;
+  }
+
+  test("refuses a createdAt stated with an offset, even a zero one", async () => {
+    const record = await governanceRecord();
+    expect(record.createdAt.endsWith("Z")).toBe(true);
+    expect(() =>
+      parseExchangeRecord({
+        ...record,
+        createdAt: record.createdAt.replace(/Z$/, "+00:00"),
+      }),
+    ).toThrow();
+  });
+
+  test("refuses a padded base64url value", async () => {
+    const record = await governanceRecord();
+    expect(() =>
+      parseExchangeRecord({
+        ...record,
+        bindingNonce: `${record.bindingNonce}=`,
+      }),
+    ).toThrow();
+  });
+
+  test("refuses null for an optional member rather than reading it as absent", async () => {
+    const record = await governanceRecord();
+    expect(record.localIdentity).toBeDefined();
+    expect(() =>
+      parseExchangeRecord({ ...record, localIdentity: null }),
+    ).toThrow();
+  });
+
+  test("refuses an expirationDate that is not a calendar date", async () => {
+    const record = await governanceRecord();
+    const withExpiration = (expirationDate: string) => ({
+      ...record,
+      governance: {
+        ...record.governance,
+        legalAgreement: {
+          ...record.governance.legalAgreement!,
+          expirationDate,
+        },
+      },
+    });
+    expect(() =>
+      parseExchangeRecord(withExpiration("2026-02-28")),
+    ).not.toThrow();
+    expect(() => parseExchangeRecord(withExpiration("2026-02-30"))).toThrow();
+    expect(() =>
+      parseExchangeRecord(withExpiration("2026-02-28T00:00:00Z")),
+    ).toThrow();
+  });
+
+  test("refuses an unknown version and drops a member outside the field table", async () => {
+    const record = await governanceRecord();
+    expect(() =>
+      parseExchangeRecord({ ...record, version: "alcove-exchange-record/v0" }),
+    ).toThrow();
+    const parsed = parseExchangeRecord({
+      ...record,
+      unlistedMember: "kept nowhere",
+      governance: { ...record.governance, unlistedMember: 1 },
+    });
+    expect(parsed).toEqual(record);
+    expect(Object.keys(parsed)).not.toContain("unlistedMember");
+    expect(Object.keys(parsed.governance)).not.toContain("unlistedMember");
+  });
+});
+
 // --- Serialize / parse round-trip --------------------------------------------
 
 describe("serialize / parse", () => {

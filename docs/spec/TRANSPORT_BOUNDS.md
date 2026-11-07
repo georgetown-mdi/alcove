@@ -321,14 +321,14 @@ A running total of bytes across all in-flight reassemblies is bounded by **`MAX_
 The total spans every in-flight reassembly, so this single bound caps a single oversized frame, a single big never-completed partial, and the aggregate of concurrent partials alike.
 Like the file-sync frame-size cap it is a chosen memory bound rather than a derived platform ceiling, but sized against a different envelope: this one is a browser-tab *memory envelope*, in the spirit of the directory-listing cap -- above the realistic largest legitimate frame, below a tab-crashing allocation.
 The largest legitimate inbound frame is the raw set frame above, sent as binary with no base64url 4/3 inflation (both this wire and the file-sync wire send a frame as raw bytes).
-The 200 MiB CSV upload cap (`MAX_CSV_FILE_BYTES`) admits about 6.3 million unique key values at the narrowest measured row shape, about 210 MiB at 35 bytes per element, and a unit test holds that set inside this cap; a file narrower than any measured -- one short identifier column, or a `split_on` fan-out of several elements per row -- can produce a set frame over this cap below the upload cap.
-The party holding such a set refuses it before sending when it is the first round's, and sends a later round's in parts each within this cap (_Sender-side sizing_ below), so this bound meets a larger frame only from a partner that does not size its frames.
-So 256 MiB -- which at that element size admits about 7.67 million elements -- sits above any realistic set while half the file-sync 512 MiB cap in deference to the tab's smaller heap.
+A set over one frame, the first round's included, goes in parts each within this cap (_Sender-side sizing_ below), so this bound meets a larger frame only from a partner that does not size its frames.
+So 256 MiB -- which at that element size admits about 7.67 million elements -- is half the file-sync 512 MiB cap in deference to the tab's smaller heap.
 Under the application encryption the refusal reaches the caller of the encrypted connection unchanged, as a `protocol` failure; `apps/cli/test/integration/webrtc/transport.test.ts` holds that on the command-line application's receive path under both envelope versions.
 This counts *wire* bytes; what those bytes unpack to is a multiple of them, stated next.
 
 **Sender-side sizing.**
-Each WebRTC transport also states this bound for its own sends (`outboundWebRtcFrameBound`: the web app's `openPeerMessageConnection` and the CLI's `webRtcMessageConnection`, each returning the bound its receive path applies), and a party weighs its PSI set frames against it before they go on the wire -- once at the start of the exchange from the count of its first round, refusing a set that cannot fit one message, and at every round by sending each set in parts each within the bound ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)).
+Each WebRTC transport also states this bound for its own sends (`outboundWebRtcFrameBound`: the web app's `openPeerMessageConnection` and the CLI's `webRtcMessageConnection`, each returning the bound its receive path applies), and a party weighs its PSI set frames against it before they go on the wire: at every round, the first included, it sends each set in parts each within the bound ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)).
+What the count of its first round at the start of the exchange refuses is a set over `MAX_PSI_DECODE_ELEMENTS` and, once the terms are exchanged, a set over the partner's stated receive ceiling, not a set over one frame ([PROTOCOL.md, The first round is counted at the start](PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)).
 A connection wrapped by the channel-encryption layer (`EncryptedMessageConnection`) states the same bound and adds its envelope's bytes (`outboundFrameOverheadBytes`) to each frame's length before the check, since the envelope is on the wire too.
 What each check weighs, and the charge that makes a frame the sender admits one no receiver refuses, are specified in [PROTOCOL.md](PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap).
 The refusal is the sender's own and holds no partner-authored text: its figures are frame sizes and the fixed bound.
@@ -483,7 +483,7 @@ It is seven frames at the wire cap:
 `messageConnection.test.ts` holds both set counts to the part size the sender uses (`psiSetPartPayloadBytes`), under both envelope versions.
 Each frame is at most `MAX_WEBRTC_FRAME_BYTES`, so the bound is **`DEFAULT_QUEUE_BYTE_CAPACITY` = 7 x 268,435,456 = 1,879,048,192 bytes**, and for a browser party **`BROWSER_QUEUE_BYTE_CAPACITY` = 6 x 268,435,456 = 1,610,612,736 bytes**.
 Both are computed from those constants (`countOnlyRunAheadBytes`), and `messageConnection.test.ts` holds them to the derivation.
-The other runs the set maximum bounds are shorter: a single PSI set is three frames, and a round's association table, its two index lists and their grouping, comes to at most 402,653,232 bytes.
+The other runs the set maximum bounds are shorter: a single PSI set is three frames, and a round's association table, its two index lists and their grouping, comes to at most 402,653,232 bytes, which `messageConnection.test.ts` derives from the part bounds and holds below both byte bounds.
 
 **The single-pass reply in parts.**
 Single-pass message 2 in parts is its setup, response and tail sent back to back, with no receive between ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)).

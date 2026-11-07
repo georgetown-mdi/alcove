@@ -327,10 +327,13 @@ depends on its own page.
 
 The console build (`VITE_DEPLOYMENT_PROFILE=console`) resolves no signaling
 address, whatever either setting holds, and offers no browser setting: its
-server serves no signaling and its origin is loopback. It mints no webrtc
-invitation; a webrtc mint there is
-refused before any token is built, and its SFTP and shared-folder invitations
-name no signaling address.
+server serves no signaling and its origin is loopback. It refuses a webrtc
+mint only for an exchange run in the browser tab, before any token is built
+(`NoSignalingAddressError`, `apps/web/src/psi/invitation.ts`). A webrtc
+invitation it mints for an exchange the CLI runs names the coordination server
+set on the console ([CONSOLE.md](../CONSOLE.md#running-a-webrtc-exchange);
+[SERVER_JOB_API.md, The coordination server](SERVER_JOB_API.md#the-coordination-server)),
+and its SFTP and shared-folder invitations name no signaling address.
 
 ### The published coordination server
 
@@ -354,7 +357,11 @@ by the static host like any other file, and holds one field:
   when it is set and otherwise the page origin's `/api/`, the server its own
   page dials.
 - **Who reads it.** `alcove invite` given an `http:` or `https:` web app
-  address, and nothing else. It requests `/alcove.json` at the address's own
+  address, and the console's job server given one as the coordination server
+  to set (`apps/web/src/jobs/signalingServer.ts`). Both read it through core's
+  `resolveWebAppSignalingServer`; the job server answers with its own
+  refusals ([SERVER_JOB_API.md, The coordination server](SERVER_JOB_API.md#the-coordination-server)).
+  The CLI requests `/alcove.json` at the address's own
   origin before the invitation is created, follows no redirect, and reads at
   most 4096 bytes, parsed under the bounded JSON parser. The request has a
   15-second budget.
@@ -367,7 +374,7 @@ by the static host like any other file, and holds one field:
 - **What it does with it.** The CLI dials that server and the invitation's
   endpoint names it, exactly as when the server's URL is given directly. The
   accept link it prints stays on the address the operator gave.
-- **Refusals.** A 3xx, a 4xx other than 408 and 429, an answer over the size
+- **The CLI's refusals.** A 3xx, a 4xx other than 408 and 429, an answer over the size
   bound, and an answer that is not such a document (a static host's page
   fallback included) are usage errors (exit 64). An unreachable app, no answer
   within the budget, 408, 429 or 5xx, and a connection that fails while the
