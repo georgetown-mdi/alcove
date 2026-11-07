@@ -37,6 +37,7 @@ export {
 } from "./errors";
 export type { ConnectionErrorKind } from "./errors";
 export { annotate, annotationKey, annotationOf } from "./failureAnnotation";
+export { ISSUES_URL, PROJECT_SITE_URL, SOURCE_CODE_URL } from "./projectLinks";
 export {
   FAILURE_CAUSE_PATH_MAX_LENGTH,
   failureCauseFromUntrusted,

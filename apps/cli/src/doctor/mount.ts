@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { windowsTroubleshootingSection } from "../docLinks";
 import type { SmbMountInput } from "./smbEnvironment";
 import type { DoctorCheckRecord, DoctorReport } from "./verdict";
 import { fail, ok, skipped, SKIPPED_BY_FAILURE_MEANING, warn } from "./verdict";
@@ -130,8 +131,8 @@ function markerCheck(
         "somewhere, and a DFS path is the usual reason, because the " +
         "namespace and the real location can differ in all three.",
       "read the real path from the folder's Properties, DFS tab, and set " +
-        "SMB_SERVER, SMB_SHARE, and SMB_PATH from it. See the troubleshooting " +
-        "page, 'Reading the real path from Windows'.",
+        "SMB_SERVER, SMB_SHARE, and SMB_PATH from it. See " +
+        windowsTroubleshootingSection("Reading the real path from Windows"),
     );
   }
   if (contents.trim() !== input.token)
@@ -242,7 +243,8 @@ export function runMountChecks(
           "the account this container runs as does not own the folder, or it " +
           "can open the folder but not create files in it, or the share is " +
           "out of space.",
-        "see the troubleshooting page, 'The folder cannot be written to'.",
+        "see " +
+          windowsTroubleshootingSection("The folder cannot be written to"),
       ),
     );
     clearName(WRITE_NAME);
@@ -345,8 +347,8 @@ export function runMountChecks(
           `could not stage the rename test (${errorCode(err)}).`,
           {
             meaning:
-              "the files this check renames could not be created, so " +
-              "nothing was established about renaming.",
+              "the files this check renames could not be created, so renaming " +
+              "was not tested.",
           },
         ),
       );

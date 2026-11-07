@@ -1,11 +1,8 @@
+import { PROJECT_SITE_URL } from "@alcove/core";
+
 import { isConsoleBuild } from "@utils/clientConfig";
 
-/** The project site: the step-by-step instructions at its root, the
- * documentation under `/docs/`. */
-export const PROJECT_SITE_URL = "https://data-bridge.org";
-
-/** The project's source repository. */
-export const SOURCE_CODE_URL = "https://github.com/georgetown-mdi/alcove";
+export { PROJECT_SITE_URL, SOURCE_CODE_URL } from "@alcove/core";
 
 /** The Massive Data Institute's page for its privacy-enhancing technologies work. */
 export const MDI_PETS_URL = "https://mdi.georgetown.edu/pets/";

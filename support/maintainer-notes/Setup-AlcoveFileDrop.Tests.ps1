@@ -975,8 +975,9 @@ Describe 'The setup flow, driven against a stub engine' {
                 '         machine than Windows does. A VPN that routes only the Windows side,',
                 '         a host firewall rule, or a server-side address restriction blocks',
                 '         it while File Explorer keeps working.',
-                'ACTION:  if you are on a VPN, that is the likely cause. See the',
-                '         troubleshooting page, ''The container cannot reach the server''.',
+                'ACTION:  if you are on a VPN, that is the likely cause. See ''The container',
+                '         cannot reach the server'' on the troubleshooting page,',
+                '         https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md',
                 'SKIP: finding smbclient in this image - not run.',
                 'SKIP: signing in to the server - not run.',
                 'SKIP: opening the share - not run.',
@@ -986,8 +987,7 @@ Describe 'The setup flow, driven against a stub engine' {
                 'SKIP: renaming a file - not run.',
                 'SKIP: deleting a file - not run.',
                 'SKIP: leaving the cross-check file for `alcove doctor mount` - not run.',
-                'MEANING: an earlier check failed and stopped the run, so nothing was',
-                '         established either way about what did not run.',
+                'MEANING: an earlier check failed and stopped the run.',
                 '',
                 'NOT READY YET - follow the ACTION lines above and run this again.')
             $script:ProbeNoSmbclient = @(
@@ -1006,10 +1006,9 @@ Describe 'The setup flow, driven against a stub engine' {
                 'SKIP: renaming a file - not run.',
                 'SKIP: deleting a file - not run.',
                 'SKIP: leaving the cross-check file for `alcove doctor mount` - not run.',
-                'MEANING: an earlier check failed and stopped the run, so nothing was',
-                '         established either way about what did not run.',
+                'MEANING: an earlier check failed and stopped the run.',
                 '',
-                'COULD NOT RUN THE CHECKS - nothing was established either way.')
+                'COULD NOT RUN THE CHECKS - fix the failure above and run this again.')
             $script:ProbeRefusedServer = @(
                 '[2026-10-28T17:21:06.949Z] [ERROR] [doctor-probe] alcove doctor cannot run with the environment it was given: SMB_SERVER must not contain a path separator')
             $script:MountWriteDenied = @(
@@ -1020,11 +1019,11 @@ Describe 'The setup flow, driven against a stub engine' {
                 '         the account this container runs as does not own the folder, or it',
                 '         can open the folder but not create files in it, or the share is out',
                 '         of space.',
-                'ACTION:  see the troubleshooting page, ''The folder cannot be written to''.',
+                'ACTION:  see ''The folder cannot be written to'' on the troubleshooting page,',
+                '         https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md',
                 'SKIP: refusing to create a file twice - not run.',
                 'SKIP: renaming onto an existing file - not run.',
-                'MEANING: an earlier check failed and stopped the run, so nothing was',
-                '         established either way about what did not run.',
+                'MEANING: an earlier check failed and stopped the run.',
                 '',
                 'NOT READY YET - follow the ACTION lines above and run this again.')
             $script:MountUnreadable = @(
@@ -1038,10 +1037,9 @@ Describe 'The setup flow, driven against a stub engine' {
                 'SKIP: writing a file and renaming it into place - not run.',
                 'SKIP: refusing to create a file twice - not run.',
                 'SKIP: renaming onto an existing file - not run.',
-                'MEANING: an earlier check failed and stopped the run, so nothing was',
-                '         established either way about what did not run.',
+                'MEANING: an earlier check failed and stopped the run.',
                 '',
-                'COULD NOT RUN THE CHECKS - nothing was established either way.')
+                'COULD NOT RUN THE CHECKS - fix the failure above and run this again.')
             $script:MountRefusedToken = @(
                 '[2026-10-28T17:21:15.721Z] [ERROR] [doctor-mount] alcove doctor cannot run with the environment it was given: SMB_TOKEN must be letters, digits, dash, or underscore')
 

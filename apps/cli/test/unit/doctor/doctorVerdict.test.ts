@@ -367,6 +367,19 @@ describe("the human rendering", () => {
     ).toContain("COULD NOT RUN");
   });
 
+  test("each verdict line that is not a pass names the next step", () => {
+    expect(
+      verdictLines(report([{ id: "a", status: "fail", summary: "" }])).at(-1),
+    ).toBe("NOT READY YET - follow the ACTION lines above and run this again.");
+    expect(
+      verdictLines(
+        report([{ id: "a", status: "fail", summary: "", blocksRun: true }]),
+      ).at(-1),
+    ).toBe(
+      "COULD NOT RUN THE CHECKS - fix the failure above and run this again.",
+    );
+  });
+
   test("wraps a long meaning under its label rather than emitting one long line", () => {
     const lines = verdictLines(
       report([

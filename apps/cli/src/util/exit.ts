@@ -22,6 +22,7 @@ import {
   classifyFailure,
   firstLinkBehindTransportWraps,
   getLogger,
+  ISSUES_URL,
   LocalCopyBehindError,
   sanitizeErrorForDisplay,
   statesItsOwnNextStep,
@@ -42,8 +43,8 @@ import { termsRefusalNextStep } from "../termsRefusalRemedy";
  * one and a retry reaches the same refusal.
  */
 export const INTERNAL_FAULT_NEXT_STEP =
-  "This is a fault in Alcove itself: report it with this message; retrying " +
-  "will not help.";
+  `This is a fault in Alcove itself: report it at ${ISSUES_URL} with this ` +
+  "message and the version from 'alcove --version'. Retrying will not help.";
 
 /**
  * {@link INTERNAL_FAULT_NEXT_STEP} when core classifies `err` as an

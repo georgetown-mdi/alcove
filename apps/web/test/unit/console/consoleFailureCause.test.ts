@@ -322,8 +322,9 @@ describe("a console run that failed on a catalog cause", () => {
       }),
     );
     expect(silent.message).toContain(
-      "The registrar did not complete the request: check that it is " +
-        "running and reachable from this network, then run again.",
+      "The registrar did not complete the request: ask whoever runs the " +
+        "relay to check that its registrar is running and reachable from " +
+        "this network, then run again.",
     );
   });
 

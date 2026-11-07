@@ -31,9 +31,10 @@ const CONSOLE_REFUSAL_COPY: Record<PartnerCertificateRefusalKind, string> = {
   unreadable:
     "Your partner presented a signing certificate Alcove cannot read, so the " +
     "exchange stopped and sent none of your data: there was nothing to pin " +
-    "and nothing to check a receipt against. Ask your partner to run " +
-    "'alcove fingerprint' and send you the identity it produces, then run " +
-    "the exchange again. To exchange without a receipt instead, choose 'No " +
+    "and nothing to check a receipt against. Ask your partner to make a new " +
+    "signing identity with 'alcove fingerprint --force' and send you only " +
+    "the fingerprint it prints, then run the exchange again. To exchange " +
+    "without a receipt instead, choose 'No " +
     "receipt' under what this exchange produces.",
   absent:
     "Your partner is not signing receipts, so the exchange stopped and sent " +
@@ -46,9 +47,9 @@ const CONSOLE_REFUSAL_COPY: Record<PartnerCertificateRefusalKind, string> = {
     "Your partner's signing certificate does not verify under its own key, so " +
     "nothing was pinned, and the exchange stopped and sent none of your data: " +
     "a certificate that is not internally consistent could never sign a " +
-    "receipt this exchange would accept. Ask your partner to run " +
-    "'alcove fingerprint' and send you the identity it produces, then run " +
-    "the exchange again.",
+    "receipt this exchange would accept. Ask your partner to make a new " +
+    "signing identity with 'alcove fingerprint --force' and send you only " +
+    "the fingerprint it prints, then run the exchange again.",
   unauthorizedIdentity:
     "Your partner's signing certificate does not cover the name under which " +
     "they agreed on the terms, so nothing was pinned, and the exchange stopped " +

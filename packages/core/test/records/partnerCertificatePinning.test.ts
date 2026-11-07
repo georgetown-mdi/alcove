@@ -796,6 +796,18 @@ describe("every terms-time pin refusal states its own next step and condition", 
     },
   );
 
+  test.each(["unreadable", "unverified"] as const)(
+    "the %s refusal asks the partner for a new identity's fingerprint alone",
+    (kind) => {
+      // The signing identity file holds the partner's private key; the
+      // fingerprint is the only value that crosses to this party.
+      expect(PARTNER_CERTIFICATE_REFUSAL_MESSAGES[kind]).toContain(
+        "Ask your partner to make a new signing identity with 'alcove " +
+          "fingerprint --force' and send you only the fingerprint it prints",
+      );
+    },
+  );
+
   test("an adopted first contact raises nothing to mark", async () => {
     const [conn] = createMessagePipe();
     const adopted = await resolvePartnerCertificateOrAbort(conn, {

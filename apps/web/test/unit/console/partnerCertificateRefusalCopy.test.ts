@@ -123,6 +123,23 @@ describe("the console's copy states the cause and a step the operator holds", ()
     expect(byKind.divergent).toMatch(/your partner's fingerprint/);
     expect(byKind.divergent).toMatch(/channel you trust/);
   });
+
+  test.each(["unreadable", "unverified"] as const)(
+    "the %s copy asks the partner for a new identity's fingerprint alone",
+    (kind) => {
+      // The signing identity file holds the partner's private key; the
+      // fingerprint is the only value the console takes from a partner.
+      expect(
+        consolePartnerCertificateRefusal(
+          PARTNER_CERTIFICATE_REFUSAL_MESSAGES[kind],
+        ),
+      ).toContain(
+        "Ask your partner to make a new signing identity with 'alcove " +
+          "fingerprint --force' and send you only the fingerprint it " +
+          "prints, then run the exchange again.",
+      );
+    },
+  );
 });
 
 describe("the seat shows the console's copy", () => {

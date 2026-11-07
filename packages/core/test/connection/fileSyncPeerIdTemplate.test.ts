@@ -248,8 +248,8 @@ describe("the leftover-hello check at entry under a peer_id with fields", () => 
 describe("a partner id that fits this party's peer_id", () => {
   const SHARED_CAUSE =
     "The likely cause is that both parties set the same peer_id: set a " +
-    "different peer_id on one side, changing its text rather than only its " +
-    "% fields.";
+    "different peer_id on one side, changing its text rather than only " +
+    "fields such as %Y or %K.";
   const NEVER_ARRIVED =
     "Your partner did not arrive in the shared folder in the time this run " +
     "waited.";

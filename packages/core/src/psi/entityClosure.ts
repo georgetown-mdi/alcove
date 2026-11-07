@@ -1,4 +1,5 @@
 import { InternalConsistencyError, markStatesItsOwnNextStep } from "../errors";
+import { ISSUES_URL } from "../projectLinks";
 import type { AssociationTable } from "../types";
 import { runUnpaced } from "../utils/eventLoop";
 import {
@@ -440,7 +441,7 @@ function notRoundDiagonal(
     new InternalConsistencyError(
       `${id}: the matched table's entity clusters do not have the shape a ` +
         `cascade deduplicating on both sides produces: ${detail}. The ` +
-        "exchange stopped; report it with this message.",
+        `exchange stopped; report it at ${ISSUES_URL} with this message.`,
     ),
   );
 }
