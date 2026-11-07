@@ -216,7 +216,7 @@ describe("the front's TLS and capability set match the relay front's", () => {
     expect(twin.args[0].split(":")).not.toContain("AES256-SHA");
   });
 
-  it("drops every capability but the two nginx needs to start its worker, in the unit and in install.sh's nginx -t", () => {
+  it("drops every capability but the three nginx needs to start its worker, in the unit and in install.sh's nginx -t", () => {
     const capabilityFlags = (command) =>
       command
         .replace(/\\\n/g, " ")
@@ -228,6 +228,7 @@ describe("the front's TLS and capability set match the relay front's", () => {
       )[0],
     );
     expect(unitFlags).toEqual([
+      "--cap-add CHOWN",
       "--cap-add SETGID",
       "--cap-add SETUID",
       "--cap-drop ALL",
