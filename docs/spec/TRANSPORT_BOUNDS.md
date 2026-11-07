@@ -184,6 +184,10 @@ The bounds that hold over partner content across the whole list:
 - **The read list is held to the declared entry count.**
   The first part's declared entry count is held to the bound PROTOCOL.md derives from the agreed terms and this party's own result, and the part count to at most that entry count (1 for an empty list).
   Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the read parts hold at most that many entries between them.
+- **A stated limit: a payload's total is bounded only by its rows.**
+  A payload part has no bound but the per-frame bound, and the receiver keeps a copy of each part's values until the run ends, so the partner's payload can total its declared row count times the per-frame bound, the row count at most the pairs in this party's matched table: 1,000 rows over WebRTC admit up to 268,435,456,000 bytes.
+  A partner that sends that much ends the receiver's run on memory, and nothing is disclosed.
+  The payload is the partner's own disclosure, which the operator agreed to receive, and a legitimate payload of large values cannot be told from one sent to exhaust memory, so no total is enforced.
 
 Frames the transport has delivered but the receive has not yet read sit in the inbound queue, which bounds them by count and by bytes, as the [WebRTC data-channel inbound bound](#webrtc-data-channel-inbound-bound) states for every frame.
 `packages/core/test/psi/matchedListParts.test.ts` drives a refused part ending the receive before the next is read, and a part parsed before the next one arrives; `packages/core/test/psi/uint32ListParts.test.ts` drives each word-list body refused with no array made.
@@ -268,6 +272,11 @@ The lock joiner's `<id>-joining-<bytes>.json` sentinel is written temp-then-rena
 The control is scoped to the local-filesystem adapter.
 The SFTP adapter resolves every path on the server, where the server admin is already the in-scope adversary with full control of the files it serves (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#threat-model)), so a server-side symlink grants no capability the threat model does not already cede.
 The local-filesystem adapter is the one case where the rendezvous directory's contents are adversary-supplied while the surrounding filesystem is the trusted operator's.
+
+**A stated limit: a direct write follows a link a co-tenant planted.**
+An account on the server that can write the exchange directory, and is not its admin, can plant a symlink at a final name there too.
+A direct write to a final name ([FILE_SYNC.md, Writing without renaming](FILE_SYNC.md#writing-without-renaming)) is opened by the server, so on a server that follows a link when it opens a file for writing, the write lands in whatever file the link names that this party's server account can write.
+Writing without renaming is opt-in.
 
 ## WebRTC data-channel inbound bound
 

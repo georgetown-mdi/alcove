@@ -3308,13 +3308,12 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       {
         recovery: "reissued",
         // If the pre-drop rename landed, the re-issue sees the source gone
-        // (SSH_FX_NO_SUCH_FILE) or a code-4 dest-exists. Confirm via an
-        // existence check on the destination -- every rename destination in this
-        // app is self-prefixed (<id>-hello-<n>.json, the <id>-...json message
-        // temp->final, <myId>-<orig>-ack.json, <id>-abort-<n>.json, the joiner
-        // <id>-joining-<n>.json -> <id>-hello-<n>.json), so a present destination is
-        // unambiguously our own landed attempt, never a peer file -- and resolve
-        // as success.
+        // (SSH_FX_NO_SUCH_FILE) or a code-4 dest-exists. A present destination
+        // is taken as our own landed attempt and resolves as success. Every
+        // rename destination is self-prefixed, but a name does not prove the
+        // writer: a file another writer planted there gives it nothing it could
+        // not do without this re-issue, as a server can answer a first rename
+        // with success without performing it.
         //
         // The CONVERSE does not hold, and the arm below is what that costs. An
         // absent destination is not evidence the rename failed: in delete mode
