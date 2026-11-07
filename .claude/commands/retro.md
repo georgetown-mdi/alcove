@@ -36,16 +36,15 @@ No judgment here; bare scripts, or one Sonnet spawn where a script is not yet a 
   per-day beside per-PR, the fixed size cuts 65 / 451 / 1,203 changed lines, a bootstrap interval over days on every ratio, and a row called moved only when 1.0 lies outside it.
   Rows: spend per day; merged PRs per day; cost per merged PR, standardized to the baseline's size mix; owner turns per day and per PR; main-session cost per PR; review apparatus plus fix implementers per PR; majors per lens round and the verifier's refuted share; compactions manual and auto, and owner turns on compaction; implementer runs with peak context over 500k; follow-ups per 100 merged PRs, planned and unplanned, leaving out PRs titled Bump and links made only through package manifests or image pins; docket count, owner turns and share; the review day's dollars per unit by lens and its escape count; the audit day's problems found and fixed.
   Until the kit has a trend step, scout A (Step 3) builds the table from the 2026-11-06 retro's scripts: `scratch/retro-review-2026-11-06/R2/`, `scratch/retro-review-2026-11-06/S7/compare.mjs` and `scratch/retro-review-2026-11-06/F1/`.
-- `node scripts/check-expiry-dates.mjs --expiring-before <the retro after this one>`: renew or delete each entry, per its header.
-- The ledger quartiles against the thresholds `review-round.md` quotes: an edit only when a quartile moved more than 20%.
+- `node scripts/check-expiry-dates.mjs --expiring-before <the retro after this one>`: each entry it lists is a renewal or a deletion, per its header, filed below.
+- The ledger quartiles against the thresholds `review-round.md` quotes: a re-fit is filed only when a quartile moved more than 20%.
 - Parked triggers: the retro re-tests them itself.
-  On each of boards 9 and 10, every trigger `node .claude/scripts/list-issues.mjs --parked <N>` lists is answered, as `.claude/pm/ruleset.md`, Task template, states:
-  a trigger that fired loses its line and the item is a candidate again; one that cannot be answered yes or no is rewritten.
+  On each of boards 9 and 10, every trigger `node .claude/scripts/list-issues.mjs --parked <N>` lists is answered, and each answer is acted on as `.claude/pm/ruleset.md`, Task template, states.
 - Agent-memory notes written or changed since the cut, in the container store and the host folder: each is a repository rule, an owner preference or a host-local fact.
   A rule names the repo file that binds its reader and is moved there, as `CLAUDE.md`, Boards and PM, requires; the store keeps only owner preferences and host-local facts.
 - Commands, skills, hooks and scripts added since the cut, and their uses in the transcripts; one with no real use in two retros is proposed for retirement.
 
-File the reading's mechanical corrections now through one `project-manager` spawn: fired triggers unparked, a verdict an item waits on, a memory rule's move, a retirement.
+File the reading's mechanical corrections now through one `project-manager` spawn: fired triggers unparked, a verdict an item waits on, a memory rule's move, a retirement, an expiry renewal or deletion, a threshold re-fit.
 
 ## Step 3 -- The standing scouts and the triggered ones
 
