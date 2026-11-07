@@ -192,6 +192,7 @@ export {
   WEBRTC_PART_MEMORY_MULTIPLES,
   webRtcMessageReadBytes,
   webRtcMessageSendBytes,
+  webRtcSinglePassHandOffBytes,
   type InboundPsiFrameUse,
 } from "./connection/inboundFrameMemory";
 export type { InboundFrameMemoryCheck } from "./connection/fileSyncMessageLoop";

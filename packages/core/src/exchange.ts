@@ -69,6 +69,7 @@ import type { TermsChange, TermsRotation } from "./protocolSetup.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
 import {
   refuseSinglePassOverCeiling,
+  singlePassMessageInParts,
   withholdsSenderAssociationTable,
 } from "./psi/link.js";
 import { psiSetPartPayloadBytes } from "./psi/psiSetParts.js";
@@ -1466,10 +1467,16 @@ export interface SinglePassPartnerSize {
   inboundFrameUse: InboundPsiFrameUse;
   /**
    * Over a WebRTC data channel, where both single-pass messages may travel in
-   * parts: the most set bytes one part holds, and the most bytes of the
-   * message this party sends, from the counts. Absent over file-sync.
+   * parts: the most set bytes one part holds, the most bytes of the message
+   * this party sends, from the counts, and whether the message this party
+   * reads travels in parts at the most bytes it can take. Absent over
+   * file-sync.
    */
-  webRtc?: { partBytes: number; outboundFrameBytes: number };
+  webRtc?: {
+    partBytes: number;
+    outboundFrameBytes: number;
+    inboundInParts: boolean;
+  };
 }
 
 /**
@@ -2006,6 +2013,10 @@ export async function runExchange(
               webRtc: {
                 partBytes: psiSetPartPayloadBytes(conn),
                 outboundFrameBytes: isReceiver ? requestCap : replyCap,
+                inboundInParts: singlePassMessageInParts(
+                  conn,
+                  isReceiver ? replyCap : requestCap,
+                ),
               },
             }),
       }),

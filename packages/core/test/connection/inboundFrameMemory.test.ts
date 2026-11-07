@@ -13,6 +13,7 @@ import {
   WEBRTC_PART_MEMORY_MULTIPLES,
   webRtcMessageReadBytes,
   webRtcMessageSendBytes,
+  webRtcSinglePassHandOffBytes,
 } from "../../src/connection/inboundFrameMemory";
 import {
   CHUNKED_ENVELOPE_VERSION,
@@ -44,6 +45,7 @@ describe("the measured multiples of an inbound frame", () => {
       streamedSetup: 1,
       workerClone: 1,
       handedOverReply: 1.2,
+      copiedReply: 3.9,
     });
     expect(specMultiples()).toEqual(INBOUND_FRAME_MEMORY_MULTIPLES);
   });
@@ -141,26 +143,51 @@ describe("the measured multiples of an inbound frame", () => {
     expect(inboundPsiFramePeakBytes(100, "stream", false, undefined)).toBe(220);
   });
 
-  // Each run of the reply's hand-off over file-sync, read from the spec's
-  // table: the frame and the peak beyond it after the hand-off.
-  const handOffRuns = (): Array<[number, number]> => {
+  // Each measured run of a reply's hand-off, read from the spec's table: the
+  // frame, and the peak beyond it copied and handed over.
+  const handOffRuns = (): Array<{
+    frameBytes: number;
+    copied: number;
+    handedOver: number;
+  }> => {
     const text = fs.readFileSync(SPEC, "utf8");
     return text.split("\n").flatMap((line) => {
       const row =
-        /^\| Reply, ([\d,]+) bytes [^|]+\| [\d.]+ \| ([\d.]+) \|$/.exec(line);
+        /^\| Reply, ([\d,]+) bytes [^|]+\| ([\d.]+) \| ([\d.]+) \|$/.exec(line);
       return row === null
         ? []
-        : [[Number(row[1]!.replaceAll(",", "")), Number(row[2])]];
+        : [
+            {
+              frameBytes: Number(row[1]!.replaceAll(",", "")),
+              copied: Number(row[2]),
+              handedOver: Number(row[3]),
+            },
+          ];
     });
   };
 
   test("the handed-over reply's multiple covers every measured run", () => {
     const runs = handOffRuns();
     expect(runs.length).toBeGreaterThanOrEqual(2);
-    for (const [frameBytes, beyondFrame] of runs)
+    for (const { frameBytes, handedOver } of runs)
       expect(
         fileSyncSinglePassHandOffBytes(frameBytes, "stream"),
-      ).toBeGreaterThan(frameBytes * beyondFrame);
+      ).toBeGreaterThan(frameBytes * handedOver);
+  });
+
+  test("a reply in one frame over WebRTC is charged at least each measured copied run", () => {
+    const runs = handOffRuns();
+    expect(runs.length).toBeGreaterThanOrEqual(2);
+    for (const { frameBytes, copied } of runs)
+      expect(
+        webRtcSinglePassHandOffBytes(frameBytes, "stream", false),
+      ).toBeGreaterThan(frameBytes * copied);
+  });
+
+  test("over WebRTC, a request or a reply in parts is the worker's copy and what the engine builds", () => {
+    expect(webRtcSinglePassHandOffBytes(100, "stream", false)).toBe(390);
+    expect(webRtcSinglePassHandOffBytes(100, "stream", true)).toBe(200);
+    expect(webRtcSinglePassHandOffBytes(100, "decode", false)).toBe(865);
   });
 
   test.each([

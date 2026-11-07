@@ -7,9 +7,9 @@ import {
   formatCount,
   inboundPsiFramePeakBytes,
   markStatesItsOwnNextStep,
-  psiFrameHandlingBytes,
   webRtcMessageReadBytes,
   webRtcMessageSendBytes,
+  webRtcSinglePassHandOffBytes,
   type InboundFrameMemoryCheck,
   type SinglePassPartnerSize,
 } from "@alcove/core";
@@ -290,7 +290,7 @@ export function checkPsiMemoryBudget(params: {
  * no choice of values reduces, and the most the frame the counts allow takes
  * to read and hand to the PSI engine at the measured multiples, its read
  * charged under `envelopeVersion` as the file-sync read gate charges it, or
- * over WebRTC as a message in parts.
+ * over WebRTC as a message in parts, with its hand-off copied to the worker.
  */
 export function singlePassInboundPeakBytes(
   size: SinglePassPartnerSize,
@@ -309,7 +309,12 @@ export function singlePassInboundPeakBytes(
         )
       : Math.max(
           webRtcMessageReadBytes(frameBytes, size.webRtc.partBytes),
-          frameBytes + psiFrameHandlingBytes(frameBytes, size.inboundFrameUse),
+          frameBytes +
+            webRtcSinglePassHandOffBytes(
+              frameBytes,
+              size.inboundFrameUse,
+              size.webRtc.inboundInParts,
+            ),
         ),
   );
 }

@@ -26,6 +26,12 @@ export const INBOUND_FRAME_MEMORY_MULTIPLES = {
    * frame: its setup in pieces and its response moved, not copied.
    */
   handedOverReply: 1.2,
+  /**
+   * A single-pass reply in one frame copied to the PSI worker, beyond the
+   * frame: its setup and its response are views of the frame's buffer, and
+   * posting each copies that whole buffer.
+   */
+  copiedReply: 3.9,
 } as const;
 
 /**
@@ -82,6 +88,22 @@ export function fileSyncSinglePassHandOffBytes(
   return use === "decode"
     ? psiFrameHandlingBytes(frameBytes, use, true)
     : frameBytes * INBOUND_FRAME_MEMORY_MULTIPLES.handedOverReply;
+}
+
+/**
+ * The memory handing a single-pass request or reply read over WebRTC to the
+ * PSI worker adds, beyond the frame: a reply in one frame, not `inParts`, at
+ * the measured `copiedReply` multiple, and otherwise the worker's copy and
+ * what the engine builds ({@link psiFrameHandlingBytes}).
+ */
+export function webRtcSinglePassHandOffBytes(
+  frameBytes: number,
+  use: InboundPsiFrameUse,
+  inParts: boolean,
+): number {
+  return use === "stream" && !inParts
+    ? frameBytes * INBOUND_FRAME_MEMORY_MULTIPLES.copiedReply
+    : psiFrameHandlingBytes(frameBytes, use);
 }
 
 /**
