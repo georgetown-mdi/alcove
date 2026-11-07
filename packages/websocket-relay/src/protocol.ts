@@ -102,8 +102,8 @@ export const RELAY_HELLO_TIMEOUT_MS = 10_000;
 export const RELAY_MAX_PAIRINGS = 12;
 
 /**
- * The most sockets the relay holds whose hello has not verified, each counted
- * from its upgrade until its hello verifies or its socket closes; an upgrade
+ * The most sockets the relay holds that have not joined a pairing, each counted
+ * from its upgrade until it joins a pairing or its socket closes; an upgrade
  * above it is refused with 503. Four times {@link RELAY_MAX_PAIRINGS}: two
  * hellos a pairing, twice over.
  */

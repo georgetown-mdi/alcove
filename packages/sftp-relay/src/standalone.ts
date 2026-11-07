@@ -53,7 +53,7 @@ function readOptions(): SftpRelayRunnerOptions {
 const options = readOptions();
 
 const server = createServer((_request, response) => {
-  response.writeHead(404);
+  response.writeHead(404, { Connection: "close" });
   response.end();
 });
 

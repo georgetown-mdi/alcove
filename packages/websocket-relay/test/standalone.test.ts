@@ -4,10 +4,17 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { connect as connectTcp } from "node:net";
 import { DatabaseSync } from "node:sqlite";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+
+import {
+  SIGNALING_HEADERS_TIMEOUT_MS,
+  SIGNALING_PREHANDSHAKE_IDLE_MS,
+  SIGNALING_REQUEST_TIMEOUT_MS,
+} from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
 import { RELAY_COUNTER_NAMES } from "../src/countersFile.ts";
 import {
@@ -76,10 +83,20 @@ interface Runner {
   child: ChildProcess;
 }
 
+// Reports the bounds on the runner's own HTTP server (`probeLine` below).
+const SERVER_BOUNDS_PROBE = join(packageRoot, "test", "serverBoundsProbe.mjs");
+
 async function startRunner(
   keyTablePath: string,
   extraArgs: ReadonlyArray<string> = [],
+  { probeServerBounds = false } = {},
 ): Promise<Runner> {
+  const env = probeServerBounds
+    ? {
+        ...process.env,
+        NODE_OPTIONS: `--import=${pathToFileURL(SERVER_BOUNDS_PROBE).href}`,
+      }
+    : process.env;
   const child = spawn(
     process.execPath,
     [
@@ -89,7 +106,7 @@ async function startRunner(
       keyTablePath,
       ...extraArgs,
     ],
-    { cwd: packageRoot, stdio: ["ignore", "pipe", "pipe"] },
+    { cwd: packageRoot, env, stdio: ["ignore", "pipe", "pipe"] },
   );
   children.push(child);
   let stdout = "";
@@ -120,6 +137,21 @@ async function startRunner(
     stderr: () => stderr,
     child,
   };
+}
+
+/** What the server bounds probe wrote about `subject`, once it has. */
+async function probeLine(
+  runner: Runner,
+  subject: "server" | "connection",
+): Promise<unknown> {
+  const prefix = `probe ${subject} `;
+  const line = () =>
+    runner
+      .stderr()
+      .split("\n")
+      .find((candidate) => candidate.startsWith(prefix));
+  await eventually(() => line() !== undefined);
+  return JSON.parse((line() ?? "").slice(prefix.length));
 }
 
 describe("the standalone runner", () => {
@@ -183,6 +215,29 @@ describe("the standalone runner", () => {
       const party = await connect(runner.url);
       party.send(await helloFrame({ role: "inviter" }));
       expect((await party.closed).code).toBe(RelayCloseCode.internalError);
+    },
+  );
+
+  it(
+    "applies the signaling broker's pre-upgrade bounds to its server",
+    { timeout: 60_000 },
+    async () => {
+      const runner = await startRunner(enrolledTurndb(), [], {
+        probeServerBounds: true,
+      });
+      expect(await probeLine(runner, "server")).toEqual({
+        headersTimeout: SIGNALING_HEADERS_TIMEOUT_MS,
+        requestTimeout: SIGNALING_REQUEST_TIMEOUT_MS,
+      });
+      const socket = connectTcp(Number(new URL(runner.url).port), "127.0.0.1");
+      try {
+        await once(socket, "connect");
+        expect(await probeLine(runner, "connection")).toEqual({
+          timeout: SIGNALING_PREHANDSHAKE_IDLE_MS,
+        });
+      } finally {
+        socket.destroy();
+      }
     },
   );
 
