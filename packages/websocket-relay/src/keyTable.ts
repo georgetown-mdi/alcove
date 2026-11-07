@@ -13,9 +13,10 @@ export const DEFAULT_KEY_TABLE_PATH = "/var/lib/alcove-relay/turndb";
 export const KEY_TABLE_PATH_ENV = "ALCOVE_RELAY_TURNDB";
 
 /**
- * How long (ms) each of a lookup's two reads waits for a writer holding the
- * table's lock. A lookup runs synchronously, so one hello can hold up every
- * pairing the relay forwards for up to about twice this.
+ * How long (ms) a lookup waits for a writer holding the table's lock at each
+ * of its two reads, and on a newly opened handle also at preparing each read.
+ * A lookup runs synchronously, so one hello can hold up every pairing the
+ * relay forwards for up to about twice this, four times on a new handle.
  */
 export const KEY_TABLE_BUSY_TIMEOUT_MS = 100;
 
