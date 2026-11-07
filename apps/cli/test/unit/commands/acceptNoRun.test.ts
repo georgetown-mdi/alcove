@@ -697,7 +697,7 @@ describe("handler: an acceptance that stops", () => {
       "argument, which other users of this machine can see while the " +
       "command runs and your shell may keep in its history. Put each value " +
       "in a file of its own and pass its path with a leading @, e.g. " +
-      "'@invitation.txt'.";
+      '"@invitation.txt".';
     const typed = await runHandler(
       handlerArgv([encoded, writeInput()], {
         "consent-to-terms": true,

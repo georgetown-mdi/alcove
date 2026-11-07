@@ -1589,8 +1589,8 @@ export function offlineAbandonNotice(keyPath: string): string {
 }
 
 /**
- * How the accept templates name the invitation: a placeholder the operator fills
- * in from the line stdout holds, never the invitation itself.
+ * How the accept templates name the invitation: a placeholder for the file the
+ * partner saves it in, never the invitation itself.
  *
  * Every template below is a diagnostic line, routed through the process-wide
  * log sink (`--log-file`, or re-emitted by anything that captures stderr);
@@ -1603,14 +1603,25 @@ export function offlineAbandonNotice(keyPath: string): string {
  * invite command's diagnostic output must contain no substring of the
  * invitation it prints.
  */
-const INVITATION_PLACEHOLDER = "<INVITATION>";
+const INVITATION_FILE_PLACEHOLDER = "<INVITATION FILE>";
+
+/** The invitation argument the accept templates give: the `@`-file form, so a
+ * partner who follows the template draws no command-line credential notice.
+ * Double-quoted because PowerShell parses a bare `@name` as splatting. */
+const INVITATION_FILE_ARGUMENT = `"@${INVITATION_FILE_PLACEHOLDER}"`;
+
+/** The line telling the partner to save `what` (the invitation, or the link
+ * holding it) in the file the template names. */
+function invitationFileLine(what: "invitation" | "link"): string {
+  return `after saving the ${what} printed above in ${INVITATION_FILE_PLACEHOLDER}`;
+}
 
 /** The identity placeholder the accept templates use. Accepting requires the
  * partner's own label -- Alcove stands in none -- so the template names the flag
  * where the partner meets the command, rather than leaving the refusal to teach
  * it. A placeholder for the same reason `<INPUT_FILE>` is: nobody but the partner
- * can choose the name their side is known by. Left unquoted like its siblings, so
- * a partner who pastes the template unreplaced gets a shell redirect error
+ * can choose the name their side is known by. Left unquoted like `<INPUT_FILE>`,
+ * so a partner who pastes the template unreplaced gets a shell redirect error
  * instead of a run that accepts under the literal placeholder text; the partner
  * quotes their filled-in value themselves if it contains spaces. */
 const IDENTITY_PLACEHOLDER = "--identity <YOUR NAME, YOUR ORGANIZATION>";
@@ -1673,8 +1684,8 @@ function remainingPhrase(minutes: number): string {
  * stdout holds the app's accept link with the invitation in its fragment,
  * which both the web app and `alcove accept` take.
  *
- * The templates name the invitation by {@link INVITATION_PLACEHOLDER} rather than
- * including it.
+ * The templates name the invitation by {@link INVITATION_FILE_PLACEHOLDER}
+ * rather than including it.
  */
 function printInvitation(
   invitation: string,
@@ -1696,39 +1707,46 @@ function printInvitation(
       ? webAppAcceptLink(webAppOrigin, invitation)
       : invitation,
   );
-  if (online === undefined) {
-    log.info(
-      `Your partner accepts with:\n  alcove accept ${IDENTITY_PLACEHOLDER} ` +
-        `${INVITATION_PLACEHOLDER} <INPUT_FILE>\nwhere ` +
-        `${INVITATION_PLACEHOLDER} is the invitation printed above.`,
+  log.info(partnerAcceptInstructions(online));
+}
+
+/**
+ * The instructions {@link printInvitation} logs after the invitation: the
+ * `alcove accept` command the partner runs, for an offline invitation
+ * (`online` undefined) or an online one at `online.url`.
+ *
+ * @internal exported for testing
+ */
+export function partnerAcceptInstructions(
+  online: { url: URL; channel: ConnectionConfig["channel"] } | undefined,
+): string {
+  const acceptCommand = (serverArgument?: string) =>
+    `  alcove accept ${IDENTITY_PLACEHOLDER} ` +
+    (serverArgument !== undefined ? `${serverArgument} ` : "") +
+    `${INVITATION_FILE_ARGUMENT} <INPUT_FILE>`;
+  if (online === undefined)
+    return (
+      `Your partner accepts with:\n${acceptCommand()}\n` +
+      `${invitationFileLine("invitation")}.`
     );
-    return;
-  }
-  if (webAppOrigin !== undefined) {
-    log.info(
+  if (isWebAppAddress(online.url))
+    return (
       "Send your partner the link printed above. In the web app they open " +
-        "it; with the alcove command line they accept and run the exchange " +
-        `with:\n  alcove accept ${IDENTITY_PLACEHOLDER} ` +
-        `${INVITATION_PLACEHOLDER} <INPUT_FILE>\nrun while this command is ` +
-        `still waiting, where ${INVITATION_PLACEHOLDER} is the link.`,
+      "it; with the alcove command line they accept and run the exchange " +
+      `with:\n${acceptCommand()}\nrun while this command is still waiting, ` +
+      `${invitationFileLine("link")}.`
     );
-    return;
-  }
-  if (online.channel === "webrtc") {
-    log.info(
-      `Your partner accepts and runs the exchange with:\n  alcove accept ` +
-        `${IDENTITY_PLACEHOLDER} ${INVITATION_PLACEHOLDER} <INPUT_FILE>\nrun ` +
-        `while this command is still waiting, where ` +
-        `${INVITATION_PLACEHOLDER} is the invitation printed above. ` +
-        `${BROWSER_PARTNER_PASTE_INSTRUCTION}`,
+  if (online.channel === "webrtc")
+    return (
+      "Your partner accepts and runs the exchange with:\n" +
+      `${acceptCommand()}\nrun while this command is still waiting, ` +
+      `${invitationFileLine("invitation")}. ` +
+      BROWSER_PARTNER_PASTE_INSTRUCTION
     );
-    return;
-  }
-  log.info(
-    `Your partner accepts and runs the exchange with:\n  alcove accept ` +
-      `${IDENTITY_PLACEHOLDER} ${partnerServerArgument(online.url)} ` +
-      `${INVITATION_PLACEHOLDER} <INPUT_FILE>\nwhere ` +
-      `${INVITATION_PLACEHOLDER} is the invitation printed above.`,
+  return (
+    "Your partner accepts and runs the exchange with:\n" +
+    `${acceptCommand(partnerServerArgument(online.url))}\n` +
+    `${invitationFileLine("invitation")}.`
   );
 }
 

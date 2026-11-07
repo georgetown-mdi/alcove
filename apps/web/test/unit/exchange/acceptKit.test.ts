@@ -1214,7 +1214,7 @@ describe("accept kit, the commands as each shell runs them", () => {
 
   /** The value the tip tells the reader to write in the placeholder's place;
    * the PowerShell suite runs the same substitution. */
-  const INVITATION_FILE_ARGUMENT = "'@invitation.txt'";
+  const INVITATION_FILE_ARGUMENT = '"@invitation.txt"';
 
   function dockerRunLines(text: string): Array<string> {
     return text
@@ -1262,8 +1262,8 @@ describe("accept kit, the commands as each shell runs them", () => {
   test("quotes the @ file name in the tip too", () => {
     for (const endpoint of ENDPOINTS) {
       const text = sheet(endpoint);
-      expect(text).toContain("'@invitation.txt', single quotes included");
-      expect(text).not.toMatch(/(^|[^'])@invitation\.txt/m);
+      expect(text).toContain('"@invitation.txt", double quotes included');
+      expect(text).not.toMatch(/(^|[^"])@invitation\.txt/m);
     }
   });
 

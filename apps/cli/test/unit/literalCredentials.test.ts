@@ -217,14 +217,14 @@ describe("commandLineLiteralCredentialNotice", () => {
         "argument, which other users of this machine can see while the " +
         "command runs and your shell may keep in its history. Put each value " +
         "in a file of its own and pass its path with a leading @, e.g. " +
-        "'@invitation.txt'.",
+        '"@invitation.txt".',
     );
     expect(notice({ value: "eyJ2IjoiMSJ9", flag: "--invitation" })).toBe(
       "the command line holds a credential as typed in --invitation, which " +
         "other users of this machine can see while the command runs and " +
         "your shell may keep in its history. Put each value in a file of " +
         "its own and pass its path with a leading @, e.g. --invitation " +
-        "'@invitation.txt'.",
+        '"@invitation.txt".',
     );
     expect(notice({ value: "@invitation.txt" })).toBeUndefined();
     expect(

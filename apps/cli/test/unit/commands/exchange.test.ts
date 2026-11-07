@@ -2282,7 +2282,7 @@ test("handler: an --invitation given as typed gets the command-line notice namin
     "the command line holds a credential as typed in --invitation, which " +
       "other users of this machine can see while the command runs and your " +
       "shell may keep in its history. Put each value in a file of its own " +
-      "and pass its path with a leading @, e.g. --invitation '@invitation.txt'.",
+      'and pass its path with a leading @, e.g. --invitation "@invitation.txt".',
   ]);
   expect(await notices(`@${invitationFile}`)).toEqual([]);
 });

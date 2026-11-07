@@ -3664,7 +3664,8 @@ test("handler: the invitation reaches stdout and never a diagnostic line", async
     // meet the command.
     expect(diagnostics).toContain(
       "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +
-        "<INVITATION> <INPUT_FILE>",
+        '"@<INVITATION FILE>" <INPUT_FILE>\n' +
+        "after saving the invitation printed above in <INVITATION FILE>.",
     );
   } finally {
     restore();
@@ -3980,7 +3981,9 @@ test("handler: a webrtc online invite tells the partner to accept, with no URL a
     );
     expect(stderr).toContain(
       "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +
-        "<INVITATION> <INPUT_FILE>",
+        '"@<INVITATION FILE>" <INPUT_FILE>\n' +
+        "run while this command is still waiting, after saving the " +
+        "invitation printed above in <INVITATION FILE>.",
     );
     // Matched on the template's own indented command line, so the peer-budget
     // notice's prose mention of the command does not stand in for it.
@@ -4021,7 +4024,8 @@ test("handler: the server-URL accept template names the identity too", async () 
     expect(exit).not.toHaveBeenCalled();
     expect(stderr).toContain(
       "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +
-        "sftp://host/drop <INVITATION> <INPUT_FILE>",
+        'sftp://host/drop "@<INVITATION FILE>" <INPUT_FILE>\n' +
+        "after saving the invitation printed above in <INVITATION FILE>.",
     );
   } finally {
     stdio.restore();
@@ -4071,11 +4075,13 @@ test("handler: a web app invite prints the accept link for either partner", asyn
     const token = await decodeInvitation(encoded);
     const stderr = stdio.stderrWrites.join("");
     expect(stderr).toContain("Send your partner the link printed above.");
-    expect(stderr).toContain("where <INVITATION> is the link.");
+    expect(stderr).toContain(
+      "after saving the link printed above in <INVITATION FILE>.",
+    );
     expect(stderr).not.toContain("after '#'");
     expect(stderr).toContain(
       "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +
-        "<INVITATION> <INPUT_FILE>",
+        '"@<INVITATION FILE>" <INPUT_FILE>',
     );
     expect(stderr).not.toContain(encoded);
     expect(stderr).not.toContain(token.sharedSecret);
@@ -4209,7 +4215,7 @@ test("handler: an online file-drop accept template names the partner's folder by
     expect(exit).not.toHaveBeenCalled();
     expect(stderr).toContain(
       "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +
-        "file://<YOUR PATH TO THE SHARED FOLDER> <INVITATION> <INPUT_FILE>",
+        'file://<YOUR PATH TO THE SHARED FOLDER> "@<INVITATION FILE>" <INPUT_FILE>',
     );
     expect(stderr).not.toContain(
       `alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> file://${drop}`,
