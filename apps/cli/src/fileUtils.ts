@@ -465,41 +465,22 @@ const FILE_EXISTS_REASON =
   ": it already exists (another process may have created it concurrently)";
 
 /**
- * What a refused narrowing leaves at the destination path, which is the one
- * thing the two Windows writers differ on: the credential writer narrows a
- * temp file and its failure path removes it, so the destination keeps
- * whatever it held, while the streamed result CSV narrows the destination
- * itself after unlinking what was there, so an empty file stays behind. See
- * docs/spec/CREDENTIAL_STORAGE.md#result-csv-output.
- */
-type AclRestrictLeftover = "destination-untouched" | "empty-file-left";
-
-/**
  * The refusal both Windows writers raise when icacls could not narrow the
- * destination's access list: the run refuses to put content in a file whose
- * ACL it could not restrict, and states what is at `destPath` afterwards so
- * the operator is left with neither an unexplained file nor a missing one.
+ * access list of the temp file they write through: the run refuses to put
+ * content in a file whose ACL it could not restrict, and states that
+ * `destPath` is unchanged, the failure path having removed the temp file.
  */
-function aclRestrictFailureMessage(
-  destPath: string,
-  leftover: AclRestrictLeftover,
-): MessageWithOperatorText {
+function aclRestrictFailureMessage(destPath: string): MessageWithOperatorText {
   const marked = operatorSuppliedText(destPath);
-  const outcome =
-    leftover === "empty-file-left"
-      ? ACL_RESTRICT_EMPTY_FILE_LEFT
-      : ACL_RESTRICT_DESTINATION_UNTOUCHED;
-  return messageWithOperatorText`Could not restrict ACLs on ${marked}${outcome}${ACL_RESTRICT_REMEDY}`;
+  return messageWithOperatorText`Could not restrict ACLs on ${marked}${ACL_RESTRICT_DESTINATION_UNTOUCHED}${ACL_RESTRICT_REMEDY}`;
 }
 
 /**
- * What {@link aclRestrictFailureMessage} states behind the path: the leftover
- * its call site chooses, then the remedy both share.
+ * What {@link aclRestrictFailureMessage} states behind the path: the
+ * destination left as it was, then the remedy.
  */
 const ACL_RESTRICT_DESTINATION_UNTOUCHED =
   "; no content was written and that path is unchanged";
-const ACL_RESTRICT_EMPTY_FILE_LEFT =
-  "; no rows were written, and the empty file left at that path replaced any file already there";
 const ACL_RESTRICT_REMEDY =
   "; restrict manually to owner-read-only via icacls or File Properties";
 
@@ -634,10 +615,7 @@ export function writeFileOwnerOnly(
           // State a clear remediation; the outer catch removes the placeholder,
           // which this branch's close has already released, so the destination
           // is left as the run found it.
-          const message = aclRestrictFailureMessage(
-            destPath,
-            "destination-untouched",
-          );
+          const message = aclRestrictFailureMessage(destPath);
           throw keepOperatorSuppliedText(new Error(message.text), message);
         }
         fs.writeFileSync(fd, content, "utf8");
@@ -871,100 +849,139 @@ export function writeFileAtomic(
 }
 
 /**
- * Open `destPath` for owner-only *streaming* writes -- the result-CSV
+ * Open an owner-only *streaming* write of `destPath` -- the result-CSV
  * equivalent of {@link writeFileOwnerOnly} for a large, incrementally written
  * output. Returns an `fs.WriteStream` the caller writes rows to and closes.
- * The file is owner-only (`0600` on Unix; a restricted ACL on Windows) before
- * any content is written, whether newly created or overwriting a pre-existing
- * file.
  *
- * Two differences from {@link writeFileOwnerOnly}: it streams
- * rather than buffering a whole string, and it writes `destPath` directly
- * with no temp+rename, so it is NOT atomic -- acceptable for a recomputable
- * result output, unlike a credential.
- *
- * Unlike the credential writers, the path is operator-supplied (not
- * attacker-derived) and the descriptor is opened without `O_NOFOLLOW`/
- * `O_EXCL`, so an existing symlink at `destPath` is followed on Unix; on
- * Windows the destination is unlinked and recreated as a fresh inode before
- * its ACL is narrowed. Byte-level construction and the macOS extended-ACL
- * strip are specified in docs/spec/CREDENTIAL_STORAGE.md#result-csv-output.
+ * The rows go to the sibling temp file {@link ownerOnlyTempPath} names,
+ * created as {@link writeFileOwnerOnly} creates its own and made owner-only
+ * (`0600` on Unix; a restricted ACL on Windows) before any row is written.
+ * Closing a stream that finished (`end()`) flushes the temp file's data,
+ * renames it onto `destPath` and flushes the parent directory, so whatever
+ * was at `destPath` -- a file or a link -- is replaced, never written
+ * through. The stream's `'close'` follows that rename, and a failure of any
+ * step is its `'error'`. A stream destroyed before it finished removes the
+ * temp file and leaves `destPath` as it was. Construction:
+ * docs/spec/CREDENTIAL_STORAGE.md#result-csv-output.
  */
 export function createOwnerOnlyWriteStream(destPath: string): fs.WriteStream {
-  if (process.platform === "win32") {
-    const owner = whoami();
-    // Replace any existing file with a fresh inode before narrowing: icacls
-    // /inheritance:r doesn't remove a foreign principal's explicit ACE left on
-    // a pre-existing file, only inherited ones. unlinkSync does not follow a
-    // symlink (it removes the link itself); ENOENT is the common new-file
-    // case.
-    try {
-      fs.unlinkSync(destPath);
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-    }
-    fs.closeSync(
-      fs.openSync(
-        destPath,
-        fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
-      ),
-    );
-    try {
-      restrictAclToOwner(destPath, owner);
-    } catch {
-      // Report a clear remediation rather than stream PII into a file whose ACL
-      // we could not restrict; the empty placeholder is left for the operator,
-      // standing where the unlink above removed any previous result.
-      const message = aclRestrictFailureMessage(destPath, "empty-file-left");
-      throw keepOperatorSuppliedText(new Error(message.text), message);
-    }
-    // The narrowed ACL is a property of the file object and survives the reopen:
-    // createWriteStream's default "w" truncates the (empty) file, not its DACL.
-    return fs.createWriteStream(destPath, { encoding: "utf8" });
-  }
-
-  // Open without O_TRUNC so an existing file is not emptied before its mode is
-  // secured; it is truncated below, only once fchmod has succeeded.
-  const fd = fs.openSync(
-    destPath,
-    fs.constants.O_WRONLY | fs.constants.O_CREAT,
-    0o600,
-  );
+  const tmp = ownerOnlyTempPath(destPath);
+  // Remove a stale temp file a crashed run left, so the exclusive create below
+  // makes a fresh file.
   try {
-    // fchmod forces exactly 0600 regardless of a relaxed umask and tightens an
-    // existing over-permissive file; only once that has succeeded is the file
-    // truncated to overwrite it (the no-O_TRUNC create above did not). Both run
-    // before createWriteStream takes ownership of the descriptor, so a failure in
-    // either must close fd here rather than leak it.
-    fs.fchmodSync(fd, 0o600);
-    // The strip follows a symlink at destPath, matching the open (no
-    // O_NOFOLLOW) and the fchmod (acts on the resolved descriptor). Known
-    // limitation: the strip re-resolves destPath by path rather than the open
-    // descriptor, so a destPath swapped between the fchmod and this call
-    // clears a different file's ACL than the one written to -- Node's fs
-    // exposes no fd-based ACL API to close that window. See
-    // docs/spec/CREDENTIAL_STORAGE.md#macos-extended-acl-strip.
-    stripExtendedAcls(destPath, { symlinks: "follow" });
-    fs.ftruncateSync(fd, 0);
-  } catch (err) {
-    // Refuse to write the result CSV where it cannot be made owner-only
-    // (EPERM on a file owned by another user, or an ACL that could not be
-    // cleared): close and propagate rather than leave PII at relaxed
-    // permissions. Because the truncate runs only once both succeed, a
-    // failure leaves an existing file's content intact; a file this call
-    // created is left empty rather than deleted.
-    try {
-      fs.closeSync(fd);
-    } catch {
-      // best-effort close before re-throwing
-    }
-    throw err;
+    fs.unlinkSync(tmp);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }
-  return fs.createWriteStream(destPath, {
+  const fd = openOwnerOnlyResultTemp(tmp, destPath);
+  // The stream's own close step is where the temp file is placed: `flush`
+  // fsyncs the descriptor before it runs, so the data is durable before the
+  // rename, as in writeFileOwnerOnly. Node requires `fsync` here under
+  // `flush`; @types/node does not declare it, hence the separate object.
+  let syncFailed = false;
+  const streamFs = {
+    write: fs.write,
+    writev: fs.writev,
+    fsync: (
+      syncFd: number,
+      callback: (err?: NodeJS.ErrnoException | null) => void,
+    ): void => {
+      fs.fsync(syncFd, (syncErr) => {
+        if (syncErr) syncFailed = true;
+        callback(syncErr);
+      });
+    },
+    close: (
+      closingFd: number,
+      callback: (err?: NodeJS.ErrnoException | null) => void,
+    ): void => {
+      fs.close(closingFd, (closeErr) => {
+        try {
+          if (closeErr) throw closeErr;
+          if (stream.writableFinished && !syncFailed) {
+            fs.renameSync(tmp, destPath);
+            fsyncParentDir(destPath);
+          } else removeResultTemp(tmp);
+          callback(null);
+        } catch (err) {
+          removeResultTemp(tmp);
+          callback(err as NodeJS.ErrnoException);
+        }
+      });
+    },
+  };
+  const stream = fs.createWriteStream(tmp, {
     fd,
     encoding: "utf8",
     autoClose: true,
+    flush: true,
+    fs: streamFs,
   });
+  return stream;
+}
+
+// Best-effort removal of the result CSV's temp file; a removal failure must
+// not replace the error that led here.
+function removeResultTemp(tmp: string): void {
+  try {
+    fs.unlinkSync(tmp);
+  } catch {
+    /* best-effort: a failed removal leaves the temp file in place */
+  }
+}
+
+// Create the result CSV's temp file and make it owner-only before any row is
+// written, returning its descriptor. Any failure closes and removes the temp
+// file, so the destination is left as the run found it.
+function openOwnerOnlyResultTemp(tmp: string, destPath: string): number {
+  if (process.platform === "win32") {
+    // Resolved before the create so a whoami failure leaves nothing behind.
+    const owner = whoami();
+    const fd = fs.openSync(
+      tmp,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+    );
+    try {
+      restrictAclToOwner(tmp, owner);
+    } catch {
+      closeBestEffort(fd);
+      removeResultTemp(tmp);
+      const message = aclRestrictFailureMessage(destPath);
+      throw keepOperatorSuppliedText(new Error(message.text), message);
+    }
+    return fd;
+  }
+  // The exclusive, non-following create and descriptor-set mode of
+  // writeFileOwnerOnly's temp file. See
+  // docs/spec/CREDENTIAL_STORAGE.md#posix-write-discipline.
+  const fd = fs.openSync(
+    tmp,
+    fs.constants.O_CREAT |
+      fs.constants.O_EXCL |
+      fs.constants.O_WRONLY |
+      fs.constants.O_NOFOLLOW,
+    0o600,
+  );
+  try {
+    fs.fchmodSync(fd, 0o600);
+    stripExtendedAcls(tmp, {
+      symlinks: "do-not-follow",
+      reportedPath: destPath,
+    });
+  } catch (err) {
+    closeBestEffort(fd);
+    removeResultTemp(tmp);
+    throw err;
+  }
+  return fd;
+}
+
+function closeBestEffort(fd: number): void {
+  try {
+    fs.closeSync(fd);
+  } catch {
+    /* best-effort close; the failure that led here propagates */
+  }
 }
 
 /**
