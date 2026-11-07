@@ -286,9 +286,25 @@ describe("writeFileOwnerOnly", () => {
       );
     },
   );
+});
 
+// --- the create-if-absent step both writers share ----------------------------
+
+const exclusiveWriters: [string, (dest: string, content: string) => void][] = [
+  [
+    "writeFileOwnerOnly",
+    (dest, content) => writeFileOwnerOnly(dest, content, { exclusive: true }),
+  ],
+  [
+    "writeFileAtomic",
+    (dest, content) =>
+      writeFileAtomic(dest, content, undefined, { exclusive: true }),
+  ],
+];
+
+describe.each(exclusiveWriters)("%s with exclusive", (_name, write) => {
   test.skipIf(process.platform === "win32")(
-    "with exclusive, a failed directory flush leaves no file behind (POSIX)",
+    "a failed directory flush leaves no file behind (POSIX)",
     () => {
       const dest = path.join(dir, "secret");
       const realFsync = fs.fsyncSync;
@@ -300,16 +316,40 @@ describe("writeFileOwnerOnly", () => {
         return realFsync(fd);
       });
 
-      expect(() =>
-        writeFileOwnerOnly(dest, "only", { exclusive: true }),
-      ).toThrow("EIO");
+      expect(() => write(dest, "only")).toThrow("EIO");
       vi.mocked(fs.fsyncSync).mockRestore();
 
       expect(fs.readdirSync(dir)).toEqual([]);
-      writeFileOwnerOnly(dest, "retry", { exclusive: true });
+      write(dest, "retry");
       expect(fs.readFileSync(dest, "utf8")).toBe("retry");
     },
   );
+
+  test("an EPERM link onto an existing destination is the exists refusal", () => {
+    const dest = path.join(dir, "secret");
+    vi.spyOn(fs, "linkSync").mockImplementation(() => {
+      fs.writeFileSync(dest, "appeared");
+      throw Object.assign(new Error("EPERM: operation not permitted, link"), {
+        code: "EPERM",
+      });
+    });
+
+    expect(() => write(dest, "only")).toThrow(FileExistsError);
+    expect(fs.readFileSync(dest, "utf8")).toBe("appeared");
+    expect(fs.readdirSync(dir)).toEqual(["secret"]);
+  });
+
+  test("an EPERM link with no destination present propagates as EPERM", () => {
+    const dest = path.join(dir, "secret");
+    vi.spyOn(fs, "linkSync").mockImplementation(() => {
+      throw Object.assign(new Error("EPERM: operation not permitted, link"), {
+        code: "EPERM",
+      });
+    });
+
+    expect(() => write(dest, "only")).toThrow("EPERM");
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
 });
 
 // --- writeFileAtomic ---------------------------------------------------------
@@ -1769,10 +1809,6 @@ describe.skipIf(process.platform !== "win32")("Windows owner-only ACL", () => {
     expect(isOwnerOnly(secret, owner)).toBe(true);
     // Modify, the level the writers grant, and not Full control.
     expect(ownerRights(secret, owner)).toEqual(["(M)"]);
-
-    const atomic = path.join(dir, "atomic");
-    writeFileAtomic(atomic, "x", 0o600);
-    expect(isOwnerOnly(atomic, owner)).toBe(true);
 
     const streamed = path.join(dir, "streamed.csv");
     await writeAndClose(createOwnerOnlyWriteStream(streamed), "a,b\n1,2\n");

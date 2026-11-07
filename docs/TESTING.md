@@ -969,7 +969,7 @@ On Windows the CLI protects its owner-only files with ACLs rather than POSIX mod
 $me = (whoami)
 ```
 
-Owner-only artifacts on Windows come from three writers: `writeFileOwnerOnly` (the key file, the config writer, exchange records, and the signing identity), `createOwnerOnlyWriteStream` (the result CSV), and `writeFileAtomic` for a file written with the owner-only mode. Produce one artifact from each by running the operations that use them: an exchange writes the result CSV and rotates the key file, `accept` writes the signing identity, and so on (see [CLI.md](CLI.md)). Each check assumes a file at `$f`.
+Owner-only artifacts on Windows come from two writers: `writeFileOwnerOnly` (the key file, the config writer, exchange records, and the signing identity) and `createOwnerOnlyWriteStream` (the result CSV). `writeFileAtomic`, which writes the exported public certificate, is not one of them: on Windows its mode sets only the read-only bit, and the file keeps the access list it inherits. Produce one artifact from each owner-only writer by running the operations that use them: an exchange writes the result CSV and rotates the key file, `accept` writes the signing identity, and so on (see [CLI.md](CLI.md)). Each check assumes a file at `$f`.
 
 **A narrowed file grants Modify to the current user only, with no inherited or foreign non-owner ACE.** After a writer creates `$f`, its DACL must grant `Modify` to the current user and to no one else, and must not be inheriting from the parent directory:
 
@@ -985,7 +985,7 @@ icacls $f
 # Inherited = False. Any other principal, or any Inherited = True rule, fails.
 ```
 
-This is what `writeFileOwnerOnly`, `writeFileAtomic` (owner-only mode), and `createOwnerOnlyWriteStream` all produce: they run `icacls <file> /inheritance:r /grant:r "$me:(M)"`, which strips inheritance and replaces the DACL with the single owner Modify grant.
+This is what `writeFileOwnerOnly` and `createOwnerOnlyWriteStream` both produce: they run `icacls <file> /inheritance:r /grant:r "$me:(M)"`, which strips inheritance and replaces the DACL with the single owner Modify grant.
 
 **`createOwnerOnlyWriteStream`'s overwrite path drops a pre-existing foreign explicit ACE.** The stream writer narrows a fresh temp file and renames it onto the destination, so a foreign principal's explicit (non-inherited) grant left on a prior file at that path does not survive the overwrite. Seed such a grant on a stand-in file, overwrite it by writing a result CSV to the same path, and confirm the foreign grant is gone:
 
