@@ -86,6 +86,7 @@ function NoticesAlert({
     <Alert
       color="yellow"
       role="presentation"
+      classNames={{ body: styles.wrapLongText }}
       icon={<IconAlertTriangle aria-hidden />}
       title={title}
     >
@@ -123,6 +124,7 @@ export function EditedTermsNotice({
         <Alert
           color="yellow"
           role="presentation"
+          classNames={{ body: styles.wrapLongText }}
           icon={<IconAlertTriangle aria-hidden />}
           title={EDITED_TERMS_TITLE}
         >
@@ -223,7 +225,12 @@ export function MountedConfigurationCard({
       )}
       {state.status === "opened" && (
         <>
-          <Alert color="blue" role="presentation" title={OPENED_TITLE}>
+          <Alert
+            color="blue"
+            role="presentation"
+            title={OPENED_TITLE}
+            classNames={{ body: styles.wrapLongText }}
+          >
             <Text size="sm">{CONFIGURATION_OPENED}</Text>
           </Alert>
           {!sealed && (
@@ -244,6 +251,7 @@ export function MountedConfigurationCard({
             <Alert
               color="yellow"
               role="presentation"
+              classNames={{ body: styles.wrapLongText }}
               icon={<IconAlertTriangle aria-hidden />}
               title={keyFile.title}
             >
@@ -271,6 +279,7 @@ export function MountedConfigurationCard({
         <Alert
           color="red"
           role="presentation"
+          classNames={{ body: styles.wrapLongText }}
           icon={<IconAlertCircle aria-hidden />}
           title={REFUSED_TITLE}
         >

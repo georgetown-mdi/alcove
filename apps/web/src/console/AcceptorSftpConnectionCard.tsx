@@ -63,7 +63,7 @@ export function AcceptorSftpConnectionCard({
     return (
       <Stack gap="xs" mt="xs">
         <Group gap="xs" align="center">
-          <Badge color="teal" variant="light">
+          <Badge color="green" variant="light">
             Ready to try
           </Badge>
           <Text size="sm">

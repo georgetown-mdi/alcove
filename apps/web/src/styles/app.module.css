@@ -461,6 +461,16 @@
   white-space: normal;
 }
 
+/* An element given .wrapLongText, such as an Alert body, shrinks to its
+   container, so a code block in it scrolls in its own box (as .handoffCode
+   does) and a long address, setting name or path breaks mid-token rather than
+   widening or clipping its card under the WCAG text spacing or at 320 px
+   (WCAG 1.4.10, 1.4.12). */
+.wrapLongText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .statusLine {
   font-weight: 600;
   margin: 0;
@@ -1385,6 +1395,18 @@
 .page :global(.mantine-InputWrapper-description) {
   color: var(--app-secondary);
   font-size: 14px;
+}
+
+/* Mantine keeps a field's error border when the field takes focus, so a field
+   showing an error looks the same focused and unfocused; it takes Mantine's
+   focus ring instead (WCAG 2.4.7). The keyboard journeys hold each Tab stop
+   to a visible change. */
+.page
+  :global(
+    .mantine-Input-wrapper[data-error] .mantine-Input-input:focus-visible
+  ) {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: calc(0.125rem * var(--mantine-scale));
 }
 
 /* An unchecked checkbox's box and radio's circle take the same token, so

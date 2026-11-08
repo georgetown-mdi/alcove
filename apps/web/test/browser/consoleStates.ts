@@ -66,6 +66,16 @@ export const AUTHORED_SFTP = {
   port: 2222,
 };
 
+/** {@link AUTHORED_SFTP} with the credential warning the console gives a
+ * credential file inside the working folder. */
+export const AUTHORED_SFTP_WITH_CREDENTIAL_WARNING = {
+  ...AUTHORED_SFTP,
+  credentialWarnings: [
+    "The password credential file is inside the job data root, the folder " +
+      "Alcove writes the exchange's working files and results into.",
+  ],
+};
+
 /** The id the console gives a job the browser creates. */
 export const CREATED_JOB_ID = "job-7";
 

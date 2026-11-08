@@ -14,7 +14,11 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { OPEN_CONFIGURATION_LABEL } from "@console/mountedConfiguration";
 import { SWEEP_CONTROL_LABEL } from "@psi/runDiagnosticsModel";
 
-import { AUTHORED_SFTP, stubConsoleJobApi } from "./consoleStates";
+import {
+  AUTHORED_SFTP,
+  AUTHORED_SFTP_WITH_CREDENTIAL_WARNING,
+  stubConsoleJobApi,
+} from "./consoleStates";
 import {
   CONSOLE_JOURNEY_TIMEOUT_MS,
   activate,
@@ -146,9 +150,12 @@ test("console invite: a failed run and its retry, from the keyboard", async () =
   await tabTo(control("button", "Try again"));
 });
 
-test("console invite: the cards on Review & create open, and show their errors, from the keyboard", async () => {
-  stubConsoleJobApi({ sftp: AUTHORED_SFTP });
+test("console invite: the cards on Review & create open, and show their errors and a credential warning, from the keyboard", async () => {
+  stubConsoleJobApi({ sftp: AUTHORED_SFTP_WITH_CREDENTIAL_WARNING });
   await reachReviewByKeyboard();
+  await expect
+    .element(page.getByText(/is inside the job data root/))
+    .toBeInTheDocument();
 
   await activate(control("button", /^How files are handled/));
   await activate(control("button", /^Connection tuning/));
@@ -175,6 +182,24 @@ test("console invite: the SFTP connection form, its field error and a refused sa
     .element(page.getByText("No SFTP connection set up for this exchange yet"))
     .toBeInTheDocument();
   await expectStepAccessible(app.container);
+
+  await activate(
+    control("button", "Run it in my own command-line tool instead"),
+  );
+  await expect
+    .element(page.getByText(/in your own Alcove command-line tool/))
+    .toBeInTheDocument();
+  await expectStepAccessible(app.container);
+  await activate(
+    control("button", "Set up a connection to run it here instead"),
+  );
+  await expect
+    .element(page.getByLabelText("SFTP server address"))
+    .toHaveFocus();
+  await activate(control("button", "Cancel"));
+  await expect
+    .element(page.getByText("No SFTP connection set up for this exchange yet"))
+    .toBeInTheDocument();
 
   await activate(control("button", "Add connection"));
   await expect

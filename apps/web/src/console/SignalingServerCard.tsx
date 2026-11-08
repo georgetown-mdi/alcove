@@ -361,7 +361,7 @@ export function SignalingServerCard({
     const reachProblem = signalingServerReachProblem(server);
     const enrollment = ownRelayEnrollmentNotice(server.ownRelay);
     return (
-      <Stack gap="xs" mt="xs">
+      <Stack gap="xs" mt="xs" className={styles.wrapLongText}>
         <Text size="sm">
           Connects through{" "}
           <span className={styles.mono}>

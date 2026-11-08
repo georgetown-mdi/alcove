@@ -13,6 +13,8 @@ import { IconAlertCircle, IconRefresh } from "@tabler/icons-react";
 import { PROJECT_SITE_URL } from "@components/projectLinks";
 import { alertRoleFor } from "@theme";
 
+import styles from "@styles/app.module.css";
+
 import type { ReactNode } from "react";
 
 /**
@@ -68,6 +70,7 @@ export function MountStateNotice({
         role={alertRoleFor(color)}
         icon={<IconAlertCircle aria-hidden />}
         title={title}
+        classNames={{ body: styles.wrapLongText }}
       >
         {children}
       </Alert>

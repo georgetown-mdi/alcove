@@ -33,7 +33,7 @@ const STATUS_BADGES: Record<
 > = {
   refused: { color: "red", label: "Needs a change" },
   "retain-problem": { color: "orange", label: "Needs retain mode" },
-  ready: { color: "teal", label: "Ready to try" },
+  ready: { color: "green", label: "Ready to try" },
 };
 
 /**

@@ -4,7 +4,11 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { page } from "vitest/browser";
 
+import { createElement } from "react";
+
 import "@mantine/core/styles.css";
+
+import { Lobby } from "@exchange/Lobby";
 
 import {
   CONSOLE_CARD_STATES,
@@ -57,6 +61,24 @@ describe("console accessibility (WCAG 2.1 AA)", () => {
         (route) => !route.startsWith("/saved") && !checked.has(route),
       ),
     ).toEqual([]);
+  });
+
+  // The console has no recurring exchange pages; its start page is one way to
+  // the verify page and the quick exchange.
+  test("the start page links to the verify page and the quick exchange (WCAG 2.4.5)", async () => {
+    stubConsoleJobApi();
+    app.render(createElement(Lobby));
+    await expect
+      .element(
+        page.getByRole("link", {
+          name: "Verify an exchange record",
+          exact: true,
+        }),
+      )
+      .toHaveAttribute("href", "/verify");
+    await expect
+      .element(page.getByRole("link", { name: "Start", exact: true }))
+      .toHaveAttribute("href", "/direct");
   });
 
   for (const state of [...CONSOLE_ROUTE_STATES, ...CONSOLE_CARD_STATES])

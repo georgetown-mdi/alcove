@@ -339,7 +339,7 @@ function PartnerLocatorReview({ locator }: { locator: SftpEndpointLocator }) {
       icon={<IconAlertCircle aria-hidden />}
       title="Your partner's SFTP server"
     >
-      <Text size="sm" c="dimmed">
+      <Text size="sm">
         Your partner named this server in the invitation. Confirm it is where
         you expect to connect; sign in with your own account below.
       </Text>

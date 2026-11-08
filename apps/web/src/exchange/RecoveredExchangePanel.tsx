@@ -478,7 +478,7 @@ export function RecoveredExchangePanel() {
       {!stopped && <RecurringHandoff jobId={attachment.jobId} collapsible />}
       <Group mt="md">
         {running && (
-          <Button variant="default" onClick={stop}>
+          <Button variant="default" className={styles.wrapLabel} onClick={stop}>
             Stop this exchange
           </Button>
         )}
