@@ -623,6 +623,7 @@ export {
 } from "./config/sftpRelayUrl";
 export type { SftpRelayUrlProblem } from "./config/sftpRelayUrl";
 export {
+  MAX_ENCODED_TERMS_UPDATE_LENGTH,
   TERMS_UPDATE_NEWER_REMEDY,
   TermsUpdateRefusedError,
   decodeTermsUpdate,

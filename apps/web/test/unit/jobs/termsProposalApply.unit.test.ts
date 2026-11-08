@@ -14,8 +14,8 @@ import {
   TERMS_CHANGE_REFUSAL,
   TERMS_PROPOSAL_REFUSAL,
 } from "@jobs/jobManager";
+import { termsApplyArgv, termsProposalDigest } from "@jobs/termsProposal";
 import { TERMS_PROPOSAL_FILE_NAME } from "@jobContract/intentSchemas";
-import { termsApplyArgv } from "@jobs/termsProposal";
 import { validateAndSanitizeEvent } from "@jobs/cliDriver";
 
 import {
@@ -327,6 +327,29 @@ describe("applying the terms proposal a run of the opened configuration stopped 
       expect(record.termsProposal).toBe(proposal);
     },
   );
+});
+
+describe("reading the terms proposal file under the CLI's own bound", () => {
+  /** The 65,536-character encoded update the CLI is allowed to write, and
+   * its newline, is the largest file read. */
+  const LARGEST_WRITTEN_BYTES = 65_537;
+
+  function digestOfFileOf(bytes: number): string | null {
+    const root = scratchDir("proposal-bound");
+    fs.writeFileSync(
+      path.join(root, TERMS_PROPOSAL_FILE_NAME),
+      Buffer.alloc(bytes, "a"),
+    );
+    return termsProposalDigest(root);
+  }
+
+  test("reads a file of the largest size the CLI writes", () => {
+    expect(digestOfFileOf(LARGEST_WRITTEN_BYTES)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("refuses a file one byte longer", () => {
+    expect(digestOfFileOf(LARGEST_WRITTEN_BYTES + 1)).toBeNull();
+  });
 });
 
 describe("the relayed terms change", () => {
