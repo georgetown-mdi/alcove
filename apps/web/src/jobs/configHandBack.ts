@@ -81,8 +81,8 @@ export const CONFIGURATION_IN_USE_MESSAGE =
  * applied to the file. */
 export const CONFIGURATION_TERMS_APPLY_MESSAGE =
   "A partner's terms change is being applied to the alcove.yaml in your " +
-  "working folder, so your changes were not saved. Save again once it " +
-  "finishes.";
+  "working folder, so your changes were not saved. When it finishes, open " +
+  "alcove.yaml again and redo your changes.";
 
 /**
  * Write `handBack` into the mounted configuration: re-read the file, compose
