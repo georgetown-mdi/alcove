@@ -184,10 +184,11 @@ export const ACCEPTOR_SEND_FORWARD_REFERENCE =
   "Confirmed after you choose your file";
 
 /** Whether the inviter receives the matched results, the one case in which the
- * acceptor sends anything beyond its encrypted match values: its row numbers
- * for matched records and any columns it marks to send. Under a count-only run
- * or one where the inviter receives no result, nothing else is sent, whatever
- * the acceptor's file holds -- what the terms panel states beside it. */
+ * acceptor's send row lists its row numbers for matched records and any
+ * columns it marks to send. Otherwise the row reads as matching only: no
+ * column is sent, whatever the acceptor's file holds, and the row numbers a
+ * `psi` cascade, or a single-pass run whose inviter sends columns, still sends
+ * the inviter count as matching (docs/spec/PROTOCOL.md). */
 function inviterReceivesMatchedResults(summary: InvitationSummary): boolean {
   return summary.inviterReceivesOutput && summary.algorithm !== "psi-c";
 }

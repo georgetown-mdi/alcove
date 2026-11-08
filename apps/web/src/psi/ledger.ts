@@ -113,7 +113,8 @@ function countOnlyLedgerValue(
 export const COUNT_ONLY_RECEIVE_ROW_VALUE = `How many records you have in common - ${COUNT_ONLY_NO_TABLE}`;
 
 /** The send row's value, shared by both seats, when the partner receives no
- * matched results: only the encrypted match values leave this machine. */
+ * matched results: no column leaves this machine, and the row numbers matching
+ * may send count as matching (docs/spec/PROTOCOL.md). */
 export const NOTHING_SENT_BUT_MATCHING = "Nothing - matching only";
 
 /** The send row's value, shared by both seats, when the partner receives the
