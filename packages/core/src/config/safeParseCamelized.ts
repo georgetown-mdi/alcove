@@ -22,14 +22,14 @@ import {
  * gets a non-throwing result. It also throws {@link KeyFoldCollisionError} on
  * two keys of one object that fold to one name, converted the same way into
  * the issue {@link keyFoldCollisionIssue} states. Any other throw propagates
- * unchanged. The throwing `parseX` siblings call `camelizeKeys` directly
- * instead; their partner-wire call sites (`protocolSetup.ts`) catch the bound
- * error there.
+ * unchanged. A throwing `parseX` sibling that calls `camelizeKeys` directly
+ * throws the bound error itself; its partner-wire call sites
+ * (`protocolSetup.ts`) catch it there.
  * `afterParse` is a rule a schema cannot state about itself, read on a
- * successful parse and against the camelized input the schema saw: the
- * exchange file's unread-key rule (`unreadKeys.ts`) is the one caller. Any
- * issues it reports turn the result into a failure carrying them, so a caller
- * cannot reach a value the rule refuses.
+ * successful parse and against the camelized input the schema saw, such as
+ * the unread-key rule (`unreadKeys.ts`). Any issues it reports turn the result
+ * into a failure carrying them, so a caller cannot reach a value the rule
+ * refuses.
  *
  * The schema reads the camelized shape, so a key it refuses as unrecognized is
  * named here as the raw document spells it

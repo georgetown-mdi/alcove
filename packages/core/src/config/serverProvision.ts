@@ -26,6 +26,7 @@ import {
 import { readBoundedJsonBody } from "../utils/boundedJsonBody.js";
 import { enc } from "../utils/crypto.js";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
+import { DialPortSchema } from "./dialPort.js";
 import { isBareIpv6Address } from "./sftpUrl.js";
 import {
   MAX_ENDPOINT_HOST_LENGTH,
@@ -116,7 +117,7 @@ const ProvisionedServerAddressSchema: z.ZodType<ProvisionedServerAddress> = z
       .min(1)
       .check(maxCodeUnits(MAX_ENDPOINT_HOST_LENGTH))
       .refine(isHostNameOrIpAddress),
-    port: z.int().min(1).max(65535).optional(),
+    port: DialPortSchema.optional(),
     path: z
       .string()
       .min(1)

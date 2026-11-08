@@ -20,7 +20,11 @@ import {
   safeParseLinkageTermsTheReaderWrote,
 } from "../../src/config/linkageTermsSchema";
 import { unreadKeyIssues } from "../../src/config/unreadKeys";
-import { camelizeKeys } from "../../src/utils/camelizeKeys";
+import {
+  camelizeKeys,
+  MAX_NESTING_DEPTH,
+  MAX_NODE_COUNT,
+} from "../../src/utils/camelizeKeys";
 
 // Minimal valid components used as a base.
 const minimalLinkageTerms = {
@@ -966,3 +970,41 @@ test("provider_options on a channel whose schema has no such field is refused", 
   expect(result.success).toBe(false);
   expect(result.error?.issues[0]?.message).toContain("provider_options");
 });
+
+// parseExchangeSpec throws the error safeParseExchangeSpec returns, so a caller
+// of either meets a camelize bound as a ZodError rather than a bare throw.
+test.each([
+  [
+    "nesting depth",
+    () => {
+      let deep: unknown = 1;
+      for (let i = 0; i <= MAX_NESTING_DEPTH; i++) deep = { a: deep };
+      return { connection: minimalConnection, extra: deep };
+    },
+  ],
+  [
+    "node count",
+    () => ({
+      connection: minimalConnection,
+      extra: Array.from({ length: MAX_NODE_COUNT + 1 }, () => 0),
+    }),
+  ],
+])(
+  "parseExchangeSpec throws the %s bound as safeParseExchangeSpec's ZodError",
+  (_bound, input) => {
+    const raw = input();
+    const safe = safeParseExchangeSpec(raw);
+    expect(safe.success).toBe(false);
+    let thrown: unknown;
+    try {
+      parseExchangeSpec(raw);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ZodError);
+    expect((thrown as ZodError).issues).toEqual(safe.error?.issues);
+    expect(safe.error?.issues).toEqual([
+      expect.objectContaining({ code: "custom", path: [] }),
+    ]);
+  },
+);

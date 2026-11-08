@@ -52,7 +52,7 @@ The token is a JSON object with these members:
 | --- | --- | --- | --- |
 | `version` | string | yes | The decimal string of a positive integer no larger than the newest version this build reads, `"2"`. A larger one of up to nine digits, the syntax the decoder reads, is refused as made by a newer Alcove, naming both versions; a longer one, any other string and any value that is not a string, a number such as `1` or `3` included, are refused by the schema. |
 | `about` | object | no | The informational block; see [Version policy](#version-policy). |
-| `linkageTerms` | object | yes | A linkage-terms document, validated by `InvitationLinkageTermsSchema`: `LinkageTermsSchema` behind a key-folding pre-pass (below). |
+| `linkageTerms` | object | yes | A linkage-terms document, validated by `InvitationLinkageTermsSchema` (`packages/core/src/config/linkageTermsSchema.ts`): `LinkageTermsSchema` behind a key-folding pre-pass (below). |
 | `sharedSecret` | string | yes | `SHARED_SECRET_REGEX` (`packages/core/src/config/connection.ts`): 43 base64url characters, the last one in `[AEIMQUYcgkosw048]`, so the string decodes to exactly 32 bytes. |
 | `expires` | string | no | An ISO 8601 date-time in UTC with seconds, a `Z` suffix and any number of fractional-second digits (`z.iso.datetime()`); an offset, a time without seconds, a date alone, a lowercase `z`, or `null` is refused. |
 | `connectionEndpoint` | object | no | A credential-free locator; see [Connection endpoint](#connection-endpoint). |

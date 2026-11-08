@@ -6,19 +6,15 @@ import {
   redactUrlCredentials,
 } from "../utils/urlComponents.js";
 import { NAME_CONTROL_CHAR_PATTERN } from "../utils/nameControls.js";
+import { DialPortSchema } from "./dialPort.js";
 
 // The URL form: docs/CLI.md#configuration.
 
 /** The URL schemes that name an SFTP server. */
 export const SFTP_URL_PROTOCOLS: ReadonlyArray<string> = ["sftp:", "ssh:"];
 
-/**
- * A port an SFTP server is dialed on: an integer from 1 to 65535. Port 0 asks
- * the operating system for any free port when listening and names no server
- * when dialing, so it is refused rather than copied into a connection or an
- * invitation endpoint.
- */
-export const SftpPortSchema: z.ZodType<number> = z.int().min(1).max(65535);
+/** A port an SFTP server is dialed on: {@link DialPortSchema}. */
+export const SftpPortSchema: z.ZodType<number> = DialPortSchema;
 
 /** Whether `port` is a port an SFTP server can be dialed on. */
 export function isSftpPort(port: number): boolean {

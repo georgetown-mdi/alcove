@@ -535,7 +535,6 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
       timestamp_in_filename: true,
       peer_id: "clinic-a",
       unexpected_files: "warn",
-      server_connect_timeout_ms: 30000,
     });
   });
 

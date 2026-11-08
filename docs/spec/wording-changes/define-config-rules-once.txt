@@ -1,0 +1,1 @@
+- `linkageTerms` | object | yes | A linkage-terms document, validated by `InvitationLinkageTermsSchema`: `LinkageTermsSchema` behind a key-folding pre-pass (below). -> `linkageTerms` | object | yes | A linkage-terms document, validated by `InvitationLinkageTermsSchema` (`packages/core/src/config/linkageTermsSchema.ts`): `LinkageTermsSchema` behind a key-folding pre-pass (below).

@@ -1,4 +1,8 @@
-import { cleanedTitles, resolveFieldColumns } from "../standardization.js";
+import {
+  cleanedTitles,
+  DEFAULT_DATE_INPUT_FORMAT,
+  resolveFieldColumns,
+} from "../standardization.js";
 
 import type {
   NullIfLastName,
@@ -6,7 +10,14 @@ import type {
   StandardizationStep,
 } from "../config/standardizationSchema.js";
 import type { ColumnMetadata } from "../config/metadata.js";
-import type { LinkageTerms } from "../config/linkageTermsSchema.js";
+import type {
+  LinkageField,
+  LinkageTerms,
+} from "../config/linkageTermsSchema.js";
+import {
+  frozenLookupTable,
+  frozenLookupTableEntry,
+} from "../utils/frozenLookupTable.js";
 import { SSN4_STEPS, SSN_MAX_PEOPLE_PER_VALUE, SSN_STEPS } from "./ssnSteps.js";
 import { SECONDARY_UNIT_DESIGNATORS } from "./secondaryUnitDesignators.js";
 
@@ -97,9 +108,6 @@ const LAST_NAME_STEPS: StandardizationStep[] = [
   { function: "filter_regex", params: { pattern: "^.{2,}$" } },
   LAST_NAME_PLACEHOLDER_STEP,
 ];
-
-/** The `date_of_birth` input format used when none is supplied or inferred. */
-export const DEFAULT_DATE_INPUT_FORMAT = "MM/DD/YYYY";
 
 /**
  * The parsing steps of the default `date_of_birth` pipeline for one input
@@ -315,23 +323,51 @@ const COUNTY_STEPS: StandardizationStep[] = [
   ...FOLD_SPACES_AND_DROP_BLANK_STEPS,
 ];
 
+// Each per-type table below names every linkage field type, so a type added
+// to LinkageField fails tsc until it is given a row in each.
+type LinkageFieldType = LinkageField["type"];
+
 // The most distinct people one value may belong to in a party's own file. A
 // household shares a phone or an email: about 90% of people live in one of
 // five or fewer (ACS 2024 1-year, B11016 and B25008), so five, a working
 // value, keeps most of them, while an organization's number on dozens of
 // clients is dropped.
-const MAX_PEOPLE_PER_VALUE: Readonly<Partial<Record<string, number>>> = {
+const MAX_PEOPLE_PER_VALUE = {
   ssn: SSN_MAX_PEOPLE_PER_VALUE,
+  ssn4: undefined,
+  first_name: undefined,
+  last_name: undefined,
+  date_of_birth: undefined,
   phone_number: 5,
   email_address: 5,
-};
+  street_number: undefined,
+  street_name: undefined,
+  unit: undefined,
+  city: undefined,
+  zip_code: undefined,
+  state: undefined,
+  county: undefined,
+} as const satisfies Readonly<Record<LinkageFieldType, number | undefined>>;
 
 // The Census Bureau keeps John and Jane Doe but matches them more strictly than
 // other names; dropping the first name leaves such a record only the keys
 // without one.
-const NULL_IF_LAST_NAME: Readonly<Partial<Record<string, NullIfLastName>>> = {
+const NULL_IF_LAST_NAME = {
+  ssn: undefined,
+  ssn4: undefined,
   first_name: { values: ["JOHN", "JANE"], lastNames: ["DOE"] },
-};
+  last_name: undefined,
+  date_of_birth: undefined,
+  phone_number: undefined,
+  email_address: undefined,
+  street_number: undefined,
+  street_name: undefined,
+  unit: undefined,
+  city: undefined,
+  zip_code: undefined,
+  state: undefined,
+  county: undefined,
+} satisfies Readonly<Record<LinkageFieldType, NullIfLastName | undefined>>;
 
 // --- Default standardization -------------------------------------------------
 
@@ -344,44 +380,34 @@ interface DefaultStandardizationOptions {
   dateInputFormat?: string;
 }
 
+// Read by an arbitrary type name (defaultStepsForType), so the table has no
+// prototype (frozenLookupTable).
+const STEPS_FOR_TYPE = frozenLookupTable({
+  ssn: () => SSN_STEPS,
+  ssn4: () => SSN4_STEPS,
+  first_name: () => FIRST_NAME_STEPS,
+  last_name: () => LAST_NAME_STEPS,
+  date_of_birth: (opts) =>
+    dateOfBirthSteps(opts.dateInputFormat ?? DEFAULT_DATE_INPUT_FORMAT),
+  phone_number: () => PHONE_NUMBER_STEPS,
+  email_address: () => EMAIL_ADDRESS_STEPS,
+  street_number: () => STREET_NUMBER_STEPS,
+  street_name: () => STREET_NAME_STEPS,
+  city: () => CITY_STEPS,
+  unit: () => UNIT_STEPS,
+  zip_code: () => ZIP_CODE_STEPS,
+  state: () => STATE_STEPS,
+  county: () => COUNTY_STEPS,
+} satisfies Record<
+  LinkageFieldType,
+  (opts: DefaultStandardizationOptions) => StandardizationStep[]
+>);
+
 function stepsForType(
   semanticType: string,
   opts: DefaultStandardizationOptions,
 ): StandardizationStep[] | undefined {
-  switch (semanticType) {
-    case "ssn":
-      return SSN_STEPS;
-    case "ssn4":
-      return SSN4_STEPS;
-    case "first_name":
-      return FIRST_NAME_STEPS;
-    case "last_name":
-      return LAST_NAME_STEPS;
-    case "date_of_birth":
-      return dateOfBirthSteps(
-        opts.dateInputFormat ?? DEFAULT_DATE_INPUT_FORMAT,
-      );
-    case "phone_number":
-      return PHONE_NUMBER_STEPS;
-    case "email_address":
-      return EMAIL_ADDRESS_STEPS;
-    case "street_number":
-      return STREET_NUMBER_STEPS;
-    case "street_name":
-      return STREET_NAME_STEPS;
-    case "city":
-      return CITY_STEPS;
-    case "unit":
-      return UNIT_STEPS;
-    case "zip_code":
-      return ZIP_CODE_STEPS;
-    case "state":
-      return STATE_STEPS;
-    case "county":
-      return COUNTY_STEPS;
-    default:
-      return undefined;
-  }
+  return frozenLookupTableEntry(STEPS_FOR_TYPE, semanticType)?.(opts);
 }
 
 /**

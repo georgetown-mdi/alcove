@@ -4,7 +4,10 @@ import { SftpSession } from "../../src/connection/sftpSession";
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
 import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
 import type { SFTPConnectionConfig } from "../../src/config/connection";
-import { DEFAULT_SERVER_CONNECT_TIMEOUT_MS } from "../../src/config/connection";
+import {
+  DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+  safeParseConnectionConfig,
+} from "../../src/config/connection";
 import { MAX_ENDPOINT_HOST_LENGTH } from "../../src/config/invitation";
 import {
   requestProvisionedServerAddress,
@@ -587,6 +590,22 @@ test("a sliced key in the configured host does not suppress the no-pin refusal",
   expect(rendered).toContain("[redacted private key]");
   expect(rendered).not.toContain("c2gtcnNhAAAAAwEAAQ==");
   expect(rendered).toContain("It presented fingerprint SHA256:");
+});
+
+test("a parsed config whose options leave server_connect_timeout_ms unset dials with the default readyTimeout", () => {
+  const { session } = makeSession();
+  const parsed = safeParseConnectionConfig({
+    channel: "sftp",
+    server: { host: "sftp.example.org" },
+    options: { poll_interval_ms: 100 },
+  });
+  expect(parsed.success).toBe(true);
+  if (!parsed.success || parsed.data.channel !== "sftp") return;
+  expect(parsed.data.options).toBeDefined();
+  const built = session.buildConnectOptions(parsed.data, {
+    includeCredentials: true,
+  });
+  expect(built["readyTimeout"]).toBe(DEFAULT_SERVER_CONNECT_TIMEOUT_MS);
 });
 
 test("buildConnectOptions always sets readyTimeout: the default when unset, the configured value otherwise", () => {

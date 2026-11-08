@@ -6052,7 +6052,7 @@ test("split directories: a full retain-mode exchange between two bridged parties
 
 test("open() (split filedrop) rejects inbound/outbound that normalize to one directory", async () => {
   // open() applies the same distinctness rule the schema does, so a caller that
-  // builds a config directly and bypasses parseConnectionConfig is still guarded:
+  // builds a config directly and bypasses the schema parse is still guarded:
   // "/x" and "/x/" normalize to the same directory and must be rejected so split
   // mode does not silently collapse into a shared directory.
   const { client } = makeMockClient();

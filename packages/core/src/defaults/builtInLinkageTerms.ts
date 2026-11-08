@@ -553,16 +553,37 @@ export const CONTACT_AND_LOCATION_FIELD_TYPES = [
   "zip_code",
 ] as const satisfies ReadonlyArray<LinkageField["type"]>;
 
+// Whether a linkage field can have each semantic type. The `satisfies` fails
+// tsc unless the table names every semantic type, marks exactly the
+// LinkageField types true, and names every LinkageField type: a semantic type
+// added to SEMANTIC_TYPES must be classified here.
+const IS_LINKAGE_FIELD_TYPE = {
+  ssn: true,
+  ssn4: true,
+  first_name: true,
+  last_name: true,
+  date_of_birth: true,
+  identifier: false,
+  phone_number: true,
+  email_address: true,
+  street_number: true,
+  street_name: true,
+  unit: true,
+  city: true,
+  zip_code: true,
+  state: true,
+  county: true,
+  other: false,
+} as const satisfies {
+  [Type in SemanticType]: Type extends LinkageField["type"] ? true : false;
+} & Record<LinkageField["type"], true>;
+
 /**
- * Whether a semantic type can be a linkage field's type. `identifier` and `other`
- * are the non-matchable types -- a {@link LinkageField} is never one of them -- so
- * they are excluded. Written as the negation of those two literals (rather than an
- * allowlist) so that adding a non-matchable semantic type without excluding it here
- * fails to narrow to `LinkageField["type"]` and breaks the build, rather than
- * silently declaring an invalid field.
+ * Whether a semantic type can be a linkage field's type: any but
+ * `identifier` and `other`, which a {@link LinkageField} never has.
  */
 function isLinkageFieldType(type: SemanticType): type is LinkageField["type"] {
-  return type !== "identifier" && type !== "other";
+  return IS_LINKAGE_FIELD_TYPE[type] !== false;
 }
 
 // The type of the field an explicit transformation declares: its input

@@ -1,5 +1,6 @@
 import {
   dateFormatComponents,
+  DEFAULT_DATE_INPUT_FORMAT,
   DEFAULT_DATE_OUTPUT_FORMAT,
   FAN_OUT_FUNCTION_NAMES,
 } from "../standardization.js";
@@ -711,7 +712,7 @@ function summarizeTransform(
 
 // Core's parseDateFactory default input format (standardization.ts): an absent
 // inputFormat drops nothing. The output default is DEFAULT_DATE_OUTPUT_FORMAT.
-const DEFAULT_PARSE_DATE_INPUT = "MM/DD/YYYY";
+const DEFAULT_PARSE_DATE_INPUT = DEFAULT_DATE_INPUT_FORMAT;
 
 /**
  * The breadth marker a `parse_date` step's output layout gets, or undefined

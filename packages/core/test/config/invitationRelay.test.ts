@@ -9,17 +9,27 @@ import {
 import {
   MAX_RELAY_LOCATOR_URL_LENGTH,
   MAX_RELAY_LOCATOR_URLS,
-  parseConnectionConfig,
+  safeParseConnectionConfig,
 } from "../../src/config/connection";
 import { endpointFromConnection } from "../../src/config/endpointProducer";
 import { connectionFromLocator } from "../../src/config/exchangeFile";
 import { summarizeInvitation } from "../../src/consent/invitationSummary";
 
 import type { InvitationToken } from "../../src/config/invitation";
-import type { WebRTCConnectionConfig } from "../../src/config/connection";
+import type {
+  ConnectionConfig,
+  WebRTCConnectionConfig,
+} from "../../src/config/connection";
 import { encodeRawInvitation } from "../utils/support";
 
 const VALID_SECRET = "A".repeat(43);
+
+// The safe parse's config, or its error thrown.
+function parsedConnectionConfig(raw: unknown): ConnectionConfig {
+  const result = safeParseConnectionConfig(raw);
+  if (!result.success) throw result.error;
+  return result.data;
+}
 
 const baseTerms = {
   version: "1.0.0",
@@ -565,14 +575,14 @@ describe("the accepting side's connection", () => {
   });
 
   test("invitation_relay parses from a configuration file, and refuses a credential", () => {
-    const parsed = parseConnectionConfig({
+    const parsed = parsedConnectionConfig({
       channel: "webrtc",
       server: { host: "signal.example" },
       invitation_relay: RELAY,
     });
     expect(parsed).toMatchObject({ invitationRelay: RELAY });
     expect(() =>
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: { host: "signal.example" },
         invitation_relay: { ...RELAY, credential: "x" },
@@ -590,21 +600,21 @@ describe("the accepting side's connection", () => {
       }),
     ).toMatchObject({ invitationRelay: relay });
     expect(
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: { host: "signal.example" },
         invitation_relay: relay,
       }),
     ).toMatchObject({ invitationRelay: relay });
     expect(() =>
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: { host: "signal.example" },
         invitation_relay: { ...relay, registrar: "http://r.example.org" },
       }),
     ).toThrow(/registrar must be an https:\/\/ url/);
     expect(
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: { host: "signal.example" },
         invitation_relay: { ...relay, registrar: `${REGISTRAR}/` },
@@ -826,14 +836,14 @@ describe("the relay locator's WebSocket relay", () => {
       }),
     ).toMatchObject({ invitationRelay: relay });
     expect(
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: { host: "signal.example" },
         invitation_relay: relay,
       }),
     ).toMatchObject({ invitationRelay: relay });
     expect(() =>
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: { host: "signal.example" },
         invitation_relay: { websocket: "ws://wsrelay.example.org/relay" },
@@ -976,7 +986,7 @@ describe("the WebSocket relay's exchange id and registrar on the locator", () =>
       }),
     ).toMatchObject({ invitationRelay: relay });
     expect(
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: { host: "signal.example" },
         invitation_relay: {
@@ -986,7 +996,7 @@ describe("the WebSocket relay's exchange id and registrar on the locator", () =>
       }),
     ).toMatchObject({ invitationRelay: relay });
     expect(() =>
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: { host: "signal.example" },
         invitation_relay: { websocket: WEBSOCKET, exchange_id: EXCHANGE_ID },

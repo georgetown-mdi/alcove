@@ -103,6 +103,12 @@ export {
 } from "./fanOutFunctions.js";
 export { DEFAULT_DATE_OUTPUT_FORMAT } from "./keyElementWidth.js";
 
+/**
+ * The `parse_date` input format used when none is supplied or inferred: the
+ * step's own default, and the default `date_of_birth` pipeline's.
+ */
+export const DEFAULT_DATE_INPUT_FORMAT = "MM/DD/YYYY";
+
 const logger = getLogger("cleaning");
 
 // --- Value types -------------------------------------------------------------
@@ -672,7 +678,7 @@ export function renderDateOutput(
 // literal. Params arrive as camelCase after camelizeKeys (e.g. inputFormat).
 function parseDateFactory(params: Params): SearchChargedStandardizingFn {
   const inputFormat =
-    textParam("parse_date", params, "inputFormat") ?? "MM/DD/YYYY";
+    textParam("parse_date", params, "inputFormat") ?? DEFAULT_DATE_INPUT_FORMAT;
   const outputFormat =
     textParam("parse_date", params, "outputFormat") ??
     DEFAULT_DATE_OUTPUT_FORMAT;
@@ -1341,7 +1347,7 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
             `must not exceed ${MAX_DATE_FORMAT_LENGTH} characters`,
           ),
         )
-        .default("MM/DD/YYYY"),
+        .default(DEFAULT_DATE_INPUT_FORMAT),
       outputFormat: z
         .string()
         .min(1)

@@ -1,11 +1,19 @@
 import { z } from "zod";
-import { camelizeKeys } from "../utils/camelizeKeys.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
 import { randomBytes, toBase64Url } from "../utils/crypto.js";
-import { pathsResolveToSameDir } from "../utils/pathCompare.js";
+import {
+  directoryFormsAreExclusive,
+  fileSyncDirectories,
+  filedropNamesDirectory,
+  namesSplitDirectories,
+  splitDirectoriesAreWhole,
+  splitDirectoriesDiffer,
+  type FileSyncDirectories,
+} from "./fileSyncDirectories.js";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import { boundedArray } from "../utils/boundedArray.js";
 import { MAX_TIMER_MS } from "../utils/promise.js";
+import { DialPortSchema } from "./dialPort.js";
 import { SftpPortSchema } from "./sftpUrl.js";
 import {
   fixedPeerId,
@@ -84,7 +92,7 @@ const ServerProvisionSchema: z.ZodType<ServerProvision> = z.strictObject({
     })
     .optional(),
   host: z.string().min(1),
-  port: z.int().min(1).max(65535).optional(),
+  port: DialPortSchema.optional(),
   path: z.string().optional(),
   auth: HttpAuthSchema.optional(),
 });
@@ -800,14 +808,8 @@ interface SharedOptions {
    * immediately against a healthy mount, and on `sftp` it disables ssh2's
    * connect-establishment timeout (which arms only when positive). For a
    * retrying channel (`sftp`, `filedrop`) this applies per attempt, not to the
-   * total, and retry delays are not counted against it.
-   *
-   * Stays optional in the type despite the schema's
-   * {@link DEFAULT_SERVER_CONNECT_TIMEOUT_MS} `.default()`: this type covers
-   * both the caller-supplied input (field may be omitted) and the parsed
-   * output, and an omitted `options` block leaves it `undefined` regardless of
-   * the default. Consumers treat it as possibly unset and apply the same
-   * constant themselves at the connect sites (see fileSyncConnection).
+   * total, and retry delays are not counted against it. Unset, each connect
+   * site applies {@link DEFAULT_SERVER_CONNECT_TIMEOUT_MS}.
    */
   serverConnectTimeoutMs?: number;
   /** Maximum reconnect attempts before giving up; default: 3. */
@@ -815,12 +817,10 @@ interface SharedOptions {
 }
 
 /**
- * Default per-attempt connect timeout (30000 ms) applied to
- * {@link SharedOptions.serverConnectTimeoutMs} when unset -- at the schema
- * boundary, and reused as the fallback at the SFTP and filedrop connect sites
- * for a config with no `options` block at all, so the documented 30000 ms
- * deadline always holds rather than `sftp` silently falling back to ssh2's
- * shorter (~20s) `readyTimeout`.
+ * Default per-attempt connect timeout (30000 ms), applied at the SFTP and
+ * filedrop connect sites when {@link SharedOptions.serverConnectTimeoutMs} is
+ * unset, so the documented 30000 ms deadline holds rather than `sftp` falling
+ * back to ssh2's shorter (~20s) `readyTimeout`.
  */
 export const DEFAULT_SERVER_CONNECT_TIMEOUT_MS = 30000;
 
@@ -890,12 +890,9 @@ const sharedOptionsFields = {
   inactivityTimeoutMs: timerMs(MAX_TIMEOUT_SECONDS * 1000).optional(),
   // positive for the same reason: zero disables the filedrop connect probe and
   // ssh2's readyTimeout (armed only when > 0); --connection-timeout already
-  // rejects zero. Defaulted (not just optional) so an unset value resolves to
-  // DEFAULT_SERVER_CONNECT_TIMEOUT_MS at the schema boundary, applied uniformly
-  // for sftp and filedrop. Fires only when the options object is present but
-  // the field is absent; an omitted options block is covered by the same
-  // constant at the connect sites in fileSyncConnection.
-  serverConnectTimeoutMs: timerMs().default(DEFAULT_SERVER_CONNECT_TIMEOUT_MS),
+  // rejects zero. No schema default, so a config written back from a parse
+  // states the field only where its author did.
+  serverConnectTimeoutMs: timerMs().optional(),
   // nonnegative, not positive: zero is meaningful here -- "connect once, do not
   // reconnect" -- so it stays valid. Capped by MAX_RECONNECT_ATTEMPTS: the
   // connect-retry loop paces at a fixed 1s floor, so an unbounded count is a
@@ -1255,6 +1252,27 @@ export function webSocketRelayUrlSchema(name: string): z.ZodType<string> {
 
 const WebSocketRelayUrlSchema = webSocketRelayUrlSchema("websocket_relay");
 
+// The grammar of a registrar's address, parsed to its origin
+// (relayRegistrarUrlProblem), at most `maxLength` UTF-16 code units. Each
+// refusal starts with `name`, the field as the reader of the message knows it.
+function relayRegistrarUrlSchema(
+  name: string,
+  maxLength: number,
+): z.ZodType<string, string> {
+  return z
+    .string()
+    .trim()
+    .check(
+      maxCodeUnits(maxLength, `${name} is longer than ${maxLength} characters`),
+    )
+    .superRefine((url, ctx) => {
+      const problem = relayRegistrarUrlProblem(url);
+      if (problem !== undefined)
+        ctx.addIssue({ code: "custom", message: `${name} ${problem}` });
+    })
+    .transform(relayRegistrarOrigin);
+}
+
 // --- Relay exchange id -------------------------------------------------------
 
 // The registrar refuses an id with this prefix from any caller but the relay's
@@ -1351,25 +1369,10 @@ const relayUrlList = (url: z.ZodType<string>, name: "turn" | "stun") =>
     1,
   );
 
-const relayLocatorRegistrarSchema = z
-  .string()
-  .trim()
-  .check(
-    maxCodeUnits(
-      MAX_RELAY_LOCATOR_URL_LENGTH,
-      `a relay locator's registrar is longer than ` +
-        `${MAX_RELAY_LOCATOR_URL_LENGTH} characters`,
-    ),
-  )
-  .superRefine((url, ctx) => {
-    const problem = relayRegistrarUrlProblem(url);
-    if (problem !== undefined)
-      ctx.addIssue({
-        code: "custom",
-        message: `a relay locator's registrar ${problem}`,
-      });
-  })
-  .transform(relayRegistrarOrigin);
+const relayLocatorRegistrarSchema = relayRegistrarUrlSchema(
+  "a relay locator's registrar",
+  MAX_RELAY_LOCATOR_URL_LENGTH,
+);
 
 const relayLocatorWebSocketSchema = webSocketRelayUrlSchema(
   "a relay locator's websocket url",
@@ -1656,24 +1659,10 @@ function relayRegistrarOrigin(url: string): string {
  */
 export const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
   {
-    url: z
-      .string()
-      .trim()
-      .check(
-        maxCodeUnits(
-          MAX_RELAY_REGISTRAR_URL_LENGTH,
-          `relay_registrar.url is longer than ${MAX_RELAY_REGISTRAR_URL_LENGTH} characters`,
-        ),
-      )
-      .superRefine((url, ctx) => {
-        const problem = relayRegistrarUrlProblem(url);
-        if (problem !== undefined)
-          ctx.addIssue({
-            code: "custom",
-            message: `relay_registrar.url ${problem}`,
-          });
-      })
-      .transform(relayRegistrarOrigin),
+    url: relayRegistrarUrlSchema(
+      "relay_registrar.url",
+      MAX_RELAY_REGISTRAR_URL_LENGTH,
+    ),
     exchangeId: relayExchangeIdSchema("relay_registrar.exchange_id"),
   },
   {
@@ -1943,37 +1932,26 @@ const FileDropConnectionConfigSchema = z.object({
   options: FileSyncOptionsSchema.optional(),
 });
 
-/**
- * Extracts the directory-mode fields for the file-based channels: the single
- * shared directory (`path` for filedrop, `server.path` for sftp) versus the
- * split `inboundPath`/`outboundPath` pair, plus whether retain mode is set.
- * Returns `undefined` for webrtc, which the path-mode refines below skip.
- * Shared so filedrop (top-level path) and sftp (path under `server`) are
- * validated by one set of rules.
- */
-function fileSyncPathMode(conn: ConnectionConfigAwaitingAddress):
-  | {
-      path?: string;
-      inboundPath?: string;
-      outboundPath?: string;
-      retain: boolean;
-    }
-  | undefined {
-  if (conn.channel === "filedrop")
-    return {
-      path: conn.path,
-      inboundPath: conn.inboundPath,
-      outboundPath: conn.outboundPath,
-      retain: conn.options?.retainFiles === true,
-    };
-  if (conn.channel === "sftp")
-    return {
-      path: conn.server.path,
-      inboundPath: conn.server.inboundPath,
-      outboundPath: conn.server.outboundPath,
-      retain: conn.options?.retainFiles === true,
-    };
-  return undefined;
+// The directory fields of a file-sync connection: at the top level for
+// filedrop, under `server` for sftp; undefined for webrtc.
+function connectionDirectories(
+  conn: ConnectionConfigAwaitingAddress,
+): FileSyncDirectories | undefined {
+  switch (conn.channel) {
+    case "sftp":
+      return fileSyncDirectories(conn.channel, conn.server);
+    case "filedrop":
+      return fileSyncDirectories(conn.channel, conn);
+    default:
+      return undefined;
+  }
+}
+
+function retainsFiles(conn: ConnectionConfigAwaitingAddress): boolean {
+  return (
+    (conn.channel === "sftp" || conn.channel === "filedrop") &&
+    conn.options?.retainFiles === true
+  );
 }
 
 const AwaitingAddressSchema: z.ZodType<ConnectionConfigAwaitingAddress> = z
@@ -2010,73 +1988,32 @@ const AwaitingAddressSchema: z.ZodType<ConnectionConfigAwaitingAddress> = z
   // File-sync directory mode (filedrop and sftp). A directory is given either
   // as a single shared path or as a split inbound/outbound pair, never both and
   // never just one half; a configured outbound directory (split mode) requires
-  // retain mode; and the two directories must differ. These are validated once
-  // here, against fileSyncPathMode(), so both channels obey the same rules.
+  // retain mode; and the two directories must differ, by the rule each
+  // channel's open() applies (fileSyncDirectories.ts).
+  .refine((conn) => directoryFormsAreExclusive(connectionDirectories(conn)), {
+    message:
+      "set either a single shared folder (path / server.path) or the " +
+      "inbound_path/outbound_path pair, not both",
+  })
+  .refine((conn) => splitDirectoriesAreWhole(connectionDirectories(conn)), {
+    message:
+      "inbound_path and outbound_path must be set together; a split " +
+      "directory needs both halves",
+  })
+  .refine((conn) => splitDirectoriesDiffer(connectionDirectories(conn)), {
+    message: "inbound_path and outbound_path must differ",
+  })
   .refine(
-    (conn) => {
-      const m = fileSyncPathMode(conn);
-      if (m === undefined) return true;
-      const hasPair =
-        m.inboundPath !== undefined || m.outboundPath !== undefined;
-      return !(m.path !== undefined && hasPair);
-    },
-    {
-      message:
-        "set either a single shared folder (path / server.path) or the " +
-        "inbound_path/outbound_path pair, not both",
-    },
-  )
-  .refine(
-    (conn) => {
-      const m = fileSyncPathMode(conn);
-      if (m === undefined) return true;
-      return (m.inboundPath !== undefined) === (m.outboundPath !== undefined);
-    },
-    {
-      message:
-        "inbound_path and outbound_path must be set together; a split " +
-        "directory needs both halves",
-    },
-  )
-  .refine(
-    (conn) => {
-      const m = fileSyncPathMode(conn);
-      if (
-        m === undefined ||
-        m.inboundPath === undefined ||
-        m.outboundPath === undefined
-      )
-        return true;
-      // Reject not only byte-identical paths but any pair that resolves to the
-      // same directory (redundant slashes, "." segments, trailing slash), using
-      // the very rule each channel's open() applies -- so the schema and the
-      // live connection agree on what counts as a distinct outbound directory.
-      return !pathsResolveToSameDir(m.inboundPath, m.outboundPath);
-    },
-    { message: "inbound_path and outbound_path must differ" },
-  )
-  .refine(
-    (conn) => {
-      const m = fileSyncPathMode(conn);
-      if (m === undefined) return true;
-      const split = m.inboundPath !== undefined && m.outboundPath !== undefined;
-      return !split || m.retain;
-    },
+    (conn) =>
+      !namesSplitDirectories(connectionDirectories(conn)) || retainsFiles(conn),
     {
       message:
         "a separate outbound directory (inbound_path/outbound_path) requires " +
         "retain_files: true",
     },
   )
-  // filedrop must name a directory in one form or the other; sftp may leave all
-  // three unset (the SFTP login-home shared directory).
   .refine(
-    (conn) => {
-      if (conn.channel !== "filedrop") return true;
-      const split =
-        conn.inboundPath !== undefined && conn.outboundPath !== undefined;
-      return conn.path !== undefined || split;
-    },
+    (conn) => filedropNamesDirectory(conn.channel, connectionDirectories(conn)),
     {
       message:
         "filedrop requires a directory: set path, or both inbound_path and " +
@@ -2119,24 +2056,14 @@ export const ConnectionConfigSchema: z.ZodType<ConnectionConfig> =
 // --- Parse -------------------------------------------------------------------
 
 /**
- * Parse and validate a raw value as a {@link ConnectionConfig}.
- * Snake_case keys are converted to camelCase before validation, so JSON/YAML
- * from disk can be passed directly.
+ * Parse and validate a raw value as a {@link ConnectionConfig}, without
+ * throwing. Snake_case keys are converted to camelCase before validation, so
+ * JSON/YAML from disk can be passed directly. Honors the "safe" contract for
+ * the `camelizeKeys` bounds too -- see {@link safeParseCamelized}.
  *
  * Note: @-file references in credential fields (e.g. `password`, `privateKey`)
  * are not resolved here. Apply `readAtSignFile` (or equivalent) to those fields
  * before calling this function.
- *
- * @throws {ZodError} if validation fails.
- */
-export function parseConnectionConfig(raw: unknown): ConnectionConfig {
-  return ConnectionConfigSchema.parse(camelizeKeys(raw));
-}
-
-/**
- * Non-throwing version of {@link parseConnectionConfig}. Honors the "safe"
- * contract for the {@link camelizeKeys} bounds too -- see
- * {@link safeParseCamelized}.
  */
 export function safeParseConnectionConfig(raw: unknown) {
   return safeParseCamelized(ConnectionConfigSchema, raw);
@@ -2155,7 +2082,7 @@ export function safeParseConnectionConfigAwaitingAddress(raw: unknown) {
  * Parse and validate a raw value as {@link FileSyncOptions}, without throwing.
  * Snake_case keys are converted to camelCase before validation; already-
  * camelCase objects (e.g. from {@link applyConnectionOverrides}) are accepted
- * unchanged. Honors the "safe" contract for the {@link camelizeKeys} bounds too
+ * unchanged. Honors the "safe" contract for the `camelizeKeys` bounds too
  * -- see {@link safeParseCamelized}.
  */
 export function safeParseFileSyncOptions(raw: unknown) {
