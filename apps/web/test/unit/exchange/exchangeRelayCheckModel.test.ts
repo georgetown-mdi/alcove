@@ -2,16 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import {
   DEFAULT_MAX_DISPLAY_LENGTH,
-  INVITATION_RELAY_REFUSES_UNTIL_ENROLLED,
-  NO_RELAY_CANDIDATE_GATHERED,
-  OWN_RELAY_REFUSES_UNTIL_ENROLLED,
   RELAY_NOT_REACHED_REMEDY,
-  RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR,
   TURN_RELAY_CREDENTIAL_REFUSED_MEANING,
-  TURN_RELAY_NOT_REACHED_MEANING,
   TURN_RELAY_NO_RELAYED_PATH_MEANING,
-  WEBSOCKET_RELAY_NOT_REACHED_ACTION,
-  WEBSOCKET_RELAY_NOT_REACHED_MEANING,
   WEBSOCKET_RELAY_NO_RELAYED_PATH_MEANING,
   sanitizeForDisplay,
   webSocketRelayRefusalWords,
@@ -30,7 +23,12 @@ import type { RunRelayHosts } from "../../../src/psi/transport/runRelayPlan.js";
 
 // The words of the web check of an exchange's relays: each outcome's
 // message and remedy, taken from the words `alcove doctor relay` and the
-// console use for the same cause, and every url escaped and bounded.
+// console use for the same cause except where the remedy is a web control,
+// and every url escaped and bounded.
+
+const ENROLL_OWN = "Enroll this exchange under Relay registration below.";
+const REMOVE_OWN = "Remove this relay from Connection settings.";
+const ASK_PARTNER = "Ask your partner to enroll this exchange at their relay.";
 
 const OWN_TURN = "turns:own-relay.example.org:443?transport=tcp";
 const INVITED_TURN = "turn:invited-relay.example.org:3478";
@@ -70,26 +68,38 @@ describe("each outcome's message and remedy", () => {
     });
   });
 
-  test("a TURN relay not reached takes the CLI's meaning and remedy", () => {
+  test("a TURN relay not reached takes the CLI's remedy, in the web's words for this computer", () => {
     expect(
       shown({ relay: "turn", url: OWN_TURN, result: "not_reached" }),
     ).toEqual({
       url: OWN_TURN,
       works: false,
       cause: "not_reached",
-      summary: `${NO_RELAY_CANDIDATE_GATHERED} within 30 s.`,
-      meaning: TURN_RELAY_NOT_REACHED_MEANING,
+      summary: "no relayed connection was made within 30 s.",
+      meaning:
+        "nothing on this computer reached this relay, the relay refused " +
+        "the credential, or it presented a certificate this computer does " +
+        "not trust; the reason is not reported, so the check cannot tell " +
+        "which.",
       action: RELAY_NOT_REACHED_REMEDY,
     });
   });
 
   test.each([
-    [OWN_TURN, OWN_RELAY_REFUSES_UNTIL_ENROLLED],
-    [INVITED_TURN, INVITATION_RELAY_REFUSES_UNTIL_ENROLLED],
-    [DEFAULT_TURN, "T" + RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR.slice(1)],
+    [OWN_TURN, "The relay may need this exchange enrolled first.", REMOVE_OWN],
+    [
+      INVITED_TURN,
+      "This relay needs this exchange enrolled first.",
+      ASK_PARTNER,
+    ],
+    [
+      DEFAULT_TURN,
+      "This relay needs this exchange enrolled first.",
+      "Check again later.",
+    ],
   ])(
-    "a refused credential at %s does not work, with the CLI's reason for that source",
-    (url, reason) => {
+    "a refused credential at %s does not work, with a reason and an action for that source",
+    (url, reason, action) => {
       const line = shown({ relay: "turn", url, result: "credential_refused" });
       expect(line).toEqual({
         url,
@@ -97,10 +107,63 @@ describe("each outcome's message and remedy", () => {
         cause: "credential_refused",
         summary: "the relay refused this exchange's credential.",
         meaning: `${TURN_RELAY_CREDENTIAL_REFUSED_MEANING} ${reason}`,
-        action: RELAY_NOT_REACHED_REMEDY,
+        action,
       });
+      expect(line.meaning).not.toContain("alcove");
+      expect(line.meaning).not.toContain("registrar");
     },
   );
+
+  test("a refused credential at the user's own TURN relay points at Relay registration where the page shows it", () => {
+    const line = exchangeRelayCheckLineShown(
+      { relay: "turn", url: OWN_TURN, result: "credential_refused" },
+      { ...CONTEXT, relayRegistrationOffered: true },
+    );
+    expect(line.action).toBe(ENROLL_OWN);
+  });
+
+  test.each([
+    ["turn", OWN_TURN, "Correct this url in Connection settings."],
+    ["turn", INVITED_TURN, "Ask your partner to check this relay's url."],
+    ["turn", DEFAULT_TURN, "Check again later."],
+    ["websocket", OWN_WEBSOCKET, "Correct this url in Connection settings."],
+    [
+      "websocket",
+      INVITED_WEBSOCKET,
+      "Ask your partner to check this relay's url.",
+    ],
+  ] as const)(
+    "a %s relay at %s whose request threw says the check did not start, and what to do for that relay",
+    (relay, url, action) => {
+      const line = shown(
+        relay === "turn"
+          ? { relay, url, result: "not_started" }
+          : { relay, url, result: { kind: "not_started" } },
+      );
+      expect(line).toMatchObject({
+        works: false,
+        cause: "not_reached",
+        summary: "the check could not start a connection to this relay.",
+        action,
+      });
+      expect(line.summary).not.toMatch(/within/);
+      expect(line.meaning).toBeUndefined();
+    },
+  );
+
+  test("a TURN credential that could not be made says so, and asks for a reload rather than a url change", () => {
+    for (const url of [OWN_TURN, INVITED_TURN, DEFAULT_TURN])
+      expect(
+        shown({ relay: "turn", url, result: "credential_not_made" }),
+      ).toEqual({
+        url,
+        works: false,
+        cause: "not_reached",
+        summary:
+          "this browser could not make this exchange's relay credential.",
+        action: "Reload this page, then check again.",
+      });
+  });
 
   test("a TURN relay with no relayed path does not work", () => {
     expect(
@@ -120,35 +183,129 @@ describe("each outcome's message and remedy", () => {
     ).toMatchObject({
       works: false,
       cause: "not_enrolled",
-      meaning: RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR,
+      meaning: "this relay needs this exchange enrolled first.",
       action: defaultRelayNotEnrolledNotice(refusal),
     });
   });
 
-  test("a WebSocket relay that holds no key is not enrolled, in the CLI's words", () => {
+  test.each([
+    [
+      4003,
+      "not_enrolled",
+      "the relay holds no key for this exchange.",
+      "the relay refuses this exchange until it is enrolled there.",
+      ASK_PARTNER,
+    ],
+    [
+      4004,
+      "credential_refused",
+      "the relay holds a different key for this exchange.",
+      "the relay refuses this exchange until it holds the current key.",
+      "Ask your partner to enroll this exchange at their relay again, " +
+        "replacing the key it holds.",
+    ],
+  ])(
+    "a partner's WebSocket relay refusing with %i names no close code, and the partner is asked to enroll",
+    (closeCode, cause, summary, meaning, action) => {
+      const line = shown({
+        relay: "websocket",
+        url: INVITED_WEBSOCKET,
+        result: { kind: "refused", closeCode, proofRemadeOnRelayClock: false },
+      });
+      expect(line).toEqual({
+        url: INVITED_WEBSOCKET,
+        works: false,
+        cause,
+        summary,
+        meaning,
+        action,
+      });
+      expect(`${line.summary} ${line.meaning}`).not.toMatch(
+        /admitted|close code|registrar|shared secret/,
+      );
+    },
+  );
+
+  test("a WebSocket relay's other refusal is summarized by core's clause, without the close code", () => {
     const line = shown({
       relay: "websocket",
-      url: INVITED_WEBSOCKET,
+      url: OWN_WEBSOCKET,
       result: {
         kind: "refused",
-        closeCode: 4003,
+        closeCode: 4008,
         proofRemadeOnRelayClock: false,
       },
     });
-    const words = webSocketRelayRefusalWords(4003, {
+    const words = webSocketRelayRefusalWords(4008, {
       enrollsAtInvitationRegistrar: false,
-      partnersUnderInvitationExchangeId: true,
+      partnersUnderInvitationExchangeId: false,
       enrollmentFailed: false,
-      proofRemadeOnRelayClock: false,
     });
-    expect(line).toEqual({
-      url: INVITED_WEBSOCKET,
-      works: false,
-      cause: "not_enrolled",
-      summary:
-        "not admitted; the relay holds no key for this exchange (close code 4003).",
-      ...words,
+    expect(line).toMatchObject({
+      summary: "the relay is serving as many exchanges as it allows.",
+      meaning: words.meaning,
+      action: words.action,
     });
+  });
+
+  describe("the user's own WebSocket relay holding no key or another key", () => {
+    const refused = (closeCode: number): ExchangeRelayCheckLine => ({
+      relay: "websocket",
+      url: OWN_WEBSOCKET,
+      result: { kind: "refused", closeCode, proofRemadeOnRelayClock: false },
+    });
+
+    test.each([
+      [4003, ENROLL_OWN],
+      [
+        4004,
+        "Under Relay registration below, enter the relay-owner token, tick " +
+          "Replace the key the registrar holds for this exchange id, and " +
+          "select Enroll.",
+      ],
+    ])(
+      "a %i points at Relay registration where the page shows it and each run registers the new key there",
+      (closeCode, action) => {
+        expect(
+          exchangeRelayCheckLineShown(refused(closeCode), {
+            ...CONTEXT,
+            relayRegistrationOffered: true,
+            relayRegistrationRenewedByRuns: true,
+          }),
+        ).toMatchObject({
+          cause: closeCode === 4003 ? "not_enrolled" : "credential_refused",
+          action,
+        });
+      },
+    );
+
+    test.each([4003, 4004])(
+      "a %i does not point at Relay registration where no run registers the new key there",
+      (closeCode) => {
+        expect(
+          exchangeRelayCheckLineShown(refused(closeCode), {
+            ...CONTEXT,
+            relayRegistrationOffered: true,
+          }).action,
+        ).toBe(REMOVE_OWN);
+      },
+    );
+
+    test.each([4003, 4004])(
+      "a %i elsewhere says to remove the relay, or turn on this site's relay server where that would add it",
+      (closeCode) => {
+        expect(shown(refused(closeCode)).action).toBe(REMOVE_OWN);
+        expect(
+          exchangeRelayCheckLineShown(refused(closeCode), {
+            ...CONTEXT,
+            hosts: { ...HOSTS, defaultRelayOff: true },
+          }).action,
+        ).toBe(
+          "Remove this relay from Connection settings, or turn on this " +
+            "site's relay server there.",
+        );
+      },
+    );
   });
 
   describe("a 4003 at this site's default WebSocket relay", () => {
@@ -191,12 +348,12 @@ describe("each outcome's message and remedy", () => {
           hosts: siteHosts,
           ...(invitationRelay !== undefined && { invitationRelay }),
         });
-        expect(line.action).toBe(words(false).action);
+        expect(line.action).toBe("Check again.");
         expect(line.action).not.toBe(words(true).action);
       },
     );
 
-    test("keeps the partner's registrar advice where the invitation names this site's registrar", () => {
+    test("asks the partner about the relay their invitation names where the invitation names this site's registrar", () => {
       const line = exchangeRelayCheckLineShown(refused, {
         hosts: siteHosts,
         invitationRelay: {
@@ -205,7 +362,11 @@ describe("each outcome's message and remedy", () => {
           registrar: "https://registrar.example.org",
         },
       });
-      expect(line.action).toBe(words(true).action);
+      expect(line.action).toBe(
+        "Check again. If the relay still holds no key, ask your partner " +
+          "whether the relay their invitation names is working.",
+      );
+      expect(line.action).not.toContain("registrar");
     });
   });
 
@@ -233,8 +394,13 @@ describe("each outcome's message and remedy", () => {
     ).toMatchObject({
       works: false,
       cause: "not_reached",
-      meaning: WEBSOCKET_RELAY_NOT_REACHED_MEANING,
-      action: WEBSOCKET_RELAY_NOT_REACHED_ACTION,
+      meaning:
+        "nothing on this computer reached this url as an Alcove WebSocket " +
+        "relay: the network blocked it, nothing answered at that address " +
+        "and path, or the connection closed before the relay answered.",
+      action:
+        "Check that this computer can reach the relay and that the url " +
+        "names its address and path, then check again.",
     });
     expect(
       shown({

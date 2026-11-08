@@ -31,9 +31,16 @@ const CHECK_MESSAGE = "alcove relay check";
 /** The STUN error codes a TURN relay refuses a credential with (RFC 8656). */
 const CREDENTIAL_REFUSED_CODES: ReadonlySet<number> = new Set([401, 441]);
 
-/** What the check found at a TURN relay. */
+/** What the check found at a TURN relay; `not_started` where its request
+ * threw, and `credential_not_made` where the credential it presents could
+ * not be made. */
 export type TurnRelayCheckResult =
-  "works" | "not_reached" | "credential_refused" | "no_relayed_path";
+  | "works"
+  | "not_reached"
+  | "credential_refused"
+  | "no_relayed_path"
+  | "not_started"
+  | "credential_not_made";
 
 /** What the check found at a WebSocket relay. */
 export type WebSocketRelayCheckResult =
@@ -44,7 +51,9 @@ export type WebSocketRelayCheckResult =
   | { kind: "refused"; closeCode: number; proofRemadeOnRelayClock: boolean }
   | { kind: "unexpected_message" }
   | { kind: "not_reached" }
-  | { kind: "no_relayed_path" };
+  | { kind: "no_relayed_path" }
+  /** The request threw. */
+  | { kind: "not_started" };
 
 /** One relay the check reports on, in the order the run lists it. */
 export type ExchangeRelayCheckLine =
@@ -338,7 +347,8 @@ function setupOutcome(
  * one bound started once the enrollment has ended. A default relay url the
  * run leaves out because its enrollment failed is reported as not enrolled
  * and is not contacted. A relay whose request throws is reported not
- * reached, and the others keep their results.
+ * started, a TURN relay whose credential could not be made is reported so,
+ * and the others keep their results.
  *
  * @throws {DOMException} `signal`'s reason where it aborts, once every
  *   request it started has closed its peer connections and sockets.
@@ -376,7 +386,7 @@ export async function runExchangeRelayCheck(
     const [turnResults, websocketResults] = await Promise.all([
       Promise.all(
         iceServers.map(async (iceServer): Promise<TurnRelayCheckResult> => {
-          if (iceServer === undefined) return "not_reached";
+          if (iceServer === undefined) return "credential_not_made";
           try {
             return await checkTurnRelay(
               iceServer,
@@ -384,7 +394,7 @@ export async function runExchangeRelayCheck(
               dependencies.createPeerConnection,
             );
           } catch {
-            return "not_reached";
+            return "not_started";
           }
         }),
       ),
@@ -398,7 +408,7 @@ export async function runExchangeRelayCheck(
               dependencies.parkWebSocketRelay,
             );
           } catch {
-            return { kind: "not_reached" };
+            return { kind: "not_started" };
           }
         }),
       ),

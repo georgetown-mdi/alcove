@@ -553,7 +553,7 @@ describe("runExchangeRelayCheck", () => {
     );
   }
 
-  test("a relay whose request throws is not reached, and the other relays keep their results", async () => {
+  test("a relay whose request throws is not started, and the other relays keep their results", async () => {
     const peers = fakePeers("works");
     const invitedThrows: PeerConnectionFactory = (configuration) => {
       const urls = (configuration.iceServers ?? []).flatMap(
@@ -572,12 +572,31 @@ describe("runExchangeRelayCheck", () => {
     );
     expect(lines).toEqual([
       { relay: "turn", url: OWN_TURN, result: "works" },
-      { relay: "turn", url: INVITED_TURN, result: "not_reached" },
+      { relay: "turn", url: INVITED_TURN, result: "not_started" },
       { relay: "websocket", url: OWN_WEBSOCKET, result: { kind: "works" } },
     ]);
   });
 
-  test("a WebSocket relay whose request throws is not reached, and the TURN relays keep their results", async () => {
+  test("a TURN credential that cannot be made is reported on every TURN relay, and contacts none of them", async () => {
+    const peers = fakePeers("works");
+    const lines = await runExchangeRelayCheck(
+      ownAndInvitedRelays(),
+      NOT_ABORTED,
+      {
+        createPeerConnection: peers.create,
+        parkWebSocketRelay: fakeRelay({ kind: "pairs" }).park,
+        now: () => new Date(Number.NaN),
+      },
+    );
+    expect(lines).toEqual([
+      { relay: "turn", url: OWN_TURN, result: "credential_not_made" },
+      { relay: "turn", url: INVITED_TURN, result: "credential_not_made" },
+      { relay: "websocket", url: OWN_WEBSOCKET, result: { kind: "works" } },
+    ]);
+    expect(peers.peers).toHaveLength(0);
+  });
+
+  test("a WebSocket relay whose request throws is not started, and the TURN relays keep their results", async () => {
     const lines = await runExchangeRelayCheck(
       ownAndInvitedRelays(),
       NOT_ABORTED,
@@ -594,7 +613,7 @@ describe("runExchangeRelayCheck", () => {
       {
         relay: "websocket",
         url: OWN_WEBSOCKET,
-        result: { kind: "not_reached" },
+        result: { kind: "not_started" },
       },
     ]);
   });

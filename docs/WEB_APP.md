@@ -126,7 +126,7 @@ Each exchange has its own **Connection settings**: on the **Review & create** st
 - **Before it starts.** It lists the hosts it will contact, the hosts a run of the exchange contacts, and contacts nothing until you choose **Start the check**. Each operator it lists learns your network address.
 - **What it does.** Where the exchange uses this site's relay server, it first sets that relay up for the exchange as a run does. It then opens two connections through each relay and passes one message between them.
 - **What it reports.** For each relay, that it works, or that it does not work with the reason and what to change. A relay that refuses the exchange's credential does not work. Above the lines, it says whether the exchange will get through over a relay.
-- **The same words as the command line.** A reason and its remedy are those `alcove doctor relay` gives for the same cause ([CLI.md](CLI.md#checking-the-relay-of-a-webrtc-exchange)).
+- **The command line's reasons, without its commands.** A reason and its remedy follow those `alcove doctor relay` gives for the same cause ([CLI.md](CLI.md#checking-the-relay-of-a-webrtc-exchange)). Where those name a command, the web names Relay registration, a Connection setting, or a request to your partner instead, and it says "this computer" where the command line says "this host".
 
 The protocol and its limits: [PROTOCOL.md](spec/PROTOCOL.md#the-web-applications-relay-check).
 

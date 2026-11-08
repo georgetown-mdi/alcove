@@ -78,12 +78,19 @@ function HostList({ hosts }: { hosts: ReadonlyArray<ExchangeRelayCheckHost> }) {
 export function ExchangeRelayCheck({
   subject,
   invitationRelay,
+  relayRegistrationOffered = false,
+  relayRegistrationRenewedByRuns = false,
   scope,
   dependencies,
 }: {
   subject: ExchangeRelayCheckSubject;
   /** The relay the accepted invitation names, which a line's words name. */
   invitationRelay?: RelayUrls;
+  /** Relay registration follows on the page, so a line's words point at it. */
+  relayRegistrationOffered?: boolean;
+  /** Each run registers its new relay key where Relay registration enrolls
+   * it. */
+  relayRegistrationRenewedByRuns?: boolean;
   /** A sentence after the intro saying which settings are checked. */
   scope?: string;
   /** Tests only. */
@@ -121,6 +128,8 @@ export function ExchangeRelayCheck({
           exchangeRelayCheckLineShown(line, {
             hosts: subject.hosts,
             ...(invitationRelay !== undefined && { invitationRelay }),
+            relayRegistrationOffered,
+            relayRegistrationRenewedByRuns,
           }),
         ),
       });
