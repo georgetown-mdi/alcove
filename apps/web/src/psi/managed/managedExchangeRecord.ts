@@ -824,6 +824,45 @@ export const keyPairFieldsSchema: ZodType<ManagedExchangeKeyPair> = z
   .strict();
 
 /**
+ * The fields the configuration-only rule binds to the secret's presence, each
+ * with the name its refusal gives it: a record without a `sharedSecret` holds
+ * none of them, and holds the two condition fields in their none form only.
+ */
+const SECRET_BOUND_FIELDS = [
+  { field: "expires", named: "expires" },
+  { field: "schedule", named: "schedule" },
+  { field: "lastRun", named: "lastRun" },
+  { field: "recentRuns", named: "recentRuns" },
+  { field: "rotationInFlightSince", named: "rotationInFlightSince" },
+  { field: "relayRegistrar", named: "relayRegistrar" },
+  {
+    field: "relayRegistrationPendingSince",
+    named: "relayRegistrationPendingSince",
+  },
+  { field: "ownRelay", named: "ownRelay" },
+  { field: "defaultRelayOn", named: "defaultRelayOn" },
+  { field: "rotationHistory", named: "rotationHistory" },
+  { field: "previousSharedSecret", named: "previousSharedSecret" },
+  { field: "heldAppUpdate", named: "held app update" },
+  { field: "defaultRelayRefusal", named: "default relay refusal" },
+  { field: "workingDirectoryHandle", named: "platform handle" },
+] as const satisfies ReadonlyArray<{
+  field: keyof ManagedExchangeRecord;
+  named: string;
+}>;
+
+/** Whether `record` holds the secret-bound `field`: present, or for the two
+ * condition fields, in a form other than none. */
+function secretBoundFieldHeld(
+  record: ManagedExchangeRecord,
+  field: (typeof SECRET_BOUND_FIELDS)[number]["field"],
+): boolean {
+  if (field === "heldAppUpdate" || field === "defaultRelayRefusal")
+    return record[field].kind !== "none";
+  return record[field] !== undefined;
+}
+
+/**
  * The record validator. The interface is defined first and the schema derived as
  * a `z.ZodType<ManagedExchangeRecord>`, per the repo's validation convention. The
  * folder handle is validated only for its presence, not its structure: a
@@ -904,27 +943,15 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
   .refine(
     (record) =>
       record.sharedSecret !== undefined ||
-      (record.expires === undefined &&
-        record.schedule === undefined &&
-        record.lastRun === undefined &&
-        record.recentRuns === undefined &&
-        record.rotationInFlightSince === undefined &&
-        record.relayRegistrar === undefined &&
-        record.relayRegistrationPendingSince === undefined &&
-        record.ownRelay === undefined &&
-        record.defaultRelayOn === undefined &&
-        record.rotationHistory === undefined &&
-        record.previousSharedSecret === undefined &&
-        record.heldAppUpdate.kind === "none" &&
-        record.defaultRelayRefusal.kind === "none" &&
-        record.workingDirectoryHandle === undefined),
+      SECRET_BOUND_FIELDS.every(
+        ({ field }) => !secretBoundFieldHeld(record, field),
+      ),
     {
       message:
         "a record without a sharedSecret is configuration only and must hold " +
-        "no expires, schedule, lastRun, recentRuns, rotationInFlightSince, " +
-        "relayRegistrar, relayRegistrationPendingSince, ownRelay, " +
-        "defaultRelayOn, rotationHistory, previousSharedSecret, held app " +
-        "update, default relay refusal, or platform handle",
+        `no ${SECRET_BOUND_FIELDS.map(({ named }) => named)
+          .join(", ")
+          .replace(/, (?=[^,]*$)/u, ", or ")}`,
     },
   )
   .refine(
@@ -1395,6 +1422,17 @@ export function rotationHistoryAfterRetiring(
   );
 }
 
+/** Set `target`'s optional `field` to `value`, remove it for `null`, and leave
+ * it as it is for `undefined`. */
+function setOrDelete<TKey extends PropertyKey, TValue>(
+  target: { [K in TKey]?: TValue },
+  field: TKey,
+  value: TValue | null | undefined,
+): void {
+  if (value === null) delete target[field];
+  else if (value !== undefined) target[field] = value;
+}
+
 /** Set `next`'s rotation history, omitting an empty one. */
 function setRotationHistory(
   next: ManagedExchangeRecord,
@@ -1572,8 +1610,7 @@ export function applyManagedExchangeRotation(
     ...record,
     sharedSecret: rotation.sharedSecret,
   };
-  if (rotation.expires === null) delete next.expires;
-  else next.expires = rotation.expires;
+  setOrDelete(next, "expires", rotation.expires);
   setRotationHistory(
     next,
     rotationHistoryAfterRetiring(
@@ -1947,22 +1984,18 @@ export function applyManagedExchangeReinviteRotation(
       "a re-invite names a coordination server, so it requires a webrtc " +
         `exchange; stored connection channel is ${connection.channel}`,
     );
-  const { host, port, path } = rotation.signalingServer;
-  const server = {
-    host,
-    ...(port !== undefined ? { port } : {}),
-    ...(path !== undefined ? { path } : {}),
-  };
   const next: ManagedExchangeRecord = {
     ...record,
     exchangeFile: {
       ...record.exchangeFile,
-      connection: { ...connection, server },
+      connection: {
+        ...connection,
+        server: signalingServerLocator(rotation.signalingServer),
+      },
     },
     sharedSecret: rotation.sharedSecret,
   };
-  if (rotation.expires === null) delete next.expires;
-  else next.expires = rotation.expires;
+  setOrDelete(next, "expires", rotation.expires);
   setRotationHistory(next, rotationHistoryAfterRetiring(record, retired));
   setPreviousSecret(next, undefined);
   delete next.lastRun;
@@ -2040,8 +2073,7 @@ export function applyManagedExchangeCommandLinePair(
     sharedSecret: imported.sharedSecret,
   };
   if (imported.expires !== undefined) next.expires = imported.expires;
-  if (imported.tokenMaxAgeDays === undefined) delete next.tokenMaxAgeDays;
-  else next.tokenMaxAgeDays = imported.tokenMaxAgeDays;
+  setOrDelete(next, "tokenMaxAgeDays", imported.tokenMaxAgeDays ?? null);
   if (imported.relayRegistrar !== undefined)
     next.relayRegistrar = imported.relayRegistrar;
   if (imported.relayRegistrationPendingSince !== undefined)
@@ -2737,8 +2769,7 @@ export function applyManagedExchangeWorkingDirectory(
   handle: FileSystemDirectoryHandle | null,
 ): ManagedExchangeRecord {
   const next: ManagedExchangeRecord = { ...record };
-  if (handle === null) delete next.workingDirectoryHandle;
-  else next.workingDirectoryHandle = handle;
+  setOrDelete(next, "workingDirectoryHandle", handle);
   return parseManagedExchangeRecord(next);
 }
 
@@ -2809,6 +2840,18 @@ function connectionWithAllowedRelays(
     : { ...rest, allowedRelays: [...allowedRelays] };
 }
 
+/** The stored `server` of a webrtc connection: only the host, port and path
+ * of `server`, as a fresh invitation's expanded locator holds them. */
+function signalingServerLocator(
+  server: Pick<WebRTCExchangeLocator, "host" | "port" | "path">,
+): Pick<WebRTCExchangeLocator, "host" | "port" | "path"> {
+  return {
+    host: server.host,
+    ...(server.port !== undefined ? { port: server.port } : {}),
+    ...(server.path !== undefined ? { path: server.path } : {}),
+  };
+}
+
 /**
  * The connection `server` sets: the webrtc connection naming only the host,
  * port and path given, as a fresh invitation's expanded locator does. A
@@ -2826,14 +2869,7 @@ function connectionWithSignalingServer(
   const endpoint = WebRTCEndpointSchema.parse({ channel: "webrtc", ...server });
   if (refusedSignalingEndpointField(endpoint) !== undefined)
     throw new Error("a run would refuse this coordination server address");
-  return {
-    ...connection,
-    server: {
-      host: server.host,
-      ...(server.port !== undefined ? { port: server.port } : {}),
-      ...(server.path !== undefined ? { path: server.path } : {}),
-    },
-  };
+  return { ...connection, server: signalingServerLocator(server) };
 }
 
 /**
@@ -2869,10 +2905,7 @@ export function applyManagedExchangeLocalEdits(
 ): ManagedExchangeRecord {
   const next: ManagedExchangeRecord = { ...record };
   if (edits.label !== undefined) next.label = edits.label;
-  if (edits.schedule !== undefined) {
-    if (edits.schedule === null) delete next.schedule;
-    else next.schedule = edits.schedule;
-  }
+  setOrDelete(next, "schedule", edits.schedule);
   if (edits.allowedRelays !== undefined)
     next.exchangeFile = {
       ...next.exchangeFile,
@@ -2889,26 +2922,13 @@ export function applyManagedExchangeLocalEdits(
         edits.signalingServer,
       ),
     };
-  if (edits.ownRelay === null) delete next.ownRelay;
-  else if (edits.ownRelay !== undefined) next.ownRelay = edits.ownRelay;
+  setOrDelete(next, "ownRelay", edits.ownRelay);
   if (edits.defaultRelayOn === true) next.defaultRelayOn = true;
   else if (edits.defaultRelayOn === false) delete next.defaultRelayOn;
   if (LOCAL_DOCUMENT_EDIT_FIELDS.some((field) => edits[field] !== undefined)) {
     const exchangeFile: ExchangeSpec = { ...next.exchangeFile };
-    if (edits.includeOwnColumns === null) delete exchangeFile.includeOwnColumns;
-    else if (edits.includeOwnColumns !== undefined)
-      exchangeFile.includeOwnColumns = edits.includeOwnColumns;
-    if (edits.includeMatchingKey === null)
-      delete exchangeFile.includeMatchingKey;
-    else if (edits.includeMatchingKey !== undefined)
-      exchangeFile.includeMatchingKey = edits.includeMatchingKey;
-    if (edits.csvDelimiter === null) delete exchangeFile.csvDelimiter;
-    else if (edits.csvDelimiter !== undefined)
-      exchangeFile.csvDelimiter = edits.csvDelimiter;
-    if (edits.retentionDisposition === null)
-      delete exchangeFile.retentionDisposition;
-    else if (edits.retentionDisposition !== undefined)
-      exchangeFile.retentionDisposition = edits.retentionDisposition;
+    for (const field of LOCAL_DOCUMENT_EDIT_FIELDS)
+      setOrDelete(exchangeFile, field, edits[field]);
     next.exchangeFile = exchangeFile;
   }
   // The settings card sends the policy on every save, `null` while it is off,
@@ -2917,15 +2937,15 @@ export function applyManagedExchangeLocalEdits(
     edits.tokenMaxAgeDays !== undefined &&
     (edits.tokenMaxAgeDays ?? undefined) !== record.tokenMaxAgeDays
   ) {
-    if (edits.tokenMaxAgeDays === null) delete next.tokenMaxAgeDays;
-    else next.tokenMaxAgeDays = edits.tokenMaxAgeDays;
+    setOrDelete(next, "tokenMaxAgeDays", edits.tokenMaxAgeDays);
     // `expires` bounds the stored secret, so a record holding none takes the
     // policy alone: the bound is stamped by the run that gives it a secret.
-    if (record.sharedSecret !== undefined) {
-      const expires = deriveEditedExpiry(record, edits.tokenMaxAgeDays, now);
-      if (expires === null) delete next.expires;
-      else next.expires = expires;
-    }
+    if (record.sharedSecret !== undefined)
+      setOrDelete(
+        next,
+        "expires",
+        deriveEditedExpiry(record, edits.tokenMaxAgeDays, now),
+      );
   }
   return parseManagedExchangeRecord(next);
 }
