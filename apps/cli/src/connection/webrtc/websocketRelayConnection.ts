@@ -1,8 +1,6 @@
 import {
-  BoundedInboundFrames,
   ConnectionError,
   INACTIVITY_TIMEOUT_KEY,
-  PeerJsFrameEncoder,
   QueuedMessageConnection,
   WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS,
   asConnectionError,
@@ -10,10 +8,10 @@ import {
   markStatesItsOwnNextStep,
   packCloseSentinel,
   parseBoundedJson,
-  toFrameBytes,
 } from "@alcove/core";
 
 import { inactivityTimeoutGuidance } from "../timeoutGuidance";
+import { framedTransport, sendCutError } from "./framedTransport";
 import {
   DEFAULT_CLOSE_FLUSH_TIMEOUT_MS,
   DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
@@ -28,7 +26,11 @@ import {
   DEFAULT_RENDEZVOUS_TIMEOUT_MS,
 } from "./weriftPeer";
 
-import type { MessageConnection, RendezvousRole } from "@alcove/core";
+import type {
+  BoundedInboundFrames,
+  MessageConnection,
+  RendezvousRole,
+} from "@alcove/core";
 
 /**
  * The CLI's transport over the WebSocket relay (docs/spec/WEBSOCKET_RELAY.md,
@@ -878,37 +880,39 @@ function relayMessageConnection(
 
   return new QueuedMessageConnection(
     (controls) => {
-      const encoder = new PeerJsFrameEncoder();
-      const bounds = options.inboundFrames?.() ?? new BoundedInboundFrames();
       let peerCloseRead = false;
       let sentinelSent = false;
       let sendStopped = false;
       let tearingDown = false;
-      let sendQueue: Promise<void> = Promise.resolve();
       let closeCode: number | undefined;
       const closeWaiters: Array<(code: number) => void> = [];
 
       const socketOpen = (): boolean => socket.readyState === WEBSOCKET_OPEN;
       const sendable = (): boolean => !sendStopped && socketOpen();
-      const sendCut = (): ConnectionError =>
-        new ConnectionError(
-          "the connection to the exchange partner closed before a message " +
-            "could be sent",
-          "transport",
-        );
 
-      const sendFrame = async (data: unknown): Promise<void> => {
-        for (const datagram of encoder.encode(data)) {
-          if (socket.bufferedAmount >= sendWindowBytes) {
-            while (socket.bufferedAmount > sendWindowLowBytes) {
-              if (!sendable()) throw sendCut();
-              await new Promise((wake) => setTimeout(wake, sendWindowPollMs));
-            }
-          }
-          if (!sendable()) throw sendCut();
-          socket.send(Buffer.from(datagram));
+      const drainToLowMark = async (): Promise<void> => {
+        while (socket.bufferedAmount > sendWindowLowBytes) {
+          if (!sendable()) throw sendCutError();
+          await new Promise((wake) => setTimeout(wake, sendWindowPollMs));
         }
       };
+
+      const framed = framedTransport(controls, {
+        inboundFrames: options.inboundFrames,
+        send: (datagram) => socket.send(datagram),
+        sendable,
+        waitForWindow: () =>
+          socket.bufferedAmount >= sendWindowBytes
+            ? drainToLowMark()
+            : undefined,
+        onInboundClose: () => {
+          peerCloseRead = true;
+          // Both sides are in a clean close, each waiting on the other's
+          // close, so this side closes now; the wait in `close` then ends
+          // on the relay's answer.
+          if (sentinelSent && socketOpen()) socket.close(RELAY_CLOSE.normal);
+        },
+      });
 
       const closed = (ms: number): Promise<number | undefined> => {
         if (closeCode !== undefined) return Promise.resolve(closeCode);
@@ -932,47 +936,16 @@ function relayMessageConnection(
         else controls.fail(relayDropError(event.code));
       });
 
-      install({
-        onMessage: (data) => {
-          let outcome;
-          try {
-            outcome = bounds.accept(toFrameBytes(data));
-          } catch (err) {
-            controls.fail(asConnectionError(err, "protocol"));
-            return;
-          }
-          if (outcome.kind === "pending") return;
-          if (outcome.kind === "close") {
-            peerCloseRead = true;
-            // Both sides are in a clean close, each waiting on the other's
-            // close, so this side closes now; the wait in `close` then ends
-            // on the relay's answer.
-            if (sentinelSent && socketOpen()) socket.close(RELAY_CLOSE.normal);
-            // `finish`: the sentinel follows every frame the partner sent, so
-            // a frame still queued here is drained before the close.
-            controls.finish(
-              new ConnectionError("peer connection closed", "transport"),
-            );
-            return;
-          }
-          controls.deliver(outcome.value, outcome.receivedBytes);
-        },
-      });
+      install({ onMessage: framed.accept });
 
       return {
-        outboundWebRtcFrameBound: () => bounds.limits.maxFrameBytes,
-        requireBinaryFrames: () => bounds.requireBinaryFrames(),
-        send: (data) => {
-          const frame = sendQueue.then(() => sendFrame(data));
-          sendQueue = frame.catch(() => {});
-          return frame;
-        },
+        ...framed.hooks,
         close: async (closeOptions) => {
           tearingDown = true;
           if (closeOptions?.flush && socketOpen()) {
             const deadline = Date.now() + closeFlushTimeoutMs;
             await Promise.race([
-              sendQueue,
+              framed.queued(),
               closed(Math.max(0, deadline - Date.now())),
             ]);
             sendStopped = true;

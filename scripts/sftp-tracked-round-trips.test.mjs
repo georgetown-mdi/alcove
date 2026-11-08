@@ -10,7 +10,7 @@ import {
   requestIssuingSites,
   unwrap,
 } from "./lib/sftpAdapterSites.mjs";
-import { descendants } from "./lib/typeScriptSources.mjs";
+import { descendants, parseSource } from "./lib/typeScriptSources.mjs";
 
 // Every server round trip the SFTP adapter issues must pass through its
 // tracked() bracket, which is where the heartbeat's in-flight state is kept: an
@@ -118,6 +118,36 @@ function identifierNamesIn(node) {
 }
 
 /**
+ * A covered call of a method's own parameter, `issue()`, covers the argument
+ * every `this.<method>(...)` call passes in that position: the thunk is issued
+ * where the method calls it. Any other callee yields nothing.
+ */
+function thunkArguments(sourceFile, callee) {
+  if (!ts.isIdentifier(callee)) return [];
+  let method = callee.parent;
+  while (method && !ts.isMethodDeclaration(method)) method = method.parent;
+  if (!method || !ts.isIdentifier(method.name)) return [];
+  const index = method.parameters.findIndex(
+    (parameter) =>
+      ts.isIdentifier(parameter.name) && parameter.name.text === callee.text,
+  );
+  if (index === -1) return [];
+  const passed = [];
+  for (const node of descendants(sourceFile)) {
+    if (!ts.isCallExpression(node)) continue;
+    const target = unwrap(node.expression);
+    if (
+      ts.isPropertyAccessExpression(target) &&
+      target.expression.kind === ts.SyntaxKind.ThisKeyword &&
+      target.name.text === method.name.text &&
+      node.arguments[index] !== undefined
+    )
+      passed.push(node.arguments[index]);
+  }
+  return passed;
+}
+
+/**
  * The set of nodes the tracked() bracket covers, computed by marking each
  * `this.tracked(...)` argument and propagating along the ways this adapter
  * passes a pending promise. A site is covered only where the propagation
@@ -218,6 +248,8 @@ export function trackedCoverage(sourceFile) {
         // countedOperationRetry, withSftpOperationDeadline and the settlement
         // handlers all take what they wrap first.
         if (node.arguments.length > 0) mark(node.arguments[0]);
+        for (const argument of thunkArguments(sourceFile, callee))
+          mark(argument);
         continue;
       }
     }
@@ -304,8 +336,9 @@ describe("SFTP adapter round trips are bracketed by tracked()", () => {
 
   it("follows a promise into an executor held in a local, not only a nested call", () => {
     // createExclusiveOnce is the shape that forces it: its SFTPv3 code-4
-    // existence fallback is issued inside an executor assigned to `attempt`,
-    // which only reaches this.tracked() further down the method. Reading that
+    // existence fallback is issued inside an executor built by the thunk
+    // assigned to `attempt`, which reaches this.tracked() only through
+    // roundTrip's call of it. Reading that
     // site as unbracketed would be wrong, and would invite a bracket around an
     // operation the outer bound already covers.
     const fallback = sites.find(
@@ -315,5 +348,26 @@ describe("SFTP adapter round trips are bracketed by tracked()", () => {
     );
     expect(fallback).toBeDefined();
     expect(covered.has(fallback.node)).toBe(true);
+  });
+
+  it("covers a thunk only where the method it is passed to issues it in the bracket", () => {
+    const { covered: bracketed } = trackedCoverage(
+      parseSource(
+        "thunk.ts",
+        "class A {\n" +
+          "  tracked(p) { return p; }\n" +
+          "  inBracket(issue) { return this.tracked(issue()); }\n" +
+          "  outside(issue) { return issue(); }\n" +
+          "  a() { return this.inBracket(() => this.client.stat('/a')); }\n" +
+          "  b() { return this.outside(() => this.client.stat('/b')); }\n" +
+          "}\n",
+      ),
+    );
+    const sitesOf = (text) =>
+      [...bracketed].filter(
+        (node) => ts.isCallExpression(node) && node.getText().includes(text),
+      );
+    expect(sitesOf("stat('/a')")).not.toEqual([]);
+    expect(sitesOf("stat('/b')")).toEqual([]);
   });
 });

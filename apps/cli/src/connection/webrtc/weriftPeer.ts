@@ -1030,6 +1030,11 @@ function candidateFrom(payload: unknown): Record<string, unknown> | undefined {
   return candidate as Record<string, unknown>;
 }
 
+/** What a rendezvous whose signal aborted rejects with, at every phase. */
+function rendezvousCancelledError(): ConnectionError {
+  return new ConnectionError("the WebRTC rendezvous was cancelled", "closed");
+}
+
 /** Resolve after `ms`, or reject with `cancelled()` as soon as `signal` aborts. */
 function waitUnlessCancelled(
   ms: number,
@@ -1208,9 +1213,6 @@ async function openRendezvous(
       cause,
     );
   };
-  const cancelled = (): ConnectionError =>
-    new ConnectionError("the WebRTC rendezvous was cancelled", "closed");
-
   const buildPeer = async (
     servers: Array<RTCIceServer> | undefined,
     warn?: (message: string) => void,
@@ -1327,7 +1329,7 @@ async function openRendezvous(
             `${sanitizeErrorForDisplay(err)}; registering again shortly`,
           );
         }
-        await waitUnlessCancelled(waitMs, signal, cancelled);
+        await waitUnlessCancelled(waitMs, signal, rendezvousCancelledError);
         if (Date.now() >= deadline) throw idTaken ? arrivalTimeout() : err;
         delayMs = Math.min(2 * delayMs, ID_TAKEN_RETRY_MAX_DELAY_MS);
       }
@@ -1422,7 +1424,7 @@ async function openRendezvous(
   let next: NextAttempt | undefined;
   for (let attempt = 0; ; attempt += 1) {
     if (attempt > 0) {
-      if (signal?.aborted) throw cancelled();
+      if (signal?.aborted) throw rendezvousCancelledError();
       if (Date.now() >= deadline) throw arrivalTimeout();
     }
     const outcome = await runAttempt(attempt, next);
@@ -1811,10 +1813,7 @@ class Negotiation {
             this.stopOfferResends();
           }, quietAt)
         : undefined;
-    const abort = (): void =>
-      this.fail(
-        new ConnectionError("the WebRTC rendezvous was cancelled", "closed"),
-      );
+    const abort = (): void => this.fail(rendezvousCancelledError());
 
     try {
       if (partnerRestart !== undefined)

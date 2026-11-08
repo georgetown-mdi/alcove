@@ -358,6 +358,23 @@ test("a send waiting on the window fails when the socket closes", async () => {
   expect(socket.binarySent()).toEqual([]);
 });
 
+test("a send on a socket that left open without an event hands nothing over", async () => {
+  const { connection, socket } = await startedConnection();
+  socket.readyState = 2;
+  const failed = await connection.send("never sent").then(
+    () => undefined,
+    (err: unknown) => err as ConnectionError,
+  );
+  expect(failed).toBeInstanceOf(ConnectionError);
+  expect({ message: failed?.message, kind: failed?.kind }).toEqual({
+    message:
+      "the connection to the exchange partner closed before a message " +
+      "could be sent",
+    kind: "transport",
+  });
+  expect(socket.binarySent()).toEqual([]);
+});
+
 test("a clean close sends the sentinel and resolves on the partner's relayed close", async () => {
   const { connection, socket } = await startedConnection();
   await connection.send("last");
