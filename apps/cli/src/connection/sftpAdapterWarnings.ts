@@ -312,6 +312,53 @@ export function unclosableDialError(): UsageError {
 }
 
 /**
+ * The debug line logged beside a warning or refusal when an ssh2 member this
+ * build drives is gone: the member is contributor-tier detail, so it stays off
+ * the operator's terminal.
+ *
+ * @param subject - What the member is driven for, first-party text.
+ * @param member - The member the installed library lacks, as the adapter
+ * reaches it (e.g. `client._sock.destroy()`).
+ */
+export function missingSeamDebug(subject: string, member: string): string {
+  return (
+    `${subject} drives ssh2's ${member}, which is not available after ` +
+    `connect(); the installed ssh2 / ssh2-sftp-client version may have ` +
+    `renamed, relocated, or removed it`
+  );
+}
+
+/**
+ * A teardown's close from this side whose socket destroy() threw, shared by
+ * the terminal close and the close of a teardown that gave up its wait.
+ *
+ * @param displayedError - The thrown error as the call site rendered it for
+ * display, already escaped.
+ */
+export function teardownCloseFailedWarning(displayedError: string): string {
+  return (
+    `Closing the SFTP connection from this side failed at teardown: ` +
+    `${displayedError}. The connection is left to the operating system, may ` +
+    `stay half-open, and a half-open connection can keep this process from ` +
+    `exiting.`
+  );
+}
+
+/**
+ * A teardown's close from this side whose destroyed socket did not report
+ * itself destroyed, shared by the same two closes.
+ */
+export function teardownDestroyDidNotCloseWarning(): string {
+  return (
+    `The SFTP connection's transport did not close after this side ` +
+    `destroyed it at teardown, so the connection may stay half-open, and a ` +
+    `half-open connection can keep this process from exiting. This build of ` +
+    `Alcove may not be compatible with the installed SFTP library; ` +
+    `${REPORT_LIBRARY_INCOMPATIBILITY}.`
+  );
+}
+
+/**
  * The idle release that closed nothing because another session transition still
  * held the one shared client: closing the session alongside it would corrupt that
  * client, so the release declines and the next cycle releases again.

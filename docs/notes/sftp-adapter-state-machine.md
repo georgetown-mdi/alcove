@@ -121,6 +121,13 @@ answer to what separates a partner loss from a deliberate release.
 | `FatalSession` | `Live` | `Closed` | yes | `fatal` | none, terminal |
 | `TransitionDeclined` / `TransitionSkipped` / `BoundaryHeld` | queued | unchanged | no | -- | -- |
 
+Against the real library, `SessionReplacedByDial` is reached only by a repeat
+`connect()` whose first attempt is refused and whose retry succeeds after a
+partner drop, which charges `deliberate` for that drop: ssh2-sftp-client refuses
+a `connect()` over a live session before reaching the server, and leaves that
+session in place (`apps/cli/test/integration/sftpStackPremises.test.ts`, "a
+connect() over a live session is refused and leaves that session in place").
+
 > **INV-L1 -- no generation leaves the live state without exactly one recorded
 > loss cause.**
 

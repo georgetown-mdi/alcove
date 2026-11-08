@@ -148,7 +148,7 @@ has to keep the model for them rather than promise to retire it:
   resolves through its own existence check. Reaching the status-11 normalization
   means fabricating a status no server here sends, so it would take a new
   fault injection rather than a new case.
-- **`put`/`putOnce`'s one-shot `ReadableStream` source.**
+- **`put`/`putStreamOnce`'s one-shot `ReadableStream` source.**
   Nothing server-side distinguishes it from the `Buffer` path, and no call
   site in this app hands one: every `FileSyncConnection` put passes a `Buffer` or
   a chunk list. A real-server case would have to call the adapter directly with

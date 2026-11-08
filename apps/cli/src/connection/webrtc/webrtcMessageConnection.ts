@@ -1,20 +1,18 @@
 import {
-  BoundedInboundFrames,
   ConnectionError,
   DeliveryUnconfirmedError,
   INACTIVITY_TIMEOUT_KEY,
-  PeerJsFrameEncoder,
   QueuedMessageConnection,
   asConnectionError,
   packCloseSentinel,
-  toFrameBytes,
 } from "@alcove/core";
 
 import { inactivityTimeoutGuidance } from "../timeoutGuidance";
+import { framedTransport, sendCutError } from "./framedTransport";
 import { openWebRtcPeerSession } from "./weriftPeer";
 
 import type { WebRtcPeerOptions, WebRtcPeerSession } from "./weriftPeer";
-import type { MessageConnection } from "@alcove/core";
+import type { BoundedInboundFrames, MessageConnection } from "@alcove/core";
 import type { RTCDataChannel } from "werift";
 
 /**
@@ -250,11 +248,8 @@ export function webRtcMessageConnection(
 
   return new QueuedMessageConnection(
     (controls) => {
-      const encoder = new PeerJsFrameEncoder();
-      const bounds = options?.inboundFrames?.() ?? new BoundedInboundFrames();
       let peerCloseRead = false;
       let sendStopped = false;
-      let sendQueue: Promise<void> = Promise.resolve();
       const sendWake = sendWindowWake(SEND_WINDOW_POLL_INTERVAL_MS);
       const wake = sendWake.wake;
       channel.bufferedAmountLowThreshold = sendWindowLowBytes;
@@ -264,48 +259,27 @@ export function webRtcMessageConnection(
         channel.readyState === "open" && session.isConnected();
       const sendable = (): boolean => !sendStopped && channelSendable();
 
-      const sendCut = (): ConnectionError =>
-        new ConnectionError(
-          "the connection to the exchange partner closed before a message " +
-            "could be sent",
-          "transport",
-        );
-
-      const sendFrame = async (data: unknown): Promise<void> => {
-        for (const datagram of encoder.encode(data)) {
-          while (channel.bufferedAmount >= sendWindowBytes) {
-            if (!sendable()) throw sendCut();
-            await sendWake.wait();
-          }
-          // werift queues a send on a channel that has left `open` without
-          // complaint, so a datagram handed over then would never arrive.
-          if (!sendable()) throw sendCut();
-          channel.send(Buffer.from(datagram));
+      const waitForChannelWindow = async (): Promise<void> => {
+        while (channel.bufferedAmount >= sendWindowBytes) {
+          if (!sendable()) throw sendCutError();
+          await sendWake.wait();
         }
       };
 
-      channel.onmessage = ({ data }) => {
-        let outcome;
-        try {
-          outcome = bounds.accept(toFrameBytes(data));
-        } catch (err) {
-          controls.fail(asConnectionError(err, "protocol"));
-          return;
-        }
-        if (outcome.kind === "pending") return;
-        if (outcome.kind === "close") {
+      const framed = framedTransport(controls, {
+        inboundFrames: options?.inboundFrames,
+        send: (datagram) => channel.send(datagram),
+        sendable,
+        waitForWindow: () =>
+          channel.bufferedAmount >= sendWindowBytes
+            ? waitForChannelWindow()
+            : undefined,
+        onInboundClose: () => {
           peerCloseRead = true;
-          // The peer's in-band clean close. `finish` rather than `fail`: the
-          // sentinel travels the same ordered channel behind every frame the
-          // peer already sent, so a final frame may still be queued here and
-          // must be drained before the close is reported.
-          controls.finish(
-            new ConnectionError("peer connection closed", "transport"),
-          );
-          return;
-        }
-        controls.deliver(outcome.value, outcome.receivedBytes);
-      };
+        },
+      });
+
+      channel.onmessage = ({ data }) => framed.accept(data);
       channel.onclose = () =>
         controls.finish(
           new ConnectionError("peer connection closed", "transport"),
@@ -328,13 +302,7 @@ export function webRtcMessageConnection(
       );
 
       return {
-        outboundWebRtcFrameBound: () => bounds.limits.maxFrameBytes,
-        requireBinaryFrames: () => bounds.requireBinaryFrames(),
-        send: (data) => {
-          const frame = sendQueue.then(() => sendFrame(data));
-          sendQueue = frame.catch(() => {});
-          return frame;
-        },
+        ...framed.hooks,
         close: async (closeOptions) => {
           sendStopped = true;
           wake();

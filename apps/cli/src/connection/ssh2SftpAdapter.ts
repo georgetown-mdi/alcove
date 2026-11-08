@@ -101,10 +101,13 @@ import {
   idleReleaseDidNotCloseWarning,
   indeterminateWriteError,
   midExchangeReconnectBudgetExhaustedError,
+  missingSeamDebug,
   partnerDropAtIdleBoundaryWarning,
   remainingMidExchangeRedials,
   sessionRecoveredEphemeralWarning,
   sessionRecoveredHeldWarning,
+  teardownCloseFailedWarning,
+  teardownDestroyDidNotCloseWarning,
   transitionWaitExpiredError,
   unboundedSubsystemOpenError,
   unclosableDialError,
@@ -937,14 +940,13 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
    * invocation of `fn` past the first) bumps {@link transportRetryCount}.
    * Reports how often an operation was re-issued over the run for the metrics
    * summary, reusing the operation's own retry loop rather than adding parallel
-   * state.
+   * state. Runs under {@link dataOperationRetries}.
    */
   private countedOperationRetry<T>(
     fn: () => Promise<T>,
-    retries: number,
-    delay: number,
     shouldRetry: (error: unknown) => boolean,
   ): Promise<T> {
+    const { retries, delayMs } = this.dataOperationRetries();
     let attempted = false;
     return retryPromise(
       () => {
@@ -953,9 +955,17 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
         return fn();
       },
       retries,
-      delay,
+      delayMs,
       shouldRetry,
     );
+  }
+
+  // The budget put() and rename() retry a transient failure under: one initial
+  // attempt plus up to `retries` re-issues, 100 ms apart. `??` not `||` so an
+  // explicit retries: 0 disables the retry rather than being coerced to the
+  // default of 5.
+  private dataOperationRetries(): { retries: number; delayMs: number } {
+    return { retries: this.options!.retries ?? 5, delayMs: 100 };
   }
 
   // The heartbeat's no-op keepalive: a single realPath(".") -- the cheapest real
@@ -973,16 +983,11 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // The heartbeat swallows the rejection, so it never reaches the exchange.
     const dead = this.deadSessionError("keepalive", ".");
     if (dead) return Promise.reject(dead);
-    return withSftpOperationDeadline(
+    return this.boundByDeadline(
       this.client.realPath(".").then(() => {}),
-      this.stallDeadlineMs,
-      () =>
-        transportOperationStalledError(
-          "keepalive",
-          ".",
-          `did not complete within ${this.stallDeadlineMs} ms (the server ` +
-            `withheld the realPath response)`,
-        ),
+      "keepalive",
+      ".",
+      "realPath",
     );
   }
 
@@ -1065,6 +1070,26 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
         path,
         `did not complete within ${this.stallDeadlineMs} ms (the server ` +
           `withheld the ${response} response)`,
+      ),
+    );
+  }
+
+  // One attempt of a single-round-trip operation under one `operation` name:
+  // refused at the dead-session guard before `issue` puts anything on the wire,
+  // then bracketed, warned on when slow, and bounded by boundByDeadline.
+  private roundTrip<T>(
+    operation: string,
+    path: string,
+    response: string,
+    issue: () => Promise<T>,
+  ): Promise<T> {
+    const dead = this.deadSessionError(operation, path);
+    if (dead) return Promise.reject(dead);
+    return this.tracked(
+      this.warnIfSlow(
+        this.boundByDeadline(issue(), operation, path, response),
+        operation,
+        path,
       ),
     );
   }
@@ -1495,11 +1520,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           `of Alcove is not compatible with the installed SFTP library; ` +
           `${REPORT_LIBRARY_INCOMPATIBILITY}.`,
       );
-      this.log.debug(
-        `re-dialing drives ssh2's ${seams.missing}, which is not available ` +
-          `after connect(); the installed ssh2 / ssh2-sftp-client version ` +
-          `may have renamed, relocated, or removed it`,
-      );
+      this.log.debug(missingSeamDebug("re-dialing", seams.missing));
       return unretired();
     }
     try {
@@ -1669,22 +1690,10 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           // a re-attempt puts the same request to the same server for the rest
           // of the reconnect budget.
           if (err instanceof SubsystemOpenTimeoutError) return false;
-          // A key-exchange negotiation with nothing in common is terminal on a
-          // process missing a primitive: the offer this side can make is fixed
-          // for the life of the process, so every re-attempt puts the same
-          // withheld offer to the same server, a second apart, for the whole
-          // reconnect budget. What classifies it is that verdict rather than the
-          // message, which a server writes verbatim through its own
-          // SSH_MSG_DISCONNECT description.
-          if (isUnperformableKexNegotiationFailure(err, unavailablePrimitives))
-            return false;
-          // Host-key verification failure is terminal: the server is actively
-          // presenting a different or unknown key, so retrying the key exchange
-          // against the same server changes nothing. ssh2's "Host denied
-          // (verification failed)" is wrapped by ssh2-sftp-client as a new Error
-          // with the same message; match on the stable message fragment from
-          // kex.js rather than a code that is not set on the error object.
-          return !(err instanceof Error && err.message.includes("Host denied"));
+          // A host-key rejection and a key exchange this process cannot
+          // perform are as terminal here as at a cycle-start re-dial: a
+          // re-attempt a second later puts the same thing to the same server.
+          return !this.isFatalDialError(err);
         },
       );
     } catch (err) {
@@ -1802,10 +1811,10 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     const forcedClose = resolveForcedCloseSeams(internals);
     if ("missing" in forcedClose) {
       this.log.debug(
-        `closing an abandoned dial from this side drives ssh2's ` +
-          `${forcedClose.missing}, which is not available after connect(); ` +
-          `the installed ssh2 / ssh2-sftp-client version may have renamed, ` +
-          `relocated, or removed it`,
+        missingSeamDebug(
+          "closing an abandoned dial from this side",
+          forcedClose.missing,
+        ),
       );
       throw unclosableDialError();
     }
@@ -1819,10 +1828,10 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       const seams = resolveTransportCloseSeams(internals);
       if ("missing" in seams) {
         this.log.debug(
-          `closing an SFTP connection from this side drives ssh2's ` +
-            `${seams.missing}, which is not available after connect(); the ` +
-            `installed ssh2 / ssh2-sftp-client version may have renamed, ` +
-            `relocated, or removed it`,
+          missingSeamDebug(
+            "closing an SFTP connection from this side",
+            seams.missing,
+          ),
         );
         throw transportCloseSeamError();
       }
@@ -1927,10 +1936,10 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           `${REPORT_LIBRARY_INCOMPATIBILITY}.`,
       );
       this.log.debug(
-        `closing an abandoned dial from this side drives ssh2's ` +
-          `${transport.missing}, which is not available after connect(); the ` +
-          `installed ssh2 / ssh2-sftp-client version may have renamed, ` +
-          `relocated, or removed it`,
+        missingSeamDebug(
+          "closing an abandoned dial from this side",
+          transport.missing,
+        ),
       );
       return;
     }
@@ -2220,11 +2229,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           `This build of Alcove is not compatible with the installed SFTP ` +
           `library; ${REPORT_LIBRARY_INCOMPATIBILITY}.`,
       );
-      this.log.debug(
-        `closing from this side drives ssh2's ${seam.missing}, which is not ` +
-          `available after connect(); the installed ssh2 / ssh2-sftp-client ` +
-          `version may have renamed, relocated, or removed it`,
-      );
+      this.log.debug(missingSeamDebug("closing from this side", seam.missing));
       return;
     }
     try {
@@ -2236,25 +2241,14 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
         true,
       );
     } catch (error: unknown) {
-      this.log.warn(
-        `Closing the SFTP connection from this side failed at teardown: ` +
-          `${sanitizeErrorForDisplay(error)}. The connection is left to the ` +
-          `operating system, may stay half-open, and a half-open connection ` +
-          `can keep this process from exiting.`,
-      );
+      this.log.warn(teardownCloseFailedWarning(sanitizeErrorForDisplay(error)));
       return;
     }
     // That the destroyed socket actually closed is the one assumption connect()
     // cannot check -- nothing at connect time destroys the socket -- so it is read
     // back where it is driven.
     if (seam.socket.destroyed !== true) {
-      this.log.warn(
-        `The SFTP connection's transport did not close after this side ` +
-          `destroyed it at teardown, so the connection may stay half-open, ` +
-          `and a half-open connection can keep this process from exiting. ` +
-          `This build of Alcove may not be compatible with the installed ` +
-          `SFTP library; ${REPORT_LIBRARY_INCOMPATIBILITY}.`,
-      );
+      this.log.warn(teardownDestroyDidNotCloseWarning());
       this.log.debug(
         `the installed ssh2 may no longer expose the socket beneath its client`,
       );
@@ -2324,11 +2318,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           `Alcove is not compatible with the installed SFTP library; ` +
           `${REPORT_LIBRARY_INCOMPATIBILITY}.`,
       );
-      this.log.debug(
-        `closing from this side drives ssh2's ${seam.missing}, which is not ` +
-          `available after connect(); the installed ssh2 / ssh2-sftp-client ` +
-          `version may have renamed, relocated, or removed it`,
-      );
+      this.log.debug(missingSeamDebug("closing from this side", seam.missing));
       return;
     }
     try {
@@ -2338,22 +2328,11 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       // socket then reports about itself.
       this.session.recordAbandonedTeardownClose();
     } catch (error: unknown) {
-      this.log.warn(
-        `Closing the SFTP connection from this side failed at teardown: ` +
-          `${sanitizeErrorForDisplay(error)}. The connection is left to the ` +
-          `operating system, may stay half-open, and a half-open connection ` +
-          `can keep this process from exiting.`,
-      );
+      this.log.warn(teardownCloseFailedWarning(sanitizeErrorForDisplay(error)));
       return;
     }
     if (seam.socket.destroyed !== true) {
-      this.log.warn(
-        `The SFTP connection's transport did not close after this side ` +
-          `destroyed it at teardown, so the connection may stay half-open, ` +
-          `and a half-open connection can keep this process from exiting. ` +
-          `This build of Alcove may not be compatible with the installed ` +
-          `SFTP library; ${REPORT_LIBRARY_INCOMPATIBILITY}.`,
-      );
+      this.log.warn(teardownDestroyDidNotCloseWarning());
       this.log.debug(
         `the installed ssh2 may no longer expose the socket beneath its client`,
       );
@@ -2501,10 +2480,10 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     const seams = resolveTransportCloseSeams(internals);
     if ("missing" in seams) {
       this.log.debug(
-        `closing an SFTP connection from this side drives ssh2's ` +
-          `${seams.missing}, which is not available after connect(); the ` +
-          `installed ssh2 / ssh2-sftp-client version may have renamed, ` +
-          `relocated, or removed it`,
+        missingSeamDebug(
+          "closing an SFTP connection from this side",
+          seams.missing,
+        ),
       );
       throw transportCloseSeamError();
     }
@@ -2799,22 +2778,23 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     );
   }
 
-  // A dial failure that must terminate the exchange rather than be retried on the
-  // next tick. Two classes qualify, each permanent in its own way.
+  // A dial failure that must terminate the exchange rather than be retried, by
+  // connect()'s retry loop or on the next tick. Two classes qualify, each
+  // permanent in its own way.
   //
   // A host-key verification failure means the server is presenting a different or
   // unknown key -- a trust-boundary fault (possible MITM) that must fail loudly
   // and fast, never hidden as a transient network blip and ridden to a generic
-  // peer-silence timeout. ssh2 reports it as "Host denied (verification failed)",
-  // the same stable fragment connect()'s retry predicate treats as terminal
-  // (re-verify on any ssh2 upgrade per docs/spec/DEPENDENCY_PINS.md).
+  // peer-silence timeout. ssh2's "Host denied (verification failed)" is wrapped
+  // by ssh2-sftp-client as a new Error with the same message, so the stable
+  // fragment from kex.js is matched rather than a code the error does not
+  // carry (re-verify on any ssh2 upgrade per docs/spec/DEPENDENCY_PINS.md).
   //
   // A key exchange this process cannot perform is permanent for the life of the
-  // run: every tick puts the same withheld offer to the same server until the
-  // peer-inactivity ceiling ends the run. The classifier is the connect loop's
-  // own, read over the same capability verdict, so the two dial paths cannot
-  // disagree about one rejection -- never a message a server or an on-path
-  // attacker can write (see sftpKexCapability).
+  // run: every attempt puts the same withheld offer to the same server. What
+  // classifies it is the capability verdict, never a message a server or an
+  // on-path attacker can write through its own SSH_MSG_DISCONNECT description
+  // (see sftpKexCapability).
   //
   // Bad credentials are caught at the initial connect() before any cycle; a
   // mid-exchange credential rotation is transient here and bounded by the
@@ -3083,10 +3063,16 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // recovery-wrapped even from a re-runnable source. Every caller passes "w"
     // today; this is a check standing in for that (per the project convention),
     // not a live guard against an existing append caller.
-    const truncateOverwrite = options?.flags !== "a";
-    if (!truncateOverwrite || !(Buffer.isBuffer(src) || Array.isArray(src)))
+    if (!(Buffer.isBuffer(src) || Array.isArray(src)))
       return this.runOperation({ recovery: "none" }, () =>
-        this.putOnce(src, dest, options),
+        this.putStreamOnce(src, dest, options),
+      );
+    const sourceBytes = Buffer.isBuffer(src)
+      ? src.length
+      : src.reduce((total, part) => total + part.length, 0);
+    if (options?.flags === "a")
+      return this.runOperation({ recovery: "none" }, () =>
+        this.putOnce(src, sourceBytes, dest, options),
       );
     // A put to a protocol temp is re-issued verbatim: no reader acts on a temp,
     // and the rename that follows is the final-name write. A put to any other
@@ -3096,18 +3082,15 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // "Re-issuing an operation".
     if (isProtocolTempName(dest.slice(dest.lastIndexOf("/") + 1)))
       return this.runOperation({ recovery: "verbatim" }, () =>
-        this.putOnce(src, dest, options),
+        this.putOnce(src, sourceBytes, dest, options),
       );
-    const sourceBytes = Buffer.isBuffer(src)
-      ? src.length
-      : src.reduce((total, part) => total + part.length, 0);
     return this.runOperation(
       {
         recovery: "reissued",
         reissue: (run, lost) =>
           this.reissueDirectPut(run, lost, dest, sourceBytes),
       },
-      () => this.putOnce(src, dest, options),
+      () => this.putOnce(src, sourceBytes, dest, options),
     );
   }
 
@@ -3135,70 +3118,64 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     throw indeterminateWriteError(lost, dest);
   }
 
+  // A Buffer or a [header, payload] chunk list -- the two shapes this app
+  // produces. Both are re-iterable, so the bounded source is rebuilt per retry
+  // attempt, and both go through the progress-based idle window
+  // (createBoundedPutSource): the payload is streamed in chunks so a withheld
+  // write acknowledgement stalls the source and trips the window, while a
+  // slow-but-progressing large upload keeps resetting it and is never
+  // false-failed. The chunk list is streamed part-by-part without
+  // concatenation.
   private putOnce(
-    src: PutSource,
+    payload: Buffer | Uint8Array[],
+    payloadBytes: number,
     dest: string,
     options?: PutOptions,
   ): Promise<unknown> {
-    if (Buffer.isBuffer(src) || Array.isArray(src)) {
-      // Buffer or a [header, payload] chunk list -- the two shapes this app
-      // produces. Both are re-iterable, so the bounded source is rebuilt per retry
-      // attempt, and both go through the progress-based idle window
-      // (createBoundedPutSource): the payload is streamed in chunks so a withheld
-      // write acknowledgement stalls the source and trips the window, while a
-      // slow-but-progressing large upload keeps resetting it and is never
-      // false-failed. The chunk list is streamed part-by-part without
-      // concatenation.
-      const payload = src;
-      const payloadBytes = Buffer.isBuffer(src)
-        ? src.length
-        : src.reduce((total, part) => total + part.length, 0);
-      return this.tracked(
-        this.warnIfSlow(
-          this.countedOperationRetry(
-            () => {
-              // Re-check the dead-session guard before EVERY attempt, not only at
-              // method entry -- mirroring rename(). A fatal SFTP protocol error can
-              // land between attempts, leaving no in-flight request for
-              // cleanupRequests to fail; without this re-check the next attempt
-              // would run the idle window's full bound before the typed terminal
-              // error ended the retry.
-              const dead = this.deadSessionError("file write", dest);
-              if (dead) return Promise.reject(dead);
-              // Fresh source + idle window per attempt: the source is single-use,
-              // so it is rebuilt from the retained Buffer/chunk list on each retry.
-              // The over-window stall is owned by the source, decided at the point
-              // of detection; this attempt's settle only feeds the non-stall
-              // outcomes via complete()/fail().
-              const { source, result, complete, fail } = createBoundedPutSource(
-                dest,
-                payload,
-                SFTP_PUT_PROGRESS_CHUNK_BYTES,
-                this.stallDeadlineMs,
-              );
-              void this.client
-                .put(source, dest, { writeStreamOptions: options })
-                .then(complete, fail);
-              return result;
-            },
-            // `??` not `||` so an explicit retries: 0 disables the retry rather than
-            // being coerced to the default of 5.
-            this.options!.retries ?? 5,
-            100,
-            isRetryableWriteStatus,
-          ),
-          "file write",
-          dest,
-          () => `${payloadBytes} byte payload`,
-        ),
-      );
-    }
+    return this.tracked(
+      this.warnIfSlow(
+        this.countedOperationRetry(() => {
+          // Re-check the dead-session guard before EVERY attempt, not only at
+          // method entry -- mirroring rename(). A fatal SFTP protocol error can
+          // land between attempts, leaving no in-flight request for
+          // cleanupRequests to fail; without this re-check the next attempt
+          // would run the idle window's full bound before the typed terminal
+          // error ended the retry.
+          const dead = this.deadSessionError("file write", dest);
+          if (dead) return Promise.reject(dead);
+          // Fresh source + idle window per attempt: the source is single-use,
+          // so it is rebuilt from the retained Buffer/chunk list on each retry.
+          // The over-window stall is owned by the source, decided at the point
+          // of detection; this attempt's settle only feeds the non-stall
+          // outcomes via complete()/fail().
+          const { source, result, complete, fail } = createBoundedPutSource(
+            dest,
+            payload,
+            SFTP_PUT_PROGRESS_CHUNK_BYTES,
+            this.stallDeadlineMs,
+          );
+          void this.client
+            .put(source, dest, { writeStreamOptions: options })
+            .then(complete, fail);
+          return result;
+        }, isRetryableWriteStatus),
+        "file write",
+        dest,
+        () => `${payloadBytes} byte payload`,
+      ),
+    );
+  }
 
-    // A one-shot ReadableStream: permitted by the transport-agnostic
-    // FileTransportClient.put signature but never produced by this app. A failed
-    // attempt half-drains it, so it gets a single attempt and no per-op idle
-    // window (which needs a re-runnable source); it stays bounded only by the
-    // whole-exchange budget, with an elapsed-only slow-op warning.
+  // A one-shot ReadableStream: permitted by the transport-agnostic
+  // FileTransportClient.put signature but never produced by this app. A failed
+  // attempt half-drains it, so it gets a single attempt and no per-op idle
+  // window (which needs a re-runnable source); it stays bounded only by the
+  // whole-exchange budget, with an elapsed-only slow-op warning.
+  private putStreamOnce(
+    src: NodeJS.ReadableStream,
+    dest: string,
+    options?: PutOptions,
+  ): Promise<unknown> {
     const dead = this.deadSessionError("file write", dest);
     if (dead) return Promise.reject(dead);
     return this.tracked(
@@ -3230,23 +3207,12 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   }
 
   private deleteOnce(path: string): Promise<void> {
-    const dead = this.deadSessionError("file delete", path);
-    if (dead) return Promise.reject(dead);
     // delete is a single metadata round-trip with no payload, so a flat
     // per-operation deadline has negligible false-fail risk (same profile as
     // createExclusive); it fast-fails a withheld delete callback in 60 s rather
     // than letting it ride the whole-exchange budget.
-    return this.tracked(
-      this.warnIfSlow(
-        this.boundByDeadline(
-          this.client.delete(path).then(() => {}),
-          "file delete",
-          path,
-          "delete",
-        ),
-        "file delete",
-        path,
-      ),
+    return this.roundTrip("file delete", path, "delete", () =>
+      this.client.delete(path).then(() => {}),
     );
   }
 
@@ -3405,10 +3371,6 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
               "rename",
             );
           },
-          // `??` not `||` so an explicit retries: 0 disables the retry rather than
-          // being coerced to the default of 5.
-          this.options!.retries ?? 5,
-          100,
           (error) =>
             (error as Ssh2SftpError | null | undefined)?.code ===
             SSH_FX_FAILURE,
@@ -3466,102 +3428,96 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // below.
     const { sftp } = this.client as unknown as Ssh2SftpClientInternals;
     if (!sftp) return Promise.reject(new Error(SFTP_SESSION_CLOSED_MESSAGE));
-    const dead = this.deadSessionError("exclusive create", path);
-    if (dead) return Promise.reject(dead);
     // SSH_FXF_WRITE (0x02) | SSH_FXF_CREAT (0x08) | SSH_FXF_EXCL (0x20)
     const EXCL_WRITE_CREATE = 0x2a;
-    const attempt = new Promise<void>((resolve, reject) => {
-      sftp.open(path, EXCL_WRITE_CREATE, {}, (openErr, handle) => {
-        if (openErr) {
-          // Normalize SFTPv4+ FILE_ALREADY_EXISTS (11) directly to EEXIST.
-          // SFTPv3 FAILURE (4) is ambiguous: resolve it via an exists() check
-          // and normalize to EEXIST only when the file is actually present.
-          // If a future ssh2 version already normalizes to the POSIX string
-          // "EEXIST", pass the error through unchanged to avoid wrapping noise.
-          // A new error is created for the numeric codes rather than mutating
-          // openErr: ssh2 constructs a fresh error per callback, but treating
-          // the caught object as immutable avoids surprising callers that
-          // inspect the original.
-          const errCode = (openErr as unknown as Record<string, unknown>).code;
-          if (errCode === 11) {
-            reject(
-              Object.assign(new Error(openErr.message), {
-                code: "EEXIST",
-                cause: openErr,
-              }),
-            );
-            return;
-          }
-          if (errCode === SSH_FX_FAILURE) {
-            // If exists() itself rejects (e.g., a second network failure
-            // immediately after the exclusive-open failure), the ambiguity
-            // cannot be resolved; propagate openErr unchanged so the caller
-            // sees the original I/O error rather than a confusing secondary
-            // one.
-            // Raw client existence check, not this.exists(): the public method
-            // is warnIfSlow-wrapped, and the whole `attempt` (this fallback
-            // included) is already wrapped once at the return site, so routing
-            // through this.exists() here would arm a second, overlapping slow-op
-            // warning for the same logical createExclusive. The outer wrap still
-            // bounds and reports this check.
-            this.client
-              .exists(path)
-              .then(Boolean)
-              .then(
-                (fileExists) => {
-                  reject(
-                    fileExists
-                      ? Object.assign(new Error(openErr.message), {
-                          code: "EEXIST",
-                          cause: openErr,
-                        })
-                      : Object.assign(
-                          new Error(
-                            `SFTP exclusive-create failed (SSH_FX_FAILURE) ` +
-                              `and the target file is not present, so the ` +
-                              `cause is a server-side I/O error rather than a ` +
-                              `lock-file race. Check the SFTP server logs for ` +
-                              `the underlying cause (disk full, permissions, ` +
-                              `quota) before retrying; SFTPv3 cannot ` +
-                              `distinguish a transient race from a permanent ` +
-                              `failure, so a single retry is reasonable only ` +
-                              `if a race is plausible. Original error: ` +
-                              `${openErr.message}`,
-                          ),
-                          { cause: openErr },
-                        ),
-                  );
-                },
-                () => reject(openErr),
+    const attempt = () =>
+      new Promise<void>((resolve, reject) => {
+        sftp.open(path, EXCL_WRITE_CREATE, {}, (openErr, handle) => {
+          if (openErr) {
+            // Normalize SFTPv4+ FILE_ALREADY_EXISTS (11) directly to EEXIST.
+            // SFTPv3 FAILURE (4) is ambiguous: resolve it via an exists() check
+            // and normalize to EEXIST only when the file is actually present.
+            // If a future ssh2 version already normalizes to the POSIX string
+            // "EEXIST", pass the error through unchanged to avoid wrapping noise.
+            // A new error is created for the numeric codes rather than mutating
+            // openErr: ssh2 constructs a fresh error per callback, but treating
+            // the caught object as immutable avoids surprising callers that
+            // inspect the original.
+            const errCode = (openErr as unknown as Record<string, unknown>)
+              .code;
+            if (errCode === 11) {
+              reject(
+                Object.assign(new Error(openErr.message), {
+                  code: "EEXIST",
+                  cause: openErr,
+                }),
               );
+              return;
+            }
+            if (errCode === SSH_FX_FAILURE) {
+              // If exists() itself rejects (e.g., a second network failure
+              // immediately after the exclusive-open failure), the ambiguity
+              // cannot be resolved; propagate openErr unchanged so the caller
+              // sees the original I/O error rather than a confusing secondary
+              // one.
+              // Raw client existence check, not this.exists(): the public method
+              // is warnIfSlow-wrapped, and the whole `attempt` (this fallback
+              // included) is already wrapped once at the return site, so routing
+              // through this.exists() here would arm a second, overlapping slow-op
+              // warning for the same logical createExclusive. The outer wrap still
+              // bounds and reports this check.
+              this.client
+                .exists(path)
+                .then(Boolean)
+                .then(
+                  (fileExists) => {
+                    reject(
+                      fileExists
+                        ? Object.assign(new Error(openErr.message), {
+                            code: "EEXIST",
+                            cause: openErr,
+                          })
+                        : Object.assign(
+                            new Error(
+                              `SFTP exclusive-create failed (SSH_FX_FAILURE) ` +
+                                `and the target file is not present, so the ` +
+                                `cause is a server-side I/O error rather than a ` +
+                                `lock-file race. Check the SFTP server logs for ` +
+                                `the underlying cause (disk full, permissions, ` +
+                                `quota) before retrying; SFTPv3 cannot ` +
+                                `distinguish a transient race from a permanent ` +
+                                `failure, so a single retry is reasonable only ` +
+                                `if a race is plausible. Original error: ` +
+                                `${openErr.message}`,
+                            ),
+                            { cause: openErr },
+                          ),
+                    );
+                  },
+                  () => reject(openErr),
+                );
+              return;
+            }
+            reject(openErr);
             return;
           }
-          reject(openErr);
-          return;
-        }
-        sftp.close(handle, (closeErr) => {
-          if (closeErr) reject(closeErr);
-          else resolve();
+          sftp.close(handle, (closeErr) => {
+            if (closeErr) reject(closeErr);
+            else resolve();
+          });
         });
       });
-    });
     // Bound the whole operation -- open, the SFTPv3 code-4 exists() fallback, and
     // close -- against a server that withholds any of those callbacks, so an
     // exclusive create cannot hang the rendezvous lock path forever. The wrapper
     // only races: a handle opened just before a withheld close is not reclaimed
     // (that close cannot itself complete), but the exchange fails terminally
     // rather than stalling, and the session teardown releases the session.
-    return this.tracked(
-      this.warnIfSlow(
-        this.boundByDeadline(
-          attempt,
-          "exclusive create",
-          path,
-          "open, existence-check, or close",
-        ),
-        "exclusive create",
-        path,
-      ),
+    return this.roundTrip(
+      "exclusive create",
+      path,
+      "open, existence-check, or close",
+      attempt,
     );
   }
 
@@ -3577,42 +3533,20 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // caller could act on. (createExclusive()'s code-4 ambiguity fallback does its
     // own existence check via the raw client, not this method, so this guard does
     // not affect it.)
-    const dead = this.deadSessionError("existence check", remotePath);
-    if (dead) return Promise.reject(dead);
     // exists is a single metadata stat round-trip, so a flat per-operation deadline
     // has negligible false-fail risk and fast-fails a withheld stat callback in
     // 60 s rather than letting the lock-path race check ride the whole-exchange
     // budget.
-    return this.tracked(
-      this.warnIfSlow(
-        this.boundByDeadline(
-          this.client.exists(remotePath).then(Boolean),
-          "existence check",
-          remotePath,
-          "stat",
-        ),
-        "existence check",
-        remotePath,
-      ),
+    return this.roundTrip("existence check", remotePath, "stat", () =>
+      this.client.exists(remotePath).then(Boolean),
     );
   }
 
   // The size of a file, read with the same guard and deadline as existsOnce. Only
   // the direct-put recovery arm reads it, so there is no public stat().
   private statSizeOnce(remotePath: string): Promise<number> {
-    const dead = this.deadSessionError("size check", remotePath);
-    if (dead) return Promise.reject(dead);
-    return this.tracked(
-      this.warnIfSlow(
-        this.boundByDeadline(
-          this.client.stat(remotePath).then((stats) => stats.size),
-          "size check",
-          remotePath,
-          "stat",
-        ),
-        "size check",
-        remotePath,
-      ),
+    return this.roundTrip("size check", remotePath, "stat", () =>
+      this.client.stat(remotePath).then((stats) => stats.size),
     );
   }
 }
