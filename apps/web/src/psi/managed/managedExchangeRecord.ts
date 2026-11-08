@@ -38,6 +38,7 @@ import {
   maxCodeUnits,
   migrateOnRead,
   offerablePrevious,
+  pruneRotationHistory,
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
@@ -1363,11 +1364,8 @@ export interface RetiredSecret {
 /**
  * The rotation history after `record` retires its current secret: the
  * secret's entry, with its `expires`, at the head of the stored history, then
- * the oldest entries removed while their `expires` has passed, then at most
- * {@link ROTATION_HISTORY_MAX_ENTRIES} kept. An expired entry newer than one
- * still in force keeps its place, so each entry's position still counts the
- * rotations since its secret was retired (docs/spec/MANAGED_EXCHANGE_RECORD.md,
- * the `rotationHistory` row).
+ * pruned by {@link pruneRotationHistory} at the write's instant
+ * (docs/spec/MANAGED_EXCHANGE_RECORD.md, the `rotationHistory` row).
  *
  * With `retiresSharedSecret` false the write adds no entry and only prunes: a
  * key exchange completed under the previous secret, whose entry the run that
@@ -1378,26 +1376,23 @@ export function rotationHistoryAfterRetiring(
   retired: RetiredSecret,
   retiresSharedSecret = true,
 ): Array<RotationHistoryEntry> {
-  const history: Array<RotationHistoryEntry> = [
-    ...(retiresSharedSecret
-      ? [
-          {
-            verifier: retired.verifier,
-            ...(record.expires !== undefined
-              ? { expires: record.expires }
-              : {}),
-          },
-        ]
-      : []),
-    ...(record.rotationHistory ?? []),
-  ].slice(0, ROTATION_HISTORY_MAX_ENTRIES);
-  while (history.length > 0) {
-    const { expires } = history[history.length - 1];
-    if (expires === undefined || parseStoredInstant(expires) > retired.at)
-      break;
-    history.pop();
-  }
-  return history;
+  return pruneRotationHistory(
+    [
+      ...(retiresSharedSecret
+        ? [
+            {
+              verifier: retired.verifier,
+              ...(record.expires !== undefined
+                ? { expires: record.expires }
+                : {}),
+            },
+          ]
+        : []),
+      ...(record.rotationHistory ?? []),
+    ],
+    retired.at,
+    parseStoredInstant,
+  );
 }
 
 /** Set `next`'s rotation history, omitting an empty one. */

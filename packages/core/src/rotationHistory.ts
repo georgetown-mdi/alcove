@@ -42,6 +42,33 @@ export interface RotationHistoryEntry {
   expires?: string;
 }
 
+/**
+ * The history a rotation write stores: the {@link ROTATION_HISTORY_MAX_ENTRIES}
+ * newest entries of `history`, then the entries at the oldest end removed
+ * while their `expires` is at or before `now`. An expired entry newer than one
+ * still in force keeps its place, since the handshake counts rotations by
+ * position (docs/spec/PROTOCOL.md, "The rotation history").
+ *
+ * @param history     newest first, the entry of any secret the write retires
+ *                    already at its head.
+ * @param now         the instant of the write, UTC milliseconds.
+ * @param parseInstant the instant an `expires` denotes, UTC milliseconds; an
+ *                    entry it reads as `NaN` is removed as expired.
+ */
+export function pruneRotationHistory(
+  history: ReadonlyArray<RotationHistoryEntry>,
+  now: number,
+  parseInstant: (value: string) => number,
+): RotationHistoryEntry[] {
+  const kept = history.slice(0, ROTATION_HISTORY_MAX_ENTRIES);
+  while (kept.length > 0) {
+    const { expires } = kept[kept.length - 1]!;
+    if (expires === undefined || parseInstant(expires) > now) break;
+    kept.pop();
+  }
+  return kept;
+}
+
 function historyLabel(derivation: RotationHistoryDerivation): string {
   return `alcove-rotation-history-v2:${derivation}`;
 }

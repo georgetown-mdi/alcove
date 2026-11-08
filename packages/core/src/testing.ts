@@ -60,6 +60,9 @@ export {
   historyProof,
   historyVerifierBytes,
 } from "./rotationHistory.js";
+// The rotation-history writes both apps' suites hold their pruning to.
+export { rotationHistoryPruneFixtures } from "./rotationHistoryPruneFixtures.js";
+export type { RotationHistoryPruneFixture } from "./rotationHistoryPruneFixtures.js";
 
 // The cross-party host-key fingerprint comparison, so each app's test tree can
 // hold the warning it composes to that app's own display budget. It stays out
