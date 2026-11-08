@@ -56,6 +56,7 @@ stands, from a direction still open to a decision taken and built.
 | [prebuild-provenance.md](prebuild-provenance.md) | Decided, built, and armed against a fork that attests. |
 | [psi-c-count-only.md](psi-c-count-only.md) | Directed by the maintainer's rulings; built over every agreed key. Missing-field conditions, `single-pass` and candidate sets are admitted; a split in a party's own cleaning stays refused. |
 | [psi-run-to-run-determinism.md](psi-run-to-run-determinism.md) | Examined and measured; nothing decided or built. |
+| [psi-step-liveness.md](psi-step-liveness.md) | Plan only, not built; the interval and the silence bound are working values, and each answer is proposed for ratification. |
 | [rebase-reattestation.md](rebase-reattestation.md) | Decided on the maintainer's ruling and built; the fourth mechanical re-attestation path and the limits it accepts. |
 | [receipt-run-binding.md](receipt-run-binding.md) | Resolved - built. |
 | [receipt-signing-fips-boundary.md](receipt-signing-fips-boundary.md) | Decided. |
