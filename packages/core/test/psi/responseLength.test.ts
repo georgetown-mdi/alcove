@@ -6,7 +6,12 @@ import {
   createMessagePipe,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
-import { ConnectionError, PartnerProtocolRefusalError } from "../../src/errors";
+import { PartnerProtocolRefusalError, PeerAbortError } from "../../src/errors";
+import { classifyFailure } from "../../src/failureClass";
+import {
+  PSI_RESPONSE_LENGTH_ABORT_REASON,
+  throwIfPartnerAbort,
+} from "../../src/partnerAbortFrame";
 import {
   encodeSinglePassReply,
   encodeSinglePassReplyTail,
@@ -54,29 +59,72 @@ function shortRefusal(id: string, sent: number, requested: number): string {
   );
 }
 
+// Each connection below states no file-sync bound, as a WebRTC or relay
+// connection does, so the abort a refusal sends is the one those partners
+// read.
+const LENGTH_ABORT = {
+  decision: "abort",
+  abortReasons: [PSI_RESPONSE_LENGTH_ABORT_REASON],
+};
+
+// The abort frames among `sent`.
+function abortsIn(sent: ReadonlyArray<unknown>): Array<unknown> {
+  return sent.filter(
+    (frame) => (frame as { decision?: unknown }).decision === "abort",
+  );
+}
+
+// The partner, reading `frame` where it awaits its next one, ends on a
+// partner abort, which the CLI reports as a refusal (exit 76).
+function expectPartnerEndsOnAbort(frame: unknown): void {
+  expect(frame).toStrictEqual(LENGTH_ABORT);
+  let raised: unknown;
+  try {
+    throwIfPartnerAbort(frame);
+  } catch (error) {
+    raised = error;
+  }
+  expectPartnerRefused(raised);
+}
+
+function expectPartnerRefused(error: unknown): void {
+  expect(error).toBeInstanceOf(PeerAbortError);
+  expect((error as PeerAbortError).partnerReason).toBe(
+    PSI_RESPONSE_LENGTH_ABORT_REASON,
+  );
+  expect(classifyFailure(error)).toBe("partner-refused");
+}
+
 // `conn` with the PSI set that arrives as its `n`th inbound frame, one part,
-// passed through `change`.
+// passed through `change`, and every frame it sends pushed onto `sent`.
 function changingNthSet(
   conn: MessageConnection,
   n: number,
   change: Change,
-): MessageConnection {
+): { conn: MessageConnection; sent: Array<unknown> } {
   let count = 0;
+  const sent: Array<unknown> = [];
   return {
-    send: (data) => conn.send(data),
-    receive: async (timeoutMs?: number) => {
-      const frame = await conn.receive(timeoutMs);
-      count += 1;
-      if (count !== n) return frame;
-      const set = (frame as Uint8Array).subarray(PSI_SET_PART_HEADER_BYTES);
-      return asOnePsiSetPart(changedResponse(set, change));
+    sent,
+    conn: {
+      send: (data) => {
+        sent.push(data);
+        return conn.send(data);
+      },
+      receive: async (timeoutMs?: number) => {
+        const frame = await conn.receive(timeoutMs);
+        count += 1;
+        if (count !== n) return frame;
+        const set = (frame as Uint8Array).subarray(PSI_SET_PART_HEADER_BYTES);
+        return asOnePsiSetPart(changedResponse(set, change));
+      },
+      close: () => conn.close(),
     },
-    close: () => conn.close(),
   };
 }
 
-// Rejects with what `run` rejected with after closing `conn`, which ends the
-// partner's wait as the run's abort would.
+// Rejects with what `run` rejected with after closing `conn`, as the run's
+// teardown does, so a partner the refusal sent no abort ends on the close.
 function closingOnRefusal<T>(run: Promise<T>, conn: MessageConnection) {
   return run.catch(async (error: unknown) => {
     await conn.close();
@@ -93,27 +141,29 @@ describe("a cascade round", () => {
   const starterSet = ["Alice", "Bob", "Carol", "David", "Elizabeth"];
   const joinerSet = ["Carol", "Elizabeth", "Henry", "Ivan"];
 
-  function round(change: Change) {
+  async function round(change: Change) {
     const [starterConn, joinerConn] = createMessagePipe();
     const starter = makeParticipant(psiLibrary, "starter");
     const joiner = makeParticipant(psiLibrary, "joiner");
     // The joiner reads the setup, sends its request, then reads the response.
-    return Promise.allSettled([
+    const changing = changingNthSet(joinerConn, 2, change);
+    const outcomes = await Promise.allSettled([
       starter.identifyIntersection(starterConn, starterSet),
       closingOnRefusal(
-        joiner.identifyIntersection(
-          changingNthSet(joinerConn, 2, change),
-          joinerSet,
-        ),
+        joiner.identifyIntersection(changing.conn, joinerSet),
         joinerConn,
       ),
     ]);
+    return { outcomes, sent: changing.sent };
   }
 
   test.for(REFUSED)(
-    "refuses a response %s, and neither party has a result",
+    "refuses a response %s and sends the abort, and neither party has a result",
     async ([, change]) => {
-      const [starter, joiner] = await round(change);
+      const {
+        outcomes: [starter, joiner],
+        sent,
+      } = await round(change);
       expect(joiner.status).toBe("rejected");
       const refusal = (joiner as PromiseRejectedResult).reason as Error;
       expect(refusal).toBeInstanceOf(PartnerProtocolRefusalError);
@@ -124,24 +174,32 @@ describe("a cascade round", () => {
           joinerSet.length,
         ),
       );
+      expect(abortsIn(sent)).toStrictEqual([LENGTH_ABORT]);
       expect(starter.status).toBe("rejected");
-      expect((starter as PromiseRejectedResult).reason).toBeInstanceOf(
-        ConnectionError,
-      );
+      expectPartnerRefused((starter as PromiseRejectedResult).reason);
     },
   );
 
-  test("refuses a longer response", async () => {
-    const [, joiner] = await round("longer");
+  test("refuses a longer response and sends the abort", async () => {
+    const {
+      outcomes: [starter, joiner],
+      sent,
+    } = await round("longer");
     const refusal = (joiner as PromiseRejectedResult).reason as Error;
     expect(refusal).toBeInstanceOf(PartnerProtocolRefusalError);
     expect(refusal.message).toMatch(
       /^client protocol error: inbound PSI response declares \d+ bytes, over the \d+ bytes of the request this party sent$/,
     );
+    expect(abortsIn(sent)).toStrictEqual([LENGTH_ABORT]);
+    expectPartnerRefused((starter as PromiseRejectedResult).reason);
   });
 
   test("matches a response of the request's length", async () => {
-    const [starter, joiner] = await round("unchanged");
+    const {
+      outcomes: [starter, joiner],
+      sent,
+    } = await round("unchanged");
+    expect(abortsIn(sent)).toStrictEqual([]);
     expect(starter.status).toBe("fulfilled");
     expect(joiner.status).toBe("fulfilled");
     const joinerTable = sortAssociationTable(
@@ -177,21 +235,20 @@ describe("a count-only round", () => {
     const receiver = countOnlyParticipant("joiner");
     // The receiver reads the setup and the index table, sends its request,
     // then reads the response.
+    const changing = changingNthSet(receiverConn, 3, change);
     const outcomes = await Promise.allSettled([
       sender.countPermutedRound(senderConn, senderSet, declared),
-      receiver.countPermutedRound(
-        changingNthSet(receiverConn, 3, change),
-        receiverSet,
-        declared,
-      ),
+      receiver.countPermutedRound(changing.conn, receiverSet, declared),
     ]);
-    return { receiver, outcomes };
+    return { receiver, outcomes, senderConn, sent: changing.sent };
   }
 
   test.for(REFUSED)(
-    "refuses a response %s, and the receiver has no count",
+    "refuses a response %s and sends the abort, and the receiver has no count",
     async ([, change]) => {
-      const { receiver, outcomes } = await round(change);
+      const { receiver, outcomes, senderConn, sent } = await round(change);
+      expect(abortsIn(sent)).toStrictEqual([LENGTH_ABORT]);
+      expectPartnerEndsOnAbort(await senderConn.receive());
       const [, receiverOutcome] = outcomes;
       expect(receiverOutcome.status).toBe("rejected");
       const refusal = (receiverOutcome as PromiseRejectedResult)
@@ -210,17 +267,20 @@ describe("a count-only round", () => {
     },
   );
 
-  test("refuses a longer response", async () => {
-    const { outcomes } = await round("longer");
+  test("refuses a longer response and sends the abort", async () => {
+    const { outcomes, senderConn, sent } = await round("longer");
     const refusal = (outcomes[1] as PromiseRejectedResult).reason as Error;
     expect(refusal).toBeInstanceOf(PartnerProtocolRefusalError);
     expect(refusal.message).toMatch(
       /^client protocol error: inbound PSI response declares \d+ bytes, over the \d+ bytes of the request this party sent$/,
     );
+    expect(abortsIn(sent)).toStrictEqual([LENGTH_ABORT]);
+    expectPartnerEndsOnAbort(await senderConn.receive());
   });
 
   test("counts a response of the request's length", async () => {
-    const { receiver, outcomes } = await round("unchanged");
+    const { receiver, outcomes, sent } = await round("unchanged");
+    expect(abortsIn(sent)).toStrictEqual([]);
     expect(outcomes.map(({ status }) => status)).toStrictEqual([
       "fulfilled",
       "fulfilled",
@@ -243,15 +303,25 @@ describe.each([
   ["in parts", LOWERED_FRAME_BOUND],
 ] as const)("a single-pass reply %s", (_layout, frameBound) => {
   // A receiver run whose partner sends a conforming reply but for `change`,
-  // its index table naming no value.
-  async function receiverAgainst(change: Change): Promise<unknown> {
+  // its index table naming no value: what the run rejects with, the frames
+  // the receiver sent, and the sender's end.
+  async function receiverAgainst(change: Change): Promise<{
+    error: unknown;
+    sent: Array<unknown>;
+    senderConn: MessageConnection;
+  }> {
     const [senderConn, receiverConn] = createMessagePipe();
-    const receiver =
-      frameBound === undefined
-        ? receiverConn
-        : Object.assign(receiverConn, {
-            outboundWebRtcFrameBound: () => frameBound,
-          });
+    const sent: Array<unknown> = [];
+    const send = receiverConn.send.bind(receiverConn);
+    const receiver = Object.assign(receiverConn, {
+      send: (data: unknown) => {
+        sent.push(data);
+        return send(data);
+      },
+      ...(frameBound === undefined
+        ? {}
+        : { outboundWebRtcFrameBound: () => frameBound }),
+    });
     const run = linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
       makeParticipant(psiLibrary, "joiner"),
@@ -285,7 +355,7 @@ describe.each([
       ))
         await senderConn.send(part);
     sender.dispose();
-    return run;
+    return { error: await run, sent, senderConn };
   }
 
   // The request, in one frame or joined from its parts.
@@ -309,29 +379,38 @@ describe.each([
     return request;
   }
 
-  test.for(REFUSED)("refuses a response %s", async ([, change]) => {
-    const error = await receiverAgainst(change);
-    expect(error).toBeInstanceOf(PartnerProtocolRefusalError);
-    expect((error as Error).message).toBe(
-      shortRefusal(
-        "client",
-        changedCount(change, receiverSet.length),
-        receiverSet.length,
-      ),
-    );
-  });
+  test.for(REFUSED)(
+    "refuses a response %s and sends the abort",
+    async ([, change]) => {
+      const { error, sent, senderConn } = await receiverAgainst(change);
+      expect(error).toBeInstanceOf(PartnerProtocolRefusalError);
+      expect((error as Error).message).toBe(
+        shortRefusal(
+          "client",
+          changedCount(change, receiverSet.length),
+          receiverSet.length,
+        ),
+      );
+      expect(abortsIn(sent)).toStrictEqual([LENGTH_ABORT]);
+      expectPartnerEndsOnAbort(await senderConn.receive());
+    },
+  );
 
-  test("refuses a longer response", async () => {
-    const error = await receiverAgainst("longer");
+  test("refuses a longer response and sends the abort", async () => {
+    const { error, sent, senderConn } = await receiverAgainst("longer");
     expect(error).toBeInstanceOf(PartnerProtocolRefusalError);
     expect((error as Error).message).toMatch(
       frameBound === undefined
         ? /^client protocol error: inbound PSI response is \d+ bytes, over the \d+ bytes of the request this party sent$/
         : /^client protocol error: inbound PSI response declares \d+ bytes, over the \d+ bytes of the request this party sent$/,
     );
+    expect(abortsIn(sent)).toStrictEqual([LENGTH_ABORT]);
+    expectPartnerEndsOnAbort(await senderConn.receive());
   });
 
   test("matches a response of the request's length", async () => {
-    expect(await receiverAgainst("unchanged")).toBeUndefined();
+    const { error, sent } = await receiverAgainst("unchanged");
+    expect(error).toBeUndefined();
+    expect(abortsIn(sent)).toStrictEqual([]);
   });
 });

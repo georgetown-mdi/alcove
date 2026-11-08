@@ -37,6 +37,15 @@ export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
   "the partner cannot process a set as large as the one you send for a linkage key";
 
 /**
+ * The abort reason a PSI receiver sends when it refuses the partner's
+ * response for its length: an element count other than the request's, or
+ * more bytes than the request (`abortOnResponseLengthRefusal`). A fixed
+ * literal, as every abort reason must be (see `sendAbort`).
+ */
+export const PSI_RESPONSE_LENGTH_ABORT_REASON =
+  "the partner refused a PSI response that is not the length of its request";
+
+/**
  * The abort reason a party sends when its write of the next shared secret
  * failed: the initiator as terms message 3, and the responder as its first
  * frame after it, which the initiator reads past the terms exchange
@@ -160,6 +169,7 @@ export const ABORT_REASONS_AFTER_TERMS = [
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  PSI_RESPONSE_LENGTH_ABORT_REASON,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
   LOCAL_FAULT_ABORT_REASON,
@@ -188,6 +198,7 @@ const KEPT_ABORT_REASONS: ReadonlyArray<AbortReasonAfterTerms> = [
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  PSI_RESPONSE_LENGTH_ABORT_REASON,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
   LOCAL_FAULT_ABORT_REASON,

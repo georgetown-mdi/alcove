@@ -79,6 +79,7 @@ import {
   markStatesItsOwnNextStep,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
+import { abortOnResponseLengthRefusal } from "./responseLengthRefusal";
 import {
   MAX_ABORT_FRAME_AFTER_TERMS_BYTES,
   PSI_SET_TOO_LARGE_ABORT_REASON,
@@ -2736,13 +2737,15 @@ export async function linkViaSinglePassPSI(
   relieveTransientMemory();
   stage(SINGLE_PASS_STAGE_IDS.identifyingSharedValues);
   const [receiverDistinctValueIds, senderDistinctValueIds] =
-    setupBytes === undefined
-      ? await participant.matchHeldServerSetup(responseBytes)
-      : await participant.computeValueMatches(
-          setupBytes,
-          responseBytes,
-          handOffOverFileSync(fileSync),
-        );
+    await abortOnResponseLengthRefusal(conn, () =>
+      setupBytes === undefined
+        ? participant.matchHeldServerSetup(responseBytes)
+        : participant.computeValueMatches(
+            setupBytes,
+            responseBytes,
+            handOffOverFileSync(fileSync),
+          ),
+    );
   // Keyed by the SENDER's value id, because the resolution sweep walks the
   // sender's rows in ascending order (see replaySinglePassCascade). The pairing is
   // a bijection over the matched values -- each party's values are distinct, and
