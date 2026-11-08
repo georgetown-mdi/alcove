@@ -383,6 +383,7 @@ function SplitDirectoryField({
       <Button
         variant="subtle"
         size="compact-sm"
+        className={styles.wrapLabel}
         aria-expanded={open}
         onClick={() => {
           setOpen((current) => !current);
@@ -899,6 +900,7 @@ function HostKeyProbe({
               ref={triggerRef}
               variant="subtle"
               size="compact-sm"
+              className={styles.wrapLabel}
               loading={state.phase === "probing"}
               disabled={host === undefined || state.phase === "probing"}
               onClick={() => void runProbe()}

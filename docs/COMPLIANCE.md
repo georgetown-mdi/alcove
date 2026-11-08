@@ -1,7 +1,7 @@
 ---
 title: "Alcove Compliance"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-07"
+last_reviewed: "2026-11-08"
 ---
 
 # Alcove compliance
@@ -177,7 +177,7 @@ Restricting what an SFTP exchange's SSH transport will negotiate to approved alg
 
 ### Section 508 and accessibility
 
-The CLI has no graphical interface and is not subject to Section 508's web or software accessibility requirements. The web application has a self-assessment against WCAG 2.1 Level A and AA, [ACCESSIBILITY.md](ACCESSIBILITY.md), which maps each success criterion to a test, a check, or a written judgment and lists the gaps still open. It is the project's own record, not a third-party evaluation or a conformance claim. A Voluntary Product Accessibility Template (VPAT) is not yet available; it is planned after the 1.0 release, with screen-reader testing (see [ROADMAP.md](ROADMAP.md)).
+The command-line tool itself has no graphical interface. Its container image also serves the console, a local browser interface for writing a configuration and running one exchange ([CONSOLE.md](CONSOLE.md)), built from the web application's code. The web application and the console share a self-assessment against WCAG 2.1 Level A and AA, [ACCESSIBILITY.md](ACCESSIBILITY.md), which maps each success criterion to a test, a check, or a written judgment and lists the gaps still open. It is the project's own record, not a third-party evaluation or a conformance claim. A Voluntary Product Accessibility Template (VPAT) is not yet available; it is planned after the 1.0 release, with screen-reader testing (see [ROADMAP.md](ROADMAP.md)).
 
 ### Export control (EAR)
 

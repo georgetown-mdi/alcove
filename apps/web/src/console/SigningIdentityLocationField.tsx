@@ -134,6 +134,7 @@ export function SigningIdentityLocationField({
         <Button
           size="xs"
           variant="light"
+          className={styles.wrapLabel}
           style={{ alignSelf: "flex-start" }}
           onClick={onPickerOpen}
         >

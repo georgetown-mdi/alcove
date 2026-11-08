@@ -29,6 +29,14 @@ const MAX_TAB_PRESSES = 200;
  */
 export const KEYBOARD_JOURNEY_TIMEOUT_MS = 37_000;
 
+/**
+ * The test timeout of a console keyboard journey: twice the hosted bound,
+ * since a console journey also opens the console's cards and runs the step
+ * checks at more steps. Not yet measured under load; correct it from a CI
+ * timing as {@link KEYBOARD_JOURNEY_TIMEOUT_MS} was.
+ */
+export const CONSOLE_JOURNEY_TIMEOUT_MS = 2 * KEYBOARD_JOURNEY_TIMEOUT_MS;
+
 /** What a target is matched by: an element, or a predicate over the focused
  * element for a target the caller can name but not hold (it may not have
  * rendered yet). */

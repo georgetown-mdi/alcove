@@ -472,6 +472,7 @@ export function SignalingServerCard({
         <Button
           size="xs"
           variant="subtle"
+          className={styles.wrapLabel}
           onClick={() => setAddress(HOSTED_WEB_APP_ADDRESS)}
         >
           Use the Alcove web app's server
