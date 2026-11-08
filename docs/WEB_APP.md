@@ -121,12 +121,13 @@ Each exchange has its own **Connection settings**: on the **Review & create** st
 
 ### Checking the relays
 
-**Check the relays**, below the Connection settings of an invitation you accept and on a saved exchange's page, checks whether each relay the exchange lists carries its traffic, under the exchange's own credential. It is offered where a run of the exchange would list a relay: one in the Connection settings, one the invitation names, or this site's relay server where the exchange uses it. A saved exchange's check uses its settings as last saved. An invitation you create does not offer it yet.
+**Check the relays**, below the Connection settings of an invitation you accept and on a saved exchange's page, checks whether each relay the exchange lists carries its traffic, under the exchange's own credential. It is offered where a run of the exchange would list a relay: one in the Connection settings, one the invitation names, or this site's relay server where the exchange uses it. A saved exchange's check uses its settings as last saved. An invitation you create offers it on the share screen.
 
 - **Before it starts.** It lists the hosts it will contact, the hosts a run of the exchange contacts, and contacts nothing until you choose **Start the check**. Each operator it lists learns your network address.
 - **What it does.** Where the exchange uses this site's relay server, it first sets that relay up for the exchange as a run does. It then opens two connections through each relay and passes one message between them.
 - **What it reports.** For each relay, that it works, or that it does not work with the reason and what to change. A relay that refuses the exchange's credential does not work. Above the lines, it says whether the exchange will get through over a relay.
 - **The command line's reasons, without its commands.** A reason and its remedy follow those `alcove doctor relay` gives for the same cause ([CLI.md](CLI.md#checking-the-relay-of-a-webrtc-exchange)). Where those name a command, the web names Relay registration, a Connection setting, or a request to your partner instead, and it says "this computer" where the command line says "this host".
+- **On an invitation you create.** The share screen offers it until your partner connects, where the exchange uses a WebSocket relay, and again after **Try again**. It reads the connections your page already holds open for your partner and contacts nothing else. A WebSocket relay that accepted the exchange works. A TURN relay is not checked, since your page first uses it when your partner connects. To change a relay, choose **Replace this invitation**.
 
 The protocol and its limits: [PROTOCOL.md](spec/PROTOCOL.md#the-web-applications-relay-check).
 

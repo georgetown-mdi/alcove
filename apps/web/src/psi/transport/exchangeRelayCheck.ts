@@ -222,10 +222,12 @@ export async function checkTurnRelay(
   }
 }
 
-// The closes the WebSocket relay refuses a hello with that end the check at
-// once. A first 4005 does not: the relay client makes the proof again on the
-// relay's clock, and its failure ends the check where it gives up.
-const REFUSALS_ENDING_THE_CHECK: ReadonlySet<number> = new Set([
+/**
+ * The closes the WebSocket relay refuses a hello with that end the check at
+ * once. A first 4005 does not: the relay client makes the proof again on the
+ * relay's clock, and its failure ends the check where it gives up.
+ */
+export const REFUSALS_ENDING_THE_CHECK: ReadonlySet<number> = new Set([
   1001, 1009, 1011, 4001, 4002, 4003, 4004, 4007, 4008,
 ]);
 const PROOF_EXPIRED = 4005;

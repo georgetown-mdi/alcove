@@ -18,6 +18,7 @@ import type { PeerCloseOutcome } from "./waitForPeerClose";
 import type { RunConnection } from "./runConnection";
 import type { WebSocketRelayConnectionOptions } from "./websocketRelayConnection";
 import type { WebSocketRelayForRun } from "./runRelayPlan";
+import type { WebSocketRelayWatch } from "./runRelayWatch";
 
 export type { WebRtcPathFailure } from "@alcove/core";
 
@@ -106,6 +107,8 @@ export interface RunConnectionWithRelayFallbackOptions {
   onRunNotice?: (message: string) => void;
   /** Open the WebRTC path. */
   openWebRtc: (hooks: WebRtcPathHooks) => Promise<RunConnection>;
+  /** Follows each relay's socket until the exchange begins on it. */
+  relayWatch?: WebSocketRelayWatch;
 }
 
 /**
@@ -137,8 +140,8 @@ export async function openRunConnectionWithRelayFallback(
       ? await deriveRelayKey(previousSharedSecret)
       : relayKey;
   const relaysInterrupt = new AbortController();
-  const parked = relays.map((relay) =>
-    parkWebSocketRelayConnection({
+  const parked = relays.map((relay) => {
+    const socket = parkWebSocketRelayConnection({
       url: relay.url,
       exchangeId: relay.exchangeId,
       role,
@@ -147,9 +150,12 @@ export async function openRunConnectionWithRelayFallback(
       signal: relaysInterrupt.signal,
       onCloseOutcome: options.onCloseOutcome,
       ...(options.afterCutRotation === true && { afterCutRotation: true }),
+      ...options.relayWatch?.relayOptions(relay.url),
       ...relayOptions,
-    }),
-  );
+    });
+    options.relayWatch?.parked(relay.url, socket);
+    return socket;
+  });
   const outcome = raceWebRtcAgainstRelays(
     { role, relays: parked, signal, openWebRtc: options.openWebRtc },
     WEB_RELAY_FALLBACK,

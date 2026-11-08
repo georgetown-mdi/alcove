@@ -136,6 +136,8 @@ export type ExchangeRelayCheckCause =
 export interface ExchangeRelayCheckLineShown {
   url: Displayable;
   works: boolean;
+  /** The check had nothing to ask the relay; `works` is false. */
+  notChecked?: true;
   cause?: ExchangeRelayCheckCause;
   /** What the check found, after the url. */
   summary: string;
@@ -462,6 +464,14 @@ function notStarted(
   };
 }
 
+/** What a line says of its relay, before its summary. */
+export function exchangeRelayCheckLineLabel(
+  line: ExchangeRelayCheckLineShown,
+): string {
+  if (line.works) return "Works";
+  return line.notChecked === true ? "Not checked" : "Does not work";
+}
+
 /** The line that heads a verdict: whether the exchange will get through. */
 export function exchangeRelayCheckVerdict(
   lines: ReadonlyArray<ExchangeRelayCheckLineShown>,
@@ -469,6 +479,9 @@ export function exchangeRelayCheckVerdict(
   if (lines.length === 0)
     return "A run of this exchange lists no relay the check could ask.";
   const working = lines.filter((line) => line.works).length;
+  const failing = lines.filter(
+    (line) => !line.works && line.notChecked !== true,
+  ).length;
   if (working === lines.length)
     return (
       "Every relay this exchange lists works, so the exchange will get " +
@@ -477,12 +490,16 @@ export function exchangeRelayCheckVerdict(
   if (working > 0)
     return (
       "At least one relay this exchange lists works, so the exchange will " +
-      "get through over it where a direct connection is blocked. Each line " +
-      "below says how to fix a relay that does not work."
+      "get through over it where a direct connection is blocked." +
+      (failing > 0
+        ? " Each line below says how to fix a relay that does not work."
+        : "")
     );
-  return (
-    "No relay this exchange lists works, so the exchange will not get " +
-    "through where a direct connection is blocked. Follow the steps below, " +
-    "then check again."
-  );
+  if (failing === lines.length)
+    return (
+      "No relay this exchange lists works, so the exchange will not get " +
+      "through where a direct connection is blocked. Follow the steps below, " +
+      "then check again."
+    );
+  return "No relay checked works. Follow the steps below, then check again.";
 }

@@ -2226,7 +2226,13 @@ The web application checks the relays of an exchange an acceptor is reviewing, a
   - a WebSocket relay's refusal is summarized without its close code, a code core has no clause for included; the not-reached words name this computer where core's name this host, and the 4003 and 4004 remedies name no registrar, while other refusals keep core's meaning and action.
 
   A url shown is escaped and bounded for display.
-- **The stated limit.** A browser reports a TURN relay's refusal only through the peer connection's candidate errors, so a refusal it does not report is not reached. The inviter of an invitation this page creates is not offered the check.
+- **The stated limit.** A browser reports a TURN relay's refusal only through the peer connection's candidate errors, so a refusal it does not report is not reached.
+
+**The inviter's check.** The inviter of an invitation this page creates checks on the share screen instead, from when its run reaches its relays until the partner connects, where the run dials a WebSocket relay. The run that **Try again** starts offers it again, not started. The browser side is `apps/web/src/exchange/inviterRelayCheckModel.ts`, reading the run's `RunRelayWatch` (`apps/web/src/psi/transport/runRelayWatch.ts`).
+
+- **What it contacts.** Nothing. It reads the run's own enrollment at the default relay's registrar and the socket the run holds at each WebSocket relay, and opens no connection of its own.
+- **The outcomes.** A WebSocket relay works where the run's socket there is paired, or has stayed open for 2 seconds after its hello (`HELLO_ANSWER_WAIT_MS`, an arbitrary working value), since the relay sends nothing on accepting a hello. Otherwise the cause, with the words above, comes from the last close the relay sent, a failure of the run's relay client, or a default relay url the run left out because its enrollment failed. A relay with no answer 30 seconds after the check starts (`RELAY_CHECK_BOUND_MS`) is not reached.
+- **The stated limit.** A TURN relay is not checked, since the run first allocates on it when the partner connects. The verdict counts only the relays checked.
 
 # Post-linkage steps
 

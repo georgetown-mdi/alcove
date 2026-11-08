@@ -782,6 +782,7 @@ export function InviterScreen() {
     reattached,
     reattaching,
     listeningUntil,
+    relayWatch,
     tryAgain,
     abandonRun,
   } = useInviterExchange({
@@ -2382,6 +2383,7 @@ export function InviterScreen() {
                   : undefined
               }
               listeningUntil={listeningUntil}
+              relayWatch={relayWatch}
               resumableAfterReload={keepsPendingInvitation}
               onTryAgain={tryAgain}
               onStartOver={startOver}

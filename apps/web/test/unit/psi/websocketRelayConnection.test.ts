@@ -185,6 +185,16 @@ describe("the hello", () => {
     await expect(pending).resolves.toBeDefined();
   });
 
+  test("reports each hello it sends, once the socket opens", async () => {
+    const helloSent: Array<number> = [];
+    const { socket } = await startOpening({
+      onHelloSent: () => helloSent.push(socket.sent.length),
+    });
+    expect(helloSent).toEqual([]);
+    socket.open();
+    expect(helloSent).toEqual([1]);
+  });
+
   test("refuses an address that is not wss before opening a socket", async () => {
     const createSocket = vi.fn();
     await expect(
