@@ -23,7 +23,7 @@ import {
   type RelayRegistrarTransport,
   type RelayRegistrationOutcome,
 } from "../relayRegistrar";
-import { exitCodeForError, exitWithError, withExitCode } from "../util/exit";
+import { runOrExit, withExitCode } from "../util/exit";
 import { parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptHiddenText } from "../util/prompt";
@@ -230,20 +230,20 @@ export async function handler(argv: Arguments): Promise<void> {
     }),
   );
   try {
-    const configFile = configFileFlag(argv);
-    const keyFile = keyFileFlag(argv);
-    const notice = await enrollRelay({
-      configFile,
-      keyFile,
-      replace: argv["replace-relay-key"] === true,
-      readOwnerToken: (question) =>
-        process.stdin.isTTY === true
-          ? promptHiddenText(question)
-          : readFirstLine(process.stdin),
+    await runOrExit(log, async () => {
+      const configFile = configFileFlag(argv);
+      const keyFile = keyFileFlag(argv);
+      const notice = await enrollRelay({
+        configFile,
+        keyFile,
+        replace: argv["replace-relay-key"] === true,
+        readOwnerToken: (question) =>
+          process.stdin.isTTY === true
+            ? promptHiddenText(question)
+            : readFirstLine(process.stdin),
+      });
+      log.info(notice);
     });
-    log.info(notice);
-  } catch (err) {
-    exitWithError(log, err, exitCodeForError(err));
   } finally {
     closeLogging();
   }

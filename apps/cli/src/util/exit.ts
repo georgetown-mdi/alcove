@@ -249,12 +249,12 @@ export function exitCodeForError(err: unknown): number {
 
 /**
  * Log a caught error ({@link renderFailureForOperator}) at error level and exit the process with
- * `code`. The single log-and-exit boundary the bootstrap-style command handlers
- * route a caught error through, so the error-level routing and the sanitized
- * formatting cannot drift between call sites. The caller passes `code`, the
- * result of {@link exitCodeForError}, which classifies the error and maps it
- * to its code. Typed `never` so a caller's definite-assignment narrowing
- * treats it like `process.exit`.
+ * `code`. The single log-and-exit step {@link runOrExit} routes a caught error
+ * through, so the error-level routing and the sanitized formatting cannot
+ * drift between call sites. The caller passes `code`, usually the result of
+ * {@link exitCodeForError}, which classifies the error and maps it to its
+ * code. Typed `never` so a caller's definite-assignment narrowing treats it
+ * like `process.exit`.
  */
 export function exitWithError(
   log: { error: (message: string) => void },
@@ -335,7 +335,6 @@ export async function runOrExit(
     await body();
   } catch (err) {
     const log = typeof logger === "string" ? getLogger(logger) : logger;
-    log.error(renderFailureForOperator(err));
-    exitOnFailure(err, exitCodeForError(err));
+    exitWithError(log, err, exitCodeForError(err));
   }
 }

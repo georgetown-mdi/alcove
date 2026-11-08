@@ -38,7 +38,7 @@ import {
   keyFileFlag,
   SHARED_KEY_FILE_DESCRIPTION,
 } from "../optionDefinitions";
-import { exitCodeForError, exitWithError } from "../util/exit";
+import { runOrExit } from "../util/exit";
 import { declarePositionals } from "../util/positionals";
 import { parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
@@ -259,34 +259,34 @@ async function runDoctor(argv: Arguments, mode: DoctorMode): Promise<void> {
   };
   const writeStatementLine = (line: string): void =>
     writePlainLine(redactAndSanitizeForDisplay(line));
+  // Reached by the operator-input faults readSmbProbeInput and
+  // readSmbMountInput raise (doctor/smbEnvironment), by a configuration
+  // checkRelay cannot load or refuses (doctor/relay), and by anything the
+  // checks did not turn into a verdict -- a failing tool becomes a verdict
+  // rather than a throw. exitCodeForError classifies whichever arrives.
   try {
-    const report =
-      mode === "probe"
-        ? await runProbe(readSmbProbeInput(process.env))
-        : mode === "mount"
-          ? runMountChecks(
-              // Backslashes are folded on ingestion, the convention every
-              // operator-supplied local path in the CLI follows.
-              (singleValue(argv, "directory") as string).replace(/\\/g, "/"),
-              readSmbMountInput(process.env),
-            )
-          : await checkRelay({
-              configFile: configFileFlag(argv),
-              keyFile: keyFileFlag(argv),
-              writeStatementLine,
-            });
-    emit(report, argv["json"] === true, writeLine);
-    // Not process.exit: the verdict may still be draining to a pipe, and the
-    // exit code is the caller's whole machine-readable answer when --json is
-    // not in use.
-    process.exitCode = DOCTOR_EXIT_CODE[overallOf(report)];
-  } catch (err) {
-    // Reached by the operator-input faults readSmbProbeInput and
-    // readSmbMountInput raise (doctor/smbEnvironment), by a configuration
-    // checkRelay cannot load or refuses (doctor/relay), and by anything the
-    // checks did not turn into a verdict -- a failing tool becomes a verdict
-    // rather than a throw. exitCodeForError classifies whichever arrives.
-    exitWithError(log, err, exitCodeForError(err));
+    await runOrExit(log, async () => {
+      const report =
+        mode === "probe"
+          ? await runProbe(readSmbProbeInput(process.env))
+          : mode === "mount"
+            ? runMountChecks(
+                // Backslashes are folded on ingestion, the convention every
+                // operator-supplied local path in the CLI follows.
+                (singleValue(argv, "directory") as string).replace(/\\/g, "/"),
+                readSmbMountInput(process.env),
+              )
+            : await checkRelay({
+                configFile: configFileFlag(argv),
+                keyFile: keyFileFlag(argv),
+                writeStatementLine,
+              });
+      emit(report, argv["json"] === true, writeLine);
+      // Not process.exit: the verdict may still be draining to a pipe, and the
+      // exit code is the caller's whole machine-readable answer when --json is
+      // not in use.
+      process.exitCode = DOCTOR_EXIT_CODE[overallOf(report)];
+    });
   } finally {
     closeLogging();
   }

@@ -13,7 +13,7 @@ import type { CommandResult, CommandRunner } from "./runner";
 import { nodeCommandRunner } from "./runner";
 import type { SmbProbeInput } from "./smbEnvironment";
 import type { DoctorCheckRecord, DoctorReport } from "./verdict";
-import { fail, ok, skipped, SKIPPED_BY_FAILURE_MEANING, warn } from "./verdict";
+import { fail, ok, padSkipped, skipped, warn } from "./verdict";
 
 // The userspace half of the file-drop checks: what the exchange needs, asked of
 // the server over TCP with smbclient, with nothing mounted. `doctor mount` is
@@ -300,23 +300,6 @@ function listArgs(input: SmbProbeInput, authFile: string): string[] {
     "-A",
     authFile,
     ...dialectArgs(input.dialect),
-  ];
-}
-
-/**
- * Append a `skipped` record for every id the run never reached, so the reported
- * check list is the full ordered set whatever stopped it. Each names the check
- * it stands for; the reason they share is stated once where they are rendered.
- */
-function padSkipped(checks: DoctorCheckRecord[]): DoctorCheckRecord[] {
-  const seen = new Set(checks.map((check) => check.id));
-  return [
-    ...checks,
-    ...PROBE_CHECK_IDS.filter((id) => !seen.has(id)).map((id) =>
-      skipped(id, `${PROBE_CHECK_NAMES[id]} - not run.`, {
-        meaning: SKIPPED_BY_FAILURE_MEANING,
-      }),
-    ),
   ];
 }
 
@@ -619,7 +602,7 @@ export async function runProbe(
   const checks: DoctorCheckRecord[] = [];
   const finish = (): DoctorReport => ({
     mode: "probe",
-    checks: padSkipped(checks),
+    checks: padSkipped(checks, PROBE_CHECK_IDS, PROBE_CHECK_NAMES),
   });
 
   if (IPV4_LITERAL.test(input.server)) {
@@ -749,6 +732,31 @@ export async function runProbe(
   const smb = (command: string): Promise<CommandResult> =>
     smbclient(shareArgs(input, authFile, target, command));
 
+  // One share stage: records a transport failure, the stage's own reading of
+  // a status the server named, or `okSummary` when it named none. Returns the
+  // result to continue from, or `undefined` once the stage has stopped the
+  // run. With no `okSummary`, a stage that named no status records nothing.
+  const stage = async (
+    id: string,
+    command: Promise<CommandResult>,
+    onStatus: (status: string, result: CommandResult) => DoctorCheckRecord,
+    okSummary?: string,
+  ): Promise<CommandResult | undefined> => {
+    const result = await command;
+    if (transportFailed(result)) {
+      checks.push(transportFailureCheck(id, input.server, result));
+      return undefined;
+    }
+    const status = statusOf(result.output);
+    if (status === undefined) {
+      if (okSummary !== undefined) checks.push(ok(id, okSummary));
+      return result;
+    }
+    const check = onStatus(status, result);
+    checks.push(check);
+    return check.status === "fail" ? undefined : result;
+  };
+
   // One sweep per run, shared by the ordinary exit and an interrupt. It waits
   // for the command in flight to end, and the credentials file the delete
   // needs is removed only once it is done.
@@ -873,40 +881,24 @@ export async function runProbe(
       );
     }
 
-    const shareList = await smb("ls");
-    if (transportFailed(shareList)) {
-      checks.push(transportFailureCheck("share_open", input.server, shareList));
-      return finish();
-    }
-    const shareStatus = statusOf(shareList.output);
-    if (shareStatus === undefined) {
-      checks.push(ok("share_open", "share opened."));
-    } else {
-      const check = shareOpenCheck(input, shareStatus, shareList);
-      checks.push(check);
-      if (check.status === "fail") return finish();
-    }
+    const shareList = await stage(
+      "share_open",
+      smb("ls"),
+      (status, result) => shareOpenCheck(input, status, result),
+      "share opened.",
+    );
+    if (shareList === undefined) return finish();
 
     let listing = shareList;
     if (input.subdirectory === "") {
       checks.push(entryCountCheck("using the share root;", listing));
     } else {
-      const subdirectoryList = await smbclient(
-        shareArgs(input, authFile, input.subdirectory, "ls"),
+      const subdirectoryList = await stage(
+        "subdirectory",
+        smbclient(shareArgs(input, authFile, input.subdirectory, "ls")),
+        (status, result) => subdirectoryCheck(input, status, result),
       );
-      if (transportFailed(subdirectoryList)) {
-        checks.push(
-          transportFailureCheck("subdirectory", input.server, subdirectoryList),
-        );
-        return finish();
-      }
-      const subdirectoryStatus = statusOf(subdirectoryList.output);
-      if (subdirectoryStatus !== undefined) {
-        checks.push(
-          subdirectoryCheck(input, subdirectoryStatus, subdirectoryList),
-        );
-        return finish();
-      }
+      if (subdirectoryList === undefined) return finish();
       const dfsLink = dfsLinkCheck(
         input,
         await smbclient(
@@ -949,84 +941,64 @@ export async function runProbe(
     fs.writeFileSync(path.join(workDir, probeName), "Alcove write probe\n");
 
     leftoverMask = `${probeName}*`;
-    const put = await smb(`put ${probeName} ${probeName}`);
-    if (transportFailed(put)) {
-      checks.push(transportFailureCheck("write", input.server, put));
-      return finish();
-    }
-    const putStatus = statusOf(put.output);
-    if (putStatus !== undefined) {
-      checks.push(
+    const put = await stage(
+      "write",
+      smb(`put ${probeName} ${probeName}`),
+      (status, result) =>
         fail(
           "write",
-          `${putStatus} - could not create a file.`,
+          `${status} - could not create a file.`,
           "this account can read the folder but not write to it.",
           "ask whoever administers the share for write permission on this " +
             "folder. Mount options such as file_mode cannot grant it. They " +
             "only change how permissions look inside the container, not what " +
             "the server allows.",
-          { detail: put.output },
+          { detail: result.output },
         ),
-      );
-      return finish();
-    }
-    checks.push(
-      ok(
-        "write",
-        sweptStale
-          ? "created a file (and removed probe files left by an earlier run)."
-          : "created a file.",
-      ),
+      sweptStale
+        ? "created a file (and removed probe files left by an earlier run)."
+        : "created a file.",
     );
+    if (put === undefined) return finish();
 
-    const rename = await smb(`rename ${probeName} ${renamedName}`);
-    if (transportFailed(rename)) {
-      checks.push(transportFailureCheck("rename", input.server, rename));
-      return finish();
-    }
-    const renameStatus = statusOf(rename.output);
-    if (renameStatus !== undefined) {
-      checks.push(
+    const rename = await stage(
+      "rename",
+      smb(`rename ${probeName} ${renamedName}`),
+      (status, result) =>
         fail(
           "rename",
-          `${renameStatus} - created a file but could not rename it.`,
+          `${status} - created a file but could not rename it.`,
           "creating files is allowed here and renaming them is not. Alcove " +
             "renames every message into place, so this stops an exchange even " +
             "though the folder looks writable.",
           "ask for full change rights on this folder rather than create-only. " +
             "On a Windows share this is usually the DELETE right being " +
             "withheld, which a rename needs.",
-          { detail: rename.output },
+          { detail: result.output },
         ),
-      );
-      return finish();
-    }
-    checks.push(ok("rename", "renamed it."));
+      "renamed it.",
+    );
+    if (rename === undefined) return finish();
 
-    const del = await smb(`del ${renamedName}`);
-    if (transportFailed(del)) {
-      checks.push(transportFailureCheck("delete", input.server, del));
-      return finish();
-    }
-    const deleteStatus = statusOf(del.output);
-    if (deleteStatus !== undefined) {
-      checks.push(
+    const del = await stage(
+      "delete",
+      smb(`del ${renamedName}`),
+      (status, result) =>
         fail(
           "delete",
-          `${deleteStatus} - created and renamed a file but could not delete it.`,
+          `${status} - created and renamed a file but could not delete it.`,
           "Alcove removes each message once the other side has read it. " +
             "Without delete rights the folder fills up and a second exchange in " +
             "it will not start.",
           "ask for delete rights on this folder. If they cannot be granted, the " +
             "exchange can still be run with --retain-files, but the folder has " +
             "to be emptied by hand between exchanges.",
-          { detail: del.output },
+          { detail: result.output },
         ),
-      );
-      return finish();
-    }
+      "deleted it.",
+    );
+    if (del === undefined) return finish();
     leftoverMask = undefined;
-    checks.push(ok("delete", "deleted it."));
 
     // Left in place on purpose: these checks reached //server/share with a
     // subpath, while a mount reaches //server/share/subpath, and nothing so far

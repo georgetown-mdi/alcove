@@ -157,6 +157,30 @@ export const SKIPPED_BY_FAILURE_MEANING =
   "an earlier check failed and stopped the run.";
 
 /**
+ * Append a `skipped` record for every one of `ids` the run never reached, so
+ * the reported check list is the full ordered set whatever stopped it. Each
+ * names the check it stands for from `names`; the reason they share is stated
+ * once where they are rendered.
+ */
+export function padSkipped<Id extends string>(
+  checks: DoctorCheckRecord[],
+  ids: readonly Id[],
+  names: Record<Id, string>,
+): DoctorCheckRecord[] {
+  const seen = new Set(checks.map((check) => check.id));
+  return [
+    ...checks,
+    ...ids
+      .filter((id) => !seen.has(id))
+      .map((id) =>
+        skipped(id, `${names[id]} - not run.`, {
+          meaning: SKIPPED_BY_FAILURE_MEANING,
+        }),
+      ),
+  ];
+}
+
+/**
  * Exit code per overall verdict, the closed set a caller may see from a run
  * that produced a verdict. Below 125 -- Docker's own reserved range -- and
  * following BSD `sysexits` for the two nonzero values. A usage error is not
