@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
 import {
-  MAX_ENCODED_INVITATION_LENGTH,
+  MAX_ENCODED_TERMS_UPDATE_LENGTH,
   parseSensitiveYaml,
   safeParseExchangeSpec,
 } from "@alcove/core";
@@ -77,10 +77,10 @@ export function termsApplyArgv(args: {
 
 /**
  * The most bytes a proposal file is read under. The CLI writes one encoded
- * update, capped at the invitation's encoded length, and a newline; a larger
- * file is no proposal it wrote.
+ * update, capped at the terms update's encoded length, and a newline; a
+ * larger file is no proposal it wrote.
  */
-const MAX_TERMS_PROPOSAL_FILE_BYTES = 2 * MAX_ENCODED_INVITATION_LENGTH;
+const MAX_TERMS_PROPOSAL_FILE_BYTES = MAX_ENCODED_TERMS_UPDATE_LENGTH + 1;
 
 /**
  * The hex SHA-256 of the terms proposal file in `workdir`, or null where the
