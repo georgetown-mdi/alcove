@@ -597,6 +597,7 @@ describe("a throw inside a transaction aborts it", () => {
       recordManagedExchangeCompromiseResponse("no-such-id", AT),
     ).rejects.toThrow("no managed exchange with id no-such-id");
     expect(fake.transactions.at(-1)?.outcome).toBe("abort");
+    expect(storedRecord("no-such-id")).toBeUndefined();
   });
 
   test("a disclosure record the reader refuses aborts the append", async () => {
@@ -673,6 +674,8 @@ describe("the secret refusals are made inside the transaction, in their order", 
   test("a registrar confirmed under another secret is refused after the narrowing", async () => {
     const record = await createRunnable();
     const configuration = await createConfigurationOnly();
+    const before = storedRecord(record.id);
+    const configurationBefore = storedRecord(configuration.id);
     const registrar: RelayRegistrar = {
       url: "https://relay.example.org/",
       exchangeId: "riverbend",
@@ -692,6 +695,8 @@ describe("the secret refusals are made inside the transaction, in their order", 
         generateSharedSecret(),
       ),
     ).rejects.toThrow(/configuration only/);
+    expect(storedRecord(record.id)).toEqual(before);
+    expect(storedRecord(configuration.id)).toEqual(configurationBefore);
   });
 
   test("a terms change checked under a secret that moved refuses", async () => {
