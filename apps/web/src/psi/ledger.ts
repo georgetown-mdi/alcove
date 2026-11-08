@@ -229,19 +229,12 @@ export function inviterLedgerRows(
           value: matchedSendValue(sent),
           shareBar: true,
         }
-      : sent.length > 0
-        ? {
-            label: "You will send",
-            reference: "Step 2",
-            value: sent.map(isolatedColumnName).join(", "),
-            shareBar: true,
-          }
-        : {
-            label: "You will send",
-            reference: "Step 2",
-            muted: NOTHING_SENT_BUT_MATCHING,
-            shareBar: true,
-          },
+      : {
+          label: "You will send",
+          reference: "Step 2",
+          muted: NOTHING_SENT_BUT_MATCHING,
+          shareBar: true,
+        },
     {
       label: "You will receive",
       reference: "Step 2",

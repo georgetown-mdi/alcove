@@ -387,6 +387,16 @@ describe("ledger tracks step-2 edits", () => {
     ).toBe("Matched row numbers only");
   });
 
+  test("the send row lists no marked column where the partner gets no matched results", () => {
+    const marked = seededSending("Dana", csv, "program_code");
+    const send = ledgerValue(
+      editorWithOutputDirection(marked, "inviter"),
+      "You will send",
+    );
+    expect(send.value).toBeUndefined();
+    expect(send.muted).toBe("Nothing - matching only");
+  });
+
   test("retyping a matched column reconciles the key set", () => {
     const seeded = editorFromCsv("Dana", csv);
     const before = enabledKeys(seeded.draft).length;

@@ -1,0 +1,2 @@
+- - -> Limits: where the web app's settled footer says "Your partner gets no results", that rests on the agreed terms being honored.
+- - -> Under `psi` the partner still learns which of its own records are in the other party's data, unless the run withholds its half of the association table ([Linkage strategies](#linkage-strategies-cascade-and-single-pass)), and the terms review states which.

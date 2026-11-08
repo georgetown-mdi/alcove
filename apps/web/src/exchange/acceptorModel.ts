@@ -61,7 +61,8 @@ import type { AcceptableInvitation } from "@psi/acceptInvitation";
  * the inviter receives matched results; otherwise nothing is sent, whatever the
  * metadata holds. Before a file exists there is no metadata, so the send rows
  * use the invitation's forward-reference wording (the exact set is confirmed
- * after choosing a file), matching {@link InvitationTerms}. Partner-controlled strings
+ * after choosing a file), matching {@link InvitationTerms}, unless the invitation
+ * requests no column at all. Partner-controlled strings
  * reach the ledger through {@link summarizeInvitation}, the one sanitizing
  * boundary; the acceptor's own column names take the isolation the
  * confirm-columns screen shows them with ({@link isolatedColumnName}) rather than
@@ -198,7 +199,9 @@ function inviterReceivesMatchedResults(summary: InvitationSummary): boolean {
  * same set the confirm-columns step's panel does, beside it on the one screen
  * where the operator decides what leaves the machine. Undefined before a file is
  * chosen (no metadata yet), where a run that sends columns holds the
- * invitation's forward-reference rather than a claim it cannot yet make. */
+ * invitation's forward-reference rather than a claim it cannot yet make. An
+ * invitation declaring an empty `payload.receive` needs no file to state its
+ * send: core refuses any column the acceptor states against it. */
 function acceptorSendRow(
   label: string,
   summary: InvitationSummary,
@@ -208,6 +211,13 @@ function acceptorSendRow(
   // what leaves (or left) this machine.
   if (!inviterReceivesMatchedResults(summary))
     return { label, muted: NOTHING_SENT_BUT_MATCHING, shareBar: true };
+  const payload = summary.payload;
+  if (
+    disclosure === undefined &&
+    payload?.receiveDeclared === true &&
+    payload.receive.length === 0
+  )
+    return { label, value: matchedSendValue([]), shareBar: true };
   if (disclosure === undefined)
     return { label, muted: ACCEPTOR_SEND_FORWARD_REFERENCE, shareBar: true };
   return { label, value: matchedSendValue(disclosure), shareBar: true };
@@ -266,7 +276,7 @@ function acceptorReceiveRow(
  * the confirm-columns step onward; its disclosed set ({@link disclosedColumnNames}) is
  * exactly what core transmits, so the ledger cannot overclaim. Undefined on the
  * review/consent steps (no file yet), where the send row forward-references the
- * confirm-columns step. The proposal's non-send rows are read-only here, so they never
+ * confirm-columns step unless the invitation requests no column. The proposal's non-send rows are read-only here, so they never
  * hold a spine-step reference.
  */
 export function acceptorLedgerRows(

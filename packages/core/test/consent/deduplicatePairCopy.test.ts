@@ -101,14 +101,22 @@ describe("describeDeduplicatePair", () => {
 });
 
 describe("the fan-out note", () => {
-  test("states only that a match on one part of a value is weaker evidence", () => {
+  test("states the weaker evidence, the removal and each strategy's disclosure", () => {
     // The note renders under every duplicate-matching pair, so it states no
     // pairing count; the pair's own sentence and the chained-grouping fact
-    // below state what each pair discloses.
+    // state what each pair discloses. The removal and grouping sentences are
+    // docs/spec/PROTOCOL.md's, The disclosure delta fan-out pays.
     expect(CONSENT_FACTS.fanOutCandidates.note).toBe(
       "A match on this key can rest on one part of a value, such as one word " +
-        "of a name, which is weaker evidence than the whole value.",
+        "of a name, which is weaker evidence than the whole value. A record " +
+        "matched this way is left out of later keys, even if that pairing " +
+        "does not stand. Under single-pass linkage, a partner that receives " +
+        "your key structure learns how many parts each of your records " +
+        "produced and which came from the same record. Under cascade " +
+        "linkage, your partner learns this for your matched values only, " +
+        "round by round.",
     );
+    expect(CONSENT_FACTS.fanOutCandidates.note).not.toContain("paired");
   });
 });
 

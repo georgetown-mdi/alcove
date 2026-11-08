@@ -535,7 +535,12 @@ export const CONSENT_FACTS = {
       "acceptor consents on.",
     note:
       "A match on this key can rest on one part of a value, such as one word " +
-      "of a name, which is weaker evidence than the whole value.",
+      "of a name, which is weaker evidence than the whole value. A record " +
+      "matched this way is left out of later keys, even if that pairing does " +
+      "not stand. Under single-pass linkage, a partner that receives your key " +
+      "structure learns how many parts each of your records produced and " +
+      "which came from the same record. Under cascade linkage, your partner " +
+      "learns this for your matched values only, round by round.",
   },
   candidateSetChainsGrouping: {
     basis: "enforced",
@@ -696,8 +701,10 @@ export const SELF_AUTHORED_EXCHANGE_FACTS = [
 
 /**
  * The terse marker a surface with no styling budget puts on a fact's label for its
- * {@link ConsentFactBasis}. The web states the distinction through its tiering and
- * caveat copy, so it renders no marker.
+ * {@link ConsentFactBasis}. The web renders no marker: it states a trust-contingent
+ * basis only in the notes of the facts that have one (the allowed-character
+ * patterns, a count the partner reports), and states it nowhere for a fact with no
+ * note, such as the partner receiving no result.
  */
 export const CONSENT_BASIS_MARKERS: Record<ConsentFactBasis, string> = {
   enforced: "enforced",

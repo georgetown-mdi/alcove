@@ -262,11 +262,18 @@ describe("acceptor ledger rows", () => {
   });
 
   test("before a file, the send row forward-references the columns step", () => {
-    // No metadata yet (review/consent steps) and the inviter receives the matched
-    // results: the exact send set is not known, so the row points ahead rather
-    // than naming a set, since the acceptor's own file, not the invitation,
-    // decides what transmits.
-    const rows = acceptorLedgerRows(makeToken(), HOW_IT_RUNS);
+    // No metadata yet (review/consent steps), the inviter receives the matched
+    // results, and the invitation declares no request: the exact send set is not
+    // known, so the row points ahead rather than naming a set, since the
+    // acceptor's own file, not the invitation, decides what transmits.
+    const rows = acceptorLedgerRows(
+      makeToken({
+        payload: {
+          send: [{ name: "enrollment_date" }, { name: "program_code" }],
+        },
+      }),
+      HOW_IT_RUNS,
+    );
     expect(rowMuted(rows, "You will send")).toBe(
       ACCEPTOR_SEND_FORWARD_REFERENCE,
     );
@@ -278,6 +285,14 @@ describe("acceptor ledger rows", () => {
     expect(rowValue(rows, "Results go to")).toBe("You and your partner");
     expect(rowValue(rows, "Agreement")).toBe("MOU-2025-0042");
     expect(rowValue(rows, "How it runs")).toBe("Browser");
+  });
+
+  test("before a file, an invitation requesting no column states the matched row numbers only", () => {
+    // A declared empty payload.receive refuses any column the acceptor states,
+    // so the send is known before a file exists.
+    const rows = acceptorLedgerRows(makeToken(), HOW_IT_RUNS);
+    expect(rowValue(rows, "You will send")).toBe("Matched row numbers only");
+    expect(rowMuted(rows, "You will send")).toBeUndefined();
   });
 
   test("a count-only invitation's receive row promises no matched rows", () => {
