@@ -32,7 +32,8 @@ export const RELAY_REGISTRATION_RETRY_DELAYS_MS: readonly number[] = [
 
 // The registrar's answers are small JSON objects; its request bodies are capped
 // at 1024 bytes and an answer holds less.
-const MAX_REGISTRAR_ANSWER_BYTES = 4096;
+/** @internal */
+export const MAX_REGISTRAR_ANSWER_BYTES = 4096;
 
 // How much of the registrar's own `error` text a message repeats.
 const MAX_REGISTRAR_REASON_LENGTH = 300;
@@ -519,6 +520,19 @@ export type RelayRegistrationOutcome = Exclude<
   { kind: "clock-skew" }
 >;
 
+// A clock-skew answer taken as final: a 401 refusal stating the registrar's
+// reason, or `defaultReason` where the answer states none.
+function clockSkewRefusal(
+  answer: Extract<RelayRegistrarAnswer, { kind: "clock-skew" }>,
+  defaultReason?: string,
+): RelayRegistrationOutcome {
+  return {
+    kind: "refused",
+    status: 401,
+    reason: answer.reason ?? defaultReason,
+  };
+}
+
 /**
  * What a registration the registrar did not confirm came to, as a message
  * states it: `HTTP <status>: <reason>`, either half alone where the other is
@@ -578,9 +592,7 @@ export async function enrollRelayKey(
     },
     transport,
   );
-  if (answer.kind === "clock-skew")
-    return { kind: "refused", status: 401, reason: answer.reason };
-  return answer;
+  return answer.kind === "clock-skew" ? clockSkewRefusal(answer) : answer;
 }
 
 /** The clock and waits a registration runs under: injectable for tests. */
@@ -679,13 +691,10 @@ export async function registerRelayKey(
     );
     if (answer.kind === "clock-skew") {
       if (resignedForClock)
-        return {
-          kind: "refused",
-          status: 401,
-          reason:
-            answer.reason ??
-            "the proof's time is outside the registrar's window",
-        };
+        return clockSkewRefusal(
+          answer,
+          "the proof's time is outside the registrar's window",
+        );
       resignedForClock = true;
       clockOffsetMs = answer.serverTimeSeconds * 1000 - now().getTime();
       continue;
@@ -713,8 +722,8 @@ export async function registerRelayKey(
  * `sharedSecret` under the exchange id derived from it
  * ({@link deriveRelayExchangeId}), with `maxAgeDays` `null`, since the
  * registrar fixes the lapse. Either party may send it: the same key on the same
- * id is answered as registered. Retried as {@link registerRelayKey} is; a 401
- * or 409 is final. `otherSecrets` are the secrets of the run's other
+ * id is answered as registered. One attempt, not retried; a clock-skew answer
+ * is a 401 refusal. `otherSecrets` are the secrets of the run's other
  * enrollments sent at the same time: no message repeats the exchange id or
  * relay key derived from any of them either.
  */
@@ -724,10 +733,8 @@ export async function enrollRelayKeyWithoutToken(
     sharedSecret: string;
     otherSecrets?: readonly string[];
   },
-  env: RelayRegistrationEnvironment = {},
+  transport: RelayRegistrarTransport = {},
 ): Promise<RelayRegistrationOutcome> {
-  const sleep = env.sleep ?? defaultSleep;
-  const delays = env.retryDelaysMs ?? RELAY_REGISTRATION_RETRY_DELAYS_MS;
   const registrar: RelayRegistrar = {
     url: params.registrarUrl,
     exchangeId: await deriveRelayExchangeId(params.sharedSecret),
@@ -742,29 +749,13 @@ export async function enrollRelayKeyWithoutToken(
       relayKey: await deriveRelayKey(secret),
     })),
   );
-  for (let attempt = 0; ; attempt++) {
-    if (env.signal?.aborted === true)
-      return {
-        kind: "unavailable",
-        reason: RELAY_REGISTRATION_CANCELLED_REASON,
-      };
-    const answer = await sendRelayRegistration(
-      { registrar, method: "POST", body, otherRequests },
-      env,
-    );
-    if (answer.kind === "clock-skew")
-      return { kind: "refused", status: 401, reason: answer.reason };
-    if (
-      answer.kind !== "unavailable" ||
-      attempt >= delays.length ||
-      env.lastAttemptSignal?.aborted === true
-    )
-      return answer;
-    await sleepUnlessCancelled(sleep, delays[attempt]!, [
-      env.signal,
-      env.lastAttemptSignal,
-    ]);
-  }
+  if (transport.signal?.aborted === true)
+    return { kind: "unavailable", reason: RELAY_REGISTRATION_CANCELLED_REASON };
+  const answer = await sendRelayRegistration(
+    { registrar, method: "POST", body, otherRequests },
+    transport,
+  );
+  return answer.kind === "clock-skew" ? clockSkewRefusal(answer) : answer;
 }
 
 /** What one enrollment without a token, bounded by a wait, came to. */
@@ -830,7 +821,6 @@ export async function enrollRelayKeyWithinWait(
       ...(options.fetch !== undefined && { fetch: options.fetch }),
       ...(signal !== undefined && { signal }),
       timeoutMs: options.waitMs,
-      retryDelaysMs: [],
     });
   } catch {
     outcome = { kind: "unavailable", reason: "it could not be reached" };

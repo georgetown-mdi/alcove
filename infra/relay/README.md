@@ -303,7 +303,8 @@ revoke-exchange.sh <exchange-id>
   `printf '%s\n' "$KEY" | python3 /opt/alcove-relay/relay_table.py forget-key`,
   with `relay.env`'s variables in the environment. It removes the row and any
   mapping of the key in `ALCOVE_RELAY_REALM`, in one transaction, and like
-  `status` exits 2 naming the variable when it is unset. An `alcove-verify-` row
+  every command that needs the realm exits 2 naming the variable when it is
+  unset. An `alcove-verify-` row
   the import skips -- a verify run that died before cleaning up -- gets no
   mapping, so if an earlier install already wrote its key into the table
   that key stays until it is removed with `forget-key`, the key taken from
@@ -552,8 +553,9 @@ start: to turn it off, set it to `off` and
   any other value is answered 400 and nothing is written. The row lapses
   4200 s (70 minutes) after the enrollment (`TOKENLESS_LIFETIME_SECONDS`), and
   the answer states it: `maxAgeDays` `null` and `lapsesAt` that time. The 70
-  minutes are what one browser exchange needs: the inviter enrolls when it
-  creates the invitation and waits at most 10 minutes for its partner
+  minutes are what one browser exchange needs: the inviter enrolls right
+  before its run contacts the coordination server and waits at most 10
+  minutes for its partner
   (`DEFAULT_PEER_WAIT_TIMEOUT_MS`, `apps/web/src/psi/transport/waitForConnection.ts`),
   and each party then mints a credential that lasts 3600 s
   (`RELAY_CREDENTIAL_MAX_TTL_SECONDS`, `packages/core/src/relayCredential.ts`),
@@ -582,14 +584,11 @@ start: to turn it off, set it to `off` and
   Each request is counted before its id or body is read, so a malformed one,
   or one probing whether an id is held, counts too. These are arbitrary
   working values, raised on request; the reasoning behind them: one exchange
-  costs at most two enrollments, the inviter's and its partner's, and a
-  client retrying as core's registrar client does
-  ([PROTOCOL.md, Registering the rotated relay key](../../docs/spec/PROTOCOL.md#registering-the-rotated-relay-key),
-  Retries) sends a request that gets no answer, or a 429, three times in
-  all, so 20 in 10 minutes -- the length of the inviter's wait -- admits
-  about ten exchanges set up at once behind one address, such as a facility's
-  shared network address, or three whose every request was retried. The cap
-  on each client, below, bounds the rows an address holds.
+  costs at most two enrollments, the inviter's and its partner's, each sent
+  once with no retry, so 20 in 10 minutes -- the length of the inviter's
+  wait -- admits about ten exchanges set up at once behind one address, such
+  as a facility's shared network address. The cap on each client, below,
+  bounds the rows an address holds.
 - **The client's address.** On the registrar's own port, the connection's
   address. Through the front, the address in its PROXY header, since every
   connection the front passes comes from `127.0.0.1` (Where it listens,

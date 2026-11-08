@@ -99,7 +99,7 @@ TABLE_FAILURE = (
 MIN_TOKEN_LENGTH = 32
 ID_REFUSAL = relay_table.ID_REFUSAL
 VERIFY_ID_REFUSAL = relay_table.VERIFY_ID_REFUSAL
-KEY_REFUSAL = "key must be 64 lowercase hex characters [0-9a-f]"
+KEY_REFUSAL = relay_table.KEY_REFUSAL
 MAX_AGE_REFUSAL = (
     "maxAgeDays must be a whole number of days from 1 to %d, or null for no lapse" % relay_table.MAX_AGE_DAYS_CEILING
 )

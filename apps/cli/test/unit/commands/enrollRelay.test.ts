@@ -4,11 +4,10 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import YAML from "yaml";
-import { deriveRelayKey } from "@alcove/core";
+import { deriveRelayKey, REMOVED_CREDENTIAL_TEXT } from "@alcove/core";
 
 import { enrollRelay, readFirstLine } from "../../../src/commands/enrollRelay";
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
-import { REMOVED_CREDENTIAL_TEXT } from "../../../src/relayRegistrar";
 import {
   exitCodeForError,
   exitWithError,

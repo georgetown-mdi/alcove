@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
+  MAX_REGISTRAR_ANSWER_BYTES,
+  RELAY_REGISTRAR_REQUEST_TIMEOUT_MS,
   RELAY_REGISTRATION_CANCELLED_REASON,
+  RELAY_REGISTRATION_RETRY_DELAYS_MS,
   REMOVED_CREDENTIAL_TEXT,
   REMOVED_EXCHANGE_ID_TEXT,
   REMOVED_RELAY_KEY_TEXT,
@@ -17,16 +20,61 @@ import { deriveRelayExchangeId, deriveRelayKey } from "../src/relayCredential";
 import { generateSharedSecret } from "../src/config/connection";
 import type { RelayRegistrar } from "../src/config/connection";
 
-// The transport-neutral registrar client both apps share. The CLI's suite
-// (apps/cli/test/unit/relayRegistrar.test.ts, relayKeyRotation.test.ts) holds
-// most of the answer classification and the retries; these hold the 2xx
-// bodies that confirm nothing, the cancel and last-attempt signals, and the
-// credential scrub without Node's Buffer.
+// The transport-neutral registrar client both apps share: the request, its
+// answer classification, the retries and signals of a registration, and the
+// enrollments. The CLI's key-file side of a registration is in
+// apps/cli/test/unit/relayKeyRotation.test.ts.
 
 const REGISTRAR: RelayRegistrar = {
   url: "https://relay.example.org:8443",
   exchangeId: "exchange-1",
 };
+
+const AUTHORIZATION = "Bearer test-owner-token";
+
+/** A JSON answer with `status`. */
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** The registrar's 200 to an enrollment or registration. */
+function registrationAnswer(): Response {
+  return jsonResponse(200, {
+    message: "exchange-1 registered",
+    maxAgeDays: null,
+    lapsesAt: null,
+  });
+}
+
+/** A fetch answering each request with the next of `answers`, recording what
+ * was sent; a request past the last answer fails as an unreachable host does. */
+function fakeRegistrar(answers: Response[]) {
+  const requests: Array<{
+    url: string;
+    method: string | undefined;
+    redirect: RequestRedirect | undefined;
+    authorization: string | null;
+    body: string;
+  }> = [];
+  const queue = [...answers];
+  const fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      method: init?.method,
+      redirect: init?.redirect,
+      authorization: new Headers(init?.headers).get("Authorization"),
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    const next = queue.shift();
+    if (next === undefined)
+      return Promise.reject(new TypeError("fetch failed"));
+    return Promise.resolve(next);
+  }) as typeof globalThis.fetch;
+  return { fetch, requests };
+}
 
 function answering(
   answers: Array<[number, unknown]>,
@@ -282,6 +330,230 @@ describe("sendRelayRegistration", () => {
     );
     expect(answer).toMatchObject({ unreachable: { port: 443 } });
   });
+
+  test("sends the request to the exchange's path without following redirects", async () => {
+    const registrar = fakeRegistrar([registrationAnswer()]);
+    await sendRelayRegistration(
+      {
+        registrar: REGISTRAR,
+        method: "PUT",
+        body: "{}",
+        authorization: "Alcove-Relay-Proof ts=1,mac=x",
+      },
+      { fetch: registrar.fetch },
+    );
+    expect(registrar.requests[0]).toMatchObject({
+      url: "https://relay.example.org:8443/exchanges/exchange-1",
+      method: "PUT",
+      redirect: "manual",
+      authorization: "Alcove-Relay-Proof ts=1,mac=x",
+      body: "{}",
+    });
+  });
+
+  test("puts an id of every admitted character class in the path unchanged", async () => {
+    const registrar = fakeRegistrar([registrationAnswer()]);
+    await sendRelayRegistration(
+      {
+        registrar: { ...REGISTRAR, exchangeId: "_Acme.weekly-2026.v9" },
+        method: "PUT",
+        body: "{}",
+        authorization: "Alcove-Relay-Proof ts=1,mac=x",
+      },
+      { fetch: registrar.fetch },
+    );
+    expect(registrar.requests[0]?.url).toBe(
+      "https://relay.example.org:8443/exchanges/_Acme.weekly-2026.v9",
+    );
+  });
+
+  test.each([
+    [
+      jsonResponse(200, { maxAgeDays: 30, lapsesAt: "2026-01-31T00:00:00Z" }),
+      { kind: "registered", maxAgeDays: 30, lapsesAt: "2026-01-31T00:00:00Z" },
+    ],
+    [
+      jsonResponse(409, { error: "exchange-id exchange-1 is not enrolled" }),
+      {
+        kind: "refused",
+        status: 409,
+        reason: `exchange-id ${REMOVED_EXCHANGE_ID_TEXT} is not enrolled`,
+      },
+    ],
+    [
+      jsonResponse(401, { error: "skewed", serverTime: 1767225600 }),
+      { kind: "clock-skew", serverTimeSeconds: 1767225600 },
+    ],
+    [
+      jsonResponse(401, { error: "bad proof" }),
+      { kind: "refused", status: 401 },
+    ],
+    [jsonResponse(503, {}), { kind: "unavailable", status: 503 }],
+    [jsonResponse(429, {}), { kind: "unavailable", status: 429 }],
+    [
+      jsonResponse(400, { error: "bad body" }),
+      { kind: "rejected", status: 400 },
+    ],
+    [new Response(null, { status: 302 }), { kind: "rejected", status: 302 }],
+  ])("classifies an answer (%#)", async (response, expected) => {
+    const registrar = fakeRegistrar([response]);
+    const answer = await sendRelayRegistration(
+      {
+        registrar: REGISTRAR,
+        method: "PUT",
+        body: "{}",
+        authorization: AUTHORIZATION,
+      },
+      { fetch: registrar.fetch },
+    );
+    expect(answer).toMatchObject(expected);
+  });
+
+  test("a network failure is an unavailable answer, not a throw", async () => {
+    const answer = await sendRelayRegistration(
+      {
+        registrar: REGISTRAR,
+        method: "PUT",
+        body: "{}",
+        authorization: AUTHORIZATION,
+      },
+      {
+        fetch: () => Promise.reject(new TypeError("fetch failed")),
+      },
+    );
+    expect(answer.kind).toBe("unavailable");
+  });
+
+  test("a success whose lapsesAt holds control bytes is refused with a fixed reason", async () => {
+    const lapsesAt = "2026-01-31T00:00:00Z\u001b[2K\u0007\nforged line";
+    const registrar = fakeRegistrar([
+      jsonResponse(200, { maxAgeDays: 30, lapsesAt }),
+    ]);
+    const answer = await sendRelayRegistration(
+      {
+        registrar: REGISTRAR,
+        method: "PUT",
+        body: "{}",
+        authorization: AUTHORIZATION,
+      },
+      { fetch: registrar.fetch },
+    );
+    expect(answer).toEqual({
+      kind: "unavailable",
+      status: 200,
+      reason:
+        "its answer states a lapse time that is not a UTC timestamp, so " +
+        "the registration is not taken as confirmed",
+    });
+  });
+
+  test("a reason echoing the credential repeats it in no encoding", async () => {
+    const token = "owner/token+with=signs";
+    const authorization = `Bearer ${token}`;
+    const echoed = [
+      authorization,
+      encodeURIComponent(token),
+      Buffer.from(authorization).toString("base64"),
+      Buffer.from(token).toString("base64").replace(/=+$/, ""),
+    ].join(" | ");
+    const registrar = fakeRegistrar([jsonResponse(401, { error: echoed })]);
+    const answer = await sendRelayRegistration(
+      { registrar: REGISTRAR, method: "POST", body: "{}", authorization },
+      { fetch: registrar.fetch },
+    );
+    expect(answer).toEqual({
+      kind: "refused",
+      status: 401,
+      reason: Array(4).fill(REMOVED_CREDENTIAL_TEXT).join(" | "),
+    });
+  });
+});
+
+// docs/spec/PROTOCOL.md, Registering the rotated relay key: Retries and What
+// confirms.
+describe("the registrar client's bounds", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("a request has 15 s, a registration waits 2 s and 5 s, and an answer holds 4,096 bytes", () => {
+    expect(RELAY_REGISTRAR_REQUEST_TIMEOUT_MS).toBe(15_000);
+    expect(RELAY_REGISTRATION_RETRY_DELAYS_MS).toEqual([2_000, 5_000]);
+    expect(MAX_REGISTRAR_ANSWER_BYTES).toBe(4_096);
+  });
+
+  test("a request with no timeout set is cut at 15 s, not before", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const fetch = neverAnswering();
+    const pending = sendRelayRegistration(PROOF_REQUEST, { fetch });
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(fetch.endings).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetch.endings).toEqual(["TimeoutError"]);
+    expect(await pending).toMatchObject({
+      kind: "unavailable",
+      reason: "no answer within 15000 ms",
+    });
+  });
+
+  test("a registration with no waits set waits 2 s and then 5 s, three attempts in all", async () => {
+    const secret = generateSharedSecret();
+    const waits: number[] = [];
+    const fetch = answering([
+      [503, {}],
+      [503, {}],
+      [503, {}],
+      [200, REGISTRAR_ANSWER],
+    ]);
+    const outcome = await registerRelayKey(
+      {
+        registrar: REGISTRAR,
+        signingSecret: secret,
+        registeredSecret: secret,
+        maxAgeDays: null,
+      },
+      {
+        fetch,
+        sleep: async (ms) => {
+          waits.push(ms);
+        },
+      },
+    );
+    expect(outcome).toMatchObject({ kind: "unavailable", status: 503 });
+    expect(waits).toEqual([2_000, 5_000]);
+    expect(fetch.authorizations).toHaveLength(3);
+  });
+
+  /** A registrar answer of `bytes` bytes stating a registration. */
+  function answerOfBytes(bytes: number): string {
+    const empty = JSON.stringify({ ...REGISTRAR_ANSWER, message: "" });
+    return JSON.stringify({
+      ...REGISTRAR_ANSWER,
+      message: "x".repeat(bytes - empty.length),
+    });
+  }
+
+  test("a 2xx of 4,096 bytes stating the registration confirms it", async () => {
+    const text = answerOfBytes(4_096);
+    expect(new TextEncoder().encode(text).length).toBe(4_096);
+    const answer = await sendRelayRegistration(PROOF_REQUEST, {
+      fetch: answeringText(200, text),
+    });
+    expect(answer).toEqual({
+      kind: "registered",
+      maxAgeDays: 30,
+      lapsesAt: "2026-10-30T00:00:00Z",
+    });
+  });
+
+  test("a 2xx of 4,097 bytes stating the registration confirms nothing", async () => {
+    const text = answerOfBytes(4_097);
+    expect(new TextEncoder().encode(text).length).toBe(4_097);
+    const answer = await sendRelayRegistration(PROOF_REQUEST, {
+      fetch: answeringText(200, text),
+    });
+    expect(answer).toMatchObject({ kind: "unavailable", status: 200 });
+  });
 });
 
 // A timer left pending keeps a command-line process alive after its run.
@@ -349,6 +621,86 @@ describe("registerRelayKey", () => {
     expect(outcome.kind).toBe("registered");
     expect(fetch.authorizations).toHaveLength(2);
     expect(fetch.authorizations[1]).toMatch(/ts=1767225600,/);
+  });
+
+  test("a second proof outside the window is a refusal, stating a reason where the registrar gives none", async () => {
+    const secret = generateSharedSecret();
+    const fetch = answering([
+      [401, { serverTime: 1_767_225_600 }],
+      [401, { serverTime: 1_767_225_600 }],
+      [200, REGISTRAR_ANSWER],
+    ]);
+    const outcome = await registerRelayKey(
+      {
+        registrar: REGISTRAR,
+        signingSecret: secret,
+        registeredSecret: secret,
+        maxAgeDays: null,
+      },
+      { fetch, retryDelaysMs: [1, 1], sleep: () => Promise.resolve() },
+    );
+    expect(outcome).toEqual({
+      kind: "refused",
+      status: 401,
+      reason: "the proof's time is outside the registrar's window",
+    });
+    expect(fetch.authorizations).toHaveLength(2);
+  });
+
+  test("a cancel between a proof outside the window and its re-signing sends nothing more", async () => {
+    const secret = generateSharedSecret();
+    const cancel = new AbortController();
+    const fetch = answering([
+      [401, { error: "stale", serverTime: 1_767_225_600 }],
+      [200, REGISTRAR_ANSWER],
+    ]);
+    let clockReads = 0;
+    const outcome = await registerRelayKey(
+      {
+        registrar: REGISTRAR,
+        signingSecret: secret,
+        registeredSecret: secret,
+        maxAgeDays: null,
+      },
+      {
+        fetch,
+        signal: cancel.signal,
+        // The second read is the one the skewed answer's offset takes.
+        now: () => {
+          if (++clockReads === 2) cancel.abort();
+          return new Date("2026-09-30T00:00:00Z");
+        },
+      },
+    );
+    expect(clockReads).toBe(2);
+    expect(outcome).toEqual({
+      kind: "unavailable",
+      reason: RELAY_REGISTRATION_CANCELLED_REASON,
+    });
+    expect(fetch.authorizations).toHaveLength(1);
+  });
+
+  test.each([
+    ["a refusal", 409, { error: "held" }, "refused"],
+    ["a rejection", 400, { error: "bad body" }, "rejected"],
+    ["a confirmation", 200, REGISTRAR_ANSWER, "registered"],
+  ])("%s is final", async (_, status, body, kind) => {
+    const secret = generateSharedSecret();
+    const fetch = answering([
+      [status, body],
+      [200, REGISTRAR_ANSWER],
+    ]);
+    const outcome = await registerRelayKey(
+      {
+        registrar: REGISTRAR,
+        signingSecret: secret,
+        registeredSecret: secret,
+        maxAgeDays: null,
+      },
+      { fetch, retryDelaysMs: [1, 1], sleep: () => Promise.resolve() },
+    );
+    expect(outcome.kind).toBe(kind);
+    expect(fetch.authorizations).toHaveLength(1);
   });
 
   test("a cancelled registration stops at a registrar that never answers", async () => {
@@ -543,14 +895,12 @@ describe("enrollRelayKeyWithoutToken", () => {
     return { fetch, requests };
   }
 
-  const noWait = { retryDelaysMs: [1, 1], sleep: () => Promise.resolve() };
-
   test("posts the derived key under the derived id with no Authorization header", async () => {
     const secret = generateSharedSecret();
     const { fetch, requests } = recording([[200, TOKENLESS_ANSWER]]);
     const outcome = await enrollRelayKeyWithoutToken(
       { registrarUrl: "https://registrar.example.org", sharedSecret: secret },
-      { fetch, ...noWait },
+      { fetch },
     );
     expect(outcome).toEqual({
       kind: "registered",
@@ -579,7 +929,7 @@ describe("enrollRelayKeyWithoutToken", () => {
         registrarUrl: "https://registrar.example.org",
         sharedSecret: generateSharedSecret(),
       },
-      { fetch, ...noWait },
+      { fetch },
     );
     expect(outcome).toEqual({
       kind: "refused",
@@ -589,24 +939,26 @@ describe("enrollRelayKeyWithoutToken", () => {
     expect(requests).toHaveLength(1);
   });
 
-  test("a 429 is tried again, three attempts in all", async () => {
-    const { fetch, requests } = recording([
-      [429, { error: "too many enrollments" }],
-      [429, { error: "too many enrollments" }],
-      [429, { error: "too many enrollments" }],
-    ]);
-    const outcome = await enrollRelayKeyWithoutToken(
-      {
-        registrarUrl: "https://registrar.example.org",
-        sharedSecret: generateSharedSecret(),
-      },
-      { fetch, ...noWait },
-    );
-    expect(outcome).toMatchObject({ kind: "unavailable", status: 429 });
-    expect(requests).toHaveLength(3);
-  });
+  test.each([429, 503])(
+    "a %i is not tried again: one attempt in all",
+    async (status) => {
+      const { fetch, requests } = recording([
+        [status, { error: "try again" }],
+        [200, TOKENLESS_ANSWER],
+      ]);
+      const outcome = await enrollRelayKeyWithoutToken(
+        {
+          registrarUrl: "https://registrar.example.org",
+          sharedSecret: generateSharedSecret(),
+        },
+        { fetch },
+      );
+      expect(outcome).toMatchObject({ kind: "unavailable", status });
+      expect(requests).toHaveLength(1);
+    },
+  );
 
-  test("an unanswered request is tried again and may then confirm", async () => {
+  test("an unanswered request is not tried again", async () => {
     let calls = 0;
     const flaky = (() => {
       calls++;
@@ -621,10 +973,52 @@ describe("enrollRelayKeyWithoutToken", () => {
         registrarUrl: "https://registrar.example.org",
         sharedSecret: generateSharedSecret(),
       },
-      { fetch: flaky, ...noWait },
+      { fetch: flaky },
     );
-    expect(outcome.kind).toBe("registered");
-    expect(calls).toBe(2);
+    expect(outcome).toEqual({
+      kind: "unavailable",
+      reason: "it could not be reached (network down)",
+    });
+    expect(calls).toBe(1);
+  });
+
+  test("a proof-window answer is a 401 refusal stating the registrar's reason, or none", async () => {
+    for (const [error, reason] of [
+      ["stale", "stale"],
+      [undefined, undefined],
+    ] as const) {
+      const { fetch, requests } = recording([
+        [401, { error, serverTime: 1_767_225_600 }],
+        [200, TOKENLESS_ANSWER],
+      ]);
+      const outcome = await enrollRelayKeyWithoutToken(
+        {
+          registrarUrl: "https://registrar.example.org",
+          sharedSecret: generateSharedSecret(),
+        },
+        { fetch },
+      );
+      expect(outcome).toEqual({ kind: "refused", status: 401, reason });
+      expect(requests).toHaveLength(1);
+    }
+  });
+
+  test("a cancel before the attempt sends nothing", async () => {
+    const cancel = new AbortController();
+    cancel.abort();
+    const { fetch, requests } = recording([[200, TOKENLESS_ANSWER]]);
+    const outcome = await enrollRelayKeyWithoutToken(
+      {
+        registrarUrl: "https://registrar.example.org",
+        sharedSecret: generateSharedSecret(),
+      },
+      { fetch, signal: cancel.signal },
+    );
+    expect(outcome).toEqual({
+      kind: "unavailable",
+      reason: RELAY_REGISTRATION_CANCELLED_REASON,
+    });
+    expect(requests).toEqual([]);
   });
 });
 

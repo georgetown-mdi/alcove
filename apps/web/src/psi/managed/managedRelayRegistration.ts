@@ -22,6 +22,7 @@ import {
   registerRelayKey,
   relayRegistrarLabel,
   relayRegistrationNotice,
+  relayRegistrationOutcomeDetail,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -85,14 +86,6 @@ export function runsRegisterAtOwnRelay(
   return (record.ownRelay?.turn.length ?? 0) > 0;
 }
 
-function failureDetail(outcome: RelayRegistrationFailure): string {
-  const status = outcome.status === undefined ? "" : `HTTP ${outcome.status}`;
-  const reason = outcome.reason ?? "";
-  return status !== "" && reason !== ""
-    ? `${status}: ${reason}`
-    : status || reason;
-}
-
 const REGISTRAR_REFUSES_RUNS =
   "Until the registrar holds this exchange's current key, the relay refuses " +
   "this exchange's runs";
@@ -150,7 +143,7 @@ export function managedRelayRegistrationFailureMessage(
   stage: ManagedRelayRegistrationStage,
 ): string {
   const label = relayRegistrarLabel(registrar);
-  const detail = failureDetail(outcome);
+  const detail = relayRegistrationOutcomeDetail(outcome);
   const what = FAILED_REGISTRATION[stage](label);
   const kept = KEPT_AFTER_FAILED_REGISTRATION[stage];
   switch (outcome.kind) {
@@ -632,7 +625,7 @@ export function managedRelayEnrollmentFailureMessage(
   withToken: boolean,
 ): string {
   const label = relayRegistrarLabel(registrar);
-  const detail = failureDetail(outcome);
+  const detail = relayRegistrationOutcomeDetail(outcome);
   switch (outcome.kind) {
     case "refused":
       return withToken
