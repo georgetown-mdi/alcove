@@ -100,38 +100,23 @@ describe("describeDeduplicatePair", () => {
   });
 });
 
-describe("the fan-out note's account of pairing", () => {
-  // The note renders wherever the terms declare a candidate set the exchange
-  // matches, under either party's `deduplicate`, so it states the pairing
-  // count against the pair rather than for one combination.
-  test("scopes the at-most-once pairing to the pair that pairs once", () => {
-    const note = CONSENT_FACTS.fanOutCandidates.note!;
-    expect(note).toContain(
-      "With neither party's duplicate matching set, it is paired at most once",
+describe("the fan-out note", () => {
+  test("states the weaker evidence, the removal and each strategy's disclosure", () => {
+    // The note renders under every duplicate-matching pair, so it states no
+    // pairing count; the pair's own sentence and the chained-grouping fact
+    // state what each pair discloses. The removal and grouping sentences are
+    // docs/spec/PROTOCOL.md's, The disclosure delta fan-out pays.
+    expect(CONSENT_FACTS.fanOutCandidates.note).toBe(
+      "A match on this key can rest on one part of a value, such as one word " +
+        "of a name, which is weaker evidence than the whole value. A record " +
+        "matched this way is left out of later keys, even if that pairing " +
+        "does not stand. Under single-pass linkage, a partner that receives " +
+        "your key structure learns how many parts each of your records " +
+        "produced and which came from the same record. Under cascade " +
+        "linkage, your partner learns this for your matched values only, " +
+        "round by round.",
     );
-    expect(note).toContain(
-      "with both set, it is paired with every one of the other party's " +
-        "records any of its parts reached",
-    );
-  });
-
-  test("answers the one-sided pairs the note's question also reaches", () => {
-    // The note poses the count for the two duplicate-matching settings, and
-    // the surfaces render it under all four pairs. Under a one-sided setting
-    // the "one" side's record is the one that pairs with several: the relaxed
-    // acceptance clause stops the declaring party's records from repeating
-    // and nothing stops the other party's (docs/spec/PROTOCOL.md, The per-side
-    // rules, and the two cases a deduplicating cardinality adds).
-    const note = CONSENT_FACTS.fanOutCandidates.note!;
-    expect(note).toContain(
-      "with one party's set, a record of that party is paired at most once " +
-        "while a record of the other party may be paired with several",
-    );
-    // Not the both-set count: that pairing is total, and stating it for a
-    // one-sided run would promise pairs the sweep discards.
-    expect(note).not.toContain(
-      "with one party's set, it is paired with every one",
-    );
+    expect(CONSENT_FACTS.fanOutCandidates.note).not.toContain("paired");
   });
 });
 

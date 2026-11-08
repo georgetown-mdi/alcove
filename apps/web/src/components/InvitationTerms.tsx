@@ -57,6 +57,7 @@ import {
 import { SINGLE_PASS_TERMS_STATEMENT } from "@psi/linkageStrategyChoice";
 import { acceptorMaySetDeduplicate } from "@psi/acceptInvitation";
 import { isConsoleBuild } from "@utils/clientConfig";
+import { keyFieldsLine } from "@psi/keyFieldsLine";
 
 import type { ReactNode, Ref } from "react";
 
@@ -338,10 +339,7 @@ function MatchKeyDisclosure({
   // if ever reached, so the joined line contains no unescaped partner text.
   const subline = (
     <Text id={sublineId} size="xs" c="dimmed">
-      Matches on {summary.headerFields.join(" - ")}
-      {summary.swapHeaderMarker !== undefined && ` ${summary.swapHeaderMarker}`}
-      {summary.lessCertainHeaderMarker !== undefined &&
-        ` ${summary.lessCertainHeaderMarker}`}
+      Matches on {keyFieldsLine(summary)}
     </Text>
   );
   return (
@@ -488,12 +486,11 @@ function MatchKeyDetails({ summary }: { summary: InvitationKeySummary }) {
  * statements in `@alcove/core`, which the CLI accept prompt renders too, so the
  * two surfaces cannot state one fact two ways.
  *
- * Result sharing is stated viewer-relative. The viewer's OWN non-receipt is
- * enforced (a party set to receive no result is sent none); the PARTNER's
- * non-receipt is COOPERATIVE, resting on the agreed terms rather than a guarantee
- * this side can impose (docs/notes/one-sided-disclosure.md), and a non-receiving
- * partner in a `psi` exchange additionally learns its own records' membership -- a
- * documented, bounded property, not disclosed under `psi-c`.
+ * Result sharing is stated viewer-relative, and both non-receipts are enforced: a
+ * party set to receive no result is sent none, and a partner set to receive none
+ * is the sender, sent none of the viewer's columns. A non-receiving partner in a
+ * `psi` exchange still learns its own records' membership
+ * (docs/notes/one-sided-disclosure.md), which is not disclosed under `psi-c`.
  *
  * An attached legal agreement renders whole (reference, purpose, expiry) because
  * its purpose is the field a 45 CFR 164.528 / FERPA exception turns on
@@ -666,7 +663,7 @@ export function InvitationTerms({
       : undefined;
   // Result sharing is stated viewer-relative: LINE A is the viewer's OWN receipt,
   // LINE B the partner's. This split -- not the raw inviter fields -- is what the
-  // enforced-vs-cooperative caveats key on (see the block below), so it is computed
+  // receipt notes key on (see the block below), so it is computed
   // once here. Under "proposing" the viewer is the inviter; otherwise the acceptor,
   // whose terms mirror the inviter's (its receipt is the inviter's shareWithPartner
   // and vice versa), so the two fields swap by perspective.
@@ -1044,12 +1041,11 @@ export function InvitationTerms({
         </Term>
 
         {/* Result sharing, stated viewer-relative so each party reads its own
-            outcome first-person. The two lines are NOT equally enforced: the
-            viewer's own receipt is enforced (a party set to receive none is sent
-            none, and its receive check fails closed on any it is sent), while the
-            partner's is COOPERATIVE, resting on the agreed terms rather than a
-            guarantee this side can impose (docs/notes/one-sided-disclosure.md).
-            Each "No" states the caveat for its register. */}
+            outcome first-person. Both lines are enforced: a party set to receive
+            none is sent none, and a partner set to receive none is the sender
+            role resolution seats, sent none of the viewer's columns. The viewer's
+            "No" states its receive check; the partner's "No" states only what
+            the partner still learns. */}
         <Term label="Result sharing">
           <Text size="sm">
             You will receive the matched result: {yesNo(viewerReceivesResult)}
@@ -1076,24 +1072,17 @@ export function InvitationTerms({
             // The partner DOES receive: the accountable disclosure (the 164.528
             // event). A "Yes" has no false-guarantee risk, so it stays a plain
             // disclosure, but a brief pointer marks that once the result is out, the
-            // agreement -- not this tool -- governs its use, mirroring the cooperative
-            // caveat's "the tool is not the control here" frame.
+            // agreement -- not this tool -- governs its use.
             <Text size="xs" c="dimmed">
               {CONSENT_FACTS.partnerReceivesResult.note}
             </Text>
           ) : (
             <>
-              <Text size="xs" c="dimmed">
-                {CONSENT_FACTS.partnerReceivesNoResult.note}
-              </Text>
-              {/* The honest-helper membership disclosure, kept DISTINCT from the
-                  cooperative caveat above: this states what an HONEST partner learns
-                  intrinsically. A non-receiving partner in a `psi` exchange learns
+              {/* The honest-helper membership disclosure: what an HONEST partner
+                  learns intrinsically. A non-receiving partner in a `psi` exchange learns
                   which of ITS OWN records are in the viewer's data -- membership --
                   wherever the run returns it that half of the table
-                  (docs/notes/one-sided-disclosure.md). Bounded so it cannot
-                  overstate: never which of the viewer's records they matched, nor
-                  anything about the rest of the set beyond its size. Not disclosed
+                  (docs/notes/one-sided-disclosure.md). Not disclosed
                   under `psi-c`, whose non-receiving party is the sender and learns no
                   membership. WHICH of the two sentences renders follows core's
                   resolution of the run (partnerTableWithheld), never a reading of the
@@ -1350,8 +1339,8 @@ export function InvitationTerms({
       {/* Partner-authored allowed-character constraints, promoted to the
           always-visible core so a partner-defined character-class rule is on notice
           at the consent point, not dimmed inside "Other details". Each entry names
-          the field, a FIXED system label marking the class as partner-supplied and
-          unverified, then the raw sanitized class in its OWN bounded Text -- never
+          the field, a FIXED system label, then the raw sanitized class in its OWN
+          bounded Text under the tier's partner-defined heading -- never
           joined into one sentence, since a crafted value could impersonate system
           chrome. Advisory (core's `withinAllowedCharacters` warns, does not
           enforce), so the copy states an expectation, not a guarantee. */}
@@ -1375,9 +1364,7 @@ export function InvitationTerms({
                       text cannot display as the label. field.allowedCharacters is
                       present here (the filter above selects on it), sanitized once
                       in summarizeInvitation. */}
-                <Text size="sm">
-                  Allowed characters (partner-supplied, unverified):
-                </Text>
+                <Text size="sm">Allowed characters:</Text>
                 <Text
                   size="sm"
                   ff="monospace"

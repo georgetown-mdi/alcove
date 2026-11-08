@@ -869,17 +869,10 @@ export function displayInvitation(params: {
   // so a one-sided invitation tells the acceptor plainly whether it gets a
   // result, rather than leaving it to invert the "shares with partner" bit.
   //
-  // The two lines are not equally enforced, which is why each takes its
-  // own basis: this party's own non-receipt is a hard fact the run holds,
-  // while withholding a result from the partner rests on the agreed terms
-  // being honored. Presenting them alike would let a cooperative
-  // undertaking read as a guarantee.
-  //
-  // The partner's marker follows the VALUE, not the line, because the
-  // basis itself depends on the value: a partner that does receive is one
-  // the run itself delivers to (only its USE of the result rests on the
-  // agreement), while a partner that does not rests on the agreement for
-  // the whole fact.
+  // The partner's fact follows the VALUE: a partner that receives is one the
+  // run delivers to, its USE of the result resting on the agreement, while a
+  // partner that does not is the sender role resolution seats, sent none of
+  // this party's columns.
   emit(
     `  ${marked("you will receive the result", "viewerReceivesResult")}: ` +
       (summary.inviterSharesResult ? "yes" : "no"),
@@ -894,17 +887,10 @@ export function displayInvitation(params: {
         : "partnerReceivesNoResult",
     )}: ` + (summary.inviterReceivesOutput ? "yes" : "no"),
   );
-  emit(
-    `    ${
-      summary.inviterReceivesOutput
-        ? CONSENT_FACTS.partnerReceivesResult.note
-        : CONSENT_FACTS.partnerReceivesNoResult.note
-    }`,
-  );
-  // The honest-helper membership disclosure, kept apart from the
-  // cooperative caveat above: that caveat is about a partner that does not
-  // honor the terms, while this holds however honestly the partner
-  // behaves -- a fact of its own, taking the opposite basis.
+  if (summary.inviterReceivesOutput)
+    emit(`    ${CONSENT_FACTS.partnerReceivesResult.note}`);
+  // The honest-helper membership disclosure: what a partner entitled to no
+  // result still learns, however honestly it behaves.
   //
   // Gated on the algorithm: by the role rule the non-receiving party of a
   // count-only run is the SENDER, which computes nothing from the round

@@ -767,12 +767,9 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     ).not.toContain("several values per record");
   });
 
-  test("displayInvitation: states what a splitting key pairs where the invitation declares duplicate matching", () => {
-    // A splitting key beside an inviting party's own `deduplicate`: the pair an
-    // accepting party's own value completes runs under either strategy, and a
-    // record matched on a candidate is paired with every partner record its
-    // candidates reached rather than once. The prompt states that before the
-    // acceptor sets its own side in its configuration file.
+  test("displayInvitation: states the splitting-key line where the invitation declares duplicate matching", () => {
+    // A splitting key beside an inviting party's own `deduplicate` takes the
+    // same one-sentence line as without it.
     const log = getLogger("accept-display-fan-out-deduplicate-test");
     log.setLevel("silent");
     const token = splittingKeyToken(FUTURE(), "cascade");
@@ -781,11 +778,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
       linkageTerms: { ...token.linkageTerms, deduplicate: true },
     });
     expect(rendered).toContain("several values per record (enforced):");
-    expect(rendered).toContain(
-      "with both set, it is paired with every one of the other party's " +
-        "records any of its parts reached",
-    );
-    expect(rendered).not.toContain("paired at most once and is then left out");
+    expect(rendered).toContain(CONSENT_FACTS.fanOutCandidates.note);
   });
 
   test("displayInvitation: states the grouping a candidate set makes, whichever declares it", () => {
@@ -1476,7 +1469,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
   test("displayInvitation: every classified fact is marked, and holds core's caveat verbatim", () => {
     // An acceptor meets two unlike kinds of fact here: ones the exchange holds
     // itself, and ones that are only what the inviting party declared. Treating a
-    // cooperative undertaking as a cryptographic guarantee is the error this
+    // partner's declaration as a guarantee is the error this
     // marking exists to prevent, so an enforced line is marked positively rather
     // than told apart by the absence of a marker on the other.
     const log = getLogger("accept-display-basis-test");
@@ -1623,29 +1616,27 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     expect(notes.length).toBeGreaterThan(0);
     for (const note of notes) expect(rendered).toContain(`\n    ${note}`);
 
-    // Both classes marked, on the pair whose difference in register is the whole
-    // reason for marking: this party's own non-receipt is a hard fact the run holds,
-    // and withholding a result from the partner is not.
+    // Both receipt lines are the run's, whichever party is set to receive none.
     expect(acceptorWithheld).toContain(
       "  you will receive the result (enforced): no",
     );
     expect(inviterWithheld).toContain(
       "  you will receive the result (enforced): yes",
     );
-    // The partner's receipt line is marked by its VALUE, not by the line: a partner
-    // that receives is one the run delivers to, and only its use of the result rests
-    // on the agreement; a partner that does not receive rests on the agreement for
-    // the whole fact.
+    // A partner that receives is one the run delivers to; a partner that does not
+    // is the sender role resolution seats, sent none of this party's columns.
     expect(acceptorWithheld).toContain(
       "  the inviting party will receive the result (enforced): yes",
     );
     expect(inviterWithheld).toContain(
-      "  the inviting party will receive the result (your partner's word): no",
+      "  the inviting party will receive the result (enforced): no",
     );
-    // The honest-helper disclosure is its own fact, not a rider on the cooperative
-    // caveat: it holds however honestly the partner behaves, so it has the
-    // opposite basis and may not inherit that line's marker. One label covers
-    // both cases of it, so a reader meets the same line whichever the run is.
+    expect(inviterWithheld).not.toContain(
+      "the inviting party will receive the result (your partner's word)",
+    );
+    // The honest-helper disclosure is its own fact beneath that No. One label
+    // covers both cases of it, so a reader meets the same line whichever the run
+    // is.
     for (const document of [inviterWithheld, inviterLearnsNoMembership])
       expect(document).toContain(
         "  what your partner learns about its own records (enforced):",
@@ -1800,7 +1791,7 @@ describe("the count-only tier", () => {
     // Not the whole block going missing: the line the membership fact sits beneath is
     // still stated, on the register it belongs to.
     expect(countOnly).toContain(
-      "  the inviting party will receive the result (your partner's word): no",
+      "  the inviting party will receive the result (enforced): no",
     );
     // What replaces it, from docs/spec/PROTOCOL.md's PSI-C learn-basis rows rather
     // than from a softened version of the claim: the enforced half that hands neither

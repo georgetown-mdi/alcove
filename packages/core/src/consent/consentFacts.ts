@@ -244,13 +244,13 @@ export const CONSENT_FACTS = {
       "not control it.",
   },
   partnerReceivesNoResult: {
-    basis: "trust-contingent",
+    basis: "enforced",
     reason:
-      "Keeping a result from a partner rests on the agreed terms being " +
-      "honored; one-sided PSI gives this side nothing to impose it with.",
-    note:
-      "Alcove cannot stop your partner from receiving the result. Keeping it " +
-      "from your partner depends on the agreed terms being honored.",
+      "Role resolution makes a partner entitled to no result the sender, this " +
+      "side's software sends it none of this side's columns, and its own " +
+      "software saves no result. The pairing the cascade sends it, as does a " +
+      "single-pass run it sends columns in, is the membership fact below, not " +
+      "a result.",
   },
   partnerLearnsOwnMembership: {
     basis: "enforced",
@@ -258,9 +258,11 @@ export const CONSENT_FACTS = {
       "An intrinsic property of an identifier-revealing match rather than a " +
       "matter of conduct: under `psi` a non-receiving partner whose half of " +
       "the association table the run returns learns its own records' " +
-      "membership however honestly it behaves. Bounded to that - never which " +
-      "of the viewer's records they met, nor anything about the rest of the " +
-      "set beyond its size. Gated first on the ALGORITHM: no `psi-c` exchange " +
+      "membership however honestly it behaves. Its process is also sent the " +
+      "viewer's row number for each matched record, which it does not save, " +
+      "and the partner learns nothing about the rest of the set beyond its " +
+      "size. Gated " +
+      "first on the ALGORITHM: no `psi-c` exchange " +
       "states it at all, since the role rule makes the non-receiving party of " +
       "a count-only run the sender - which computes nothing from the round " +
       "and is sent no count-report frame (docs/spec/PROTOCOL.md, PSI-C), so it " +
@@ -270,12 +272,7 @@ export const CONSENT_FACTS = {
       "discloses no membership either, and `partnerOwnMembershipWithheld` " +
       "below is that case, selected from the run's own resolution rather than " +
       "from a second reading of the strategy and the payload declaration.",
-    note:
-      "Even when the terms are honored, your partner learns which of its own " +
-      "records are in your data, though not which of your records they are. " +
-      "A match that reveals identifiers discloses this whenever your partner " +
-      "is sent its half of the matched-pair table. That is inherent to the " +
-      "match, not a breach.",
+    note: "Your partner learns which of its own records are in your data.",
   },
   partnerOwnMembershipWithheld: {
     basis: "enforced",
@@ -542,19 +539,11 @@ export const CONSENT_FACTS = {
     note:
       "A match on this key can rest on one part of a value, such as one word " +
       "of a name, which is weaker evidence than the whole value. A record " +
-      "matched this way is left out of the later, less precise keys, even if " +
-      "that pairing does not stand. With neither party's duplicate matching " +
-      "set, it is paired at most once; with one party's set, a record of " +
-      "that party is paired at most once while a record of the other party " +
-      "may be paired with several; with both set, it is paired with every " +
-      "one of the other party's records any of its parts reached, and the " +
-      "records joined that way are disclosed to both parties as one group. " +
-      "Under single-pass linkage, the party that receives the other's key " +
-      "structure also learns how many parts each of the other's records " +
-      "produced for each key and which of those values came from the same " +
-      "record. Under cascade linkage, each party instead learns how the " +
-      "other's matched values group into records, round by round, for the " +
-      "records still in the running.",
+      "matched this way is left out of later keys, even if that pairing does " +
+      "not stand. Under single-pass linkage, a partner that receives your key " +
+      "structure learns how many parts each of your records produced and " +
+      "which came from the same record. Under cascade linkage, your partner " +
+      "learns this for your matched values only, round by round.",
   },
   candidateSetChainsGrouping: {
     basis: "enforced",
@@ -715,8 +704,9 @@ export const SELF_AUTHORED_EXCHANGE_FACTS = [
 
 /**
  * The terse marker a surface with no styling budget puts on a fact's label for its
- * {@link ConsentFactBasis}. The web states the distinction through its tiering and
- * caveat copy, so it renders no marker.
+ * {@link ConsentFactBasis}. The web renders no marker: it states a trust-contingent
+ * basis only in the notes of the facts that have one (the allowed-character
+ * patterns, a count the partner reports).
  */
 export const CONSENT_BASIS_MARKERS: Record<ConsentFactBasis, string> = {
   enforced: "enforced",

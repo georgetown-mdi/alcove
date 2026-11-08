@@ -9,6 +9,11 @@ import { isConsoleBuild } from "@utils/clientConfig";
 import styles from "@styles/app.module.css";
 
 import { DisclosureSection } from "../components/DisclosureSection";
+
+import {
+  CONSOLE_HOW_IT_RUNS_INFO,
+  LEDGER_HEADING_INFO,
+} from "./ledgerHeadingInfo";
 import { useNarrowViewport } from "./narrowViewport";
 
 import type { RailFact } from "@psi/rail";
@@ -51,60 +56,12 @@ interface LedgerRow {
   shareBar?: boolean;
 }
 
-/** Plain-language explanations for the ledger's row headings, shown by the
- * info icon beside each heading (hover, focus, or tap). Keyed by row label so
- * every producer -- the inviter's, the acceptor's, and their final past-tense
- * variants -- gets one shared explanation; a label with no entry renders
- * without an icon. Perspective-neutral wording, since the same label can face
- * either party. */
-const HEADING_INFO: Record<string, string | undefined> = {
-  "You will send":
-    "The columns from your file your partner will receive, and only for " +
-    "records you both hold. Nothing is sent for your other records.",
-  "You sent":
-    "The columns from your file your partner received, and only for " +
-    "records you both hold. Nothing was sent for your other records.",
-  "You will receive":
-    "What you get when the exchange finishes, if anything: which of your " +
-    "records your partner also holds and any columns your partner marked " +
-    "as sent, or only how many records you have in common.",
-  "You received":
-    "What arrived when the exchange finished: the records you both hold, " +
-    "plus any columns your partner marked as sent.",
-  "Matched on":
-    "The fields used to decide whether your record and your partner's " +
-    "record are the same, tried in order. Only cryptographic fingerprints " +
-    "of these fields are compared; the values themselves are not revealed.",
-  Expires:
-    "When the invitation stops working. If it expires before the exchange " +
-    "runs, a new invitation is needed.",
-  "Results go to":
-    "Who receives the result when the exchange finishes: the matched " +
-    "records, or only the count.",
-  "Results went to":
-    "Who received the list of matched records when the exchange finished.",
-  Agreement:
-    "The data sharing agreement referenced for this exchange, if any. Both " +
-    "parties see the reference before the exchange runs.",
-  "How it runs":
-    "How the exchange runs: live between your two browsers, or through " +
-    "files on an SFTP server or shared folder using the command-line " +
-    "tool.",
-};
-
-/** The "How it runs" explanation on the console, where the server runs every
- * exchange and the browser does no exchange work. */
-const CONSOLE_HOW_IT_RUNS_INFO =
-  "How the exchange runs: this console runs it, not your " +
-  "browser. It goes through files on an SFTP server or a shared folder, or " +
-  "live over WebRTC.";
-
 /** The explanation for a ledger heading, or undefined when it has none. */
 function headingInfoFor(label: string): string | undefined {
   if (label === "How it runs" && isConsoleBuild()) {
     return CONSOLE_HOW_IT_RUNS_INFO;
   }
-  return HEADING_INFO[label];
+  return LEDGER_HEADING_INFO[label];
 }
 
 /** The info icon beside a ledger heading: a focusable control whose tooltip

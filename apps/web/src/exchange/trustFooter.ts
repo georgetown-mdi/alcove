@@ -6,28 +6,46 @@
  * the pre-run statement holds for every way an exchange runs.
  */
 
-/** The step that decides the send set: step 2 for the inviter, step 3 (confirm
- * columns) for the acceptor. */
-export type SendSetStep = 2 | 3;
+/** What the agreed terms give the viewer's partner: the matched results, only
+ * the count, or nothing. */
+export type PartnerResult = "matched" | "count-only" | "none";
 
-/** The pre-run footer, pointing at the step where the "you will send" set is
- * decided. */
-export function preRunTrustFooter(sendSetStep: SendSetStep): string {
-  return (
-    "The fields you match on are encrypted on your machine before they leave it. " +
-    "Your partner receives only the fields listed under 'you will send' " +
-    `(step ${sendSetStep} above) and only for clients who are in common.`
-  );
+/** The {@link PartnerResult} of a run, from whether the partner is entitled to
+ * a result and whether the run is count-only. */
+export function partnerResultOf(input: {
+  partnerReceives: boolean;
+  countOnly: boolean;
+}): PartnerResult {
+  if (!input.partnerReceives) return "none";
+  return input.countOnly ? "count-only" : "matched";
 }
 
-const SETTLED_RESULTS_SENTENCE =
-  "The results above are all your partner received about your data.";
+/** The pre-run footer. */
+export const PRE_RUN_TRUST_FOOTER =
+  "The fields you match on are encrypted before they leave your machine. " +
+  'Your partner gets only the columns listed under "You will send", and only for ' +
+  "records you both hold.";
+
+/** The footer's closing sentence once a result lands, by what the partner
+ * got. */
+const SETTLED_PARTNER_RESULT_SENTENCES: Record<PartnerResult, string> = {
+  matched:
+    "Your partner's results show only the records you have in common and " +
+    "the columns you sent for them.",
+  "count-only":
+    "Your partner's results show only how many records you have in common.",
+  none: "Your partner gets no results.",
+};
 
 /** The footer once a result lands. A server-driven run reads the input file on
  * the console host, not in the browser, so it omits the "encrypted locally in
  * your browser" sentence. */
-export function settledTrustFooter(serverJob: boolean): string {
+export function settledTrustFooter(
+  serverJob: boolean,
+  partnerResult: PartnerResult,
+): string {
+  const sentence = SETTLED_PARTNER_RESULT_SENTENCES[partnerResult];
   return serverJob
-    ? SETTLED_RESULTS_SENTENCE
-    : `Data was encrypted locally in your browser before being sent to your partner. ${SETTLED_RESULTS_SENTENCE}`;
+    ? sentence
+    : `Data was encrypted locally in your browser before being sent to your partner. ${sentence}`;
 }

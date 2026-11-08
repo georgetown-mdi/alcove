@@ -603,12 +603,12 @@ describe("inviter screen", () => {
       .selectOptions("payload");
     await expect
       .poll(() => ledgerRow("You will send")?.querySelector("dd")?.textContent)
-      .toBe(isolatedColumnName("program_code"));
+      .toBe(`Matched row numbers + ${isolatedColumnName("program_code")}`);
     await page
       .getByLabelText(usedLabel("program_code"))
       .selectOptions("ignored");
     await expect
-      .element(page.getByText("Nothing - matching only"))
+      .element(page.getByText("Matched row numbers only"))
       .toBeInTheDocument();
     // The debounced disclosure summary voices the new (empty) send set.
     await expect
@@ -3054,7 +3054,7 @@ describe("inviter screen", () => {
       )
       .toBeInTheDocument();
     expect(ledger.textContent).toContain(
-      "The fields you match on are encrypted on your machine before they leave it. Your partner receives only the fields listed under 'you will send' (step 2 above) and only for clients who are in common.",
+      'The fields you match on are encrypted before they leave your machine. Your partner gets only the columns listed under "You will send", and only for records you both hold.',
     );
   });
 

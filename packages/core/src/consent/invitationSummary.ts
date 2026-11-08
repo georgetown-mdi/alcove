@@ -799,7 +799,8 @@ const LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS: ReadonlySet<string> = new Set([
  *    "sound-alike" (`phonetic`), then a component-dropping `parse_date`'s
  *    "partial".
  * 5. Rules whose direction is indeterminate: "pattern replacement", "pattern
- *    extraction", "padded slice", "pattern filter", "excludes values".
+ *    extraction", "padded slice", then "excludes values" (`filter_regex` or
+ *    `null_if`).
  *
  * Known limits: a tier 3 or 4 marker can mask "padded slice" (for `[pad_left,
  * substring, parse_date]` it renders "partial"), which no built-in key set
@@ -864,8 +865,8 @@ function elementBreadthMarker(
   if (slicesPaddedValue) return displayText`padded slice`;
   // The narrowing-only rules rank last: each substitutes nothing, so "padded
   // slice" stays true beside them.
-  if (functions.has("filter_regex")) return displayText`pattern filter`;
-  if (functions.has("null_if")) return displayText`excludes values`;
+  if (functions.has("filter_regex") || functions.has("null_if"))
+    return displayText`excludes values`;
   return undefined;
 }
 

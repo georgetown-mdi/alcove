@@ -14,11 +14,14 @@ import { isolatedColumnName } from "@components/ColumnName";
 
 import {
   COUNT_ONLY_RECEIVE_ROW_VALUE,
+  NOTHING_SENT_BUT_MATCHING,
   ONLY_PARTNER_RECEIVES_COUNT,
   ONLY_PARTNER_RECEIVES_RESULTS,
+  matchedSendValue,
   settledReceiveValue,
 } from "@psi/ledger";
 import { dateTimeLabel } from "@psi/formatting";
+import { keyFieldsLine } from "@psi/keyFieldsLine";
 
 import {
   TRANSPORT_LEDGER_LABELS,
@@ -26,12 +29,15 @@ import {
 } from "@psi/transportChooser";
 import { acceptedSignalingServer } from "@console/signalingServerModel";
 
+import { partnerResultOf } from "./trustFooter";
+
 import type {
   InvitationSummary,
   InvitationToken,
   Metadata,
 } from "@alcove/core";
 import type { LedgerOutcome } from "@psi/ledger";
+import type { PartnerResult } from "./trustFooter";
 
 import type { RailFact, RailStepState } from "@psi/rail";
 import type { AcceptableInvitation } from "@psi/acceptInvitation";
@@ -51,10 +57,12 @@ import type { AcceptableInvitation } from "@psi/acceptInvitation";
  * `preparePayload` transmits), never by the inviter's authored request. The
  * inviter's `payload.receive` mirrors only to a data-dictionary CLAIM on the
  * acceptor's `payload.send`, which core holds equal to the disclosed set (or the
- * run aborts) -- so the disclosed metadata is the one accurate source in every
- * state. Before a file exists there is no metadata, so the send rows use the
- * invitation's forward-reference wording (the exact set is confirmed after
- * choosing a file), matching {@link InvitationTerms}. Partner-controlled strings
+ * run aborts) -- so the disclosed metadata is the one accurate source whenever
+ * the inviter receives matched results; otherwise nothing is sent, whatever the
+ * metadata holds. Before a file exists there is no metadata, so the send rows
+ * use the invitation's forward-reference wording (the exact set is confirmed
+ * after choosing a file), matching {@link InvitationTerms}, unless the invitation
+ * requests no column at all. Partner-controlled strings
  * reach the ledger through {@link summarizeInvitation}, the one sanitizing
  * boundary; the acceptor's own column names take the isolation the
  * confirm-columns screen shows them with ({@link isolatedColumnName}) rather than
@@ -175,29 +183,45 @@ interface AcceptorLedgerRow {
 export const ACCEPTOR_SEND_FORWARD_REFERENCE =
   "Confirmed after you choose your file";
 
+/** Whether the inviter receives the matched results, the one case in which the
+ * acceptor's send row lists its row numbers for matched records and any
+ * columns it marks to send. Otherwise the row reads as matching only: no
+ * column is sent, whatever the acceptor's file holds, and the row numbers a
+ * `psi` cascade, or a single-pass run whose inviter sends columns, still sends
+ * the inviter count as matching (docs/spec/PROTOCOL.md). */
+function inviterReceivesMatchedResults(summary: InvitationSummary): boolean {
+  return summary.inviterReceivesOutput && summary.algorithm !== "psi-c";
+}
+
 /** The acceptor's outbound send row, keyed to the ledger's tense. `disclosure` is
  * the acceptor's OWN live disclosed column names ({@link disclosedColumnNames}
  * over its metadata) once a file exists -- the exact set core transmits -- each
  * isolated rather than escaped by {@link isolatedColumnName}: this row names the
  * same set the confirm-columns step's panel does, beside it on the one screen
  * where the operator decides what leaves the machine. Undefined before a file is
- * chosen (no metadata yet), where the row holds the invitation's forward-reference
- * rather than a claim it cannot yet make. */
+ * chosen (no metadata yet), where a run that sends columns holds the
+ * invitation's forward-reference rather than a claim it cannot yet make. An
+ * invitation declaring an empty `payload.receive` needs no file to state its
+ * send: core refuses any column the acceptor states against it. */
 function acceptorSendRow(
   label: string,
+  summary: InvitationSummary,
   disclosure: ReadonlyArray<string> | undefined,
 ): AcceptorLedgerRow {
   // Whatever its tense, the outbound row is the share bar's headline fact --
   // what leaves (or left) this machine.
+  if (!inviterReceivesMatchedResults(summary))
+    return { label, muted: NOTHING_SENT_BUT_MATCHING, shareBar: true };
+  const payload = summary.payload;
+  if (
+    disclosure === undefined &&
+    payload?.receiveDeclared === true &&
+    payload.receive.length === 0
+  )
+    return { label, value: matchedSendValue([]), shareBar: true };
   if (disclosure === undefined)
     return { label, muted: ACCEPTOR_SEND_FORWARD_REFERENCE, shareBar: true };
-  if (disclosure.length === 0)
-    return { label, muted: "No additional columns", shareBar: true };
-  return {
-    label,
-    value: disclosure.map((name) => isolatedColumnName(name)).join(", "),
-    shareBar: true,
-  };
+  return { label, value: matchedSendValue(disclosure), shareBar: true };
 }
 
 /** The step-3 ledger footer, swapped in on the columns step: local-only column
@@ -253,7 +277,7 @@ function acceptorReceiveRow(
  * the confirm-columns step onward; its disclosed set ({@link disclosedColumnNames}) is
  * exactly what core transmits, so the ledger cannot overclaim. Undefined on the
  * review/consent steps (no file yet), where the send row forward-references the
- * confirm-columns step. The proposal's non-send rows are read-only here, so they never
+ * confirm-columns step unless the invitation requests no column. The proposal's non-send rows are read-only here, so they never
  * hold a spine-step reference.
  */
 export function acceptorLedgerRows(
@@ -268,17 +292,9 @@ export function acceptorLedgerRows(
   const disclosure =
     metadata === undefined ? undefined : disclosedColumnNames(metadata);
   return [
-    acceptorSendRow("You will send", disclosure),
+    acceptorSendRow("You will send", summary, disclosure),
     acceptorReceiveRow(summary, received),
-    summary.linkageKeys.length > 0
-      ? {
-          label: "Matched on",
-          value: summary.linkageKeys.map(
-            (key, index) => `${index + 1}. ${key.name}`,
-          ),
-          shareBar: true,
-        }
-      : { label: "Matched on", muted: "No keys", shareBar: true },
+    acceptorMatchedOnRow(summary),
     {
       label: "Expires",
       value:
@@ -291,11 +307,41 @@ export function acceptorLedgerRows(
       label: "Results go to",
       value: acceptorResultsGoTo(summary),
     },
-    summary.legalAgreement !== undefined
-      ? { label: "Agreement", value: summary.legalAgreement.reference }
-      : { label: "Agreement", muted: "None" },
+    ...acceptorAgreementRows(summary),
     { label: "How it runs", value: howItRuns },
   ];
+}
+
+/** The per-key "Matched on" row, each key stated by the fields it matches on
+ * ({@link keyFieldsLine}) rather than by its name. */
+function acceptorMatchedOnRow(summary: InvitationSummary): AcceptorLedgerRow {
+  return summary.linkageKeys.length > 0
+    ? {
+        label: "Matched on",
+        value: summary.linkageKeys.map(
+          (key, index) => `${index + 1}. ${keyFieldsLine(key)}`,
+        ),
+        shareBar: true,
+      }
+    : { label: "Matched on", muted: "No keys", shareBar: true };
+}
+
+/** The Agreement row, present only when the invitation names an agreement. */
+function acceptorAgreementRows(
+  summary: InvitationSummary,
+): Array<AcceptorLedgerRow> {
+  return summary.legalAgreement !== undefined
+    ? [{ label: "Agreement", value: summary.legalAgreement.reference }]
+    : [];
+}
+
+/** What the invitation's terms give the inviter, the acceptor's partner, for
+ * the settled ledger footer. */
+export function acceptorPartnerResult(token: InvitationToken): PartnerResult {
+  return partnerResultOf({
+    partnerReceives: token.linkageTerms.output.expectsOutput,
+    countOnly: token.linkageTerms.algorithm === "psi-c",
+  });
 }
 
 /** The invitation heading names the partner: the same sanitized identity the
@@ -336,26 +382,16 @@ export function acceptorDoneLedgerRows(
   const receivedSuffix = received.length > 0 ? ` + ${received.join(", ")}` : "";
   const receivedValue = settledReceiveValue(outcome, receivedSuffix);
   return [
-    acceptorSendRow("You sent", disclosedColumnNames(metadata)),
+    acceptorSendRow("You sent", summary, disclosedColumnNames(metadata)),
     // The expiry row is gone (the invitation is consumed), so the settled
     // condensed subset is what left, what arrived, and what matched.
     { label: "You received", value: receivedValue, shareBar: true },
-    summary.linkageKeys.length > 0
-      ? {
-          label: "Matched on",
-          value: summary.linkageKeys.map(
-            (key, index) => `${index + 1}. ${key.name}`,
-          ),
-          shareBar: true,
-        }
-      : { label: "Matched on", muted: "No keys", shareBar: true },
+    acceptorMatchedOnRow(summary),
     {
       label: "Results went to",
       value: acceptorResultsGoTo(summary),
     },
-    summary.legalAgreement !== undefined
-      ? { label: "Agreement", value: summary.legalAgreement.reference }
-      : { label: "Agreement", muted: "None" },
+    ...acceptorAgreementRows(summary),
     { label: "How it runs", value: howItRuns },
   ];
 }

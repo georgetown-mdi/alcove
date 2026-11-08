@@ -1,12 +1,13 @@
 import { TRANSPORT_RAIL_NOTES } from "@psi/transportChooser";
 
-import { preRunTrustFooter, settledTrustFooter } from "./trustFooter";
+import { PRE_RUN_TRUST_FOOTER, settledTrustFooter } from "./trustFooter";
 
 import type {
   ConnectionEndpointRequest,
   GeneratedInvitation,
 } from "@psi/invitation";
 import type { ExchangeFileConnection, ExchangeFileInput } from "@alcove/core";
+import type { PartnerResult } from "./trustFooter";
 import type { Transport } from "@psi/transportChooser";
 
 /**
@@ -79,12 +80,15 @@ export function credentialAlertCopy(transport: CliTransport): string {
 }
 
 /** The ledger footer on the inviter screen: the pre-run statement until a
- * result lands, then the settled one. */
+ * result lands, then the settled one for what the partner got. */
 export function liveRunLedgerFooter(
   serverJob: boolean,
   hasResult: boolean,
+  partnerResult: PartnerResult,
 ): string {
-  return hasResult ? settledTrustFooter(serverJob) : preRunTrustFooter(2);
+  return hasResult
+    ? settledTrustFooter(serverJob, partnerResult)
+    : PRE_RUN_TRUST_FOOTER;
 }
 
 /** The top bar's transport note on the save surface. */

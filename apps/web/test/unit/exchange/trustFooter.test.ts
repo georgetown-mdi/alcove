@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "vitest";
 
-import { preRunTrustFooter, settledTrustFooter } from "@exchange/trustFooter";
+import {
+  PRE_RUN_TRUST_FOOTER,
+  partnerResultOf,
+  settledTrustFooter,
+} from "@exchange/trustFooter";
 
 const srcRoot = fileURLToPath(new URL("../../../src", import.meta.url));
 
@@ -43,30 +47,55 @@ function filesContainingEach(
 }
 
 describe("the privacy footer", () => {
-  test("states the pre-run assurance with the step that decides the send set", () => {
-    expect(preRunTrustFooter(2)).toBe(
-      "The fields you match on are encrypted on your machine before they leave it. " +
-        "Your partner receives only the fields listed under 'you will send' " +
-        "(step 2 above) and only for clients who are in common.",
+  test("states the pre-run assurance, pointing at the send row", () => {
+    expect(PRE_RUN_TRUST_FOOTER).toBe(
+      "The fields you match on are encrypted before they leave your machine. " +
+        'Your partner gets only the columns listed under "You will send", and ' +
+        "only for records you both hold.",
     );
-    expect(preRunTrustFooter(3)).toContain("(step 3 above)");
   });
 
-  test("a server-driven run omits the this-browser sentence", () => {
-    expect(settledTrustFooter(false)).toBe(
-      "Data was encrypted locally in your browser before being sent to your " +
-        "partner. The results above are all your partner received about your data.",
+  test("states what the partner's results show, by what the terms give it", () => {
+    expect(settledTrustFooter(true, "matched")).toBe(
+      "Your partner's results show only the records you have in common and " +
+        "the columns you sent for them.",
     );
-    expect(settledTrustFooter(true)).toBe(
-      "The results above are all your partner received about your data.",
+    expect(settledTrustFooter(true, "count-only")).toBe(
+      "Your partner's results show only how many records you have in common.",
+    );
+    expect(settledTrustFooter(true, "none")).toBe(
+      "Your partner gets no results.",
+    );
+  });
+
+  test("a browser run leads with the this-browser sentence", () => {
+    expect(settledTrustFooter(false, "none")).toBe(
+      "Data was encrypted locally in your browser before being sent to your " +
+        "partner. Your partner gets no results.",
+    );
+  });
+
+  test("reads the partner's result from its entitlement and the algorithm", () => {
+    expect(partnerResultOf({ partnerReceives: true, countOnly: false })).toBe(
+      "matched",
+    );
+    expect(partnerResultOf({ partnerReceives: true, countOnly: true })).toBe(
+      "count-only",
+    );
+    expect(partnerResultOf({ partnerReceives: false, countOnly: false })).toBe(
+      "none",
+    );
+    expect(partnerResultOf({ partnerReceives: false, countOnly: true })).toBe(
+      "none",
     );
   });
 
   test("its text is written in one source file", () => {
     const fragments = [
-      "The fields you match on are encrypted on your machine",
+      "The fields you match on are encrypted before",
       "Data was encrypted locally in your browser",
-      "all your partner received about your data",
+      "Your partner's results show only",
+      "Your partner gets no results",
     ];
     for (const files of filesContainingEach(fragments))
       expect(files).toEqual(["exchange/trustFooter.ts"]);

@@ -191,9 +191,9 @@ export function renderExchangeDisclosure(
     )}: ${receivesResult ? "yes" : "no"}`,
   );
   if (!receivesResult) emit(`    ${CONSENT_FACTS.viewerReceivesNoResult.note}`);
-  // The partner's receipt takes its own basis, which the value decides: a
-  // partner that receives is one the run delivers to, while a partner that does
-  // not rests on the agreed terms being honored.
+  // The partner's receipt fact follows the value: a partner that receives is
+  // one the run delivers to, while a partner that does not is the sender role
+  // resolution seats, sent none of this party's columns.
   const partnerFact = linkageTerms.output.shareWithPartner
     ? "partnerReceivesResult"
     : "partnerReceivesNoResult";
@@ -201,7 +201,8 @@ export function renderExchangeDisclosure(
     `  ${marked("your partner will receive the result", partnerFact)}: ` +
       (linkageTerms.output.shareWithPartner ? "yes" : "no"),
   );
-  emit(`    ${CONSENT_FACTS[partnerFact].note}`);
+  if (linkageTerms.output.shareWithPartner)
+    emit(`    ${CONSENT_FACTS.partnerReceivesResult.note}`);
   // What a partner entitled to no result still learns, which its receipt line
   // does not state: under `psi` an identifier-revealing match tells it which of
   // its own records are in this party's data, unless the run withholds its half
