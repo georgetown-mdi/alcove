@@ -117,13 +117,14 @@ push:
   gives.
 
   Every retro figure follows the same accounting rules. Equivalent tokens
-  weight a call's usage as in + 1.25 x cacheWrite + 0.1 x cacheRead + 5 x
-  out. Reviewers are ranked by cost per behaviour-changing finding or not at
-  all, never by cost per finding, which ranks first the reviewer raising the
-  most cheap findings. Counting a streamed message once by its message.id and
-  requestId, and reading the workflow agents' transcripts beside the
-  subagents', are in `aggregate.mjs`'s header. `/retro`
-  (`.claude/commands/retro.md`) runs the kit.
+  are a call's cost in its model's input tokens: its cost at the rates in
+  `pricing.json` over the model's input rate. `cost.mjs` reports them per
+  model as `eqTok`. Reviewers are ranked by cost per behaviour-changing
+  finding or not at all, never by cost per finding, which ranks first the
+  reviewer raising the most cheap findings. Counting a streamed message once
+  by its message.id and requestId, and reading the workflow agents'
+  transcripts beside the subagents', are in `aggregate.mjs`'s header.
+  `/retro` (`.claude/commands/retro.md`) runs the kit.
 
 Tests sit beside their subject, in the vitest project named `scripts` -- the
 project covering the repository's own `scripts/` is `repo-scripts`:

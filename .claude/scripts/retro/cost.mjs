@@ -4,7 +4,8 @@
 // wrote and split every session into main, subagent and workflow-agent
 // components. Writes to --out-dir:
 //   rollups.json            totals, window days and spend per day, and spend by
-//                           model, store (`bySeat`), component, UTC day, cost
+//                           model (with its equivalent tokens, `eqTok`),
+//                           store (`bySeat`), component, UTC day, cost
 //                           anatomy, context per call, workflow name and denial;
 //                           `streamFix` compares each model and component's
 //                           output with its first-entry count
@@ -172,12 +173,14 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
         (byModel[m] = {
           calls: 0,
           cost: 0,
+          eqTok: 0,
           main: 0,
           subagent: 0,
           "workflow-agent": 0,
         });
       bm.calls += u.calls;
       bm.cost += c;
+      bm.eqTok += (c * 1e6) / pricing[m].in;
       bm[comp] += c;
       const bs =
         bySeat[store] ||

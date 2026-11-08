@@ -85,6 +85,7 @@ describe("pricing", () => {
     expect(rollups.byModel["model-a"]).toEqual({
       calls: 1,
       cost: 36.3,
+      eqTok: 36.3 * M,
       main: 36.3,
       subagent: 0,
       "workflow-agent": 0,
