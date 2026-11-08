@@ -2,10 +2,7 @@ import { RELAY_CHECK_BOUND_MS, sanitizeForDisplay } from "@alcove/core";
 
 import { REFUSALS_ENDING_THE_CHECK } from "@psi/transport/exchangeRelayCheck";
 
-import {
-  exchangeRelayCheckLineShown,
-  exchangeRelayCheckVerdict,
-} from "./exchangeRelayCheckModel";
+import { exchangeRelayCheckLineShown } from "./exchangeRelayCheckModel";
 
 import type {
   RunRelayWatchSnapshot,
@@ -19,17 +16,66 @@ import type { ExchangeRelayCheckLineShown } from "./exchangeRelayCheckModel";
 
 /** What the share screen's check does, beside its start control. */
 export const INVITER_RELAY_CHECK_INTRO =
-  "Check whether this exchange's relays accept it, using the connections " +
-  "this page holds open for your partner. Nothing else is contacted.";
+  "Check whether the WebSocket relays accept this exchange. This uses " +
+  "connections this page already has open and contacts nothing new.";
 
 /** A WebSocket relay holding the run's socket after its hello. */
 export const INVITER_RELAY_WAITING_SUMMARY =
   "the relay accepted this exchange's proof, and this page is waiting " +
   "there for your partner.";
 
-/** A TURN relay, which the run first uses when the partner connects. */
-export const TURN_RELAY_NOT_CHECKED_SUMMARY =
-  "this page first uses this relay when your partner connects.";
+/** The verdict where at least one relay accepts the exchange. */
+export const INVITER_RELAY_CHECK_WORKS_VERDICT =
+  "A relay accepts this exchange from this page. Your partner's side is " +
+  "not checked.";
+
+/** The verdict where no relay accepts the exchange. */
+export const INVITER_RELAY_CHECK_FAILS_VERDICT =
+  "No relay accepts this exchange from this page. Follow the steps below.";
+
+/**
+ * The share screen's remedies. Create fixes the Connection settings, so a
+ * fix that changes them goes through Replace this invitation, and a remedy
+ * says to check again only while the run's relay client still dials.
+ */
+export const INVITER_RELAY_ACTIONS = {
+  remove:
+    "Choose Replace this invitation, then remove this relay under " +
+    "Connection settings.",
+  removeOrTurnOnDefault:
+    "Choose Replace this invitation, then under Connection settings remove " +
+    "this relay or turn on this site's relay server.",
+  correct:
+    "Choose Replace this invitation, then correct this url under " +
+    "Connection settings.",
+  replace: "Choose Replace this invitation to try again.",
+  replaceLater: "Later, choose Replace this invitation to try again.",
+  notEnrolled:
+    "If your partner cannot connect, choose Replace this invitation to try " +
+    "again.",
+  keepsTrying: "This page keeps trying, so check again shortly.",
+  clock: "Correct this computer's clock, then choose Replace this invitation.",
+  slowPath:
+    "Check the network path to the relay, including any proxy, then choose " +
+    "Replace this invitation.",
+  keyTable:
+    "Ask the relay's operator to check its key table, then choose Replace " +
+    "this invitation.",
+  notReachedTrying:
+    "Check that this computer can reach the relay. This page keeps trying, " +
+    "so check again afterwards.",
+  notReachedTryingOwn:
+    "Check that this computer can reach the relay. This page keeps trying, " +
+    "so check again afterwards. If the url is wrong, choose Replace this " +
+    "invitation and correct it under Connection settings.",
+  notReachedEnded:
+    "Check that this computer can reach the relay, then choose Replace this " +
+    "invitation.",
+  notReachedEndedOwn:
+    "Check that this computer can reach the relay, then choose Replace this " +
+    "invitation and correct this url under Connection settings if it is " +
+    "wrong.",
+} as const;
 
 /**
  * How long a socket stays open after its hello before the check takes the
@@ -38,6 +84,10 @@ export const TURN_RELAY_NOT_CHECKED_SUMMARY =
  * arbitrary working value.
  */
 export const HELLO_ANSWER_WAIT_MS = 2000;
+
+// The relay checks a hello's proof before its role, so a socket refused as
+// role taken had its proof accepted (docs/spec/WEBSOCKET_RELAY.md, The hello).
+const ROLE_TAKEN = 4006;
 
 /** Where the share screen's check stands. */
 export type InviterRelayCheckState =
@@ -69,7 +119,9 @@ export function inviterRelayCheckShown(run: {
 
 /**
  * The check after `now`: a running check ends once each relay the run lists
- * has answered, or at the bound, a relay still silent then not reached.
+ * has answered, or at the bound, a relay still silent then not reached. A
+ * TURN relay is listed only where the default relay did not enroll the
+ * exchange, since the run first uses it when the partner connects.
  */
 export function inviterRelayCheckAt(
   state: InviterRelayCheckState,
@@ -82,16 +134,26 @@ export function inviterRelayCheckAt(
   const boundPassed = now - state.startedAt >= boundMs;
   const lines: Array<ExchangeRelayCheckLineShown> = [];
   for (const url of hosts.turn) {
-    const line = turnLine(url, hosts, snapshot.enrollment, boundPassed);
-    if (line === undefined) return state;
-    lines.push(line);
+    if (!hosts.listedOnceEnrolled.includes(url)) continue;
+    if (snapshot.enrollment.kind === "pending" && !boundPassed) return state;
+    const refused = notEnrolled("turn", url, hosts, snapshot.enrollment);
+    if (refused !== undefined) lines.push(refused);
   }
   for (const url of hosts.websocket) {
     const line = webSocketLine(url, hosts, snapshot, now, boundPassed);
     if (line === undefined) return state;
     lines.push(line);
   }
-  return { step: "done", verdict: exchangeRelayCheckVerdict(lines), lines };
+  return { step: "done", verdict: inviterRelayCheckVerdict(lines), lines };
+}
+
+/** The line that heads the share screen's result. */
+export function inviterRelayCheckVerdict(
+  lines: ReadonlyArray<ExchangeRelayCheckLineShown>,
+): string {
+  return lines.some((line) => line.works)
+    ? INVITER_RELAY_CHECK_WORKS_VERDICT
+    : INVITER_RELAY_CHECK_FAILS_VERDICT;
 }
 
 function notEnrolled(
@@ -102,32 +164,13 @@ function notEnrolled(
 ): ExchangeRelayCheckLineShown | undefined {
   if (!hosts.listedOnceEnrolled.includes(url) || enrollment.kind !== "refused")
     return undefined;
-  return exchangeRelayCheckLineShown(
-    { relay, url, notEnrolled: enrollment.refusal },
-    { hosts },
-  );
-}
-
-function turnLine(
-  url: string,
-  hosts: RunRelayHosts,
-  enrollment: WatchedEnrollment,
-  boundPassed: boolean,
-): ExchangeRelayCheckLineShown | undefined {
-  if (
-    hosts.listedOnceEnrolled.includes(url) &&
-    enrollment.kind === "pending" &&
-    !boundPassed
-  )
-    return undefined;
-  return (
-    notEnrolled("turn", url, hosts, enrollment) ?? {
-      url: sanitizeForDisplay(url),
-      works: false,
-      notChecked: true,
-      summary: TURN_RELAY_NOT_CHECKED_SUMMARY,
-    }
-  );
+  return {
+    ...exchangeRelayCheckLineShown(
+      { relay, url, notEnrolled: enrollment.refusal },
+      { hosts },
+    ),
+    action: INVITER_RELAY_ACTIONS.notEnrolled,
+  };
 }
 
 function webSocketLine(
@@ -153,10 +196,66 @@ function webSocketLine(
       works: true,
       summary: INVITER_RELAY_WAITING_SUMMARY,
     };
-  return exchangeRelayCheckLineShown(
-    { relay: "websocket", url, result },
-    { hosts },
-  );
+  return {
+    ...exchangeRelayCheckLineShown(
+      { relay: "websocket", url, result },
+      { hosts },
+    ),
+    action: webSocketAction(result, {
+      own: !hosts.listedOnceEnrolled.includes(url),
+      dialing: watched?.failure === undefined,
+      defaultRelayOff: hosts.defaultRelayOff === true,
+    }),
+  };
+}
+
+type WebSocketAnswer = Extract<
+  WebSocketRelayCheckResult,
+  { kind: "refused" | "unexpected_message" | "not_reached" | "not_started" }
+>;
+
+// What the share screen says to do about a relay that does not work: `own`
+// where the relay is the exchange's own rather than this site's, and
+// `dialing` while the run's relay client there has not failed.
+function webSocketAction(
+  result: WebSocketAnswer,
+  relay: { own: boolean; dialing: boolean; defaultRelayOff: boolean },
+): string {
+  const actions = INVITER_RELAY_ACTIONS;
+  const remove = relay.defaultRelayOff
+    ? actions.removeOrTurnOnDefault
+    : actions.remove;
+  switch (result.kind) {
+    case "refused":
+      switch (result.closeCode) {
+        case 4003:
+          if (relay.own) return remove;
+          return relay.dialing ? actions.keepsTrying : actions.replace;
+        case 4004:
+          return relay.own ? remove : actions.replace;
+        case 4005:
+          if (!result.proofRemadeOnRelayClock) return actions.clock;
+          return relay.own ? remove : actions.replace;
+        case 4007:
+          return actions.slowPath;
+        case 4008:
+        case 1001:
+          return actions.replaceLater;
+        case 1011:
+          return actions.keyTable;
+        default:
+          return relay.own ? actions.correct : actions.replace;
+      }
+    case "unexpected_message":
+    case "not_started":
+      return relay.own ? actions.correct : actions.replace;
+    case "not_reached":
+      if (relay.dialing)
+        return relay.own
+          ? actions.notReachedTryingOwn
+          : actions.notReachedTrying;
+      return relay.own ? actions.notReachedEndedOwn : actions.notReachedEnded;
+  }
 }
 
 // The relay's answer to the run's socket so far, or undefined while it has
@@ -166,17 +265,18 @@ function webSocketAnswer(
   watched: WatchedWebSocketRelay,
   now: number,
   boundPassed: boolean,
-): WebSocketRelayCheckResult | "waiting" | undefined {
+): WebSocketAnswer | "waiting" | undefined {
   const { failure, closes } = watched;
   if (failure?.kind === "protocol") return { kind: "unexpected_message" };
   if (watched.paired) return "waiting";
-  if (watched.helloSentAt !== undefined)
+  if (watched.helloSentAt !== undefined && failure === undefined)
     return now - watched.helloSentAt >= HELLO_ANSWER_WAIT_MS
       ? "waiting"
       : undefined;
   const last = closes.at(-1);
   if (last !== undefined && REFUSALS_ENDING_THE_CHECK.has(last))
     return { kind: "refused", closeCode: last, proofRemadeOnRelayClock: false };
+  if (last === ROLE_TAKEN && failure === undefined) return "waiting";
   if (failure !== undefined) {
     const expired = closes.filter((code) => code === 4005).length;
     if (expired > 0)

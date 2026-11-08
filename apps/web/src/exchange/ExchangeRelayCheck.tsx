@@ -14,7 +14,6 @@ import {
   EXCHANGE_RELAY_CHECK_ERROR,
   EXCHANGE_RELAY_CHECK_INTRO,
   EXCHANGE_RELAY_CHECK_RUNNING,
-  exchangeRelayCheckLineLabel,
   exchangeRelayCheckLineShown,
   exchangeRelayCheckOffered,
   exchangeRelayCheckStatement,
@@ -83,7 +82,7 @@ export function ExchangeRelayCheckReport({
           <li key={index}>
             <Text size="sm">
               <span className={styles.mono}>{line.url}</span>{" "}
-              <strong>{exchangeRelayCheckLineLabel(line)}</strong>:{" "}
+              <strong>{line.works ? "Works" : "Does not work"}</strong>:{" "}
               {line.summary}
             </Text>
             {line.meaning !== undefined && (

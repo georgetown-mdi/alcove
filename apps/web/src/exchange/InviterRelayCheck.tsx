@@ -52,25 +52,34 @@ export function InviterRelayCheck({ watch }: { watch: RunRelayWatch }) {
     return () => clearInterval(timer);
   }, [state, watch]);
 
-  const start = (): void =>
-    setState({ watch, state: { step: "running", startedAt: Date.now() } });
+  const running = state.step === "running";
+  const start = (): void => {
+    if (!running)
+      setState({ watch, state: { step: "running", startedAt: Date.now() } });
+  };
 
+  // The status region stays mounted so a screen reader announces each change
+  // of its content. The button takes aria-disabled, not disabled, while the
+  // check runs, so it keeps keyboard focus.
   return (
     <Stack gap="xs" mt="xs">
-      {state.step === "done" ? (
-        <div role="status">
+      {state.step !== "done" && (
+        <Text size="sm">{INVITER_RELAY_CHECK_INTRO}</Text>
+      )}
+      <div role="status">
+        {state.step === "done" && (
           <ExchangeRelayCheckReport
             verdict={state.verdict}
             lines={state.lines}
           />
-        </div>
-      ) : (
-        <Text size="sm">{INVITER_RELAY_CHECK_INTRO}</Text>
-      )}
+        )}
+        {running && <Text size="sm">{EXCHANGE_RELAY_CHECK_RUNNING}</Text>}
+      </div>
       <Group>
         <Button
           variant="default"
-          loading={state.step === "running"}
+          aria-disabled={running}
+          data-disabled={running}
           onClick={start}
         >
           {state.step === "done"
@@ -78,11 +87,6 @@ export function InviterRelayCheck({ watch }: { watch: RunRelayWatch }) {
             : EXCHANGE_RELAY_CHECK_OPEN_LABEL}
         </Button>
       </Group>
-      {state.step === "running" && (
-        <Text size="sm" role="status">
-          {EXCHANGE_RELAY_CHECK_RUNNING}
-        </Text>
-      )}
     </Stack>
   );
 }
