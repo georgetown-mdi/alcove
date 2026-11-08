@@ -5,10 +5,10 @@ import { LEDGER_HEADING_INFO } from "@exchange/ledgerHeadingInfo";
 describe("the ledger's heading explanations", () => {
   test("the send rows say the columns go only with the records both parties hold", () => {
     expect(LEDGER_HEADING_INFO["You will send"]).toBe(
-      "Your partner gets these columns only for the records you both hold.",
+      "Your partner gets what is listed here only for the records you both hold.",
     );
     expect(LEDGER_HEADING_INFO["You sent"]).toBe(
-      "Your partner got these columns only for the records you both hold.",
+      "Your partner got what is listed here only for the records you both hold.",
     );
   });
 

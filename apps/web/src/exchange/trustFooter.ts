@@ -23,7 +23,7 @@ export function partnerResultOf(input: {
 /** The pre-run footer. */
 export const PRE_RUN_TRUST_FOOTER =
   "The fields you match on are encrypted before they leave your machine. " +
-  'Your partner gets only what is listed under "You will send", and only for ' +
+  'Your partner gets only the columns listed under "You will send", and only for ' +
   "records you both hold.";
 
 /** The footer's closing sentence once a result lands, by what the partner

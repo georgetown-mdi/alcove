@@ -3054,7 +3054,7 @@ describe("inviter screen", () => {
       )
       .toBeInTheDocument();
     expect(ledger.textContent).toContain(
-      'The fields you match on are encrypted before they leave your machine. Your partner gets only what is listed under "You will send", and only for records you both hold.',
+      'The fields you match on are encrypted before they leave your machine. Your partner gets only the columns listed under "You will send", and only for records you both hold.',
     );
   });
 
