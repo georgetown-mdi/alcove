@@ -605,6 +605,19 @@ export function openEventStream(
   return emitter;
 }
 
+/**
+ * The `emit` callback a run passes down: it hands `fn` the stream's emitter
+ * when `eventStream` is open, and does nothing when it is not, so a caller
+ * never writes the open check itself.
+ */
+export function emitTo(
+  eventStream: EventStreamEmitter | undefined,
+): (fn: (e: EventStreamEmitter) => void) => void {
+  return (fn) => {
+    if (eventStream !== undefined) fn(eventStream);
+  };
+}
+
 // --- Persistence loss on a completed run -------------------------------------
 
 /**

@@ -59,22 +59,11 @@ export interface HostKeyTrustDeps {
  * then one labelled link per chooser of the rest -- so the display cap
  * (`sanitizeErrorForDisplay`) bounds each chooser to its own budget. See
  * docs/spec/DISPLAY_REDACTION.md#message-display-budgets.
- *
- * Each link installs its `cause` with `Object.defineProperty` rather than the
- * two-argument `Error` constructor: this app's emit target predates
- * `ErrorOptions`, so the constructor form typechecks against the test
- * config's newer lib and then fails the build.
  */
 const hostKeyRefusal = (summary: string, details: string[]): UsageError =>
   new UsageError(summary, {
     cause: details.reduceRight<unknown>(
-      (cause, detail) =>
-        Object.defineProperty(new Error(detail), "cause", {
-          value: cause,
-          writable: true,
-          configurable: true,
-          enumerable: false,
-        }),
+      (cause, detail) => new Error(detail, { cause }),
       undefined,
     ),
   });
@@ -99,13 +88,8 @@ function probeFailureRefusal(failure: unknown): Error {
       `again; if the server is slow to answer, raise the connect timeout ` +
       `with --connection-timeout or ` +
       `connection.options.server_connect_timeout_ms.`,
+    { cause: failure },
   );
-  Object.defineProperty(refusal, "cause", {
-    value: failure,
-    writable: true,
-    configurable: true,
-    enumerable: false,
-  });
   return withExitCode(refusal, exitCodeForError(failure));
 }
 

@@ -140,6 +140,7 @@ import { noteSignalOwnsExit } from "./util/exitGate";
 import { runBeforeEachLogLine } from "./util/logging";
 import { logRuntimeEnv } from "./util/runtimeEnv";
 import {
+  emitTo,
   openEventStream,
   reportPersistenceLoss,
   type EventStreamEmitter,
@@ -518,8 +519,8 @@ async function runExchangeStage(params: {
       // passed (the exchange command resolves it from the `signing`
       // block). The step is gated inside runExchange on both the
       // identity and the session key being present; sessionKeyForReceipt
-      // is set only on the authenticated path, and a signing config on
-      // the no-auth path was already rejected above, so these three
+      // is set only on the authenticated path, and prepareTransport
+      // rejects a signing config on the no-auth path, so these three
       // travel together. Signing null leaves all three undefined and the
       // step skipped.
       signingIdentity: signing?.identity,
@@ -1486,8 +1487,8 @@ async function authenticateRun(params: {
     rotationInFlightSince: _marked,
     ...authParams
   } = auth;
-  // trimmedKeyFilePath is set whenever auth is set; they are populated
-  // together in the pre-flight branch above.
+  // trimmedKeyFilePath is set whenever auth is set: prepareTransport trims
+  // it from auth's key-file path.
   const keyFilePath = build.trimmedKeyFilePath!;
   // Before the key exchange can rotate anything, and only as the responder:
   // the initiator stores first, so only a responder can be left behind by a
@@ -2277,9 +2278,7 @@ export async function runProtocol(
   // Best-effort: a failure to probe the runtime warns and is swallowed, never
   // aborting the exchange.
   logRuntimeEnv(log);
-  const emit = (fn: (e: EventStreamEmitter) => void): void => {
-    if (eventStream !== undefined) fn(eventStream);
-  };
+  const emit = emitTo(eventStream);
   // The lifecycle phase a terminal event is classified against, advancing with
   // the run: everything through the handshake is "prepare", the PSI exchange
   // is "run", and local result/record generation after is "output". One
@@ -2433,10 +2432,6 @@ export async function runProtocol(
       if (maxListenersIncremented) process.setMaxListeners(prevMaxListeners);
     }
   }
-  // The try/catch/finally in each handler ensures process.exit always runs,
-  // and that a rejection from doCleanup (an uncaught throw added later)
-  // never appears as an unhandled promise rejection, which
-  // process.on("SIGINT") would otherwise silently discard.
   // SIGINT and SIGTERM share one helper, reading the same state the catch
   // block reads (keyFileSavedConfigNotWritten, then rotationStanding); a run
   // that rotated nobody states nothing.
@@ -2507,13 +2502,20 @@ export async function runProtocol(
       clearTimeout(timer);
     }
   }
-  async function onSigint(): Promise<void> {
+  // The try/catch/finally ensures process.exit always runs, and that a
+  // rejection from the cleanup never appears as an unhandled promise
+  // rejection, which process.on("SIGINT") would otherwise silently discard.
+  async function onSignal(
+    signal: "SIGINT" | "SIGTERM",
+    exitCode: number,
+    cleanup: () => Promise<void>,
+  ): Promise<void> {
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
-    run.signalReceived = "SIGINT";
-    // This handler ends the process, at 130 below. The catch returns normally
-    // on a signal, so the command promise settles while the teardown here is
-    // still running, and nothing else may exit on that settlement.
+    run.signalReceived = signal;
+    // This handler ends the process, at exitCode below. The catch returns
+    // normally on a signal, so the command promise settles while the teardown
+    // here is still running, and nothing else may exit on that settlement.
     noteSignalOwnsExit();
     // Synchronous too, and before the cleanup it cannot substitute for: an
     // in-flight rendezvous tears itself down on this rather than on doCleanup.
@@ -2523,47 +2525,29 @@ export async function runProtocol(
     // of their own. doCleanup closes it again, idempotently.
     psiProgress.close();
     try {
-      log.info("caught SIGINT, stopping");
+      log.info(`caught ${signal}, stopping`);
       offerExitAtOnceWhilePsiWorkersStop(psiWorkerExitWait);
       logRotationStateOnInterrupt("the exchange was interrupted");
-      await cleanUpAfterInterrupt();
-    } catch (cleanupErr: unknown) {
-      log.debug("onSigint cleanup threw:", sanitizeErrorForDisplay(cleanupErr));
-    } finally {
-      // Exiting while the PSI worker is inside a native masking call aborts
-      // the process instead of exiting 130.
-      await stopPsiWorkersBeforeExit(psiWorkerExitWait);
-      // 128 + 2 (SIGINT): conventional exit code for a process interrupted
-      // by SIGINT, distinguishable from a clean exit (0) or an error (69).
-      process.exit(INTERRUPTED_EXIT_CODE);
-    }
-  }
-  async function onSigterm(): Promise<void> {
-    // Must be set synchronously, before the first await, so the runProtocol
-    // catch block sees it as soon as the cleanup-induced failure propagates.
-    run.signalReceived = "SIGTERM";
-    // As in onSigint: the exit at 143 below is this handler's, and the
-    // command promise settles before it is reached.
-    noteSignalOwnsExit();
-    interrupted.abort();
-    // The live line is dropped before the first interrupt line, as in onSigint.
-    psiProgress.close();
-    try {
-      log.info("caught SIGTERM, stopping");
-      offerExitAtOnceWhilePsiWorkersStop(psiWorkerExitWait);
-      logRotationStateOnInterrupt("the exchange was interrupted");
-      await doCleanup();
+      await cleanup();
     } catch (cleanupErr: unknown) {
       log.debug(
-        "onSigterm cleanup threw:",
+        `${signal === "SIGINT" ? "onSigint" : "onSigterm"} cleanup threw:`,
         sanitizeErrorForDisplay(cleanupErr),
       );
     } finally {
+      // Exiting while the PSI worker is inside a native masking call aborts
+      // the process instead of exiting at exitCode.
       await stopPsiWorkersBeforeExit(psiWorkerExitWait);
-      // 128 + 15 (SIGTERM): conventional exit code for a process terminated by
-      // SIGTERM, distinguishable from a clean exit (0) or an error exit (69).
-      process.exit(TERMINATED_EXIT_CODE);
+      process.exit(exitCode);
     }
+  }
+  // 128 + the signal number (130, 143): the conventional exit codes for a
+  // process ended by that signal, distinct from a clean exit (0) or an error.
+  function onSigint(): Promise<void> {
+    return onSignal("SIGINT", INTERRUPTED_EXIT_CODE, cleanUpAfterInterrupt);
+  }
+  function onSigterm(): Promise<void> {
+    return onSignal("SIGTERM", TERMINATED_EXIT_CODE, doCleanup);
   }
 
   // Each runProtocol call adds two process-level listeners (SIGINT +
@@ -2804,28 +2788,11 @@ export async function runProtocol(
           ? "configured"
           : "online-invitation",
     );
-    // The rotation line below states what the store order leaves the two
-    // parties holding (rotationStanding), at error level because the
-    // exchange is failing. A new invitation is named only where the two may
-    // now hold different secrets; a run that rotated nobody states nothing.
-    // An error marked as stating its own next step (statesItsOwnNextStep)
-    // already states the step for its fault, so the line is skipped rather
-    // than printed beneath a step it contradicts. Marked wherever that
-    // holds: the saveKeyFile-failure path, authenticateConnection's own
-    // validation errors and the terms exchange's expiry refusal (see
-    // auth.ts and protocolSetup.ts), and core's terminal transport
-    // refusals. For an unmarked internal fault or partner refusal the
-    // command boundary shows its fixed step (fixedNextStep), which rules
-    // out a retry, so the line states the token state without prescribing
-    // one. An authentication failure (exit 77) rules out a retry too, but no
-    // fixed step prints beneath it, so its line states the step.
 
     // Walks the `cause` chain for a PeerAbortError, so the echo gate below
-    // still recognizes one even behind a future wrap. The critical
-    // barrier is actually the sticky first-error latch in the bridge and
-    // AEAD layers (a later admin-induced error cannot supersede the
-    // PeerAbortError that reaches here); this cause-walk is cheap
-    // insurance.
+    // still recognizes one even behind a future wrap. That a later
+    // admin-induced error cannot supersede the PeerAbortError that reaches
+    // here is the sticky first-error latch's, in the bridge and AEAD layers.
     const errIsPeerAbort = (e: unknown): boolean =>
       causeChainSome(e, (link) => link instanceof PeerAbortError);
 
@@ -2887,8 +2854,8 @@ export async function runProtocol(
       // that could not be written, and one core could not build for a
       // disclosure it made -- which core warns about on the operator log, a
       // channel an unattended run discards, so the stream states it too.
-      // The completed path reports the same pair through missingArtifacts
-      // above.
+      // The completed path reports the same pair through
+      // writeExchangeOutputs's missingArtifacts.
       if (disclosedRecord !== undefined) {
         const written = writeExchangeRecord(
           runArtifactFolder(output),
@@ -2926,6 +2893,21 @@ export async function runProtocol(
     )
       log.error(BOTH_SWEPT_GUIDANCE);
 
+    // The rotation line below states what the store order leaves the two
+    // parties holding (rotationStanding), at error level because the
+    // exchange is failing. A new invitation is named only where the two may
+    // now hold different secrets; a run that rotated nobody states nothing.
+    // An error marked as stating its own next step (statesItsOwnNextStep)
+    // already states the step for its fault, so the line is skipped rather
+    // than printed beneath a step it contradicts. Marked wherever that
+    // holds: the saveKeyFile-failure path, authenticateConnection's own
+    // validation errors and the terms exchange's expiry refusal (see
+    // auth.ts and protocolSetup.ts), and core's terminal transport
+    // refusals. For an unmarked internal fault or partner refusal the
+    // command boundary shows its fixed step (fixedNextStep), which rules
+    // out a retry, so the line states the token state without prescribing
+    // one. An authentication failure (exit 77) rules out a retry too, but no
+    // fixed step prints beneath it, so its line states the step.
     const hintAlreadyEmitted = statesItsOwnNextStep(reported);
     const authenticationFailed =
       exitCodeForError(reported) === AUTHENTICATION_FAILED_EXIT_CODE;
@@ -2976,22 +2958,6 @@ export async function runProtocol(
             : rotationLineAfterFailure(standing, retryRuledOut);
       if (rotationLine !== undefined) log.error(rotationLine);
     }
-    // If a signal handler is mid-cleanup, it owns the exit code (130/143).
-    // Swallowing the error here resolves runProtocol normally so the CLI
-    // handler does not race with its own process.exit(69). The signal
-    // handler is still running asynchronously and will call process.exit
-    // once its cleanup completes; the event loop stays alive until then
-    // because the handler's awaited doCleanup is a pending Promise.
-    //
-    // The in-flight error may be caused by the signal-driven cleanup
-    // itself (e.g. a poller rejecting because the connection was closed)
-    // or it may be an unrelated protocol error that happened to coincide
-    // with the signal. The two are not distinguishable here, so the error
-    // is logged at error level rather than discarded silently: if it
-    // holds diagnostic information about a real failure, the user sees
-    // it even at a strict `--log-level=error` setting; if it is merely
-    // cleanup noise, the surrounding "caught SIG..." context makes clear
-    // the process is exiting on the signal regardless.
     // Authenticated cross-party abort marker: on a terminal organic fault
     // with the directory still writable, leave a signal so a waiting peer
     // fails fast instead of waiting out its full inactivity timeout. Gated to
@@ -3005,22 +2971,18 @@ export async function runProtocol(
     // signalReceived early-return so a fault that coincides with a signal
     // still defers to the signal.
     //
-    // Fires for every terminal post-arm fault, not only "pure" transport
-    // faults: a post-arm UsageError (an over-cap inbound frame, a hostile
-    // directory, a stalled server, a duplicate/malformed message) is just
-    // as terminal and non-retryable, and a peer is waiting on it. Those
-    // UsageErrors are peer- or environment-induced; the config-shaped
-    // ones (token expiry, bilateral mode mismatch, not-clean directory)
-    // are all detected pre-arm and never reach here armed. A failure in
-    // the purely-local post-exchange output stage is excluded instead by
-    // the exchangeComplete gate above.
+    // Fires for every terminal post-arm fault, a post-arm UsageError (an
+    // over-cap inbound frame, a hostile directory, a stalled server, a
+    // duplicate/malformed message) included. Those UsageErrors are peer- or
+    // environment-induced; the config-shaped ones (token expiry, bilateral
+    // mode mismatch, not-clean directory) are all detected pre-arm and never
+    // reach here armed. A failure in the purely-local post-exchange output
+    // stage is excluded instead by the exchangeComplete check.
     //
     // The marker holds no cause, so signalling on a UsageError discloses
     // nothing the peer's own view of the teardown would not: the local
     // party sees its specific error and exits 64, while the peer sees the
-    // cause-free "peer aborted" and exits 76. The pre-arm/post-arm line is
-    // principled: only post-arm does a session key (to authenticate the
-    // marker) and a waiting post-handshake peer both exist.
+    // cause-free "peer aborted" and exits 76.
     if (
       build.fileSync?.abortArmed === true &&
       !run.exchangeComplete &&
@@ -3048,6 +3010,22 @@ export async function runProtocol(
       await sendLocalFaultAbort(build.transport, LOCAL_FAULT_ABORT_WAIT_MS);
     }
 
+    // If a signal handler is mid-cleanup, it owns the exit code (130/143).
+    // Swallowing the error here resolves runProtocol normally so the CLI
+    // handler does not race with its own process.exit(69). The signal
+    // handler is still running asynchronously and will call process.exit
+    // once its cleanup completes; the event loop stays alive until then
+    // because the handler's awaited doCleanup is a pending Promise.
+    //
+    // The in-flight error may be caused by the signal-driven cleanup
+    // itself (e.g. a poller rejecting because the connection was closed)
+    // or it may be an unrelated protocol error that happened to coincide
+    // with the signal. The two are not distinguishable here, so the error
+    // is logged at error level rather than discarded silently: if it
+    // holds diagnostic information about a real failure, the user sees
+    // it even at a strict `--log-level=error` setting; if it is merely
+    // cleanup noise, the surrounding "caught SIG..." context makes clear
+    // the process is exiting on the signal regardless.
     if (run.signalReceived !== undefined) {
       log.error(
         `error in flight when ${run.signalReceived} arrived: ` +
@@ -3096,8 +3074,8 @@ export async function runProtocol(
       );
     }
     // The error is rethrown holding whatever exit code its own thrower
-    // gave it, and nothing is stamped here: only the result-file write
-    // above is the local write loss 73 names, while the rest of the
+    // gave it, and nothing is stamped here: only writeExchangeOutputs's
+    // result-file write is the local write loss 73 names, while the rest of the
     // output stage -- core's refusal of a partner payload that does not
     // fit the association table -- is not. Those keep no code, and the
     // boundaries map their class to 76. The `output` category on the

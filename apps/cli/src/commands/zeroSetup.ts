@@ -26,6 +26,7 @@ import {
   DEFAULT_CONFIG_PATH,
 } from "../config";
 import {
+  emitTo,
   openEventStream,
   reportPersistenceLoss,
   type EventStreamEmitter,
@@ -885,9 +886,7 @@ export async function handler(argv: Arguments): Promise<void> {
           prepared,
           allowMemoryShortfall: allowMemoryShortfall === true,
           log,
-          emit: (fn) => {
-            if (eventStreamEmitter !== undefined) fn(eventStreamEmitter);
-          },
+          emit: emitTo(eventStreamEmitter),
         });
         memoryBudgetReported = true;
         // Decided from the input alone, so settled before the host-key step
