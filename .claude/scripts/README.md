@@ -117,8 +117,10 @@ push:
   gives.
 
   Every retro figure follows the same accounting rules. Equivalent tokens
-  weight a call's usage as in + 1.25 x cacheWrite + 0.1 x cacheRead + 5 x
-  out. Reviewers are ranked by cost per behaviour-changing finding or not at
+  weight a call's usage as in + 1.25 x cache5m + 2 x cache1h + r x
+  cacheRead + 5 x out, where r is the model's cache-read rate over its input
+  rate in `pricing.json`; `cost.mjs` reports them per model as `eqTok`.
+  Reviewers are ranked by cost per behaviour-changing finding or not at
   all, never by cost per finding, which ranks first the reviewer raising the
   most cheap findings. Counting a streamed message once by its message.id and
   requestId, and reading the workflow agents' transcripts beside the

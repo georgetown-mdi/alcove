@@ -4,7 +4,8 @@
 // wrote and split every session into main, subagent and workflow-agent
 // components. Writes to --out-dir:
 //   rollups.json            totals, window days and spend per day, and spend by
-//                           model, store (`bySeat`), component, UTC day, cost
+//                           model (with its equivalent tokens, `eqTok`),
+//                           store (`bySeat`), component, UTC day, cost
 //                           anatomy, context per call, workflow name and denial;
 //                           `streamFix` compares each model and component's
 //                           output with its first-entry count
@@ -90,6 +91,21 @@ function ctxTokens(u) {
   return u.in + u.cacheRead + u.cache5m + u.cache1h;
 }
 
+/**
+ * The equivalent input tokens of usage `u` at a model's `rates`: a 5m cache
+ * write weighs 1.25, a 1h write 2, output 5, and a cache read its model's read
+ * rate over its input rate.
+ */
+export function equivalentTokens(u, rates) {
+  return (
+    u.in +
+    1.25 * u.cache5m +
+    2 * u.cache1h +
+    (rates.cacheRead / rates.in) * u.cacheRead +
+    5 * u.out
+  );
+}
+
 function windowOf(aggregates) {
   const [first] = aggregates;
   for (const a of aggregates) {
@@ -172,12 +188,14 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
         (byModel[m] = {
           calls: 0,
           cost: 0,
+          eqTok: 0,
           main: 0,
           subagent: 0,
           "workflow-agent": 0,
         });
       bm.calls += u.calls;
       bm.cost += c;
+      bm.eqTok += equivalentTokens(u, pricing[m]);
       bm[comp] += c;
       const bs =
         bySeat[store] ||

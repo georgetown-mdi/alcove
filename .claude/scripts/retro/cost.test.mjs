@@ -4,7 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { aggregate } from "./aggregate.mjs";
 import { readJson } from "./args.mjs";
-import { cost, parseArgs } from "./cost.mjs";
+import { cost, equivalentTokens, parseArgs } from "./cost.mjs";
 import {
   assistant,
   sessionId,
@@ -85,6 +85,7 @@ describe("pricing", () => {
     expect(rollups.byModel["model-a"]).toEqual({
       calls: 1,
       cost: 36.3,
+      eqTok: 26.3 * M,
       main: 36.3,
       subagent: 0,
       "workflow-agent": 0,
@@ -96,6 +97,24 @@ describe("pricing", () => {
       cacheRead: 0.01,
       cacheWrite: 0.41,
     });
+  });
+
+  it("weights 5m and 1h cache writes at 1.25 and 2, and a cache read at its model's read ratio", () => {
+    const models = readJson(new URL("./pricing.json", import.meta.url)).models;
+    const u = { in: 10, out: 1, cacheRead: 1000, cache5m: 100, cache1h: 100 };
+    const writes = 10 + 125 + 200 + 5;
+    expect(equivalentTokens(u, models["claude-opus-5-5"])).toBeCloseTo(
+      writes + 50,
+      10,
+    );
+    expect(equivalentTokens(u, models["claude-fable-5-1"])).toBeCloseTo(
+      writes + 25,
+      10,
+    );
+    expect(equivalentTokens(u, models["claude-sonnet-4-6"])).toBeCloseTo(
+      writes + 100,
+      10,
+    );
   });
 
   it("prices claude-sonnet-5 at the intro row for the intro total only", async () => {
