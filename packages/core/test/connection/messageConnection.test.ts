@@ -244,6 +244,42 @@ test("clearing a held byte bound on a connection that failed from a transport er
   await expect(conn.receive()).rejects.toBe(lost);
 });
 
+test("clearing a held byte bound on a connection that failed from a transport error over the built bound drops the frames and raises that error", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  conn.holdInboundQueueBytes(20);
+  for (let frame = 0; frame < 3; frame++)
+    controls.deliver(new Uint8Array(5), 5); // 15 bytes queued
+  const lost = new ConnectionError("partner lost", "transport");
+  controls.fail(lost);
+  let raised: unknown;
+  try {
+    conn.holdInboundQueueBytes(undefined);
+  } catch (error) {
+    raised = error;
+  }
+  expect(raised).toBe(lost);
+  await expect(conn.terminated()).resolves.toBe(lost);
+  await expect(conn.receive()).rejects.toBe(lost);
+});
+
+test("clearing a held byte bound on a half-closed connection over the built bound drops the frames and raises the half-close error", async () => {
+  const { conn, controls } = makeQueued({ byteCapacity: 10 });
+  conn.holdInboundQueueBytes(20);
+  for (let frame = 0; frame < 3; frame++)
+    controls.deliver(new Uint8Array(5), 5); // 15 bytes queued
+  const closed = new ConnectionError("peer closed", "transport");
+  controls.finish(closed);
+  let raised: unknown;
+  try {
+    conn.holdInboundQueueBytes(undefined);
+  } catch (error) {
+    raised = error;
+  }
+  expect(raised).toBe(closed);
+  await expect(conn.terminated()).resolves.toBe(closed);
+  await expect(conn.receive()).rejects.toBe(closed);
+});
+
 test("clearing a held byte bound keeps the frames the built bound would have admitted", async () => {
   const { conn, controls } = makeQueued({ byteCapacity: 10 });
   conn.holdInboundQueueBytes(40);
