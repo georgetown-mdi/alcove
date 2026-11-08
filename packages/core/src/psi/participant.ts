@@ -56,6 +56,10 @@ import {
   type PsiSetByteLimit,
   type PsiSetCapacity,
 } from "./psiSetParts";
+import {
+  abortOnResponseLengthRefusal,
+  asResponseLengthRefusal,
+} from "./responseLengthRefusal";
 import type { RoundGroupingField } from "./roundGrouping";
 import {
   receiveRoundGrouping,
@@ -402,11 +406,15 @@ export class PSIParticipant {
   }
 
   // The refusals of a frame `scan` cannot read or finds declaring more than
-  // `ceiling` elements; returns the count it found otherwise.
+  // `ceiling` elements, the latter passed through `overCeiling`; returns the
+  // count it found otherwise.
   private assertScanWithinCeiling(
     kind: PsiMessageKind,
     ceiling: number,
     scan: () => number,
+    overCeiling: (
+      refusal: PartnerProtocolRefusalError,
+    ) => PartnerProtocolRefusalError = (refusal) => refusal,
   ): number {
     let declared: number;
     try {
@@ -417,9 +425,11 @@ export class PSIParticipant {
       );
     }
     if (declared > ceiling)
-      throw new PartnerProtocolRefusalError(
-        `${this.id} protocol error: inbound PSI ${kind} declares more than ` +
-          `${ceiling} encrypted element(s)`,
+      throw overCeiling(
+        new PartnerProtocolRefusalError(
+          `${this.id} protocol error: inbound PSI ${kind} declares more than ` +
+            `${ceiling} encrypted element(s)`,
+        ),
       );
     return declared;
   }
@@ -434,16 +444,19 @@ export class PSIParticipant {
   }
 
   // A response answers each element of the request this party sent once, so
-  // it is held to that request's bytes and to exactly its element count. The
-  // request was held to this party's own set maximum before it was built.
+  // it is held to that request's bytes and to exactly its element count, each
+  // refusal marked as one for its length. The request was held to this
+  // party's own set maximum before it was built.
   private assertResponseMatchesRequest(responseBytes: Uint8Array): number {
     const request = this.requestAnswered();
     this.sentRequest = undefined;
     if (responseBytes.byteLength > request.bytes)
-      throw new PartnerProtocolRefusalError(
-        `${this.id} protocol error: inbound PSI response is ` +
-          `${responseBytes.byteLength} bytes, over the ${request.bytes} bytes ` +
-          "of the request this party sent",
+      throw asResponseLengthRefusal(
+        new PartnerProtocolRefusalError(
+          `${this.id} protocol error: inbound PSI response is ` +
+            `${responseBytes.byteLength} bytes, over the ${request.bytes} bytes ` +
+            "of the request this party sent",
+        ),
       );
     const elements = this.assertScanWithinCeiling(
       "response",
@@ -455,12 +468,15 @@ export class PSIParticipant {
           request.elements,
           PSI_ELEMENT_BYTES,
         ),
+      asResponseLengthRefusal,
     );
     if (elements !== request.elements)
-      throw new PartnerProtocolRefusalError(
-        `${this.id} protocol error: inbound PSI response has ${elements} ` +
-          `encrypted element(s), not the ${request.elements} of the request ` +
-          "this party sent",
+      throw asResponseLengthRefusal(
+        new PartnerProtocolRefusalError(
+          `${this.id} protocol error: inbound PSI response has ${elements} ` +
+            `encrypted element(s), not the ${request.elements} of the request ` +
+            "this party sent",
+        ),
       );
     return elements;
   }
@@ -517,6 +533,7 @@ export class PSIParticipant {
       return receivePsiSet(conn, this.id, kind, {
         bytes: this.requestAnswered().bytes,
         source: "bytes of the request this party sent",
+        answersRequest: true,
       });
     const limits = this.partnerSetLimits(this.elementBounds.request);
     return receivePsiSet(
@@ -821,16 +838,19 @@ export class PSIParticipant {
     try {
       left -= setup.bytes;
       const sent = this.requestAnswered();
-      const response = await receivePsiSet(
-        conn,
-        this.id,
-        "response",
-        sent.bytes <= left
-          ? {
-              bytes: sent.bytes,
-              source: "bytes of the request this party sent",
-            }
-          : capLeft(left),
+      const response = await abortOnResponseLengthRefusal(conn, () =>
+        receivePsiSet(
+          conn,
+          this.id,
+          "response",
+          sent.bytes <= left
+            ? {
+                bytes: sent.bytes,
+                source: "bytes of the request this party sent",
+                answersRequest: true,
+              }
+            : capLeft(left),
+        ),
       );
       left -= response.byteLength;
       const tail = await receivePsiSet(
@@ -1026,8 +1046,16 @@ export class PSIParticipant {
     const request = await this.createClientRequest(set, widths.receiverWidth);
     await sendPsiSet(conn, request);
 
-    const response = await this.receiveRoundSet(conn, "response");
-    const elements = this.assertResponseMatchesRequest(response);
+    const { response, elements } = await abortOnResponseLengthRefusal(
+      conn,
+      async () => {
+        const response = await this.receiveRoundSet(conn, "response");
+        return {
+          response,
+          elements: this.assertResponseMatchesRequest(response),
+        };
+      },
+    );
     await this.reportProgress("computeIntersectionCardinality", elements, () =>
       decodePsiBinaryFrame(this.id, "response", () =>
         this.engine.matchPermutedRound(response),
@@ -1180,16 +1208,19 @@ export class PSIParticipant {
 
       await sendPsiSet(conn, clientRequest);
 
-      const serverResponse = await this.receiveRoundSet(conn, "response");
-      this.log.debug(
-        `${this.id}: receiving server data encrypted by both by server and ` +
-          "client",
-      );
-
       // Association table: indices into client data mapped to the (likely permuted)
       // indices given by the server, matched against the setup held above.
-      const associationTable =
-        await this.computeAssociationTable(serverResponse);
+      const associationTable = await abortOnResponseLengthRefusal(
+        conn,
+        async () => {
+          const serverResponse = await this.receiveRoundSet(conn, "response");
+          this.log.debug(
+            `${this.id}: receiving server data encrypted by both by server ` +
+              "and client",
+          );
+          return this.computeAssociationTable(serverResponse);
+        },
+      );
       const localIndices = associationTable[0];
 
       this.log.debug(

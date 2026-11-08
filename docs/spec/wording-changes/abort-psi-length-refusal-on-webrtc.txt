@@ -1,0 +1,11 @@
+- A response shorter than the request, or empty, is refused this way, and a longer one by its bytes ([What the receiver does](#the-receive-ceiling)). -> A response shorter than the request, or empty, is refused this way, and a longer one by its bytes ([What the receiver does](#the-receive-ceiling)), each with the abort sent to the partner as that section states.
+- **How the partner learns of the refusal.** -> -
+- On file sync the partner is told by the abort marker on an authenticated run, or by the local-fault abort frame. -> -
+- On WebRTC and the relay the refusing party closes the channel and sends no abort frame, as for every protocol error it raises past the terms exchange, so the partner ends on the channel close. -> -
+- - -> Each of these refusals of a response, in a cascade, a count-only round, or a single-pass reply in one frame or in parts, sends the partner the fixed abort reason "the partner refused a PSI response that is not the length of its request" before the refusal propagates, on every transport (`abortOnResponseLengthRefusal`, `packages/core/src/psi/responseLengthRefusal.ts`).
+- - -> A partner that has sent its whole response reads the abort in place of the frame it awaits next, so it ends on a `PeerAbortError`, a refusal the command-line application exits 76 on, rather than on the channel close.
+- - -> **A longer response in parts.**
+- - -> A response declaring more bytes than the request is refused at its first part, while the partner may still be sending its later parts.
+- - -> A partner whose send fails on the closed channel before it reads the abort ends on the channel close instead of the abort.
+- - -> On file sync an authenticated run also writes the abort marker ([CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#authenticated-abort-marker)).
+- - -> Where a single-pass reply in parts leaves its response fewer bytes than the request, a response over what it leaves is refused under the reply cap, as a refusal of the reply rather than of the response's length, and sends no abort.

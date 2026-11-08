@@ -26,6 +26,7 @@ import { PartnerProtocolRefusalError, RoundCapacityError } from "../errors";
 import { sendAbort } from "../protocolSetup";
 import { PARTNER_SET_OVER_CAPACITY_ABORT_REASON } from "../partnerAbortFrame";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
+import { asResponseLengthRefusal } from "./responseLengthRefusal";
 
 import type { MessageConnection } from "../connection/messageConnection";
 
@@ -218,6 +219,11 @@ export async function sendPsiSet(
 export interface PsiSetByteLimit {
   readonly bytes: number;
   readonly source: string;
+  /**
+   * Set where `bytes` is the request a response answers, so a set declaring
+   * more is refused for its length ({@link asResponseLengthRefusal}).
+   */
+  readonly answersRequest?: boolean;
 }
 
 /** This party's own ceiling on a received set: its bytes and the element count they are derived from. */
@@ -325,11 +331,15 @@ export async function receivePsiSetInPieces(
     if (index < expected) throw refuse(`repeats part ${index}`);
     if (index > expected) throw refuse(`is missing part ${expected}`);
     if (expected === 0) {
-      if (declaredBytes > BigInt(limit.bytes))
-        throw refuse(
+      if (declaredBytes > BigInt(limit.bytes)) {
+        const refusal = refuse(
           `declares ${declaredBytes} bytes, over the ${limit.bytes} ` +
             limit.source,
         );
+        throw limit.answersRequest === true
+          ? asResponseLengthRefusal(refusal)
+          : refusal;
+      }
       if (capacity !== undefined && declaredBytes > BigInt(capacity.setBytes)) {
         await sendAbort(conn, [PARTNER_SET_OVER_CAPACITY_ABORT_REASON]);
         throw new RoundCapacityError(
