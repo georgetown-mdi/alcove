@@ -63,6 +63,7 @@ import {
 } from "@psi/jobClient/consoleJobAttachment";
 import { AcceptedSignalingServerUnsetError } from "@psi/jobClient/signalingServerClient";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
+import { RunRelayWatch } from "@psi/transport/runRelayWatch";
 import { consoleFailureForCause } from "@console/consoleFailureCause";
 import { consoleJobColumnRefusalAlert } from "@psi/columnNames";
 import { consolePartnerCertificateRefusal } from "@console/partnerCertificateRefusal";
@@ -75,7 +76,6 @@ import { openOneShotPeerConnection } from "@psi/exchangeLifecycle";
 import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
 import { ownRelayRead } from "@psi/transport/ownRelaySetting";
 import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal";
-import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 
 import {
   CoordinationServerUnreachableError,
@@ -86,6 +86,7 @@ import {
   PartnerNoShowError,
   waitForIncomingConnection,
 } from "@psi/transport/waitForConnection";
+import { relayPlanForRun, runRelayHosts } from "@psi/transport/runRelayPlan";
 
 import { isConsoleBuild } from "@utils/clientConfig";
 import { useRequestGeneration } from "@utils/requestGeneration";
@@ -1301,6 +1302,9 @@ export function useInviterExchange({
   /** When this browser stops waiting for the partner, once it is listening;
    * undefined before then and on a server-job run. */
   listeningUntil: Date | undefined;
+  /** The browser run's own relay connections, once it reaches them;
+   * undefined before then and on a server-job run. */
+  relayWatch: RunRelayWatch | undefined;
   tryAgain: () => void;
   abandonRun: () => void;
 } {
@@ -1311,6 +1315,7 @@ export function useInviterExchange({
   const { runRecord, offerRunRecord, clearRunRecord } = useFailedRunRecord();
   const [warnings, setWarnings] = useState<Array<string>>([]);
   const [listeningUntil, setListeningUntil] = useState<Date>();
+  const [relayWatch, setRelayWatch] = useState<RunRelayWatch>();
   // The status of an exchange this run re-attached to on a busy (409) create,
   // else undefined. Drives the run surface's recovery-style copy; reset when a run
   // restarts or the invitation is discarded.
@@ -1386,6 +1391,7 @@ export function useInviterExchange({
     setReattached(undefined);
     setReattaching(false);
     setListeningUntil(undefined);
+    setRelayWatch(undefined);
 
     // Output-generation half. The URLs the build creates are revoked when the
     // outputs are replaced or the console unmounts (effect above); a throw
@@ -1452,6 +1458,14 @@ export function useInviterExchange({
       if (undeclaredNotice !== undefined) onRunNotice(undeclaredNotice);
 
       onStage(WAITING_STAGE_ID);
+      const relaySources = {
+        readOwn: () => ownRelayRead(minted.ownRelay),
+        switchedOn: () => minted.defaultRelayOn === true,
+      };
+      const watch = new RunRelayWatch(
+        runRelayHosts(undefined, minted.allowedRelays, relaySources),
+      );
+      if (!signal.aborted) setRelayWatch(watch);
       // Listen on the derived inviter id, then await the acceptor's inbound
       // connection. Destroy the peer on a wait failure so acquisition stays
       // atomic (the lifecycle's teardown only ever covers a returned
@@ -1463,14 +1477,15 @@ export function useInviterExchange({
         {
           signal,
           onRunNotice,
-          readOwn: () => ownRelayRead(minted.ownRelay),
-          switchedOn: () => minted.defaultRelayOn === true,
+          onDefaultRelayEnrollment: watch.onDefaultRelayEnrollment,
+          ...relaySources,
         },
       );
       const connection = await openRunConnectionWithRelayFallback({
         role: "inviter",
         sharedSecret: minted.sharedSecret,
         relays: relayPlan.websocketRelays,
+        relayWatch: watch,
         signal,
         onCloseOutcome,
         onRunNotice,
@@ -1660,6 +1675,7 @@ export function useInviterExchange({
       setReattached(undefined);
       setReattaching(false);
       setListeningUntil(undefined);
+      setRelayWatch(undefined);
       return;
     }
     startRef.current(invitation);
@@ -1732,6 +1748,7 @@ export function useInviterExchange({
     reattached,
     reattaching,
     listeningUntil,
+    relayWatch,
     tryAgain,
     abandonRun,
   };

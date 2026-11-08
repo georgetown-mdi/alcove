@@ -139,6 +139,8 @@ export interface WebSocketRelayConnectionOptions {
   /** Receives the code of each close of a socket before the exchange
    * begins on it, the close a socket dialed again follows included. */
   onSetupClose?: (code: number) => void;
+  /** Called each time a socket opens and sends its hello. */
+  onHelloSent?: () => void;
   /** Builds the socket; tests only. */
   createSocket?: (url: string) => WebSocket;
   /** The clock the proof's expiry counts from; tests only. */
@@ -701,6 +703,7 @@ class ParkedRelay implements ParkedWebSocketRelayConnection {
     current.timer = undefined;
     current.phase = "awaiting-pair";
     current.socket.send(hello);
+    this.options.onHelloSent?.();
     if (this.startRequested) this.sendStart(current);
   }
 

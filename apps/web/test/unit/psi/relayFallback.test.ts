@@ -18,6 +18,7 @@ import {
   WEB_RELAY_FALLBACK,
   openRunConnectionWithRelayFallback,
 } from "@psi/transport/relayFallback";
+import { RunRelayWatch } from "@psi/transport/runRelayWatch";
 import { guardInboundConnections } from "@psi/transport/inboundConnections";
 
 import type {
@@ -336,6 +337,61 @@ test("a listed relay closes unused on the run's interrupt and the open fails as 
   interrupt.abort();
   await expect(opening).rejects.toMatchObject({ kind: "closed" });
   expect(record.closes).toEqual([1000]);
+});
+
+test("a run's relay watch follows each relay's own socket: its hello, its closes and its failure", async () => {
+  const record = { sent: [] as Array<unknown>, closes: [] as Array<number> };
+  const sockets: Array<WebSocket> = [];
+  const createSocket = vi.fn(() => {
+    const socket = idleSocket(record);
+    sockets.push(socket);
+    return socket;
+  });
+  const watch = new RunRelayWatch(
+    {
+      turn: [],
+      websocket: ["wss://relay.test/relay"],
+      listedOnceEnrolled: [],
+      leftOut: [],
+    },
+    () => 1234,
+  );
+  const interrupt = new AbortController();
+  const opening = openRunConnectionWithRelayFallback(
+    {
+      role: "inviter",
+      sharedSecret: SHARED_SECRET,
+      relays: [{ url: "wss://relay.test/relay", exchangeId: "exchange" }],
+      relayWatch: watch,
+      signal: interrupt.signal,
+      onCloseOutcome: () => {},
+      openWebRtc: ({ signal }) =>
+        new Promise((_resolve, reject) =>
+          signal.addEventListener("abort", () =>
+            reject(new Error("opening the connection was aborted")),
+          ),
+        ),
+    },
+    { createSocket },
+  );
+  opening.catch(() => {});
+  await vi.waitFor(() => expect(sockets).toHaveLength(1));
+  const socket = sockets[0];
+  Object.assign(socket, { readyState: 1 });
+  socket.dispatchEvent(new Event("open"));
+  expect(watch.snapshot().websocket.get("wss://relay.test/relay")).toEqual({
+    closes: [],
+    helloSentAt: 1234,
+    paired: false,
+  });
+  socket.dispatchEvent(new CloseEvent("close", { code: 4004 }));
+  expect(watch.snapshot().websocket.get("wss://relay.test/relay")).toEqual({
+    closes: [4004],
+    paired: false,
+    failure: expect.objectContaining({ kind: "transport" }),
+  });
+  interrupt.abort();
+  await expect(opening).rejects.toBeDefined();
 });
 
 /** Long enough that a run still waiting for its partner shows as waiting. */

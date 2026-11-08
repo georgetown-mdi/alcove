@@ -66,6 +66,38 @@ function HostList({ hosts }: { hosts: ReadonlyArray<ExchangeRelayCheckHost> }) {
   );
 }
 
+/** A check's verdict and its line for each relay. */
+export function ExchangeRelayCheckReport({
+  verdict,
+  lines,
+}: {
+  verdict: string;
+  lines: ReadonlyArray<ExchangeRelayCheckLineShown>;
+}) {
+  return (
+    <>
+      <Text size="sm">{verdict}</Text>
+      <ul>
+        {lines.map((line, index) => (
+          <li key={index}>
+            <Text size="sm">
+              <span className={styles.mono}>{line.url}</span>{" "}
+              <strong>{line.works ? "Works" : "Does not work"}</strong>:{" "}
+              {line.summary}
+            </Text>
+            {line.meaning !== undefined && (
+              <Text size="sm">What this means: {line.meaning}</Text>
+            )}
+            {line.action !== undefined && (
+              <Text size="sm">What to do: {line.action}</Text>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 /**
  * The check of an exchange's relays, in its connection settings: offered
  * where a run of the exchange lists a relay, it shows the hosts it contacts
@@ -198,28 +230,10 @@ export function ExchangeRelayCheck({
         <Stack gap="xs" mt="xs">
           <div role="status">
             {state.step === "done" ? (
-              <>
-                <Text size="sm">{exchangeRelayCheckVerdict(state.lines)}</Text>
-                <ul>
-                  {state.lines.map((line, index) => (
-                    <li key={index}>
-                      <Text size="sm">
-                        <span className={styles.mono}>{line.url}</span>{" "}
-                        <strong>
-                          {line.works ? "Works" : "Does not work"}
-                        </strong>
-                        : {line.summary}
-                      </Text>
-                      {line.meaning !== undefined && (
-                        <Text size="sm">What this means: {line.meaning}</Text>
-                      )}
-                      {line.action !== undefined && (
-                        <Text size="sm">What to do: {line.action}</Text>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </>
+              <ExchangeRelayCheckReport
+                verdict={exchangeRelayCheckVerdict(state.lines)}
+                lines={state.lines}
+              />
             ) : (
               <Text size="sm">{EXCHANGE_RELAY_CHECK_ERROR}</Text>
             )}

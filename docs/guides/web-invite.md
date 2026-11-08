@@ -119,7 +119,7 @@ If you agreed to name your data sharing agreement in the invitation, choose **Le
 Check each line under **Exchange proposal**, then choose **Create the invitation**.
 
 > [!WARNING]
-> After you create the invitation, you cannot change its terms. To change them, choose **Replace this invitation** on the next screen.
+> After you create the invitation, you cannot change its terms or relays. To change them, choose **Replace this invitation** on the next screen.
 
 ### 5. Send the invitation
 
@@ -130,6 +130,8 @@ The link is several thousand characters long, so send it as text over your trust
 Send your partner the guide for their side too: `https://data-bridge.org/web-accept` ([Accept with the web app](./web-accept.md)).
 
 If your partner reports a term that differs from what you agreed, choose **Replace this invitation**. The link you sent stops working, and **Review & create** opens with your choices kept. Change the term, create the new invitation, and send it.
+
+Where the exchange uses a WebSocket relay, **Check the relays** shows whether each WebSocket relay accepts the exchange from your side ([Checking the relays](../WEB_APP.md#checking-the-relays)). To change a relay, replace the invitation the same way.
 
 > [!WARNING]
 > Keep this tab open: closing it cancels the invitation. During the exchange, closing or reloading either tab stops it for both of you.

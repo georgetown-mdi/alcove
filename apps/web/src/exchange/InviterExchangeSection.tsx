@@ -17,6 +17,7 @@ import { isConsoleBuild } from "@utils/clientConfig";
 import { awaitingPartner } from "./exchangeRun";
 import { invitationMessage } from "./invitationMessage";
 import { invitationReach } from "./invitationReach";
+import { inviterRelayCheckShown } from "./inviterRelayCheckModel";
 
 import {
   AnotherExchangeFoot,
@@ -37,6 +38,7 @@ import {
   useDownloadsLeftBehind,
 } from "./RunSurface";
 import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
+import { InviterRelayCheck } from "./InviterRelayCheck";
 import { ReceiptDownload } from "./ReceiptDownload";
 import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
@@ -50,6 +52,7 @@ import type { ExchangeRun } from "./exchangeRun";
 import type { GeneratedInvitation } from "@psi/invitation";
 import type { JobRunStatus } from "@psi/jobClient/serverJobExchangeDriver";
 import type { RunFailure } from "./useInviterExchange";
+import type { RunRelayWatch } from "@psi/transport/runRelayWatch";
 
 /** The share screen's control that discards a waiting invitation for a new
  * one. */
@@ -57,8 +60,8 @@ export const REPLACE_INVITATION_LABEL = "Replace this invitation";
 
 /** What the share screen says beside {@link REPLACE_INVITATION_LABEL}. */
 export const REPLACE_INVITATION_BODY =
-  "To change the terms, replace this invitation. Its link stops working, " +
-  "and you go back to Review & create with your choices kept.";
+  "To change the terms or the relays, replace this invitation. Its link " +
+  "stops working, and you go back to Review & create with your choices kept.";
 
 /**
  * The inviter's post-create work column, through the run's three phases: the
@@ -91,6 +94,7 @@ export function InviterExchangeSection({
   reattaching,
   peerWindowBody,
   listeningUntil,
+  relayWatch,
   resumableAfterReload = false,
   resumed = false,
   onTryAgain,
@@ -170,6 +174,9 @@ export function InviterExchangeSection({
   /** When this browser stops waiting for the partner, once it is listening;
    * undefined before then and on a server-job run. */
   listeningUntil?: Date;
+  /** The browser run's own relay connections, which the relay check reads;
+   * undefined before the run reaches them and on a server-job run. */
+  relayWatch?: RunRelayWatch;
   /** Whether a reload offers this invitation back to wait on again. */
   resumableAfterReload?: boolean;
   /** Whether this run waits again on an invitation created before a reload,
@@ -472,6 +479,12 @@ export function InviterExchangeSection({
                 .
               </strong>
             </p>
+            {relayWatch !== undefined &&
+              inviterRelayCheckShown({
+                phase,
+                failed: failure !== undefined,
+                hosts: relayWatch.hosts,
+              }) && <InviterRelayCheck watch={relayWatch} />}
             {onReplaceInvitation !== undefined && failure === undefined && (
               <>
                 <p className={styles.small}>{REPLACE_INVITATION_BODY}</p>
