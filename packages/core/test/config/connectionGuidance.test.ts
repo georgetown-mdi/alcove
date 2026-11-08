@@ -183,6 +183,20 @@ test("a filedrop block shows the filedrop poll default, not the sftp one", () =>
   );
 });
 
+test("a webrtc config whose author set no server_connect_timeout_ms is written back without it", () => {
+  const spec = parseExchangeSpec({
+    connection: {
+      channel: "webrtc",
+      server: { host: "api.peerjs.com" },
+      options: { peer_timeout_ms: 45000 },
+    },
+    linkage_terms: YAML.parse(YAML.stringify(placeholderSpec().linkageTerms)),
+  });
+  const raw = write(spec);
+  expect(raw).toContain("peer_timeout_ms: 45000");
+  expect(raw).not.toContain("server_connect_timeout_ms");
+});
+
 test("the notice and the config comment name a section of the reference that exists", () => {
   const fragment = CONNECTION_BLOCK_DOC_URL.split("#")[1];
   expect(CONNECTION_BLOCK_NOTICE).toContain(CONNECTION_BLOCK_DOC_URL);

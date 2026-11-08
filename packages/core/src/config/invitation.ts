@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import {
-  LinkageTermsSchema,
-  MAX_PARAMS_ENTRIES,
+  InvitationLinkageTermsSchema,
+  PARAMS_WIDTH_BOUND,
 } from "./linkageTermsSchema.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
 import { camelizeKeys } from "../utils/camelizeKeys.js";
@@ -10,14 +10,23 @@ import { redactAndFitUnescaped } from "../utils/sanitizeErrorForDisplay.js";
 import { DEFAULT_MAX_DISPLAY_LENGTH } from "../utils/sanitizeForDisplay.js";
 import { SHARED_SECRET_REGEX, relayLocatorSchema } from "./connection.js";
 import type { RelayLocator } from "./connection.js";
-import { pathsResolveToSameDir } from "../utils/pathCompare.js";
+import {
+  directoryFormsAreExclusive,
+  fileSyncDirectories,
+  filedropNamesDirectory,
+  splitDirectoriesAreWhole,
+  splitDirectoriesDiffer,
+  type FileSyncDirectories,
+} from "./fileSyncDirectories.js";
+import { DialPortSchema } from "./dialPort.js";
 import { parseBoundedJson } from "../utils/boundedJson.js";
-import { fromBase64Url } from "../utils/crypto.js";
+import { fromBase64Url, toBase64Url } from "../utils/crypto.js";
 import { UsageError } from "../errors.js";
 import { sftpRelayUrlRefusal } from "./sftpRelayUrl.js";
 import {
   declaredFormatVersion,
   droppedMemberIssues,
+  FORMAT_VERSION_TEXT,
   FormatInfoBlockSchema,
   formatVersionBelowNeededIssues,
   formatVersionNeeded,
@@ -198,9 +207,8 @@ export const WebRTCEndpointSchema = z.strictObject(
   {
     channel: z.literal("webrtc"),
     host: z.string().min(1).check(maxCodeUnits(MAX_ENDPOINT_HOST_LENGTH)),
-    // Port 0 (OS-assigned) is never a connect target, so this is stricter than
-    // connection.ts.
-    port: z.int().min(1).max(65535).optional(),
+    // Stricter than the connection block's webrtc server port, which admits 0.
+    port: DialPortSchema.optional(),
     path: z
       .string()
       .min(1)
@@ -215,8 +223,7 @@ const SFTPEndpointSchema = z.strictObject(
   {
     channel: z.literal("sftp"),
     host: z.string().min(1).check(maxCodeUnits(MAX_ENDPOINT_HOST_LENGTH)),
-    // >= 1: see the WebRTCEndpointSchema port note.
-    port: z.int().min(1).max(65535).optional(),
+    port: DialPortSchema.optional(),
     path: z
       .string()
       .min(1)
@@ -278,20 +285,10 @@ const FileDropEndpointSchema = z.strictObject(
   { error: endpointKeyError },
 );
 
-/**
- * The directory fields of a file-sync endpoint, or undefined for webrtc.
- * Mirrors `fileSyncPathMode` in connection.ts.
- */
-function endpointDirMode(
+function endpointDirectories(
   endpoint: ConnectionEndpoint,
-): { path?: string; inboundPath?: string; outboundPath?: string } | undefined {
-  if (endpoint.channel === "sftp" || endpoint.channel === "filedrop")
-    return {
-      path: endpoint.path,
-      inboundPath: endpoint.inboundPath,
-      outboundPath: endpoint.outboundPath,
-    };
-  return undefined;
+): FileSyncDirectories | undefined {
+  return fileSyncDirectories(endpoint.channel, endpoint);
 }
 
 /**
@@ -306,72 +303,42 @@ export function endpointRequiresRetainedFiles(
 ): boolean {
   if (endpoint === undefined) return false;
   // The pair is whole or absent (the refine below), so the inbound half decides.
-  return endpointDirMode(endpoint)?.inboundPath !== undefined;
+  return endpointDirectories(endpoint)?.inboundPath !== undefined;
 }
 
+// The directory rules of connection.ts, in this site's own order and wording
+// (fileSyncDirectories.ts). Distinctness survives the acceptor's swap, so it is
+// checked here at decode.
 const ConnectionEndpointSchema: z.ZodType<ConnectionEndpoint> = z
   .discriminatedUnion("channel", [
     WebRTCEndpointSchema,
     SFTPEndpointSchema,
     FileDropEndpointSchema,
   ])
-  // Both halves or neither: a lone half cannot be swapped into a pair. Mirrors
-  // connection.ts.
+  // A lone half cannot be swapped into a pair.
   .refine(
-    (endpoint) => {
-      const m = endpointDirMode(endpoint);
-      if (m === undefined) return true;
-      return (m.inboundPath !== undefined) === (m.outboundPath !== undefined);
-    },
+    (endpoint) => splitDirectoriesAreWhole(endpointDirectories(endpoint)),
     {
       message:
         "inbound_path and outbound_path must be set together; a split " +
         "directory endpoint needs both halves",
     },
   )
-  // The halves must differ. Distinctness survives the swap, so it is checked
-  // here at decode, by the same function connection.ts applies.
+  .refine((endpoint) => splitDirectoriesDiffer(endpointDirectories(endpoint)), {
+    message:
+      "inbound_path and outbound_path on a connection endpoint must differ",
+  })
   .refine(
-    (endpoint) => {
-      const m = endpointDirMode(endpoint);
-      if (
-        m === undefined ||
-        m.inboundPath === undefined ||
-        m.outboundPath === undefined
-      )
-        return true;
-      return !pathsResolveToSameDir(m.inboundPath, m.outboundPath);
-    },
-    {
-      message:
-        "inbound_path and outbound_path on a connection endpoint must differ",
-    },
-  )
-  // A directory is named in one form or the other, never both.
-  .refine(
-    (endpoint) => {
-      const m = endpointDirMode(endpoint);
-      if (m === undefined) return true;
-      const hasPair =
-        m.inboundPath !== undefined || m.outboundPath !== undefined;
-      return !(m.path !== undefined && hasPair);
-    },
+    (endpoint) => directoryFormsAreExclusive(endpointDirectories(endpoint)),
     {
       message:
         "set either a single path or the inbound_path/outbound_path pair on a " +
         "connection endpoint, not both",
     },
   )
-  // filedrop must name a directory in one form or the other; sftp may leave all
-  // three unset (the SFTP login-home shared directory), as in connection.ts.
   .refine(
-    (endpoint) => {
-      if (endpoint.channel !== "filedrop") return true;
-      const hasPair =
-        endpoint.inboundPath !== undefined &&
-        endpoint.outboundPath !== undefined;
-      return endpoint.path !== undefined || hasPair;
-    },
+    (endpoint) =>
+      filedropNamesDirectory(endpoint.channel, endpointDirectories(endpoint)),
     {
       message:
         "a filedrop endpoint requires a directory: set path, or both " +
@@ -416,33 +383,13 @@ export interface InvitationToken {
   inviterRetainsFiles?: boolean;
 }
 
-// Mirrors linkageTermsSchema.ts's module-private PARAMS_WIDTH_BOUND; both
-// derive from MAX_PARAMS_ENTRIES.
-const PARAMS_WIDTH_BOUND: ReadonlyMap<string, number> = new Map([
-  ["params", MAX_PARAMS_ENTRIES],
-]);
+/** @internal */
+export { InvitationLinkageTermsSchema };
 
-/**
- * {@link LinkageTermsSchema} behind the bounded {@link camelizeKeys} pre-pass,
- * so a token's `transform.params` fold to camelCase before the length screens
- * and dialect gate read them, as on every other parse path. The pre-pass can
- * throw (`NestingDepthExceededError`, `NodeCountExceededError`), so this stays
- * off the public export: a throwing preprocess breaks `.safeParse()`.
- */
-export const InvitationLinkageTermsSchema: z.ZodType<LinkageTerms> =
-  z.preprocess(
-    (raw) => camelizeKeys(raw, PARAMS_WIDTH_BOUND),
-    LinkageTermsSchema,
-  );
-
-/**
- * Each member of a token's or terms update's `linkageTerms` that
- * {@link InvitationLinkageTermsSchema} dropped, refused as one a newer Alcove
- * wrote. Runs on a successful parse of `rawTerms` only.
- *
- * @internal not a stable public API.
- */
-export function droppedLinkageTermsIssues(
+// Each member of a token's or terms update's `linkageTerms` that
+// InvitationLinkageTermsSchema dropped, refused as one a newer Alcove wrote.
+// Runs on a successful parse of `rawTerms` only.
+function droppedLinkageTermsIssues(
   fileName: string,
   remedy: string,
   rawTerms: unknown,
@@ -458,20 +405,49 @@ export function droppedLinkageTermsIssues(
   );
 }
 
-/**
- * A token's or terms update's body as the file states it, before any schema
- * default, with its `linkageTerms` folded to camelCase as
- * {@link InvitationLinkageTermsSchema} folds them: what the version-needed
- * check reads. Runs on a successful parse of `body` only.
- *
- * @internal not a stable public API.
- */
-export function statedBody(body: unknown): Record<string, unknown> {
+// A token's or terms update's body as the file states it, before any schema
+// default, with its `linkageTerms` folded to camelCase as
+// InvitationLinkageTermsSchema folds them: what the version-needed check
+// reads. Runs on a successful parse of `body` only.
+function statedBody(body: unknown): Record<string, unknown> {
   const fields = body as Record<string, unknown>;
   return {
     ...fields,
     linkageTerms: camelizeKeys(fields["linkageTerms"], PARAMS_WIDTH_BOUND),
   };
+}
+
+/**
+ * What a token or terms update whose body parsed is still refused for, in
+ * order: each member of its `linkageTerms` the parse dropped, as one a newer
+ * Alcove wrote, then a field needing a version above the one `version`
+ * declares. Empty where neither applies. `raw` is the body as decoded, before
+ * the parse that produced `parsed`.
+ *
+ * @internal not a stable public API.
+ */
+export function parsedBodyRefusals(
+  fileName: string,
+  remedy: string,
+  raw: unknown,
+  parsed: { version: string; linkageTerms: LinkageTerms },
+  policy: FormatVersionPolicy,
+): Array<z.core.$ZodIssue> {
+  return [
+    ...droppedLinkageTermsIssues(
+      fileName,
+      remedy,
+      (raw as Record<string, unknown>)["linkageTerms"],
+      parsed.linkageTerms,
+    ),
+    ...formatVersionBelowNeededIssues(
+      fileName,
+      "version",
+      statedBody(raw),
+      Number(parsed.version),
+      policy,
+    ),
+  ];
 }
 
 /**
@@ -522,7 +498,7 @@ export function isNewerInvitationVersionError(
 // refused by name rather than dropped. `about` is the one block skipped.
 const InvitationTokenBodySchema = z.strictObject(
   {
-    version: z.string().regex(/^[1-9][0-9]{0,8}$/),
+    version: z.string().regex(FORMAT_VERSION_TEXT),
     about: FormatInfoBlockSchema.optional(),
     // Camelizes transform.params before validating (InvitationLinkageTermsSchema).
     linkageTerms: InvitationLinkageTermsSchema,
@@ -656,13 +632,6 @@ export function invitationExpires(
 ): string {
   assertInvitationLifetimeSeconds(lifetimeSeconds);
   return new Date(now + lifetimeSeconds * 1000).toISOString();
-}
-
-// --- Base64url helpers -------------------------------------------------------
-
-function toBase64Url(bytes: Uint8Array): string {
-  const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
 // --- Encode / Decode ---------------------------------------------------------
@@ -867,21 +836,13 @@ export async function decodeInvitation(
       },
     ]);
   const token = InvitationTokenSchema.parse(raw);
-  const refused = [
-    ...droppedLinkageTermsIssues(
-      INVITATION_FILE_NAME,
-      INVITATION_NEWER_REMEDY,
-      (raw as Record<string, unknown>)["linkageTerms"],
-      token.linkageTerms,
-    ),
-    ...formatVersionBelowNeededIssues(
-      INVITATION_FILE_NAME,
-      "version",
-      statedBody(raw),
-      Number(token.version),
-      policy,
-    ),
-  ];
+  const refused = parsedBodyRefusals(
+    INVITATION_FILE_NAME,
+    INVITATION_NEWER_REMEDY,
+    raw,
+    token,
+    policy,
+  );
   if (refused.length > 0) throw new z.ZodError(refused);
   return token;
 }

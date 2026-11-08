@@ -1,4 +1,4 @@
-import { ZodError, z } from "zod";
+import { z } from "zod";
 import { expect, test } from "vitest";
 
 import { MAX_TIMER_MS } from "../../src/utils/promise";
@@ -14,7 +14,6 @@ import {
   TurnUrlSchema,
   UNALLOCATED_SERVER_HOST_MESSAGE,
   generateSharedSecret,
-  parseConnectionConfig,
   relayLocatorSchema,
   safeParseConnectionConfig,
   safeParseConnectionConfigAwaitingAddress,
@@ -27,10 +26,20 @@ import {
   encodeInvitation,
 } from "../../src/config/invitation";
 
-import type { FileSyncOptions } from "../../src/config/connection";
+import type {
+  ConnectionConfig,
+  FileSyncOptions,
+} from "../../src/config/connection";
 import { provisionModeOf } from "../../src/config/serverProvision";
 import { peerIdLengthRefusal } from "../../src/connection/fileSyncRendezvous";
 import { encodeRawInvitation } from "../utils/support";
+
+// The safe parse's config, or its error thrown.
+function parsedConnectionConfig(raw: unknown): ConnectionConfig {
+  const result = safeParseConnectionConfig(raw);
+  if (!result.success) throw result.error;
+  return result.data;
+}
 
 // Minimal valid configs used as bases for individual tests.
 const webrtcBase = {
@@ -46,14 +55,14 @@ const sftpBase = {
 // --- Happy path --------------------------------------------------------------
 
 test("parses a minimal WebRTC connection", () => {
-  const result = parseConnectionConfig(webrtcBase);
+  const result = parsedConnectionConfig(webrtcBase);
   expect(result.channel).toBe("webrtc");
   if (result.channel !== "webrtc") return;
   expect(result.server.host).toBe("api.peerjs.com");
 });
 
 test("parses a minimal file-drop connection", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "filedrop",
     path: "/mnt/share/drop",
   });
@@ -76,7 +85,7 @@ test("file-drop connection with relative path is rejected", () => {
 });
 
 test("file-drop connection with Windows drive path is accepted", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "filedrop",
     path: "C:/Users/shared/drop",
   });
@@ -86,7 +95,7 @@ test("file-drop connection with Windows drive path is accepted", () => {
 });
 
 test("file-drop connection with Windows backslash drive path is accepted", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "filedrop",
     path: "C:\\Users\\shared\\drop",
   });
@@ -94,7 +103,7 @@ test("file-drop connection with Windows backslash drive path is accepted", () =>
 });
 
 test("file-drop connection with Windows UNC path is accepted", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "filedrop",
     path: "\\\\server\\share\\drop",
   });
@@ -113,7 +122,7 @@ const splitOptions = {
 };
 
 test("parses a split-directory file-drop connection", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "filedrop",
     inbound_path: "/mnt/in",
     outbound_path: "/mnt/out",
@@ -127,7 +136,7 @@ test("parses a split-directory file-drop connection", () => {
 });
 
 test("parses a split-directory SFTP connection", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "sftp",
     server: {
       host: "sftp.example.org",
@@ -264,14 +273,14 @@ test("split file-drop connection with a relative inbound_path is rejected", () =
 });
 
 test("parses a minimal SFTP connection", () => {
-  const result = parseConnectionConfig(sftpBase);
+  const result = parsedConnectionConfig(sftpBase);
   expect(result.channel).toBe("sftp");
   if (result.channel !== "sftp") return;
   expect(result.server.host).toBe("sftp.example.org");
 });
 
 test("parses a full WebRTC connection with stun, turn, and role", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "webrtc",
     server: { host: "peerjs.example.org", port: 443, key: "mykey" },
     role: "inviter",
@@ -294,7 +303,7 @@ test("parses a full WebRTC connection with stun, turn, and role", () => {
 });
 
 test("a turn entry with a url and no username or credential parses as written", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...webrtcBase,
     turn: [{ url: "turns:turn.example.org:443" }],
   });
@@ -335,7 +344,7 @@ test("parses a full SFTP connection with private key auth", () => {
   // SHA256: followed by 43 unpadded standard base64 chars; all-A is valid
   // (A is in both [A-Za-z0-9+/] for positions 1-42 and [AEIMQUYcgkosw048] for 43).
   const validPin = "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "sftp",
     server: {
       host: "sftp.example.org",
@@ -371,35 +380,32 @@ test("parses shared options including maxReconnectAttempts on an SFTP config", (
   expect(result.data.options?.maxReconnectAttempts).toBe(5);
 });
 
-test("an unset server_connect_timeout_ms defaults to 30000 at the schema boundary", () => {
-  // The documented 30000 ms per-attempt connect default is applied by the schema,
-  // so a config whose options omit the field still has it -- the contract the
-  // JSDoc and EXCHANGE_REFERENCE.md advertise. The default fires whenever the
-  // options object is present (here alongside another field).
-  const result = safeParseConnectionConfig({
-    ...sftpBase,
-    options: { pollIntervalMs: 100 },
-  });
-  expect(result.success).toBe(true);
-  if (!result.success) return;
-  expect(result.data.options?.serverConnectTimeoutMs).toBe(30000);
-});
-
-test("an unset server_connect_timeout_ms defaults to 30000 on a filedrop config", () => {
-  // Same default on the other file-sync channel, applied uniformly.
-  const result = safeParseConnectionConfig({
-    channel: "filedrop",
-    path: "/mnt/share/drop",
-    options: { pollIntervalMs: 100 },
-  });
-  expect(result.success).toBe(true);
-  if (!result.success) return;
-  expect(result.data.options?.serverConnectTimeoutMs).toBe(30000);
-});
+// The connect sites apply DEFAULT_SERVER_CONNECT_TIMEOUT_MS to an unset value;
+// the parse leaves it unset, so a config written back from it states only what
+// its author did.
+test.each([
+  ["sftp", { ...sftpBase, options: { pollIntervalMs: 100 } }],
+  [
+    "filedrop",
+    {
+      channel: "filedrop",
+      path: "/mnt/share/drop",
+      options: { pollIntervalMs: 100 },
+    },
+  ],
+  ["webrtc", { ...webrtcBase, options: { peerTimeoutMs: 1000 } }],
+])(
+  "an unset server_connect_timeout_ms stays unset on a parsed %s config",
+  (_channel, raw) => {
+    const result = safeParseConnectionConfig(raw);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.options).toBeDefined();
+    expect(result.data.options).not.toHaveProperty("serverConnectTimeoutMs");
+  },
+);
 
 test("an explicit server_connect_timeout_ms passes through unchanged", () => {
-  // Teeth for the default tests: an explicit value (distinct from 30000) is not
-  // overridden by the default.
   const result = safeParseConnectionConfig({
     ...sftpBase,
     options: { server_connect_timeout_ms: 5000 },
@@ -591,7 +597,7 @@ test("a positive peer_timeout_ms is still accepted", () => {
 // --- provider_options (opaque, verbatim) -------------------------------------
 
 test("provider_options keys pass through verbatim (snake_case preserved)", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...sftpBase,
     // An opaque map is forwarded verbatim to the transport library, which
     // defines its own key names; its keys must NOT be camelized.
@@ -609,7 +615,7 @@ test("provider_options keys pass through verbatim (snake_case preserved)", () =>
 });
 
 test("provider_options preserves a literal camelCase key unchanged", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...sftpBase,
     // ssh2's option keys are camelCase; a user writing them literally must have
     // them survive byte-for-byte rather than being normalized to snake_case.
@@ -624,7 +630,7 @@ test("provider_options preserves a literal camelCase key unchanged", () => {
 });
 
 test("provider_options is opaque all the way down (nested keys not camelized)", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...sftpBase,
     provider_options: { nested_outer: { nested_inner: 1 } },
   });
@@ -637,7 +643,7 @@ test("provider_options is opaque on the webrtc channel too", () => {
   // The opaque skip is channel-agnostic (a key-name match in camelizeKeys), and
   // WebRTCConnectionConfig also declares providerOptions. Guard the webrtc path
   // so a future schema change cannot silently start normalizing its keys.
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...webrtcBase,
     provider_options: { readyTimeout: 5000, nested_outer: { nested_inner: 1 } },
   });
@@ -659,11 +665,7 @@ test("unknown channel is rejected", () => {
   expect(result.success).toBe(false);
 });
 
-// --- parse vs safeParse ------------------------------------------------------
-
-test("parseConnectionConfig throws ZodError on invalid input", () => {
-  expect(() => parseConnectionConfig({ channel: "webrtc" })).toThrow(ZodError);
-});
+// --- safeParse ---------------------------------------------------------------
 
 test("safeParseConnectionConfig returns success: false on invalid input", () => {
   const result = safeParseConnectionConfig({ channel: "sftp" });
@@ -1366,7 +1368,7 @@ test("file-sync-only options do not survive a webrtc parse", () => {
   // flags (warnUnsupportedFileSyncFlags). This pins that assumption: if webrtc
   // ever took FileSyncOptions, these keys would survive and this test would
   // fail, prompting a review of the channel gates that read them.
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...webrtcBase,
     options: {
       lockless_rendezvous: true,
@@ -1800,10 +1802,10 @@ test.each([
   const refusals = [
     grammarMessages(schema, url).join("\n"),
     await refusalOf(() =>
-      parseConnectionConfig({ ...webrtcBase, [kind]: [entry] }),
+      parsedConnectionConfig({ ...webrtcBase, [kind]: [entry] }),
     ),
     await refusalOf(() =>
-      parseConnectionConfig({
+      parsedConnectionConfig({
         ...webrtcBase,
         invitation_relay: { [kind]: [url] },
       }),
@@ -1914,7 +1916,7 @@ test("a host-less TURN url is refused", () => {
 // --- camelizeKeys integration ------------------------------------------------
 
 test("parses snake_case keys from disk", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "webrtc",
     server: { host: "peerjs.example.org" },
     role: "acceptor",
@@ -1931,7 +1933,7 @@ test("parses snake_case keys from disk", () => {
 
 test("parses snake_case SFTP server keys from disk", () => {
   const validPin = "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     channel: "sftp",
     server: {
       host: "sftp.example.org",
@@ -2140,7 +2142,7 @@ test("withRetainModeImplications implies nothing without retain mode", () => {
 });
 
 test("parses snake_case peer_id from disk", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...sftpBase,
     options: { timestamp_in_filename: true, peer_id: "agency-a" },
   });
@@ -2172,7 +2174,7 @@ test("unexpected_files rejects a value outside the enum", () => {
 });
 
 test("parses snake_case unexpected_files from disk", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...sftpBase,
     options: { unexpected_files: "warn" },
   });
@@ -2192,7 +2194,7 @@ test("unexpected_files is accepted on filedrop", () => {
 // --- FileSyncOptions: connection_per_poll ------------------------------------
 
 test("connection_per_poll is accepted on sftp", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...sftpBase,
     options: { connectionPerPoll: true },
   });
@@ -2201,7 +2203,7 @@ test("connection_per_poll is accepted on sftp", () => {
 });
 
 test("connection_per_poll defaults to undefined when unset", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...sftpBase,
     options: { pollIntervalMs: 60_000 },
   });
@@ -2210,7 +2212,7 @@ test("connection_per_poll defaults to undefined when unset", () => {
 });
 
 test("parses snake_case connection_per_poll from disk", () => {
-  const result = parseConnectionConfig({
+  const result = parsedConnectionConfig({
     ...sftpBase,
     options: { connection_per_poll: true },
   });
@@ -2253,7 +2255,7 @@ test("a persisted options block resolves neither sweep flag", () => {
   expect(options.data).not.toHaveProperty("sweepExchangeFiles");
   expect(options.data).not.toHaveProperty("forceRetainSweep");
 
-  const config = parseConnectionConfig({
+  const config = parsedConnectionConfig({
     ...sftpBase,
     path: "/exchange",
     options: { sweep_exchange_files: true, force_retain_sweep: true },

@@ -2,12 +2,13 @@ import { describe, expect, test } from "vitest";
 
 import {
   normalizeAllowedRelay,
-  parseConnectionConfig,
+  safeParseConnectionConfig,
   turnUrlIsAllowed,
   turnUrlRelay,
   webSocketRelayUrlIsAllowed,
   webSocketRelayUrlRelay,
 } from "../../src/config/connection";
+import type { ConnectionConfig } from "../../src/config/connection";
 import {
   allowedRelaysLeaveOutInvitationRelay,
   runEnrollsAtInvitationRegistrar,
@@ -15,6 +16,13 @@ import {
 } from "../../src/relayCredential";
 
 const SERVER = { host: "signal.example" };
+
+// The safe parse's config, or its error thrown.
+function parsedConnectionConfig(raw: unknown): ConnectionConfig {
+  const result = safeParseConnectionConfig(raw);
+  if (!result.success) throw result.error;
+  return result.data;
+}
 
 describe("an allowed_relays entry", () => {
   test.each([
@@ -26,7 +34,7 @@ describe("an allowed_relays entry", () => {
     ["[2001:db8::1]:5349", "[2001:db8::1]:5349"],
   ])("%j is held as %j", (entry, held) => {
     expect(
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: SERVER,
         allowed_relays: [entry],
@@ -44,7 +52,7 @@ describe("an allowed_relays entry", () => {
     "",
   ])("%j is refused, naming the form", (entry) => {
     expect(() =>
-      parseConnectionConfig({
+      parsedConnectionConfig({
         channel: "webrtc",
         server: SERVER,
         allowed_relays: [entry],

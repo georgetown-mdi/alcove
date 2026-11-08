@@ -1452,10 +1452,28 @@ const LinkageTermsSchemaForItsAuthor: z.ZodType<LinkageTerms> =
  * key-count-bounded; the bound matches {@link MAX_PARAMS_ENTRIES}, so any
  * record left verbatim here is one the schema also rejects. Full reasoning:
  * docs/spec/PARSED_INPUT_BOUNDS.md, "Application-layer parsed-input bounds".
+ *
+ * @internal
  */
-const PARAMS_WIDTH_BOUND: ReadonlyMap<string, number> = new Map([
+export const PARAMS_WIDTH_BOUND: ReadonlyMap<string, number> = new Map([
   ["params", MAX_PARAMS_ENTRIES],
 ]);
+
+/**
+ * {@link LinkageTermsSchema} behind the bounded {@link camelizeKeys} pre-pass,
+ * so an invitation's or terms update's `transform.params` fold to camelCase
+ * before the length screens and dialect gate read them, as on every other
+ * parse path. The pre-pass can throw (`NestingDepthExceededError`,
+ * `NodeCountExceededError`), so this stays off the public export: a throwing
+ * preprocess breaks `.safeParse()`.
+ *
+ * @internal
+ */
+export const InvitationLinkageTermsSchema: z.ZodType<LinkageTerms> =
+  z.preprocess(
+    (raw) => camelizeKeys(raw, PARAMS_WIDTH_BOUND),
+    LinkageTermsSchema,
+  );
 
 /**
  * Parse and validate a raw value as an {@link LinkageTerms}.
@@ -1514,11 +1532,3 @@ export function safeParseLinkageTermsTheReaderWrote(raw: unknown) {
     (camelized, parsed) => droppedSettingIssues(raw, camelized, parsed),
   );
 }
-
-// The invitation decode path needs the same camelize-before-validate pre-pass
-// over its linkage-terms field, but builds it from the exported LinkageTermsSchema
-// and PARAMS_WIDTH_BOUND's width bound (MAX_PARAMS_ENTRIES) at its own module
-// rather than here -- a throwing z.preprocess kept off this file's wholesale
-// public export, so no external caller can reach a schema whose `.safeParse()`
-// would throw the camelize bounds. See the invitationLinkageTermsSchema note in
-// config/invitation.ts.

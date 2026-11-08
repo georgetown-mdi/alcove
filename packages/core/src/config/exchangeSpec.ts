@@ -1,11 +1,6 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
-import {
-  camelizeKey,
-  camelizeKeys,
-  KeyFoldCollisionError,
-  type WidthBounds,
-} from "../utils/camelizeKeys.js";
+import { camelizeKey, type WidthBounds } from "../utils/camelizeKeys.js";
 import {
   FIRST_FORMAT_VERSION_POLICY,
   FormatInfoBlockSchema,
@@ -16,11 +11,7 @@ import {
   type FormatVersionPolicy,
 } from "./formatVersion.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
-import {
-  droppedSettingIssues,
-  keyFoldCollisionIssue,
-  unrecognizedKeysAsWritten,
-} from "./unreadKeys.js";
+import { droppedSettingIssues } from "./unreadKeys.js";
 import {
   LinkageTermsSchema,
   MAX_PARAMS_ENTRIES,
@@ -198,9 +189,8 @@ const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
  * file does not hold ({@link droppedSettingIssues}; docs/spec/EXCHANGE_FILE.md,
  * "What a consumer does with a setting it cannot honor"). One key written in
  * both spellings is refused by the case conversion above
- * ({@link keyFoldCollisionIssue}). Every refusal names its keys as the raw
- * document spells them ({@link unrecognizedKeysAsWritten}), the schema's own
- * included.
+ * (`keyFoldCollisionIssue`). Every refusal names its keys as the raw document
+ * spells them (`unrecognizedKeysAsWritten`), the schema's own included.
  *
  * The file's `format_version` is checked against `policy`: one above the
  * newest this build reads is refused before anything else, and one below what
@@ -208,41 +198,24 @@ const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
  *
  * @param policy the format's version table; this build's by default.
  * @throws {ZodError} if validation fails, if the document holds a key the
- *   schema does not read, if it writes one key in two spellings, or if its
- *   format version is one this build does not read or its fields do not fit.
+ *   schema does not read, if it writes one key in two spellings, if it is
+ *   nested deeper or holds more nodes than the case conversion's bounds, or if
+ *   its format version is one this build does not read or its fields do not
+ *   fit: {@link safeParseExchangeSpec}'s error.
  */
 export function parseExchangeSpec(
   raw: unknown,
   policy: FormatVersionPolicy = EXCHANGE_FILE_VERSION_POLICY,
 ): ExchangeSpec {
-  const newer = newerExchangeFileIssue(raw, policy);
-  if (newer !== undefined) throw new z.ZodError([newer]);
-  let camelized: unknown;
-  try {
-    camelized = camelizeKeys(raw, EXCHANGE_FILE_WIDTH_BOUNDS);
-  } catch (err) {
-    if (err instanceof KeyFoldCollisionError)
-      throw new z.ZodError([keyFoldCollisionIssue(err)]);
-    throw err;
-  }
-  const result = ExchangeSpecSchema.safeParse(camelized);
-  if (!result.success)
-    throw new z.ZodError(
-      withNewerFileHint(unrecognizedKeysAsWritten(raw, result.error.issues)),
-    );
-  const refused = [
-    ...withNewerFileHint(droppedSettingIssues(raw, camelized, result.data)),
-    ...exchangeFileVersionIssues(camelized, result.data, policy),
-  ];
-  if (refused.length > 0) throw new z.ZodError(refused);
+  const result = safeParseExchangeSpec(raw, policy);
+  if (!result.success) throw result.error;
   return result.data;
 }
 
 /**
- * Non-throwing version of {@link parseExchangeSpec}, holding the same rules for
- * a setting neither the case conversion nor the schema keeps and for the
- * format version. Honors the "safe" contract for the {@link camelizeKeys}
- * bounds too -- see {@link safeParseCamelized}.
+ * Non-throwing version of {@link parseExchangeSpec}: the same refusals, as a
+ * failed result. Honors the "safe" contract for the `camelizeKeys` bounds
+ * too -- see {@link safeParseCamelized}.
  */
 export function safeParseExchangeSpec(
   raw: unknown,

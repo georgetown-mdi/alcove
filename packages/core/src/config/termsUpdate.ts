@@ -15,16 +15,14 @@ import {
 } from "../utils/crypto.js";
 import { SHARED_SECRET_REGEX } from "./connection.js";
 import {
-  droppedLinkageTermsIssues,
-  statedBody,
-  InvitationLinkageTermsSchema,
   MAX_ENCODED_INVITATION_LENGTH,
+  parsedBodyRefusals,
 } from "./invitation.js";
 import {
   declaredFormatVersion,
   FIRST_FORMAT_VERSION_POLICY,
+  FORMAT_VERSION_TEXT,
   FormatInfoBlockSchema,
-  formatVersionBelowNeededIssues,
   formatVersionNeeded,
   newerFormatMemberErrorMap,
   newerFormatVersionMessage,
@@ -32,6 +30,7 @@ import {
   type FormatInfoBlock,
   type FormatVersionPolicy,
 } from "./formatVersion.js";
+import { InvitationLinkageTermsSchema } from "./linkageTermsSchema.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
 import type { Metadata } from "./metadata.js";
 import { termsStatingDeclaredPayloadSend } from "../payloadExchange.js";
@@ -118,7 +117,7 @@ export const MAX_ENCODED_TERMS_UPDATE_LENGTH = MAX_ENCODED_INVITATION_LENGTH;
 const TermsUpdateBodySchema = z.strictObject(
   {
     kind: z.literal(TERMS_UPDATE_KIND),
-    version: z.string().regex(/^[1-9][0-9]{0,8}$/),
+    version: z.string().regex(FORMAT_VERSION_TEXT),
     about: FormatInfoBlockSchema.optional(),
     partnership: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
     linkageTerms: InvitationLinkageTermsSchema,
@@ -385,21 +384,13 @@ export async function decodeTermsUpdate(
     if (unknownMember !== undefined) throw refusedNewer(unknownMember.message);
     throw refusedFormat("its content does not match the terms update format");
   }
-  const newer = [
-    ...droppedLinkageTermsIssues(
-      TERMS_UPDATE_FILE_NAME,
-      TERMS_UPDATE_NEWER_REMEDY,
-      (json as Record<string, unknown>)["linkageTerms"],
-      parsed.linkageTerms,
-    ),
-    ...formatVersionBelowNeededIssues(
-      TERMS_UPDATE_FILE_NAME,
-      "version",
-      statedBody(json),
-      Number(parsed.version),
-      policy,
-    ),
-  ];
+  const newer = parsedBodyRefusals(
+    TERMS_UPDATE_FILE_NAME,
+    TERMS_UPDATE_NEWER_REMEDY,
+    json,
+    parsed,
+    policy,
+  );
   if (newer.length > 0)
     throw refusedNewer((newer[0] as z.core.$ZodIssue).message);
   if (parsed.partnership !== partnership)

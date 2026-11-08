@@ -114,13 +114,19 @@ export function withoutOldDefaults<T>(
 }
 
 /**
+ * A format version written as text: the decimal string of a positive integer
+ * of at most nine digits, with no sign, leading zero or space.
+ */
+export const FORMAT_VERSION_TEXT = /^[1-9][0-9]{0,8}$/;
+
+/**
  * A declared version as a number: a positive integer, or the decimal string of
- * one. `undefined` for anything else.
+ * one ({@link FORMAT_VERSION_TEXT}). `undefined` for anything else.
  */
 export function declaredFormatVersion(value: unknown): number | undefined {
   if (typeof value === "number")
     return Number.isSafeInteger(value) && value > 0 ? value : undefined;
-  if (typeof value === "string" && /^[1-9][0-9]{0,8}$/.test(value))
+  if (typeof value === "string" && FORMAT_VERSION_TEXT.test(value))
     return Number(value);
   return undefined;
 }

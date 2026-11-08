@@ -18,13 +18,11 @@ import {
 } from "./linkageTermsPolicy.js";
 import { getDefaultLinkageTerms } from "./defaults/builtInLinkageTerms.js";
 import { quoteTermsValue } from "./config/compatibilityMessage.js";
-import {
-  DEFAULT_DATE_INPUT_FORMAT,
-  getDefaultStandardization,
-} from "./defaults/builtInStandardization.js";
+import { getDefaultStandardization } from "./defaults/builtInStandardization.js";
 import { lastNameColumn, personColumns } from "./personColumns.js";
 import {
   buildStandardizedDataset,
+  DEFAULT_DATE_INPUT_FORMAT,
   declaredEffectiveKeyCount,
   declaredKeyWidth,
   localFanOutFactor,

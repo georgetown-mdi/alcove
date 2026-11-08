@@ -838,7 +838,6 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
             : ""),
       );
       const connectTimeoutMs =
-        // A config with no options block never got the schema default.
         config.options?.serverConnectTimeoutMs ??
         DEFAULT_SERVER_CONNECT_TIMEOUT_MS;
       const maxReconnectAttempts =
