@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// Comment history-narration guard: `npm run check:comment-narration`, run by
-// static_checks.yaml on every pull request. Enforces the source-comment half
-// of CONTRIBUTING.md's Documentation rule: write the target state, not a
-// narration of what changed.
+// Comment history-narration guard: `npm run check:comment-narration`. Enforces
+// the source-comment half of CONTRIBUTING.md's Documentation rule: write the
+// target state, not a narration of what changed.
 //
 // Fails when a comment line the working tree adds or modifies against the base
 // branch, untracked files included, matches one of NARRATION_TELLS. Tells are

@@ -14,15 +14,17 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
   ALLOWLIST,
-  SCANNED_FILES,
-  SCANNED_ROOTS,
   allowlistEntryFor,
   fileViolations,
-  isJavaScriptFamily,
   isScannedFile,
   scanRepo,
   urlLiterals,
 } from "./check-egress-claims.mjs";
+import {
+  SCANNED_FILES,
+  SCANNED_ROOTS,
+  isJavaScriptFamily,
+} from "./lib/shippedSources.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

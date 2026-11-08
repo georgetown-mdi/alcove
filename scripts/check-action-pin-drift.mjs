@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// GitHub Action pin drift check: `npm run check:action-pin-drift`, run by
-// static_checks.yaml on every pull request. Reads every `uses:` reference under
-// .github/workflows and .github/actions and fails on any of three rules:
+// GitHub Action pin drift check: `npm run check:action-pin-drift`. Reads
+// every `uses:` reference under .github/workflows and .github/actions and fails
+// on any of three rules:
 //
 //   A. An action named in both trees has a differing ref anywhere it appears.
 //   B. A pin under .github/actions names an action no workflow uses.

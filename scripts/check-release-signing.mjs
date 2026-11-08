@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Release signing coupling check: `npm run check:release-signing`, run by
-// static_checks.yaml on every pull request. The `cosign verify` and
+// Release signing coupling check: `npm run check:release-signing`. The
+// `cosign verify` and
 // `gh attestation verify` commands docs/RELEASES.md publishes must name the
 // signing workflow's own path and tag trigger. Fails unless:
 //

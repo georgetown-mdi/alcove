@@ -32,60 +32,33 @@ type CustomConfig = Pick<
 
 const WS_PATH = "peerjs";
 
-// Cap inbound WebSocket frames well below the `ws` 100 MiB default. This server
-// brokers only small control messages -- SDP OFFER/ANSWER, ICE CANDIDATE,
-// HEARTBEAT and the like, all KB-scale; the PSI payload itself flows peer-to-peer
-// over the WebRTC data channel and never crosses this socket -- so 256 KiB sits
-// far above any legitimate signaling frame yet hundreds of times below both the
-// default and the size a single object or array needs to drive JSON.parse into an
-// uncatchable, process-terminating V8 abort. `ws` rejects an over-cap frame in the
-// receiver (close 1009) before the message handler's JSON.parse can run, so a
-// single oversized frame from any unauthenticated client -- this server is
-// internet-facing in production, gated only by the well-known default key -- can
-// neither crash the broker (taking down rendezvous for every peer) nor pin its
-// memory. See docs/spec/SIGNALING_SERVER_BOUNDS.md.
+// Cap inbound WebSocket frames well below the `ws` 100 MiB default. `ws` refuses
+// an over-cap frame (close 1009) before the message handler parses it, so no
+// single frame from an unauthenticated client can crash the broker or pin its
+// memory. Values and rationale:
+// docs/spec/SIGNALING_SERVER_BOUNDS.md#signaling-server-inbound-frame-bound.
 export const MAX_SIGNALING_PAYLOAD_BYTES = 256 * 1024;
 
 // Bound the length of each upgrade-handshake parameter (`id`, `token`, `key`)
 // where it enters in `_onSocketConnection`, before the id is stored in the realm
-// `clients` map or stamped onto a relayed frame as `message.src`. Without this an
-// id is capped only incidentally by Node's ~16 KiB HTTP header-size limit on the
-// upgrade URL, not by any application bound -- and the id is the one
-// attacker-controlled string the server both retains in the `clients` map and
-// writes onto every frame it relays. 256 is generous: Alcove's rendezvous ids are
-// 32 hex chars (`deriveRendezvousPeerId`) and a PeerJS default id is a UUID (~36),
-// so the cap sits ~7x above any legitimate id and refuses no real peer, yet well
-// over an order of magnitude below the incidental header limit (~64x).
+// `clients` map or stamped onto a relayed frame as `message.src`.
 //
-// The `id` bound is the load-bearing one. The relay's per-queue byte cap
-// (`MAX_QUEUE_BYTES`, models/realm.ts) sizes a queued frame by the UTF-16 resident
-// bytes of its string fields, `src` included, and the server overwrites `src` with
-// the connecting client's id (below): an unbounded id therefore lets a single
-// near-maximum frame addressed to an absent destination exceed the per-queue byte
-// cap on account of `src` alone, breaking for a frame of any payload kind the
-// holdability margin that cap's 2x-the-wire-cap sizing rests on. Bounding the id
-// holds that `src` contribution to at most 2 * MAX_HANDSHAKE_PARAM_LENGTH (512)
-// resident bytes -- a negligible fraction of the 512 KiB queue cap -- so a real,
-// KB-scale frame from any accepted id stays holdable. `token` and `key` are bounded
-// at the same point for a uniform "no handshake parameter is unbounded" invariant:
-// `token` is also retained per-client in the `clients` map (the same standing
-// memory surface as the id), while `key` is only compared and never stored.
-// See docs/spec/SIGNALING_SERVER_BOUNDS.md.
+// The `id` bound is the critical one: it holds the `src` stamped on a queued
+// frame to at most 2 * MAX_HANDSHAKE_PARAM_LENGTH resident bytes, so a real
+// frame from any accepted id stays holdable under `MAX_QUEUE_BYTES`
+// (models/realm.ts). `token` and `key` are bounded at the same point, so no
+// handshake parameter is unbounded. Values and rationale:
+// docs/spec/SIGNALING_SERVER_BOUNDS.md, "Peer-id length cap".
 export const MAX_HANDSHAKE_PARAM_LENGTH = 256;
 
 // Bound every exit that leaves this server holding a socket it will not go on to
 // serve: a refusal (a missing or over-length handshake parameter, a wrong key, an
 // id claimed under another token, the concurrent limit) and an upgrade on a path
-// that is not ours. A refusal sends its error frame and closes, which starts the
-// WebSocket close handshake; `ws` releases the socket once the peer answers the
-// close frame, or once its own close timer expires -- 30 seconds of retained
-// socket per refusal on the pinned `ws`, and a refused peer is precisely the one
-// with nothing to negotiate and no reason to answer. One second is far above the
-// round trip an answering peer needs, having already been written its error
-// frame, and 30x below what `ws` would otherwise hold; it is equally the window a
-// co-resident `upgrade` listener gets to answer an upgrade this server left for
-// it, which sits far above the same-tick answer one gives, so a socket it adopted
-// is never taken back from it. See docs/spec/SIGNALING_SERVER_BOUNDS.md.
+// that is not ours. It is also the window a co-resident `upgrade` listener gets
+// to answer an upgrade this server left for it, which sits far above the
+// same-tick answer one gives, so a socket it adopted is never taken back from
+// it. Values and rationale: docs/spec/SIGNALING_SERVER_BOUNDS.md, "Bounded
+// release of a refused or unanswered socket".
 export const SOCKET_RELEASE_TIMEOUT_MS = 1_000;
 
 // Arm the release bound as a handle disposed of exactly once: expiring marks it
@@ -278,8 +251,7 @@ export class WebSocketServer extends EventEmitter implements IWebSocketServer {
   // Release an upgrade on a path that is not ours (shouldHandle() applies the
   // `path` option above). Node stops auto-destroying an unhandled upgrade the
   // moment any `upgrade` listener exists, so every socket this branch declines
-  // must be released by someone or it is leaked -- the production connection
-  // idle-timeout is at best a far coarser backstop. When this is the sole
+  // must be released by someone or it is leaked. When this is the sole
   // `upgrade` listener, nothing else can answer and the socket is destroyed at
   // once. Where a co-resident listener exists -- Vite HMR at `/` in dev -- the
   // socket is left for it, and whether it answered is then TESTED rather than
@@ -287,6 +259,8 @@ export class WebSocketServer extends EventEmitter implements IWebSocketServer {
   // nobody's was answered by nobody when the release bound expires, so it is
   // destroyed and the broken premise raised as an error rather than leaked on a
   // premise that no longer holds.
+  // See docs/spec/SIGNALING_SERVER_BOUNDS.md, "Bounded release of a refused or
+  // unanswered socket".
   private _releaseUnhandledUpgrade(
     server: HttpServer | HttpsServer,
     socket: Duplex,

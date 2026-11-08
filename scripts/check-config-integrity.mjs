@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// Verification-config integrity check: `npm run check:config-integrity`, run
-// by static_checks.yaml on every pull request. It drives `tsc --showConfig` and
-// `vitest list --filesOnly` rather than reading the config files, and fails
-// unless:
+// Verification-config integrity check: `npm run check:config-integrity`. It
+// drives `tsc --showConfig` and `vitest list --filesOnly` rather than reading
+// the config files, and fails unless:
 //
 //   - Every tsconfig in GUARDED_TSCONFIGS resolves with its listed compiler
 //     options at the listed values.
@@ -94,9 +93,9 @@ export const GUARDED_VITEST_CONFIGS = [
       "alcove (unit)",
       "alcove-web (unit)",
       "harness",
-      "scripts",
+      "claude-scripts",
       "hooks",
-      "repo-scripts",
+      "scripts",
     ],
   },
   { directory: "packages/core", projects: ["unit", "stress"] },

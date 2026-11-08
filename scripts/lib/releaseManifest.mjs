@@ -6,7 +6,8 @@
 // the record-format reset is dated by. One manifest path, one reader, and one
 // definition of each floor, so no two of them can come to disagree about which
 // file holds the release version, what counts as holding one, or when a rule
-// binds.
+// binds. The release-tag shape is read here too, for check-release-version.mjs
+// and release-line.mjs, so the two agree on what a release tag is.
 
 /** The manifest holding the canonical release version (docs/RELEASES.md). */
 export const RELEASE_MANIFEST = "apps/cli/package.json";
@@ -32,6 +33,19 @@ export const RESET_RELEASE = "0.9.0";
 export function manifestVersion(manifestSource) {
   const { version } = JSON.parse(manifestSource);
   return typeof version === "string" && version !== "" ? version : undefined;
+}
+
+// The release-tag shape .github/workflows/release.yaml triggers on, as a
+// capture of the version it names.
+const RELEASE_TAG = /^v(\d+\.\d+\.\d+)$/;
+
+/**
+ * The version a release tag names, or undefined when the tag is not in the
+ * shape the release workflow triggers on.
+ */
+export function taggedVersion(tag) {
+  const match = RELEASE_TAG.exec(tag ?? "");
+  return match === null ? undefined : match[1];
 }
 
 /**

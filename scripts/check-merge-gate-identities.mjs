@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Merge gate identity check: `npm run check:merge-gate-identities`, run by
-// static_checks.yaml on every pull request and every push to staging. Three
+// Merge gate identity check: `npm run check:merge-gate-identities`. Three
 // rules:
 //
 //   1. Every required status-check context on main and staging matches a job

@@ -126,11 +126,10 @@ push:
   transcripts beside the subagents', are in `aggregate.mjs`'s header.
   `/retro` (`.claude/commands/retro.md`) runs the kit.
 
-Tests sit beside their subject, in the vitest project named `scripts` -- the
-project covering the repository's own `scripts/` is `repo-scripts`:
+Tests sit beside their subject, in the vitest project named `claude-scripts`:
 
 ```sh
-npx vitest run --project scripts
+npx vitest run --project claude-scripts
 ```
 
 ## What belongs here, and what belongs next door

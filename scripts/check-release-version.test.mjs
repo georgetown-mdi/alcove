@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   agreementViolations,
   manifestVersion,
-  taggedVersion,
 } from "./check-release-version.mjs";
+import { taggedVersion } from "./lib/releaseManifest.mjs";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));

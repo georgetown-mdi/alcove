@@ -8,7 +8,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { slugify } from "../../scripts/lib/headingSlug.mjs";
+import { slugify } from "../../scripts/lib/markdownHeadings.mjs";
 import {
   GUIDE_INCLUDES,
   GUIDE_SECTIONS,

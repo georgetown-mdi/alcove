@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Init-template coverage check, run by static_checks.yaml.
+// Init-template coverage check.
 //
 // docs/CLI.md (Initialization) and the template's header claim that the file
 // `alcove init` writes documents each configuration option inline. Both drift

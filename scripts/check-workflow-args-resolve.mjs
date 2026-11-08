@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Workflow args-resolve check: `npm run check:workflow-args-resolve`, run by
-// static_checks.yaml on every pull request. Scans the committed Workflow
+// Workflow args-resolve check: `npm run check:workflow-args-resolve`. Scans
+// the committed Workflow
 // scripts in the two shapes check-workflow-agent-models.mjs scans, through the
 // block reader and lexer in scripts/lib/workflowScripts.mjs: a fenced js block
 // under .claude/commands/, .claude/agents/ or .claude/skills/, and a whole

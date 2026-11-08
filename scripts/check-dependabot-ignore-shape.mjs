@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Dependabot ignore-shape check: `npm run check:dependabot-ignore-shape`, run
-// by static_checks.yaml on every pull request. Reads the `github-actions`
+// Dependabot ignore-shape check: `npm run check:dependabot-ignore-shape`.
+// Reads the `github-actions`
 // block's `ignore` entries in .github/dependabot.yml and every action pin
 // under .github/workflows and .github/actions, and fails unless:
 //

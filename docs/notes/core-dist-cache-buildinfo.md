@@ -100,7 +100,7 @@ unaffected: it reads `tsconfig.json`, which keeps `composite`.
 
 `scripts/rollup-stale-buildinfo.test.mjs` copies both workspaces, leaves the
 build-info file an incremental compile writes and no cache, and runs each
-`npm run build`; it runs in the `repo-scripts` project, which
+`npm run build`; it runs in the `scripts` project, which
 `npm run check:all` drives, not in the unit suites, because two full builds
 take about a minute.
 

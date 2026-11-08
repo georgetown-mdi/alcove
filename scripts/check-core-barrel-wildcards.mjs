@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Core barrel wildcard check, run by static_checks.yaml on every PR.
+// Core barrel wildcard check.
 //
 // packages/core/src/main.ts is a curated list of named exports: what
 // @alcove/core publishes is decided one name at a time, and a symbol whose

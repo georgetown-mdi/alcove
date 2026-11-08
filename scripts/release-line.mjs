@@ -21,8 +21,10 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { taggedVersion } from "./check-release-version.mjs";
-import { compareReleaseVersions } from "./lib/releaseManifest.mjs";
+import {
+  compareReleaseVersions,
+  taggedVersion,
+} from "./lib/releaseManifest.mjs";
 
 /**
  * Whether `tag` is on the newest release line among `repositoryTags`. Throws

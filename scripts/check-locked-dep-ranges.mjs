@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Locked-version range check, run by static_checks.yaml on every PR.
+// Locked-version range check.
 //
 // A root `overrides` entry forces every dependent of a package onto the
 // overridden version, whatever range the dependent declared. Where that range

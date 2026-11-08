@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Spec citation check, run by static_checks.yaml through check:all.
+// Spec citation check.
 //
 // Source, tests and scripts cite a section of a docs/spec/ file by name, and
 // a heading renamed or moved leaves those citations naming a section that no
@@ -22,10 +22,10 @@
 // string literal closed at the line end joins the one the next line opens.
 //
 // RESOLVING. An anchor resolves when a heading of the file takes that slug
-// (slugify and headingAnchors in check-doc-links.mjs). Quoted and prefix text
-// is compared by slug against the file's citable names: each heading's whole
-// text and its part before the first " -- ", " - " or ": " (headingNames in
-// check-rule-citations.mjs), and each bold paragraph label -- a `**...**` span
+// (slugify and headingAnchors in lib/markdownHeadings.mjs). Quoted and prefix
+// text is compared by slug against the file's citable names: each heading's
+// whole text and its part before the first " -- ", " - " or ": " (headingNames
+// there), and each bold paragraph label -- a `**...**` span
 // opening a line or list item, or one ending in a period or colon. Quoted
 // text resolves when it equals a name; when it is two or more words that
 // open a name, the section's leading words; or when a label opens it, since
@@ -55,9 +55,12 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { headingAnchors, slugify } from "./check-doc-links.mjs";
-import { headingNames } from "./check-rule-citations.mjs";
 import { stripFences } from "./lib/markdownFences.mjs";
+import {
+  headingAnchors,
+  headingNames,
+  slugify,
+} from "./lib/markdownHeadings.mjs";
 
 export const SPEC_DIRECTORY = "docs/spec/";
 

@@ -12,7 +12,7 @@ import { defineConfig } from "vitest/config";
 // auth.
 export default defineConfig({
   test: {
-    name: "scripts",
+    name: "claude-scripts",
     root: fileURLToPath(new URL(".", import.meta.url)),
     include: ["**/*.test.mjs"],
     environment: "node",

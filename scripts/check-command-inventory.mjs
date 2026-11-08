@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CLI command inventory check, run by static_checks.yaml on every PR.
+// CLI command inventory check.
 //
 // docs/DESIGN.md and docs/CLI.md enumerate the CLI's subcommands; the registry
 // is apps/cli/src/cliParser.ts. Fails when a registered command name is missing

@@ -40,22 +40,13 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { RELEASE_MANIFEST, manifestVersion } from "./lib/releaseManifest.mjs";
+import {
+  RELEASE_MANIFEST,
+  manifestVersion,
+  taggedVersion,
+} from "./lib/releaseManifest.mjs";
 
 export { manifestVersion };
-
-// The release-tag shape .github/workflows/release.yaml triggers on, as a
-// capture of the version it names.
-const RELEASE_TAG = /^v(\d+\.\d+\.\d+)$/;
-
-/**
- * The version a release tag names, or undefined when the tag is not in the
- * shape the release workflow triggers on.
- */
-export function taggedVersion(tag) {
-  const match = RELEASE_TAG.exec(tag ?? "");
-  return match === null ? undefined : match[1];
-}
 
 /**
  * The reasons a pushed tag and a manifest version do not name one release;

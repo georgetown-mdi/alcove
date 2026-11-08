@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Expiry date check, run by static_checks.yaml through check:all.
+// Expiry date check.
 //
 // Every repository check and every tool hook has a date after which it stands
 // only if someone renews it, so the layer of checks and hooks is reviewed

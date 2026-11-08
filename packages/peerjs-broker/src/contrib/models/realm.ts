@@ -36,23 +36,18 @@ export interface IRealm {
 // id would otherwise allocate a queue and grow it without limit. These cap the
 // number of distinct queued destinations, the depth of any one queue, and the
 // total buffered bytes of any one queue, so an unconnected-destination spray
-// cannot exhaust memory. All three are far above any legitimate rendezvous (a
-// handful of queued frames for a momentarily-absent peer). A message past any
-// bound is not held, and the relay answers its sender EXPIRE at once, as the
-// expiry sweep would have for a held one.
+// cannot exhaust memory. A message past any bound is not held, and the relay
+// answers its sender EXPIRE at once, as the expiry sweep would have for a held
+// one. Values and rationale: docs/spec/SIGNALING_SERVER_BOUNDS.md, "Relay queue
+// bounds".
 export const MAX_OUTSTANDING_QUEUES = 1000;
 export const MAX_MESSAGES_PER_QUEUE = 100;
 // The message-count cap alone leaves a queue's resident ceiling at
 // MAX_MESSAGES_PER_QUEUE times the worst-case heap residency of one inbound
-// frame. A frame is capped at 256 KiB on the wire (the vendored
-// MAX_SIGNALING_PAYLOAD_BYTES), but V8 stores its payload as two bytes per
-// character once it holds any non-Latin1 character, so one frame can occupy
-// ~512 KiB of heap -- ~50 MiB per queue, ~50 GiB across the full
-// MAX_OUTSTANDING_QUEUES. This byte cap holds it down directly, in the same
-// worst-case resident bytes each frame is accounted at (UTF-16, 2 bytes/char),
-// and the queue holds every frame serialized so those accounted bytes are the
-// bytes it retains: a flood cannot push one queue past 512 KiB, so the global
-// resident ceiling is ~512 MiB. The cap is 2x the wire frame cap, which holds a
+// frame. This cap bounds those bytes directly: each frame is accounted at its
+// worst-case resident size (UTF-16, 2 bytes/char), and the queue holds every
+// frame serialized, so the accounted bytes are the bytes it retains.
+// The cap is 2x the wire frame cap, which holds a
 // frame whose payload arrived as a string -- held exactly as it arrived --
 // exactly up to a 33-character src; src is stamped after the wire cap is
 // checked, so a longer legitimate id (e.g. a 36-character UUID) can push the
@@ -61,7 +56,7 @@ export const MAX_MESSAGES_PER_QUEUE = 100;
 // extreme such a frame can account past the cap and be dropped. Real signaling
 // frames are KB-scale, so a queue still holds dozens of them and the drop costs
 // only that sender's own reconnect hold. See
-// docs/spec/SIGNALING_SERVER_BOUNDS.md.
+// docs/spec/SIGNALING_SERVER_BOUNDS.md, "Relay queue bounds".
 export const MAX_QUEUE_BYTES = 512 * 1024;
 // The number of distinct destinations one sender may hold frames for at once,
 // so no one sender takes more than this share of MAX_OUTSTANDING_QUEUES. A

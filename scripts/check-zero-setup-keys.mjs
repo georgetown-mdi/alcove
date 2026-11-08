@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Zero-setup key-field check: `npm run check:zero-setup-keys
-// [-- --root <tree>]`, run by static_checks.yaml on every pull request. Holds
+// [-- --root <tree>]`. Holds
 // docs/notes/default-linkage-rule-set.md's "What zero-setup rests on": every
 // built-in key is built from the guaranteed-minimum fields both parties bring.
 // Reads the built-in rule set packages/core/src/defaults/builtInLinkageTerms.ts

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Bundle notice check: `npm run check:bundle-notices`, run by static_checks.yaml
-// through `npm run check:all`. Every shipped build that inlines third-party
-// packages must have the license text of each package it inlines: each chunk
+// Bundle notice check: `npm run check:bundle-notices`. Every shipped build
+// that inlines third-party packages must have the license text of each
+// package it inlines: each chunk
 // of core's dist, the SFTP relay's image file and the console server at its
 // head, and the hosted app and the console client, workers included, in the
 // third-party-licenses.txt beside the page. Each bundle is built in memory

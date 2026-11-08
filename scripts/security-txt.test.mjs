@@ -3,15 +3,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import {
-  BUILD_OUTPUT,
-  SITE_DEPLOY_WORKFLOW,
-} from "./check-deploy-trigger-graph.mjs";
+import { SITE_DEPLOY_WORKFLOW } from "./check-deploy-trigger-graph.mjs";
 import {
   SECURITY_TXT_PATH,
   securityTxtUrl,
   servedProblems,
 } from "./check-served-security-txt.mjs";
+import { BUILD_OUTPUT } from "./lib/hostedBuild.mjs";
 import {
   GITHUB_REPORTING,
   contacts,

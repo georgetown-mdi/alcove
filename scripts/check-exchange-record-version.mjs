@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The two obligations on EXCHANGE_RECORD_VERSION: `npm run
-// check:exchange-record-version`, run by static_checks.yaml on every PR. Reads
+// check:exchange-record-version`. Reads
 // the literal out of packages/core/src/records/exchangeRecord.ts (not the built
 // package: this runs before any build), the recovery sources
 // RECOVERY_ENTRY_POINTS names, and the release marker apps/cli/package.json's

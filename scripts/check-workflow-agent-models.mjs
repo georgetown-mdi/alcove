@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Workflow agent model- and effort-pin check:
-// `npm run check:workflow-agent-models`, run by static_checks.yaml on every
-// pull request. Scans the committed Workflow scripts in both shapes: a fenced
-// js block under .claude/commands/, .claude/agents/ or .claude/skills/, and a
+// `npm run check:workflow-agent-models`. Scans the committed Workflow scripts
+// in both shapes: a fenced js block under .claude/commands/, .claude/agents/
+// or .claude/skills/, and a
 // whole .claude/scripts/*-workflow.mjs file. Fails unless every `agent(` call
 // passes a literal `model:` from ALLOWED_TIERS and a literal `effort:` from
 // ALLOWED_EFFORTS at the top level of its own inline options object; a spread

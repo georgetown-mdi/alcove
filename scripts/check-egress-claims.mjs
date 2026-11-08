@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-// URL-literal egress guard: `npm run check:egress-claims`, run by
-// static_checks.yaml on every PR. Holds PRIVACY.md's no-egress claims against
-// first-party drift.
+// URL-literal egress guard: `npm run check:egress-claims`. Holds PRIVACY.md's
+// no-egress claims against first-party drift.
 //
 // Fails (exit 1) when a URL literal under the http, https, stun, stuns, turn,
 // or turns scheme names a host that is not on ALLOWLIST, each entry stating why
@@ -20,31 +19,13 @@ import { basename, dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
+import {
+  SCANNED_FILES,
+  SCANNED_ROOTS,
+  isJavaScriptFamily,
+  scriptKindOf,
+} from "./lib/shippedSources.mjs";
 import { lineOf } from "./lib/text.mjs";
-
-/** Shipped-source trees the egress claims are made about. */
-export const SCANNED_ROOTS = [
-  "apps/web/src",
-  "apps/cli/src",
-  "packages/core/src",
-  "packages/cli-contract/src",
-  "packages/peerjs-broker/src",
-  "packages/websocket-relay/src",
-  "packages/sftp-relay/src",
-  "apps/web/public",
-  "apps/web/server",
-];
-
-/** Shipped files that build or run the container, outside any scanned tree. */
-export const SCANNED_FILES = [
-  "Dockerfile",
-  "docker-entrypoint.sh",
-  "Dockerfile.fips",
-  "docker-entrypoint-fips.sh",
-  "packages/sftp-relay/Dockerfile",
-  "support/fips-probe/engagement.mjs",
-  "support/fips-probe/image-engagement.mjs",
-];
 
 /**
  * Absolute URL literals that do not contradict PRIVACY.md, each with the reason
@@ -246,28 +227,6 @@ export function isScannedFile(path) {
   return !BINARY_EXTENSIONS.has(extname(path).toLowerCase());
 }
 
-// How the TypeScript parser is to read each JavaScript-family extension. The
-// kind decides the language variant, and with it whether `<p>` opens a JSX
-// element or a type assertion, so it is chosen per extension rather than
-// guessed: .mts and .cts are TypeScript without JSX, .js is JavaScript with it.
-const SCRIPT_KIND_BY_EXTENSION = new Map([
-  [".cjs", ts.ScriptKind.JS],
-  [".cts", ts.ScriptKind.TS],
-  [".js", ts.ScriptKind.JS],
-  [".jsx", ts.ScriptKind.JSX],
-  [".mjs", ts.ScriptKind.JS],
-  [".mts", ts.ScriptKind.TS],
-  [".ts", ts.ScriptKind.TS],
-  [".tsx", ts.ScriptKind.TSX],
-]);
-
-/** Whether `path` is read by the TypeScript parser rather than scanned raw. */
-export function isJavaScriptFamily(path) {
-  return SCRIPT_KIND_BY_EXTENSION.has(extname(path).toLowerCase());
-}
-
-/** The 1-based line the character at `position` of `source` sits on. */
-
 /**
  * One candidate: the text a matcher reads, assembled from the segments that
  * wrote it. A segment is either literal text or, in a template, the `${...}`
@@ -351,7 +310,7 @@ function parsedLiterals(source, path) {
     source,
     ts.ScriptTarget.Latest,
     /* setParentNodes */ false,
-    SCRIPT_KIND_BY_EXTENSION.get(extname(path).toLowerCase()),
+    scriptKindOf(path),
   );
   // `parseDiagnostics` is off the public SourceFile type. A TypeScript upgrade
   // that renames it therefore is treated as "cannot parse", which scans the
@@ -578,7 +537,7 @@ export function scanRepo(root) {
   }
   if (unresolved.length > 0) {
     throw new Error(
-      `Egress claim check: ${unresolved.join(", ")} matches no file. A scanned tree or file was renamed or removed; point SCANNED_ROOTS or SCANNED_FILES in scripts/check-egress-claims.mjs at the path that ships.`,
+      `Egress claim check: ${unresolved.join(", ")} matches no file. A scanned tree or file was renamed or removed; point SCANNED_ROOTS or SCANNED_FILES in scripts/lib/shippedSources.mjs at the path that ships.`,
     );
   }
   const files = [...matched].sort().filter(isScannedFile);

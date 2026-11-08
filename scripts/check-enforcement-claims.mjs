@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Agent-enforcement claim check, run by static_checks.yaml on every PR.
+// Agent-enforcement claim check.
 //
 // The two rule ledgers -- CLAUDE.md, which every spawn receives, and
 // .claude/orchestration/ruleset.md, which an orchestrating session reads -- tell
