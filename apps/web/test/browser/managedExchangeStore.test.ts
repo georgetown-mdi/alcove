@@ -415,6 +415,70 @@ describe("managed exchange store CRUD", () => {
     expect(MANAGED_EXCHANGE_DB_NAME).toBe("alcove-managed-exchanges");
   });
 
+  test("a create over a key already stored rejects with the constraint error", async () => {
+    const stored = await createRunnableExchange(newExchange());
+    const randomUUID = vi
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValue(stored.id as ReturnType<typeof crypto.randomUUID>);
+    try {
+      const rejection = await createManagedExchange(newExchange()).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(rejection).toBeInstanceOf(DOMException);
+      expect((rejection as DOMException).name).toBe("ConstraintError");
+    } finally {
+      randomUUID.mockRestore();
+    }
+    expect(await getManagedExchange(stored.id)).toEqual(stored);
+  });
+
+  test("every readwrite transaction is strict and every connection closes", async () => {
+    const realTransaction = IDBDatabase.prototype.transaction;
+    const realClose = IDBDatabase.prototype.close;
+    const opened: Array<{
+      mode: IDBTransactionMode | undefined;
+      options: IDBTransactionOptions | undefined;
+    }> = [];
+    let closes = 0;
+    IDBDatabase.prototype.transaction = function (
+      this: IDBDatabase,
+      storeNames: string | Array<string>,
+      mode?: IDBTransactionMode,
+      options?: IDBTransactionOptions,
+    ) {
+      opened.push({ mode, options });
+      return realTransaction.call(this, storeNames, mode, options);
+    };
+    IDBDatabase.prototype.close = function (this: IDBDatabase) {
+      closes += 1;
+      realClose.call(this);
+    };
+    try {
+      const created = await createRunnableExchange(newExchange());
+      await getManagedExchange(created.id);
+      await updateManagedExchangeLocalFields(created.id, { label: "edited" });
+      await persistManagedExchangeRotation(created.id, created.sharedSecret, {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      });
+      await markManagedExchangeBackedUp(created.id, "2026-03-07T14:00:00.000Z");
+      await getManagedLocalState(created.id);
+      await deleteManagedExchange(created.id);
+      await clearManagedExchanges();
+    } finally {
+      IDBDatabase.prototype.transaction = realTransaction;
+      IDBDatabase.prototype.close = realClose;
+    }
+
+    expect(opened).toHaveLength(8);
+    for (const { mode, options } of opened)
+      expect(options).toEqual(
+        mode === "readwrite" ? { durability: "strict" } : undefined,
+      );
+    expect(closes).toBe(opened.length);
+  });
+
   test("get of a missing id resolves undefined", async () => {
     expect(await getManagedExchange("no-such-id")).toBeUndefined();
   });

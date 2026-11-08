@@ -395,8 +395,11 @@ async function occupyDueWindow(
 
   // The operator's answer that nothing added up, read off the record the store
   // holds: while it stands, this window connects to nobody and rotates nothing,
-  // and the plan advances past it on the window's own skipped outcome.
-  if (standingCompromiseResponse(claimed) !== undefined) {
+  // and the plan advances past it on the window's own skipped outcome. The
+  // other two blockers leave the window unaccounted: it counts as missed at
+  // the wake that finds it elapsed.
+  const readiness = windowBlocker(claimed);
+  if (readiness.blocker === "compromise-response") {
     entry.disposition = "skipped";
     await seams.persistAdvance(record.id, {
       schedule: advanceManagedScheduleAfterWindow(planned, due, "skipped"),
@@ -407,20 +410,8 @@ async function occupyDueWindow(
     });
     return { ...entry };
   }
-
-  // A record holding no shared secret runs from the command line and nowhere
-  // else. The record schema keeps a schedule and a handle off one, so this
-  // reports a store hand-edited past that rule rather than a state the app
-  // writes.
-  if (!runnableManagedExchange(claimed))
-    return { ...entry, skipped: "configuration-only" };
-
-  const directory = claimed.workingDirectoryHandle;
-  // Without a working folder there is no unattended read of the input at all
-  // (the re-selection path needs an operator), so the window is left
-  // unaccounted: it counts as missed at the wake that finds it elapsed.
-  if (directory === undefined)
-    return { ...entry, skipped: "no-working-folder" };
+  if (readiness.blocker !== undefined)
+    return { ...entry, skipped: readiness.blocker };
 
   // Asked before the occupancy, whose first read of the clock and the record
   // then follows a takeover wait rather than preceding it.
@@ -596,19 +587,21 @@ async function occupyWindow(
     if (windowMetByRecordedSuccess(stored, window, startedAtMs))
       return { attempts, disposition: "succeeded" };
     evidenceSharedSecret = stored.sharedSecret;
-    if (standingCompromiseResponse(stored) !== undefined)
+    const readiness = windowBlocker(stored);
+    if (readiness.blocker === "compromise-response")
       return { attempts, disposition: "skipped", evidenceSharedSecret };
-    if (!runnableManagedExchange(stored))
-      return { attempts, ended: "configuration-only" };
-    const directory = stored.workingDirectoryHandle;
-    if (directory === undefined)
-      return { attempts, ended: "no-working-folder" };
+    if (readiness.blocker !== undefined)
+      return { attempts, ended: readiness.blocker };
     attempts += 1;
     let dataExchangeStarted = false;
     try {
       await seams.runAttempt({
-        record: stored,
-        source: { kind: "folder", directory, attendance: "unattended" },
+        record: readiness.record,
+        source: {
+          kind: "folder",
+          directory: readiness.directory,
+          attendance: "unattended",
+        },
         peerWaitTimeoutMs: Math.min(ATTEMPT_PEER_WAIT_MS, remainingMs),
         onDataExchangeStart: () => {
           dataExchangeStarted = true;
@@ -878,6 +871,37 @@ function windowMetByRecordedSuccess(
   if (lastRun?.outcome !== "succeeded") return false;
   const atMs = parseStoredInstant(lastRun.at);
   return atMs >= window.opensAtMs && atMs < window.closesAtMs && atMs <= nowMs;
+}
+
+/** Whether `record` can run a window unattended: the first blocker, or the
+ * runnable record and its working folder. */
+type WindowReadiness =
+  | {
+      blocker:
+        "compromise-response" | "configuration-only" | "no-working-folder";
+    }
+  | {
+      blocker?: undefined;
+      record: RunnableManagedExchangeRecord;
+      directory: FileSystemDirectoryHandle;
+    };
+
+/**
+ * What keeps `record` from running a window unattended, in this order: the
+ * operator's standing compromise response; no shared secret, since such a
+ * record runs from the command line and nowhere else (the record schema
+ * keeps a schedule and a handle off one, so this reports a store hand-edited
+ * past that rule); and no working folder, without which the input cannot be
+ * read with nobody present (re-selecting it needs an operator).
+ */
+function windowBlocker(record: ManagedExchangeRecord): WindowReadiness {
+  if (standingCompromiseResponse(record) !== undefined)
+    return { blocker: "compromise-response" };
+  if (!runnableManagedExchange(record))
+    return { blocker: "configuration-only" };
+  const directory = record.workingDirectoryHandle;
+  if (directory === undefined) return { blocker: "no-working-folder" };
+  return { record, directory };
 }
 
 /** Whether a catch-up walk moved the stored plan at all. The planned instant is

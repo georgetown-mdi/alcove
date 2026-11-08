@@ -22,7 +22,7 @@
 
 import {
   MANAGED_EXCHANGE_RESULTS_STORE_NAME,
-  openManagedExchangeDatabase,
+  runTransaction,
 } from "./managed/managedExchangeStore";
 import {
   appendParkedResults,
@@ -75,39 +75,22 @@ export type ParkedResultsRead =
  *
  * @throws if the database does not open, if `decide` throws -- the transaction
  *   aborts and nothing is written -- or if the transaction does not complete. */
-async function withStoredResults<T>(
+function withStoredResults<T>(
   id: string,
   decide: (raw: unknown, store: IDBObjectStore) => T,
 ): Promise<T> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_RESULTS_STORE_NAME,
-        "readwrite",
-        { durability: "strict" },
-      );
-      const store = transaction.objectStore(
-        MANAGED_EXCHANGE_RESULTS_STORE_NAME,
-      );
-      const read = store.get(id);
-      let result: T;
-      let failure: unknown;
-      read.onsuccess = () => {
-        try {
-          result = decide(read.result, store);
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      transaction.oncomplete = () => resolve(result);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+  return runTransaction(
+    MANAGED_EXCHANGE_RESULTS_STORE_NAME,
+    "readwrite",
+    ({ store, readEach }) => {
+      const results = store(MANAGED_EXCHANGE_RESULTS_STORE_NAME);
+      let outcome: T;
+      readEach([results.get(id)], ([raw]) => {
+        outcome = decide(raw, results);
+      });
+      return () => outcome;
+    },
+  );
 }
 
 /** What a stored value holds once the retention is applied: `undefined` where
@@ -283,20 +266,12 @@ export async function recordResultsTooLarge(
  *   caller reports the failure rather than showing a clear that did not happen.
  */
 export async function clearParkedResults(id: string): Promise<void> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_RESULTS_STORE_NAME,
-        "readwrite",
-        { durability: "strict" },
-      );
-      transaction.objectStore(MANAGED_EXCHANGE_RESULTS_STORE_NAME).delete(id);
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+  await runTransaction(
+    MANAGED_EXCHANGE_RESULTS_STORE_NAME,
+    "readwrite",
+    ({ store }) => {
+      store(MANAGED_EXCHANGE_RESULTS_STORE_NAME).delete(id);
+      return () => undefined;
+    },
+  );
 }

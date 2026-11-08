@@ -1809,6 +1809,36 @@ describe("records the tick leaves alone", () => {
     // it exactly as a window this runtime slept through.
     expect(runner.advances).toHaveLength(0);
   });
+
+  test("a record holding no shared secret", async () => {
+    // The schema refuses this shape, so it stands for a hand-edited store.
+    const { sharedSecret: _dropped, ...rest } = recordWith();
+    const { entry, runner } = await tickOne(rest);
+    expect(entry.skipped).toBe("configuration-only");
+    expect(entry.disposition).toBeUndefined();
+    expect(attempted).toBe(0);
+    expect(runner.advances).toHaveLength(0);
+  });
+
+  test("a record with no working folder under the compromise response is skipped on the answer", async () => {
+    const { entry, runner } = await tickOne(
+      applyManagedExchangeCompromiseResponse(
+        parseManagedExchangeRecord({
+          ...recordWith(),
+          workingDirectoryHandle: undefined,
+        }),
+        "2026-01-05T11:00:00.000Z",
+      ),
+    );
+    expect(entry).toMatchObject({ attempts: 0, disposition: "skipped" });
+    expect(entry.skipped).toBeUndefined();
+    expect(attempted).toBe(0);
+    expect(runner.advances).toHaveLength(1);
+    expect(runner.advances[0].advance.lastRun).toEqual({
+      at: "2026-01-06T14:30:00.000Z",
+      outcome: "skipped",
+    });
+  });
 });
 
 describe("a stored entry the read could not parse", () => {
@@ -2104,6 +2134,76 @@ describe("a record written mid-window", () => {
 
     expect(entry).toMatchObject({ attempts: 1, skipped: "no-working-folder" });
     expect(runner.advances).toHaveLength(0);
+  });
+
+  test("stops once the shared secret is gone", async () => {
+    const record = recordWith();
+    const runner = harness({
+      records: [record],
+      startAt: "2026-01-06T14:00:00.000Z",
+      script: noShowScript(),
+      writeDuringAttempt: (held) => {
+        const { sharedSecret: _dropped, ...rest } = held;
+        return rest;
+      },
+    });
+
+    const [entry] = await tickManagedSchedules(runner.seams);
+
+    expect(entry).toMatchObject({ attempts: 1, skipped: "configuration-only" });
+    expect(runner.advances).toHaveLength(0);
+  });
+
+  test("takes the answer over a dropped working folder", async () => {
+    const record = recordWith();
+    const runner = harness({
+      records: [record],
+      startAt: "2026-01-06T14:00:00.000Z",
+      script: [{ kind: "fail", error: new Error("the channel dropped") }],
+      writeDuringAttempt: (held) => {
+        const { workingDirectoryHandle: _dropped, ...rest } = held;
+        return applyManagedExchangeCompromiseResponse(
+          parseManagedExchangeRecord(rest),
+          "2026-01-06T14:00:30.000Z",
+        );
+      },
+    });
+
+    const [entry] = await tickManagedSchedules(runner.seams);
+
+    expect(entry).toMatchObject({ attempts: 1, disposition: "skipped" });
+    expect(entry.skipped).toBeUndefined();
+    expect(runner.advances).toHaveLength(1);
+  });
+
+  test("takes a success recorded inside the window over an answer written after it", async () => {
+    const record = recordWith();
+    let succeededAt: string | undefined;
+    const runner = harness({
+      records: [record],
+      startAt: "2026-01-06T14:00:00.000Z",
+      script: [{ kind: "fail", error: new Error("the channel dropped") }],
+      writeDuringAttempt: (held) => {
+        succeededAt = new Date(runner.nowMs() + 1000).toISOString();
+        return applyManagedExchangeCompromiseResponse(
+          applyManagedExchangeLastRun(
+            held,
+            { at: succeededAt, outcome: "succeeded" },
+            runner.nowMs(),
+          ),
+          new Date(runner.nowMs() + 2000).toISOString(),
+        );
+      },
+    });
+
+    const [entry] = await tickManagedSchedules(runner.seams);
+
+    expect(entry).toMatchObject({ attempts: 1, disposition: "succeeded" });
+    expect(runner.advances[0].advance.lastRun).toBeUndefined();
+    expect(runner.stored.get(record.id)?.lastRun).toEqual({
+      at: succeededAt,
+      outcome: "succeeded",
+    });
   });
 
   test("takes an attended Run's success inside the window as the window's", async () => {

@@ -803,6 +803,16 @@ describe("applyManagedExchangeLocalEdits", () => {
     expect(dropped).not.toHaveProperty("tokenMaxAgeDays");
   });
 
+  test("sets and drops the document's field delimiter", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    const set = applyManagedExchangeLocalEdits(record, { csvDelimiter: "|" });
+    expect(set.exchangeFile.csvDelimiter).toBe("|");
+
+    const dropped = applyManagedExchangeLocalEdits(set, { csvDelimiter: null });
+    expect(dropped.exchangeFile).not.toHaveProperty("csvDelimiter");
+    expect(dropped.exchangeFile).toEqual(record.exchangeFile);
+  });
+
   test("re-validates the label cap on edit", () => {
     const record = buildManagedExchangeRecord(newExchange());
     expect(() =>
@@ -1486,6 +1496,20 @@ describe("applyManagedExchangeReinviteRotation", () => {
     expect(rotated.sharedSecret).toBe(rotatedSecret);
     // The failure the re-invite recovers from must not re-derive at the next visit.
     expect(rotated).not.toHaveProperty("lastRun");
+  });
+
+  test("a null expires deletes the standing bound", () => {
+    const record = runnableRecord({ expires: "2026-04-06T14:00:00.000Z" });
+    const rotated = applyManagedExchangeReinviteRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      TEST_RETIRED,
+    );
+    expect(rotated).not.toHaveProperty("expires");
   });
 
   test("clears lastRun even when there was none (a no-op drop)", () => {
@@ -3373,6 +3397,108 @@ describe("the configuration-only record", () => {
         }),
       ).toThrow();
   });
+
+  // Each field the configuration-only rule binds to the secret, written out
+  // here rather than read from the list that drives the rule, so a field
+  // dropped from that list fails its own case. Every value parses beside a
+  // secret, so a refusal below is this rule's and not the field's own.
+  const SECRET_BOUND_SAMPLES: ReadonlyArray<
+    [string, Partial<ManagedExchangeRecord>]
+  > = [
+    ["expires", { expires: "2026-04-06T14:00:00.000Z" }],
+    ["schedule", { schedule }],
+    [
+      "lastRun",
+      { lastRun: { at: "2026-03-07T14:00:00.000Z", outcome: "succeeded" } },
+    ],
+    [
+      "recentRuns",
+      {
+        recentRuns: [{ at: "2026-03-07T14:00:00.000Z", outcome: "succeeded" }],
+      },
+    ],
+    [
+      "rotationInFlightSince",
+      { rotationInFlightSince: "2026-03-07T14:00:00.000Z" },
+    ],
+    [
+      "relayRegistrar",
+      {
+        relayRegistrar: {
+          url: "https://relay.example.org",
+          exchangeId: "riverbend-weekly",
+        },
+      },
+    ],
+    [
+      "relayRegistrationPendingSince",
+      { relayRegistrationPendingSince: "2026-03-07T14:00:00.000Z" },
+    ],
+    [
+      "ownRelay",
+      {
+        ownRelay: {
+          turn: ["turns:relay.example.org:443?transport=tcp"],
+          stun: ["stun:relay.example.org:3478"],
+        },
+      },
+    ],
+    ["defaultRelayOn", { defaultRelayOn: true }],
+    ["rotationHistory", { rotationHistory: [{ verifier: "A".repeat(43) }] }],
+    ["previousSharedSecret", { previousSharedSecret: generateSharedSecret() }],
+    [
+      "heldAppUpdate",
+      {
+        heldAppUpdate: {
+          kind: "held",
+          at: "2026-01-06T14:30:00.000Z",
+          holders: ["run"],
+        },
+      },
+    ],
+    [
+      "defaultRelayRefusal",
+      {
+        defaultRelayRefusal: {
+          kind: "refused",
+          at: "2026-01-06T14:30:00.000Z",
+          cause: "other",
+        },
+      },
+    ],
+    [
+      "workingDirectoryHandle",
+      { workingDirectoryHandle: { name: "work" } as FileSystemDirectoryHandle },
+    ],
+  ];
+
+  const CONFIGURATION_ONLY_MESSAGE =
+    "a record without a sharedSecret is configuration only and must hold " +
+    "no expires, schedule, lastRun, recentRuns, rotationInFlightSince, " +
+    "relayRegistrar, relayRegistrationPendingSince, ownRelay, " +
+    "defaultRelayOn, rotationHistory, previousSharedSecret, held app " +
+    "update, default relay refusal, or platform handle";
+
+  test.each(SECRET_BOUND_SAMPLES)(
+    "refuses %s for the configuration-only rule, and admits it beside a secret",
+    (_field, held) => {
+      const secured = safeParseManagedExchangeRecord({
+        ...buildManagedExchangeRecord(newExchange()),
+        ...held,
+      });
+      expect(secured.success ? undefined : secured.error).toBeUndefined();
+
+      const configuration = safeParseManagedExchangeRecord({
+        ...buildManagedExchangeRecord(configurationFields()),
+        ...held,
+      });
+      if (configuration.success) throw new Error("the record parsed");
+      expect(configuration.error).toBeInstanceOf(ZodError);
+      expect(
+        (configuration.error as ZodError).issues.map(({ message }) => message),
+      ).toEqual([CONFIGURATION_ONLY_MESSAGE]);
+    },
+  );
 
   test("a max-age edit sets the policy and stamps no bound on a secret it has none for", () => {
     const record = buildManagedExchangeRecord(configurationFields());
