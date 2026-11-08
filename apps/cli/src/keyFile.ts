@@ -4,12 +4,12 @@ import {
   InternalConsistencyError,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
-  ROTATION_HISTORY_MAX_ENTRIES,
   keepOperatorSuppliedText,
   messageWithOperatorText,
   MS_PER_DAY,
   NEW_INVITATION_REMEDY,
   operatorSuppliedText,
+  pruneRotationHistory,
   redactAndRenderOperatorSuppliedText,
   rotatedKeyExpires,
   SHARED_SECRET_REGEX,
@@ -110,27 +110,6 @@ export type KeyFileAtRunStart = Pick<
 > & { rotationHistory?: ReadonlyArray<RotationHistoryEntry> };
 
 /**
- * The `rotationHistory` a rotation write stores: `history` less the expired
- * entries at its oldest end, and at most the
- * {@link ROTATION_HISTORY_MAX_ENTRIES} newest. An expired entry with a newer
- * entry still live after it is kept, since the handshake counts rotations by
- * position (docs/spec/PROTOCOL.md, "The rotation history").
- */
-export function prunedRotationHistory(
-  history: ReadonlyArray<RotationHistoryEntry>,
-  now: number,
-): RotationHistoryEntry[] {
-  const kept = history.slice(0, ROTATION_HISTORY_MAX_ENTRIES);
-  let end = kept.length;
-  while (end > 0) {
-    const expires = kept[end - 1]!.expires;
-    if (expires === undefined || new Date(expires).getTime() > now) break;
-    end -= 1;
-  }
-  return kept.slice(0, end);
-}
-
-/**
  * The `.alcove.key` contents a rotation write stores, given what the file held
  * when the run started (docs/spec/EXCHANGE_FILE.md, "The previous secret and
  * the rotation history"):
@@ -140,7 +119,7 @@ export function prunedRotationHistory(
  *   previous secret, kept until the partner's frame shows it stored too; the
  *   responder's store keeps none;
  * - the history, with the verifier of the retired current secret added at its
- *   newest end, then pruned ({@link prunedRotationHistory}). A handshake
+ *   newest end, then pruned ({@link pruneRotationHistory}). A handshake
  *   completed under the previous secret adds nothing: that secret's verifier
  *   was added when it was retired, and the current secret it replaces was
  *   never shared.
@@ -180,7 +159,11 @@ export async function rotationWriteContents(params: {
           }),
         },
       ];
-  const rotationHistory = prunedRotationHistory([...retired, ...history], now);
+  const rotationHistory = pruneRotationHistory(
+    [...retired, ...history],
+    now,
+    (value) => new Date(value).getTime(),
+  );
   return {
     ...rotated,
     ...(role === "initiator" && {

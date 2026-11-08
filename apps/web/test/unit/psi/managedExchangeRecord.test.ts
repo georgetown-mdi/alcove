@@ -11,9 +11,12 @@ import {
   getDefaultLinkageTerms,
   termsAsTheRunStatedThem,
 } from "@alcove/core";
+import {
+  computeTermsHash,
+  rotationHistoryPruneFixtures,
+} from "@alcove/core/testing";
 import { describe, expect, test } from "vitest";
 import { ZodError } from "zod";
-import { computeTermsHash } from "@alcove/core/testing";
 
 import { DEFAULT_RELAY_REFUSAL_CAUSES } from "@psi/transport/defaultRelayRefusal";
 import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
@@ -1237,6 +1240,37 @@ describe("the rotation history", () => {
     );
     expect(rotated).not.toHaveProperty("rotationHistory");
   });
+
+  test.each(rotationHistoryPruneFixtures.map((f) => [f.label, f] as const))(
+    "a rotation write prunes the history as every app does: %s",
+    (_label, fixture) => {
+      const record = runnableRecord({
+        ...(fixture.retired?.expires !== undefined
+          ? { expires: fixture.retired.expires }
+          : {}),
+        rotationHistory: [...fixture.history],
+      });
+      const verifier = generateSharedSecret();
+      const retiredEntry =
+        fixture.retired === undefined
+          ? []
+          : [
+              {
+                verifier,
+                ...(fixture.retired.expires !== undefined
+                  ? { expires: fixture.retired.expires }
+                  : {}),
+              },
+            ];
+      expect(
+        rotationHistoryAfterRetiring(
+          record,
+          { verifier, at: fixture.now },
+          fixture.retired !== undefined,
+        ),
+      ).toEqual([...retiredEntry, ...fixture.history].slice(0, fixture.kept));
+    },
+  );
 
   test("the record refuses a history longer than the bound, or a malformed verifier", () => {
     expect(() =>

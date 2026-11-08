@@ -1007,6 +1007,7 @@ export type {
 // that keeps a previous secret and a history.
 export {
   deriveHistoryVerifier,
+  pruneRotationHistory,
   ROTATION_HISTORY_MAX_ENTRIES,
 } from "./rotationHistory";
 export type { RotationHistoryEntry } from "./rotationHistory";

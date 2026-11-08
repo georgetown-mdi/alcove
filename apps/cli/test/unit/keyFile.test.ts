@@ -9,6 +9,7 @@ import {
   UsageError,
 } from "@alcove/core";
 import type { InvitationToken } from "@alcove/core";
+import { rotationHistoryPruneFixtures } from "@alcove/core/testing";
 import { OUT_OF_SYNC_TOKENS_DOC_URL } from "../../src/docLinks";
 import {
   buildRotatedKeyFile,
@@ -18,7 +19,6 @@ import {
   loadKeyFile,
   keyFileFromInvitation,
   markRotationInFlight,
-  prunedRotationHistory,
   rotationInFlightNotice,
   rotationWriteContents,
   saveInvitedKeyFile,
@@ -645,25 +645,40 @@ test.each(["initiator", "responder"] as const)(
   },
 );
 
-test("the history drops expired entries at its oldest end only, and keeps the 64 newest", () => {
-  const entry = (n: number, expires?: string) => ({
-    verifier: TOKEN.slice(0, 40) + String(n).padStart(2, "0") + "A",
-    ...(expires !== undefined && { expires }),
-  });
-  // An expired entry with a live one older than it keeps its place, so each
-  // later position still counts rotations.
-  const middle = [entry(1, LATER), entry(2, EARLIER), entry(3)];
-  expect(prunedRotationHistory(middle, ROTATED_AT)).toEqual(middle);
-  const tail = [
-    entry(1),
-    entry(2, LATER),
-    entry(3, EARLIER),
-    entry(4, EARLIER),
-  ];
-  expect(prunedRotationHistory(tail, ROTATED_AT)).toEqual(tail.slice(0, 2));
-  const long = Array.from({ length: 70 }, (_, n) => entry(n));
-  expect(prunedRotationHistory(long, ROTATED_AT)).toEqual(long.slice(0, 64));
-});
+test.each(rotationHistoryPruneFixtures.map((f) => [f.label, f] as const))(
+  "a rotation write prunes the history as every app does: %s",
+  async (_label, fixture) => {
+    const retired =
+      fixture.retired === undefined
+        ? []
+        : [
+            {
+              verifier: await deriveHistoryVerifier(TOKEN),
+              ...(fixture.retired.expires !== undefined && {
+                expires: fixture.retired.expires,
+              }),
+            },
+          ];
+    const written = await rotationWriteContents({
+      rotatedSecret: INVITE_SECRET,
+      tokenMaxAgeDays: undefined,
+      now: fixture.now,
+      role: "responder",
+      usedPrevious: fixture.retired === undefined,
+      atRunStart: {
+        sharedSecret: TOKEN,
+        ...(fixture.retired?.expires !== undefined && {
+          expires: fixture.retired.expires,
+        }),
+        previousSharedSecret: INVITE_SECRET,
+        rotationHistory: fixture.history,
+      },
+    });
+    expect(written.rotationHistory ?? []).toEqual(
+      [...retired, ...fixture.history].slice(0, fixture.kept),
+    );
+  },
+);
 
 test("a rotation write over a full history keeps the 64 newest verifiers", async () => {
   const full = Array.from({ length: 64 }, (_, n) => ({
