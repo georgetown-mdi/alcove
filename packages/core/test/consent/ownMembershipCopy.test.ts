@@ -61,11 +61,9 @@ describe("the own-membership consent pair", () => {
   });
 
   test("stands beside a partner's No with no caveat of its own", () => {
-    // The membership sentence is the one line under a partner's No: the
-    // receipt fact keeps its basis for the CLI's marker but has no note.
-    expect(CONSENT_FACTS.partnerReceivesNoResult.basis).toBe(
-      "trust-contingent",
-    );
+    // The membership sentence is the one line under a partner's No, whose
+    // receipt fact is the run's and has no note.
+    expect(CONSENT_FACTS.partnerReceivesNoResult.basis).toBe("enforced");
     expect(CONSENT_FACTS.partnerReceivesNoResult).not.toHaveProperty("note");
   });
 
@@ -74,8 +72,7 @@ describe("the own-membership consent pair", () => {
     // not be told the partner learns its own records' membership, and a reader
     // whose partner does learn it must not be told the exchange withholds it.
     expect(CONSENT_FACTS.partnerLearnsOwnMembership.note).toBe(
-      "Even when the terms are honored, your partner learns which of its own " +
-        "records are in your data, though not which of your records they are.",
+      "Your partner learns which of its own records are in your data.",
     );
     expect(CONSENT_FACTS.partnerOwnMembershipWithheld.note).toContain(
       "never sent which of its own records are in your data",

@@ -106,29 +106,27 @@ That the classification is a KEYED TABLE, rather than a field on
 `InvitationSummary`, follows from two properties a per-field flag cannot hold.
 Not every classified fact is a summary field: the acceptor's own outbound columns
 come from its own resolved metadata, never from the partner's token. And one
-underlying field has two classifications at once -- the viewer's own
-non-receipt is enforced, while the partner's non-receipt on the same
-`output` pair rests on the partner's word. The shared consent-coverage
-classification is the repo's existing precedent for the shape.
+underlying field states two facts at once -- the viewer's own receipt and the
+partner's, on the same `output` pair, each with its own note. The shared
+consent-coverage classification is the repo's existing precedent for the shape.
 
 The partner's own result receipt is the second instance of that property, and it
-is classified by VALUE rather than by field. A `yes` is enforced: the two
+is keyed by VALUE rather than by field. A `yes` is enforced: the two
 parties' output directions are compared as a mirror before data moves, and the
 run then delivers the result to the party those agreed terms entitle to it, so
 the disclosure is one the exchange makes rather than one the partner elects. What
 the partner does with the result once it holds it is a limit on its USE and not on
 whether the disclosure happens, so the fact's caveat sentence states that limit
-rather than its marker. A `no` -- a result withheld from a partner -- stays
-trust-contingent, because one-sided PSI gives this side nothing to impose it
-with. Marking the disclosure that certainly happens as merely the partner's word
-would be the same error as presenting the withholding as a guarantee, facing the
-other way.
+rather than its marker. A `no` -- a result withheld from a partner -- is
+enforced too: role resolution makes that partner the sender
+([Role resolution and work minimization](../spec/PROTOCOL.md#role-resolution-and-work-minimization)),
+this side's software sends it none of this side's columns, and its own software
+saves no result. The pairing a cascade sends it is the membership fact, stated
+on its own; reading the viewer's row numbers out of the partner's process is
+outside the honest-but-curious threat model.
 
-The `no` takes no caveat sentence: acceptors read a sentence saying Alcove cannot
-stop the partner receiving the result as conflicting with the `no` beside it, and
-the signed agreement covers the partner's conduct. The web states only what the
-partner still learns beneath that `no`; the CLI keeps the basis marker on the
-label.
+The `no` takes no caveat sentence. The web states only what the partner still
+learns beneath that `no`; the CLI marks the label enforced.
 
 The caveat sentence is one shared string, not two agreeing ones. The web's copy
 was the material to promote: every line holding this classification there is

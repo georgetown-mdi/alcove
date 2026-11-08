@@ -997,7 +997,7 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     // The acceptor's OWN non-receipt is a hard fact -- enforced by this tool, not a
     // matter of trusting the partner -- so its "No" has the enforced caveat.
     expect(app.container.textContent).toContain("You are sent no result");
-    // The partner receives here (Yes): no cooperative caveat, but the partner "Yes"
+    // The partner receives here (Yes): no non-receipt caveat, but the partner "Yes"
     // is the accountable disclosure, so it has the brief governance pointer.
     expect(app.container.textContent).not.toContain(
       "Alcove cannot stop your partner from receiving the result",
@@ -1021,8 +1021,8 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     expect(app.container.textContent).toContain(
       "Your partner (the inviter) will receive the result: No",
     );
-    // The partner's "No" takes no caveat of its own -- the agreement covers its
-    // conduct -- and the acceptor's own "Yes" has no enforced caveat.
+    // The partner's "No" is enforced and takes no caveat of its own, and the
+    // acceptor's own "Yes" has no enforced caveat.
     expect(app.container.textContent).not.toContain(
       "Alcove cannot stop your partner from receiving the result",
     );
@@ -1031,8 +1031,7 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     // one sentence, in the "What the exchange produces" tier where result sharing
     // lives -- not merely somewhere in the panel.
     expect(app.container.textContent).toContain(
-      "Even when the terms are honored, your partner learns which of its own " +
-        "records are in your data, though not which of your records they are.",
+      "Your partner learns which of its own records are in your data.",
     );
     expect(app.container.textContent).not.toContain(
       "inherent to the match, not a breach",
@@ -1098,9 +1097,8 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
   });
 
   test("a symmetric both-receive exchange marks only the partner's disclosure", async () => {
-    // Both parties receive: no withholding, so neither the enforced nor the
-    // cooperative caveat renders. The viewer's own "Yes" (receiving your own result)
-    // stays unqualified; the partner's "Yes" has the brief governance pointer,
+    // Both parties receive: no withholding, so no non-receipt caveat renders.
+    // The viewer's own "Yes" (receiving your own result) stays unqualified; the partner's "Yes" has the brief governance pointer,
     // since it is the accountable disclosure of your result to them.
     await renderOutput({ expectsOutput: true, shareWithPartner: true });
     await expect.element(page.getByText("Result sharing")).toBeInTheDocument();

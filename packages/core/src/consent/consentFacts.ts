@@ -244,10 +244,13 @@ export const CONSENT_FACTS = {
       "not control it.",
   },
   partnerReceivesNoResult: {
-    basis: "trust-contingent",
+    basis: "enforced",
     reason:
-      "Keeping a result from a partner rests on the agreed terms being " +
-      "honored; one-sided PSI gives this side nothing to impose it with.",
+      "Role resolution makes a partner entitled to no result the sender, this " +
+      "side's software sends it none of this side's columns, and its own " +
+      "software saves no result. The pairing the cascade sends it, as does a " +
+      "single-pass run it sends columns in, is the membership fact below, not " +
+      "a result.",
   },
   partnerLearnsOwnMembership: {
     basis: "enforced",
@@ -255,9 +258,11 @@ export const CONSENT_FACTS = {
       "An intrinsic property of an identifier-revealing match rather than a " +
       "matter of conduct: under `psi` a non-receiving partner whose half of " +
       "the association table the run returns learns its own records' " +
-      "membership however honestly it behaves. Bounded to that - never which " +
-      "of the viewer's records they met, nor anything about the rest of the " +
-      "set beyond its size. Gated first on the ALGORITHM: no `psi-c` exchange " +
+      "membership however honestly it behaves. Its process is also sent the " +
+      "viewer's row number for each matched record, which it does not save, " +
+      "and the partner learns nothing about the rest of the set beyond its " +
+      "size. Gated " +
+      "first on the ALGORITHM: no `psi-c` exchange " +
       "states it at all, since the role rule makes the non-receiving party of " +
       "a count-only run the sender - which computes nothing from the round " +
       "and is sent no count-report frame (docs/spec/PROTOCOL.md, PSI-C), so it " +
@@ -267,9 +272,7 @@ export const CONSENT_FACTS = {
       "discloses no membership either, and `partnerOwnMembershipWithheld` " +
       "below is that case, selected from the run's own resolution rather than " +
       "from a second reading of the strategy and the payload declaration.",
-    note:
-      "Even when the terms are honored, your partner learns which of its own " +
-      "records are in your data, though not which of your records they are.",
+    note: "Your partner learns which of its own records are in your data.",
   },
   partnerOwnMembershipWithheld: {
     basis: "enforced",
@@ -703,8 +706,7 @@ export const SELF_AUTHORED_EXCHANGE_FACTS = [
  * The terse marker a surface with no styling budget puts on a fact's label for its
  * {@link ConsentFactBasis}. The web renders no marker: it states a trust-contingent
  * basis only in the notes of the facts that have one (the allowed-character
- * patterns, a count the partner reports), and states it nowhere for a fact with no
- * note, such as the partner receiving no result.
+ * patterns, a count the partner reports).
  */
 export const CONSENT_BASIS_MARKERS: Record<ConsentFactBasis, string> = {
   enforced: "enforced",

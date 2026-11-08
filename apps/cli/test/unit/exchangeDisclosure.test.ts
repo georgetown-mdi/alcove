@@ -749,11 +749,12 @@ test("a partner entitled to no result is told no payload is sent", () => {
     "  columns you will send (enforced): (none) - your partner receives no result, so no payload is sent",
   );
   expect(lines.join("\n")).not.toContain("- diagnosis");
-  // Withholding a result rests on the agreed terms being honored, so the line
-  // takes the partner's-word marker rather than the enforced one a receipt gets.
-  expect(lines.join("\n")).toContain(
-    "your partner will receive the result (your partner's word): no",
+  // Role resolution makes that partner the sender, sent none of this party's
+  // columns, so its No is enforced and takes no note.
+  expect(lines).toContain(
+    "  your partner will receive the result (enforced): no",
   );
+  expect(lines.join("\n")).not.toContain("your partner's word");
 });
 
 test("an input file with nothing transmittable says only matched records", () => {
@@ -894,7 +895,7 @@ test("a partner receiving no result is told what it still learns about its own r
     "what your partner learns about its own records (enforced):",
   );
   expect(lines).toContain(
-    "Even when the terms are honored, your partner learns which of its own records are in your data",
+    "    Your partner learns which of its own records are in your data.",
   );
 });
 
@@ -920,7 +921,7 @@ test("a run that withholds the partner's half of the table says so instead", () 
     "the exchange is refused for both parties before the match starts",
   );
   expect(lines).not.toContain(
-    "your partner learns which of its own records are in your data",
+    "learns which of its own records are in your data",
   );
 });
 

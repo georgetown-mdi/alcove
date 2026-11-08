@@ -1416,7 +1416,8 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
       .find((row) => row.querySelector("dt")?.textContent === "You will send")
       ?.querySelector("dd");
     expect(sendValue?.textContent).toBe(
-      ["pre", sanitized, "post"].map(isolatedColumnName).join(", "),
+      "Matched row numbers + " +
+        ["pre", sanitized, "post"].map(isolatedColumnName).join(", "),
     );
     // And nowhere on the screen is the header's escaped form: the panel and this
     // row name the same set, so an escape on either is the disagreement this pins.

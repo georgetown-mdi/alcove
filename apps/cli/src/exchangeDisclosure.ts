@@ -191,9 +191,9 @@ export function renderExchangeDisclosure(
     )}: ${receivesResult ? "yes" : "no"}`,
   );
   if (!receivesResult) emit(`    ${CONSENT_FACTS.viewerReceivesNoResult.note}`);
-  // The partner's receipt takes its own basis, which the value decides: a
-  // partner that receives is one the run delivers to, while a partner that does
-  // not rests on the agreed terms being honored.
+  // The partner's receipt fact follows the value: a partner that receives is
+  // one the run delivers to, while a partner that does not is the sender role
+  // resolution seats, sent none of this party's columns.
   const partnerFact = linkageTerms.output.shareWithPartner
     ? "partnerReceivesResult"
     : "partnerReceivesNoResult";
