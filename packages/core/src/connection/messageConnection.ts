@@ -896,20 +896,21 @@ export class QueuedMessageConnection implements MessageConnection {
   // and dropped, so they are not held through the work that follows. On a
   // connection that failed from that overflow, the queued frames are dropped
   // and the overflow is raised, so a frame read later cannot report another
-  // cause; any other failure leaves the queue to receive(), which reads the
-  // frames the partner sent before it.
+  // cause. On one that failed otherwise, frames within the lowered bound stay
+  // for receive(), which reads the frames the partner sent before the failure;
+  // frames past it are dropped and the connection's own failure is raised,
+  // not a fresh overflow.
   holdInboundQueueBytes(minBytes: number | undefined): void {
     this.byteCapacity = Math.max(this.builtByteCapacity, minBytes ?? 0);
-    const overflowed =
-      this.state?.kind === "failed" && this.state.error === this.byteOverflow
-        ? this.state.error
-        : undefined;
+    const failure =
+      this.state?.kind === "failed" ? this.state.error : undefined;
+    const overflowed = failure !== undefined && failure === this.byteOverflow;
     if (
-      overflowed === undefined &&
+      !overflowed &&
       (this.queue.length <= 1 || this.queuedBytes <= this.byteCapacity)
     )
       return;
-    const error = overflowed ?? inboundByteBoundOverflow(this.byteCapacity);
+    const error = failure ?? inboundByteBoundOverflow(this.byteCapacity);
     this.queue.splice(0);
     this.queueBytes.splice(0);
     this.queuedBytes = 0;
