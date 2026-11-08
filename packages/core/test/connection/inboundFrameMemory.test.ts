@@ -46,6 +46,8 @@ describe("the measured multiples of an inbound frame", () => {
       workerClone: 1,
       handedOverReply: 1.2,
       copiedReply: 3.9,
+      handedOverRequest: 30.1,
+      copiedRequest: 31,
     });
     expect(specMultiples()).toEqual(INBOUND_FRAME_MEMORY_MULTIPLES);
   });
@@ -118,9 +120,18 @@ describe("the measured multiples of an inbound frame", () => {
     expect(psiFrameHandlingBytes(100, "stream", true)).toBe(100);
   });
 
-  test("a single-pass hand-off over file-sync is the request moved and decoded, or the reply at the measured multiple", () => {
-    expect(fileSyncSinglePassHandOffBytes(100, "decode")).toBe(765);
+  test("a single-pass hand-off over file-sync is the request moved and masked, or the reply, at the measured multiples", () => {
+    expect(fileSyncSinglePassHandOffBytes(100, "decode")).toBe(3_010);
     expect(fileSyncSinglePassHandOffBytes(100, "stream")).toBe(120);
+  });
+
+  test("a single-pass request is charged its masking, above the decoding the hand-off check charges", () => {
+    expect(fileSyncSinglePassHandOffBytes(100, "decode")).toBeGreaterThan(
+      psiFrameHandlingBytes(100, "decode", true),
+    );
+    expect(webRtcSinglePassHandOffBytes(100, "decode", false)).toBeGreaterThan(
+      psiFrameHandlingBytes(100, "decode"),
+    );
   });
 
   test("a frame's peak is the larger of its read and of the frame with its hand-off", () => {
@@ -131,7 +142,7 @@ describe("the measured multiples of an inbound frame", () => {
         true,
         SINGLE_CALL_ENVELOPE_VERSION,
       ),
-    ).toBe(865);
+    ).toBe(3_110);
     expect(
       inboundPsiFramePeakBytes(
         100,
@@ -143,17 +154,21 @@ describe("the measured multiples of an inbound frame", () => {
     expect(inboundPsiFramePeakBytes(100, "stream", false, undefined)).toBe(220);
   });
 
-  // Each measured run of a reply's hand-off, read from the spec's table: the
-  // frame, and the peak beyond it copied and handed over.
-  const handOffRuns = (): Array<{
+  // Each measured run of a reply's or a request's hand-off, read from the
+  // spec's tables: the frame, and the peak beyond it copied and handed over.
+  const handOffRuns = (
+    frame: "Reply" | "Request" = "Reply",
+  ): Array<{
     frameBytes: number;
     copied: number;
     handedOver: number;
   }> => {
     const text = fs.readFileSync(SPEC, "utf8");
+    const pattern = new RegExp(
+      `^\\| ${frame}, ([\\d,]+) bytes [^|]+\\| ([\\d.]+) \\| ([\\d.]+) \\|$`,
+    );
     return text.split("\n").flatMap((line) => {
-      const row =
-        /^\| Reply, ([\d,]+) bytes [^|]+\| ([\d.]+) \| ([\d.]+) \|$/.exec(line);
+      const row = pattern.exec(line);
       return row === null
         ? []
         : [
@@ -184,10 +199,42 @@ describe("the measured multiples of an inbound frame", () => {
       ).toBeGreaterThan(frameBytes * copied);
   });
 
-  test("over WebRTC, a request or a reply in parts is the worker's copy and what the engine builds", () => {
+  // The masking multiples are the largest run measured, rounded up to a tenth.
+  const roundedUpToATenth = (figure: number): number =>
+    Math.ceil(figure * 10) / 10;
+
+  test("the handed-over request's multiple is the largest measured run, its masking included", () => {
+    const runs = handOffRuns("Request");
+    expect(runs.length).toBeGreaterThanOrEqual(4);
+    expect(
+      new Set(runs.map((run) => run.frameBytes)).size,
+    ).toBeGreaterThanOrEqual(3);
+    expect(INBOUND_FRAME_MEMORY_MULTIPLES.handedOverRequest).toBe(
+      roundedUpToATenth(Math.max(...runs.map((run) => run.handedOver))),
+    );
+    for (const { frameBytes, handedOver } of runs)
+      expect(
+        fileSyncSinglePassHandOffBytes(frameBytes, "decode"),
+      ).toBeGreaterThan(frameBytes * handedOver);
+  });
+
+  test("the copied request's multiple is the largest measured run, its masking included", () => {
+    const runs = handOffRuns("Request");
+    expect(INBOUND_FRAME_MEMORY_MULTIPLES.copiedRequest).toBe(
+      roundedUpToATenth(Math.max(...runs.map((run) => run.copied))),
+    );
+    for (const { frameBytes, copied } of runs)
+      for (const inParts of [false, true])
+        expect(
+          webRtcSinglePassHandOffBytes(frameBytes, "decode", inParts),
+        ).toBeGreaterThan(frameBytes * copied);
+  });
+
+  test("over WebRTC, a request is copied and masked, and a reply in parts is the worker's copy and what the engine builds", () => {
     expect(webRtcSinglePassHandOffBytes(100, "stream", false)).toBe(390);
     expect(webRtcSinglePassHandOffBytes(100, "stream", true)).toBe(200);
-    expect(webRtcSinglePassHandOffBytes(100, "decode", false)).toBe(865);
+    expect(webRtcSinglePassHandOffBytes(100, "decode", false)).toBe(3_100);
+    expect(webRtcSinglePassHandOffBytes(100, "decode", true)).toBe(3_100);
   });
 
   test.each([

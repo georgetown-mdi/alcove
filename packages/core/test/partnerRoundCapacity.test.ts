@@ -10,6 +10,11 @@ import {
 } from "../src/connection/frameSize";
 import { sendAbort, sendLocalFaultAbort } from "../src/protocolSetup";
 import { createMessagePipe } from "../src/connection/messageConnection";
+import {
+  INBOUND_FRAME_MEMORY_MULTIPLES,
+  inboundPsiFramePeakBytes,
+} from "../src/connection/inboundFrameMemory";
+import { InProcessPsiEngine } from "../src/psi/psiEngine";
 import { psiSetPartPayloadBytes } from "../src/psi/psiSetParts";
 import {
   PeerAbortError,
@@ -615,6 +620,7 @@ describe("single-pass over file-sync, at the terms exchange", () => {
     check: RunExchangeOptions["checkSinglePassPartnerSize"],
     strategy: LinkageStrategy = "single-pass",
     [localRows, partnerRows] = [5, 12],
+    localOptions: Partial<RunExchangeOptions> = {},
   ) {
     const [local, partner] = createMessagePipe();
     const sent: Array<unknown> = [];
@@ -630,6 +636,7 @@ describe("single-pass over file-sync, at the terms exchange", () => {
         {
           psiLibrary,
           checkSinglePassPartnerSize: check,
+          ...localOptions,
         },
       ),
       runExchange(
@@ -696,6 +703,77 @@ describe("single-pass over file-sync, at the terms exchange", () => {
         inboundFrameUse: "decode",
       },
     ]);
+  });
+
+  describe("a sending party weighs the request with its masking", () => {
+    const requestBytes = singlePassRequestByteCap({
+      effectiveKeyCount: 1,
+      recordCount: 5,
+    });
+    const needBytes =
+      requestBytes +
+      requestBytes * INBOUND_FRAME_MEMORY_MULTIPLES.handedOverRequest;
+
+    // A check refusing what `availableBytes` cannot hold, at core's charge
+    // for the frame, and an engine factory that records what the run asked of
+    // the engine.
+    async function sendAgainst(availableBytes: number) {
+      const calls: Array<string> = [];
+      const psiEngineFactory: RunExchangeOptions["psiEngineFactory"] = (
+        role,
+        id,
+        mode,
+      ) => {
+        calls.push("factory");
+        const engine = new InProcessPsiEngine(psiLibrary, role, id, mode);
+        const processClientRequest = engine.processClientRequest.bind(engine);
+        engine.processClientRequest = (...args) => {
+          calls.push("processClientRequest");
+          return processClientRequest(...args);
+        };
+        return engine;
+      };
+      const outcome = await runSinglePass(
+        true,
+        (size) => {
+          if (
+            inboundPsiFramePeakBytes(
+              size.inboundFrameBytes,
+              size.inboundFrameUse,
+              false,
+              undefined,
+            ) > availableBytes
+          )
+            throw new RoundCapacityError("cannot fit", "terms-exchange");
+        },
+        "single-pass",
+        [12, 5],
+        { psiEngineFactory },
+      );
+      return { ...outcome, calls };
+    }
+
+    test("a request whose masking fits proceeds to the engine", async () => {
+      expect(needBytes).toBeGreaterThan(
+        requestBytes * (1 + INBOUND_FRAME_MEMORY_MULTIPLES.psiDecode),
+      );
+      const { local, calls } = await sendAgainst(needBytes);
+      expect(local.status).toBe("fulfilled");
+      expect(calls).toContain("processClientRequest");
+    });
+
+    test("a request whose masking does not fit is refused before the engine is called", async () => {
+      const { local, sent, calls } = await sendAgainst(needBytes - 1);
+      expect((local as PromiseRejectedResult).reason).toBeInstanceOf(
+        RoundCapacityError,
+      );
+      expect(calls).toEqual([]);
+      expect(binaryFrames(sent)).toEqual([]);
+      expect(sent.at(-1)).toEqual({
+        decision: "abort",
+        abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
+      });
+    });
   });
 
   test("a capacity refusal stops the run before any set moves and tells the partner", async () => {

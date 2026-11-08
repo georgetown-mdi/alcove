@@ -288,7 +288,8 @@ export function checkPsiMemoryBudget(params: {
  * The memory reading the partner's PSI frame in a single-pass run can take, in
  * bytes, from the agreed counts: the larger of the reply's index table, which
  * no choice of values reduces, and the most the frame the counts allow takes
- * to read and hand to the PSI engine at the measured multiples, its read
+ * to read and hand to the PSI engine at the measured multiples, a request's
+ * hand-off including the engine's masking of it, its read
  * charged under `envelopeVersion` as the file-sync read gate charges it, or
  * over WebRTC as a message in parts, with its hand-off copied to the worker.
  */
@@ -336,8 +337,9 @@ export function singlePassOutboundPeakBytes(
 
 /**
  * What a single-pass run does with the partner's declared size at the terms
- * exchange. When reading the partner's PSI frame, or over WebRTC sending this
- * party's own, can take more memory than is available now
+ * exchange. When reading the partner's PSI frame, a request with the engine's
+ * masking of it, or over WebRTC sending this party's own, can take more
+ * memory than is available now
  * ({@link singlePassInboundPeakBytes}, {@link singlePassOutboundPeakBytes}),
  * the run is a {@link RoundCapacityError}, or, with `allowShortfall`, a
  * warning and the run continues. Every run states the partner's value slots and its worst-case
@@ -366,7 +368,9 @@ export function checkSinglePassPartnerMemory(params: {
       `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +
       `and ${
         outboundBytes <= inboundBytes
-          ? "reading what they send"
+          ? size.inboundFrameUse === "decode"
+            ? "reading and masking what they send"
+            : "reading what they send"
           : size.inboundFrameUse === "decode"
             ? "sending your reply"
             : "sending your values"
