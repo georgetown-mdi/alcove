@@ -16,6 +16,7 @@ import {
   NestingDepthExceededError,
   OperatorConfigError,
   parseExchangeSpec,
+  PLACEHOLDER_SSH_USERNAME,
   quoteTermsValue,
   renderedDisplayCost,
   sanitizeErrorForDisplay,
@@ -5668,6 +5669,15 @@ describe("configuration placeholders", () => {
       "connection.path",
     ]);
     expect(configPlaceholderFields({ host: "h" }, ["connection"])).toEqual([]);
+  });
+
+  test("core's SSH username placeholder, which the partner accept sheet prints, is caught", () => {
+    expect(
+      configPlaceholderFields(
+        { server: { username: PLACEHOLDER_SSH_USERNAME } },
+        ["connection"],
+      ),
+    ).toEqual(["connection.server.username"]);
   });
 
   test("the refusal names the field and the file, never the value", () => {

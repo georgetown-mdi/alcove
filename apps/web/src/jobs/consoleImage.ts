@@ -23,8 +23,7 @@ const log = getLogger("job-api");
 export const JOB_IMAGE_REGISTRY_ENV = "JOB_IMAGE_REGISTRY";
 
 /**
- * The digest of the image the launcher runs, which the partner accept kit
- * prints beside each registry's reference. Unset, the kit names no digest.
+ * The digest of the image the launcher runs.
  *
  * Server-side configuration; reaches the browser through `GET /api/jobs/image`.
  */

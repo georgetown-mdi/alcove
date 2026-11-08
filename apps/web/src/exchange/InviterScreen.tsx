@@ -43,7 +43,6 @@ import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
 import { alcoveVersion, isConsoleBuild } from "@utils/clientConfig";
 import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
-import { useConsoleImage } from "@utils/useConsoleImage";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 import {
@@ -415,7 +414,6 @@ export function InviterScreen() {
     inviterScreenReducer,
     INVITER_SCREEN_INITIAL,
   );
-  const consoleImage = useConsoleImage();
   const {
     acceptKitExchange,
     acquired,
@@ -1745,12 +1743,12 @@ export function InviterScreen() {
   }
 
   // Write the partner's accept kit to disk through the same blob download the
-  // exchange-file save uses. The sheet is composed from the minted exchange,
-  // this build's own release version, and the public digest of the image the
-  // console runs alone: it contains no secret, no invitation token (the partner
-  // pastes their own copy over the sheet's placeholder), and nothing else from
-  // this machine. The retain-mode flag selects fixed text and a fixed command
-  // flag rather than reaching the sheet as a value.
+  // exchange-file save uses. The sheet is composed from the minted exchange
+  // and this build's own release version alone: it contains no secret, no
+  // invitation token (the partner saves their own copy in the file the
+  // accept command names), and nothing else from this machine. The
+  // retain-mode flag selects fixed text and a fixed command flag rather than
+  // reaching the sheet as a value.
   function downloadAcceptKit() {
     if (acceptKitExchange === undefined) return;
     triggerBlobDownload(
@@ -1758,9 +1756,6 @@ export function InviterScreen() {
       buildAcceptKit({
         ...acceptKitExchange,
         version: alcoveVersion(),
-        ...(consoleImage?.digest === undefined
-          ? {}
-          : { digest: consoleImage.digest }),
       }),
       "text/plain",
     );
