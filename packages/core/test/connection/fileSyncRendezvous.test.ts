@@ -18,6 +18,7 @@ import {
 import {
   HelloEnvelopeSchema,
   serializeEnvelope,
+  type HelloVersions,
 } from "../../src/connection/controlEnvelope";
 import {
   LOCK_SUFFIX,
@@ -57,6 +58,7 @@ import {
   BilateralModeMismatchError,
   ConnectionClosedError,
   FrameSizeExceededError,
+  PartnerProtocolRefusalError,
 } from "../../src/errors";
 
 // A FileTransportClient stub whose only meaningful method is get(); every other
@@ -1390,6 +1392,188 @@ const expectResetToPreSyncState = (state: PartyState) => {
   expect(state.role).toBe("unknown role");
   expect(state.handshakeRole).toBeUndefined();
 };
+
+describe("FileSyncRendezvous refusals at every peer-hello read", () => {
+  const SELF = "aaa";
+  const OFFERED: HelloVersions = { protocol: [1], envelope: [1] };
+  const DISJOINT: HelloVersions = { protocol: [2, 3], envelope: [1] };
+
+  interface PeerHelloCase {
+    peerId: string;
+    peerFlags: (own: HelloFlags) => HelloFlags;
+    peerVersions?: HelloVersions;
+    offered?: HelloVersions;
+    refusal: new (...args: never[]) => Error;
+    text: string;
+  }
+  const refusals: Array<[string, PeerHelloCase]> = [
+    [
+      "no common version",
+      {
+        peerId: "zzz",
+        peerFlags: (own) => own,
+        peerVersions: DISJOINT,
+        offered: OFFERED,
+        refusal: PartnerProtocolRefusalError,
+        text: "cannot exchange with",
+      },
+    ],
+    [
+      "a mode-flag mismatch",
+      {
+        peerId: "zzz",
+        peerFlags: (own) =>
+          own.locklessRendezvous ? RETAIN_FLAGS : LOCKLESS_FLAGS,
+        refusal: BilateralModeMismatchError,
+        text: "mismatch",
+      },
+    ],
+    [
+      "ids too long together",
+      {
+        peerId: "z".repeat(240),
+        peerFlags: (own) => own,
+        refusal: UsageError,
+        text: "too long together",
+      },
+    ],
+    [
+      "ids that extend each other at a dash",
+      {
+        peerId: "aaa-2",
+        peerFlags: (own) => own,
+        refusal: UsageError,
+        text: "are too alike",
+      },
+    ],
+  ];
+
+  interface ReadSite {
+    ownFlags: HelloFlags;
+    // Places what the site needs beside the peer hello and returns how the
+    // listings hide it.
+    arrange: (
+      files: Map<string, Buffer>,
+      names: { own: string; peer: string; peerId: string },
+    ) => MockClientOptions;
+    // What the site's own cleanup leaves on disk.
+    leaves: (
+      files: Map<string, Buffer>,
+      names: { own: string; peer: string },
+    ) => void;
+  }
+  const sites: Array<[string, ReadSite]> = [
+    [
+      "the lock joiner",
+      {
+        ownFlags: LOCK_FLAGS,
+        arrange: () => ({}),
+        leaves: (files, names) => {
+          expect(files.has(`${DIR}/${names.peer}`)).toBe(true);
+          expect(files.has(`${DIR}/${names.own}`)).toBe(true);
+          expect([...files.keys()].some((k) => k.includes("-joining-"))).toBe(
+            false,
+          );
+        },
+      },
+    ],
+    [
+      "the lockless barrier",
+      {
+        ownFlags: LOCKLESS_FLAGS,
+        arrange: () => ({}),
+        leaves: (files, names) => {
+          expect(files.has(`${DIR}/${names.own}`)).toBe(true);
+          expect([...files.keys()].some((k) => k.endsWith("-ack.json"))).toBe(
+            false,
+          );
+        },
+      },
+    ],
+    [
+      "the lock-detection branch",
+      {
+        ownFlags: LOCK_FLAGS,
+        arrange: (files, names) => {
+          const lockName =
+            names.own < names.peer
+              ? `${SELF}-${names.peerId}${LOCK_SUFFIX}`
+              : `${names.peerId}-${SELF}${LOCK_SUFFIX}`;
+          files.set(`${DIR}/${lockName}`, Buffer.alloc(0));
+          return { hideAtEntry: [names.peer, lockName] };
+        },
+        leaves: (files, names) => {
+          expect([...files.keys()].some((k) => k.endsWith(LOCK_SUFFIX))).toBe(
+            false,
+          );
+          expect(files.has(`${DIR}/${names.own}`)).toBe(true);
+          expect(files.has(`${DIR}/${names.peer}`)).toBe(true);
+        },
+      },
+    ],
+    [
+      "the responder branch",
+      {
+        ownFlags: LOCK_FLAGS,
+        arrange: (_files, names) => ({
+          hideAtEntry: [names.peer],
+          hideFromList: [names.own],
+        }),
+        leaves: (files, names) => {
+          expect(files.has(`${DIR}/${names.peer}`)).toBe(true);
+        },
+      },
+    ],
+    [
+      "the two-hellos branch",
+      {
+        ownFlags: LOCK_FLAGS,
+        arrange: (_files, names) => ({ hideAtEntry: [names.peer] }),
+        leaves: (files, names) => {
+          expect([...files.keys()].some((k) => k.endsWith(LOCK_SUFFIX))).toBe(
+            false,
+          );
+          expect(files.has(`${DIR}/${names.own}`)).toBe(true);
+          expect(files.has(`${DIR}/${names.peer}`)).toBe(true);
+        },
+      },
+    ],
+  ];
+
+  describe.each(sites)("%s", (_site, site) => {
+    test.each(refusals)("refuses %s", async (_label, refusal) => {
+      const files = new Map<string, Buffer>();
+      const peerBody = serializeEnvelope(
+        helloEnvelope(refusal.peerFlags(site.ownFlags), refusal.peerVersions),
+      );
+      const names = {
+        own: sizedControlName(
+          SELF,
+          "hello",
+          serializeEnvelope(helloEnvelope(site.ownFlags, refusal.offered))
+            .length,
+        ),
+        peer: sizedControlName(refusal.peerId, "hello", peerBody.length),
+        peerId: refusal.peerId,
+      };
+      files.set(`${DIR}/${names.peer}`, peerBody);
+      const p = makeParty(
+        SELF,
+        site.ownFlags,
+        files,
+        site.arrange(files, names),
+      );
+
+      const run = p.rdv.run(p.scope, refusal.offered);
+      await expect(run).rejects.toBeInstanceOf(refusal.refusal);
+      await expect(run).rejects.toMatchObject({
+        message: expect.stringContaining(refusal.text),
+      });
+      expectResetToPreSyncState(p.state);
+      site.leaves(files, names);
+    });
+  });
+});
 
 describe("FileSyncRendezvous mismatch skip-sweep", () => {
   test("leaves this party's own hello but removes a peer lock on mismatch", async () => {

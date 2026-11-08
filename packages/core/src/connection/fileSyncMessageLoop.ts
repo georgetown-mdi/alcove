@@ -101,6 +101,13 @@ class UnencryptedMessageRefusedError extends ConnectionError {
   }
 }
 
+// A peer message a poll's listing selected, with the byte count its name
+// states.
+interface SelectedMessage {
+  file: FileInfo;
+  declaredSize: number;
+}
+
 const messageFileLabel = (name: string, peerId: string, path: string) =>
   `message file ${redactPrivateKeyMaterial(name)} from ` +
   `${redactPrivateKeyMaterial(peerId)} in ${redactPrivateKeyMaterial(path)}`;
@@ -853,6 +860,466 @@ export class FileSyncMessageLoop {
     }
   }
 
+  // Sorts one listing into the peer messages the scan selects and the names
+  // neither a peer message nor recognized for the loop (docs/spec/FILE_SYNC.md,
+  // The five enforcement sites, site 3).
+  private classifyListing(
+    allFiles: FileInfo[],
+    peerId: string,
+    path: string,
+  ): { messages: SelectedMessage[]; unexpected: string[] } {
+    const { deps } = this;
+    const messages: SelectedMessage[] = [];
+    const unexpected: string[] = [];
+    for (const file of allFiles) {
+      const name = file.name;
+
+      // Peer message scan. A peer-prefixed message name (the grammar
+      // discriminant, isMessageName) is a message. Ack markers (terminal
+      // `ack`) and the sized control files share the prefix but are control
+      // files, so they are excluded here and fall through to the
+      // recognized-for-the-loop check.
+      if (
+        name.startsWith(`${peerId}-`) &&
+        name.endsWith(".json") &&
+        !name.endsWith("-ack.json")
+      ) {
+        const declaredSize = isMessageName(name)
+          ? parseMessageByteCount(name)
+          : undefined;
+        if (declaredSize !== undefined) {
+          if (deps.options().retainFiles) {
+            const nnn = parseTimestampedMessageNNN(name);
+            if (nnn === undefined) {
+              // Terminal whatever `unexpectedFiles` says, and ahead of the
+              // recvSeq selection (docs/spec/FILE_SYNC.md, The five
+              // enforcement sites, site 3). Names only this file: the throw
+              // fires mid-scan, so any other unexpected files this cycle
+              // holds are reported by a clean re-run instead.
+              throw new UsageError(
+                `message file ${redactPrivateKeyMaterial(name)} from ` +
+                  `${redactPrivateKeyMaterial(peerId)} in ` +
+                  `${redactPrivateKeyMaterial(path)} has a ` +
+                  "byte-count terminal segment but no parseable NNN segment; " +
+                  "a correctly configured retain-mode peer cannot produce " +
+                  "this name, so the file is corrupt or does not belong to " +
+                  "this exchange. The directory may contain further " +
+                  "unexpected files this error does not enumerate; inspect it " +
+                  "before retrying",
+              );
+            }
+            // NNN < recvSeq is an already-consumed retained message; higher
+            // is not yet current. Either way, skip it. A foreign
+            // message-shaped file with a non-matching NNN is skipped here
+            // too and escapes the unexpected-file policy: it is
+            // indistinguishable by name from a retained message, and the
+            // snapshot does not cover it (a matching name is a protocol
+            // file, never snapshotted).
+            if (nnn !== this.recvSeq) continue;
+          }
+          messages.push({ file, declaredSize });
+          continue;
+        }
+        // Peer-prefixed `.json`, non-ack, not a message (e.g. the peer
+        // hello, or a stray `<peerId>-backup.json`): fall through to the
+        // recognized/unexpected classification below.
+      }
+
+      // Foreign-file detection: a file neither recognized for the loop nor an
+      // in-flight temp write is unexpected and handled per `unexpectedFiles`.
+      if (
+        !isRecognizedLoopFile(
+          name,
+          deps.id(),
+          peerId,
+          deps.foreignFileSnapshot,
+          deps.helloNames(),
+        )
+      )
+        unexpected.push(name);
+    }
+    return { messages, unexpected };
+  }
+
+  // Reads, checks and consumes the one peer message a cycle selected, or
+  // leaves it for a later cycle. `cycle.reachedGet` is set across the get()
+  // alone, for poll()'s list-then-get race classification.
+  private async consumeMessage(
+    selected: SelectedMessage,
+    peerId: string,
+    path: string,
+    outboundPath: string,
+    cycle: { reachedGet: boolean },
+  ): Promise<void> {
+    const { deps } = this;
+    const { file: messageFile, declaredSize } = selected;
+
+    if (declaredSize === 0)
+      throw zeroCountMessage(messageFile.name, peerId, path);
+
+    // Frame-size bound (the primary enforcement point; see
+    // docs/spec/TRANSPORT_BOUNDS.md). Refused before the sync-gate and
+    // before get() loads the body into memory, so a hostile server admin
+    // cannot exhaust memory with an arbitrarily large file. Checked
+    // against both the filename-declared count and the listed on-disk
+    // size; the maxBytes cap passed to get() is the safety check for a
+    // server that under-reports the size here. Terminal: a
+    // FrameSizeExceededError is a UsageError, so poll()'s catch stops the
+    // poller rather than re-reading the file.
+    //
+    // The cap is readGateBytes(): the per-exchange inboundFrameCap when
+    // one is set (single-pass sets the cap its counts derive), else the
+    // static MAX_FRAME_SIZE_BYTES. Over it, a file no parked receive
+    // waits on is left unread: the consumer may yet set the cap for it,
+    // which is the frame it reads next.
+    const frameCap = this.readGateBytes();
+    const overReadGate = declaredSize > frameCap || messageFile.size > frameCap;
+    if (overReadGate && !this.consumerWaitsForFrame()) {
+      deps
+        .log()
+        .trace(
+          `[${deps.role()}] ${redactAndSanitizeForDisplay(messageFile.name)} ` +
+            `is over the ${frameCap}-byte read gate; waiting until it is ` +
+            "the message asked for",
+        );
+    } else if (overReadGate) {
+      // The name and the peer id are the writing peer's bytes (neither
+      // bounded here; the id is adopted from a `<peerId>-hello-<n>.json`
+      // name), and the path is the configured rendezvous directory's: so
+      // every chooser takes a labelled link of its own, one value per
+      // link, rather than sharing one where the first value could spend
+      // the whole budget and forge the text that would have introduced
+      // the next. Each fragment is redacted where it is interpolated
+      // (see redactPrivateKeyMaterial).
+      throw new FrameSizeExceededError(
+        `an inbound message file declares ${declaredSize} byte(s) ` +
+          `(on disk: ${messageFile.size}), exceeding the maximum inbound ` +
+          `frame size of ${frameCap} bytes; refusing to read it into memory`,
+        {
+          details: [
+            `message file: ${redactPrivateKeyMaterial(messageFile.name)}`,
+            `writing party: ${redactPrivateKeyMaterial(peerId)}`,
+            `shared folder: ${redactPrivateKeyMaterial(path)}`,
+          ],
+        },
+      );
+    } else if (messageFile.size < declaredSize) {
+      // The file has appeared but the sync tool has not finished
+      // transferring it. Leave it untouched and re-check next cycle rather
+      // than reading a truncated message. For a direct transport (SFTP),
+      // the atomic rename means the size already matches on the first poll.
+      deps
+        .log()
+        .trace(
+          `[${deps.role()}] ${redactAndSanitizeForDisplay(messageFile.name)} is ` +
+            `${messageFile.size}/` +
+            `${declaredSize} bytes; waiting for full sync`,
+        );
+    } else if (messageFile.size > declaredSize) {
+      // Larger than its name states: no write of the peer's produces
+      // this, and waiting cannot shrink it.
+      throw messageSizeMismatch(messageFile.name, peerId, path, {
+        actual: messageFile.size,
+        declared: declaredSize,
+      });
+    } else if (this.readAheadFull(declaredSize, frameCap)) {
+      // Left unread, so unconsumed and unacked: the partner's next send
+      // waits on it until the consumer receives what is queued.
+      deps
+        .log()
+        .trace(
+          `[${deps.role()}] ${redactAndSanitizeForDisplay(messageFile.name)} ` +
+            "waits until the messages already read are received",
+        );
+    } else {
+      deps
+        .options()
+        .inboundFrameMemoryCheck?.(
+          declaredSize,
+          this.queuedFileBytes() +
+            inboundFrameReadBytes(
+              declaredSize,
+              this.binaryFramesRequired,
+              this.negotiatedEnvelopeVersion,
+            ),
+        );
+      const inPath = joinFileSyncPath(path, messageFile.name);
+      deps
+        .log()
+        .debug(
+          `[${deps.role()}] getting message ` +
+            `${redactAndSanitizeForDisplay(messageFile.name)}`,
+        );
+
+      cycle.reachedGet = true;
+      // Capped at the count the name states, already refused above when
+      // over frameCap: the safety check behind the pre-get size check,
+      // for a file that grew after listing or a server that under-reports
+      // its size. Raw bytes: a binary frame is delivered verbatim and a
+      // JSON control payload is bounded-parsed from its bytes.
+      const message = await getUpToNamedCount(
+        deps.client(),
+        inPath,
+        declaredSize,
+        null,
+        () =>
+          new UsageError(
+            largerThanNamedCountMessage(
+              messageFileLabel(messageFile.name, peerId, path),
+              declaredSize,
+            ),
+          ),
+      );
+      cycle.reachedGet = false;
+      if (message.length !== declaredSize)
+        throw messageSizeMismatch(messageFile.name, peerId, path, {
+          actual: message.length,
+          declared: declaredSize,
+        });
+
+      // Past the byte-count gate, a parse failure is terminal in both modes
+      // (docs/spec/FILE_SYNC.md, Invariants, I5b).
+      //
+      // The returned `data` is ready for emit: the parsed object for a
+      // JSON control message, or the raw frame bytes for a binary frame.
+      // Only the JSON path decodes to a string, through the bounded
+      // chokepoint; the binary frame is never stringified, so a frame
+      // larger than Node's maximum string length is read intact.
+      const parseMessage = (): {
+        seq: number;
+        type: number;
+        data: unknown;
+        refusal?: UnencryptedMessageRefusedError;
+      } => {
+        let envelope: DeserializedMessage;
+        try {
+          envelope = deserializeFileSyncMessage(
+            message,
+            envelopeVersionForFrame(
+              !this.partnerFirstFrameDelivered,
+              this.negotiatedEnvelopeVersion,
+            ),
+          );
+        } catch (parseErr: unknown) {
+          // An unrecognized envelope version byte is the file-sync
+          // signature of a version-mismatched partner (a JSON-text
+          // message from a pre-envelope peer leads with '{', and a future
+          // envelope bump raises the byte), so name that real cause
+          // instead of the raw "malformed envelope" text.
+          if (parseErr instanceof IncompatibleEnvelopeVersionError)
+            throw new PartnerProtocolRefusalError(
+              `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
+                `from ${redactPrivateKeyMaterial(peerId)} has an ` +
+                `unrecognized wire ` +
+                `format (envelope version byte ${parseErr.foundVersion}, ` +
+                `not the expected ${parseErr.expectedVersion}); the partner ` +
+                `is likely running an incompatible Alcove version, and ` +
+                `both parties must run the same version`,
+              // A pre-envelope peer's leading '{' reads as a higher byte.
+              { olderVersion: "unknown" },
+            );
+          // Any other envelope failure (truncation, unknown type, out-of-
+          // range seq) is genuine corruption from a same-version peer.
+          throw new UsageError(
+            `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
+              `from ${redactPrivateKeyMaterial(peerId)} is fully ` +
+              `synced but has a malformed envelope: ` +
+              `${errorMessage(parseErr)}`,
+          );
+        }
+        if (envelope.type === MESSAGE_TYPE_BINARY)
+          return {
+            seq: envelope.seq,
+            type: envelope.type,
+            data: envelope.payload,
+          };
+        // Returned rather than thrown: the file is consumed as any
+        // received message is, so a partner waiting for it to be read
+        // (the cleartext key-exchange abort) does not wait out its drain.
+        if (this.binaryFramesRequired)
+          return {
+            seq: envelope.seq,
+            type: envelope.type,
+            data: undefined,
+            refusal: new UnencryptedMessageRefusedError(
+              `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
+                `from ${redactPrivateKeyMaterial(peerId)} is an ` +
+                `unencrypted message on an encrypted channel, so it was ` +
+                `refused without being parsed`,
+            ),
+          };
+        const jsonCap = deps.options().maxJsonMessageBytes;
+        if (jsonCap !== undefined && envelope.payload.length > jsonCap)
+          throw new UsageError(
+            `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
+              `from ${redactPrivateKeyMaterial(peerId)} holds a JSON ` +
+              `message of ${envelope.payload.length} bytes, over the ` +
+              `${jsonCap}-byte limit for a key-exchange message, so it ` +
+              `was refused without being parsed`,
+          );
+        let value: unknown;
+        try {
+          // parseBoundedJson takes the raw payload bytes and structurally
+          // bounds them before JSON.parse. V8's JSON.parse error quotes a
+          // span of the offending input (`Unexpected token 'x', "...." is
+          // not valid JSON`), so the whole error string can hold the peer's
+          // raw bytes -- the same control/ANSI/Unicode injection vector as
+          // the filename, and neutralized at the same display boundary.
+          value = parseBoundedJson(envelope.payload);
+        } catch (parseErr: unknown) {
+          throw new UsageError(
+            `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
+              `from ${redactPrivateKeyMaterial(peerId)} is fully ` +
+              `synced but is not valid JSON: ${errorMessage(parseErr)}`,
+          );
+        }
+        return { seq: envelope.seq, type: envelope.type, data: value };
+      };
+
+      if (deps.options().retainFiles) {
+        // Retain mode never deletes the message file: the directory is
+        // the durable transcript, and the ack marker (written here after
+        // validation and before emit) is the consumption signal the
+        // sender waits for in place of the file disappearing. The
+        // directory accumulates one message and one ack per exchanged
+        // message; poll() re-lists and reclassifies it each cycle, so
+        // per-poll cost scales with transcript length.
+        // Rotation/retention is an out-of-band operator responsibility.
+        const msgNNN = this.recvSeq;
+
+        const validatedMessage = parseMessage();
+
+        // Both the sender and receiver derive NNN from the same per-session
+        // counter, so a body seq that does not match the filename NNN
+        // indicates file corruption or a protocol bug. Surface it
+        // immediately rather than silently acking or delivering a
+        // mismatched message.
+        if (validatedMessage.seq !== msgNNN)
+          throw (
+            validatedMessage.refusal ??
+            new UsageError(
+              `message body seq=${validatedMessage.seq} does not match ` +
+                `filename NNN=${msgNNN}: possible corruption or protocol bug`,
+            )
+          );
+
+        deps
+          .log()
+          .trace(
+            `[${deps.role()}] received message seq=${validatedMessage.seq}, ` +
+              `type=${messageTypeLabel(validatedMessage.type)}`,
+          );
+
+        // The ack ("durably received") is written before emit, never after:
+        // an ack-write failure after a successful emit would re-deliver an
+        // already-consumed message. The per-NNN guard only skips a re-write
+        // of the same name (docs/spec/FILE_SYNC.md, Invariants, I8).
+        const acknowledge = async (): Promise<void> => {
+          if (this.lastAckedNNN === msgNNN) return;
+          // The ack is a self-write -> outbound (the peer reads it from its
+          // inbound, which is this outbound). In shared mode this is `path`.
+          const ackName = await deps.writeAck(
+            outboundPath,
+            messageFile.name.slice(0, -".json".length),
+          );
+          this.lastAckedNNN = msgNNN;
+          deps
+            .log()
+            .debug(
+              `[${deps.role()}] wrote ack ${redactAndSanitizeForDisplay(ackName)} for ` +
+                `seq=${validatedMessage.seq}`,
+            );
+        };
+
+        if (validatedMessage.refusal) {
+          await this.consumeRefusedFile(acknowledge, "acknowledge");
+          throw validatedMessage.refusal;
+        }
+        await acknowledge();
+        // `data` is already the value to deliver: the parsed object for a
+        // JSON control message, or the raw frame bytes for a binary frame.
+        this.deliver(validatedMessage.data, declaredSize);
+        this.partnerFirstFrameDelivered = true;
+        // Advance only after the application has seen the payload: if emit
+        // throws, recvSeq stays at msgNNN so the (never-deleted) message file
+        // is reprocessed on the next poll rather than permanently lost.
+        this.recvSeq++;
+      } else {
+        // Parse before deleting. A corrupt fully-synced message is terminal
+        // (I5b), so parsing first leaves the offending file on disk for
+        // inspection instead of destroying it; a valid message, or a type 0
+        // message refused once encryption has taken over, is then
+        // consumed by deleting it (the delete-mode go-ahead signal to the
+        // sender) before emit, the same ordering relative to emit as before.
+        const validatedMessage = parseMessage();
+        deps
+          .log()
+          .trace(
+            `[${deps.role()}] received message seq=${validatedMessage.seq}, ` +
+              `type=${messageTypeLabel(validatedMessage.type)}`,
+          );
+
+        deps
+          .log()
+          .debug(
+            `[${deps.role()}] deleting message ` +
+              `${redactAndSanitizeForDisplay(messageFile.name)}`,
+          );
+        const deleteMessage = async (): Promise<void> => {
+          try {
+            await deps.client().delete(inPath);
+          } catch (err: unknown) {
+            // A terminal UsageError -- e.g. the stall deadline a withheld
+            // delete callback trips -- is not a transient delete failure
+            // and must not be swallowed: re-deleting would re-hit the same
+            // stall, and emit("data") below would deliver a message whose
+            // consume-delete never landed, so the next poll re-emits a
+            // duplicate. Rethrown to poll()'s outer catch. Any other
+            // failure gets one retry below.
+            if (err instanceof UsageError) throw err;
+            // First delete failed (transiently); retry once after a
+            // backoff. On abort (close() mid-poll) this.wait rejects here,
+            // unwinding into poll()'s catch, where the !pollerActive guard
+            // swallows it. The second delete and the emit are both
+            // skipped, so the message is left undelivered for this session
+            // but still on disk, so a fresh connection re-reads it.
+            await deps.wait(deps.options().pollingFrequency);
+            try {
+              await deps.client().delete(inPath);
+            } catch (deleteErr: unknown) {
+              if (deleteErr instanceof UsageError) throw deleteErr;
+              // The first attempt can take effect with its reply lost, so
+              // an absent file on the retry means the message is consumed.
+              if (!isDeleteTargetAbsentError(deleteErr)) {
+                // Terminal: the delete is the sender's go-ahead, and a
+                // message left on disk is re-read by the next poll, so
+                // emitting it here would deliver it again on every cycle.
+                throw new UsageError(PARTNER_MESSAGE_DELETE_FAILED, {
+                  cause: chainDetailCauses(
+                    [
+                      `message file: ${redactPrivateKeyMaterial(messageFile.name)}`,
+                    ],
+                    deleteErr,
+                  ),
+                });
+              }
+            }
+          }
+        };
+
+        if (validatedMessage.refusal) {
+          await this.consumeRefusedFile(deleteMessage, "delete");
+          throw validatedMessage.refusal;
+        }
+        await deleteMessage();
+        // `data` is already the value to deliver: the parsed object for a
+        // JSON control message, or the raw frame bytes for a binary frame.
+        this.deliver(validatedMessage.data, declaredSize);
+        this.partnerFirstFrameDelivered = true;
+      }
+    }
+  }
+
   private async poll() {
     const { deps } = this;
     if (!this.pollerActive) return;
@@ -874,7 +1341,7 @@ export class FileSyncMessageLoop {
     const outboundPath = deps.outbound() ?? path;
     const peerId = deps.peerId()!;
 
-    let reachedGet = false;
+    const cycle = { reachedGet: false };
     try {
       // Cycle-boundary reconnect for a transport in connection-per-poll mode:
       // the previous cycle released its session at the idle boundary (the
@@ -904,108 +1371,17 @@ export class FileSyncMessageLoop {
           `[${deps.role()}] polling for message from ` +
             `${redactAndSanitizeForDisplay(peerId)}`,
         );
-      // Detect via a pattern scan rather than an exact-name exists(): the
-      // message filename encodes a per-message byte count (and optionally a
-      // timestamp and counter), so the receiver cannot predict the exact
-      // name. `<peerId>-*.json` with a numeric terminal segment matches the
-      // peer's message files and its sized control files
-      // (`-hello-<n>.json`, `-joining-<n>.json`, `-abort-<n>.json`), which
-      // isMessageName tells apart by the type word before the byte count; its
-      // other control files (`-ack.json`, `-lock.json`) have non-numeric
-      // terminals.
-      //
-      // Enforcement site 3 (see docs/spec/FILE_SYNC.md). The scan classifies
-      // every file in the listing, not only peer-prefixed ones: a file that
-      // is neither a peer message nor recognized for the loop (see
-      // isRecognizedLoopFile) is unexpected and handled per
-      // `unexpectedFiles`; `unexpected_files: ignore` skips it silently.
-      //
-      // In retain mode, messages are never deleted, so the directory
-      // accumulates one entry per send. synchronize() admits no message but
-      // the ones listInbound drops, so recvSeq starts at 0 and the next
-      // unprocessed message always has NNN === recvSeq.
+      // A pattern scan, not an exact-name exists(): a message name states its
+      // byte count, so the receiver cannot predict it (docs/spec/FILE_SYNC.md,
+      // The five enforcement sites, site 3, and Invariants, I8 for why recvSeq
+      // is the next retained NNN).
       const allFiles = await this.listInbound(path);
 
-      const messages: Array<{ file: FileInfo; declaredSize: number }> = [];
-      const unexpected: string[] = [];
-      for (const file of allFiles) {
-        const name = file.name;
-
-        // Peer message scan. A peer-prefixed message name (the grammar
-        // discriminant, isMessageName) is a message. Ack markers (terminal
-        // `ack`) and the sized control files share the prefix but are control
-        // files, so they are excluded here and fall through to the
-        // recognized-for-the-loop check.
-        if (
-          name.startsWith(`${peerId}-`) &&
-          name.endsWith(".json") &&
-          !name.endsWith("-ack.json")
-        ) {
-          const declaredSize = isMessageName(name)
-            ? parseMessageByteCount(name)
-            : undefined;
-          if (declaredSize !== undefined) {
-            if (deps.options().retainFiles) {
-              const nnn = parseTimestampedMessageNNN(name);
-              if (nnn === undefined) {
-                // A byte-count terminal but no parseable NNN segment. In
-                // retain mode every peer message holds an NNN (synchronize()
-                // requires retain => timestamp on both sides), so a correctly
-                // configured peer cannot produce this name: it is a malformed
-                // protocol file (corruption, or a foreign message-shaped
-                // file), terminal regardless of `unexpectedFiles`, reported
-                // before the recvSeq selection guard so it is not silently
-                // skipped as a "different NNN".
-                //
-                // A plain UsageError, not a BilateralModeMismatchError: both
-                // sides already agreed on retain/timestamp at rendezvous, so
-                // this is a protocol error, not a settings mismatch.
-                //
-                // Names only this file: the throw fires mid-scan, so any
-                // other unexpected files this cycle holds are reported by a
-                // clean re-run instead.
-                throw new UsageError(
-                  `message file ${redactPrivateKeyMaterial(name)} from ` +
-                    `${redactPrivateKeyMaterial(peerId)} in ` +
-                    `${redactPrivateKeyMaterial(path)} has a ` +
-                    "byte-count terminal segment but no parseable NNN segment; " +
-                    "a correctly configured retain-mode peer cannot produce " +
-                    "this name, so the file is corrupt or does not belong to " +
-                    "this exchange. The directory may contain further " +
-                    "unexpected files this error does not enumerate; inspect it " +
-                    "before retrying",
-                );
-              }
-              // NNN < recvSeq is an already-consumed retained message; higher
-              // is not yet current. Either way, skip it. A foreign
-              // message-shaped file with a non-matching NNN is skipped here
-              // too and escapes the unexpected-file policy: it is
-              // indistinguishable by name from a retained message, and the
-              // snapshot does not cover it (a matching name is a protocol
-              // file, never snapshotted).
-              if (nnn !== this.recvSeq) continue;
-            }
-            messages.push({ file, declaredSize });
-            continue;
-          }
-          // Peer-prefixed `.json`, non-ack, not a message (e.g. the peer
-          // hello, or a stray `<peerId>-backup.json`): fall through to the
-          // recognized/unexpected classification below.
-        }
-
-        // Foreign-file detection: a file neither recognized for the loop nor an
-        // in-flight temp write is unexpected and handled per `unexpectedFiles`.
-        if (
-          !isRecognizedLoopFile(
-            name,
-            deps.id(),
-            peerId,
-            deps.foreignFileSnapshot,
-            deps.helloNames(),
-          )
-        )
-          unexpected.push(name);
-      }
+      const { messages, unexpected } = this.classifyListing(
+        allFiles,
+        peerId,
+        path,
+      );
 
       // Apply the mid-loop unexpected-file policy before processing messages:
       // `error` throws here (terminal), `warn` logs once per name and falls
@@ -1075,391 +1451,14 @@ export class FileSyncMessageLoop {
         );
       }
 
-      if (messages.length === 1) {
-        const { file: messageFile, declaredSize } = messages[0];
-
-        if (declaredSize === 0)
-          throw zeroCountMessage(messageFile.name, peerId, path);
-
-        // Frame-size bound (the primary enforcement point; see
-        // docs/spec/TRANSPORT_BOUNDS.md). Refused before the sync-gate and
-        // before get() loads the body into memory, so a hostile server admin
-        // cannot exhaust memory with an arbitrarily large file. Checked
-        // against both the filename-declared count and the listed on-disk
-        // size; the maxBytes cap passed to get() is the safety check for a
-        // server that under-reports the size here. Terminal: a
-        // FrameSizeExceededError is a UsageError, so poll()'s catch stops the
-        // poller rather than re-reading the file.
-        //
-        // The cap is readGateBytes(): the per-exchange inboundFrameCap when
-        // one is set (single-pass sets the cap its counts derive), else the
-        // static MAX_FRAME_SIZE_BYTES. Over it, a file no parked receive
-        // waits on is left unread: the consumer may yet set the cap for it,
-        // which is the frame it reads next.
-        const frameCap = this.readGateBytes();
-        const overReadGate =
-          declaredSize > frameCap || messageFile.size > frameCap;
-        if (overReadGate && !this.consumerWaitsForFrame()) {
-          deps
-            .log()
-            .trace(
-              `[${deps.role()}] ${redactAndSanitizeForDisplay(messageFile.name)} ` +
-                `is over the ${frameCap}-byte read gate; waiting until it is ` +
-                "the message asked for",
-            );
-        } else if (overReadGate) {
-          // The name and the peer id are the writing peer's bytes (neither
-          // bounded here; the id is adopted from a `<peerId>-hello-<n>.json`
-          // name), and the path is the configured rendezvous directory's: so
-          // every chooser takes a labelled link of its own, one value per
-          // link, rather than sharing one where the first value could spend
-          // the whole budget and forge the text that would have introduced
-          // the next. Each fragment is redacted where it is interpolated
-          // (see redactPrivateKeyMaterial).
-          throw new FrameSizeExceededError(
-            `an inbound message file declares ${declaredSize} byte(s) ` +
-              `(on disk: ${messageFile.size}), exceeding the maximum inbound ` +
-              `frame size of ${frameCap} bytes; refusing to read it into memory`,
-            {
-              details: [
-                `message file: ${redactPrivateKeyMaterial(messageFile.name)}`,
-                `writing party: ${redactPrivateKeyMaterial(peerId)}`,
-                `shared folder: ${redactPrivateKeyMaterial(path)}`,
-              ],
-            },
-          );
-        } else if (messageFile.size < declaredSize) {
-          // The file has appeared but the sync tool has not finished
-          // transferring it. Leave it untouched and re-check next cycle rather
-          // than reading a truncated message. For a direct transport (SFTP),
-          // the atomic rename means the size already matches on the first poll.
-          deps
-            .log()
-            .trace(
-              `[${deps.role()}] ${redactAndSanitizeForDisplay(messageFile.name)} is ` +
-                `${messageFile.size}/` +
-                `${declaredSize} bytes; waiting for full sync`,
-            );
-        } else if (messageFile.size > declaredSize) {
-          // Larger than its name states: no write of the peer's produces
-          // this, and waiting cannot shrink it.
-          throw messageSizeMismatch(messageFile.name, peerId, path, {
-            actual: messageFile.size,
-            declared: declaredSize,
-          });
-        } else if (this.readAheadFull(declaredSize, frameCap)) {
-          // Left unread, so unconsumed and unacked: the partner's next send
-          // waits on it until the consumer receives what is queued.
-          deps
-            .log()
-            .trace(
-              `[${deps.role()}] ${redactAndSanitizeForDisplay(messageFile.name)} ` +
-                "waits until the messages already read are received",
-            );
-        } else {
-          deps
-            .options()
-            .inboundFrameMemoryCheck?.(
-              declaredSize,
-              this.queuedFileBytes() +
-                inboundFrameReadBytes(
-                  declaredSize,
-                  this.binaryFramesRequired,
-                  this.negotiatedEnvelopeVersion,
-                ),
-            );
-          const inPath = joinFileSyncPath(path, messageFile.name);
-          deps
-            .log()
-            .debug(
-              `[${deps.role()}] getting message ` +
-                `${redactAndSanitizeForDisplay(messageFile.name)}`,
-            );
-
-          reachedGet = true;
-          // Capped at the count the name states, already refused above when
-          // over frameCap: the safety check behind the pre-get size check,
-          // for a file that grew after listing or a server that under-reports
-          // its size. Raw bytes: a binary frame is delivered verbatim and a
-          // JSON control payload is bounded-parsed from its bytes.
-          const message = await getUpToNamedCount(
-            deps.client(),
-            inPath,
-            declaredSize,
-            null,
-            () =>
-              new UsageError(
-                largerThanNamedCountMessage(
-                  messageFileLabel(messageFile.name, peerId, path),
-                  declaredSize,
-                ),
-              ),
-          );
-          reachedGet = false;
-          if (message.length !== declaredSize)
-            throw messageSizeMismatch(messageFile.name, peerId, path, {
-              actual: message.length,
-              declared: declaredSize,
-            });
-
-          // The file has already passed the byte-count gate above, so it is
-          // fully synced: an envelope or JSON-parse failure here is genuine
-          // corruption, not a partial write, and re-reading cannot fix it.
-          // Classified as a terminal UsageError (the same rule
-          // readControlFileWithGate applies to control files), or a
-          // ProtocolRefusalError for a partner on another wire format;
-          // either is terminal, mode-agnostic:
-          // in retain mode the never-deleted file would otherwise be re-read
-          // every poll cycle until the inactivity timeout.
-          //
-          // The returned `data` is ready for emit: the parsed object for a
-          // JSON control message, or the raw frame bytes for a binary frame.
-          // Only the JSON path decodes to a string, through the bounded
-          // chokepoint; the binary frame is never stringified, so a frame
-          // larger than Node's maximum string length is read intact.
-          const parseMessage = (): {
-            seq: number;
-            type: number;
-            data: unknown;
-            refusal?: UnencryptedMessageRefusedError;
-          } => {
-            let envelope: DeserializedMessage;
-            try {
-              envelope = deserializeFileSyncMessage(
-                message,
-                envelopeVersionForFrame(
-                  !this.partnerFirstFrameDelivered,
-                  this.negotiatedEnvelopeVersion,
-                ),
-              );
-            } catch (parseErr: unknown) {
-              // An unrecognized envelope version byte is the file-sync
-              // signature of a version-mismatched partner (a JSON-text
-              // message from a pre-envelope peer leads with '{', and a future
-              // envelope bump raises the byte), so name that real cause
-              // instead of the raw "malformed envelope" text.
-              if (parseErr instanceof IncompatibleEnvelopeVersionError)
-                throw new PartnerProtocolRefusalError(
-                  `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
-                    `from ${redactPrivateKeyMaterial(peerId)} has an ` +
-                    `unrecognized wire ` +
-                    `format (envelope version byte ${parseErr.foundVersion}, ` +
-                    `not the expected ${parseErr.expectedVersion}); the partner ` +
-                    `is likely running an incompatible Alcove version, and ` +
-                    `both parties must run the same version`,
-                  // A pre-envelope peer's leading '{' reads as a higher byte.
-                  { olderVersion: "unknown" },
-                );
-              // Any other envelope failure (truncation, unknown type, out-of-
-              // range seq) is genuine corruption from a same-version peer.
-              throw new UsageError(
-                `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
-                  `from ${redactPrivateKeyMaterial(peerId)} is fully ` +
-                  `synced but has a malformed envelope: ` +
-                  `${errorMessage(parseErr)}`,
-              );
-            }
-            if (envelope.type === MESSAGE_TYPE_BINARY)
-              return {
-                seq: envelope.seq,
-                type: envelope.type,
-                data: envelope.payload,
-              };
-            // Returned rather than thrown: the file is consumed as any
-            // received message is, so a partner waiting for it to be read
-            // (the cleartext key-exchange abort) does not wait out its drain.
-            if (this.binaryFramesRequired)
-              return {
-                seq: envelope.seq,
-                type: envelope.type,
-                data: undefined,
-                refusal: new UnencryptedMessageRefusedError(
-                  `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
-                    `from ${redactPrivateKeyMaterial(peerId)} is an ` +
-                    `unencrypted message on an encrypted channel, so it was ` +
-                    `refused without being parsed`,
-                ),
-              };
-            const jsonCap = deps.options().maxJsonMessageBytes;
-            if (jsonCap !== undefined && envelope.payload.length > jsonCap)
-              throw new UsageError(
-                `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
-                  `from ${redactPrivateKeyMaterial(peerId)} holds a JSON ` +
-                  `message of ${envelope.payload.length} bytes, over the ` +
-                  `${jsonCap}-byte limit for a key-exchange message, so it ` +
-                  `was refused without being parsed`,
-              );
-            let value: unknown;
-            try {
-              // parseBoundedJson takes the raw payload bytes and structurally
-              // bounds them before JSON.parse. V8's JSON.parse error quotes a
-              // span of the offending input (`Unexpected token 'x', "...." is
-              // not valid JSON`), so the whole error string can hold the peer's
-              // raw bytes -- the same control/ANSI/Unicode injection vector as
-              // the filename, and neutralized at the same display boundary.
-              value = parseBoundedJson(envelope.payload);
-            } catch (parseErr: unknown) {
-              throw new UsageError(
-                `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
-                  `from ${redactPrivateKeyMaterial(peerId)} is fully ` +
-                  `synced but is not valid JSON: ${errorMessage(parseErr)}`,
-              );
-            }
-            return { seq: envelope.seq, type: envelope.type, data: value };
-          };
-
-          if (deps.options().retainFiles) {
-            // Retain mode never deletes the message file: the directory is
-            // the durable transcript, and the ack marker (written here after
-            // validation and before emit) is the consumption signal the
-            // sender waits for in place of the file disappearing. The
-            // directory accumulates one message and one ack per exchanged
-            // message; poll() re-lists and reclassifies it each cycle, so
-            // per-poll cost scales with transcript length.
-            // Rotation/retention is an out-of-band operator responsibility.
-            const msgNNN = this.recvSeq;
-
-            const validatedMessage = parseMessage();
-
-            // Both the sender and receiver derive NNN from the same per-session
-            // counter, so a body seq that does not match the filename NNN
-            // indicates file corruption or a protocol bug. Surface it
-            // immediately rather than silently acking or delivering a
-            // mismatched message.
-            if (validatedMessage.seq !== msgNNN)
-              throw (
-                validatedMessage.refusal ??
-                new UsageError(
-                  `message body seq=${validatedMessage.seq} does not match ` +
-                    `filename NNN=${msgNNN}: possible corruption or protocol bug`,
-                )
-              );
-
-            deps
-              .log()
-              .trace(
-                `[${deps.role()}] received message seq=${validatedMessage.seq}, ` +
-                  `type=${messageTypeLabel(validatedMessage.type)}`,
-              );
-
-            // Write the ack marker before emit. The ack means "durably
-            // received", not "consumed by the application": the message is a
-            // fully-synced file retain mode never deletes, so acking before
-            // the local hand-off keeps the peer unblocked even when emit
-            // fails. Do not reorder to emit-before-ack: an ack-write failure
-            // after a successful emit would re-deliver an already-consumed
-            // message.
-            //
-            // The ack name is derived from the consumed message's fixed
-            // name, so a reprocess re-derives the identical name rather than
-            // duplicating a file. The per-NNN guard is only an optimization:
-            // it skips the re-write when a prior poll already wrote this
-            // NNN's ack before emit threw.
-            const acknowledge = async (): Promise<void> => {
-              if (this.lastAckedNNN === msgNNN) return;
-              // The ack is a self-write -> outbound (the peer reads it from its
-              // inbound, which is this outbound). In shared mode this is `path`.
-              const ackName = await deps.writeAck(
-                outboundPath,
-                messageFile.name.slice(0, -".json".length),
-              );
-              this.lastAckedNNN = msgNNN;
-              deps
-                .log()
-                .debug(
-                  `[${deps.role()}] wrote ack ${redactAndSanitizeForDisplay(ackName)} for ` +
-                    `seq=${validatedMessage.seq}`,
-                );
-            };
-
-            if (validatedMessage.refusal) {
-              await this.consumeRefusedFile(acknowledge, "acknowledge");
-              throw validatedMessage.refusal;
-            }
-            await acknowledge();
-            // `data` is already the value to deliver: the parsed object for a
-            // JSON control message, or the raw frame bytes for a binary frame.
-            this.deliver(validatedMessage.data, declaredSize);
-            this.partnerFirstFrameDelivered = true;
-            // Advance only after the application has seen the payload: if emit
-            // throws, recvSeq stays at msgNNN so the (never-deleted) message file
-            // is reprocessed on the next poll rather than permanently lost.
-            this.recvSeq++;
-          } else {
-            // Parse before deleting. A corrupt fully-synced message is terminal
-            // (I5b), so parsing first leaves the offending file on disk for
-            // inspection instead of destroying it; a valid message, or a type 0
-            // message refused once encryption has taken over, is then
-            // consumed by deleting it (the delete-mode go-ahead signal to the
-            // sender) before emit, the same ordering relative to emit as before.
-            const validatedMessage = parseMessage();
-            deps
-              .log()
-              .trace(
-                `[${deps.role()}] received message seq=${validatedMessage.seq}, ` +
-                  `type=${messageTypeLabel(validatedMessage.type)}`,
-              );
-
-            deps
-              .log()
-              .debug(
-                `[${deps.role()}] deleting message ` +
-                  `${redactAndSanitizeForDisplay(messageFile.name)}`,
-              );
-            const deleteMessage = async (): Promise<void> => {
-              try {
-                await deps.client().delete(inPath);
-              } catch (err: unknown) {
-                // A terminal UsageError -- e.g. the stall deadline a withheld
-                // delete callback trips -- is not a transient delete failure
-                // and must not be swallowed: re-deleting would re-hit the same
-                // stall, and emit("data") below would deliver a message whose
-                // consume-delete never landed, so the next poll re-emits a
-                // duplicate. Rethrown to poll()'s outer catch. Any other
-                // failure gets one retry below.
-                if (err instanceof UsageError) throw err;
-                // First delete failed (transiently); retry once after a
-                // backoff. On abort (close() mid-poll) this.wait rejects here,
-                // unwinding into poll()'s catch, where the !pollerActive guard
-                // swallows it. The second delete and the emit are both
-                // skipped, so the message is left undelivered for this session
-                // but still on disk, so a fresh connection re-reads it.
-                await deps.wait(deps.options().pollingFrequency);
-                try {
-                  await deps.client().delete(inPath);
-                } catch (deleteErr: unknown) {
-                  if (deleteErr instanceof UsageError) throw deleteErr;
-                  // The first attempt can take effect with its reply lost, so
-                  // an absent file on the retry means the message is consumed.
-                  if (!isDeleteTargetAbsentError(deleteErr)) {
-                    // Terminal: the delete is the sender's go-ahead, and a
-                    // message left on disk is re-read by the next poll, so
-                    // emitting it here would deliver it again on every cycle.
-                    throw new UsageError(PARTNER_MESSAGE_DELETE_FAILED, {
-                      cause: chainDetailCauses(
-                        [
-                          `message file: ${redactPrivateKeyMaterial(messageFile.name)}`,
-                        ],
-                        deleteErr,
-                      ),
-                    });
-                  }
-                }
-              }
-            };
-
-            if (validatedMessage.refusal) {
-              await this.consumeRefusedFile(deleteMessage, "delete");
-              throw validatedMessage.refusal;
-            }
-            await deleteMessage();
-            // `data` is already the value to deliver: the parsed object for a
-            // JSON control message, or the raw frame bytes for a binary frame.
-            this.deliver(validatedMessage.data, declaredSize);
-            this.partnerFirstFrameDelivered = true;
-          }
-        }
-      }
+      if (messages.length === 1)
+        await this.consumeMessage(
+          messages[0],
+          peerId,
+          path,
+          outboundPath,
+          cycle,
+        );
       this.consecutiveEnoentCount = 0;
     } catch (err: unknown) {
       // Shutdown guard, by state rather than error type: close() clears
@@ -1473,7 +1472,10 @@ export class FileSyncMessageLoop {
       // invoking stop() independently mid-poll would have a concurrent real
       // error swallowed here too.
       if (!this.pollerActive) return;
-      if ((err as NodeJS.ErrnoException).code === "ENOENT" && reachedGet) {
+      if (
+        (err as NodeJS.ErrnoException).code === "ENOENT" &&
+        cycle.reachedGet
+      ) {
         // TOCTOU race: list() reported the file but get() found it gone,
         // meaning the peer cleaned up between the two calls. See
         // MAX_CONSECUTIVE_ENOENT for when this stops being treated as one.

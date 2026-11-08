@@ -37,6 +37,7 @@ stands, from a direction still open to a decision taken and built.
 | [default-linkage-rule-set.md](default-linkage-rule-set.md) | Decided and built. |
 | [failure-cause-catalog.md](failure-cause-catalog.md) | Decided and built. |
 | [fan-out-matching-resolution.md](fan-out-matching-resolution.md) | Built under both linkage strategies; the cascade's own realization landed after the note was written. |
+| [file-sync-rendezvous-structure.md](file-sync-rendezvous-structure.md) | Built; agent-written, a proposal until ratified. |
 | [fips-provider-surface.md](fips-provider-surface.md) | Measurement, plus two decisions taken on it; whether to pursue a FIPS claim at all remains open. |
 | [fips-variant-image.md](fips-variant-image.md) | Decided, built, and published. |
 | [folded-column-name-lookup.md](folded-column-name-lookup.md) | Decided on the maintainer's ruling and built; the options weighed and what the fold changes for a configuration with no `metadata` block. |
