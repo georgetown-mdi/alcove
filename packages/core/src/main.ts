@@ -1062,8 +1062,10 @@ export {
   LEFT_OUT_BY_CONNECTION_ALLOWED_RELAYS,
   NO_RELAY_CANDIDATE_GATHERED,
   registrarNotContactedReason,
+  REGISTRAR_DISCLOSURE,
   RELAY_CHECK_BOUND_MS,
   RELAY_CHECK_ENROLLMENT_ID,
+  RELAY_DISCLOSURE,
   relayCheckHeadline,
   relayCheckPlan,
   relayHostStatement,
@@ -1072,6 +1074,7 @@ export {
   WEBSOCKET_RELAY_CHECK_OUTCOMES,
   WEBSOCKET_RELAY_LINE_BELOW,
   webSocketRelayCheckId,
+  webSocketRelayRefusalClause,
 } from "./relayCheck";
 export type {
   RelayCheckContact,
@@ -1085,6 +1088,24 @@ export type {
   RelayTransport,
   WebSocketRelayCheckOutcome,
 } from "./relayCheck";
+export {
+  INVITATION_RELAY_REFUSES_UNTIL_ENROLLED,
+  OWN_RELAY_REFUSES_UNTIL_ENROLLED,
+  RELAY_NOT_REACHED_REMEDY,
+  RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR,
+  TURN_RELAY_CREDENTIAL_REFUSED_MEANING,
+  TURN_RELAY_NO_RELAYED_PATH_MEANING,
+  TURN_RELAY_NOT_REACHED_MEANING,
+  WEBSOCKET_RELAY_NO_RELAYED_PATH_MEANING,
+  WEBSOCKET_RELAY_NOT_REACHED_ACTION,
+  WEBSOCKET_RELAY_NOT_REACHED_MEANING,
+  WEBSOCKET_RELAY_UNEXPECTED_MESSAGE_WORDS,
+  webSocketRelayRefusalWords,
+} from "./relayCheckWords";
+export type {
+  RelayCheckWords,
+  WebSocketRelayRefusalContext,
+} from "./relayCheckWords";
 export {
   enrollRelayKey,
   enrollRelayKeyWithinWait,

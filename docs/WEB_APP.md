@@ -119,6 +119,17 @@ Each exchange has its own **Connection settings**: on the **Review & create** st
   - If your browser cannot reach any STUN server it lists, a direct connection to your partner is less likely to open. Name a STUN server your browser can reach, Google's `stun:stun.l.google.com:19302` included: it is used beside the invitation's.
 - **WebSocket relay url** names a relay for networks that block connections through a TURN relay, such as `wss://relay.example.org/relay`. The exchange connects to it as it starts, so its operator learns your network address, and the exchange passes through it, encrypted, only when no other connection opens ([WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay)). An invitation you create names it, less where its Allowed relays leave it out.
 
+### Checking the relays
+
+**Check the relays**, below the Connection settings of an invitation you accept and on a saved exchange's page, checks whether each relay the exchange lists carries its traffic, under the exchange's own credential. It is offered where a run of the exchange would list a relay: one in the Connection settings, one the invitation names, or this site's relay server where the exchange uses it. A saved exchange's check uses its settings as last saved. An invitation you create does not offer it yet.
+
+- **Before it starts.** It lists the hosts it will contact, the hosts a run of the exchange contacts, and contacts nothing until you choose **Start the check**. Each operator it lists learns your network address.
+- **What it does.** Where the exchange uses this site's relay server, it first sets that relay up for the exchange as a run does. It then opens two connections through each relay and passes one message between them.
+- **What it reports.** For each relay, that it works, or that it does not work with the reason and what to change. A relay that refuses the exchange's credential does not work. Above the lines, it says whether the exchange will get through over a relay.
+- **The same words as the command line.** A reason and its remedy are those `alcove doctor relay` gives for the same cause ([CLI.md](CLI.md#checking-the-relay-of-a-webrtc-exchange)).
+
+The protocol and its limits: [PROTOCOL.md](spec/PROTOCOL.md#the-web-applications-relay-check).
+
 ### Allowed relays
 
 An exchange's **Allowed relays** limit the relay servers your side of that exchange uses to the hosts you list. They are set for each exchange: on the **Review & create** step of an invitation you create, under **live, in this browser**; on the review of an invitation you accept, below the terms; and on a saved exchange's page, under Local settings ([MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md#the-relays-a-saved-exchange-may-use)). How an entry matches a relay, and what the list does and does not decide: [`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays).

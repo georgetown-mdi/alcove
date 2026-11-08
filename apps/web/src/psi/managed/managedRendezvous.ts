@@ -35,9 +35,9 @@ import {
   dialAsAcceptor,
   listenAsInviter,
 } from "../transport/rendezvous";
+import { relayPlanForRun, runRelayHosts } from "../transport/runRelayPlan";
 import { PartnerNoShowError } from "../transport/waitForConnection";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
-import { relayPlanForRun } from "../transport/runRelayPlan";
 
 import {
   managedAllowedRelays,
@@ -47,6 +47,7 @@ import {
 import { CHANGE_SAVED_SERVER_REMEDY } from "./managedFailureCopy";
 
 import type { DefaultRelayDependencies } from "../transport/defaultRelay";
+import type { ExchangeRelayCheckSubject } from "../transport/exchangeRelayCheck";
 import type { RunRelayPlan } from "../transport/runRelayPlan";
 import type { WebRtcPathFailure } from "../transport/relayFallback";
 
@@ -280,6 +281,30 @@ export async function managedRunRelayPlan(
         : {}),
     },
   );
+}
+
+/**
+ * The check of the relays a managed run of `record` lists: the hosts
+ * {@link managedRunRelayPlan} may contact, read with no contact, and that
+ * plan, enrolling as a run does, made only when the check starts.
+ */
+export function managedRelayCheckSubject(
+  record: ManagedRendezvousRecord,
+): ExchangeRelayCheckSubject {
+  const connection = record.exchangeFile.connection;
+  return {
+    sharedSecret: record.sharedSecret,
+    hosts: runRelayHosts(
+      connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+      managedAllowedRelays(record.exchangeFile),
+      {
+        readOwn: () => managedOwnRelayRead(record),
+        switchedOn: () => record.defaultRelayOn === true,
+      },
+    ),
+    plan: (onDefaultRelayEnrollment) =>
+      managedRunRelayPlan(record, { onDefaultRelayEnrollment }),
+  };
 }
 
 /**

@@ -2,12 +2,9 @@ import Peer from "peerjs";
 
 import {
   ConnectionError,
-  RELAY_CREDENTIAL_MAX_TTL_SECONDS,
-  deriveRelayKey,
   deriveRendezvousPeerId,
   getLogger,
   markStatesItsOwnNextStep,
-  mintRelayCredential,
 } from "@alcove/core";
 
 import { isDiagnosticMode, whenDiagnostic } from "@utils/diagnostics";
@@ -35,6 +32,7 @@ import {
 } from "./iceGathering";
 import { boundPeerSignaling } from "./signalingBounds";
 import { guardInboundConnections } from "./inboundConnections";
+import { turnIceServer } from "./turnIceServer";
 
 import type { DataConnection, PeerOptions } from "peerjs";
 import type { WebRTCEndpoint } from "@alcove/core";
@@ -131,16 +129,6 @@ export interface RelayLocator {
 const DEFAULT_STUN_URLS = ["stun:stun.l.google.com:19302"];
 
 /**
- * Lifetime of the relay credential a run mints. It must outlast the peer wait
- * ({@link DEFAULT_PEER_WAIT_TIMEOUT_MS}) and the exchange after it, and core
- * refuses anything over one hour, so it is that ceiling.
- */
-export const RELAY_CREDENTIAL_TTL_SECONDS = RELAY_CREDENTIAL_MAX_TTL_SECONDS;
-
-/** The label in a minted credential's username, `<expiry>:<label>`. */
-const RELAY_CREDENTIAL_LABEL = "alcove";
-
-/**
  * The ICE server list for one run: one STUN entry, and, when the relay names
  * TURN urls, one entry of them all holding a credential minted at `now` from
  * the relay key the exchange's shared secret derives. Every relay a browser
@@ -164,15 +152,8 @@ export async function buildIceServers(
       ? [...new Set(relay.stun)]
       : DEFAULT_STUN_URLS;
   const iceServers: Array<RTCIceServer> = [{ urls: [...stun] }];
-  if (relay !== undefined && relay.turn.length > 0) {
-    const { username, credential } = await mintRelayCredential({
-      key: await deriveRelayKey(sharedSecret),
-      label: RELAY_CREDENTIAL_LABEL,
-      ttlSeconds: RELAY_CREDENTIAL_TTL_SECONDS,
-      now,
-    });
-    iceServers.push({ urls: [...relay.turn], username, credential });
-  }
+  if (relay !== undefined && relay.turn.length > 0)
+    iceServers.push(await turnIceServer(relay.turn, sharedSecret, now));
   return iceServers;
 }
 

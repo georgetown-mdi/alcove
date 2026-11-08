@@ -9,7 +9,11 @@ import {
   SERVER_FIELD_DESCRIPTION,
 } from "@exchange/ExchangeConnectionSettings";
 import { DEFAULT_RELAY_SWITCH_LABEL } from "@psi/transport/defaultRelaySwitch";
+import { ExchangeRelayCheck } from "@exchange/ExchangeRelayCheck";
+import { SAVED_EXCHANGE_RELAY_CHECK_SCOPE } from "@exchange/exchangeRelayCheckModel";
 import { defaultRelayBuild } from "@utils/clientConfig";
+import { managedRelayCheckSubject } from "@psi/managed/managedRendezvous";
+import { runnableManagedExchange } from "@psi/managed/managedExchangeRecord";
 import styles from "@styles/app.module.css";
 import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 
@@ -57,6 +61,9 @@ export function ManagedConnectionSettings({
   const [failed, setFailed] = useState(false);
   const [edited, setEdited] = useState(false);
   useAppShellUpdateHold(edited && !saved, "edits");
+  const connection = record.exchangeFile.connection;
+  const invitationRelay =
+    connection.channel === "webrtc" ? connection.invitationRelay : undefined;
 
   function edit(fields: Partial<ConnectionSettingsText>) {
     setText((current) => ({ ...current, ...fields }));
@@ -138,6 +145,13 @@ export function ManagedConnectionSettings({
       <Button mt="sm" onClick={save} loading={saving}>
         Save connection settings
       </Button>
+      {runnableManagedExchange(record) && (
+        <ExchangeRelayCheck
+          subject={managedRelayCheckSubject(record)}
+          {...(invitationRelay !== undefined && { invitationRelay })}
+          scope={SAVED_EXCHANGE_RELAY_CHECK_SCOPE}
+        />
+      )}
     </div>
   );
 }

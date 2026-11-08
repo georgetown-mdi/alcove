@@ -1,16 +1,25 @@
 import {
+  INVITATION_RELAY_REFUSES_UNTIL_ENROLLED,
   InternalConsistencyError,
   LATER_TURN_URL_NOT_CONTACTED,
+  OWN_RELAY_REFUSES_UNTIL_ENROLLED,
   RELAY_CHECK_BOUND_MS,
   RELAY_CHECK_ENROLLMENT_ID,
+  RELAY_NOT_REACHED_REMEDY,
+  RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR,
   registrarNotContactedReason,
   relayCheckHeadline,
   relayCheckPlan as relayCheckHostPlan,
   selectRunRelay,
+  TURN_RELAY_NOT_REACHED_MEANING,
   turnUrlTransport,
   UsageError,
   WEBSOCKET_RELAY_LINE_BELOW,
+  WEBSOCKET_RELAY_NOT_REACHED_ACTION,
+  WEBSOCKET_RELAY_NOT_REACHED_MEANING,
+  WEBSOCKET_RELAY_UNEXPECTED_MESSAGE_WORDS,
   webSocketRelayCheckId,
+  webSocketRelayRefusalWords,
 } from "@alcove/core";
 import type {
   ConnectionConfig,
@@ -50,14 +59,7 @@ import type {
 // Contract: docs/spec/CLI_DOCTOR.md; operator page: docs/CLI.md, Checking the
 // relay of a WebRTC exchange.
 
-export { turnUrlTransport };
-
-/**
- * What to do when no relay candidate was gathered from a configured relay,
- * as docs/CLI.md, When a WebRTC exchange does not connect, states it.
- */
-export const RELAY_NOT_REACHED_REMEDY =
-  "Fix the relay, or arrange a direct path; waiting longer changes nothing.";
+export { RELAY_NOT_REACHED_REMEDY, turnUrlTransport };
 
 /** The refusal of a configuration whose channel is not webrtc. */
 export const RELAY_CHECK_WEBRTC_ONLY =
@@ -293,10 +295,7 @@ function registrarNotContactedRecord(plan: RelayCheckPlan): DoctorCheckRecord {
   });
 }
 
-const NOT_REACHED_MEANING =
-  "nothing on this host reached this relay, the relay refused the " +
-  "credential, or it presented a certificate this host does not trust; " +
-  "the reason is not reported, so the check cannot tell which.";
+const NOT_REACHED_MEANING = TURN_RELAY_NOT_REACHED_MEANING;
 
 function notReachedMeaning(
   server: RunTurnServer,
@@ -307,20 +306,10 @@ function notReachedMeaning(
     return enrollment.outcome.kind === "enrolled"
       ? NOT_REACHED_MEANING
       : `${NOT_REACHED_MEANING} The likely cause is the failed enrollment ` +
-          "above: this relay refuses the credential derived from the " +
-          "exchange's shared secret until the exchange's relay key is " +
-          "enrolled at its registrar.";
+          `above: ${RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR}`;
   if (server.source === "invitation")
-    return (
-      `${NOT_REACHED_MEANING} This relay refuses the credential derived ` +
-      "from the exchange's shared secret until the exchange's relay key " +
-      "is enrolled there."
-    );
-  return (
-    `${NOT_REACHED_MEANING} A relay that takes enrolled keys refuses the ` +
-    "credential derived from the exchange's shared secret until the " +
-    "exchange's relay key is enrolled there with alcove enroll-relay."
-  );
+    return `${NOT_REACHED_MEANING} ${INVITATION_RELAY_REFUSES_UNTIL_ENROLLED}`;
+  return `${NOT_REACHED_MEANING} ${OWN_RELAY_REFUSES_UNTIL_ENROLLED}`;
 }
 
 /**
@@ -386,116 +375,22 @@ function webSocketRefusalWords(
   refusal: Extract<WebSocketRelayAnswer, { outcome: "not_admitted" }>,
   enrollment: RelayCheckEnrollment | undefined,
 ): { meaning: string; action: string } {
-  switch (refusal.closeCode) {
-    case 4003: {
-      const enrollmentFailed =
-        enrollment !== undefined &&
-        enrollment.outcome.kind !== "enrolled" &&
-        relay.enrollsAtInvitationRegistrar;
-      return {
-        meaning:
-          "the relay holds no key for this exchange, so it refuses the " +
-          "proof a run presents until the exchange's relay key is enrolled " +
-          "there." +
-          (enrollmentFailed
-            ? " The likely cause is the failed enrollment above."
-            : ""),
-        action: relay.enrollsAtInvitationRegistrar
-          ? "Run this check again. If the relay still holds no key, ask " +
-            "your partner whether the relay registrar their invitation " +
-            "names is up, since either of you enrolling the exchange there " +
-            "lets the relay admit it."
-          : relay.partnersUnderInvitationExchangeId
-            ? "Ask your partner to enroll this exchange's relay key at " +
-              "their relay's registrar by running alcove enroll-relay with " +
-              "their relay-owner token, which this side does not hold, " +
-              WEBSOCKET_RELAY_RETRY
-            : "Enroll this exchange's relay key at the relay's registrar " +
-              `with alcove enroll-relay, ${WEBSOCKET_RELAY_RETRY}`,
-      };
-    }
-    case 4004:
-      return {
-        meaning:
-          "the relay holds a key for this exchange other than the one this " +
-          "side's shared secret derives, so it refuses the proof a run " +
-          "presents.",
-        action:
-          "Register the current key with alcove enroll-relay " +
-          `--replace-relay-key, ${WEBSOCKET_RELAY_RETRY}`,
-      };
-    case 4005:
-      return refusal.proofRemadeOnRelayClock === true
-        ? {
-            meaning:
-              "the relay refused the proof a run presents as expired twice, " +
-              "the second time a proof made on the relay's own clock, so " +
-              "this computer's clock is not the cause.",
-            action:
-              "Run this check again. If the relay refuses the proof the " +
-              "same way, check the relay and the exchange's enrollment at " +
-              "its registrar.",
-          }
-        : {
-            meaning:
-              "the relay refused the proof a run presents as expired " +
-              "without stating its own clock, so the proof could not be " +
-              "made again on that clock, and this computer's clock and the " +
-              "relay's may differ by more than five minutes.",
-            action:
-              `Correct this computer's clock, ${WEBSOCKET_RELAY_RETRY} If ` +
-              "the relay refuses the proof the same way, ask the relay's " +
-              "operator to check its clock.",
-          };
-    case 4007:
-      return {
-        meaning:
-          "the relay received no proof from this side within 10 seconds of " +
-          "the connection opening, so something on the path may be slow or " +
-          "holding messages back.",
-        action:
-          "Check the network path to the relay, including any proxy, " +
-          WEBSOCKET_RELAY_RETRY,
-      };
-    case 4008:
-      return {
-        meaning:
-          "the relay is serving as many exchanges as it allows, so it " +
-          "refuses a run that arrives now.",
-        action: "Run this check again later.",
-      };
-    case 1011:
-      return {
-        meaning: "the relay could not check the proof a run presents.",
-        action:
-          "Ask the relay's operator to check its key table, " +
-          WEBSOCKET_RELAY_RETRY,
-      };
-    case 1001:
-      return {
-        meaning: "the relay is shutting down.",
-        action: "Run this check again once the relay is back.",
-      };
-    default:
-      return {
-        meaning:
-          "the relay refused a message this side sent before it admitted " +
-          "the proof, so it may not be an Alcove WebSocket relay.",
-        action:
-          "Check that the url names an Alcove WebSocket relay, " +
-          WEBSOCKET_RELAY_RETRY,
-      };
-  }
+  return webSocketRelayRefusalWords(refusal.closeCode, {
+    enrollsAtInvitationRegistrar: relay.enrollsAtInvitationRegistrar,
+    partnersUnderInvitationExchangeId: relay.partnersUnderInvitationExchangeId,
+    enrollmentFailed:
+      enrollment !== undefined &&
+      enrollment.outcome.kind !== "enrolled" &&
+      relay.enrollsAtInvitationRegistrar,
+    ...(refusal.proofRemadeOnRelayClock !== undefined && {
+      proofRemadeOnRelayClock: refusal.proofRemadeOnRelayClock,
+    }),
+  });
 }
 
-const WEBSOCKET_NOT_REACHED_MEANING =
-  "nothing on this host reached this url as an Alcove WebSocket relay: the " +
-  "network blocked it, nothing answered at that address and path, or the " +
-  "connection closed before the relay answered the proof.";
+const WEBSOCKET_NOT_REACHED_MEANING = WEBSOCKET_RELAY_NOT_REACHED_MEANING;
 
-const WEBSOCKET_NOT_REACHED_ACTION =
-  "Check that this host can reach the relay and that the url names its " +
-  `address and path, ${WEBSOCKET_RELAY_RETRY}`;
+const WEBSOCKET_NOT_REACHED_ACTION = WEBSOCKET_RELAY_NOT_REACHED_ACTION;
 
 const TRUST_THE_NETWORK_CA =
   "add its certificate authority to this machine's trust store, or name a " +
@@ -545,13 +440,7 @@ export function webSocketRelayCheckRecord(
       return withHeadline({
         id,
         status: "fail",
-        meaning:
-          "the relay answered the proof with a message an Alcove WebSocket " +
-          "relay does not send at that point, so the url may not name an " +
-          "Alcove WebSocket relay.",
-        action:
-          "Check that the url names an Alcove WebSocket relay, " +
-          WEBSOCKET_RELAY_RETRY,
+        ...WEBSOCKET_RELAY_UNEXPECTED_MESSAGE_WORDS,
         url,
         outcome: "unexpected_message",
       });
