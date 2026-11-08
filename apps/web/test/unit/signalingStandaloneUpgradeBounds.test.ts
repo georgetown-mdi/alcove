@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import {
   SIGNALING_HEADERS_TIMEOUT_MS,
+  SIGNALING_PREHANDSHAKE_IDLE_MS,
   SIGNALING_REQUEST_TIMEOUT_MS,
   applyStandaloneUpgradeBounds,
 } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
@@ -14,9 +15,9 @@ import type { AddressInfo } from "node:net";
 
 // The standalone broker runner's pre-101 bounds, and the Node and `ws` timer
 // behaviors their shape depends on, driven against the real libraries. The
-// console server's own bounds (`hardenUpgradeSurface`) are covered in
-// signalingUpgradeTimeout.test.ts; the runner's process-level wiring in the
-// CLI's broker suite.
+// function they share with the console server (`hardenUpgradeSurface`) is
+// covered in signalingUpgradeTimeout.test.ts; the runner's process-level
+// wiring in the CLI's broker suite.
 
 const IDLE_MS = 300;
 
@@ -168,6 +169,38 @@ describe("applyStandaloneUpgradeBounds", () => {
     await new Promise((resolve) => setTimeout(resolve, IDLE_MS * 4));
     expect(closed).toBe(false);
     expect(socket.destroyed).toBe(false);
+  });
+
+  test("arms the default idle bound on each accepted socket", async () => {
+    const server = http.createServer((_req, res) => res.end("ok"));
+    applyStandaloneUpgradeBounds(server);
+    const accepted = new Promise<net.Socket>((resolve) =>
+      server.once("connection", resolve),
+    );
+    const port = await listen(server);
+    const client = net.connect(port, "127.0.0.1");
+    client.on("error", () => {});
+    cleanups.push(() => client.destroy());
+    expect((await accepted).timeout).toBe(SIGNALING_PREHANDSHAKE_IDLE_MS);
+  });
+
+  test("leaves a malformed request to Node's own 400 and close", async () => {
+    const server = http.createServer((_req, res) => res.end("ok"));
+    applyStandaloneUpgradeBounds(server, { preHandshakeIdleMs: 30_000 });
+    expect(server.listenerCount("clientError")).toBe(0);
+    const port = await listen(server);
+    const answer = await new Promise<string | null>((resolve) => {
+      let text = "";
+      const socket = net.connect(port, "127.0.0.1", () => {
+        socket.write("NOT-A-METHOD / HTTP/1.1\r\n\r\n");
+      });
+      socket.setEncoding("utf8");
+      socket.on("data", (chunk: string) => (text += chunk));
+      socket.on("close", () => resolve(text));
+      socket.on("error", () => {});
+      setTimeout(() => resolve(null), 3_000);
+    });
+    expect(answer).toMatch(/^HTTP\/1\.1 400 Bad Request\r\n/);
   });
 
   test("adds no upgrade listener", () => {

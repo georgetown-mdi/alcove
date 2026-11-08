@@ -13,8 +13,8 @@ import {
 import {
   SIGNALING_HEADERS_TIMEOUT_MS,
   SIGNALING_REQUEST_TIMEOUT_MS,
+  hardenUpgradeSurface,
 } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
-import { hardenUpgradeSurface } from "../../server/upgradeHardening";
 
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
@@ -79,7 +79,7 @@ function emitClientError(
 describe("hardenUpgradeSurface", () => {
   test("applies the documented default header and request timeouts", () => {
     const server = http.createServer();
-    hardenUpgradeSurface(server);
+    hardenUpgradeSurface(server, { closeOnClientError: true });
     expect(server.headersTimeout).toBe(SIGNALING_HEADERS_TIMEOUT_MS);
     expect(server.requestTimeout).toBe(SIGNALING_REQUEST_TIMEOUT_MS);
     expect(server.listenerCount("clientError")).toBe(1);
@@ -99,7 +99,7 @@ describe("hardenUpgradeSurface", () => {
 
   test("closes a stalled handshake with a 408, then destroys it", () => {
     const server = http.createServer();
-    hardenUpgradeSurface(server);
+    hardenUpgradeSurface(server, { closeOnClientError: true });
     const { socket, ended, destroyed } = fakeSocket(true);
     emitClientError(server, "ERR_HTTP_REQUEST_TIMEOUT", socket);
     expect(ended).toHaveLength(1);
@@ -113,7 +113,7 @@ describe("hardenUpgradeSurface", () => {
 
   test("closes a malformed handshake with a 400, then destroys it", () => {
     const server = http.createServer();
-    hardenUpgradeSurface(server);
+    hardenUpgradeSurface(server, { closeOnClientError: true });
     const { socket, ended, destroyed } = fakeSocket(true);
     emitClientError(server, "HPE_INVALID_METHOD", socket);
     expect(ended[0]).toContain("400 Bad Request");
@@ -123,8 +123,8 @@ describe("hardenUpgradeSurface", () => {
 
   test("is idempotent -- re-hardening does not stack clientError handlers", () => {
     const server = http.createServer();
-    hardenUpgradeSurface(server);
-    hardenUpgradeSurface(server);
+    hardenUpgradeSurface(server, { closeOnClientError: true });
+    hardenUpgradeSurface(server, { closeOnClientError: true });
     expect(server.listenerCount("clientError")).toBe(1);
     // A single error closes the socket once, not once per stacked handler.
     const { socket, ended } = fakeSocket(true);
@@ -133,9 +133,18 @@ describe("hardenUpgradeSurface", () => {
     server.close();
   });
 
-  test("destroys an unwritable handshake socket", () => {
+  test("attaches its clientError handler only when asked", () => {
     const server = http.createServer();
     hardenUpgradeSurface(server);
+    expect(server.listenerCount("clientError")).toBe(0);
+    hardenUpgradeSurface(server, { closeOnClientError: true });
+    expect(server.listenerCount("clientError")).toBe(1);
+    server.close();
+  });
+
+  test("destroys an unwritable handshake socket", () => {
+    const server = http.createServer();
+    hardenUpgradeSurface(server, { closeOnClientError: true });
     const { socket, ended, destroyed } = fakeSocket(false);
     const destroySpy = vi.spyOn(socket, "destroy");
     emitClientError(server, "ERR_HTTP_REQUEST_TIMEOUT", socket);
@@ -179,8 +188,8 @@ describe("hardenUpgradeSurface", () => {
     // http.Server starts with its own internal connection listener; harden must
     // add exactly one more, and a repeat call must not stack a second.
     const before = server.listenerCount("connection");
-    hardenUpgradeSurface(server);
-    hardenUpgradeSurface(server);
+    hardenUpgradeSurface(server, { closeOnClientError: true });
+    hardenUpgradeSurface(server, { closeOnClientError: true });
     expect(server.listenerCount("connection")).toBe(before + 1);
     // The TLS half of the same reaper: its removal keys on the WeakMap entry
     // being read back, so a stacked handoff would hand the bound over twice.
@@ -191,8 +200,8 @@ describe("hardenUpgradeSurface", () => {
   test("registers an idempotent idle-bound release hook", () => {
     const server = http.createServer();
     const before = server.listenerCount("request");
-    hardenUpgradeSurface(server);
-    hardenUpgradeSurface(server);
+    hardenUpgradeSurface(server, { closeOnClientError: true });
+    hardenUpgradeSurface(server, { closeOnClientError: true });
     expect(server.listenerCount("request")).toBe(before + 1);
     server.close();
   });
@@ -203,7 +212,7 @@ describe("hardenUpgradeSurface", () => {
     // here would silently flip that test on the production server, holding every
     // unhandled upgrade for the window it gives a co-resident listener instead.
     const server = http.createServer();
-    hardenUpgradeSurface(server);
+    hardenUpgradeSurface(server, { closeOnClientError: true });
     expect(server.listenerCount("upgrade")).toBe(0);
     server.close();
   });

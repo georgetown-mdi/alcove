@@ -13,12 +13,12 @@ import {
 } from "@alcove/peerjs-broker/services/webSocketServer/index";
 import { Errors } from "@alcove/peerjs-broker/enums";
 import { Realm } from "@alcove/peerjs-broker/models/realm";
+import { hardenUpgradeSurface } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
 import {
   loopbackTlsCert,
   requireLoopbackTlsCert,
 } from "@alcove/testkit/loopbackTlsCert";
-import { hardenUpgradeSurface } from "../../server/upgradeHardening";
 import { waitFor } from "../utils/waitFor";
 
 import type { AddressInfo } from "node:net";

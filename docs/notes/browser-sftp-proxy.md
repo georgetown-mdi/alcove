@@ -127,7 +127,7 @@ What the operator chooses for themselves -- which proxy, one run by another orga
   - The target is fixed by construction, composed from the authored connection as every CLI input is
     ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#single-party-console-trust-boundary)).
   - The upgrade route would sit behind the [browser-CSRF gate](../spec/SERVER_JOB_API.md#browser-csrf-gate) the job routes have, so a page the operator visits cannot open a WebSocket to the loopback port.
-    The server bounds the pre-upgrade handshake (`apps/web/server/upgradeHardening.ts`) but serves no WebSocket route.
+    The server bounds the pre-upgrade handshake (`hardenUpgradeSurface`, `packages/peerjs-broker/src/standaloneUpgradeBounds.ts`) but serves no WebSocket route.
   - It adds no egress beyond the same SFTP server
     ([DEPLOYMENT.md](../DEPLOYMENT.md#restricting-the-containers-outbound-network-access)), and serves only the console, which already runs SFTP natively.
 - **A hosted service the project runs.**

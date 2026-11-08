@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 import { getLogger, sanitizeErrorForDisplay } from "@alcove/core";
+import { hardenUpgradeSurface } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
 import { isApiNamespacePath, withApiGuard } from "@utils/apiNamespace";
 import {
@@ -8,8 +9,6 @@ import {
   withSecurityHeaders,
 } from "@utils/securityHeaders";
 import { jobEmptyResponse } from "@jobs/gate";
-
-import { hardenUpgradeSurface } from "../upgradeHardening";
 
 import { compileJobRoutes, matchJobRoute } from "./routeTable";
 import {
@@ -161,8 +160,11 @@ export function createConsoleServer(
   hardenUpgradeSurface(
     server,
     options.requestTimeoutMs === undefined
-      ? {}
-      : { requestTimeoutMs: options.requestTimeoutMs },
+      ? { closeOnClientError: true }
+      : {
+          closeOnClientError: true,
+          requestTimeoutMs: options.requestTimeoutMs,
+        },
   );
   return server;
 }
