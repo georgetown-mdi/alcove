@@ -36,12 +36,14 @@ import {
 import {
   BROWSER_PSI_SET_MAX_ELEMENTS,
   MAX_FRAME_SIZE_BYTES,
+} from "../../src/connection/frameSize";
+import {
   SINGLE_PASS_LOCAL_REMEDY,
   singlePassCeilingBreach,
   singlePassDatasetExceedsCap,
   singlePassReplyByteCap,
   singlePassRequestByteCap,
-} from "../../src/connection/frameSize";
+} from "../../src/psi/singlePassSizing";
 import { MAX_AEAD_FRAME_BYTES } from "../../src/connection/encryptedMessageConnection";
 
 import {

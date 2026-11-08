@@ -24,7 +24,7 @@ import {
   ProtocolRefusalError,
 } from "../../src/errors";
 import { classifyFailure } from "../../src/failureClass";
-import { singlePassReplyByteCap } from "../../src/connection/frameSize";
+import { singlePassReplyByteCap } from "../../src/psi/singlePassSizing";
 import { MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY } from "../../src/linkageTermsPolicy";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
 import { setupOrderUncheckedJoiner } from "../utils/setupOrderUncheckedJoiner";

@@ -5,7 +5,7 @@
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
-import type { PsiElementBounds } from "../../src/connection/frameSize";
+import type { PsiElementBounds } from "../../src/psi/singlePassSizing";
 import { FrameSizeExceededError } from "../../src/errors";
 import type {
   FileInfo,

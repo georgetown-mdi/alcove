@@ -6,12 +6,14 @@ import {
   MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
   MAX_RECORD_COUNT,
+} from "../../src/connection/frameSize";
+import {
   psiElementBounds,
   singlePassReplyByteCap,
   singlePassRequestByteCap,
   singlePassIrreducibleReplyBytes,
   singlePassValueSlotCeiling,
-} from "../../src/connection/frameSize";
+} from "../../src/psi/singlePassSizing";
 import {
   psiSetByteBound,
   psiSetPartPayloadBytes,

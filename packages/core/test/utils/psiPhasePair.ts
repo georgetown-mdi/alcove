@@ -4,10 +4,8 @@
 // test can drive what the run does with them past the agreed-terms boundary.
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
-import {
-  MAX_PSI_DECODE_ELEMENTS,
-  psiElementBounds,
-} from "../../src/connection/frameSize";
+import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
+import { psiElementBounds } from "../../src/psi/singlePassSizing";
 import {
   createMessagePipe,
   type MessageConnection,

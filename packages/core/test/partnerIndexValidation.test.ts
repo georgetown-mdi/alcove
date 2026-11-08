@@ -35,10 +35,8 @@ async function withCandidateSetGate<T>(
 
 import { linkViaSinglePassPSI, type LinkageCardinality } from "../src/psi/link";
 import { readPartnerRoundGrouping } from "../src/psi/roundGrouping";
-import {
-  MAX_RECORD_COUNT,
-  psiElementBounds,
-} from "../src/connection/frameSize";
+import { MAX_RECORD_COUNT } from "../src/connection/frameSize";
+import { psiElementBounds } from "../src/psi/singlePassSizing";
 import {
   assertPartnerIndices,
   resolveRunGroupedReturn,

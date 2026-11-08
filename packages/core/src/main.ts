@@ -412,9 +412,7 @@ export {
   safeParseFileSyncOptions,
   statesServerHost,
   turnUrlIsAllowed,
-  turnUrlRelay,
   webSocketRelayUrlIsAllowed,
-  webSocketRelayUrlRelay,
   webSocketRelayUrlSchema,
   withRetainModeImplications,
 } from "./config/connection";
@@ -440,7 +438,6 @@ export {
   declaresLaterFormatVersion,
   formatVersionFollows,
   migrateOnRead,
-  readableFormatVersions,
 } from "./config/formatMigration";
 export type {
   FormatMigrationStep,
@@ -448,7 +445,6 @@ export type {
 } from "./config/formatMigration";
 export {
   KEY_FILE_FIELD_SCHEMAS,
-  KEY_FILE_FORMAT_VERSION,
   KEY_FILE_MIGRATIONS,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
@@ -481,7 +477,6 @@ export {
   DEFAULT_PRECISION_FLOOR_SELECTION,
   PRECISION_FLOORS,
   authoredLinkageFields,
-  builtInRuleChoiceOf,
   encodeForComparison,
   getDefaultLinkageTerms,
   linkageKeysAtPrecisionFloor,
@@ -517,7 +512,6 @@ export {
 } from "./config/matchingKeyAvailability";
 export type { MatchingKeyUnavailableReason } from "./config/matchingKeyAvailability";
 export {
-  LINKAGE_CARDINALITIES,
   assertBothSidedDeduplicateImplemented,
   assertDeduplicateImplemented,
   countOnlyShapeViolation,
@@ -727,6 +721,7 @@ export {
   SIGNING_CERTIFICATE_VERSION,
   SIGNING_IDENTITY_VERSION,
   certificateAuthorizesIdentity,
+  certificateFromIdentityDocument,
   computeCertificateFingerprint,
   generateSigningIdentity,
   parseCertificate,
@@ -743,7 +738,6 @@ export {
   derivedFieldSteps,
   FAN_OUT_FUNCTION_NAMES,
   fieldSourceColumnTypes,
-  fieldTypesSuppliedByDefault,
   heldBackColumnNames,
   matchedFieldColumns,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
@@ -1020,7 +1014,6 @@ export {
 } from "./rendezvous";
 export type { RendezvousRole, SignalingLocationField } from "./rendezvous";
 export {
-  MAX_SIGNALING_DISCOVERY_BYTES,
   MAX_SIGNALING_SERVER_URL_LENGTH,
   SIGNALING_DISCOVERY_PATH,
   publishedSignalingServerURL,
@@ -1028,7 +1021,6 @@ export {
   signalingServerFromDiscoveryDocument,
 } from "./signalingDiscovery";
 export {
-  SIGNALING_DISCOVERY_TIMEOUT_MS,
   WEB_APP_ADDRESS_REFUSED,
   isWebAppAddress,
   resolveWebAppSignalingServer,
@@ -1044,8 +1036,6 @@ export {
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   runEnrollsAtInvitationRegistrar,
   selectRunRelay,
-  webSocketRelayEnrollsAtInvitationRegistrar,
-  webSocketRelayIsPartnersUnderInvitationExchangeId,
 } from "./relayCredential";
 export type {
   RelayCredential,
@@ -1110,7 +1100,6 @@ export type {
 export {
   enrollRelayKey,
   enrollRelayKeyWithinWait,
-  enrollRelayKeyWithoutToken,
   MAX_REGISTRAR_RETRY_AFTER_SECONDS,
   registerRelayKey,
   RELAY_REGISTRATION_RETRY_DELAYS_MS,

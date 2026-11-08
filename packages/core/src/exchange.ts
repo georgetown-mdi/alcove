@@ -78,6 +78,8 @@ import type { ResolvedMatching } from "./linkageTermsPolicy.js";
 import {
   MAX_DERIVED_FRAME_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
+} from "./connection/frameSize.js";
+import {
   partyFansOut,
   psiElementBounds,
   SINGLE_PASS_LOCAL_REMEDY,
@@ -87,7 +89,7 @@ import {
   singlePassRequestByteCap,
   singlePassValueSlotCeiling,
   valueSlots,
-} from "./connection/frameSize.js";
+} from "./psi/singlePassSizing.js";
 import type { InboundPsiFrameUse } from "./connection/inboundFrameMemory.js";
 import {
   preparePayload,

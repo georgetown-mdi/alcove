@@ -17,7 +17,7 @@ import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
-import type { PsiElementBounds } from "../../src/connection/frameSize";
+import type { PsiElementBounds } from "../../src/psi/singlePassSizing";
 
 // Every element of a partner's PSI setup, request and response must be
 // PSI_ELEMENT_BYTES long, on every channel and strategy, so a frame's decode

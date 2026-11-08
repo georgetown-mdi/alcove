@@ -18,8 +18,10 @@ import {
 } from "../../src/utils/boundedJson";
 import {
   createMessagePipe,
+  fromEventConnection,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
+import { makeRendezvousPair } from "../utils/fileSyncConnectionFixture";
 import { deriveAeadKey, AEAD_CONTEXTS, type AeadContext } from "../../src/auth";
 import type { HandshakeRole } from "../../src/types";
 
@@ -1626,6 +1628,38 @@ describe("over an inner transport that implements none of the optional members",
   ] as const)("%s reports no bound", async (method) => {
     const conn = await wrapPlain();
     expect(conn[method]()).toBeUndefined();
+    await conn.close();
+  });
+});
+
+describe("over a file-sync connection", () => {
+  async function wrapFileSync() {
+    const { connA } = makeRendezvousPair(
+      "00000000-0000-4000-8000-000000000001",
+      {},
+      "ffffffff-ffff-4fff-bfff-ffffffffffff",
+      {},
+      { pollingFrequency: 37 },
+    );
+    const markLastSentUnread = vi.spyOn(connA, "markLastSentUnread");
+    const conn: MessageConnection = await EncryptedMessageConnection.create(
+      fromEventConnection(connA),
+      V1_KEYING,
+      "initiator",
+    );
+    return { conn, markLastSentUnread };
+  }
+
+  test("the transport's inbound poll interval is read through the wrapper", async () => {
+    const { conn } = await wrapFileSync();
+    expect(conn.inboundPollIntervalMs?.()).toBe(37);
+    await conn.close();
+  });
+
+  test("marking the last frame sent as unread reaches the transport", async () => {
+    const { conn, markLastSentUnread } = await wrapFileSync();
+    conn.markLastSentUnread?.();
+    expect(markLastSentUnread).toHaveBeenCalledOnce();
     await conn.close();
   });
 });

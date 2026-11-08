@@ -18,11 +18,11 @@ import {
   declaredEffectiveKeyCount,
   FAN_OUT_CANDIDATES_PER_ELEMENT,
 } from "../src/fanOutFunctions";
+import { BROWSER_PSI_SET_MAX_ELEMENTS } from "../src/connection/frameSize";
 import {
-  BROWSER_PSI_SET_MAX_ELEMENTS,
   singlePassReplyByteCap,
   singlePassRequestByteCap,
-} from "../src/connection/frameSize";
+} from "../src/psi/singlePassSizing";
 import { MAX_LINKAGE_ENTRIES } from "../src/config/linkageTermsSchema";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import { UsageError, ConnectionError } from "../src/errors";

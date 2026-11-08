@@ -1226,10 +1226,7 @@ export function withholdsInviterAssociationTable(terms: LinkageTerms): boolean {
   if (terms.output.expectsOutput) return false;
   if (!terms.output.shareWithPartner) return false;
   const disclosesNoPayload = declaresNoPayloadColumn(terms.payload?.send);
-  return withholdsSenderAssociationTable(
-    terms.output.expectsOutput,
-    !disclosesNoPayload,
-  );
+  return withholdsSenderAssociationTable(false, !disclosesNoPayload);
 }
 
 /**
