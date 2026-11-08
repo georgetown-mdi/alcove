@@ -172,7 +172,8 @@ export const DOCTOR_EXIT_CODE: Record<DoctorOverall, number> = {
 /**
  * Roll the individual checks up. A failure that stopped the run (`blocksRun`)
  * outranks one it ran and returned a verdict on, because the two ask different
- * things of the caller: the first has no ACTION to follow.
+ * things of the caller: the first says the share could not be tested, the
+ * second names a change to make.
  */
 export function overallOf(report: DoctorReport): DoctorOverall {
   const failures = report.checks.filter((check) => check.status === "fail");

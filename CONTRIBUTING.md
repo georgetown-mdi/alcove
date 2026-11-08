@@ -325,4 +325,4 @@ Do not open a public issue for security vulnerabilities. See [SECURITY.md](SECUR
 
 ## Reporting Other Issues
 
-Open a [GitHub issue](https://github.com/georgetown-mdi/alcove/issues). Include the version (Docker image tag or `package.json` version), the operating system, and a minimal reproducing case.
+Open a [GitHub issue](https://github.com/georgetown-mdi/alcove/issues). Include the version (Docker image tag or release tag), the operating system, and a minimal reproducing case.
