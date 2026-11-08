@@ -1,4 +1,4 @@
-import { deriveRelayKey } from "@alcove/core";
+import { deriveRelayKey, REMOVED_EXCHANGE_ID_TEXT } from "@alcove/core";
 import { relayRegistrarAuthorization } from "@alcove/core/testing";
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -28,10 +28,7 @@ import {
 } from "vitest";
 
 import { registerRelayKey } from "../apps/cli/src/relayKeyRotation.ts";
-import {
-  REMOVED_EXCHANGE_ID_TEXT,
-  enrollRelayKey,
-} from "../apps/cli/src/relayRegistrar.ts";
+import { enrollRelayKey } from "../apps/cli/src/relayRegistrar.ts";
 
 // The relay's secrets-table module, the key scripts and the sweep that call
 // it, the registrar service and the CLI's client of it, verify.sh's registrar
@@ -46,6 +43,18 @@ const here = dirname(fileURLToPath(import.meta.url));
 const relay = resolve(here, "..", "infra/relay");
 const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 const REALM = "relay.example";
+// Every relay_table.py command that reads the realm, and the one refusal each
+// gives when it is unset.
+const REALM_COMMANDS = [
+  "register exchange-1 30",
+  "status exchange-1",
+  "forget-key",
+  "import-mapping exchange-keys",
+  "check-mapping exchange-keys",
+];
+const REALM_REFUSAL =
+  "ALCOVE_RELAY_REALM is unset; run this with relay.env's variables in the " +
+  "environment, which set it to the relay's realm";
 
 const KEY_A = "a".repeat(64);
 const KEY_B = "0123456789abcdef".repeat(4);
@@ -789,7 +798,7 @@ except relay_table.TableError as error:
     expect(status("exchange-9", KEY_A)).toBe(4);
   });
 
-  it.each(["status exchange-1", "forget-key"])(
+  it.each(REALM_COMMANDS)(
     "refuses %s with no realm, naming the variable, and changes nothing",
     (command) => {
       const host = fixtureHost();
@@ -804,13 +813,13 @@ except relay_table.TableError as error:
           input: `${KEY_A}\n`,
         },
       );
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain("ALCOVE_RELAY_REALM is unset");
+      expect(result.status).toBe(3);
+      expect(result.stderr).toContain(REALM_REFUSAL);
       expect({ rows: host.rows(), mapping: host.mapping() }).toEqual(before);
     },
   );
 
-  it.each(["status exchange-1", "forget-key"])(
+  it.each(REALM_COMMANDS)(
     "refuses %s with no realm before opening a missing table, and leaves an existing one's bytes alone",
     (command) => {
       const host = fixtureHost();
@@ -830,12 +839,12 @@ except relay_table.TableError as error:
         );
       const missing = join(host.root, "no-such-table");
       const result = run(missing);
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain("ALCOVE_RELAY_REALM is unset");
+      expect(result.status).toBe(3);
+      expect(result.stderr).toContain(REALM_REFUSAL);
       expect(existsSync(missing)).toBe(false);
       const existing = host.env.ALCOVE_RELAY_TURNDB;
       const before = readFileSync(existing);
-      expect(run(existing).status).toBe(2);
+      expect(run(existing).status).toBe(3);
       expect(readFileSync(existing).equals(before)).toBe(true);
     },
   );

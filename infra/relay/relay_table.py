@@ -22,7 +22,8 @@ A key is only ever read from standard input, so it is never on a command line.
 Run as root, it drops to the account owning turndb -- the relay image's -- before
 opening it, so a file it creates is one coturn can use. Exit status: 0 done, 1
 the table could not be read or written and nothing changed, 2 usage, 3 refused
-(a malformed argument, or the exchange's state), nothing changed, 4 the table,
+(a malformed argument, an unset ALCOVE_RELAY_REALM, or the exchange's state),
+nothing changed, 4 the table,
 read back, disagrees with what was asked of it.
 
 Python 3.9 standard library only: the version Amazon Linux 2023 ships.
@@ -91,10 +92,6 @@ class TableError(Exception):
     """The table could not be read or written; the message never holds a key."""
 
 
-class UsageError(Exception):
-    """A command run without what it needs to name its target; exit 2."""
-
-
 class CeilingReached(Exception):
     """An enrollment with a fixed lapse refused because the realm already holds
     the ceiling's count of such rows not yet lapsed; nothing changed.
@@ -118,6 +115,11 @@ class ClientCapReached(Exception):
 class ProofRefused(Refused):
     """A rotation or revocation whose proof does not verify against the key the
     exchange holds when the write takes the table's lock."""
+
+
+def require_realm(realm):
+    if not realm:
+        raise Refused(REALM_REFUSAL)
 
 
 def valid_exchange_id(exchange_id):
@@ -284,8 +286,7 @@ def register(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=F
     prior row in the same transaction. Registering the key the exchange already
     holds renews its stamp and lapse. Returns the registration."""
     check_registration(exchange_id, key, max_age_days, allow_verify_id)
-    if not realm:
-        raise Refused("ALCOVE_RELAY_REALM is unset")
+    require_realm(realm)
     now = int(now)
     outcome = _transaction(
         conn, lambda: _write_key(conn, realm, exchange_id, key, max_age_days, now, _mapped(conn, exchange_id))
@@ -332,8 +333,7 @@ def enroll(
     CeilingReached while the realm holds `ceiling` rows with a fixed lapse
     after `now`. Returns the registration."""
     check_registration(exchange_id, key, max_age_days, allow_verify_id)
-    if not realm:
-        raise Refused("ALCOVE_RELAY_REALM is unset")
+    require_realm(realm)
     now = int(now)
     if fixed_lapse_at is not None and (max_age_days is not None or fixed_lapse_at <= now):
         raise Refused("an enrollment with a fixed lapse takes no max-age-days, and lapses after it is made")
@@ -412,8 +412,7 @@ def rotate(conn, realm, exchange_id, key, max_age_days, now, proves_possession, 
     the key the exchange already holds renews it. A row with a fixed lapse
     keeps it, whatever `max_age_days` asks. Returns the registration."""
     check_registration(exchange_id, key, max_age_days, allow_verify_id)
-    if not realm:
-        raise Refused("ALCOVE_RELAY_REALM is unset")
+    require_realm(realm)
     now = int(now)
 
     def body():
@@ -495,12 +494,7 @@ def sweep(conn, now):
             "ORDER BY exchange_id",
             (now, DAY_SECONDS, now),
         ).fetchall()
-        revoked = []
-        for exchange_id, realm, key in lapsed:
-            deleted = conn.execute("DELETE FROM turn_secret WHERE realm = ? AND value = ?", (realm, key)).rowcount
-            conn.execute("DELETE FROM alcove_exchange WHERE exchange_id = ?", (exchange_id,))
-            revoked.append({"exchange_id": exchange_id, "realm": realm, "key_was_listed": deleted > 0})
-        return revoked
+        return [_delete_mapped(conn, exchange_id, (realm, key)) for exchange_id, realm, key in lapsed]
 
     return _transaction(conn, body)
 
@@ -508,8 +502,7 @@ def sweep(conn, now):
 def status(conn, realm, exchange_id, key):
     """"both" when the mapping points the exchange at the key and the table lists
     it, "neither" when neither holds it, and "disagree" otherwise."""
-    if not realm:
-        raise UsageError(REALM_REFUSAL)
+    require_realm(realm)
     mapped = conn.execute(
         "SELECT 1 FROM alcove_exchange WHERE exchange_id = ? AND realm = ? AND key = ?",
         (exchange_id, realm, key),
@@ -525,8 +518,7 @@ def status(conn, realm, exchange_id, key):
 def forget_key(conn, realm, key):
     """Deletes the key's row in `realm` and any mapping of the key in `realm`,
     in one transaction. Returns whether a row was deleted."""
-    if not realm:
-        raise UsageError(REALM_REFUSAL)
+    require_realm(realm)
     if not valid_key(key):
         raise Refused(KEY_REFUSAL)
 
@@ -696,8 +688,7 @@ def run_command(command, args):
         key = read_key()
         max_age_days = parse_max_age_days(days_text)
         check_registration(exchange_id, key, max_age_days, os.environ.get("ALCOVE_RELAY_VERIFY_RUN") == "1")
-        if not realm:
-            raise Refused("ALCOVE_RELAY_REALM is unset in relay.env")
+        require_realm(realm)
         run_as_table_owner(TURNDB)
         conn = open_table()
         print(describe_registration(register(conn, realm, exchange_id, key, max_age_days, time.time(), True)))
@@ -716,8 +707,7 @@ def run_command(command, args):
         print("swept %d lapsed exchange(s)" % len(revoked))
         return 0
     if command == "status":
-        if not realm:
-            raise UsageError(REALM_REFUSAL)
+        require_realm(realm)
         key = read_key()
         if not valid_exchange_id(args[0]):
             raise Refused(ID_REFUSAL)
@@ -726,8 +716,7 @@ def run_command(command, args):
         run_as_table_owner(TURNDB)
         return {"both": 0, "neither": 3, "disagree": 4}[status(open_table(), realm, args[0], key)]
     if command == "forget-key":
-        if not realm:
-            raise UsageError(REALM_REFUSAL)
+        require_realm(realm)
         key = read_key()
         if not valid_key(key):
             raise Refused(KEY_REFUSAL)
@@ -738,8 +727,7 @@ def run_command(command, args):
             print("no row in realm %s held the key" % realm)
         return 0
     if command == "import-mapping":
-        if not realm:
-            raise Refused("ALCOVE_RELAY_REALM is unset in relay.env")
+        require_realm(realm)
         now = time.time()
         rows, skipped_verify = read_mapping_file(args[0], now)
         run_as_table_owner(TURNDB)
@@ -758,8 +746,7 @@ def run_command(command, args):
         print("read back: the secrets table accounts for every row of %s" % args[0])
         return 0
     if command == "check-mapping":
-        if not realm:
-            raise Refused("ALCOVE_RELAY_REALM is unset in relay.env")
+        require_realm(realm)
         rows, skipped_verify = read_mapping_file(args[0], time.time())
         run_as_table_owner(TURNDB)
         every_row = [(row[0], row[1], True) for row in rows] + [(i, k, False) for i, k in skipped_verify]
@@ -778,9 +765,6 @@ def main(argv):
         return 2
     try:
         return run_command(argv[0], argv[1:])
-    except UsageError as error:
-        sys.stderr.write("ABORTING: %s\n" % error)
-        return 2
     except Refused as error:
         sys.stderr.write("ABORTING: %s\n" % error)
         return 3

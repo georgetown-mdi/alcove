@@ -303,7 +303,8 @@ revoke-exchange.sh <exchange-id>
   `printf '%s\n' "$KEY" | python3 /opt/alcove-relay/relay_table.py forget-key`,
   with `relay.env`'s variables in the environment. It removes the row and any
   mapping of the key in `ALCOVE_RELAY_REALM`, in one transaction, and like
-  `status` exits 2 naming the variable when it is unset. An `alcove-verify-` row
+  every command that needs the realm exits 3 naming the variable when it is
+  unset. An `alcove-verify-` row
   the import skips -- a verify run that died before cleaning up -- gets no
   mapping, so if an earlier install already wrote its key into the table
   that key stays until it is removed with `forget-key`, the key taken from
@@ -552,8 +553,9 @@ start: to turn it off, set it to `off` and
   any other value is answered 400 and nothing is written. The row lapses
   4200 s (70 minutes) after the enrollment (`TOKENLESS_LIFETIME_SECONDS`), and
   the answer states it: `maxAgeDays` `null` and `lapsesAt` that time. The 70
-  minutes are what one browser exchange needs: the inviter enrolls when it
-  creates the invitation and waits at most 10 minutes for its partner
+  minutes are what one browser exchange needs: the inviter enrolls right
+  before its run contacts the coordination server and waits at most 10
+  minutes for its partner
   (`DEFAULT_PEER_WAIT_TIMEOUT_MS`, `apps/web/src/psi/transport/waitForConnection.ts`),
   and each party then mints a credential that lasts 3600 s
   (`RELAY_CREDENTIAL_MAX_TTL_SECONDS`, `packages/core/src/relayCredential.ts`),
