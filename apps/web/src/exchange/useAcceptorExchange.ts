@@ -680,16 +680,14 @@ export function useAcceptorExchange({
     // reports, and it chooses that refusal's copy.
     const raiseFailure = (category: ExchangeErrorCategory, error: unknown) => {
       setFailure(
-        failureFor(
-          category,
-          error,
-          jobInputSource,
+        failureFor(category, error, {
+          inputSource: jobInputSource,
           channel,
-          "acceptor",
-          receipts?.signing?.identityLocation !== undefined,
-          false,
-          options?.peerId !== undefined,
-        ),
+          seat: "acceptor",
+          identityLocationPicked:
+            receipts?.signing?.identityLocation !== undefined,
+          thisSideNamed: options?.peerId !== undefined,
+        }),
       );
       setRun((prev) => runWithFailure(prev));
     };

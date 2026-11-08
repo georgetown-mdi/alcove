@@ -228,8 +228,7 @@ describe("an unanswered coordination server the invitation names", () => {
         failure: failureFor(
           "exchange",
           new CoordinationServerUnreachableError(SERVER),
-          undefined,
-          "browser",
+          { channel: "browser" },
         ),
         runRecord: undefined,
         warnings: [],
@@ -320,8 +319,7 @@ describe("replacing a waiting invitation", () => {
       failureFor(
         "exchange",
         new CoordinationServerUnreachableError("wss://coordination.example/"),
-        undefined,
-        "browser",
+        { channel: "browser" },
       ),
     );
     await expect

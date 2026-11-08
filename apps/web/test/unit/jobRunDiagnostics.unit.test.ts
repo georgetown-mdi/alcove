@@ -581,8 +581,7 @@ describe("relayed terminal text never retitles a failure", () => {
     const surfaced = failureFor(
       "exchange",
       new RelayedTerminalError(plantedTerminal),
-      undefined,
-      "filedrop",
+      { channel: "filedrop" },
     );
     expect(surfaced.title).toBe("Exchange failed");
     expect(surfaced.message).not.toContain("--force-retain-sweep");
@@ -598,14 +597,12 @@ describe("relayed terminal text never retitles a failure", () => {
       const planted = failureFor(
         category,
         new RelayedTerminalError(plantedTerminal),
-        undefined,
-        "filedrop",
+        { channel: "filedrop" },
       );
       const ordinary = failureFor(
         category,
         new RelayedTerminalError("the partner never appeared"),
-        undefined,
-        "filedrop",
+        { channel: "filedrop" },
       );
       expect(planted.title).toBe(ordinary.title);
       expect(planted.message).not.toContain("--force-retain-sweep");

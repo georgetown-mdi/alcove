@@ -2407,10 +2407,7 @@ describe("a filedrop run that would publish the signing identity", () => {
           undefined,
           SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
         ),
-        undefined,
-        undefined,
-        "inviter",
-        picked,
+        { seat: "inviter", identityLocationPicked: picked },
       );
       expect(alert.message).toContain(sentence);
       expect(alert.message).not.toMatch(/create|mint/);
@@ -2437,10 +2434,7 @@ describe("a filedrop run that would publish the signing identity", () => {
         undefined,
         SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
       ),
-      undefined,
-      undefined,
-      "inviter",
-      true,
+      { seat: "inviter", identityLocationPicked: true },
     );
     expect(alert.message).toContain("either the location you picked");
     expect(alert.message).toContain(

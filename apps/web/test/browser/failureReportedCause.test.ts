@@ -165,7 +165,7 @@ test("a connection that did not open with this site's relay switched off names t
       type: "webrtc",
     }),
   );
-  const failure = failureFor("exchange", error, undefined, "browser");
+  const failure = failureFor("exchange", error, { channel: "browser" });
   app.render(createElement(FailureAlert, { failure }));
   const { message, report } = await vi.waitFor(() => {
     const paragraphs = [...app.container.querySelectorAll("p")];

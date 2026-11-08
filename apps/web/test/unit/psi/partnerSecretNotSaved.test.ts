@@ -142,13 +142,9 @@ describe("withPartnerSecretNotSaved", () => {
 
 describe("a one-shot exchange", () => {
   test("where this side kept none, says the partner could not save it, that nothing changed here, and to ask for a new invitation, with no retry", () => {
-    const failure = failureFor(
-      "exchange",
-      notSaved(false),
-      undefined,
-      undefined,
-      "acceptor",
-    );
+    const failure = failureFor("exchange", notSaved(false), {
+      seat: "acceptor",
+    });
     expect(failure.category).toBe("config");
     expect(failure.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
     expect(failure.message).toBe(
@@ -163,13 +159,9 @@ describe("a one-shot exchange", () => {
   });
 
   test("where this side kept the new secret, keeps the different-secrets copy", () => {
-    const failure = failureFor(
-      "exchange",
-      notSaved(true),
-      undefined,
-      undefined,
-      "acceptor",
-    );
+    const failure = failureFor("exchange", notSaved(true), {
+      seat: "acceptor",
+    });
     expect(failure.category).toBe("config");
     expect(failure.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
     expect(failure.message).toBe(

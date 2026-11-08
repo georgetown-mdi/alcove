@@ -90,13 +90,10 @@ describe("a terms refusal at each seat", () => {
   ] as const)(
     "the $seat seat's alert ends with its next step ($side)",
     async ({ seat, side, message }) => {
-      const failure = failureFor(
-        "exchange",
-        (await bothFailures())[side],
-        undefined,
-        "browser",
+      const failure = failureFor("exchange", (await bothFailures())[side], {
+        channel: "browser",
         seat,
-      );
+      });
       expect(failure).toMatchObject({
         category: "config",
         title: "Your linkage terms differ from your partner's",

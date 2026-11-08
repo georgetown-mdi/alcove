@@ -279,13 +279,10 @@ describe("failureFor", () => {
     ] as const)(
       "the %s's alert names the exchange's switch in its own message, once, and not in the report",
       (seat, remedy) => {
-        const failure = failureFor(
-          "exchange",
-          negotiationFailure(true),
-          undefined,
-          "browser",
+        const failure = failureFor("exchange", negotiationFailure(true), {
+          channel: "browser",
           seat,
-        );
+        });
         expect(failure.message).toBe(`${generic} ${remedy}`);
         expect(failure.message.split(remedy)).toHaveLength(2);
         expect(failure.reportedCause).toBe("Negotiation of connection failed.");
@@ -314,7 +311,7 @@ describe("failureFor", () => {
         negotiationFailure(true, "server-error"),
       ])
         expect(
-          failureFor("exchange", error, undefined, "browser").message,
+          failureFor("exchange", error, { channel: "browser" }).message,
         ).toBe(generic);
     });
   });
@@ -361,8 +358,7 @@ describe("failureFor", () => {
         const failure = failureFor(
           "exchange",
           new RelayedSelfExplainingError(text),
-          undefined,
-          channel,
+          { channel },
         );
         expect(failure.category).toBe("exchange");
         expect(failure.title).toBe("Exchange failed");
@@ -377,7 +373,7 @@ describe("failureFor", () => {
       const raised = markStatesItsOwnNextStep(
         new InternalConsistencyError(replyCapFault),
       );
-      const failure = failureFor("exchange", raised, undefined, "browser");
+      const failure = failureFor("exchange", raised, { channel: "browser" });
       expect(failure.title).toBe("Exchange failed");
       expect(failure.message).not.toMatch(/try again/i);
       expect(failure.message).not.toContain("temporary");
@@ -432,12 +428,9 @@ describe("failureFor", () => {
         sanitizeForDisplay("the browser lost the socket"),
       );
 
-      const onFiledrop = failureFor(
-        "exchange",
-        untagged,
-        undefined,
-        "filedrop",
-      );
+      const onFiledrop = failureFor("exchange", untagged, {
+        channel: "filedrop",
+      });
       expect(onFiledrop.category).toBe("exchange");
       expect(onFiledrop.message).toContain("shared folder");
       expect(onFiledrop.message).toContain("syncing");
@@ -458,13 +451,10 @@ describe("failureFor", () => {
           "(error 701: Failed to establish connection).",
         "transport",
       );
-      const failure = failureFor(
-        "exchange",
-        relayFailure,
-        undefined,
-        "browser",
+      const failure = failureFor("exchange", relayFailure, {
+        channel: "browser",
         seat,
-      );
+      });
       expect(failure.title).toBe("Exchange failed");
       expect(failure.reportedCause).toBe(relayFailure.message);
     },
@@ -530,12 +520,9 @@ describe("failureFor", () => {
   test("a filedrop exchange failure names the shared folder, not a connection", () => {
     // A filedrop run never opens a connection -- it rendezvouses through a synced
     // folder -- so the copy names the shared-state cause and keeps the retry.
-    const failure = failureFor(
-      "exchange",
-      new Error("no rendezvous"),
-      undefined,
-      "filedrop",
-    );
+    const failure = failureFor("exchange", new Error("no rendezvous"), {
+      channel: "filedrop",
+    });
     expect(failure.title).toBe("Exchange failed");
     expect(failure.message).toContain("shared folder");
     expect(failure.message).toContain("syncing");
@@ -547,8 +534,7 @@ describe("failureFor", () => {
     const failure = failureFor(
       "config",
       new JobApiRequestError(400, "POST /api/jobs failed with status 400"),
-      WORK_FILE,
-      "filedrop",
+      { inputSource: WORK_FILE, channel: "filedrop" },
     );
     expect(failure.title).toBe("The console could not start this exchange");
     expect(failure.message).not.toContain("status 400");
@@ -562,8 +548,7 @@ describe("failureFor", () => {
     const failure = failureFor(
       "config",
       new JobApiRequestError(400, "POST /api/jobs failed with status 400"),
-      WORK_FILE,
-      "sftp",
+      { inputSource: WORK_FILE, channel: "sftp" },
     );
     expect(failure.title).toBe("The console could not start this exchange");
     expect(failure.message).not.toContain("status 400");
@@ -581,8 +566,7 @@ describe("failureFor", () => {
         undefined,
         SFTP_FINGERPRINT_LIST_REFUSAL,
       ),
-      WORK_FILE,
-      "sftp",
+      { inputSource: WORK_FILE, channel: "sftp" },
     );
     expect(failure.category).toBe("config");
     expect(failure.title).toBe(
@@ -602,8 +586,7 @@ describe("failureFor", () => {
         undefined,
         SFTP_URL_DIRECTORY_REFUSAL,
       ),
-      WORK_FILE,
-      "sftp",
+      { inputSource: WORK_FILE, channel: "sftp" },
     );
     expect(failure.category).toBe("config");
     expect(failure.title).toBe(
@@ -625,8 +608,7 @@ describe("failureFor", () => {
         undefined,
         SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
       ),
-      WORK_FILE,
-      "sftp",
+      { inputSource: WORK_FILE, channel: "sftp" },
     );
     expect(failure.category).toBe("config");
     expect(failure.title).toBe(
@@ -652,8 +634,7 @@ describe("failureFor", () => {
       const failure = failureFor(
         "exchange",
         new JobApiRequestError(400, "refused", undefined, reason),
-        WORK_FILE,
-        "webrtc",
+        { inputSource: WORK_FILE, channel: "webrtc" },
       );
       expect(failure.category).toBe("config");
       expect(failure.retry).toBe("withheld");
@@ -676,8 +657,7 @@ describe("failureFor", () => {
         undefined,
         WORKING_FOLDER_UNWRITABLE_REFUSAL,
       ),
-      WORK_FILE,
-      "webrtc",
+      { inputSource: WORK_FILE, channel: "webrtc" },
     );
     expect(failure.category).toBe("exchange");
     expect(failure.retry).toBe("offered");
@@ -697,8 +677,7 @@ describe("failureFor", () => {
         undefined,
         OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
       ),
-      WORK_FILE,
-      "webrtc",
+      { inputSource: WORK_FILE, channel: "webrtc" },
     );
     expect(failure.category).toBe("config");
     expect(failure.title).toBe("The console did not run your alcove.yaml");
@@ -715,8 +694,7 @@ describe("failureFor", () => {
         undefined,
         COORDINATION_SERVER_CHANGED_REFUSAL,
       ),
-      WORK_FILE,
-      "webrtc",
+      { inputSource: WORK_FILE, channel: "webrtc" },
     );
     expect(failure.category).toBe("config");
     expect(failure.title).toBe("The coordination server or relay changed");
@@ -734,9 +712,7 @@ describe("failureFor", () => {
         undefined,
         COORDINATION_SERVER_CHANGED_REFUSAL,
       ),
-      WORK_FILE,
-      "webrtc",
-      "acceptor",
+      { inputSource: WORK_FILE, channel: "webrtc", seat: "acceptor" },
     );
     expect(failure.category).toBe("exchange");
     expect(failure.retry).toBe("offered");
@@ -799,8 +775,7 @@ describe("failureFor", () => {
           undefined,
           reason,
         ),
-        WORK_FILE,
-        "filedrop",
+        { inputSource: WORK_FILE, channel: "filedrop" },
       );
       expect(failure.category).toBe("config");
       expect(failure.title).toBe(title);
@@ -820,8 +795,7 @@ describe("failureFor", () => {
         undefined,
         MOUNTED_KEY_FILE_NEWER_REFUSAL,
       ),
-      WORK_FILE,
-      "filedrop",
+      { inputSource: WORK_FILE, channel: "filedrop" },
     );
     expect(failure).toMatchObject({
       category: "config",
@@ -843,8 +817,7 @@ describe("failureFor", () => {
           undefined,
           MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
         ),
-        WORK_FILE,
-        channel,
+        { inputSource: WORK_FILE, channel },
       );
       expect(failure.category).toBe("config");
       expect(failure.title).toBe(
@@ -865,8 +838,7 @@ describe("failureFor", () => {
         undefined,
         MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL,
       ),
-      WORK_FILE,
-      "webrtc",
+      { inputSource: WORK_FILE, channel: "webrtc" },
     );
     expect(failure.category).toBe("config");
     expect(failure.title).toBe(
@@ -887,9 +859,7 @@ describe("failureFor", () => {
     const failure = failureFor(
       "config",
       new JobApiRequestError(400, "POST /api/jobs failed with status 400"),
-      WORK_FILE,
-      "filedrop",
-      "acceptor",
+      { inputSource: WORK_FILE, channel: "filedrop", seat: "acceptor" },
     );
     expect(failure.title).toBe("The console could not start this exchange");
     expect(failure.message).toContain("columns");
@@ -899,8 +869,7 @@ describe("failureFor", () => {
     const inviter = failureFor(
       "config",
       new JobApiRequestError(400, "POST /api/jobs failed with status 400"),
-      WORK_FILE,
-      "filedrop",
+      { inputSource: WORK_FILE, channel: "filedrop" },
     );
     expect(inviter.message).toContain("Start over and select it again");
   });
@@ -910,12 +879,16 @@ describe("failureFor", () => {
     // show the plain config message -- only the workFile 400 names the file.
     expect(
       failureFor("config", new JobApiRequestError(400, "x"), {
-        kind: "inline",
-        csv: "a,b",
+        inputSource: {
+          kind: "inline",
+          csv: "a,b",
+        },
       }).title,
     ).toBe("Could not prepare the exchange");
     expect(
-      failureFor("config", new JobApiRequestError(500, "x"), WORK_FILE).title,
+      failureFor("config", new JobApiRequestError(500, "x"), {
+        inputSource: WORK_FILE,
+      }).title,
     ).toBe("Could not prepare the exchange");
   });
 
@@ -928,7 +901,7 @@ describe("failureFor", () => {
     // against the same base type.
     const refusal = ceilingRefusal();
     expect(refusal).toBeInstanceOf(OperatorConfigError);
-    const failure = failureFor("config", refusal, WORK_FILE);
+    const failure = failureFor("config", refusal, { inputSource: WORK_FILE });
     expect(failure.category).toBe("config");
     expect(failure.title).toBe("Could not prepare the exchange");
     expect(failure.message).toContain("exceed the single-pass limit");
@@ -947,7 +920,7 @@ describe("failureFor", () => {
         "this input cannot satisfy every linkage key the agreed terms declare: " +
           "1 of the 2 agreed linkage keys cannot be produced",
       ),
-      WORK_FILE,
+      { inputSource: WORK_FILE },
     );
     expect(failure.category).toBe("config");
     expect(failure.title).toBe(
@@ -983,13 +956,10 @@ describe("failureFor", () => {
         },
       ).catch((error: unknown) => error);
 
-      const failure = failureFor(
-        "security",
-        refusal,
-        undefined,
-        "browser",
-        "acceptor",
-      );
+      const failure = failureFor("security", refusal, {
+        channel: "browser",
+        seat: "acceptor",
+      });
       expect(failure.category).toBe("security");
       expect(failure.title).toBe("This invitation can no longer be used");
       expect(failure.message).toBe(
@@ -1015,11 +985,12 @@ describe("failureFor", () => {
         "this input cannot satisfy every linkage key the agreed terms declare: " +
           "2 of the 2 agreed linkage keys cannot be produced",
       ),
-      WORK_FILE,
-      undefined,
-      "inviter",
-      false,
-      true,
+      {
+        inputSource: WORK_FILE,
+        seat: "inviter",
+        identityLocationPicked: false,
+        singleColumnInput: true,
+      },
     );
     expect(failure.message).toContain(CSV_DELIMITER_SINGLE_COLUMN_REMEDY);
   });

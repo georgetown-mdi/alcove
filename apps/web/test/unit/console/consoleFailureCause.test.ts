@@ -103,8 +103,7 @@ describe("a console run that failed on a catalog cause", () => {
     const failure = failureFor(
       "exchange",
       relayed("the CLI's text", { failureCause: cause, exitCode: 69 }),
-      undefined,
-      "filedrop",
+      { channel: "filedrop" },
     );
     expect(failure.message.startsWith(`${failureCauseSentence(cause)} `)).toBe(
       true,
@@ -123,8 +122,7 @@ describe("a console run that failed on a catalog cause", () => {
         failureCause: SAMPLES["partner-never-arrived"][0],
         exitCode: 69,
       }),
-      undefined,
-      "filedrop",
+      { channel: "filedrop" },
     );
     expect(failure.title).toBe("Your partner did not arrive");
     expect(failure.message).toBe(
@@ -145,12 +143,13 @@ describe("a console run that failed on a catalog cause", () => {
           failureCause: SAMPLES["partner-never-arrived"][3],
           exitCode: 69,
         }),
-        undefined,
-        "filedrop",
-        "inviter",
-        false,
-        false,
-        thisSideNamed,
+        {
+          channel: "filedrop",
+          seat: "inviter",
+          identityLocationPicked: false,
+          singleColumnInput: false,
+          thisSideNamed,
+        },
       );
       expect(failure.title).toBe("Both sides may be using the same name");
       expect(failure.message).toBe(
@@ -180,12 +179,13 @@ describe("a console run that failed on a catalog cause", () => {
           failureCause: ignored,
           exitCode: 69,
         }),
-        undefined,
-        "filedrop",
-        "inviter",
-        false,
-        false,
-        thisSideNamed,
+        {
+          channel: "filedrop",
+          seat: "inviter",
+          identityLocationPicked: false,
+          singleColumnInput: false,
+          thisSideNamed,
+        },
       );
       expect(failure.title).toBe(
         "Your partner's hello file may have been ignored",
@@ -203,8 +203,7 @@ describe("a console run that failed on a catalog cause", () => {
     const shared = failureFor(
       "exchange",
       relayed("the CLI's text", { failureCause: both, exitCode: 69 }),
-      undefined,
-      "sftp",
+      { channel: "sftp" },
     );
     expect(shared.title).toBe("Both sides may be using the same name");
     expect(shared.message).toContain(
@@ -219,8 +218,7 @@ describe("a console run that failed on a catalog cause", () => {
         failureCause: SAMPLES["partner-never-arrived"][0],
         exitCode: 69,
       }),
-      undefined,
-      "filedrop",
+      { channel: "filedrop" },
     );
     expect(plain.message).not.toContain(IGNORE_FILES_OLDER_THAN_LABEL);
     expect(plain.message).not.toContain("ignored");
@@ -237,12 +235,13 @@ describe("a console run that failed on a catalog cause", () => {
       failureFor(
         "exchange",
         relayed("the CLI's text", { failureCause: cause, exitCode: 69 }),
-        undefined,
-        cause.channel,
-        "inviter",
-        false,
-        false,
-        thisSideNamed,
+        {
+          channel: cause.channel,
+          seat: "inviter",
+          identityLocationPicked: false,
+          singleColumnInput: false,
+          thisSideNamed,
+        },
       );
     const [filedrop, sftp] = SAMPLES["partner-never-arrived"];
     expect(noShow(filedrop, true).message).toBe(
@@ -344,9 +343,7 @@ describe("a console run the partner refused", () => {
       const failure = failureFor(
         "exchange",
         relayed(report, { exitCode: PARTNER_REFUSED_EXIT_CODE }),
-        undefined,
-        "filedrop",
-        seat,
+        { channel: "filedrop", seat },
       );
       expect(failure.title).toBe("Your partner refused this exchange");
       expect(failure.category).toBe("config");
@@ -382,8 +379,7 @@ describe("the file-drop fallback", () => {
     const failure = failureFor(
       "exchange",
       new RelayedTerminalError("read ECONNRESET"),
-      undefined,
-      "filedrop",
+      { channel: "filedrop" },
     );
     expect(failure.message).not.toMatch(/never appeared|never arrived/);
     expect(failure.message).toContain("shared folder");
