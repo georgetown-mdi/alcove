@@ -52,7 +52,6 @@ so the loop reads as the selection and each branch as its own sequence of steps.
 ## The poll split
 
 `poll()` hands one listing to `classifyListing` and the one selected message to `consumeMessage`.
-The statements move unchanged, in their order.
 The one value that crosses the boundary is whether the cycle is inside the message read,
 which the catch in `poll()` reads to tell a list-then-get race from any other failure.
 It is a per-cycle object passed in, not a field on the loop,
@@ -60,7 +59,7 @@ so a value set in one cycle cannot be read by a later one.
 
 ## Comments that restate the spec
 
-A comment in these files that restated a rule [FILE_SYNC.md](../spec/FILE_SYNC.md) states
-is cut to the constraint the code next to it must keep, with a pointer to the section that states the rule.
+A comment in these files that touches a rule [FILE_SYNC.md](../spec/FILE_SYNC.md) states
+holds only the constraint the code next to it must keep, with a pointer to the section that states the rule.
 Known limits, orderings a reader could break by reordering, notes on a site's twin, and the arrival diagrams stay in the code,
 because a reader editing that code needs them where the edit happens.
