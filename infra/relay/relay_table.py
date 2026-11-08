@@ -117,9 +117,14 @@ class ProofRefused(Refused):
     exchange holds when the write takes the table's lock."""
 
 
+class RealmUnset(Refused):
+    """The command needs the realm and ALCOVE_RELAY_REALM is unset; the command
+    line exits 2 on it, where any other refusal exits 3."""
+
+
 def require_realm(realm):
     if not realm:
-        raise Refused(REALM_REFUSAL)
+        raise RealmUnset(REALM_REFUSAL)
 
 
 def valid_exchange_id(exchange_id):
@@ -765,6 +770,9 @@ def main(argv):
         return 2
     try:
         return run_command(argv[0], argv[1:])
+    except RealmUnset as error:
+        sys.stderr.write("ABORTING: %s\n" % error)
+        return 2
     except Refused as error:
         sys.stderr.write("ABORTING: %s\n" % error)
         return 3

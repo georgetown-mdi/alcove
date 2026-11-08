@@ -798,6 +798,23 @@ except relay_table.TableError as error:
     expect(status("exchange-9", KEY_A)).toBe(4);
   });
 
+  it("exits 2 for status with no realm, apart from the 3 of a key the table does not hold", () => {
+    const host = fixtureHost();
+    host.register("exchange-1", KEY_A);
+    const status = (realm, key) =>
+      spawnSync(
+        "python3",
+        [join(relay, "relay_table.py"), "status", "exchange-1"],
+        {
+          encoding: "utf8",
+          env: { ...host.env, ALCOVE_RELAY_REALM: realm },
+          input: `${key}\n`,
+        },
+      ).status;
+    expect(status("", KEY_A)).toBe(2);
+    expect(status(REALM, KEY_B)).toBe(3);
+  });
+
   it.each(REALM_COMMANDS)(
     "refuses %s with no realm, naming the variable, and changes nothing",
     (command) => {
@@ -813,7 +830,7 @@ except relay_table.TableError as error:
           input: `${KEY_A}\n`,
         },
       );
-      expect(result.status).toBe(3);
+      expect(result.status).toBe(2);
       expect(result.stderr).toContain(REALM_REFUSAL);
       expect({ rows: host.rows(), mapping: host.mapping() }).toEqual(before);
     },
@@ -839,12 +856,12 @@ except relay_table.TableError as error:
         );
       const missing = join(host.root, "no-such-table");
       const result = run(missing);
-      expect(result.status).toBe(3);
+      expect(result.status).toBe(2);
       expect(result.stderr).toContain(REALM_REFUSAL);
       expect(existsSync(missing)).toBe(false);
       const existing = host.env.ALCOVE_RELAY_TURNDB;
       const before = readFileSync(existing);
-      expect(run(existing).status).toBe(3);
+      expect(run(existing).status).toBe(2);
       expect(readFileSync(existing).equals(before)).toBe(true);
     },
   );

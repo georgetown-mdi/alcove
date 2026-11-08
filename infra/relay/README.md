@@ -303,7 +303,7 @@ revoke-exchange.sh <exchange-id>
   `printf '%s\n' "$KEY" | python3 /opt/alcove-relay/relay_table.py forget-key`,
   with `relay.env`'s variables in the environment. It removes the row and any
   mapping of the key in `ALCOVE_RELAY_REALM`, in one transaction, and like
-  every command that needs the realm exits 3 naming the variable when it is
+  every command that needs the realm exits 2 naming the variable when it is
   unset. An `alcove-verify-` row
   the import skips -- a verify run that died before cleaning up -- gets no
   mapping, so if an earlier install already wrote its key into the table
