@@ -1,15 +1,15 @@
-import { applyStandaloneUpgradeBounds } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
-
-import { startRelayCountersFile } from "./countersFile.ts";
-import { openRelayKeyTable } from "./keyTable.ts";
-import { attachWebSocketRelay, createWebSocketRelayServer } from "./relay.ts";
 import {
   exitOnSignal,
   refuseToStart,
   UNAVAILABLE_EXIT_CODE,
   USAGE_EXIT_CODE,
   writeLine,
-} from "./standaloneRunner.ts";
+} from "@alcove/peerjs-broker/standaloneRunner";
+import { applyStandaloneUpgradeBounds } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
+
+import { startRelayCountersFile } from "./countersFile.ts";
+import { openRelayKeyTable } from "./keyTable.ts";
+import { attachWebSocketRelay, createWebSocketRelayServer } from "./relay.ts";
 import { RelayOptionError, resolveRelayOptions } from "./standaloneOptions.ts";
 
 import type { AddressInfo } from "node:net";

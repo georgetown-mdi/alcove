@@ -8,6 +8,7 @@ import {
   UNKNOWN_DEPLOYMENT_STATUS,
   deploymentStatusHeaders,
 } from "./deploymentStatus.ts";
+import { refusePlainRequest, requestPath } from "./requestRefusal.ts";
 
 import type {
   DeploymentStatus,
@@ -269,15 +270,6 @@ function envPath(value: string | undefined): string | undefined {
   return value === undefined || value.trim() === "" ? undefined : value;
 }
 
-/** The path of a request URL, without the query a probe may append. Compared
- * as it arrived: nothing is percent-decoded, so only the endpoint's own
- * spelling reaches it. */
-function requestPathname(url: string | undefined): string {
-  if (url === undefined) return "";
-  const queryAt = url.search(/[?#]/);
-  return queryAt === -1 ? url : url.slice(0, queryAt);
-}
-
 /**
  * The runner's plain-HTTP handler: the readiness probe, and a refusal for
  * everything else.
@@ -292,9 +284,12 @@ function requestPathname(url: string | undefined): string {
  * host's deployed commit and its last pull run's outcome and time, each
  * `unknown` when it could not be read. The body stays the fixed line.
  *
- * Every other request is refused rather than 404'd silently against a route
- * that might exist: the broker handles WebSocket upgrades and this one
- * endpoint, and nothing else is part of any wire it serves.
+ * The probe's path is compared as it arrived, without its query: nothing is
+ * percent-decoded, so only the endpoint's own spelling reaches it.
+ *
+ * Every other request is answered 404 and its connection closed: the broker
+ * handles WebSocket upgrades and this one endpoint, and nothing else is part
+ * of any wire it serves.
  */
 export function createStandaloneRequestHandler(
   readinessPath: string,
@@ -302,13 +297,9 @@ export function createStandaloneRequestHandler(
 ): (request: IncomingMessage, response: ServerResponse) => void {
   return (request, response) => {
     const isProbe =
-      requestPathname(request.url) === readinessPath &&
+      requestPath(request.url) === readinessPath &&
       (request.method === "GET" || request.method === "HEAD");
-    if (!isProbe) {
-      response.writeHead(404);
-      response.end();
-      return;
-    }
+    if (!isProbe) return refusePlainRequest(response);
     const answer = (status: DeploymentStatus): void => {
       response.writeHead(200, {
         "content-type": "text/plain; charset=utf-8",

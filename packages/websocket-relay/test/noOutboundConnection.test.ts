@@ -29,9 +29,20 @@ const ADMITTED_VALUE_IMPORTS: Record<string, ReadonlyArray<string>> = {
     "EXCHANGE_ID_PATTERN",
     "parseBoundedJson",
     "parseWebSocketRelayProof",
-    "redactAndSanitizeForDisplay",
     "RENDEZVOUS_ROLES",
     "WebSocketRelayProofRefusedError",
+  ],
+  "@alcove/peerjs-broker/requestRefusal": [
+    "refusePlainRequest",
+    "refuseUpgrade",
+    "requestPath",
+  ],
+  "@alcove/peerjs-broker/standaloneRunner": [
+    "exitOnSignal",
+    "refuseToStart",
+    "UNAVAILABLE_EXIT_CODE",
+    "USAGE_EXIT_CODE",
+    "writeLine",
   ],
   "@alcove/peerjs-broker/standaloneUpgradeBounds": [
     "applyStandaloneUpgradeBounds",

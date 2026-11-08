@@ -1,3 +1,4 @@
+import type { ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 
 /** The status lines a relay refuses an upgrade with. */
@@ -9,6 +10,13 @@ export function requestPath(url: string | undefined): string {
   if (url === undefined) return "";
   const queryAt = url.search(/[?#]/);
   return queryAt === -1 ? url : url.slice(0, queryAt);
+}
+
+/** Answer a plain request with 404 and an empty body, and close its
+ * connection. */
+export function refusePlainRequest(response: ServerResponse): void {
+  response.writeHead(404, { Connection: "close" });
+  response.end();
 }
 
 /** Answer an upgrade with `status` and an empty body, and close its socket. */

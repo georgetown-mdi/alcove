@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import http from "node:http";
 import { createRequire } from "node:module";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,6 +13,7 @@ import { startBrokerProcess } from "../../signaling/brokerProcess";
 import { stopChild } from "../../stopChild";
 
 import type { BrokerProcess } from "../../signaling/brokerProcess";
+import type { ChildProcess } from "node:child_process";
 import type { AddressInfo } from "node:net";
 
 /**
@@ -94,6 +96,82 @@ async function msBeforeCloseOf(
   }
 }
 
+/** The runner spawned with `args` alone, and what it writes until it exits. */
+interface SpawnedRunner {
+  child: ChildProcess;
+  stdout: () => string;
+  stderr: () => string;
+  /** The exit code and signal, or "still running" at
+   * {@link REFUSAL_EXIT_TIMEOUT_MS} after `waitForExit` is called. */
+  waitForExit: () => Promise<
+    { code: number | null; signal: string | null } | "still running"
+  >;
+}
+
+function spawnRunner(args: ReadonlyArray<string>): SpawnedRunner {
+  const require = createRequire(import.meta.url);
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const brokerRoot = path.resolve(
+    here,
+    "../../../../..",
+    "packages/peerjs-broker",
+  );
+  const child = spawn(
+    process.execPath,
+    [
+      require.resolve("tsx/cli"),
+      path.join(brokerRoot, "src/standalone.ts"),
+    ].concat(args),
+    { cwd: brokerRoot, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let stdout = "";
+  let stderr = "";
+  child.stdout?.on("data", (data: Buffer) => (stdout += data.toString()));
+  child.stderr?.on("data", (data: Buffer) => (stderr += data.toString()));
+  const exited = new Promise<{ code: number | null; signal: string | null }>(
+    (resolve) => {
+      child.once("exit", (code, signal) => resolve({ code, signal }));
+    },
+  );
+  return {
+    child,
+    stdout: () => stdout,
+    stderr: () => stderr,
+    waitForExit: () =>
+      Promise.race([
+        exited,
+        new Promise<"still running">((resolve) => {
+          setTimeout(
+            () => resolve("still running"),
+            REFUSAL_EXIT_TIMEOUT_MS,
+          ).unref();
+        }),
+      ]),
+  };
+}
+
+/** Resolve once `runner` has written its ready line, or reject when it exits
+ * or {@link REFUSAL_EXIT_TIMEOUT_MS} passes first. */
+function waitForReadyLine(runner: SpawnedRunner): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const giveUp = setTimeout(
+      () => reject(new Error("the broker wrote no ready line")),
+      REFUSAL_EXIT_TIMEOUT_MS,
+    );
+    const check = (): void => {
+      if (!/^alcove-broker \d+\n$/.test(runner.stdout())) return;
+      clearTimeout(giveUp);
+      resolve();
+    };
+    runner.child.stdout?.on("data", check);
+    runner.child.once("exit", () => {
+      clearTimeout(giveUp);
+      reject(new Error(`the broker exited first: ${runner.stderr()}`));
+    });
+    check();
+  });
+}
+
 test("closes a socket that owes it a request rather than holding it", async () => {
   broker = await startBrokerProcess();
   // Both sockets are opened against the one broker at once: each is a wait on
@@ -153,6 +231,47 @@ test("nothing beside the probe answers on the broker's HTTP surface", async () =
   expect((await fetch(`${base}${broker.path}/peerjs`)).status).toBe(404);
   expect((await fetch(`${base}${broker.path}/healthz`)).status).toBe(404);
   expect((await fetch(`${base}/health`)).status).toBe(404);
+}, 60_000);
+
+test("answers a refused request with 404 and closes its connection", async () => {
+  broker = await startBrokerProcess();
+  const agent = new http.Agent({ keepAlive: true });
+  try {
+    const answer = await new Promise<{
+      status: number | undefined;
+      connection: string | undefined;
+      body: string;
+      closed: Promise<void>;
+    }>((resolve, reject) => {
+      const request = http.get(
+        `http://127.0.0.1:${broker?.port}/health`,
+        { agent },
+        (response) => {
+          const closed = new Promise<void>((closedResolve) => {
+            response.socket.once("close", () => closedResolve());
+          });
+          let body = "";
+          response.on("data", (chunk: Buffer) => (body += chunk.toString()));
+          response.on("end", () =>
+            resolve({
+              status: response.statusCode,
+              connection: response.headers.connection,
+              body,
+              closed,
+            }),
+          );
+        },
+      );
+      request.on("error", reject);
+    });
+    expect(answer.status).toBe(404);
+    expect(answer.connection).toBe("close");
+    expect(answer.body).toBe("");
+    // The broker ends the connection although the client asked to keep it.
+    await answer.closed;
+  } finally {
+    agent.destroy();
+  }
 }, 60_000);
 
 test("binds the port the flag names", async () => {
@@ -225,3 +344,42 @@ test("refuses an option it cannot act on rather than binding the defaults", asyn
     await stopChild(child);
   }
 }, 60_000);
+
+test("refuses a port another listener holds with exit 69, naming the bind", async () => {
+  const holder = createServer();
+  await new Promise<void>((resolve) => {
+    holder.listen(0, "127.0.0.1", () => resolve());
+  });
+  const { port } = holder.address() as AddressInfo;
+  const runner = spawnRunner(["--host", "127.0.0.1", "--port", String(port)]);
+  try {
+    expect(await runner.waitForExit()).toEqual({ code: 69, signal: null });
+    expect(runner.stdout()).toBe("");
+    expect(runner.stderr()).toMatch(
+      new RegExp(
+        String.raw`^\[[^\]]+\] \[ERROR\] \[peerjs-broker\] the signaling broker could not serve 127\.0\.0\.1 port ${port}: .*EADDRINUSE`,
+      ),
+    );
+  } finally {
+    await stopChild(runner.child);
+    await new Promise<void>((resolve) => {
+      holder.close(() => resolve());
+    });
+  }
+}, 60_000);
+
+test.each(["SIGTERM", "SIGINT"] as const)(
+  "exits 0 on %s",
+  async (signal) => {
+    const runner = spawnRunner([]);
+    try {
+      await waitForReadyLine(runner);
+      runner.child.kill(signal);
+      expect(await runner.waitForExit()).toEqual({ code: 0, signal: null });
+      expect(runner.stderr()).toBe("");
+    } finally {
+      await stopChild(runner.child);
+    }
+  },
+  60_000,
+);
