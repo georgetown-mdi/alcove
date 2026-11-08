@@ -168,16 +168,24 @@ export async function relayPlanForRun(
     ...(relay !== undefined && { relay }),
     relaysLeftOut,
     websocketRelays,
-    ...(forRun?.kind === "off" &&
-      (turnUrlIsAllowed(forRun.relay.turnUrl, allowedRelays) ||
-        (forRun.relay.websocketUrl !== undefined &&
-          webSocketRelayUrlIsAllowed(
-            forRun.relay.websocketUrl,
-            allowedRelays,
-          ))) && {
-        defaultRelayOff: true as const,
-      }),
+    ...(defaultRelayOffAndAllowed(forRun, allowedRelays) && {
+      defaultRelayOff: true as const,
+    }),
   };
+}
+
+// Whether the build offers the default relay switched off, the run does not
+// list it, and `allowedRelays` keep its TURN url or its WebSocket relay url.
+function defaultRelayOffAndAllowed(
+  forRun: DefaultRelayForRun | undefined,
+  allowedRelays: ReadonlyArray<string> | undefined,
+): boolean {
+  return (
+    forRun?.kind === "off" &&
+    (turnUrlIsAllowed(forRun.relay.turnUrl, allowedRelays) ||
+      (forRun.relay.websocketUrl !== undefined &&
+        webSocketRelayUrlIsAllowed(forRun.relay.websocketUrl, allowedRelays)))
+  );
 }
 
 /**
@@ -215,6 +223,9 @@ export interface RunRelayHosts {
   listedOnceEnrolled: ReadonlyArray<string>;
   /** The urls the allowed relays leave out, which the run does not contact. */
   leftOut: ReadonlyArray<string>;
+  /** As {@link RunRelayPlan}'s: the switch that turns the default relay on
+   * would add it to the run. */
+  defaultRelayOff?: true;
 }
 
 /**
@@ -232,7 +243,11 @@ export function runRelayHosts(
   > = {},
 ): RunRelayHosts {
   const own = dependencies.readOwn?.() ?? NO_OWN_RELAY;
-  const { site } = defaultRelayListed(invitationRelay, own, dependencies);
+  const { forRun, site } = defaultRelayListed(
+    invitationRelay,
+    own,
+    dependencies,
+  );
   const listed = relayUrlsListed(own, invitationRelay, site);
   const siteUrls =
     site === undefined
@@ -268,6 +283,9 @@ export function runRelayHosts(
         (url) => !webSocketRelayUrlIsAllowed(url, allowedRelays),
       ),
     ],
+    ...(defaultRelayOffAndAllowed(forRun, allowedRelays) && {
+      defaultRelayOff: true as const,
+    }),
   };
 }
 

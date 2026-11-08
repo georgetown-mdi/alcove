@@ -22,6 +22,7 @@ import {
   connectionSettingsTextFrom,
   signalingServerText,
 } from "./managedConnectionSettingsModel";
+import { relayRegistrationOffered } from "./managedDetailModel";
 
 import type {
   ConnectionSettingsErrors,
@@ -149,6 +150,7 @@ export function ManagedConnectionSettings({
         <ExchangeRelayCheck
           subject={managedRelayCheckSubject(record)}
           {...(invitationRelay !== undefined && { invitationRelay })}
+          relayRegistrationOffered={relayRegistrationOffered(record)}
           scope={SAVED_EXCHANGE_RELAY_CHECK_SCOPE}
         />
       )}

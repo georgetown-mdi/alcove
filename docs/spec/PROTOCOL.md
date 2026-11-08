@@ -2216,7 +2216,13 @@ The web application checks the relays of an exchange an acceptor is reviewing, a
   - not enrolled, where the default relay's enrollment failed, or the WebSocket relay holds no key for the exchange (4003);
   - no relayed path, where the relay gave both TURN connections a relay candidate, or paired both WebSocket sockets, and no message passed;
   - not reached, for anything else.
-- **The words.** Each cause's meaning and remedy are the ones `alcove doctor relay` states for the same cause, from `packages/core/src/relayCheckWords.ts` ([CLI_DOCTOR.md](CLI_DOCTOR.md#the-relay-check)), and for a default relay that did not enroll the exchange, the web run's own notice. A url shown is escaped and bounded for display.
+- **The words.** Each cause's meaning and remedy are the ones `alcove doctor relay` states for the same cause, from `packages/core/src/relayCheckWords.ts` ([CLI_DOCTOR.md](CLI_DOCTOR.md#the-relay-check)), except where the web names a control of its own instead of a CLI command (`apps/web/src/exchange/exchangeRelayCheckModel.ts`):
+  - a default relay that did not enroll the exchange takes the web run's own notice;
+  - a WebSocket relay that holds another key for the exchange (4004), or holds none (4003) where a run does not enroll at the registrar the invitation names, takes a remedy by whose relay it is: for the user's own, Relay registration where the saved exchange's page shows it, and otherwise removing the relay or, where that would add it, turning on the default relay; for one the invitation names, asking the partner to enroll; for the default relay, checking again;
+  - a TURN relay of the user's own or of the invitation's that refuses the credential takes the same remedy, and the user's own is explained without the CLI command;
+  - a relay whose request threw is not reached, and its line says the check could not start.
+
+  A url shown is escaped and bounded for display.
 - **The stated limit.** A browser reports a TURN relay's refusal only through the peer connection's candidate errors, so a refusal it does not report is not reached. The inviter of an invitation this page creates is not offered the check.
 
 # Post-linkage steps

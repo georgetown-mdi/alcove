@@ -4,7 +4,6 @@ import {
   DEFAULT_MAX_DISPLAY_LENGTH,
   INVITATION_RELAY_REFUSES_UNTIL_ENROLLED,
   NO_RELAY_CANDIDATE_GATHERED,
-  OWN_RELAY_REFUSES_UNTIL_ENROLLED,
   RELAY_NOT_REACHED_REMEDY,
   RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR,
   TURN_RELAY_CREDENTIAL_REFUSED_MEANING,
@@ -30,7 +29,12 @@ import type { RunRelayHosts } from "../../../src/psi/transport/runRelayPlan.js";
 
 // The words of the web check of an exchange's relays: each outcome's
 // message and remedy, taken from the words `alcove doctor relay` and the
-// console use for the same cause, and every url escaped and bounded.
+// console use for the same cause except where the remedy is a web control,
+// and every url escaped and bounded.
+
+const ENROLL_OWN = "Enroll this exchange under Relay registration below.";
+const REMOVE_OWN = "Remove this relay from Connection settings.";
+const ASK_PARTNER = "Ask your partner to enroll this exchange at their relay.";
 
 const OWN_TURN = "turns:own-relay.example.org:443?transport=tcp";
 const INVITED_TURN = "turn:invited-relay.example.org:3478";
@@ -84,12 +88,20 @@ describe("each outcome's message and remedy", () => {
   });
 
   test.each([
-    [OWN_TURN, OWN_RELAY_REFUSES_UNTIL_ENROLLED],
-    [INVITED_TURN, INVITATION_RELAY_REFUSES_UNTIL_ENROLLED],
-    [DEFAULT_TURN, "T" + RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR.slice(1)],
+    [
+      OWN_TURN,
+      "A relay that takes enrolled keys refuses it until this exchange is enrolled there.",
+      REMOVE_OWN,
+    ],
+    [INVITED_TURN, INVITATION_RELAY_REFUSES_UNTIL_ENROLLED, ASK_PARTNER],
+    [
+      DEFAULT_TURN,
+      "T" + RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR.slice(1),
+      RELAY_NOT_REACHED_REMEDY,
+    ],
   ])(
-    "a refused credential at %s does not work, with the CLI's reason for that source",
-    (url, reason) => {
+    "a refused credential at %s does not work, with a reason and an action for that source",
+    (url, reason, action) => {
       const line = shown({ relay: "turn", url, result: "credential_refused" });
       expect(line).toEqual({
         url,
@@ -97,8 +109,39 @@ describe("each outcome's message and remedy", () => {
         cause: "credential_refused",
         summary: "the relay refused this exchange's credential.",
         meaning: `${TURN_RELAY_CREDENTIAL_REFUSED_MEANING} ${reason}`,
-        action: RELAY_NOT_REACHED_REMEDY,
+        action,
       });
+      expect(line.meaning).not.toContain("alcove");
+    },
+  );
+
+  test("a refused credential at the user's own TURN relay points at Relay registration where the page shows it", () => {
+    const line = exchangeRelayCheckLineShown(
+      { relay: "turn", url: OWN_TURN, result: "credential_refused" },
+      { ...CONTEXT, relayRegistrationOffered: true },
+    );
+    expect(line.action).toBe(ENROLL_OWN);
+  });
+
+  test.each([
+    ["turn", { result: "not_started" }],
+    ["websocket", { result: { kind: "not_started" } }],
+  ] as const)(
+    "a %s relay whose request threw says the check did not start, not that it waited",
+    (relay, result) => {
+      const line = shown({
+        relay,
+        url: relay === "turn" ? OWN_TURN : OWN_WEBSOCKET,
+        ...result,
+      } as ExchangeRelayCheckLine);
+      expect(line).toMatchObject({
+        works: false,
+        cause: "not_reached",
+        summary: "the check could not start a connection to this relay.",
+        action: "Check that this relay's url is correct.",
+      });
+      expect(line.summary).not.toMatch(/within/);
+      expect(line.meaning).toBeUndefined();
     },
   );
 
@@ -125,7 +168,7 @@ describe("each outcome's message and remedy", () => {
     });
   });
 
-  test("a WebSocket relay that holds no key is not enrolled, in the CLI's words", () => {
+  test("a partner's WebSocket relay that holds no key is not enrolled, and the partner is asked to enroll", () => {
     const line = shown({
       relay: "websocket",
       url: INVITED_WEBSOCKET,
@@ -147,8 +190,60 @@ describe("each outcome's message and remedy", () => {
       cause: "not_enrolled",
       summary:
         "not admitted; the relay holds no key for this exchange (close code 4003).",
-      ...words,
+      meaning: words.meaning,
+      action: ASK_PARTNER,
     });
+  });
+
+  describe("the user's own WebSocket relay holding no key or another key", () => {
+    const refused = (closeCode: number): ExchangeRelayCheckLine => ({
+      relay: "websocket",
+      url: OWN_WEBSOCKET,
+      result: { kind: "refused", closeCode, proofRemadeOnRelayClock: false },
+    });
+
+    test.each([
+      [4003, ENROLL_OWN],
+      [
+        4004,
+        "Under Relay registration below, enter the relay-owner token, tick " +
+          "the box to replace the key, and select Enroll.",
+      ],
+    ])(
+      "a %i points at Relay registration where the page shows it",
+      (closeCode, action) => {
+        expect(
+          exchangeRelayCheckLineShown(refused(closeCode), {
+            ...CONTEXT,
+            relayRegistrationOffered: true,
+          }),
+        ).toMatchObject({
+          cause: closeCode === 4003 ? "not_enrolled" : "credential_refused",
+          meaning: webSocketRelayRefusalWords(closeCode, {
+            enrollsAtInvitationRegistrar: false,
+            partnersUnderInvitationExchangeId: false,
+            enrollmentFailed: false,
+          }).meaning,
+          action,
+        });
+      },
+    );
+
+    test.each([4003, 4004])(
+      "a %i elsewhere says to remove the relay, or turn on this site's relay server where that would add it",
+      (closeCode) => {
+        expect(shown(refused(closeCode)).action).toBe(REMOVE_OWN);
+        expect(
+          exchangeRelayCheckLineShown(refused(closeCode), {
+            ...CONTEXT,
+            hosts: { ...HOSTS, defaultRelayOff: true },
+          }).action,
+        ).toBe(
+          "Remove this relay from Connection settings, or turn on this " +
+            "site's relay server there.",
+        );
+      },
+    );
   });
 
   describe("a 4003 at this site's default WebSocket relay", () => {
@@ -191,7 +286,7 @@ describe("each outcome's message and remedy", () => {
           hosts: siteHosts,
           ...(invitationRelay !== undefined && { invitationRelay }),
         });
-        expect(line.action).toBe(words(false).action);
+        expect(line.action).toBe("Check again.");
         expect(line.action).not.toBe(words(true).action);
       },
     );

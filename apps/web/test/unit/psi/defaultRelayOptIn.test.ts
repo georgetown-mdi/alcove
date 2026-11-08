@@ -7,7 +7,11 @@ import {
   defaultRelayInUse,
   invitationRelayWithDefault,
 } from "@psi/transport/defaultRelay";
-import { relayPlanForRun, runListsRelay } from "@psi/transport/runRelayPlan";
+import {
+  relayPlanForRun,
+  runListsRelay,
+  runRelayHosts,
+} from "@psi/transport/runRelayPlan";
 import { defaultRelayNotEnrolledNotice } from "@psi/transport/defaultRelayRefusal";
 
 import type { OwnRelay, RelayUrls } from "@psi/transport/ownRelaySetting";
@@ -295,6 +299,24 @@ describe("relayPlanForRun on a build offering the relay switched off", () => {
     expect(enroll).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty("defaultRelayOff");
   });
+
+  test.each([
+    [false, undefined],
+    [true, undefined],
+    [false, ["site.example.com"]],
+    [false, ["partner.example.net"]],
+  ])(
+    "the hosts read with no contact say it is off where the run does (on: %s, allowed: %j)",
+    async (on, allowedRelays) => {
+      const { result } = await plan(undefined, on, allowedRelays);
+      const hosts = runRelayHosts(undefined, allowedRelays, {
+        readOwn: () => ({ kind: "none" }),
+        build: () => OPT_IN,
+        switchedOn: switched(on),
+      });
+      expect(hosts.defaultRelayOff).toBe(result.defaultRelayOff);
+    },
+  );
 
   describe("a build whose WebSocket relay is on another host than its TURN relay", () => {
     const SPLIT_SITE = {
