@@ -85,10 +85,9 @@ Return ONLY this, as raw text (it is data for the caller, not a message):
    step>", one waiting on the owner's call "action: decision -- <the
    question>". Before emitting a decision tag, run
    node .claude/scripts/find-rulings.mjs <the question's 2-3 subject words>
-   and when a ruling answers the question by the ruling test in
-   .claude/orchestration/ruleset.md, Decisions, briefs and reporting, emit
-   "ruled -- <board>/<itemId>" instead; nothing else that test names
-   replaces the decision tag. An item whose body already cites its brief or Decision
+   and when a ruling the owner gave in his own words, quoted verbatim, answers
+   the question, emit "ruled -- <board>/<itemId>" instead; documented
+   behavior and a ruling with no owner quote never replace the decision tag. An item whose body already cites its brief or Decision
    item is listed with that citation and no action tag. One whose body has a
    "Brief owed since <date>: ..." or "Decision item owed since <date>: ..."
    line is listed with that line in place of a new action tag.

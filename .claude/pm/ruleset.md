@@ -287,10 +287,10 @@ and a decision becomes an item in Decision status. None is held only in a PR
 follow-on line, a report tail, or a chat aside.
 Before drafting a Decision item, run
 `node .claude/scripts/find-rulings.mjs <the question's 2-3 subject words>`:
-a question a ruling already answers, by the ruling test in
-`.claude/orchestration/ruleset.md`, Decisions, briefs and reporting, is
-DECLINED, citing that ruling; what that test calls agent-written context is
-cited in the item, never a reason to decline it.
+a question a ruling the owner gave in his own words, quoted verbatim, already
+answers is DECLINED, citing that ruling; documented behavior and a ruling with
+no owner quote are cited in the item as agent-written context, never a reason
+to decline it.
 
 The repo is `georgetown-mdi/alcove`; the owner for both projects is
 `georgetown-mdi`.
