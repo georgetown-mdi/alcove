@@ -494,11 +494,11 @@ describe("the single-pass partner size at the terms exchange", () => {
 
   // A reply read with its decryption under each envelope version, a reply
   // read without it and handed to the worker, and a request the worker
-  // decodes. Version 1 opens a frame in one call, at four times its size;
-  // version 2 one chunk at a time, at its size and the 101,023,744 bytes the
-  // chunked open peaked at, as the file-sync read gate charges it. At 40 MB
-  // the read is the larger charge, and at 100 MB under version 2 the
-  // hand-off is.
+  // decodes and masks. Version 1 opens a frame in one call, at four times its
+  // size; version 2 one chunk at a time, at its size and the 101,023,744 bytes
+  // the chunked open peaked at, as the file-sync read gate charges it. At 40 MB
+  // the read is the larger charge, and at 100 MB under version 2 the hand-off
+  // is.
   const SINGLE_CALL_ENVELOPE = 1;
   const CHUNKED_ENVELOPE = 2;
   it.each([
@@ -556,7 +556,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       SINGLE_CALL_ENVELOPE,
-      865_000_000,
+      3_110_000_000,
     ],
     [
       "a 100 MB encrypted request under envelope version 2",
@@ -564,7 +564,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       CHUNKED_ENVELOPE,
-      865_000_000,
+      3_110_000_000,
     ],
   ] as const)(
     "weighs %s the counts allow at the measured multiples",
@@ -702,6 +702,91 @@ describe("the single-pass partner size at the terms exchange", () => {
     expect(shortfall).toHaveLength(1);
     expect(shortfall[0]).toMatch(/^running with --allow-memory-shortfall: /);
     expect(lines).toHaveLength(1);
+  });
+
+  describe("where this party sends, the partner's request with its masking", () => {
+    // The request a partner of 4,000,000 values a side sends, read under
+    // envelope version 2 and handed over to the worker.
+    const REQUEST_BYTES = 140_000_002;
+    const request = {
+      inboundFrameBytes: REQUEST_BYTES,
+      inboundFrameUse: "decode" as const,
+      envelopeVersion: CHUNKED_ENVELOPE,
+    };
+    const masked =
+      REQUEST_BYTES +
+      REQUEST_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.handedOverRequest;
+    // The request and its decoding alone, which the masking is above.
+    const decodedOnly =
+      REQUEST_BYTES * (1 + INBOUND_FRAME_MEMORY_MULTIPLES.psiDecode);
+
+    it("proceeds when the masking fits what is available", () => {
+      const { shortfall } = run(request, masked);
+      expect(shortfall).toEqual([]);
+    });
+
+    it("refuses a request whose masking is over what is available, naming both figures and the override", () => {
+      expect(() => run(request, masked - 1)).toThrow(RoundCapacityError);
+      expect(() => run(request, decodedOnly)).toThrow(
+        "your partner declared 150,000 records, and reading and masking what " +
+          "they send could take up to 4.35 GB of memory, but this machine has " +
+          "1.21 GB available now, so the exchange stopped before any value " +
+          "was masked and told your partner. Run the exchange on a host with " +
+          "more memory, or ask your partner to split their input into smaller " +
+          "files and run one exchange for each. Pass --allow-memory-shortfall " +
+          "to run anyway; the exchange may then run out of memory partway " +
+          "through, which fails it for both parties.",
+      );
+    });
+
+    it("warns instead under --allow-memory-shortfall", () => {
+      const { shortfall } = run(request, decodedOnly, true);
+      expect(shortfall).toEqual([
+        "running with --allow-memory-shortfall: your partner declared " +
+          "150,000 records, and reading and masking what they send could " +
+          "take up to 4.35 GB of memory, but this machine has 1.21 GB " +
+          "available now. The exchange may run out of memory partway " +
+          "through, which fails it for both parties.",
+      ]);
+    });
+
+    it("over WebRTC, weighs the request copied to the worker and masked", () => {
+      const overWebRtc = {
+        ...request,
+        webRtc: {
+          partBytes: PART,
+          outboundFrameBytes: 1_000,
+          inboundInParts: true,
+        },
+      };
+      const copied =
+        REQUEST_BYTES +
+        REQUEST_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.copiedRequest;
+      expect(() => run(overWebRtc, copied)).not.toThrow();
+      expect(() => run(overWebRtc, copied - 1)).toThrow(RoundCapacityError);
+    });
+  });
+});
+
+describe("the partner's round in a cascade or count-only exchange", () => {
+  it("is weighed at the round's measured cost, not the single-pass request's", () => {
+    const readings: MemoryReadings = {
+      engineHeapLimitBytes: 64e9,
+      engineInWorker: true,
+      mainThreadHeapLimitBytes: 64e9,
+      hostBytes: 64e9,
+      containerLimitBytes: undefined,
+    };
+    expect(
+      checkPartnerRoundMemory({
+        partnerRoundValues: 4_000_000,
+        allowShortfall: false,
+        readings,
+        onShortfallWarning: () => undefined,
+      }).needBytes,
+    ).toBe(PSI_ROUND_FIXED_BYTES + 4_000_000 * PSI_ROUND_BYTES_PER_ELEMENT);
+    expect(PSI_ROUND_BYTES_PER_ELEMENT).toBe(1_176);
+    expect(PSI_ROUND_FIXED_BYTES).toBe(271_000_000);
   });
 });
 

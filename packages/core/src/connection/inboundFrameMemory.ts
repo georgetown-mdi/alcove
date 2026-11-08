@@ -32,6 +32,18 @@ export const INBOUND_FRAME_MEMORY_MULTIPLES = {
    * posting each copies that whole buffer.
    */
   copiedReply: 3.9,
+  /**
+   * A single-pass request handed over to the PSI worker over file-sync and
+   * masked there, beyond the frame: its decoding, the masking and the
+   * response built.
+   */
+  handedOverRequest: 30.1,
+  /**
+   * A single-pass request copied to the PSI worker and masked there, beyond
+   * the frame: the worker's copy, its decoding, the masking and the response
+   * built.
+   */
+  copiedRequest: 31,
 } as const;
 
 /**
@@ -78,32 +90,39 @@ export function psiFrameHandlingBytes(
 
 /**
  * The memory handing a single-pass request or reply read over file-sync to
- * the PSI worker adds, beyond the frame: the request moved and decoded, or
- * the reply at the measured `handedOverReply` multiple.
+ * the PSI worker adds, beyond the frame: the request moved and masked, at the
+ * measured `handedOverRequest` multiple, or the reply at the measured
+ * `handedOverReply` multiple.
  */
 export function fileSyncSinglePassHandOffBytes(
   frameBytes: number,
   use: InboundPsiFrameUse,
 ): number {
-  return use === "decode"
-    ? psiFrameHandlingBytes(frameBytes, use, true)
-    : frameBytes * INBOUND_FRAME_MEMORY_MULTIPLES.handedOverReply;
+  return (
+    frameBytes *
+    (use === "decode"
+      ? INBOUND_FRAME_MEMORY_MULTIPLES.handedOverRequest
+      : INBOUND_FRAME_MEMORY_MULTIPLES.handedOverReply)
+  );
 }
 
 /**
  * The memory handing a single-pass request or reply read over WebRTC to the
- * PSI worker adds, beyond the frame: a reply in one frame, not `inParts`, at
- * the measured `copiedReply` multiple, and otherwise the worker's copy and
- * what the engine builds ({@link psiFrameHandlingBytes}).
+ * PSI worker adds, beyond the frame: the request copied and masked, at the
+ * measured `copiedRequest` multiple; a reply in one frame, not `inParts`, at
+ * the measured `copiedReply` multiple; and a reply in parts at the worker's
+ * copy and what the engine builds ({@link psiFrameHandlingBytes}).
  */
 export function webRtcSinglePassHandOffBytes(
   frameBytes: number,
   use: InboundPsiFrameUse,
   inParts: boolean,
 ): number {
-  return use === "stream" && !inParts
-    ? frameBytes * INBOUND_FRAME_MEMORY_MULTIPLES.copiedReply
-    : psiFrameHandlingBytes(frameBytes, use);
+  if (use === "decode")
+    return frameBytes * INBOUND_FRAME_MEMORY_MULTIPLES.copiedRequest;
+  return inParts
+    ? psiFrameHandlingBytes(frameBytes, use)
+    : frameBytes * INBOUND_FRAME_MEMORY_MULTIPLES.copiedReply;
 }
 
 /**
