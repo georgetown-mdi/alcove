@@ -45,7 +45,7 @@ export function queuedBytes(destination: WebSocket): number {
 }
 
 /** Node's read size and a TCP socket's read high-water mark, in bytes. */
-const READ_BYTES = 64 * 1024;
+export const READ_BYTES = 64 * 1024;
 
 /**
  * The memory, in bytes, a chunk in a paused socket's read buffer holds beyond

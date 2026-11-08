@@ -12,7 +12,9 @@
     "./faultLatch": "./src/faultLatch.ts",
     "./forwarding": "./src/forwarding.ts",
     "./keyTable": "./src/keyTable.ts",
-    "./protocol": "./src/protocol.ts"
+    "./protocol": "./src/protocol.ts",
+    "./standaloneRunner": "./src/standaloneRunner.ts",
+    "./upgradeRefusal": "./src/upgradeRefusal.ts"
   },
   "scripts": {
     "start": "tsx src/standalone.ts",

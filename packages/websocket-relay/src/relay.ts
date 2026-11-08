@@ -40,6 +40,7 @@ import {
   START_FRAME,
   readClientFrame,
 } from "./protocol.ts";
+import { refuseUpgrade, requestPath } from "./upgradeRefusal.ts";
 
 import type { RendezvousRole } from "@alcove/core/websocket-relay";
 import type { IncomingMessage, Server } from "node:http";
@@ -154,27 +155,6 @@ const NORMAL_CLOSE_CODES = new Set([1000, 1005]);
 
 /** The form of a relay key core derives a proof key from. */
 const RELAY_KEY_PATTERN = /^[0-9a-f]{64}$/;
-
-function requestPath(url: string | undefined): string {
-  if (url === undefined) return "";
-  const queryAt = url.search(/[?#]/);
-  return queryAt === -1 ? url : url.slice(0, queryAt);
-}
-
-function refuseUpgrade(
-  socket: Duplex,
-  status: "404 Not Found" | "503 Service Unavailable",
-): void {
-  // The HTTP server detaches its own listeners from an upgrade's socket, so
-  // an error here would otherwise be thrown.
-  socket.on("error", () => socket.destroy());
-  // Destroyed once the answer has flushed, so a client that never closes its
-  // side cannot hold the socket half-open.
-  socket.end(
-    `HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
-    () => socket.destroy(),
-  );
-}
 
 /**
  * An HTTP server for {@link attachWebSocketRelay} that answers every plain

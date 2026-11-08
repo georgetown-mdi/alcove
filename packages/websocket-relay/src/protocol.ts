@@ -1,4 +1,5 @@
 import {
+  EXCHANGE_ID_PATTERN,
   parseBoundedJson,
   parseWebSocketRelayProof,
   RENDEZVOUS_ROLES,
@@ -6,6 +7,7 @@ import {
 
 import {
   QUEUED_MESSAGE_OVERHEAD_BYTES,
+  READ_BYTES,
   pausedReadAheadBytes,
 } from "./forwarding.ts";
 
@@ -54,8 +56,7 @@ export const RELAY_QUEUE_LIMIT_BYTES = 1280 * 1024;
  * 65,535 bytes and at least 126. */
 const MESSAGE_HEADER_BYTES = 4;
 
-/** Node's read size, in bytes. */
-export const READ_BYTES = 64 * 1024;
+export { READ_BYTES } from "./forwarding.ts";
 
 /**
  * The read high-water mark, in bytes, of each socket the relay's HTTP server
@@ -263,9 +264,6 @@ export class RelayFrameError extends Error {
   }
 }
 
-// The registrar's exchange id alphabet (infra/relay/README.md, Per-exchange
-// keys).
-const EXCHANGE_ID_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/;
 const TAG_PATTERN = /^[0-9a-f]{64}$/;
 const HELLO_KEYS = ["type", "exchangeId", "role", "proof", "tag"];
 
