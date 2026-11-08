@@ -33,7 +33,7 @@ const TERMS_CHANGE = "TermsChangeRefusedError";
 // Constructions under one anchor are listed in source order.
 const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   // The partner's envelope version byte is not this build's.
-  "packages/core/src/connection/fileSyncMessageLoop.ts :: FileSyncMessageLoop.poll > parseMessage":
+  "packages/core/src/connection/fileSyncMessageLoop.ts :: FileSyncMessageLoop.consumeMessage > parseMessage":
     [PARTNER],
   // The partner's payload frame: not arrays, wrong cell shape, lengths that
   // disagree, repeated indices, rows missing.
