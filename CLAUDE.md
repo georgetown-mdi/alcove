@@ -77,9 +77,7 @@ Beyond the conventions in `CONTRIBUTING.md`:
 
 ### Documentation routing
 
-- Route documentation detail by tier, whichever doc you are editing: spec-level -> `docs/spec/`; conceptual and operational -> `docs/`; design rationale and decisions taken -> `docs/notes/`, which points at the spec rather than restating it. Full rule: `CONTRIBUTING.md`, Documentation.
-- `CONTRIBUTING.md` is a pre-contribution quickstart, not a reference: route deep material per its "Scope of this document" section. `npm run check:contributing` catches two mechanical tells only, so keep deep material out even when it would pass.
-- `CHANGELOG.md` is reader-facing release notes, not a commit log: pre-release, an entry is added only for a major feature or a breaking change to something already listed (`CONTRIBUTING.md`, Changelog).
+- Which tier a detail goes in, what stays out of `CONTRIBUTING.md` even when `check:contributing` passes, and when `CHANGELOG.md` takes an entry: `CONTRIBUTING.md`, Documentation, Scope of this document, and Changelog.
 
 ### Orchestrating a session
 

@@ -322,14 +322,16 @@ node .claude/scripts/edit-issue.mjs <PROJECT_NUMBER> <itemId> --title "..." --bo
 When revising an existing item, read it first
 (`node .claude/scripts/fetch-issues.mjs <PROJECT_NUMBER> <itemId>`) and work
 from the stored body, not from memory; preserve sections you were not asked to
-change. `--body-file` replaces the stored body with the file, so before the
-call check that the file is non-empty and holds the whole stored body, read in
-full, with your change made. Setting a field (e.g. `--status "In Progress"`) is done only when
+change. The whole-body rule: `--body-file` replaces the stored body with the
+file, so before every such call -- a revision, a ruling, a dated line -- check
+that the file is non-empty and holds the whole stored body, read in full, with
+your change made. Setting a field (e.g. `--status "In Progress"`) is done only when
 explicitly asked.
 
 The docket (`/docket`) is the only channel for rulings, one decision per
 message; a session that needs a ruling mid-work files the Decision item and
-presents it the same way. The ruling is recorded verbatim in the session's own
+parks it for the next docket, as `.claude/orchestration/ruleset.md`,
+Decisions, briefs and reporting, says. The ruling is recorded verbatim in the session's own
 record in the turn it is given, and reaches its item in the session's
 follow-ups pass (`.claude/commands/follow-ups.md`), which writes every
 ruling's text and its consequences to the board in one pass. On the item it

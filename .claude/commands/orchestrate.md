@@ -33,7 +33,8 @@ Add it to the continuation brief's owner notes, never replacing what is there, s
 - Pick items that deliver value to users and the product and that can be developed at once without interfering with each other.
   Do not avoid hard work, above all work that unblocks other streams.
 - Work autonomously, using your discretion.
-  Delegate the writing and the reading (`.claude/commands/start-issue.md`, Orchestrating), and keep your own context for planning, decisions and analysis.
+  Delegate the writing: implementation and every fix, /assess-review's triage edits included, go to `implementer` spawns with self-contained briefs, and you edit nothing on any branch.
+  Delegate the reading: exploration of an issue's surface goes to a spawn that returns a compact digest, so your own context holds diff stats, `fetch-issues.mjs` output and agent reports, and stays free for planning, decisions and analysis.
 - The owner delegates the task and review budgets to you: raise one when the raise delivers value to users or the product, recorded as `.claude/commands/assess-review.md`, Step 2, sets out.
 - For anything that needs resources outside the container -- Docker, the open internet -- stop and ask:
   the owner runs it or hands it to a host session (`CLAUDE.md`, Spawns and reports).

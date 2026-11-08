@@ -59,9 +59,8 @@ It is the session's last step: the board alone holds the state afterwards.
    or a ruling affects, and write onto its item each ruling the session
    recorded -- the docket's, and each answer the owner gave mid-work -- in
    its verbatim text with its consequences, a revised ruling with its
-   revision. `edit-issue.mjs --body-file` replaces the stored
-   body with the file, so before each call check that the file is non-empty and
-   holds the whole stored body, read in full, with the update added. A
+   revision, each body written under the `edit-issue.mjs --body-file`
+   whole-body rule in `.claude/pm/ruleset.md`, Filing and updating items. A
    shortlist action line the session did not take -- a handoff brief not
    written, a Decision item not filed -- is written on its item as a dated
    line, "Brief owed since <date>: write, schedule or drop." or "Decision item

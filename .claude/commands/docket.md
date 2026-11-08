@@ -76,12 +76,10 @@ Run only when the owner invokes this command; never start the docket unasked.
 2. Drop any item the owner has already ruled on, in this session or in a board
    item or repository file. To find such a ruling, run
    `node .claude/scripts/find-rulings.mjs <the decision's 2-3 subject words>`
-   and read every hit's body section in full: a ruling the owner gave in his
-   own words, quoted verbatim there, a "not to be re-raised" line above all,
-   drops the item and is cited on the originating item instead. What the docs
-   state, and a "Ruling" with no owner quote, are agent-written context: an
-   item they bear on is presented with them cited as agent-written, never
-   withheld for them. As a second net, fetch
+   and read every hit's body section in full, then apply the ruling test
+   (`.claude/orchestration/ruleset.md`, Decisions, briefs and reporting): a
+   ruling that passes it, a "not to be re-raised" line above all, drops the
+   item. As a second net, fetch
    the item's epic siblings
    (`node .claude/scripts/list-epic.mjs <project> "<Epic>"`) and every item its
    body names (`node .claude/scripts/fetch-issues.mjs <project> <itemId> ...`),
@@ -151,6 +149,5 @@ The rulings' board consequences -- status moves, each ruling recorded in its
 item's body, epic and order placement -- go to the boards in one pass with the
 filings you and the PM agree on, the follow-ups pass
 `.claude/commands/follow-ups.md`, Steps, makes. A ruling goes into a body
-through `edit-issue.mjs --body-file`, which replaces the stored body with the
-file: before the call, check that the file is non-empty and holds the whole
-stored body, read in full, with the ruling added.
+through `edit-issue.mjs --body-file`, under the whole-body rule in
+`.claude/pm/ruleset.md`, Filing and updating items.

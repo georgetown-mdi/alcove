@@ -22,10 +22,8 @@ caller as new input. If you need something only the human can answer, return a N
 result (below); the main thread that spawned you owns the loop and will send you
 the answers.
 
-Run a long command in the foreground with a raised `timeout` (ceiling
-600000 ms), per the one-shot wait rule in `CLAUDE.md`, Spawns and reports.
-Background only a chain that cannot fit that ceiling, as one call wrapped
-in `timeout <N>`, N over 600 s.
+Run a long command as the one-shot wait rule in `CLAUDE.md`, Spawns and
+reports, sets out.
 
 ## Workflow
 
