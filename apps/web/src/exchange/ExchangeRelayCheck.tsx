@@ -79,6 +79,7 @@ export function ExchangeRelayCheck({
   subject,
   invitationRelay,
   relayRegistrationOffered = false,
+  relayRegistrationRenewedByRuns = false,
   scope,
   dependencies,
 }: {
@@ -87,6 +88,9 @@ export function ExchangeRelayCheck({
   invitationRelay?: RelayUrls;
   /** Relay registration follows on the page, so a line's words point at it. */
   relayRegistrationOffered?: boolean;
+  /** Each run registers its new relay key where Relay registration enrolls
+   * it. */
+  relayRegistrationRenewedByRuns?: boolean;
   /** A sentence after the intro saying which settings are checked. */
   scope?: string;
   /** Tests only. */
@@ -125,6 +129,7 @@ export function ExchangeRelayCheck({
             hosts: subject.hosts,
             ...(invitationRelay !== undefined && { invitationRelay }),
             relayRegistrationOffered,
+            relayRegistrationRenewedByRuns,
           }),
         ),
       });

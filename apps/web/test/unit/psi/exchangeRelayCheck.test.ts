@@ -577,6 +577,25 @@ describe("runExchangeRelayCheck", () => {
     ]);
   });
 
+  test("a TURN credential that cannot be made is reported on every TURN relay, and contacts none of them", async () => {
+    const peers = fakePeers("works");
+    const lines = await runExchangeRelayCheck(
+      ownAndInvitedRelays(),
+      NOT_ABORTED,
+      {
+        createPeerConnection: peers.create,
+        parkWebSocketRelay: fakeRelay({ kind: "pairs" }).park,
+        now: () => new Date(Number.NaN),
+      },
+    );
+    expect(lines).toEqual([
+      { relay: "turn", url: OWN_TURN, result: "credential_not_made" },
+      { relay: "turn", url: INVITED_TURN, result: "credential_not_made" },
+      { relay: "websocket", url: OWN_WEBSOCKET, result: { kind: "works" } },
+    ]);
+    expect(peers.peers).toHaveLength(0);
+  });
+
   test("a WebSocket relay whose request throws is not started, and the TURN relays keep their results", async () => {
     const lines = await runExchangeRelayCheck(
       ownAndInvitedRelays(),

@@ -1,16 +1,10 @@
 import {
-  INVITATION_RELAY_REFUSES_UNTIL_ENROLLED,
-  NO_RELAY_CANDIDATE_GATHERED,
   REGISTRAR_DISCLOSURE,
   RELAY_CHECK_BOUND_MS,
   RELAY_DISCLOSURE,
   RELAY_NOT_REACHED_REMEDY,
-  RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR,
   TURN_RELAY_CREDENTIAL_REFUSED_MEANING,
-  TURN_RELAY_NOT_REACHED_MEANING,
   TURN_RELAY_NO_RELAYED_PATH_MEANING,
-  WEBSOCKET_RELAY_NOT_REACHED_ACTION,
-  WEBSOCKET_RELAY_NOT_REACHED_MEANING,
   WEBSOCKET_RELAY_NO_RELAYED_PATH_MEANING,
   WEBSOCKET_RELAY_UNEXPECTED_MESSAGE_WORDS,
   sanitizeForDisplay,
@@ -156,6 +150,10 @@ export interface ExchangeRelayCheckContext {
   /** The page shows Relay registration, which enrolls the exchange at the
    * user's own relay. */
   relayRegistrationOffered?: boolean;
+  /** Each run registers its new relay key where Relay registration enrolls
+   * it, so an enrollment there keeps holding at a WebSocket relay of the
+   * user's own. */
+  relayRegistrationRenewedByRuns?: boolean;
 }
 
 const BOUND_SECONDS = `${RELAY_CHECK_BOUND_MS / 1000} s`;
@@ -176,30 +174,62 @@ function relayOwner(
   return "own";
 }
 
-const OWN_TURN_REFUSES_UNTIL_ENROLLED =
-  "A relay that takes enrolled keys refuses it until this exchange is " +
-  "enrolled there.";
+const RELAY_NEEDS_ENROLLMENT = "this relay needs this exchange enrolled first.";
+
+const CHECK_AGAIN_LATER = "Check again later.";
+
+// Core's words for these name "this host", a CLI's term; the CLI keeps them.
+const TURN_RELAY_NOT_REACHED_MEANING =
+  "nothing on this computer reached this relay, the relay refused the " +
+  "credential, or it presented a certificate this computer does not trust; " +
+  "the reason is not reported, so the check cannot tell which.";
+const WEBSOCKET_RELAY_NOT_REACHED_MEANING =
+  "nothing on this computer reached this url as an Alcove WebSocket relay: " +
+  "the network blocked it, nothing answered at that address and path, or " +
+  "the connection closed before the relay answered.";
+const WEBSOCKET_RELAY_NOT_REACHED_ACTION =
+  "Check that this computer can reach the relay and that the url names its " +
+  "address and path, then check again.";
+
+// The refusals of a relay holding no key (4003) or another key (4004).
+const WEBSOCKET_RELAY_KEY_REFUSALS: ReadonlyMap<
+  number,
+  { summary: string; meaning: string }
+> = new Map([
+  [
+    4003,
+    {
+      summary: "the relay holds no key for this exchange.",
+      meaning: "the relay refuses this exchange until it is enrolled there.",
+    },
+  ],
+  [
+    4004,
+    {
+      summary: "the relay holds a different key for this exchange.",
+      meaning:
+        "the relay refuses this exchange until it holds the current key.",
+    },
+  ],
+]);
 
 // Why the TURN relay at `url` refuses a credential it has no key for.
 function turnRefusalReason(
   url: string,
   context: ExchangeRelayCheckContext,
 ): string {
-  switch (relayOwner(url, context)) {
-    case "site":
-      return capitalized(RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR);
-    case "partner":
-      return INVITATION_RELAY_REFUSES_UNTIL_ENROLLED;
-    case "own":
-      return OWN_TURN_REFUSES_UNTIL_ENROLLED;
-  }
+  return relayOwner(url, context) === "own"
+    ? "The relay may need this exchange enrolled first."
+    : capitalized(RELAY_NEEDS_ENROLLMENT);
 }
 
 // What a web user does about a relay that holds no key, or another key, for
 // this exchange. A web run enrolls only at this site's relay server, and the
-// check has already enrolled there.
+// check has already enrolled there. Relay registration keeps a key current
+// at an own WebSocket relay only where each run registers its new key.
 function enrollmentAction(
   url: string,
+  relay: "turn" | "websocket",
   context: ExchangeRelayCheckContext,
   replaceKey: boolean,
 ): string {
@@ -207,12 +237,19 @@ function enrollmentAction(
     case "site":
       return "Check again.";
     case "partner":
-      return "Ask your partner to enroll this exchange at their relay.";
+      return replaceKey
+        ? "Ask your partner to enroll this exchange at their relay again, " +
+            "replacing the key it holds."
+        : "Ask your partner to enroll this exchange at their relay.";
     case "own":
-      if (context.relayRegistrationOffered === true)
+      if (
+        context.relayRegistrationOffered === true &&
+        (relay === "turn" || context.relayRegistrationRenewedByRuns === true)
+      )
         return replaceKey
           ? "Under Relay registration below, enter the relay-owner token, " +
-              "tick the box to replace the key, and select Enroll."
+              "tick Replace the key the registrar holds for this exchange " +
+              "id, and select Enroll."
           : "Enroll this exchange under Relay registration below.";
       return context.hosts.defaultRelayOff === true
         ? "Remove this relay from Connection settings, or turn on this " +
@@ -256,8 +293,9 @@ function doesNotWork(
 /**
  * A line as shown, in the words `alcove doctor relay` and the console use for
  * the same cause (`@alcove/core`'s relay check words), except the web's own:
- * for a default relay that did not enroll the exchange, a request that threw,
- * and the action for a relay that holds no key or another key for it.
+ * for a default relay that did not enroll the exchange, a request that threw
+ * or a credential not made, a relay that holds no key or another key for it,
+ * and where core's words name the CLI's terms.
  */
 export function exchangeRelayCheckLineShown(
   line: ExchangeRelayCheckLine,
@@ -270,7 +308,7 @@ export function exchangeRelayCheckLineShown(
       "not_enrolled",
       "this site's relay server did not enroll this exchange's relay key, " +
         "so a run does not use this relay.",
-      RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR,
+      RELAY_NEEDS_ENROLLMENT,
       defaultRelayNotEnrolledNotice(line.notEnrolled),
     );
   if (line.relay === "turn")
@@ -287,7 +325,7 @@ export function exchangeRelayCheckLineShown(
         return doesNotWork(
           url,
           "not_reached",
-          `${NO_RELAY_CANDIDATE_GATHERED} within ${BOUND_SECONDS}.`,
+          `the relay did not answer within ${BOUND_SECONDS}.`,
           TURN_RELAY_NOT_REACHED_MEANING,
           RELAY_NOT_REACHED_REMEDY,
         );
@@ -298,8 +336,8 @@ export function exchangeRelayCheckLineShown(
           "the relay refused this exchange's credential.",
           `${TURN_RELAY_CREDENTIAL_REFUSED_MEANING} ${turnRefusalReason(url, context)}`,
           relayOwner(url, context) === "site"
-            ? RELAY_NOT_REACHED_REMEDY
-            : enrollmentAction(url, context, false),
+            ? CHECK_AGAIN_LATER
+            : enrollmentAction(url, "turn", context, false),
         );
       case "no_relayed_path":
         return doesNotWork(
@@ -310,7 +348,16 @@ export function exchangeRelayCheckLineShown(
           RELAY_NOT_REACHED_REMEDY,
         );
       case "not_started":
-        return notStarted(url);
+        return notStarted(url, context);
+      case "credential_not_made":
+        return {
+          url: sanitizeForDisplay(url),
+          works: false,
+          cause: "not_reached",
+          summary:
+            "this browser could not make this exchange's relay credential.",
+          action: "Reload this page, then check again.",
+        };
     }
   const result = line.result;
   switch (result.kind) {
@@ -341,6 +388,7 @@ export function exchangeRelayCheckLineShown(
         enrollmentFailed: false,
         proofRemadeOnRelayClock: result.proofRemadeOnRelayClock,
       });
+      const keyRefusal = WEBSOCKET_RELAY_KEY_REFUSALS.get(result.closeCode);
       const clause =
         webSocketRelayRefusalClause(result.closeCode) ??
         "the relay refused this exchange's proof";
@@ -351,12 +399,19 @@ export function exchangeRelayCheckLineShown(
           : result.closeCode === 4004 || result.closeCode === 4005
             ? "credential_refused"
             : "not_reached",
-        `not admitted; ${clause} (close code ${result.closeCode}).`,
-        words.meaning,
-        result.closeCode === 4004 ||
-          (result.closeCode === 4003 && !atInvitationRegistrar)
-          ? enrollmentAction(url, context, result.closeCode === 4004)
-          : words.action,
+        keyRefusal?.summary ?? `${clause}.`,
+        keyRefusal?.meaning ?? words.meaning,
+        result.closeCode === 4003 && atInvitationRegistrar
+          ? "Check again. If the relay still holds no key, ask your partner " +
+              "whether the relay their invitation names is working."
+          : keyRefusal !== undefined
+            ? enrollmentAction(
+                url,
+                "websocket",
+                context,
+                result.closeCode === 4004,
+              )
+            : words.action,
       );
     }
     case "unexpected_message":
@@ -384,17 +439,26 @@ export function exchangeRelayCheckLineShown(
         RELAY_NOT_REACHED_REMEDY,
       );
     case "not_started":
-      return notStarted(url);
+      return notStarted(url, context);
   }
 }
 
-function notStarted(url: string): ExchangeRelayCheckLineShown {
+const NOT_STARTED_ACTION = {
+  own: "Correct this url in Connection settings.",
+  partner: "Ask your partner to check this relay's url.",
+  site: CHECK_AGAIN_LATER,
+} as const;
+
+function notStarted(
+  url: string,
+  context: ExchangeRelayCheckContext,
+): ExchangeRelayCheckLineShown {
   return {
     url: sanitizeForDisplay(url),
     works: false,
     cause: "not_reached",
     summary: "the check could not start a connection to this relay.",
-    action: "Check that this relay's url is correct.",
+    action: NOT_STARTED_ACTION[relayOwner(url, context)],
   };
 }
 

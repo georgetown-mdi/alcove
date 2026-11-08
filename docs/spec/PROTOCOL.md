@@ -2218,9 +2218,12 @@ The web application checks the relays of an exchange an acceptor is reviewing, a
   - not reached, for anything else.
 - **The words.** Each cause's meaning and remedy are the ones `alcove doctor relay` states for the same cause, from `packages/core/src/relayCheckWords.ts` ([CLI_DOCTOR.md](CLI_DOCTOR.md#the-relay-check)), except where the web names a control of its own instead of a CLI command (`apps/web/src/exchange/exchangeRelayCheckModel.ts`):
   - a default relay that did not enroll the exchange takes the web run's own notice;
-  - a WebSocket relay that holds another key for the exchange (4004), or holds none (4003) where a run does not enroll at the registrar the invitation names, takes a remedy by whose relay it is: for the user's own, Relay registration where the saved exchange's page shows it, and otherwise removing the relay or, where that would add it, turning on the default relay; for one the invitation names, asking the partner to enroll; for the default relay, checking again;
-  - a TURN relay of the user's own or of the invitation's that refuses the credential takes the same remedy, and the user's own is explained without the CLI command;
-  - a relay whose request threw is not reached, and its line says the check could not start.
+  - a WebSocket relay that holds another key for the exchange (4004), or holds none (4003) where a run does not enroll at the registrar the invitation names, takes a remedy by whose relay it is: for the user's own, Relay registration where the saved exchange's page shows it, for a WebSocket relay only where each run registers its new key there (`runsRegisterAtOwnRelay` in `apps/web/src/psi/managed/managedRelayRegistration.ts`), and otherwise removing the relay or, where that would add it, turning on the default relay; for one the invitation names, asking the partner to enroll, and for 4004 to replace the key the relay holds; for the default relay, checking again;
+  - a 4003 where a run enrolls at the registrar the invitation names asks the partner whether the relay the invitation names is working;
+  - a TURN relay of the user's own or of the invitation's that refuses the credential takes the same remedy, and the default relay's says to check again later;
+  - a relay whose request threw is not reached, and its line says the check could not start, with a remedy by whose relay it is: correcting the url for the user's own, asking the partner to check it for the invitation's, and checking again later for the default relay;
+  - a TURN credential the browser could not make is not reached on every TURN url, and its line says so and asks for a reload;
+  - a WebSocket relay's refusal is summarized without its close code, and the web's words name this computer where core's name this host, and no registrar.
 
   A url shown is escaped and bounded for display.
 - **The stated limit.** A browser reports a TURN relay's refusal only through the peer connection's candidate errors, so a refusal it does not report is not reached. The inviter of an invitation this page creates is not offered the check.

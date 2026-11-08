@@ -32,13 +32,15 @@ const CHECK_MESSAGE = "alcove relay check";
 const CREDENTIAL_REFUSED_CODES: ReadonlySet<number> = new Set([401, 441]);
 
 /** What the check found at a TURN relay; `not_started` where its request
- * threw. */
+ * threw, and `credential_not_made` where the credential it presents could
+ * not be made. */
 export type TurnRelayCheckResult =
   | "works"
   | "not_reached"
   | "credential_refused"
   | "no_relayed_path"
-  | "not_started";
+  | "not_started"
+  | "credential_not_made";
 
 /** What the check found at a WebSocket relay. */
 export type WebSocketRelayCheckResult =
@@ -345,7 +347,8 @@ function setupOutcome(
  * one bound started once the enrollment has ended. A default relay url the
  * run leaves out because its enrollment failed is reported as not enrolled
  * and is not contacted. A relay whose request throws is reported not
- * started, and the others keep their results.
+ * started, a TURN relay whose credential could not be made is reported so,
+ * and the others keep their results.
  *
  * @throws {DOMException} `signal`'s reason where it aborts, once every
  *   request it started has closed its peer connections and sockets.
@@ -383,7 +386,7 @@ export async function runExchangeRelayCheck(
     const [turnResults, websocketResults] = await Promise.all([
       Promise.all(
         iceServers.map(async (iceServer): Promise<TurnRelayCheckResult> => {
-          if (iceServer === undefined) return "not_started";
+          if (iceServer === undefined) return "credential_not_made";
           try {
             return await checkTurnRelay(
               iceServer,

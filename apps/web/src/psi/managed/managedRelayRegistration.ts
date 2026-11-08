@@ -71,7 +71,18 @@ export function managedRelayRegistrarForRun(
 ): RelayRegistrar | undefined {
   const registrar = record.relayRegistrar;
   if (registrar === undefined) return undefined;
-  return (record.ownRelay?.turn.length ?? 0) > 0 ? registrar : undefined;
+  return runsRegisterAtOwnRelay(record) ? registrar : undefined;
+}
+
+/**
+ * Whether each run of `record` registers its new relay key at the registrar
+ * the record is enrolled at ({@link managedRelayRegistrarForRun}): its own
+ * relays name a TURN url.
+ */
+export function runsRegisterAtOwnRelay(
+  record: Pick<ManagedExchangeRecord, "ownRelay">,
+): boolean {
+  return (record.ownRelay?.turn.length ?? 0) > 0;
 }
 
 function failureDetail(outcome: RelayRegistrationFailure): string {

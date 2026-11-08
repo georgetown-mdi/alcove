@@ -14,6 +14,7 @@ import { SAVED_EXCHANGE_RELAY_CHECK_SCOPE } from "@exchange/exchangeRelayCheckMo
 import { defaultRelayBuild } from "@utils/clientConfig";
 import { managedRelayCheckSubject } from "@psi/managed/managedRendezvous";
 import { runnableManagedExchange } from "@psi/managed/managedExchangeRecord";
+import { runsRegisterAtOwnRelay } from "@psi/managed/managedRelayRegistration";
 import styles from "@styles/app.module.css";
 import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 
@@ -151,6 +152,7 @@ export function ManagedConnectionSettings({
           subject={managedRelayCheckSubject(record)}
           {...(invitationRelay !== undefined && { invitationRelay })}
           relayRegistrationOffered={relayRegistrationOffered(record)}
+          relayRegistrationRenewedByRuns={runsRegisterAtOwnRelay(record)}
           scope={SAVED_EXCHANGE_RELAY_CHECK_SCOPE}
         />
       )}
