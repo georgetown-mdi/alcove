@@ -458,7 +458,11 @@ export function InviterExchangeSection({
                   sheet takes them from nothing to accepting and contains no
                   secret, so you can send it any way that suits them.
                 </p>
-                <Button variant="default" onClick={onDownloadAcceptKit}>
+                <Button
+                  variant="default"
+                  className={styles.wrapLabel}
+                  onClick={onDownloadAcceptKit}
+                >
                   Download instructions for your partner
                 </Button>
               </>
@@ -475,7 +479,11 @@ export function InviterExchangeSection({
             {onReplaceInvitation !== undefined && failure === undefined && (
               <>
                 <p className={styles.small}>{REPLACE_INVITATION_BODY}</p>
-                <Button variant="default" onClick={onReplaceInvitation}>
+                <Button
+                  variant="default"
+                  className={styles.wrapLabel}
+                  onClick={onReplaceInvitation}
+                >
                   {REPLACE_INVITATION_LABEL}
                 </Button>
               </>

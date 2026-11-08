@@ -71,8 +71,14 @@ export const AUTHORED_SFTP = {
 export const AUTHORED_SFTP_WITH_CREDENTIAL_WARNING = {
   ...AUTHORED_SFTP,
   credentialWarnings: [
-    "The password credential file is inside the job data root, the folder " +
-      "Alcove writes the exchange's working files and results into.",
+    "The password credential file is inside your folder, the folder Alcove " +
+      "writes the exchange's working files and results into. A credential " +
+      "kept there can be overwritten or shared out with the results, and if " +
+      "you sync that folder with your partner they could read it. For better " +
+      "isolation, move the file to a folder of its own, start the console " +
+      "with that folder mounted read-only as its secrets folder (add -v " +
+      "<that folder>:/secrets:ro --env JOB_SECRETS_DIR=/secrets to docker " +
+      "run), and choose the file there.",
   ],
 };
 

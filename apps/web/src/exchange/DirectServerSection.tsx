@@ -257,6 +257,7 @@ export function DirectServerSection({
       <Group>
         {!connectionRefused && (
           <Button
+            className={styles.wrapLabel}
             onClick={onContinue}
             disabled={!canContinue}
             aria-describedby={canContinue ? undefined : blockedReasonId}

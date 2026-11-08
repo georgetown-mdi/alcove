@@ -1403,7 +1403,7 @@
    to a visible change. */
 .page
   :global(
-    .mantine-Input-wrapper[data-error] .mantine-Input-input:focus-visible
+    .mantine-Input-wrapper[data-error] .mantine-Input-input:focus-within
   ) {
   outline: 2px solid var(--mantine-primary-color-filled);
   outline-offset: calc(0.125rem * var(--mantine-scale));

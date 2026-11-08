@@ -3,6 +3,8 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 
+import styles from "@styles/app.module.css";
+
 /** The warning alert's title, and the whole of what its polite region announces
  * -- the warnings themselves stay in reading order below it. */
 const CREDENTIAL_WARNING_TITLE = "Credential file location";
@@ -41,6 +43,7 @@ export function SftpCredentialWarnings({
         <Alert
           color="yellow"
           role="presentation"
+          classNames={{ body: styles.wrapLongText }}
           icon={<IconAlertTriangle aria-hidden />}
           title={CREDENTIAL_WARNING_TITLE}
         >

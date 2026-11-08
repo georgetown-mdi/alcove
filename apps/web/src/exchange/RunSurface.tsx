@@ -990,6 +990,7 @@ export function FailureRecoveryButton({
       <Button
         color="red"
         variant="light"
+        className={styles.wrapLabel}
         mt={marginTop}
         onClick={() => onAct()}
       >
@@ -1001,6 +1002,7 @@ export function FailureRecoveryButton({
         to={to}
         color="red"
         variant="light"
+        className={styles.wrapLabel}
         mt={marginTop}
         onClick={() => onAct()}
       >
@@ -1020,6 +1022,7 @@ export function FailureRecoveryButton({
       <Button
         color="red"
         variant="light"
+        className={styles.wrapLabel}
         mt="sm"
         aria-haspopup="dialog"
         onClick={() => setConfirming(true)}

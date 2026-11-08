@@ -154,7 +154,7 @@ test("console invite: the cards on Review & create open, and show their errors a
   stubConsoleJobApi({ sftp: AUTHORED_SFTP_WITH_CREDENTIAL_WARNING });
   await reachReviewByKeyboard();
   await expect
-    .element(page.getByText(/is inside the job data root/))
+    .element(page.getByText(/credential file is inside your folder/))
     .toBeInTheDocument();
 
   await activate(control("button", /^How files are handled/));

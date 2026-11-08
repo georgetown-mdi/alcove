@@ -336,6 +336,7 @@ function PartnerLocatorReview({ locator }: { locator: SftpEndpointLocator }) {
   return (
     <Alert
       color="blue"
+      classNames={{ body: styles.wrapLongText }}
       icon={<IconAlertCircle aria-hidden />}
       title="Your partner's SFTP server"
     >
@@ -567,6 +568,7 @@ function CredentialField({
           <Button
             variant="subtle"
             size="compact-sm"
+            className={styles.wrapLabel}
             onClick={togglePaste}
             aria-expanded={pasteOpen}
           >
