@@ -131,8 +131,8 @@ Never open the item with AskUserQuestion, and never put a follow-up filing in a
 docket message.
 
 A question to the owner, a follow-on question after a ruling included, is its
-own message with its background, never a line trailing other content; wait for
-the answer before going on.
+own message with its background, never a line trailing other content, and the
+next item waits for its answer.
 
 ## Record and act on each ruling
 
@@ -144,7 +144,8 @@ open, and end the turn; record a ruling only when the owner's words pick an
 option. A blocker's ruling is acted on when given, from that record, as the
 ruleset says of a mid-day docket (`.claude/orchestration/ruleset.md`, Session
 lifecycle); an end-of-run ruling starts no work. When no item is left, say so
-in one line.
+in one line, and write the state the session was in before the docket back to
+the continuation brief.
 
 The rulings' board consequences -- status moves, each ruling recorded in its
 item's body, epic and order placement -- go to the boards in one pass with the
