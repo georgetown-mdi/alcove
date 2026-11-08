@@ -178,7 +178,7 @@ const RELAY_NEEDS_ENROLLMENT = "this relay needs this exchange enrolled first.";
 
 const CHECK_AGAIN_LATER = "Check again later.";
 
-// Core's words for these name "this host", a CLI's term; the CLI keeps them.
+// The web's own not-reached words; the CLI keeps core's.
 const TURN_RELAY_NOT_REACHED_MEANING =
   "nothing on this computer reached this relay, the relay refused the " +
   "credential, or it presented a certificate this computer does not trust; " +
@@ -325,7 +325,7 @@ export function exchangeRelayCheckLineShown(
         return doesNotWork(
           url,
           "not_reached",
-          `the relay did not answer within ${BOUND_SECONDS}.`,
+          `no relayed connection was made within ${BOUND_SECONDS}.`,
           TURN_RELAY_NOT_REACHED_MEANING,
           RELAY_NOT_REACHED_REMEDY,
         );

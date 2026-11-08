@@ -75,7 +75,7 @@ describe("each outcome's message and remedy", () => {
       url: OWN_TURN,
       works: false,
       cause: "not_reached",
-      summary: "the relay did not answer within 30 s.",
+      summary: "no relayed connection was made within 30 s.",
       meaning:
         "nothing on this computer reached this relay, the relay refused " +
         "the credential, or it presented a certificate this computer does " +

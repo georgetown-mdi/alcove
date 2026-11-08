@@ -2223,7 +2223,7 @@ The web application checks the relays of an exchange an acceptor is reviewing, a
   - a TURN relay of the user's own or of the invitation's that refuses the credential takes the same remedy, and the default relay's says to check again later;
   - a relay whose request threw is not reached, and its line says the check could not start, with a remedy by whose relay it is: correcting the url for the user's own, asking the partner to check it for the invitation's, and checking again later for the default relay;
   - a TURN credential the browser could not make is not reached on every TURN url, and its line says so and asks for a reload;
-  - a WebSocket relay's refusal is summarized without its close code, and the web's words name this computer where core's name this host, and no registrar.
+  - a WebSocket relay's refusal is summarized without its close code, a code core has no clause for included; the not-reached words name this computer where core's name this host, and the 4003 and 4004 remedies name no registrar, while other refusals keep core's meaning and action.
 
   A url shown is escaped and bounded for display.
 - **The stated limit.** A browser reports a TURN relay's refusal only through the peer connection's candidate errors, so a refusal it does not report is not reached. The inviter of an invitation this page creates is not offered the check.
