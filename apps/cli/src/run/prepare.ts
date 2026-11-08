@@ -57,6 +57,7 @@ import {
 } from "../resultFile";
 import { normalizeLogFilePath } from "../util/logging";
 import {
+  emitTo,
   openEventStream,
   reportLogFileLoss,
   type EventStreamEmitter,
@@ -544,9 +545,7 @@ export async function preflightRun(options: {
     typeof options.eventStream === "object"
       ? options.eventStream
       : openEventStream(options.eventStream);
-  const emit = (fn: (e: EventStreamEmitter) => void): void => {
-    if (eventStream !== undefined) fn(eventStream);
-  };
+  const emit = emitTo(eventStream);
   const log = getLogger(loggerName);
   const signingWithoutRecordWarned = warnSigningWithoutRecord({
     signing,

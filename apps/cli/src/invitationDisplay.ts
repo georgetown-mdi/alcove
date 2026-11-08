@@ -471,6 +471,70 @@ function declaredPayloadTotalNote(declaredCount: number): string {
 }
 
 /**
+ * One declared payload direction: its label marked with `fact` and the
+ * declared total, then "(none)" for a declared empty set or the names
+ * beneath it ({@link logDeclaredPayloadList}).
+ */
+function logDeclaredPayload(
+  emit: ConsentSurfaceSink,
+  label: string,
+  fact: "inboundPayloadColumns" | "requestedPayloadColumns",
+  names: ReadonlyArray<Displayable>,
+): void {
+  const markedLabel = marked(
+    label,
+    fact,
+    declaredPayloadTotalNote(names.length),
+  );
+  if (names.length === 0) emit(`  ${markedLabel}: (none)`);
+  else {
+    emit(`  ${markedLabel}:`);
+    logDeclaredPayloadList(emit, "    ", names);
+  }
+}
+
+/**
+ * The two candidate-set facts both consent surfaces state, the invitation
+ * review and the disclosure a locally authored exchange shows, so neither
+ * states one the other omits.
+ *
+ * Value-level matching multiplicity: a key element that splits its value
+ * matches on each candidate, and the removal rule then decides how many
+ * pairings result. Stated only where a `psi` exchange matches on the
+ * candidates; a count-only exchange states its own line in its tier.
+ *
+ * Then what those several values group once both parties declare a
+ * duplicate matching. Read from core's verdict over
+ * every producer of a candidate set, so a swapped key order and a fuzzy
+ * comparison state it where the split half alone is silent.
+ */
+export function logCandidateFacts(
+  emit: ConsentSurfaceSink,
+  summary: Pick<
+    InvitationSummary,
+    "fansOut" | "fanOutApplied" | "algorithm" | "candidateSetChainsGrouping"
+  >,
+): void {
+  if (
+    summary.fansOut &&
+    summary.fanOutApplied &&
+    summary.algorithm !== "psi-c"
+  ) {
+    emit(`  ${marked("several values per record", "fanOutCandidates")}:`);
+    emit(`    ${CONSENT_FACTS.fanOutCandidates.note}`);
+  }
+  if (summary.candidateSetChainsGrouping) {
+    emit(
+      `  ${marked(
+        "records grouped with no value in common",
+        "candidateSetChainsGrouping",
+      )}:`,
+    );
+    emit(`    ${CONSENT_FACTS.candidateSetChainsGrouping.note}`);
+  }
+}
+
+/**
  * The declared matching rules of one linkage key: its ordered elements
  * with the field each derives from, the transforms it applies (each with
  * the plain-language consequence, its parameters, and any runtime
@@ -964,37 +1028,13 @@ export function displayInvitation(params: {
     emit(`    ${DEDUPLICATE_ACCEPTOR_SIDE_NOTE}`);
   }
 
-  // Value-level matching multiplicity, stated beside the record-level line
-  // above since the two are easily read as one: a key element that splits
-  // its value matches on each candidate, and the removal rule then decides
-  // how many pairings result. Rendered only when the terms declare a
-  // fan-out -- an invitation holds only the element transforms, never the
-  // inviter's own standardization -- that a `psi` exchange matches on. A
-  // count-only exchange states its own line in its tier instead.
-  if (
-    summary.fansOut &&
-    summary.fanOutApplied &&
-    summary.algorithm !== "psi-c"
-  ) {
-    emit(`  ${marked("several values per record", "fanOutCandidates")}:`);
-    emit(`    ${CONSENT_FACTS.fanOutCandidates.note}`);
-  }
-
-  // What those several values group once this party declares a duplicate
-  // matching of its own. Read over every producer of a candidate set, so a
-  // swapped key order and a fuzzy comparison state it where the line above --
-  // the split half alone -- is silent. Stated although this command accepts
-  // with this party's side false: the value that completes the pair is set in
-  // the configuration file the direction note above points the operator at.
-  if (summary.candidateSetChainsGrouping) {
-    emit(
-      `  ${marked(
-        "records grouped with no value in common",
-        "candidateSetChainsGrouping",
-      )}:`,
-    );
-    emit(`    ${CONSENT_FACTS.candidateSetChainsGrouping.note}`);
-  }
+  // Beside the record-level line above since the two are easily read as one.
+  // An invitation holds only the element transforms, never the inviter's own
+  // standardization, so the fan-out is the one the terms declare. The grouping
+  // line is stated although this command accepts with this party's side
+  // false: the value that completes the pair is set in the configuration file
+  // the direction note above points the operator at.
+  logCandidateFacts(emit, summary);
 
   // The fields the keys actually match on, one short line ahead of the two
   // long matching blocks, so the single fact consent most depends on stays
@@ -1026,35 +1066,25 @@ export function displayInvitation(params: {
   // exchange compares against the send set the inviter's run states. An unset
   // send, or an invitation that hands this party no result, is omitted, so a
   // bare "(none)" is always a declared empty set.
-  if (summary.payload?.sendDeclared === true) {
-    const label = marked(
+  if (summary.payload?.sendDeclared === true)
+    logDeclaredPayload(
+      emit,
       "columns you will receive",
       "inboundPayloadColumns",
-      declaredPayloadTotalNote(summary.payload.send.length),
+      summary.payload.send,
     );
-    if (summary.payload.send.length === 0) emit(`  ${label}: (none)`);
-    else {
-      emit(`  ${label}:`);
-      logDeclaredPayloadList(emit, "    ", summary.payload.send);
-    }
-  }
   // The opposite direction: the columns the inviter requests FROM this party for
   // matched records -- what YOU may send. Same declaration gate as above: an absent
   // receive reconciles lazily (the inviter takes whatever your metadata discloses)
   // and prints nothing, so the "(none)" a declared empty set prints is the inviter
   // asking for no column rather than asking for none in particular.
-  if (summary.payload?.receiveDeclared === true) {
-    const label = marked(
+  if (summary.payload?.receiveDeclared === true)
+    logDeclaredPayload(
+      emit,
       "columns the inviting party requests from you",
       "requestedPayloadColumns",
-      declaredPayloadTotalNote(summary.payload.receive.length),
+      summary.payload.receive,
     );
-    if (summary.payload.receive.length === 0) emit(`  ${label}: (none)`);
-    else {
-      emit(`  ${label}:`);
-      logDeclaredPayloadList(emit, "    ", summary.payload.receive);
-    }
-  }
 
   if (summary.legalAgreement !== undefined) {
     emit(`  ${marked("legal agreement", "legalAgreement")}:`);

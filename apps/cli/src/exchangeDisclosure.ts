@@ -32,6 +32,7 @@ import {
   consentSurfaceSink,
   displayLessCertainNote,
   LESS_CERTAIN_REMEDY,
+  logCandidateFacts,
   logCountOnlyTier,
   marked,
   type ConsentSurfaceSink,
@@ -257,32 +258,10 @@ export function renderExchangeDisclosure(
     emit(`    ${DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT}`);
     emit(`    ${DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE}`);
   }
-  // Value-level matching multiplicity, beside the record-level line above.
-  // Printed only where a `psi` exchange matches on the candidates; a
-  // count-only exchange states its own line in its tier.
-  if (
-    summary.fansOut &&
-    summary.fanOutApplied &&
-    linkageTerms.algorithm !== "psi-c"
-  ) {
-    emit(`  ${marked("several values per record", "fanOutCandidates")}:`);
-    emit(`    ${CONSENT_FACTS.fanOutCandidates.note}`);
-  }
-  // What those several values group once the partner declares a duplicate
-  // matching of its own beside this party's. Read from core's verdict over
-  // every producer of a candidate set, so a fuzzy comparison states it where
-  // the line above is silent, and stated
+  // Beside the record-level line above. The grouping line is stated
   // conditionally: this run holds its own side of the pair and reads the
   // partner's only when the exchange runs.
-  if (summary.candidateSetChainsGrouping) {
-    emit(
-      `  ${marked(
-        "records grouped with no value in common",
-        "candidateSetChainsGrouping",
-      )}:`,
-    );
-    emit(`    ${CONSENT_FACTS.candidateSetChainsGrouping.note}`);
-  }
+  logCandidateFacts(emit, summary);
 
   // The summary's own labels, each followed by the input column it reads where
   // that column's name differs, so the line names the column matched as the

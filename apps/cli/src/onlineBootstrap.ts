@@ -83,7 +83,10 @@ import {
   type ProtocolConnectionConfig,
   type RunProtocolResult,
 } from "./protocol";
-import type { RunnableConnectionConfig } from "./connectionFromUrl";
+import {
+  channelForScheme,
+  type RunnableConnectionConfig,
+} from "./connectionFromUrl";
 import type { EventStreamEmitter } from "./eventStream";
 import { startModeProvisionAsRead, wakeServerThrough } from "./serverProvision";
 import {
@@ -136,7 +139,7 @@ export function looksLikeUrl(value: string): boolean {
   } catch {
     return false;
   }
-  return ["sftp:", "ssh:", "ws:", "wss:", "file:"].includes(url.protocol);
+  return channelForScheme(url.protocol) !== undefined;
 }
 
 /**
@@ -722,8 +725,7 @@ export type InferredDataSpec = ResolvedDataSpec & {
  * is absent); it is the operator's `--linkage-strategy` selection. When `terms`
  * is supplied (accept derives them from the invitation, which already has the
  * agreed strategy), the selection is not applied -- the partner's choice stands.
- * Absent (or `cascade`) leaves the default strategy untouched, so omitting the
- * selection is byte-identical to before the flag existed.
+ * Absent (or `cascade`) leaves the default strategy untouched.
  *
  * `ruleSet`, when given, is the built-in rule set the terms this function
  * authors are drawn from; it is the default set otherwise, and it is ignored
@@ -734,8 +736,7 @@ export type InferredDataSpec = ResolvedDataSpec & {
  * inferred (via `inferDateInputFormatFromSource`, from a bounded sample) and
  * short-circuits this function's own inference from `rawRows`. `init` uses it
  * because its bounded read has no full row set to scan; the invite/accept paths
- * omit it and this function infers the format from their full `rawRows` exactly as
- * before -- so the parameter is additive and behavior-preserving for them.
+ * omit it and this function infers the format from their full `rawRows`.
  *
  * `listColumns`, when given, names input columns the metadata lists, not sent,
  * where inference leaves them out ({@link metadataListingColumns}). Every name
