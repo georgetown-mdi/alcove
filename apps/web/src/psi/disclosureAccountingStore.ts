@@ -33,7 +33,7 @@ import { FormatMigrationError, parseExchangeRecord } from "@alcove/core";
 
 import {
   MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-  openManagedExchangeDatabase,
+  runTransaction,
 } from "./managed/managedExchangeStore";
 import {
   appendToStoredDisclosureAccounting,
@@ -55,28 +55,15 @@ import type { ExchangeRecord } from "@alcove/core";
  * parse the caller needs.
  *
  * @throws if the database does not open, or the transaction does not complete. */
-async function readStoredValue(id: string): Promise<unknown> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<unknown>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-        "readonly",
-      );
-      const request = transaction
-        .objectStore(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME)
-        .get(id);
-      let result: unknown;
-      request.onsuccess = () => {
-        result = request.result;
-      };
-      transaction.oncomplete = () => resolve(result);
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+function readStoredValue(id: string): Promise<unknown> {
+  return runTransaction(
+    MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
+    "readonly",
+    ({ store }) => {
+      const read = store(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME).get(id);
+      return (): unknown => read.result;
+    },
+  );
 }
 
 /**
@@ -209,24 +196,14 @@ export async function readDisclosureAccounting(
  * reset of an exchange with no accounting resolves without error.
  */
 export async function resetDisclosureAccounting(id: string): Promise<void> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-        "readwrite",
-        { durability: "strict" },
-      );
-      transaction
-        .objectStore(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME)
-        .delete(id);
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+  await runTransaction(
+    MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
+    "readwrite",
+    ({ store }) => {
+      store(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME).delete(id);
+      return () => undefined;
+    },
+  );
 }
 
 /**
@@ -257,38 +234,21 @@ export async function appendDisclosureRecordToStore(
   id: string,
   record: ExchangeRecord,
 ): Promise<void> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-        "readwrite",
-        { durability: "strict" },
-      );
-      const store = transaction.objectStore(
-        MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-      );
-      const read = store.get(id);
-      let failure: unknown;
-      read.onsuccess = () => {
-        try {
-          store.put(
-            appendToStoredDisclosureAccounting(
-              read.result,
-              parseExchangeRecord(record),
-            ),
-            id,
-          );
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+  await runTransaction(
+    MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
+    "readwrite",
+    ({ store, readEach }) => {
+      const disclosures = store(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME);
+      readEach([disclosures.get(id)], ([stored]) => {
+        disclosures.put(
+          appendToStoredDisclosureAccounting(
+            stored,
+            parseExchangeRecord(record),
+          ),
+          id,
+        );
+      });
+      return () => undefined;
+    },
+  );
 }

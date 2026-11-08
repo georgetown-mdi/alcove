@@ -34,7 +34,7 @@ import {
 
 import {
   MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-  openManagedExchangeDatabase,
+  runTransaction,
 } from "./managed/managedExchangeStore";
 import {
   appendToStoredDisclosureAccounting,
@@ -55,6 +55,7 @@ import type {
   UnfiledDisclosure,
 } from "./unfiledDisclosure";
 import type { ExchangeRecord } from "@alcove/core";
+import type { ManagedStoreTransaction } from "./managed/managedExchangeStore";
 import type { StoredDisclosureAccounting } from "./disclosureAccounting";
 
 const log = getLogger("unfiledDisclosureStore");
@@ -104,66 +105,45 @@ export type UnfiledDisclosureNote =
   | "nowhere";
 
 /** What {@link withStoredNote} hands the decision it wraps: the note's stored
- * value, the store both keys live in, and the way to end the transaction on a
- * failure raised from a nested request's own callback, which no synchronous
- * `throw` can reach. */
+ * value, the store both keys live in, and the transaction's `readEach`, which
+ * runs a step over a further request's result inside the transaction and
+ * aborts it on a throw from that step. */
 interface NoteTransaction {
   raw: unknown;
   store: IDBObjectStore;
-  fail: (error: unknown) => void;
+  readEach: ManagedStoreTransaction["readEach"];
 }
 
-/** Open the disclosure store in one transaction and hand the note's stored value
- * to `decide`, resolving on the transaction's own `complete` event so a write
- * `decide` issues is requested through to OS writeback before this resolves.
+/** Open the disclosure store in one transaction ({@link runTransaction}) and
+ * hand the note's stored value to `decide`, resolving once the transaction
+ * completes, so a write `decide` issues is requested through to OS writeback
+ * before this resolves.
  *
  * `decide` runs synchronously inside the read request's `onsuccess`, where the
  * transaction is still active, so a write it issues from the value it just read
  * is part of the same transaction rather than of a later microtask the
- * transaction has already outlived. A further request it issues may report its
- * own failure through `fail`, which aborts the transaction with that error.
+ * transaction has already outlived.
  *
- * @throws if the database does not open, if `decide` throws or fails -- the
+ * @throws if the database does not open, if `decide` throws -- the
  *   transaction aborts and nothing is written -- or if the transaction does not
  *   complete. */
-async function withStoredNote<T>(
+function withStoredNote<T>(
   id: string,
   mode: IDBTransactionMode,
   decide: (context: NoteTransaction) => T,
 ): Promise<T> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const transaction =
-        mode === "readwrite"
-          ? db.transaction(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME, mode, {
-              durability: "strict",
-            })
-          : db.transaction(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME, mode);
-      const store = transaction.objectStore(
-        MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-      );
-      const read = store.get(unfiledDisclosureKey(id));
-      let result: T;
-      let failure: unknown;
-      const fail = (error: unknown) => {
-        failure = error;
-        transaction.abort();
-      };
-      read.onsuccess = () => {
-        try {
-          result = decide({ raw: read.result, store, fail });
-        } catch (error) {
-          fail(error);
-        }
-      };
-      transaction.oncomplete = () => resolve(result);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+  return runTransaction(
+    MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
+    mode,
+    ({ store, readEach }) => {
+      const disclosures = store(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME);
+      let outcome: T;
+      readEach([disclosures.get(unfiledDisclosureKey(id))], ([raw]) => {
+        outcome = decide({ raw, store: disclosures, readEach });
+      });
+      return () => outcome;
+    },
+  );
 }
 
 /** The note a write merges its entry into, or `undefined` where nothing is
@@ -295,38 +275,33 @@ export async function readUnfiledDisclosures(
  *   transaction does not complete. Nothing is written in any of those cases.
  */
 export async function fileUnfiledDisclosures(id: string): Promise<void> {
-  await withStoredNote(id, "readwrite", ({ raw, store, fail }) => {
+  await withStoredNote(id, "readwrite", ({ raw, store, readEach }) => {
     if (raw === undefined) return;
     const stored = parseStoredUnfiledDisclosures(raw);
-    const read = store.get(id);
-    read.onsuccess = () => {
-      try {
-        const filed = new Set<string>();
-        // Refuses as a run's own append does, even where nothing is fileable.
-        if (read.result !== undefined) parseDisclosureAccounting(read.result);
-        let accounting: StoredDisclosureAccounting | undefined;
-        for (const entry of stored.entries) {
-          if (entry.record === undefined) continue;
-          let record: ExchangeRecord;
-          try {
-            record = parseExchangeRecord(entry.record);
-          } catch {
-            continue;
-          }
-          accounting = appendToStoredDisclosureAccounting(
-            accounting ?? read.result,
-            entry.record,
-          );
-          filed.add(record.bindingNonce);
+    readEach([store.get(id)], ([current]) => {
+      const filed = new Set<string>();
+      // Refuses as a run's own append does, even where nothing is fileable.
+      if (current !== undefined) parseDisclosureAccounting(current);
+      let accounting: StoredDisclosureAccounting | undefined;
+      for (const entry of stored.entries) {
+        if (entry.record === undefined) continue;
+        let record: ExchangeRecord;
+        try {
+          record = parseExchangeRecord(entry.record);
+        } catch {
+          continue;
         }
-        if (filed.size === 0 || accounting === undefined) return;
-        store.put(accounting, id);
-        const left = unfiledDisclosuresAfterFiling(stored, filed);
-        if (left === undefined) store.delete(unfiledDisclosureKey(id));
-        else store.put(left, unfiledDisclosureKey(id));
-      } catch (error) {
-        fail(error);
+        accounting = appendToStoredDisclosureAccounting(
+          accounting ?? current,
+          entry.record,
+        );
+        filed.add(record.bindingNonce);
       }
-    };
+      if (filed.size === 0 || accounting === undefined) return;
+      store.put(accounting, id);
+      const left = unfiledDisclosuresAfterFiling(stored, filed);
+      if (left === undefined) store.delete(unfiledDisclosureKey(id));
+      else store.put(left, unfiledDisclosureKey(id));
+    });
   });
 }

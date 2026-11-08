@@ -23,7 +23,7 @@ import {
 
 vi.mock("@psi/managed/managedExchangeStore", () => ({
   MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME: "disclosures",
-  openManagedExchangeDatabase: () =>
+  runTransaction: () =>
     Promise.reject(new Error("the quota refused the write")),
 }));
 

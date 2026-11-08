@@ -229,37 +229,117 @@ export async function requestPersistentStorage(): Promise<boolean> {
   }
 }
 
-/** Run `work` inside a transaction over the records store, resolving on the
- * transaction's `complete` event (not merely the request's success), so a caller
- * awaiting this has the write visible to a subsequent read. The database
- * connection is closed once the transaction settles. */
-async function withStore<T>(
+/** The results of the requests {@link ManagedStoreTransaction.readEach} waits
+ * on, in order, with an untyped result read as `unknown`. */
+type RequestResults<TRequests extends ReadonlyArray<IDBRequest>> = {
+  [K in keyof TRequests]: TRequests[K] extends IDBRequest<infer V>
+    ? 0 extends 1 & V
+      ? unknown
+      : V
+    : never;
+};
+
+/** What {@link runTransaction} hands its body. */
+export interface ManagedStoreTransaction {
+  /** One of the object stores the transaction spans. */
+  store: (name: string) => IDBObjectStore;
+  /** Run `step` with the results of `requests` once every one of them has
+   * succeeded, while the transaction is still active, so a request `step`
+   * issues joins it. A throw from `step` aborts the transaction, which then
+   * rejects with that error. */
+  readEach: <const TRequests extends ReadonlyArray<IDBRequest>>(
+    requests: TRequests,
+    step: (results: RequestResults<TRequests>) => void,
+  ) => void;
+}
+
+/**
+ * Run `body` inside one transaction over `storeNames` of the managed-exchange
+ * database, resolving with what the function `body` returns yields once the
+ * transaction completes, so a caller awaiting this has every write visible to
+ * a later read. A readwrite transaction asks for strict durability, requesting
+ * OS writeback before it completes.
+ *
+ * A throw from `body` or from a {@link ManagedStoreTransaction.readEach} step
+ * aborts the transaction and rejects with that error. A failed request rejects
+ * with that request's own error: its error event reaches the transaction
+ * before the abort that follows sets `transaction.error`. The connection is
+ * closed once the transaction settles.
+ */
+export async function runTransaction<T>(
+  storeNames: string | ReadonlyArray<string>,
   mode: IDBTransactionMode,
-  work: (store: IDBObjectStore) => IDBRequest<T>,
-  options?: { durability?: IDBTransactionDurability },
+  body: (transaction: ManagedStoreTransaction) => () => T,
 ): Promise<T> {
   const db = await openManagedExchangeDatabase();
   try {
     return await new Promise<T>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_STORE_NAME,
-        mode,
-        options,
-      );
-      const request = work(
-        transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME),
-      );
-      let result: T;
-      request.onsuccess = () => {
-        result = request.result;
+      const names = typeof storeNames === "string" ? [storeNames] : storeNames;
+      const transaction =
+        mode === "readwrite"
+          ? db.transaction(names, mode, { durability: "strict" })
+          : db.transaction(names, mode);
+      let failure: unknown;
+      const fail = (error: unknown) => {
+        failure ??= error;
+        transaction.abort();
       };
-      transaction.oncomplete = () => resolve(result);
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
+      const readEach: ManagedStoreTransaction["readEach"] = (
+        requests,
+        step,
+      ) => {
+        const run = () => {
+          try {
+            step(
+              requests.map(
+                (request) => request.result as unknown,
+              ) as RequestResults<typeof requests>,
+            );
+          } catch (error) {
+            fail(error);
+          }
+        };
+        let pending = requests.length;
+        if (pending === 0) run();
+        for (const request of requests)
+          request.onsuccess = () => {
+            pending -= 1;
+            if (pending === 0) run();
+          };
+      };
+      let settle: () => T;
+      try {
+        settle = body({
+          store: (name) => transaction.objectStore(name),
+          readEach,
+        });
+      } catch (error) {
+        fail(error);
+      }
+      transaction.oncomplete = () => {
+        try {
+          resolve(settle());
+        } catch (error) {
+          reject(error);
+        }
+      };
+      transaction.onerror = (event) =>
+        reject(
+          failure ??
+            transactionFailure((event.target as IDBRequest | null)?.error),
+        );
+      transaction.onabort = () =>
+        reject(failure ?? transactionFailure(transaction.error));
     });
   } finally {
     db.close();
   }
+}
+
+/** The rejection for a transaction that did not commit: the error IndexedDB
+ * gave, or a stated one where it gave none. */
+function transactionFailure(error: DOMException | null | undefined): Error {
+  return error ?? new Error("the store write was aborted before it committed");
 }
 
 /**
@@ -282,9 +362,7 @@ export async function createManagedExchange(
   // pending grant must neither delay nor fail the create (the helper never
   // rejects; the grant is never assumed).
   void requestPersistentStorage();
-  await withStore("readwrite", (store) => store.add(record), {
-    durability: "strict",
-  });
+  await writeRecord((records) => records.add(record));
   return record;
 }
 
@@ -302,10 +380,22 @@ export async function putManagedExchange(
   record: ManagedExchangeRecord,
 ): Promise<ManagedExchangeRecord> {
   const validated = parseManagedExchangeRecord(record);
-  await withStore("readwrite", (store) => store.put(validated), {
-    durability: "strict",
-  });
+  await writeRecord((records) => records.put(validated));
   return validated;
+}
+
+/** Issue one write on the records store in its own readwrite transaction. */
+async function writeRecord(
+  write: (records: IDBObjectStore) => IDBRequest,
+): Promise<void> {
+  await runTransaction(
+    MANAGED_EXCHANGE_STORE_NAME,
+    "readwrite",
+    ({ store }) => {
+      write(store(MANAGED_EXCHANGE_STORE_NAME));
+      return () => undefined;
+    },
+  );
 }
 
 /**
@@ -321,7 +411,14 @@ export async function putManagedExchange(
 export async function getManagedExchange(
   id: string,
 ): Promise<ManagedExchangeRecord | undefined> {
-  const raw = await withStore("readonly", (store) => store.get(id));
+  const raw = await runTransaction(
+    MANAGED_EXCHANGE_STORE_NAME,
+    "readonly",
+    ({ store }) => {
+      const read = store(MANAGED_EXCHANGE_STORE_NAME).get(id);
+      return (): unknown => read.result;
+    },
+  );
   if (raw === undefined) return undefined;
   return parseManagedExchangeRecord(raw);
 }
@@ -337,7 +434,14 @@ export async function getManagedExchange(
 export async function listManagedExchanges(): Promise<
   Array<ManagedExchangeRecord>
 > {
-  const raws = await withStore("readonly", (store) => store.getAll());
+  const raws = await runTransaction(
+    MANAGED_EXCHANGE_STORE_NAME,
+    "readonly",
+    ({ store }) => {
+      const read = store(MANAGED_EXCHANGE_STORE_NAME).getAll();
+      return (): Array<unknown> => read.result;
+    },
+  );
   return raws.map((raw) => parseManagedExchangeRecord(raw));
 }
 
@@ -356,32 +460,17 @@ export async function listManagedExchanges(): Promise<
  * parse fails).
  */
 export async function listReadableManagedExchanges(): Promise<ManagedExchangeReadableRecords> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<ManagedExchangeReadableRecords>(
-      (resolve, reject) => {
-        const transaction = db.transaction(
-          MANAGED_EXCHANGE_STORE_NAME,
-          "readonly",
-        );
-        const store = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-        const keysRequest = store.getAllKeys();
-        const valuesRequest = store.getAll();
-        transaction.oncomplete = () => {
-          resolve(
-            partitionReadableManagedExchanges(
-              keysRequest.result,
-              valuesRequest.result,
-            ),
-          );
-        };
-        transaction.onerror = () => reject(transaction.error);
-        transaction.onabort = () => reject(transaction.error);
-      },
-    );
-  } finally {
-    db.close();
-  }
+  return runTransaction(
+    MANAGED_EXCHANGE_STORE_NAME,
+    "readonly",
+    ({ store }) => {
+      const records = store(MANAGED_EXCHANGE_STORE_NAME);
+      const keys = records.getAllKeys();
+      const values = records.getAll();
+      return () =>
+        partitionReadableManagedExchanges(keys.result, values.result);
+    },
+  );
 }
 
 /**
@@ -448,79 +537,70 @@ export type ManagedExchangeDiagnosticEntry =
 export async function listManagedExchangesDiagnostic(): Promise<
   Array<ManagedExchangeDiagnosticEntry>
 > {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<Array<ManagedExchangeDiagnosticEntry>>(
-      (resolve, reject) => {
-        const transaction = db.transaction(
-          [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
-          "readonly",
-        );
-        const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-        const local = transaction.objectStore(
-          MANAGED_EXCHANGE_LOCAL_STORE_NAME,
-        );
-        const keysRequest = records.getAllKeys();
-        const valuesRequest = records.getAll();
-        const localKeysRequest = local.getAllKeys();
-        const localValuesRequest = local.getAll();
-        transaction.oncomplete = () => {
-          const keys = keysRequest.result;
-          const values = valuesRequest.result;
-          const custodyByKey = siblingCustodyByKey(
-            localKeysRequest.result,
-            localValuesRequest.result,
-          );
-          const entries: Array<ManagedExchangeDiagnosticEntry> = [];
-          for (let index = 0; index < keys.length; index += 1) {
-            const key = String(keys[index]);
-            const sibling = custodyByKey.get(key);
-            const folderBackup =
-              sibling?.folderBackup !== undefined
-                ? { folderBackup: sibling.folderBackup }
-                : {};
-            const custody =
-              sibling?.siblingReadable === false
-                ? { backedUp: true, stateUnreadable: true as const }
-                : { backedUp: sibling?.backedUp ?? false, ...folderBackup };
-            try {
-              entries.push({
-                kind: "readable",
-                essentials: diagnoseManagedExchangeRecord(values[index]),
-                ...custody,
-              });
-            } catch (error) {
-              // The parse failed, so the record's own `id` is untrusted; the store
-              // key is the delete target instead, and the only field shown.
-              if (storedRecordAheadOfThisBuild(values[index])) {
-                entries.push({
-                  kind: "later-version",
-                  id: key,
-                  backedUp: custody.backedUp,
-                  ...folderBackup,
-                });
-                continue;
-              }
-              entries.push({
-                kind: "unreadable",
-                id: key,
-                backedUp: custody.backedUp,
-                ...folderBackup,
-                ...(error instanceof FormatMigrationError
-                  ? { migrationFailure: error }
-                  : {}),
-              });
-            }
-          }
-          resolve(entries);
-        };
-        transaction.onerror = () => reject(transaction.error);
-        transaction.onabort = () => reject(transaction.error);
-      },
-    );
-  } finally {
-    db.close();
+  const read = await runTransaction(
+    [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
+    "readonly",
+    ({ store }) => {
+      const records = store(MANAGED_EXCHANGE_STORE_NAME);
+      const local = store(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
+      const requests = {
+        keys: records.getAllKeys(),
+        values: records.getAll(),
+        localKeys: local.getAllKeys(),
+        localValues: local.getAll(),
+      };
+      return () => ({
+        keys: requests.keys.result,
+        values: requests.values.result as Array<unknown>,
+        localKeys: requests.localKeys.result,
+        localValues: requests.localValues.result as Array<unknown>,
+      });
+    },
+  );
+  const custodyByKey = siblingCustodyByKey(read.localKeys, read.localValues);
+  const entries: Array<ManagedExchangeDiagnosticEntry> = [];
+  for (let index = 0; index < read.keys.length; index += 1) {
+    const key = String(read.keys[index]);
+    const value = read.values[index];
+    const sibling = custodyByKey.get(key);
+    const folderBackup =
+      sibling?.folderBackup !== undefined
+        ? { folderBackup: sibling.folderBackup }
+        : {};
+    const custody =
+      sibling?.siblingReadable === false
+        ? { backedUp: true, stateUnreadable: true as const }
+        : { backedUp: sibling?.backedUp ?? false, ...folderBackup };
+    try {
+      entries.push({
+        kind: "readable",
+        essentials: diagnoseManagedExchangeRecord(value),
+        ...custody,
+      });
+    } catch (error) {
+      // The parse failed, so the record's own `id` is untrusted; the store
+      // key is the delete target instead, and the only field shown.
+      if (storedRecordAheadOfThisBuild(value)) {
+        entries.push({
+          kind: "later-version",
+          id: key,
+          backedUp: custody.backedUp,
+          ...folderBackup,
+        });
+        continue;
+      }
+      entries.push({
+        kind: "unreadable",
+        id: key,
+        backedUp: custody.backedUp,
+        ...folderBackup,
+        ...(error instanceof FormatMigrationError
+          ? { migrationFailure: error }
+          : {}),
+      });
+    }
   }
+  return entries;
 }
 
 /** What a sibling entry states about one record's custody, for the diagnostic read:
@@ -558,66 +638,101 @@ function siblingCustodyByKey(
   return custodyByKey;
 }
 
-/**
- * Read the record under `id` and write back `transform`'s result inside a SINGLE
- * readwrite transaction, so no other write can land between the read and the
- * write-back -- a cross-transaction read-modify-write would have an await gap in
- * which a concurrent rotation write could land and be silently reverted.
- * `transform` must be synchronous (Zod validation is) or the transaction would
- * auto-commit before the write is issued; it throws to abort the transaction,
- * leaving the stored record unchanged, and receives `undefined` when no record
- * exists under `id`. A transform returning {@link UnwrittenRecord} writes
- * nothing and resolves with the record it names.
- */
-async function readModifyWriteRecord(
-  id: string,
-  transform: (stored: unknown) => ManagedExchangeRecord | UnwrittenRecord,
-): Promise<ManagedExchangeRecord> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<ManagedExchangeRecord>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_STORE_NAME,
-        "readwrite",
-        { durability: "strict" },
-      );
-      const store = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-      const read = store.get(id);
-      let written: ManagedExchangeRecord;
-      let failure: unknown;
-      read.onsuccess = () => {
-        try {
-          const next = transform(read.result);
-          if ("unwritten" in next) written = next.unwritten;
-          else {
-            written = next;
-            store.put(written);
-          }
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      transaction.oncomplete = () => resolve(written);
-      // A failed request's error event reaches the transaction before the
-      // abort sets `transaction.error`, so the request's own error is read
-      // there; an explicit abort leaves `transaction.error` null.
-      transaction.onerror = (event) =>
-        reject(
-          failure ?? storeWriteFailure((event.target as IDBRequest).error),
-        );
-      transaction.onabort = () =>
-        reject(failure ?? storeWriteFailure(transaction.error));
-    });
-  } finally {
-    db.close();
-  }
+/** How {@link modifyStoredRecord} reads and writes. */
+interface StoredRecordModification {
+  /** Narrow the record read before `apply` sees it, refusing a
+   * configuration only. */
+  runnable?: boolean;
+  /**
+   * Drop the record's sibling local-state entry, and with it the backup and
+   * import markers, in the same transaction as the write that replaces the
+   * secret -- clearing a marker in a separate transaction would leave a window
+   * where the rotated record reads over stale sibling evidence. An export
+   * taken before the rotation holds the old secret, so "marker present" means
+   * "an export of the current secret was taken since the last rotation." The
+   * import marker clears because a rotation follows a completed handshake
+   * proving both parties held the same secret, so it must not shield a later,
+   * unexplained handshake failure (see {@link ./managedFailureTiers.ts}).
+   */
+  rotation?: boolean;
 }
 
-/** What a {@link readModifyWriteRecord} transform returns to write nothing:
- * the stored record, as read. */
-interface UnwrittenRecord {
-  unwritten: ManagedExchangeRecord;
+/** What a {@link modifyStoredRecord} `apply` returns to write nothing: the
+ * stored record, as read. */
+interface UnwrittenRecord<TRecord extends ManagedExchangeRecord> {
+  unwritten: TRecord;
+}
+
+/**
+ * Read the record under `id`, parse it, and write back `apply`'s result
+ * inside a SINGLE strict-durability readwrite transaction, so no other write
+ * can land between the read and the write-back -- a cross-transaction
+ * read-modify-write would have an await gap in which a concurrent rotation
+ * write could land and be silently reverted. `apply` must be synchronous (Zod
+ * validation is) or the transaction would auto-commit before the write is
+ * issued; it throws to abort the transaction, leaving the stored record
+ * unchanged. An `apply` returning {@link UnwrittenRecord} writes nothing and
+ * resolves with the record it names.
+ *
+ * @throws {Error} if no record with `id` exists, or, with `runnable`, if the
+ *   stored record holds a configuration only.
+ * @throws {ZodError} if the stored value is not a valid record.
+ */
+function modifyStoredRecord<TRecord extends ManagedExchangeRecord>(
+  id: string,
+  apply: (
+    existing: RunnableManagedExchangeRecord,
+  ) => TRecord | UnwrittenRecord<TRecord>,
+  options: StoredRecordModification & { runnable: true },
+): Promise<TRecord>;
+function modifyStoredRecord<TRecord extends ManagedExchangeRecord>(
+  id: string,
+  apply: (
+    existing: ManagedExchangeRecord,
+  ) => TRecord | UnwrittenRecord<TRecord>,
+  options?: StoredRecordModification,
+): Promise<TRecord>;
+function modifyStoredRecord<TRecord extends ManagedExchangeRecord>(
+  id: string,
+  apply: (
+    existing: RunnableManagedExchangeRecord,
+  ) => TRecord | UnwrittenRecord<TRecord>,
+  options: StoredRecordModification = {},
+): Promise<TRecord> {
+  const storeNames =
+    options.rotation === true
+      ? [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME]
+      : [MANAGED_EXCHANGE_STORE_NAME];
+  return runTransaction(storeNames, "readwrite", ({ store, readEach }) => {
+    const records = store(MANAGED_EXCHANGE_STORE_NAME);
+    let written: TRecord;
+    readEach([records.get(id)], ([stored]) => {
+      if (stored === undefined)
+        throw new Error(`no managed exchange with id ${id}`);
+      const existing = parseManagedExchangeRecord(stored);
+      // The overloads hand an `apply` taking any record only without `runnable`.
+      const next =
+        options.runnable === true
+          ? apply(runnableManagedExchangeOrRefuse(existing))
+          : (
+              apply as (
+                existing: ManagedExchangeRecord,
+              ) => TRecord | UnwrittenRecord<TRecord>
+            )(existing);
+      if ("unwritten" in next) {
+        written = next.unwritten;
+        return;
+      }
+      written = next;
+      records.put(next);
+      // Nothing in the sibling entry is kept, so it is deleted unread: an
+      // entry this build cannot parse goes too, rather than aborting a
+      // rotation the partner has already made.
+      if (options.rotation === true)
+        store(MANAGED_EXCHANGE_LOCAL_STORE_NAME).delete(id);
+    });
+    return () => written;
+  });
 }
 
 /**
@@ -645,10 +760,7 @@ async function modifyRunRecordIfCurrent(
   apply: (existing: ManagedExchangeRecord) => ManagedExchangeRecord,
 ): Promise<ManagedExchangeRecord | undefined> {
   const outcome: { written?: ManagedExchangeRecord } = {};
-  await readModifyWriteRecord(expected.id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${expected.id}`);
-    const existing = parseManagedExchangeRecord(stored);
+  await modifyStoredRecord(expected.id, (existing) => {
     if (
       canonicalString(existing.exchangeFile.linkageTerms) !==
       canonicalString(expected.linkageTerms)
@@ -658,84 +770,6 @@ async function modifyRunRecordIfCurrent(
     return outcome.written;
   });
   return outcome.written;
-}
-
-/** The rejection for a store write whose transaction did not commit: the
- * error IndexedDB gave, or a stated one where it gave none. */
-function storeWriteFailure(error: DOMException | null): Error {
-  return error ?? new Error("the store write was aborted before it committed");
-}
-
-/**
- * Persist a rotation to the stored record AND clear its backup and import markers,
- * in one transaction spanning both stores -- clearing a marker in a separate
- * transaction would leave a window where the rotated record reads over stale
- * sibling evidence. An export taken before the rotation holds the old secret, so
- * the backup marker must clear atomically with it: "marker present" then means "an
- * export of the current secret was taken since the last rotation." The import
- * marker clears for the same reason: a rotation is driven by a completed handshake
- * that proves both parties held the same secret, so it must not shield a later,
- * unexplained handshake failure (see {@link ./managedFailureTiers.ts}).
- *
- * The record write is field-scoped through `transform` exactly as
- * {@link readModifyWriteRecord}, so it cannot include a stale secret or document;
- * `transform` must be synchronous (Zod validation is) or the transaction
- * auto-commits before the writes are issued.
- */
-async function readModifyWriteRotation<T extends ManagedExchangeRecord>(
-  id: string,
-  transform: (stored: unknown) => T,
-): Promise<T> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const transaction = db.transaction(
-        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
-        "readwrite",
-        { durability: "strict" },
-      );
-      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const read = records.get(id);
-      const readLocal = local.get(id);
-      let written: T;
-      let failure: unknown;
-      const applyWhenReady = () => {
-        if (read.readyState !== "done" || readLocal.readyState !== "done")
-          return;
-        try {
-          written = transform(read.result);
-          records.put(written);
-          clearRotationSiblingsOnLocalStore(local, id, readLocal.result);
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      read.onsuccess = applyWhenReady;
-      readLocal.onsuccess = applyWhenReady;
-      transaction.oncomplete = () => resolve(written);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
-}
-
-/**
- * Drop the backup and import markers from a record's sibling local-state entry, on
- * an already-open local-state object store inside a live transaction, by deleting
- * the entry. Nothing in it is kept, so it is deleted unread: an entry this build
- * cannot parse goes too, rather than aborting a rotation the partner has already
- * made.
- */
-function clearRotationSiblingsOnLocalStore(
-  store: IDBObjectStore,
-  id: string,
-  raw: unknown,
-): void {
-  if (raw !== undefined) store.delete(id);
 }
 
 /**
@@ -764,46 +798,45 @@ export async function readRecordAndMarkBackedUp(
   backedUpAt: string,
   composeExport: (record: ManagedExchangeRecord) => ManagedBackupLocation,
 ): Promise<ManagedExchangeRecord> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<ManagedExchangeRecord>((resolve, reject) => {
-      const transaction = db.transaction(
-        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
-        "readwrite",
-        { durability: "strict" },
-      );
-      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const read = records.get(id);
-      const readLocal = local.get(id);
-      let record: ManagedExchangeRecord;
-      let failure: unknown;
-      const applyWhenReady = () => {
-        if (read.readyState !== "done" || readLocal.readyState !== "done")
-          return;
-        try {
-          if (read.result === undefined)
-            throw new Error(`no managed exchange with id ${id}`);
-          record = parseManagedExchangeRecord(read.result);
-          const savedAs = composeExport(record);
-          markBackupOnLocalStore(local, id, readLocal.result, {
-            backedUpAt,
-            savedAs,
-          });
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      read.onsuccess = applyWhenReady;
-      readLocal.onsuccess = applyWhenReady;
-      transaction.oncomplete = () => resolve(record);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+  return withRecordAndSibling(id, (stored, sibling, local) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    const record = parseManagedExchangeRecord(stored);
+    const savedAs = composeExport(record);
+    markBackupOnLocalStore(local, id, sibling, { backedUpAt, savedAs });
+    return record;
+  });
+}
+
+/**
+ * Read the record and the sibling local-state entry stored under `id` in one
+ * strict-durability readwrite transaction spanning both stores, and hand both
+ * raw values, with the local-state store, to `decide`, resolving with what it
+ * returns once the transaction completes. `decide` runs synchronously while
+ * the transaction is active, so a write it issues joins it; a throw aborts it.
+ */
+function withRecordAndSibling<T>(
+  id: string,
+  decide: (
+    stored: unknown,
+    sibling: unknown,
+    local: IDBObjectStore,
+    records: IDBObjectStore,
+  ) => T,
+): Promise<T> {
+  return runTransaction(
+    [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
+    "readwrite",
+    ({ store, readEach }) => {
+      const records = store(MANAGED_EXCHANGE_STORE_NAME);
+      const local = store(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
+      let outcome: T;
+      readEach([records.get(id), local.get(id)], ([stored, sibling]) => {
+        outcome = decide(stored, sibling, local, records);
+      });
+      return () => outcome;
+    },
+  );
 }
 
 /** How a checked backup mark turned out: `"marked"` where the stored secret was
@@ -831,49 +864,19 @@ export async function markManagedBackupIfCurrent(
   backedUpAt: string,
   savedAs?: ManagedBackupLocation,
 ): Promise<ManagedBackupMarkOutcome> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<ManagedBackupMarkOutcome>((resolve, reject) => {
-      const transaction = db.transaction(
-        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
-        "readwrite",
-        { durability: "strict" },
-      );
-      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const read = records.get(id);
-      const readLocal = local.get(id);
-      let outcome: ManagedBackupMarkOutcome = "superseded";
-      let failure: unknown;
-      const applyWhenReady = () => {
-        if (read.readyState !== "done" || readLocal.readyState !== "done")
-          return;
-        try {
-          if (read.result === undefined) {
-            outcome = "gone";
-            return;
-          }
-          const stored = parseManagedExchangeRecord(read.result);
-          if (stored.sharedSecret !== expectedSharedSecret) return;
-          markBackupOnLocalStore(local, id, readLocal.result, {
-            backedUpAt,
-            ...(savedAs !== undefined ? { savedAs } : {}),
-          });
-          outcome = "marked";
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      read.onsuccess = applyWhenReady;
-      readLocal.onsuccess = applyWhenReady;
-      transaction.oncomplete = () => resolve(outcome);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+  return withRecordAndSibling<ManagedBackupMarkOutcome>(
+    id,
+    (raw, sibling, local) => {
+      if (raw === undefined) return "gone";
+      const stored = parseManagedExchangeRecord(raw);
+      if (stored.sharedSecret !== expectedSharedSecret) return "superseded";
+      markBackupOnLocalStore(local, id, sibling, {
+        backedUpAt,
+        ...(savedAs !== undefined ? { savedAs } : {}),
+      });
+      return "marked";
+    },
+  );
 }
 
 /**
@@ -906,7 +909,7 @@ function markBackupOnLocalStore(
  * fields that update in place without a re-invite) to the stored record and
  * persist the result. The read, the edit application through
  * {@link applyManagedExchangeLocalEdits} (which re-validates), and the write-back
- * run inside one readwrite transaction ({@link readModifyWriteRecord}), so the
+ * run inside one readwrite transaction ({@link modifyStoredRecord}), so the
  * edit applies to the freshest stored record and cannot reintroduce a stale
  * secret over a concurrent rotation write. A change to the agreed terms is a new
  * exchange, not an edit here: the terms, the connection, and the secret are not
@@ -926,12 +929,9 @@ export async function updateManagedExchangeLocalFields(
   edits: ManagedExchangeLocalEdits,
 ): Promise<ManagedExchangeRecord> {
   const now = Date.now();
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = parseManagedExchangeRecord(stored);
-    return applyManagedExchangeLocalEdits(existing, edits, now);
-  });
+  return modifyStoredRecord(id, (existing) =>
+    applyManagedExchangeLocalEdits(existing, edits, now),
+  );
 }
 
 /**
@@ -941,7 +941,7 @@ export async function updateManagedExchangeLocalFields(
  * rotation-in-flight marker, and set the pending relay key registration, and
  * nothing else, AND clear the record's backup
  * marker -- both in one strict-durability transaction spanning the record and
- * sibling stores ({@link readModifyWriteRotation}). The record write is
+ * sibling stores ({@link modifyStoredRecord}). The record write is
  * field-scoped through {@link applyManagedExchangeRotation} (which
  * re-validates), so it cannot include a stale secret or document. This is the
  * durable write the persist-before-success ordering awaits before the data
@@ -971,15 +971,14 @@ export async function persistManagedExchangeRotation(
   rotation: ManagedExchangeRunRotation,
 ): Promise<RunnableManagedExchangeRecord> {
   const retired = await retiredSecret(expectedSharedSecret);
-  return readModifyWriteRotation(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = runnableManagedExchangeOrRefuse(
-      parseManagedExchangeRecord(stored),
-    );
-    refuseChangedSecret(existing, expectedSharedSecret);
-    return applyManagedExchangeRotation(existing, rotation, retired);
-  });
+  return modifyStoredRecord(
+    id,
+    (existing) => {
+      refuseChangedSecret(existing, expectedSharedSecret);
+      return applyManagedExchangeRotation(existing, rotation, retired);
+    },
+    { runnable: true, rotation: true },
+  );
 }
 
 /**
@@ -998,19 +997,15 @@ export async function dropManagedExchangePreviousSecret(
   id: string,
   sharedSecret: string,
 ): Promise<void> {
-  await readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = runnableManagedExchangeOrRefuse(
-      parseManagedExchangeRecord(stored),
-    );
-    if (
+  await modifyStoredRecord(
+    id,
+    (existing) =>
       existing.sharedSecret !== sharedSecret ||
       existing.previousSharedSecret === undefined
-    )
-      return { unwritten: existing };
-    return applyManagedExchangePreviousSecretDropped(existing);
-  });
+        ? { unwritten: existing }
+        : applyManagedExchangePreviousSecretDropped(existing),
+    { runnable: true },
+  );
 }
 
 /** The {@link RetiredSecret} a write replacing `sharedSecret` records, as of
@@ -1065,14 +1060,11 @@ export async function markManagedExchangeRotationInFlight(
   id: string,
   since: string,
 ): Promise<void> {
-  await readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    return applyManagedExchangeRotationInFlight(
-      runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(stored)),
-      since,
-    );
-  });
+  await modifyStoredRecord(
+    id,
+    (existing) => applyManagedExchangeRotationInFlight(existing, since),
+    { runnable: true },
+  );
 }
 
 /**
@@ -1090,19 +1082,15 @@ export async function clearManagedExchangeRotationInFlight(
   id: string,
   sharedSecret: string,
 ): Promise<void> {
-  await readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = runnableManagedExchangeOrRefuse(
-      parseManagedExchangeRecord(stored),
-    );
-    if (
+  await modifyStoredRecord(
+    id,
+    (existing) =>
       existing.sharedSecret !== sharedSecret ||
       existing.rotationInFlightSince === undefined
-    )
-      return { unwritten: existing };
-    return applyManagedExchangeRotationInFlightCleared(existing);
-  });
+        ? { unwritten: existing }
+        : applyManagedExchangeRotationInFlightCleared(existing),
+    { runnable: true },
+  );
 }
 
 /**
@@ -1131,7 +1119,7 @@ export class ManagedReinviteWithheldError extends Error {
  * rotation history exactly as
  * {@link persistManagedExchangeRotation}, AND drop any `lastRun` bookkeeping -- all
  * in the one cross-store transaction that also clears the backup and import markers
- * ({@link readModifyWriteRotation}). Distinct from the run's rotation write because a
+ * ({@link modifyStoredRecord}). Distinct from the run's rotation write because a
  * re-invite consumes the failure `lastRun` recorded: leaving it in place, with the
  * import marker now cleared, would re-derive a stale `auth` failure as the attack
  * tier, resurrecting a framing the operator already recovered from (see
@@ -1182,28 +1170,27 @@ export async function persistManagedExchangeReinvite(
 ): Promise<RunnableManagedExchangeRecord> {
   const read: { replaced?: RunnableManagedExchangeRecord } = {};
   const retired = await retiredSecret(expectedSharedSecret);
-  const written = await readModifyWriteRotation(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = runnableManagedExchangeOrRefuse(
-      parseManagedExchangeRecord(stored),
-    );
-    if (standingCompromiseResponse(existing) !== undefined)
-      throw new ManagedReinviteWithheldError(id);
-    refuseChangedSecret(existing, expectedSharedSecret);
-    read.replaced = existing;
-    return applyManagedExchangeReinviteRotation(
-      existing,
-      reinviteLosesRegistrarKey(existing)
-        ? {
-            ...rotation,
-            relayRegistrationPendingSince: new Date().toISOString(),
-            relayRegistrationPendingReason: "reinvite",
-          }
-        : rotation,
-      retired,
-    );
-  });
+  const written = await modifyStoredRecord(
+    id,
+    (existing) => {
+      if (standingCompromiseResponse(existing) !== undefined)
+        throw new ManagedReinviteWithheldError(id);
+      refuseChangedSecret(existing, expectedSharedSecret);
+      read.replaced = existing;
+      return applyManagedExchangeReinviteRotation(
+        existing,
+        reinviteLosesRegistrarKey(existing)
+          ? {
+              ...rotation,
+              relayRegistrationPendingSince: new Date().toISOString(),
+              relayRegistrationPendingReason: "reinvite",
+            }
+          : rotation,
+        retired,
+      );
+    },
+    { runnable: true, rotation: true },
+  );
   const { replaced } = read;
   return replaced !== undefined &&
     registerReinvitedKey !== undefined &&
@@ -1239,16 +1226,12 @@ export async function persistManagedExchangeRelayRegistrar(
   registrar: RelayRegistrar | undefined,
   confirmedSecret?: string,
 ): Promise<RunnableManagedExchangeRecord> {
-  const written = await readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    return applyManagedExchangeRelayRegistrar(
-      runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(stored)),
-      registrar,
-      confirmedSecret,
-    );
-  });
-  return runnableManagedExchangeOrRefuse(written);
+  return modifyStoredRecord(
+    id,
+    (existing) =>
+      applyManagedExchangeRelayRegistrar(existing, registrar, confirmedSecret),
+    { runnable: true },
+  );
 }
 
 /**
@@ -1265,15 +1248,12 @@ export async function clearManagedExchangeRelayRegistrationPending(
   id: string,
   confirmedSecret: string,
 ): Promise<RunnableManagedExchangeRecord> {
-  const written = await readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    return applyManagedExchangeRelayRegistrationConfirmed(
-      runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(stored)),
-      confirmedSecret,
-    );
-  });
-  return runnableManagedExchangeOrRefuse(written);
+  return modifyStoredRecord(
+    id,
+    (existing) =>
+      applyManagedExchangeRelayRegistrationConfirmed(existing, confirmedSecret),
+    { runnable: true },
+  );
 }
 
 /**
@@ -1301,10 +1281,7 @@ export async function persistManagedExchangeTermsChange(
   write: ManagedTermsChangeWrite,
   expectedSharedSecret?: string,
 ): Promise<ManagedExchangeRecord> {
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = parseManagedExchangeRecord(stored);
+  return modifyStoredRecord(id, (existing) => {
     if (expectedSharedSecret !== undefined)
       refuseChangedSecret(existing, expectedSharedSecret);
     return applyManagedExchangeTermsChange(existing, write);
@@ -1345,14 +1322,9 @@ export async function persistManagedExchangeSentColumns(
   id: string,
   sent: ReadonlyArray<string>,
 ): Promise<ManagedExchangeRecord> {
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    return applyManagedExchangeSentColumns(
-      parseManagedExchangeRecord(stored),
-      sent,
-    );
-  });
+  return modifyStoredRecord(id, (existing) =>
+    applyManagedExchangeSentColumns(existing, sent),
+  );
 }
 
 /**
@@ -1385,17 +1357,12 @@ export async function recordManagedExchangeLastRun(
   runStartedAtMs: number,
   expectedSharedSecret?: string,
 ): Promise<ManagedExchangeRecord> {
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = parseManagedExchangeRecord(stored);
-    if (
-      expectedSharedSecret !== undefined &&
-      existing.sharedSecret !== expectedSharedSecret
-    )
-      return { unwritten: existing };
-    return applyManagedExchangeLastRun(existing, lastRun, runStartedAtMs);
-  });
+  return modifyStoredRecord(id, (existing) =>
+    expectedSharedSecret !== undefined &&
+    existing.sharedSecret !== expectedSharedSecret
+      ? { unwritten: existing }
+      : applyManagedExchangeLastRun(existing, lastRun, runStartedAtMs),
+  );
 }
 
 /**
@@ -1452,14 +1419,11 @@ export async function clearManagedExchangeStandingCondition(
   id: string,
   now: number = Date.now(),
 ): Promise<ManagedExchangeRecord> {
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = parseManagedExchangeRecord(stored);
-    return applyManagedExchangeStandingConditionCleared(
+  return modifyStoredRecord(id, (existing) =>
+    applyManagedExchangeStandingConditionCleared(
       foldElapsedWindowsUnderResponse(existing, now),
-    );
-  });
+    ),
+  );
 }
 
 /**
@@ -1485,18 +1449,15 @@ export async function recordManagedExchangeCompromiseResponse(
   id: string,
   at: string,
 ): Promise<ManagedExchangeRecord> {
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = parseManagedExchangeRecord(stored);
-    return applyManagedExchangeCompromiseResponse(existing, at);
-  });
+  return modifyStoredRecord(id, (existing) =>
+    applyManagedExchangeCompromiseResponse(existing, at),
+  );
 }
 
 /**
  * Persist a scheduled window's bookkeeping to the stored record: `nextWindow`,
  * `consecutiveMisses`, and the window's `lastRun` advance in ONE strict-durability
- * readwrite transaction ({@link readModifyWriteRecord}), leaving the rotated
+ * readwrite transaction ({@link modifyStoredRecord}), leaving the rotated
  * secret and the document untouched. Atomicity matters: split across two writes, a
  * wake interrupted between them would leave a planned window moved past a count
  * that has not (or the reverse), and the next wake would recount or skip the
@@ -1513,12 +1474,9 @@ export async function persistManagedExchangeScheduleAdvance(
   id: string,
   advance: ManagedExchangeScheduleAdvance,
 ): Promise<ManagedExchangeRecord> {
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = parseManagedExchangeRecord(stored);
-    return applyManagedExchangeScheduleAdvance(existing, advance);
-  });
+  return modifyStoredRecord(id, (existing) =>
+    applyManagedExchangeScheduleAdvance(existing, advance),
+  );
 }
 
 /**
@@ -1526,7 +1484,7 @@ export async function persistManagedExchangeScheduleAdvance(
  * advancing only `workingDirectoryHandle` and nothing else. The read, the
  * field-scoped application through {@link applyManagedExchangeWorkingDirectory}
  * (which re-validates), and the write-back run inside one strict-durability
- * readwrite transaction ({@link readModifyWriteRecord}), so the grant the operator
+ * readwrite transaction ({@link modifyStoredRecord}), so the grant the operator
  * just took cannot carry a stale secret or document back over a concurrent
  * rotation write. Used where the operator grants or re-points the folder a run
  * reads its input from and a scheduled run writes its results into.
@@ -1539,12 +1497,9 @@ export async function persistManagedExchangeWorkingDirectory(
   id: string,
   handle: FileSystemDirectoryHandle | null,
 ): Promise<ManagedExchangeRecord> {
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = parseManagedExchangeRecord(stored);
-    return applyManagedExchangeWorkingDirectory(existing, handle);
-  });
+  return modifyStoredRecord(id, (existing) =>
+    applyManagedExchangeWorkingDirectory(existing, handle),
+  );
 }
 
 /**
@@ -1683,79 +1638,61 @@ async function reconcileImportedSecret(
   options: ManagedBackupImportOptions,
   pairOptions: ManagedPairImportOptions = {},
 ): Promise<ManagedBackupReconcileOutcome | ManagedPairReconcileOutcome> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<
-      ManagedBackupReconcileOutcome | ManagedPairReconcileOutcome
-    >((resolve, reject) => {
-      const transaction = db.transaction(
-        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
-        "readwrite",
-        { durability: "strict" },
-      );
-      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const readRecords = records.getAll();
+  return runTransaction(
+    [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
+    "readwrite",
+    ({ store, readEach }) => {
+      const records = store(MANAGED_EXCHANGE_STORE_NAME);
+      const local = store(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
       let outcome: ManagedBackupReconcileOutcome | ManagedPairReconcileOutcome =
         { kind: "no-match" };
-      let failure: unknown;
-      readRecords.onsuccess = () => {
-        try {
-          let held: ManagedExchangeRecord | undefined;
-          const others: Array<ManagedExchangeRecord> = [];
-          for (const raw of readRecords.result) {
-            const parsed = safeParseManagedExchangeRecord(raw);
-            if (!parsed.success) continue;
-            if (parsed.data.sharedSecret === reconstructed.sharedSecret)
-              held ??= parsed.data;
-            else others.push(parsed.data);
-          }
-          if (held !== undefined) {
-            const { label } = held;
-            outcome = { kind: "held", label };
-            const readHeldLocal = local.get(held.id);
-            readHeldLocal.onsuccess = () => {
-              if (siblingEntryUnreadable(readHeldLocal.result, held.id))
-                outcome = { kind: "held", label, stateUnreadable: true };
-            };
-            return;
-          }
-          if (source === "backup") {
-            outcome = decideBackupTarget(others, reconstructed, options);
-            return;
-          }
-          const imported = runnableManagedExchangeOrRefuse(reconstructed);
-          const target = decideCommandLinePairTarget(
-            others,
-            imported,
-            pairOptions,
-          );
-          if (target.kind !== "complete") {
-            if (target.kind !== "no-match") outcome = target;
-            return;
-          }
-          const completed = applyManagedExchangeCommandLinePair(
-            target.into,
-            imported,
-          );
-          records.put(completed);
-          local.put(
-            storableManagedLocalState({ imported: { importedAt: at } }),
-            target.into.id,
-          );
-          outcome = { kind: "completed", record: completed };
-        } catch (error) {
-          failure = error;
-          transaction.abort();
+      readEach([records.getAll()], ([stored]) => {
+        let held: ManagedExchangeRecord | undefined;
+        const others: Array<ManagedExchangeRecord> = [];
+        for (const raw of stored) {
+          const parsed = safeParseManagedExchangeRecord(raw);
+          if (!parsed.success) continue;
+          if (parsed.data.sharedSecret === reconstructed.sharedSecret)
+            held ??= parsed.data;
+          else others.push(parsed.data);
         }
-      };
-      transaction.oncomplete = () => resolve(outcome);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+        if (held !== undefined) {
+          const { id, label } = held;
+          outcome = { kind: "held", label };
+          readEach([local.get(id)], ([sibling]) => {
+            if (siblingEntryUnreadable(sibling, id))
+              outcome = { kind: "held", label, stateUnreadable: true };
+          });
+          return;
+        }
+        if (source === "backup") {
+          outcome = decideBackupTarget(others, reconstructed, options);
+          return;
+        }
+        const imported = runnableManagedExchangeOrRefuse(reconstructed);
+        const target = decideCommandLinePairTarget(
+          others,
+          imported,
+          pairOptions,
+        );
+        if (target.kind !== "complete") {
+          if (target.kind !== "no-match") outcome = target;
+          return;
+        }
+        const completed = applyManagedExchangeCommandLinePair(
+          target.into,
+          imported,
+        );
+        records.put(completed);
+        local.put(
+          storableManagedLocalState({ imported: { importedAt: at } }),
+          target.into.id,
+        );
+        outcome = { kind: "completed", record: completed };
+      });
+      return () => outcome;
+    },
+  );
 }
 
 /** Where a backup lands once no stored record holds its secret: the record
@@ -1885,62 +1822,44 @@ async function replaceStoredCopy(
   source: ManagedImportSource,
 ): Promise<ManagedReplaceOutcome> {
   const runnable = runnableManagedExchangeOrRefuse(imported);
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<ManagedReplaceOutcome>((resolve, reject) => {
-      const transaction = db.transaction(
-        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
-        "readwrite",
-        { durability: "strict" },
+  return withRecordAndSibling<ManagedReplaceOutcome>(
+    id,
+    (raw, sibling, local, records) => {
+      const changed = { kind: "changed" } as const;
+      if (raw === undefined) return changed;
+      const stored = parseManagedExchangeRecord(raw);
+      if (!sameAgreedTermsAndSide(stored, runnable)) return changed;
+      if (stored.sharedSecret !== expectedSharedSecret) return changed;
+      const replaced = applyManagedExchangeImportReplace(
+        stored,
+        runnable,
+        source,
       );
-      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const read = records.get(id);
-      const readLocal = local.get(id);
-      let outcome: ManagedReplaceOutcome = { kind: "changed" };
-      let failure: unknown;
-      const applyWhenReady = () => {
-        if (read.readyState !== "done" || readLocal.readyState !== "done")
-          return;
-        try {
-          if (read.result === undefined) return;
-          const stored = parseManagedExchangeRecord(read.result);
-          if (!sameAgreedTermsAndSide(stored, runnable)) return;
-          if (stored.sharedSecret !== expectedSharedSecret) return;
-          const replaced = applyManagedExchangeImportReplace(
-            stored,
-            runnable,
-            source,
-          );
-          const termsProposal = parsedSiblingEntry(
-            readLocal.result,
-            stored.id,
-          )?.termsProposal;
-          records.put(replaced);
-          local.put(
-            storableManagedLocalState({
-              ...(termsProposal !== undefined ? { termsProposal } : {}),
-              ...(source === "backup" ? { backup: { backedUpAt: at } } : {}),
-              imported: { importedAt: at },
-            }),
-            id,
-          );
-          outcome = { kind: "replaced", record: replaced };
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      read.onsuccess = applyWhenReady;
-      readLocal.onsuccess = applyWhenReady;
-      transaction.oncomplete = () => resolve(outcome);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+      const termsProposal = parsedSiblingEntry(
+        sibling,
+        stored.id,
+      )?.termsProposal;
+      records.put(replaced);
+      local.put(
+        storableManagedLocalState({
+          ...(termsProposal !== undefined ? { termsProposal } : {}),
+          ...(source === "backup" ? { backup: { backedUpAt: at } } : {}),
+          imported: { importedAt: at },
+        }),
+        id,
+      );
+      return { kind: "replaced", record: replaced };
+    },
+  );
 }
+
+/** The four object stores a delete or a clear spans. */
+const EVERY_MANAGED_STORE = [
+  MANAGED_EXCHANGE_STORE_NAME,
+  MANAGED_EXCHANGE_LOCAL_STORE_NAME,
+  MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
+  MANAGED_EXCHANGE_RESULTS_STORE_NAME,
+];
 
 /**
  * Delete a managed exchange in one step, removing everything the browser holds
@@ -1965,34 +1884,16 @@ async function replaceStoredCopy(
  * rest with nothing to remove them but the retention.
  */
 export async function deleteManagedExchange(id: string): Promise<void> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(
-        [
-          MANAGED_EXCHANGE_STORE_NAME,
-          MANAGED_EXCHANGE_LOCAL_STORE_NAME,
-          MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-          MANAGED_EXCHANGE_RESULTS_STORE_NAME,
-        ],
-        "readwrite",
-      );
-      transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME).delete(id);
-      transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME).delete(id);
-      const disclosures = transaction.objectStore(
-        MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-      );
-      disclosures.delete(id);
-      disclosures.delete(unfiledDisclosureKey(id));
-      transaction.objectStore(MANAGED_EXCHANGE_RESULTS_STORE_NAME).delete(id);
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
-    await clearUnfiledExchangeFlag(id);
-  } finally {
-    db.close();
-  }
+  await runTransaction(EVERY_MANAGED_STORE, "readwrite", ({ store }) => {
+    store(MANAGED_EXCHANGE_STORE_NAME).delete(id);
+    store(MANAGED_EXCHANGE_LOCAL_STORE_NAME).delete(id);
+    const disclosures = store(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME);
+    disclosures.delete(id);
+    disclosures.delete(unfiledDisclosureKey(id));
+    store(MANAGED_EXCHANGE_RESULTS_STORE_NAME).delete(id);
+    return () => undefined;
+  });
+  await clearUnfiledExchangeFlag(id);
 }
 
 /**
@@ -2005,28 +1906,9 @@ export async function deleteManagedExchange(id: string): Promise<void> {
  * not take.
  */
 export async function clearManagedExchanges(): Promise<void> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(
-        [
-          MANAGED_EXCHANGE_STORE_NAME,
-          MANAGED_EXCHANGE_LOCAL_STORE_NAME,
-          MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
-          MANAGED_EXCHANGE_RESULTS_STORE_NAME,
-        ],
-        "readwrite",
-      );
-      transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME).clear();
-      transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME).clear();
-      transaction.objectStore(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME).clear();
-      transaction.objectStore(MANAGED_EXCHANGE_RESULTS_STORE_NAME).clear();
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
-    await clearUnfiledExchangeFlags();
-  } finally {
-    db.close();
-  }
+  await runTransaction(EVERY_MANAGED_STORE, "readwrite", ({ store }) => {
+    for (const name of EVERY_MANAGED_STORE) store(name).clear();
+    return () => undefined;
+  });
+  await clearUnfiledExchangeFlags();
 }

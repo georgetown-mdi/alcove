@@ -31,7 +31,7 @@
 
 import {
   MANAGED_EXCHANGE_LOCAL_STORE_NAME,
-  openManagedExchangeDatabase,
+  runTransaction,
 } from "./managedExchangeStore";
 import {
   managedTermsProposalSchema,
@@ -54,35 +54,22 @@ export type {
   ManagedTermsProposal,
 } from "./managedLocalStateShape";
 
-/** Run `work` inside a transaction over the local-state store, resolving on the
- * transaction's `complete` event, so a caller awaiting this has the write visible
- * to a subsequent read. The connection is closed once the transaction settles. */
-async function withLocalStore<T>(
-  mode: IDBTransactionMode,
-  work: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_LOCAL_STORE_NAME,
-        mode,
-        { durability: "strict" },
-      );
-      const request = work(
-        transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME),
-      );
-      let result: T;
-      request.onsuccess = () => {
-        result = request.result;
-      };
-      transaction.oncomplete = () => resolve(result);
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+/** Read every key and value of the local-state store in one readonly
+ * transaction, as parallel arrays. */
+function readLocalEntries(): Promise<{
+  keys: Array<IDBValidKey>;
+  values: Array<unknown>;
+}> {
+  return runTransaction(
+    MANAGED_EXCHANGE_LOCAL_STORE_NAME,
+    "readonly",
+    ({ store }) => {
+      const local = store(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
+      const keys = local.getAllKeys();
+      const values = local.getAll();
+      return () => ({ keys: keys.result, values: values.result });
+    },
+  );
 }
 
 /**
@@ -96,9 +83,13 @@ async function withLocalStore<T>(
 export async function getManagedLocalState(
   id: string,
 ): Promise<ManagedLocalState | undefined> {
-  const raw = await withLocalStore(
+  const raw = await runTransaction(
+    MANAGED_EXCHANGE_LOCAL_STORE_NAME,
     "readonly",
-    (store) => store.get(id) as IDBRequest<unknown>,
+    ({ store }) => {
+      const read = store(MANAGED_EXCHANGE_LOCAL_STORE_NAME).get(id);
+      return (): unknown => read.result;
+    },
   );
   return parseManagedLocalStateOfKey(raw, id);
 }
@@ -115,42 +106,8 @@ export async function getManagedLocalState(
 export async function listManagedLocalState(): Promise<
   Map<string, ManagedLocalState>
 > {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<Map<string, ManagedLocalState>>(
-      (resolve, reject) => {
-        const transaction = db.transaction(
-          MANAGED_EXCHANGE_LOCAL_STORE_NAME,
-          "readonly",
-        );
-        const store = transaction.objectStore(
-          MANAGED_EXCHANGE_LOCAL_STORE_NAME,
-        );
-        const keysRequest = store.getAllKeys();
-        const valuesRequest = store.getAll();
-        transaction.oncomplete = () => {
-          try {
-            resolve(
-              parseManagedLocalStateEntries(
-                keysRequest.result,
-                valuesRequest.result,
-              ),
-            );
-          } catch (error) {
-            // A parse throws inside `oncomplete`, outside the executor's own scope:
-            // reject with it so a corrupted sibling entry rejects the read (the
-            // documented contract) rather than throwing unhandled and leaving the
-            // promise unsettled.
-            reject(error);
-          }
-        };
-        transaction.onerror = () => reject(transaction.error);
-        transaction.onabort = () => reject(transaction.error);
-      },
-    );
-  } finally {
-    db.close();
-  }
+  const { keys, values } = await readLocalEntries();
+  return parseManagedLocalStateEntries(keys, values);
 }
 
 /**
@@ -161,30 +118,8 @@ export async function listManagedLocalState(): Promise<
  * the attended list keeps the strict {@link listManagedLocalState}.
  */
 export async function listReadableManagedLocalState(): Promise<ManagedReadableLocalState> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<ManagedReadableLocalState>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_LOCAL_STORE_NAME,
-        "readonly",
-      );
-      const store = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const keysRequest = store.getAllKeys();
-      const valuesRequest = store.getAll();
-      transaction.oncomplete = () => {
-        resolve(
-          partitionReadableManagedLocalState(
-            keysRequest.result,
-            valuesRequest.result,
-          ),
-        );
-      };
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+  const { keys, values } = await readLocalEntries();
+  return partitionReadableManagedLocalState(keys, values);
 }
 
 /** Read the sibling state under `id`, apply `transform` to it (undefined when none
@@ -198,34 +133,19 @@ async function readModifyWriteLocalState(
     current: ManagedLocalState | undefined,
   ) => ManagedLocalState | null,
 ): Promise<void> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(
-        MANAGED_EXCHANGE_LOCAL_STORE_NAME,
-        "readwrite",
-        { durability: "strict" },
-      );
-      const store = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const read = store.get(id);
-      let failure: unknown;
-      read.onsuccess = () => {
-        try {
-          const next = transform(parseManagedLocalStateOfKey(read.result, id));
-          if (next === null) store.delete(id);
-          else store.put(storableManagedLocalState(next), id);
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
+  await runTransaction(
+    MANAGED_EXCHANGE_LOCAL_STORE_NAME,
+    "readwrite",
+    ({ store, readEach }) => {
+      const local = store(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
+      readEach([local.get(id)], ([raw]) => {
+        const next = transform(parseManagedLocalStateOfKey(raw, id));
+        if (next === null) local.delete(id);
+        else local.put(storableManagedLocalState(next), id);
+      });
+      return () => undefined;
+    },
+  );
 }
 
 /**
