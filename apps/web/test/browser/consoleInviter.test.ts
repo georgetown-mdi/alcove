@@ -2591,7 +2591,9 @@ describe("console inviter partner accept kit", () => {
       // the partner fills in themselves.
       expect(sheet.text).toContain("SFTP server:    dr.example.gov:2222");
       expect(sheet.text).toContain("Directory:      /drops/alcove");
-      expect(sheet.text).toContain("--server-username YOUR_ACCOUNT");
+      expect(sheet.text).toContain(
+        "--server-username REPLACE_WITH_SSH_USERNAME",
+      );
 
       // Retain mode was left off, so nothing of it reaches the sheet.
       expect(sheet.text).not.toContain("--retain-files");
@@ -2638,7 +2640,7 @@ describe("console inviter partner accept kit", () => {
       // command, named where they meet it.
       expect(sheet.text).toContain("exchange --retain-files --server-username");
       expect(sheet.text).toContain(
-        "Leave --retain-files on: your partner keeps every exchange file",
+        "Keep --retain-files in the command: your partner keeps every",
       );
     } finally {
       downloads.restore();

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 
 import { describe, expect, test } from "vitest";
 
-import { decodeInvitation } from "@alcove/core";
+import { PLACEHOLDER_SSH_USERNAME, decodeInvitation } from "@alcove/core";
 
 import {
   INVITATION_FILE_ARGUMENT,
@@ -114,8 +114,8 @@ function exchangeCommand(endpoint: AcceptKitEndpoint, flag = ""): string {
     return (
       '     docker run --rm -it -v "${PWD}:/work" -v "/your/secrets:' +
       `/run/secrets:ro" docker.io/gumdi/alcove:1.4.2 exchange${flag} ` +
-      "--server-username YOUR_ACCOUNT --server-password " +
-      '"@/run/secrets/sftp-password" your-file.csv ./results'
+      "--server-username REPLACE_WITH_SSH_USERNAME --server-password " +
+      '"@/run/secrets/sftp-password.txt" your-file.csv ./results'
     );
   return endpoint.split === true
     ? '     docker run --rm -v "${PWD}:/work" -v "/path/to/the/folder/you/read:' +
@@ -176,7 +176,9 @@ describe("accept kit, per-channel shape", () => {
     // calls a value a name neither side chose.
     const step = (endpoint: AcceptKitEndpoint): string =>
       section(sheet(endpoint), "4. In alcove.yaml", "5. Run the exchange");
-    expect(step(FILEDROP)).toContain("       path: /sync\n");
+    expect(step(FILEDROP)).toContain(
+      "change path under\n   connection: to /sync\n",
+    );
     expect(step(UNNAMED_FILEDROP)).toBe(step(FILEDROP));
     expect(step(UNNAMED_FILEDROP_SPLIT)).toBe(step(FILEDROP_SPLIT));
   });
@@ -190,7 +192,7 @@ describe("accept kit, per-channel shape", () => {
     // The filedrop-only routing stays off it.
     expect(text).not.toContain(LAUNCHER_HEADING);
     expect(text).not.toContain(RELEASES_URL);
-    expect(text).not.toContain("alcove.yaml");
+    expect(text).not.toContain("In alcove.yaml");
   });
 
   test("an sftp locator without a port or directory prints neither", () => {
@@ -217,7 +219,7 @@ describe("accept kit, per-channel shape", () => {
     for (const endpoint of ENDPOINTS) {
       const text = sheet(endpoint);
       expect(text).toContain(
-        "then shows the terms. Read them, and answer y to accept.",
+        "then shows the terms. Read them, and answer y to\n   accept.",
       );
       expect(text).not.toContain("linkage key");
     }
@@ -254,7 +256,9 @@ describe("accept kit, the steps", () => {
     for (const endpoint of ENDPOINTS) {
       const text = sheet(endpoint);
       expect(text).not.toContain("--identity");
-      expect(text).toContain("It asks for your name and organization");
+      expect(text).toContain(
+        "It asks for your name, organization, and contact",
+      );
     }
   });
 
@@ -265,6 +269,9 @@ describe("accept kit, the steps", () => {
       const recovery = section(text, "IF SOMETHING GOES WRONG", "REFERENCE");
       expect(recovery).toContain("Docker Engine for Linux");
       expect(recovery).toContain(USER_FLAG);
+      expect(recovery).toContain(
+        "On rootless Podman,\n    add --userns=keep-id:uid=1000,gid=1000 instead.",
+      );
       expect(text.indexOf(USER_FLAG)).toBe(text.lastIndexOf(USER_FLAG));
       expect(text).not.toContain("chown");
     }
@@ -305,12 +312,22 @@ describe("accept kit, sftp credential", () => {
   test("names the account and password file as flags, never a value", () => {
     const text = sheet(SFTP);
     expect(text).toContain(exchangeCommand(SFTP));
-    expect(text).toContain("in a file named sftp-password:");
+    expect(text).toContain(
+      "in a text file named\n   sftp-password.txt, in a folder outside this one.",
+    );
     expect(text).toContain("--server-private-key in place of");
-    // No step edits alcove.yaml for the credential, so the placeholder accept
-    // seeds there is never the reader's to find.
-    expect(text).not.toContain("REPLACE_WITH_SSH_USERNAME");
+    expect(text).toContain("Leave alcove.yaml as it is");
     expect(text).not.toContain("connection:");
+  });
+
+  test("the account placeholder is the one the CLI refuses unreplaced", () => {
+    // The CLI refuses any connection value starting with REPLACE_WITH_
+    // (`configPlaceholderFields` in apps/cli/src/config.ts, whose unit test
+    // pins core's SSH username placeholder as caught).
+    expect(PLACEHOLDER_SSH_USERNAME.startsWith("REPLACE_WITH_")).toBe(true);
+    expect(sheet(SFTP)).toContain(
+      `--server-username ${PLACEHOLDER_SSH_USERNAME} `,
+    );
   });
 
   test("tells the reader to check the server's key fingerprint", () => {
@@ -398,26 +415,9 @@ describe("accept kit, release version", () => {
 });
 
 describe("accept kit, the two registries", () => {
-  const DIGEST = `sha256:${"0123456789abcdef".repeat(4)}`;
-
-  function digestSheet(endpoint: AcceptKitEndpoint, digest?: string): string {
-    return buildAcceptKit({
-      endpoint,
-      retainFiles: false,
-      locklessRendezvous: false,
-      version: "0.9.1",
-      digest,
-    });
-  }
-
-  /** The REFERENCE section, from its heading to the end. */
-  function referenceSection(text: string): string {
-    return section(text, "REFERENCE\n");
-  }
-
   test("every command runs the image from Docker Hub", () => {
     for (const endpoint of ENDPOINTS) {
-      const text = digestSheet(endpoint, DIGEST);
+      const text = sheet(endpoint, "0.9.1");
       const commands = text.slice(0, text.indexOf("IF SOMETHING GOES WRONG"));
       expect(commands).toContain("docker.io/gumdi/alcove:0.9.1");
       expect(commands).not.toContain("ghcr.io");
@@ -425,20 +425,9 @@ describe("accept kit, the two registries", () => {
     }
   });
 
-  test("the reference names the digest on Docker Hub first and ghcr.io second", () => {
-    const reference = referenceSection(digestSheet(FILEDROP, DIGEST));
-    const order = [
-      "The exact image your partner runs, which works in place of the",
-      `    docker.io/gumdi/alcove@${DIGEST}\n`,
-      `    ghcr.io/georgetown-mdi/alcove@${DIGEST}\n`,
-    ].map((needle) => reference.indexOf(needle));
-    for (const position of order) expect(position).toBeGreaterThanOrEqual(0);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
-  });
-
   test("the recovery note swaps the Docker Hub image for the ghcr.io one", () => {
     const recovery = section(
-      digestSheet(SFTP, DIGEST),
+      sheet(SFTP, "0.9.1"),
       "IF SOMETHING GOES WRONG",
       "REFERENCE",
     );
@@ -448,36 +437,15 @@ describe("accept kit, the two registries", () => {
     );
   });
 
-  test("with no digest, the reference names only the command-line reference", () => {
-    const text = digestSheet(FILEDROP);
-    expect(text).not.toContain("@sha256:");
-    expect(referenceSection(text)).toBe(
+  test("the reference names only the command-line reference", () => {
+    expect(section(sheet(FILEDROP), "REFERENCE\n")).toBe(
       "REFERENCE\n---------\n\n  Command-line reference:\n" +
         "    https://data-bridge.org/docs/CLI\n\n",
     );
   });
-
-  test("a digest in any shape but a sha256 digest is left off the sheet", () => {
-    for (const digest of [
-      "",
-      "sha256:",
-      `sha256:${"0".repeat(63)}`,
-      `sha256:${"A".repeat(64)}`,
-      `sha512:${"0".repeat(64)}`,
-      `${DIGEST}\n`,
-      `${DIGEST} `,
-      `sha256:${"0".repeat(64)}/../evil`,
-    ]) {
-      const text = digestSheet(FILEDROP, digest);
-      expect(text).not.toContain("@sha");
-      expect(text).toBe(digestSheet(FILEDROP));
-    }
-  });
 });
 
 describe("accept kit, checking the image", () => {
-  const DIGEST = `sha256:${"0123456789abcdef".repeat(4)}`;
-
   /** The release's own `cosign verify` command on Docker Hub by tag, from
    * docs/RELEASES.md's Container image section, joined onto one line. */
   function publishedVerifyCommand(): string {
@@ -527,25 +495,6 @@ describe("accept kit, checking the image", () => {
     expect(verifyLine(text)).toBe(
       publishedVerifyCommand().replace("X.Y.Z", "latest"),
     );
-  });
-
-  test("a console that reports no digest gives the same verify step", () => {
-    // A console started without a launcher reports no digest: the check
-    // names the tag, so that sheet has it unchanged.
-    const step = (digest?: string): string =>
-      section(
-        buildAcceptKit({
-          endpoint: FILEDROP,
-          retainFiles: false,
-          locklessRendezvous: false,
-          version: "1.4.2",
-          digest,
-        }),
-        "2. Optional",
-        "3. Accept",
-      );
-    expect(step()).toContain("cosign verify ");
-    expect(step()).toBe(step(DIGEST));
   });
 
   test.each(["bash", "sh"])(
@@ -640,14 +589,15 @@ describe("accept kit, a split filedrop rendezvous", () => {
     expect(text).toContain("you write into one and read");
     expect(text).not.toContain("Shared folder:");
     expect(text).not.toContain("your partner's names for them");
-    expect(text).not.toContain("path: /sync\n");
-    expect(text).toContain("inbound_path: /sync-in");
+    expect(text).not.toContain("change path under");
+    expect(text).toContain("change inbound_path to");
   });
 
   test("directs a two-mount run, and sends the launcher route to a pair", () => {
     const text = retainSheet(FILEDROP_SPLIT);
-    expect(text).toContain("inbound_path: /sync-in");
-    expect(text).toContain("outbound_path: /sync-out");
+    expect(text).toContain(
+      "change inbound_path to\n   /sync-in and outbound_path to /sync-out\n",
+    );
     expect(text).toContain('-v "/path/to/the/folder/you/read:/sync-in"');
     expect(text).toContain('-v "/path/to/the/folder/you/write:/sync-out"');
     // The launcher provisions a pair, so its route tells the reader which
@@ -680,8 +630,9 @@ describe("accept kit, a split filedrop rendezvous", () => {
 describe("accept kit, retain mode", () => {
   const RETAIN_FLAG = "--retain-files";
   const RETAIN_FLAG_LINES = [
-    "   Leave --retain-files on: your partner keeps every exchange file,",
-    "   and the exchange stops with an error unless both sides do.",
+    "   Keep --retain-files in the command: your partner keeps every",
+    "   exchange file, and the exchange stops with an error unless both",
+    "   sides use it.",
   ];
   const RETAIN_CONTROL_LINES = [
     'Before you start the exchange there, open "How files are handled"',
@@ -750,8 +701,8 @@ describe("accept kit, retain mode", () => {
   });
 
   test("the retain addition is fixed text, not another dynamic value", () => {
-    // The sheet admits three dynamic values (the locator, the release version,
-    // and the image digest). Retain mode selects fixed lines, so a hostile
+    // The sheet admits two dynamic values (the locator and the release
+    // version). Retain mode selects fixed lines, so a hostile
     // locator changes nothing about what it contributes -- the delta is
     // identical.
     const benign = retainDelta(SFTP);
@@ -784,8 +735,8 @@ describe("accept kit, retain mode", () => {
 describe("accept kit, lockless rendezvous", () => {
   const LOCKLESS_FLAG = "--lockless-rendezvous";
   const LOCKLESS_FLAG_LINES = [
-    "   Leave --lockless-rendezvous on: the exchange stops with an error",
-    "   unless both sides use it.",
+    "   Keep --lockless-rendezvous in the command: the exchange stops with",
+    "   an error unless both sides use it.",
   ];
   const LOCKLESS_CONTROL_LINES = [
     'Before you start the exchange there, open "How files are handled"',

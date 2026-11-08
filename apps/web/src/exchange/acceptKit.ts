@@ -10,14 +10,13 @@
  * ("The partner accept kit").
  *
  * The sheet is a DISCLOSURE SURFACE: whatever it interpolates is written to
- * disk and handed to the partner. Three kinds of dynamic value are representable
+ * disk and handed to the partner. Two kinds of dynamic value are representable
  * here: the rendezvous locator the invitation already holds (free text held
- * to the sheet's ASCII contract by {@link printable}), this build's public
+ * to the sheet's ASCII contract by {@link printable}), and this build's public
  * release version (interpolated only in the shape `releaseVersion` in
- * `@utils/alcoveImage` admits), and the public digest of the image the console
- * runs (interpolated only in the shape `imageDigest` there admits). Everything
- * else is fixed text: {@link AcceptKitInput} declares only
- * those three kinds and two selector booleans, so no secret, no invitation
+ * `@utils/alcoveImage` admits). Everything else is fixed text:
+ * {@link AcceptKitInput} declares only those two kinds and two selector
+ * booleans, so no secret, no invitation
  * token, and no path from the inviter's machine or container has a field to
  * arrive in.
  *
@@ -44,14 +43,17 @@
  * of the names: a split rendezvous the console cannot name is still
  * described as two folders.
  */
+import { PLACEHOLDER_SSH_USERNAME } from "@alcove/core";
+
 import { PROJECT_SITE_URL } from "@components/projectLinks";
 
-import { OPERATOR_USER_FLAG } from "@psi/containerAccount";
+import {
+  OPERATOR_USER_FLAG,
+  PODMAN_USER_NAMESPACE_FLAG,
+} from "@psi/containerAccount";
 
 import {
   cosignVerifyCommand,
-  digestReference,
-  imageDigest,
   imageReference,
   releaseVersion,
 } from "@utils/alcoveImage";
@@ -119,16 +121,11 @@ interface AcceptKitInput extends AcceptKitExchange {
    * release version, the sheet names the floating image tag and the releases
    * index. */
   version?: string;
-  /** The digest of the image the minting console runs, which the sheet prints
-   * on each registry under its reference heading; see `imageDigest`
-   * (`@utils/alcoveImage`). Absent, or in any other shape, the sheet names no
-   * digest. */
-  digest?: string;
 }
 
 /** The registry every command on the sheet names, and the one it offers in
  * place of it: the partner's network is unknown to the inviter, so the sheet
- * names both, Docker Hub first, rather than taking the inviter's. */
+ * names Docker Hub and offers ghcr.io, rather than taking the inviter's. */
 const COMMAND_REGISTRY: ImageRegistry = "docker.io";
 const ALTERNATIVE_REGISTRY: ImageRegistry = "ghcr.io";
 
@@ -174,11 +171,11 @@ const OUTBOUND_SYNC_MOUNT = "/sync-out";
 /** The container mount point and file name the sftp exchange command reads
  * the partner's password from. Fixed, like {@link WORK_MOUNT}. */
 const SECRETS_MOUNT = "/run/secrets";
-const PASSWORD_FILE_NAME = "sftp-password";
+const PASSWORD_FILE_NAME = "sftp-password.txt";
 
-/** The account placeholder on the sftp exchange command, shouted so an
- * unreplaced one is unmistakable; the server refuses it at sign-in. */
-const ACCOUNT_PLACEHOLDER = "YOUR_ACCOUNT";
+/** The account placeholder on the sftp exchange command, the same one
+ * accepting writes into alcove.yaml. */
+const ACCOUNT_PLACEHOLDER = PLACEHOLDER_SSH_USERNAME;
 
 const RULE = "=".repeat(66);
 
@@ -311,13 +308,14 @@ function bilateralFlagLines(settings: BilateralSettings): Array<string> {
   return chooseBilateral(
     settings,
     [
-      "   Leave --retain-files on: your partner keeps every exchange file,",
-      "   and the exchange stops with an error unless both sides do.",
+      "   Keep --retain-files in the command: your partner keeps every",
+      "   exchange file, and the exchange stops with an error unless both",
+      "   sides use it.",
       "",
     ],
     [
-      "   Leave --lockless-rendezvous on: the exchange stops with an error",
-      "   unless both sides use it.",
+      "   Keep --lockless-rendezvous in the command: the exchange stops with",
+      "   an error unless both sides use it.",
       "",
     ],
     [],
@@ -380,16 +378,25 @@ function imageCheckStep(version: string | undefined): Array<string> {
 
 /** The accept step every route shares. Accepting at a terminal asks for the
  * party's identity before it shows the terms, so the sheet names no flag for
- * it and no command carries a pre-filled one. */
-function acceptStep(version: string | undefined): Array<string> {
+ * it and no command carries a pre-filled one. On sftp, accepting ends by
+ * asking for credentials in alcove.yaml, which the sheet's next command
+ * supplies instead. */
+function acceptStep(version: string | undefined, sftp: boolean): Array<string> {
   return [
     "3. Accept, with your-file.csv replaced by your CSV file's name:",
     "",
     `     docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
       `${commandImage(version)} accept ${INVITATION_FILE_ARGUMENT} your-file.csv`,
     "",
-    "   It asks for your name and organization, which your partner sees,",
-    "   then shows the terms. Read them, and answer y to accept.",
+    "   It asks for your name, organization, and contact, which your",
+    "   partner sees, then shows the terms. Read them, and answer y to",
+    "   accept.",
+    ...(sftp
+      ? [
+          "   Leave alcove.yaml as it is: the next command supplies your",
+          "   account and password.",
+        ]
+      : []),
     "",
   ];
 }
@@ -402,9 +409,11 @@ function sftpSteps(
   settings: BilateralSettings,
 ): Array<string> {
   return [
-    "4. Run the exchange, replacing your-file.csv as before, YOUR_ACCOUNT",
-    "   with your account on the server, and /your/secrets with the folder",
-    `   that holds your password in a file named ${PASSWORD_FILE_NAME}:`,
+    "4. Save your password for the server in a text file named",
+    `   ${PASSWORD_FILE_NAME}, in a folder outside this one. Then run the`,
+    "   exchange, replacing your-file.csv as before,",
+    `   ${ACCOUNT_PLACEHOLDER} with your account on the server, and`,
+    "   /your/secrets with that folder:",
     "",
     `     docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
       `-v "/your/secrets:${SECRETS_MOUNT}:ro" ` +
@@ -418,7 +427,7 @@ function sftpSteps(
     `   ${PASSWORD_FILE_NAME}.`,
     "",
     "   The first run shows the server's key fingerprint: check it with the",
-    "   server's administrator before you answer. It then waits for your",
+    "   server's administrator before you answer y. It then waits for your",
     "   partner and writes the matched records into ./results.",
     "",
     ...bilateralFlagLines(settings),
@@ -435,18 +444,15 @@ function filedropSteps(
   settings: BilateralSettings,
 ): Array<string> {
   return [
-    split
-      ? "4. In alcove.yaml, which accepting wrote, set the two folders:"
-      : "4. In alcove.yaml, which accepting wrote, set the shared folder:",
-    "",
-    "     connection:",
-    "       channel: filedrop",
     ...(split
       ? [
-          `       inbound_path: ${INBOUND_SYNC_MOUNT}`,
-          `       outbound_path: ${OUTBOUND_SYNC_MOUNT}`,
+          "4. In alcove.yaml, which accepting wrote, change inbound_path to",
+          `   ${INBOUND_SYNC_MOUNT} and outbound_path to ${OUTBOUND_SYNC_MOUNT}`,
         ]
-      : [`       path: ${SYNC_MOUNT}`]),
+      : [
+          "4. In alcove.yaml, which accepting wrote, change path under",
+          `   connection: to ${SYNC_MOUNT}`,
+        ]),
     "",
     ...(split
       ? [
@@ -535,24 +541,8 @@ function launcherLines(
   ];
 }
 
-/** The image by its digest on each registry, Docker Hub first, under
- * REFERENCE; nothing where the sheet has no digest. */
-function digestLines(digest: string | undefined): Array<string> {
-  return digest === undefined
-    ? []
-    : [
-        "  The exact image your partner runs, which works in place of the",
-        "  image in any command above:",
-        `    ${digestReference(digest, COMMAND_REGISTRY)}`,
-        `    ${digestReference(digest, ALTERNATIVE_REGISTRY)}`,
-      ];
-}
-
-/** The shared closing: recovery, then the reference links. */
-function closing(
-  version: string | undefined,
-  digest: string | undefined,
-): Array<string> {
+/** The shared closing: recovery, then the reference link. */
+function closing(version: string | undefined): Array<string> {
   return [
     ...heading("IF SOMETHING GOES WRONG"),
     "  * The invitation has expired: ask your partner for a new one.",
@@ -562,12 +552,12 @@ function closing(
     `      ${commandImage(version)}`,
     "  * 'Permission denied' on Docker Engine for Linux: add",
     `      ${OPERATOR_USER_FLAG}`,
-    "    straight after docker run in every command.",
+    "    straight after docker run in every command. On rootless Podman,",
+    `    add ${PODMAN_USER_NAMESPACE_FLAG} instead.`,
     "",
     ...heading("REFERENCE"),
     "  Command-line reference:",
     `    ${ALCOVE_CLI_DOC_URL}`,
-    ...digestLines(digest),
     "",
   ];
 }
@@ -579,11 +569,9 @@ function closing(
 export function buildAcceptKit({
   endpoint,
   version: buildVersion,
-  digest: consoleDigest,
   ...settings
 }: AcceptKitInput): string {
   const version = releaseVersion(buildVersion);
-  const digest = imageDigest(consoleDigest);
   const filedrop = endpoint.channel === "filedrop";
   const split = endpoint.channel === "filedrop" && endpoint.split === true;
   const lines = [
@@ -607,12 +595,12 @@ export function buildAcceptKit({
     ...(filedrop ? launcherPointerLines(split) : []),
     ...saveStep(endpoint),
     ...imageCheckStep(version),
-    ...acceptStep(version),
+    ...acceptStep(version, !filedrop),
     ...(filedrop
       ? filedropSteps(version, split, settings)
       : sftpSteps(version, settings)),
     ...(filedrop ? launcherLines(version, settings, split) : []),
-    ...closing(version, digest),
+    ...closing(version),
   ];
   return `${lines.join("\n")}\n`;
 }

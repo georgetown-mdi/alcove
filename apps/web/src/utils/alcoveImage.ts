@@ -104,11 +104,3 @@ export function cosignVerifyCommand(reference: string): string {
     `--certificate-oidc-issuer ${RELEASE_SIGNER_OIDC_ISSUER} ${reference}`
   );
 }
-
-/** The image pinned by a digest {@link imageDigest} returned, on `registry`. */
-export function digestReference(
-  digest: string,
-  registry: ImageRegistry,
-): string {
-  return `${imageRepository(registry)}@${digest}`;
-}
