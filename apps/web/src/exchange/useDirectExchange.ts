@@ -198,16 +198,12 @@ export function useDirectExchange({
     // error except a busy (409) create, which re-attaches instead.
     const raiseFailure = (category: ExchangeErrorCategory, error: unknown) => {
       setFailure(
-        failureFor(
-          category,
-          error,
+        failureFor(category, error, {
           inputSource,
           channel,
-          "inviter",
-          false,
-          false,
-          options?.peerId !== undefined,
-        ),
+          seat: "inviter",
+          thisSideNamed: options?.peerId !== undefined,
+        }),
       );
       setRun((current) => runWithFailure(current));
     };

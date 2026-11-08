@@ -359,19 +359,13 @@ describe("a re-attached run's terminal shows as it arrived", () => {
     };
     expect(raised.error).toBeInstanceOf(RelayedTerminalError);
 
-    const surfaced = failureFor(
-      raised.category,
-      raised.error,
-      undefined,
-      "filedrop",
-    );
+    const surfaced = failureFor(raised.category, raised.error, {
+      channel: "filedrop",
+    });
     expect(surfaced).toEqual(
-      failureFor(
-        "exchange",
-        new RelayedTerminalError(plantedTerminal),
-        undefined,
-        "filedrop",
-      ),
+      failureFor("exchange", new RelayedTerminalError(plantedTerminal), {
+        channel: "filedrop",
+      }),
     );
     expect(surfaced.message).not.toContain("--force-retain-sweep");
   });

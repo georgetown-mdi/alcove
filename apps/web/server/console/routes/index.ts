@@ -47,13 +47,117 @@ import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
 import { defineJobRoute } from "../jobRoute";
 
+import type { JobCreateRefusalReason } from "@jobContract/jobCreateRefusal";
 import type { MountedKeyFileFault } from "@jobs/mountedKeyFile";
 
-const MOUNTED_KEY_FILE_REFUSALS: Record<MountedKeyFileFault, string> = {
+const MOUNTED_KEY_FILE_REFUSALS: Record<
+  MountedKeyFileFault,
+  JobCreateRefusalReason
+> = {
   absent: MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   invalid: MOUNTED_KEY_FILE_INVALID_REFUSAL,
   newer: MOUNTED_KEY_FILE_NEWER_REFUSAL,
 };
+
+/** A create rejection naming its refusal with a token and nothing else. */
+function refusalResponse(
+  reason: JobCreateRefusalReason,
+  status = 400,
+): Response {
+  return jobJsonResponse({ reason }, status);
+}
+
+/** One row of {@link CREATE_ERROR_RESPONSES}: the answer to an error of
+ * `errorClass`, or undefined for any other error. */
+type CreateErrorResponse = (error: unknown) => Response | undefined;
+
+function answering<TError extends Error>(
+  errorClass: abstract new (...args: Array<never>) => TError,
+  respond: (error: TError) => Response,
+): CreateErrorResponse {
+  return (error) => (error instanceof errorClass ? respond(error) : undefined);
+}
+
+/** The answer to each error a create can throw, the first matching row
+ * answering; an error no row matches is the empty 500. */
+const CREATE_ERROR_RESPONSES: ReadonlyArray<CreateErrorResponse> = [
+  // The single slot is occupied: return its occupant's id (only) so the
+  // browser can re-attach to the running exchange.
+  answering(ExchangeBusyError, (error) =>
+    jobJsonResponse({ id: error.activeJobId }, 409),
+  ),
+  answering(ConsoleShuttingDownError, () => jobEmptyResponse(503)),
+  answering(JobSigningIdentityExposedError, () =>
+    refusalResponse(SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL),
+  ),
+  // A direct sftp run cannot pass on the saved connection's several host-key
+  // fingerprints; the fix is in the saved connection, which the intent does
+  // not state, so the body names the refusal.
+  answering(ZeroSetupFingerprintListError, () =>
+    refusalResponse(SFTP_FINGERPRINT_LIST_REFUSAL),
+  ),
+  answering(ZeroSetupRemoteDirectoryError, () =>
+    refusalResponse(SFTP_URL_DIRECTORY_REFUSAL),
+  ),
+  answering(JobSftpCredentialConsoleOwnedError, () =>
+    refusalResponse(SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL),
+  ),
+  // The key file beside the opened configuration is missing, is not a key
+  // file, or a newer Alcove wrote it. The token says which, and nothing read
+  // from the file.
+  answering(MountedKeyFileRefusedError, (error) =>
+    refusalResponse(MOUNTED_KEY_FILE_REFUSALS[error.fault]),
+  ),
+  // A signed run of the opened configuration whose own signing paths the
+  // operator did not convert to the console's.
+  answering(MountedSigningPathsUnconvertedError, () =>
+    refusalResponse(MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL),
+  ),
+  // A signed run in place of a file signing with another identity than the
+  // console's.
+  answering(MountedSigningIdentityMismatchError, () =>
+    refusalResponse(MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL),
+  ),
+  answering(OpenedConfigurationNotRunnableError, () =>
+    refusalResponse(OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL),
+  ),
+  // The working folder already holds an alcove.yaml or .alcove.key a webrtc
+  // run would write when it starts: the token says whether they are the pair
+  // an earlier exchange on this console left. A folder that refused the write
+  // is a server-side 500, named so the operator is sent to the mount.
+  answering(WorkingFolderFilesRefusedError, (error) =>
+    error.fault === "present"
+      ? refusalResponse(
+          error.heldByConsoleExchange
+            ? WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
+            : WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+        )
+      : refusalResponse(WORKING_FOLDER_UNWRITABLE_REFUSAL, 500),
+  ),
+  // The invitation names a coordination server other than the one the
+  // console holds, which a later change on another tab or a restart replaced
+  // or forgot.
+  answering(SignalingServerChangedError, () =>
+    refusalResponse(COORDINATION_SERVER_CHANGED_REFUSAL),
+  ),
+  // Core refused the configuration or hand-off composed from the intent; the
+  // body names the composed field and the rule it broke.
+  answering(JobIntentUncomposableError, (error) =>
+    jobJsonResponse({ error: error.detail }, 400),
+  ),
+  // A mounted input that names no regular file, a filedrop intent with no
+  // rendezvous directory configured, a filedrop intent on a split-provisioned
+  // console without retain mode, an sftp intent with no connection authored,
+  // a webrtc intent with no coordination server authored, or a signing
+  // identity location that names nothing in the secrets mount is a 400 (the
+  // manager left no workdir behind).
+  answering(JobInputNotFoundError, () => jobEmptyResponse(400)),
+  answering(JobRendezvousUnavailableError, () => jobEmptyResponse(400)),
+  answering(JobRendezvousRetainRequiredError, () => jobEmptyResponse(400)),
+  answering(SftpUnavailableError, () => jobEmptyResponse(400)),
+  answering(SignalingServerUnavailableError, () => jobEmptyResponse(400)),
+  answering(SigningIdentityLocationError, () => jobEmptyResponse(400)),
+];
 
 /**
  * `POST /api/jobs` -- create and start an exchange job from a typed intent.
@@ -89,27 +193,11 @@ const MOUNTED_KEY_FILE_REFUSALS: Record<MountedKeyFileFault, string> = {
  * rejection is a 409 containing only the occupying exchange's id (nothing else about
  * it), disclosed to the same-origin operator on their own loopback console.
  *
- * Some 400s do hold a body, each a fixed token and nothing else: a filedrop
- * intent refused because a rendezvous directory holds this party's signing
- * identity answers `{ "reason": "signing-identity-in-rendezvous" }`, a
- * zero-setup sftp intent refused because the saved connection pins more than one
- * host-key fingerprint answers `{ "reason": "sftp-fingerprint-list" }`, one
- * whose saved remote directory is `/` or has a `.` or `..` segment answers
- * `{ "reason": "sftp-url-directory" }`, and a
- * run of the opened configuration refused over the `.alcove.key` beside it
- * answers `{ "reason": "mounted-key-file-absent" }`,
- * `{ "reason": "mounted-key-file-invalid" }`, or
- * `{ "reason": "mounted-key-file-newer" }`, and a signed run of it naming
- * unconverted signing paths answers
- * `{ "reason": "mounted-signing-paths-unconverted" }`, a webrtc run of it
- * whose working folder `alcove.yaml` is no longer one the console runs in
- * place answers
- * `{ "reason": "opened-configuration-not-runnable" }`, and a saved SFTP
- * credential naming a console file answers its `jobCreateRefusal.ts` token.
- * Each is about console state rather than the intent, so the browser cannot
- * otherwise say what to fix. For the same reason a webrtc run whose files the
- * working folder refused is a 500 `{ "reason": "working-folder-unwritable" }`
- * rather than the empty 500 of every other server-side failure.
+ * Some rejections hold a `{ "reason": "<token>" }` body, each a fixed token
+ * and nothing else, no path, no mount name: each is about console state
+ * rather than the intent, so the browser cannot otherwise say what to fix.
+ * Which error answers which token, and the one on a 500 rather than a 400:
+ * docs/spec/SERVER_JOB_API.md, Endpoints, `POST /api/jobs`.
  *
  * A schema-valid intent that core refuses while the CLI configuration or the
  * hand-off is composed from it is a 400 `{ "error": "<field>: <reason>" }`,
@@ -133,108 +221,10 @@ export const route = defineJobRoute({
       try {
         id = await gate.manager.createJob(parsed.data);
       } catch (error) {
-        // The single slot is occupied: return its occupant's id (only) so the
-        // browser can re-attach to the running exchange.
-        if (error instanceof ExchangeBusyError)
-          return jobJsonResponse({ id: error.activeJobId }, 409);
-        if (error instanceof ConsoleShuttingDownError)
-          return jobEmptyResponse(503);
-        // The refusal the browser cannot diagnose from the intent it sent: it
-        // is about the console's mounts. The body names the refusal with a
-        // fixed token and nothing else -- no path, no mount name.
-        if (error instanceof JobSigningIdentityExposedError)
-          return jobJsonResponse(
-            { reason: SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL },
-            400,
-          );
-        // A direct sftp run cannot pass on the saved connection's several
-        // host-key fingerprints; the fix is in the saved connection, which the
-        // intent does not state, so the body names the refusal.
-        if (error instanceof ZeroSetupFingerprintListError)
-          return jobJsonResponse(
-            { reason: SFTP_FINGERPRINT_LIST_REFUSAL },
-            400,
-          );
-        if (error instanceof ZeroSetupRemoteDirectoryError)
-          return jobJsonResponse({ reason: SFTP_URL_DIRECTORY_REFUSAL }, 400);
-        if (error instanceof JobSftpCredentialConsoleOwnedError)
-          return jobJsonResponse(
-            { reason: SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL },
-            400,
-          );
-        // The key file beside the opened configuration is missing, is not a
-        // key file, or a newer Alcove wrote it. The token says which, and
-        // nothing read from the file.
-        if (error instanceof MountedKeyFileRefusedError)
-          return jobJsonResponse(
-            { reason: MOUNTED_KEY_FILE_REFUSALS[error.fault] },
-            400,
-          );
-        // A signed run of the opened configuration whose own signing paths
-        // the operator did not convert to the console's.
-        if (error instanceof MountedSigningPathsUnconvertedError)
-          return jobJsonResponse(
-            { reason: MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL },
-            400,
-          );
-        // A signed run in place of a file signing with another identity than
-        // the console's.
-        if (error instanceof MountedSigningIdentityMismatchError)
-          return jobJsonResponse(
-            { reason: MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL },
-            400,
-          );
-        if (error instanceof OpenedConfigurationNotRunnableError)
-          return jobJsonResponse(
-            { reason: OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL },
-            400,
-          );
-        // The working folder already holds an alcove.yaml or .alcove.key a
-        // webrtc run would write when it starts: the token says whether they
-        // are the pair an earlier exchange on this console left. A folder that
-        // refused the write is a server-side 500, named so the operator is
-        // sent to the mount.
-        if (error instanceof WorkingFolderFilesRefusedError)
-          return error.fault === "present"
-            ? jobJsonResponse(
-                {
-                  reason: error.heldByConsoleExchange
-                    ? WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
-                    : WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
-                },
-                400,
-              )
-            : jobJsonResponse(
-                { reason: WORKING_FOLDER_UNWRITABLE_REFUSAL },
-                500,
-              );
-        // The invitation names a coordination server other than the one the
-        // console holds, which a later change on another tab or a restart
-        // replaced or forgot.
-        if (error instanceof SignalingServerChangedError)
-          return jobJsonResponse(
-            { reason: COORDINATION_SERVER_CHANGED_REFUSAL },
-            400,
-          );
-        // Core refused the configuration or hand-off composed from the
-        // intent; the body names the composed field and the rule it broke.
-        if (error instanceof JobIntentUncomposableError)
-          return jobJsonResponse({ error: error.detail }, 400);
-        // A mounted input that names no regular file, a filedrop intent with no
-        // rendezvous directory configured, a filedrop intent on a
-        // split-provisioned console without retain mode, an sftp intent with
-        // no connection authored, a webrtc intent with no coordination server
-        // authored, or a signing identity location that names nothing in the
-        // secrets mount is a 400 (the manager left no workdir behind).
-        if (
-          error instanceof JobInputNotFoundError ||
-          error instanceof JobRendezvousUnavailableError ||
-          error instanceof JobRendezvousRetainRequiredError ||
-          error instanceof SftpUnavailableError ||
-          error instanceof SignalingServerUnavailableError ||
-          error instanceof SigningIdentityLocationError
-        )
-          return jobEmptyResponse(400);
+        for (const respond of CREATE_ERROR_RESPONSES) {
+          const response = respond(error);
+          if (response !== undefined) return response;
+        }
         // Workdir creation or an input write failed (the manager has already
         // cleaned up); no internal detail crosses the boundary.
         return jobEmptyResponse(500);

@@ -220,14 +220,14 @@ describe("an internal fault raised in this browser withholds the retry", () => {
       ),
     ],
   ])("withholds the retry on %s", (_label, error) => {
-    expect(failureFor("exchange", error, undefined, "browser").retry).toBe(
+    expect(failureFor("exchange", error, { channel: "browser" }).retry).toBe(
       "withheld",
     );
   });
 
   test("offers the retry on a plain failure on the same channel", () => {
     expect(
-      failureFor("exchange", new Error("socket closed"), undefined, "browser")
+      failureFor("exchange", new Error("socket closed"), { channel: "browser" })
         .retry,
     ).toBe("offered");
   });

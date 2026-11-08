@@ -39,11 +39,13 @@ import {
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
+  SFTP_FINGERPRINT_LIST_REFUSAL,
+  SFTP_URL_DIRECTORY_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
   WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
   WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
   WORKING_FOLDER_UNWRITABLE_REFUSAL,
-  isZeroSetupSftpRefusalReason,
+  isJobCreateRefusalReason,
 } from "@jobContract/jobCreateRefusal";
 import {
   JobApiRequestError,
@@ -139,6 +141,10 @@ import type {
 import type { AvailableRecordOffer, RunOutputs } from "@psi/runOutputs";
 import type { ExchangeRun, ExchangeSeat } from "./exchangeRun";
 import type {
+  JobCreateRefusalReason,
+  ZeroSetupSftpRefusalReason,
+} from "@jobContract/jobCreateRefusal";
+import type {
   JobInputSource,
   JobRunStatus,
   RelayedTermsChange,
@@ -152,7 +158,6 @@ import type { LoadedEnforcementRecords } from "@console/loadedConfig";
 import type { ReceiptsIntentFields } from "@psi/receiptsModel";
 import type { RunDiagnosticsIntentFields } from "@psi/runDiagnosticsModel";
 import type { Transport } from "@psi/transportChooser";
-import type { ZeroSetupSftpRefusalReason } from "@jobContract/jobCreateRefusal";
 
 const log = getLogger("useInviterExchange");
 
@@ -255,7 +260,7 @@ function reportedCauseFields(cause: string): Pick<RunFailure, "reportedCause"> {
  * connection is edited, which start-over reaches through the server step. */
 function quickExchangeSftpFailure(
   reason: ZeroSetupSftpRefusalReason,
-): Omit<RunFailure, "retry"> {
+): JobCreateRefusalFailure {
   const copy = quickExchangeSftpRefusalCopy(reason);
   return {
     category: "config",
@@ -264,6 +269,23 @@ function quickExchangeSftpFailure(
       `The console did not start this exchange. ${copy.problem} Start over, ` +
       `choose Edit connection on the server step, and ${copy.change}`,
   };
+}
+
+/** What a failure's copy reads beyond its category and error. Each field is
+ * optional; `seat` defaults to the inviter, the flags to false. */
+export interface FailureContext {
+  /** Where the run's input came from. */
+  inputSource?: JobInputSource;
+  /** The channel the run used. */
+  channel?: Transport;
+  /** The seat whose alert this is, which decides the recovery it names. */
+  seat?: ExchangeSeat;
+  /** Whether the draft picked a signing identity location. */
+  identityLocationPicked?: boolean;
+  /** Whether this party's input read as a single column. */
+  singleColumnInput?: boolean;
+  /** Whether this side set a name for itself under the exchange-files card. */
+  thisSideNamed?: boolean;
 }
 
 /** @internal */
@@ -358,15 +380,230 @@ export const PARTNER_SECRET_NOT_SAVED_UNCHANGED_MESSAGE: Record<
     PARTNER_SECRET_NOT_SAVED_REMEDY.acceptor,
 };
 
+/** The alert content a refused job create shows: always `config` or the
+ * retryable `exchange`. */
+type JobCreateRefusalFailure = Omit<RunFailure, "retry" | "category"> & {
+  category: "config" | "exchange";
+};
+
+/** What a refusal's copy reads beyond its token. */
+interface JobCreateRefusalContext {
+  seat: ExchangeSeat;
+  identityLocationPicked: boolean;
+}
+
+/**
+ * The alert for each token a refused job create names, keyed so a token with
+ * no copy does not compile. Each is about console state the intent does not
+ * state, so the copy, not the input file, names what to fix; a `config` entry
+ * offers start-over, since a retry refuses identically until that is fixed.
+ */
+const JOB_CREATE_REFUSAL_FAILURES: Record<
+  JobCreateRefusalReason,
+  (context: JobCreateRefusalContext) => JobCreateRefusalFailure
+> = {
+  // A file sits at one of the two paths the console reads this party's
+  // signing identity from -- the picked location and the default in the data
+  // root a pick leaves behind -- in a folder the exchange shares with the
+  // partner. The token names neither, and the client holds which layout the
+  // draft is in, so the copy is chosen here: naming a location the operator
+  // never picked calls their only signing key a leftover and offers an action
+  // they cannot take. Both claim presence alone -- the console reads the path
+  // and never the file. The layout is what has to change.
+  [SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL]: ({ identityLocationPicked }) => ({
+    category: "config",
+    title: "This exchange shares your signing identity's folder",
+    message: identityLocationPicked
+      ? "The console did not start it. A file sits at a path this console " +
+        "reads your signing identity from, in a folder this exchange shares " +
+        "with your partner: either the location you picked, or the " +
+        "console's default in your working folder, which picking " +
+        "a location leaves behind. Whoever reads a signing key there can " +
+        "sign receipts in your name - for every exchange, with every " +
+        "partner. Move the file at the location you picked out of every " +
+        "folder you share with a partner, and move the file left at the " +
+        "console's default path to the location you picked - or remove it, " +
+        "if that key is not one you use, knowing that a replacement has a " +
+        "new fingerprint every partner who pinned the old one must be sent " +
+        "before their verification works again. You can also give the " +
+        "shared folder a mount of its own (JOB_RENDEZVOUS_DIR), separate " +
+        "from the folder holding your key, input, and results, then run the " +
+        "exchange again."
+      : "The console did not start it. A file sits at your signing " +
+        "identity's path, in a folder this exchange shares with your " +
+        "partner. Whoever reads a signing key there can sign receipts in " +
+        "your name - for every exchange, with every partner. Move that " +
+        "file out of every folder you share with a partner, or give the " +
+        "shared folder a mount of its own (JOB_RENDEZVOUS_DIR), separate " +
+        "from the folder holding your key, input, and results, then run the " +
+        "exchange again.",
+  }),
+  // A direct sftp run refused over the saved connection: several host-key
+  // fingerprints, or a remote directory its sftp:// URL cannot state.
+  [SFTP_FINGERPRINT_LIST_REFUSAL]: () =>
+    quickExchangeSftpFailure(SFTP_FINGERPRINT_LIST_REFUSAL),
+  [SFTP_URL_DIRECTORY_REFUSAL]: () =>
+    quickExchangeSftpFailure(SFTP_URL_DIRECTORY_REFUSAL),
+  // An sftp run refused because the saved connection's credential file is one
+  // of the console's own.
+  [SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL]: () => ({
+    category: "config",
+    title: "The saved SFTP connection uses one of the console's own files",
+    message:
+      "The console did not start this exchange. The saved SFTP connection " +
+      "names a credential file that is one of the console's own - your " +
+      "signing identity, the exchange's key file, or its configuration - " +
+      "and none of them is a server credential. Start over, choose Edit " +
+      "connection on the SFTP connection, and choose the file that holds " +
+      "your SFTP password or private key.",
+  }),
+  // A WebRTC run refused over the alcove.yaml and .alcove.key it writes into
+  // the working folder when it starts, as alcove invite does; the folder is
+  // what has to change.
+  [WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL]: () =>
+    workingFolderHoldsExchangeFailure(
+      "The console did not start this exchange. Your working folder " +
+        "already holds an alcove.yaml or .alcove.key. ",
+    ),
+  [WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL]: () =>
+    workingFolderHoldsExchangeFailure(
+      "The console did not start this exchange. Your working folder " +
+        "holds alcove.yaml and .alcove.key from an exchange this console " +
+        "started with an earlier invitation. ",
+    ),
+  // A WebRTC run whose alcove.yaml and .alcove.key the working folder refused.
+  // Nothing was written, so once the mount is fixed a retry of the same
+  // invitation starts: the create's 500 keeps the retryable `exchange`
+  // category.
+  [WORKING_FOLDER_UNWRITABLE_REFUSAL]: () => ({
+    category: "exchange",
+    title: "The console could not write to your working folder",
+    message:
+      "The console could not write alcove.yaml and .alcove.key into the " +
+      "working folder. Check that the folder is mounted writable, then try " +
+      "again.",
+  }),
+  // A WebRTC run whose invitation names a coordination server or relay other
+  // than the one the console holds: it was changed or cleared since the
+  // invitation was created, or, for an accept, since the accept set it. The
+  // inviter starts over at the review step, where the server is set; the
+  // acceptor's retry sets it again.
+  [COORDINATION_SERVER_CHANGED_REFUSAL]: ({ seat }) =>
+    seat === "acceptor"
+      ? {
+          category: "exchange",
+          title: "The coordination server changed",
+          message:
+            "The console did not start this exchange. Its coordination " +
+            "server was changed in another tab while the exchange was " +
+            "starting. Try again, and leave that setting alone until this " +
+            "exchange finishes.",
+        }
+      : {
+          category: "config",
+          title: "The coordination server or relay changed",
+          message:
+            "The console did not start this exchange. The coordination " +
+            "server or relay set on this console is not the one this " +
+            "invitation names, so your partner could not connect to you. " +
+            "Start over, check the coordination server and relay, then " +
+            "create a fresh invitation.",
+        },
+  // A WebRTC run of the opened configuration whose file is no longer one the
+  // console runs in place: the file has to be fixed and opened again.
+  [OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL]: () => ({
+    category: "config",
+    title: "The console did not run your alcove.yaml",
+    message:
+      "The alcove.yaml in your working folder is no longer a WebRTC " +
+      "configuration the console can run: it is gone, cannot be read, " +
+      "runs over another channel, or states connection.ice_provision. " +
+      "Start over: the console opens the configuration again and shows " +
+      "what it holds.",
+  }),
+  // A run of the opened configuration refused over the key file beside it:
+  // the folder has to be fixed.
+  [MOUNTED_KEY_FILE_ABSENT_REFUSAL]: () => ({
+    category: "config",
+    title: "Your working folder has no .alcove.key",
+    message:
+      "The console did not start this exchange. It continues the exchange " +
+      "your alcove.yaml set up, under the .alcove.key beside it, and " +
+      "there is none in your working folder. Put this exchange's " +
+      ".alcove.key back beside alcove.yaml, then start the run again. If " +
+      "you no longer have it, start over, open the configuration again, and " +
+      "choose Create an invitation from these settings.",
+  }),
+  [MOUNTED_KEY_FILE_INVALID_REFUSAL]: () => ({
+    category: "config",
+    title: "The .alcove.key in your working folder cannot be read",
+    message:
+      "The console did not start this exchange. The .alcove.key beside " +
+      "alcove.yaml in your working folder is not a key file Alcove can " +
+      "read. Check that it is a regular file with read permission, holding " +
+      "the key Alcove wrote for this exchange, then start the run again. " +
+      "If you no longer have that key, start over, open the configuration " +
+      "again, and choose Create an invitation from these settings.",
+  }),
+  [MOUNTED_KEY_FILE_NEWER_REFUSAL]: () => ({
+    category: "config",
+    title: NEWER_KEY_FILE_TITLE,
+    message: NEWER_KEY_FILE_REMEDY,
+  }),
+  [MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL]: () => ({
+    category: "config",
+    title: "This configuration names its own signing paths",
+    message:
+      "The console did not start this exchange. Your alcove.yaml names " +
+      "its own signing identity, and the console signs only with its own. " +
+      "Convert the configuration on the first step to sign " +
+      "with the console's identity, or turn the signed receipt off to run " +
+      "this exchange unsigned, then start the run again. With the signed " +
+      "receipt off, the configuration the console gives you to run on a " +
+      "schedule keeps your file's signing settings as they are.",
+  }),
+  [MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL]: () => ({
+    category: "config",
+    title: "This configuration names its own signing identity",
+    message:
+      "The console did not start this exchange. Your alcove.yaml signs " +
+      "with a signing identity file other than the one under Receipts and " +
+      "record keeping, and the console signs only with its own identity. " +
+      "If the file names one of this console's identity files, choose that " +
+      "file under Where your signing identity is kept. Or turn the signed " +
+      "receipt off to run this exchange unsigned, then start the run " +
+      "again: the start saves that change to alcove.yaml. Or run the file " +
+      "with Alcove on the command line, which signs with the identity it " +
+      "names.",
+  }),
+};
+
+/** The alert for a WebRTC run refused over the files already in the working
+ * folder, after the sentence saying which files they are. */
+function workingFolderHoldsExchangeFailure(
+  whatIsThere: string,
+): JobCreateRefusalFailure {
+  return {
+    category: "config",
+    title: "Your working folder already holds an exchange",
+    message:
+      whatIsThere +
+      "To start a new one, move alcove.yaml and .alcove.key out of the " +
+      "folder, then start over with a fresh invitation.",
+  };
+}
+
 function failureContentFor(
   category: ExchangeErrorCategory,
   error: unknown,
-  inputSource?: JobInputSource,
-  channel?: Transport,
-  seat: ExchangeSeat = "inviter",
-  identityLocationPicked = false,
-  singleColumnInput = false,
-  thisSideNamed = false,
+  {
+    inputSource,
+    channel,
+    seat = "inviter",
+    identityLocationPicked = false,
+    singleColumnInput = false,
+    thisSideNamed = false,
+  }: FailureContext = {},
 ): Omit<RunFailure, "retry"> {
   // The console already holds an exchange (its single slot is occupied), so the
   // create was rejected 409 -- the driver categorizes it retryable `exchange`. The
@@ -392,113 +629,17 @@ function failureContentFor(
       category: "config",
       ...consoleJobColumnRefusalAlert(error.columns, seat),
     };
-  // The console refused the run before it started: a file sits at one of the two
-  // paths it reads this party's signing identity from -- the picked location and
-  // the default in the data root a pick leaves behind -- in a folder the exchange
-  // shares with the partner. The token names neither, and the client holds which
-  // layout the draft is in, so the copy is chosen here: naming a location the
-  // operator never picked calls their only signing key a leftover and offers an
-  // action they cannot take. Both claim presence alone -- the console reads the
-  // path and never the file. Classified `config`: the layout is what has to
-  // change, so the alert offers start-over, not a retry that would refuse
-  // identically. Above the mounted-file branch, whose 400 copy is about the file
-  // rather than the mounts.
+  // The console refused the run before it started, naming why with a token.
+  // Above the mounted-file branch, whose 400 copy is about the file rather
+  // than the console state the token names.
   if (
     error instanceof JobApiRequestError &&
-    error.refusalReason === SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL
+    isJobCreateRefusalReason(error.refusalReason)
   )
-    return {
-      category: "config",
-      title: "This exchange shares your signing identity's folder",
-      message: identityLocationPicked
-        ? "The console did not start it. A file sits at a path this console " +
-          "reads your signing identity from, in a folder this exchange shares " +
-          "with your partner: either the location you picked, or the " +
-          "console's default in your working folder, which picking " +
-          "a location leaves behind. Whoever reads a signing key there can " +
-          "sign receipts in your name - for every exchange, with every " +
-          "partner. Move the file at the location you picked out of every " +
-          "folder you share with a partner, and move the file left at the " +
-          "console's default path to the location you picked - or remove it, " +
-          "if that key is not one you use, knowing that a replacement has a " +
-          "new fingerprint every partner who pinned the old one must be sent " +
-          "before their verification works again. You can also give the " +
-          "shared folder a mount of its own (JOB_RENDEZVOUS_DIR), separate " +
-          "from the folder holding your key, input, and results, then run the " +
-          "exchange again."
-        : "The console did not start it. A file sits at your signing " +
-          "identity's path, in a folder this exchange shares with your " +
-          "partner. Whoever reads a signing key there can sign receipts in " +
-          "your name - for every exchange, with every partner. Move that " +
-          "file out of every folder you share with a partner, or give the " +
-          "shared folder a mount of its own (JOB_RENDEZVOUS_DIR), separate " +
-          "from the folder holding your key, input, and results, then run the " +
-          "exchange again.",
-    };
-  // A direct sftp run refused over the saved connection: several host-key
-  // fingerprints, or a remote directory its sftp:// URL cannot state. Above
-  // the mounted-file branch: the file is not at fault.
-  if (
-    error instanceof JobApiRequestError &&
-    isZeroSetupSftpRefusalReason(error.refusalReason)
-  )
-    return quickExchangeSftpFailure(error.refusalReason);
-  // An sftp run refused because the saved connection's credential file is one
-  // of the console's own. Above the mounted-file branch: the input is not at
-  // fault. Classified `config`: a retry refuses identically.
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
-  )
-    return {
-      category: "config",
-      title: "The saved SFTP connection uses one of the console's own files",
-      message:
-        "The console did not start this exchange. The saved SFTP connection " +
-        "names a credential file that is one of the console's own - your " +
-        "signing identity, the exchange's key file, or its configuration - " +
-        "and none of them is a server credential. Start over, choose Edit " +
-        "connection on the SFTP connection, and choose the file that holds " +
-        "your SFTP password or private key.",
-    };
-  // A WebRTC run refused over the alcove.yaml and .alcove.key it writes into
-  // the working folder when it starts, as alcove invite does.
-  // Classified `config`: a retry refuses identically until the folder is
-  // changed.
-  if (
-    error instanceof JobApiRequestError &&
-    (error.refusalReason === WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL ||
-      error.refusalReason === WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL)
-  )
-    return {
-      category: "config",
-      title: "Your working folder already holds an exchange",
-      message:
-        (error.refusalReason === WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
-          ? "The console did not start this exchange. Your working folder " +
-            "holds alcove.yaml and .alcove.key from an exchange this console " +
-            "started with an earlier invitation. "
-          : "The console did not start this exchange. Your working folder " +
-            "already holds an alcove.yaml or .alcove.key. ") +
-        "To start a new one, move alcove.yaml and .alcove.key out of the " +
-        "folder, then start over with a fresh invitation.",
-    };
-  // A WebRTC run whose alcove.yaml and .alcove.key the working folder refused.
-  // Nothing was written, so once the mount is fixed a retry of the same
-  // invitation starts: the create's 500 keeps the retryable `exchange`
-  // category.
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === WORKING_FOLDER_UNWRITABLE_REFUSAL
-  )
-    return {
-      category: "exchange",
-      title: "The console could not write to your working folder",
-      message:
-        "The console could not write alcove.yaml and .alcove.key into the " +
-        "working folder. Check that the folder is mounted writable, then try " +
-        "again.",
-    };
+    return JOB_CREATE_REFUSAL_FAILURES[error.refusalReason]({
+      seat,
+      identityLocationPicked,
+    });
   // A console WebRTC accept that did not set the console to the invitation's
   // coordination server. A refused address is refused again on a retry; a
   // setting changed meanwhile, or a console that did not answer, is not.
@@ -520,128 +661,6 @@ function failureContentFor(
             "server setting changed, or the console did not answer, while " +
             "the exchange was starting. Try again.",
         };
-  // A WebRTC run whose invitation names a coordination server or relay other
-  // than the one the console holds: it was changed or cleared since the
-  // invitation was created, or, for an accept, since the accept set it. The
-  // inviter starts over at the review step, where the server is set; the
-  // acceptor's retry sets it again.
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === COORDINATION_SERVER_CHANGED_REFUSAL
-  )
-    return seat === "acceptor"
-      ? {
-          category: "exchange",
-          title: "The coordination server changed",
-          message:
-            "The console did not start this exchange. Its coordination " +
-            "server was changed in another tab while the exchange was " +
-            "starting. Try again, and leave that setting alone until this " +
-            "exchange finishes.",
-        }
-      : {
-          category: "config",
-          title: "The coordination server or relay changed",
-          message:
-            "The console did not start this exchange. The coordination " +
-            "server or relay set on this console is not the one this " +
-            "invitation names, so your partner could not connect to you. " +
-            "Start over, check the coordination server and relay, then " +
-            "create a fresh invitation.",
-        };
-  // A WebRTC run of the opened configuration whose file is no longer one the
-  // console runs in place. Classified `config`: a retry refuses identically
-  // until the file is fixed and opened again.
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL
-  )
-    return {
-      category: "config",
-      title: "The console did not run your alcove.yaml",
-      message:
-        "The alcove.yaml in your working folder is no longer a WebRTC " +
-        "configuration the console can run: it is gone, cannot be read, " +
-        "runs over another channel, or states connection.ice_provision. " +
-        "Start over: the console opens the configuration again and shows " +
-        "what it holds.",
-    };
-  // A run of the opened configuration refused over the key file beside it.
-  // Above the mounted-file branch: the input file is not at fault. Classified
-  // `config`: a retry refuses identically until the folder is fixed.
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === MOUNTED_KEY_FILE_ABSENT_REFUSAL
-  )
-    return {
-      category: "config",
-      title: "Your working folder has no .alcove.key",
-      message:
-        "The console did not start this exchange. It continues the exchange " +
-        "your alcove.yaml set up, under the .alcove.key beside it, and " +
-        "there is none in your working folder. Put this exchange's " +
-        ".alcove.key back beside alcove.yaml, then start the run again. If " +
-        "you no longer have it, start over, open the configuration again, and " +
-        "choose Create an invitation from these settings.",
-    };
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === MOUNTED_KEY_FILE_INVALID_REFUSAL
-  )
-    return {
-      category: "config",
-      title: "The .alcove.key in your working folder cannot be read",
-      message:
-        "The console did not start this exchange. The .alcove.key beside " +
-        "alcove.yaml in your working folder is not a key file Alcove can " +
-        "read. Check that it is a regular file with read permission, holding " +
-        "the key Alcove wrote for this exchange, then start the run again. " +
-        "If you no longer have that key, start over, open the configuration " +
-        "again, and choose Create an invitation from these settings.",
-    };
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === MOUNTED_KEY_FILE_NEWER_REFUSAL
-  )
-    return {
-      category: "config",
-      title: NEWER_KEY_FILE_TITLE,
-      message: NEWER_KEY_FILE_REMEDY,
-    };
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
-  )
-    return {
-      category: "config",
-      title: "This configuration names its own signing paths",
-      message:
-        "The console did not start this exchange. Your alcove.yaml names " +
-        "its own signing identity, and the console signs only with its own. " +
-        "Convert the configuration on the first step to sign " +
-        "with the console's identity, or turn the signed receipt off to run " +
-        "this exchange unsigned, then start the run again. With the signed " +
-        "receipt off, the configuration the console gives you to run on a " +
-        "schedule keeps your file's signing settings as they are.",
-    };
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL
-  )
-    return {
-      category: "config",
-      title: "This configuration names its own signing identity",
-      message:
-        "The console did not start this exchange. Your alcove.yaml signs " +
-        "with a signing identity file other than the one under Receipts and " +
-        "record keeping, and the console signs only with its own identity. " +
-        "If the file names one of this console's identity files, choose that " +
-        "file under Where your signing identity is kept. Or turn the signed " +
-        "receipt off to run this exchange unsigned, then start the run " +
-        "again: the start saves that change to alcove.yaml. Or run the file " +
-        "with Alcove on the command line, which signs with the identity it " +
-        "names.",
-    };
   // A console job create rejected the mounted file: a 400 the driver categorizes
   // `config`. The file is the likely fault, so the alert names it -- except on
   // the sftp channel, where a vanished picked remote is equally likely, so that
@@ -1605,16 +1624,15 @@ export function useInviterExchange({
     // own file read as a single column, taken from the columns the mint bound.
     const raiseFailure = (category: ExchangeErrorCategory, error: unknown) => {
       setFailure(
-        failureFor(
-          category,
-          error,
+        failureFor(category, error, {
           inputSource,
           channel,
-          "inviter",
-          receipts?.signing?.identityLocation !== undefined,
-          minted.columns.length === 1,
-          options?.peerId !== undefined,
-        ),
+          seat: "inviter",
+          identityLocationPicked:
+            receipts?.signing?.identityLocation !== undefined,
+          singleColumnInput: minted.columns.length === 1,
+          thisSideNamed: options?.peerId !== undefined,
+        }),
       );
       setRun((current) => runWithFailure(current));
     };

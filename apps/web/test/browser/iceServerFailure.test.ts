@@ -168,13 +168,10 @@ test(
       expect((failure as Error).message).not.toContain(
         ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY,
       );
-      const alert = failureFor(
-        "exchange",
-        failure,
-        undefined,
-        "browser",
-        "acceptor",
-      );
+      const alert = failureFor("exchange", failure, {
+        channel: "browser",
+        seat: "acceptor",
+      });
       expect(alert.message).toContain(ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY);
       expect(alert.message).toContain("turn it on under Connection settings");
       expect(alert.reportedCause).not.toContain(

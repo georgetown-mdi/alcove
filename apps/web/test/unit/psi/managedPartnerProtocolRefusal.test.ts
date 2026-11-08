@@ -199,13 +199,10 @@ describe("a one-shot exchange that refused its partner's data", () => {
     "the %s seat's alert states the refusal and its step, with no retry",
     async (seat) => {
       for (const [, refusal] of await refusals()) {
-        const failure = failureFor(
-          "exchange",
-          refusal,
-          undefined,
-          "browser",
+        const failure = failureFor("exchange", refusal, {
+          channel: "browser",
           seat,
-        );
+        });
         expect(failure).toMatchObject({
           category: "config",
           title: PARTNER_PROTOCOL_REFUSAL_TITLE,

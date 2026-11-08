@@ -84,7 +84,7 @@ describe("an inviter's unanswered registration", () => {
     const server = (error as CoordinationServerUnreachableError).server;
     expect(server).toBe("wss://coordination.agency.example/signal/");
 
-    const failure = failureFor("exchange", error, undefined, "browser");
+    const failure = failureFor("exchange", error, { channel: "browser" });
     expect(failure.title).toBe("Your coordination server did not answer");
     expect(failure.message).toBe(coordinationServerUnreachableMessage(server));
     expect(failure.message).toBe(
@@ -104,7 +104,7 @@ describe("an inviter's unanswered registration", () => {
     const error = await listenUnanswered(BUILD_SERVER);
 
     expect(error).not.toBeInstanceOf(CoordinationServerUnreachableError);
-    const failure = failureFor("exchange", error, undefined, "browser");
+    const failure = failureFor("exchange", error, { channel: "browser" });
     expect(failure.title).toBe("Exchange failed");
     expect(failure.coordinationServerUnreachable).toBeUndefined();
   });

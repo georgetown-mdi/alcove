@@ -233,9 +233,11 @@ describe("the console job create", () => {
       new JobIntentColumnNameError([
         { position: 2, name: OVERLONG_NAME, refusal: "too-long" },
       ]),
-      { kind: "workFile", name: "clients.csv" },
-      "filedrop",
-      "inviter",
+      {
+        inputSource: { kind: "workFile", name: "clients.csv" },
+        channel: "filedrop",
+        seat: "inviter",
+      },
     );
     expect(failure.title).toBe("The console could not start this exchange");
     expect(failure.message).toContain("Column 2");
@@ -255,9 +257,11 @@ describe("the console job create", () => {
       new JobIntentColumnNameError([
         { position: 2, name: OVERLONG_NAME, refusal: "too-long" },
       ]),
-      { kind: "workFile", name: "clients.csv" },
-      "filedrop",
-      "acceptor",
+      {
+        inputSource: { kind: "workFile", name: "clients.csv" },
+        channel: "filedrop",
+        seat: "acceptor",
+      },
     );
     expect(failure.message).toContain(
       "go back to your columns, and choose the file again",
@@ -269,8 +273,10 @@ describe("the console job create", () => {
     const failure = failureFor(
       "config",
       new JobApiRequestError(400, "POST /api/jobs failed with status 400"),
-      { kind: "workFile", name: "clients.csv" },
-      "filedrop",
+      {
+        inputSource: { kind: "workFile", name: "clients.csv" },
+        channel: "filedrop",
+      },
     );
     expect(failure.message).toContain("may have been removed");
   });

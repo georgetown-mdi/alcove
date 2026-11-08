@@ -85,22 +85,29 @@ export const WORKING_FOLDER_UNWRITABLE_REFUSAL = "working-folder-unwritable";
 export const COORDINATION_SERVER_CHANGED_REFUSAL =
   "coordination-server-changed";
 
+/** Every refusal token a create rejection can name. The union, the allowlist
+ * over a rejection's body, and the browser's copy table all derive from it, so
+ * a token added here does not compile until that table gives it copy. */
+const JOB_CREATE_REFUSAL_REASONS = [
+  SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
+  SFTP_FINGERPRINT_LIST_REFUSAL,
+  SFTP_URL_DIRECTORY_REFUSAL,
+  MOUNTED_KEY_FILE_ABSENT_REFUSAL,
+  MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  MOUNTED_KEY_FILE_NEWER_REFUSAL,
+  MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL,
+  OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
+  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
+  WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+  WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
+  WORKING_FOLDER_UNWRITABLE_REFUSAL,
+  COORDINATION_SERVER_CHANGED_REFUSAL,
+] as const;
+
 /** The refusal tokens a create rejection can name. */
 export type JobCreateRefusalReason =
-  | typeof SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL
-  | typeof SFTP_FINGERPRINT_LIST_REFUSAL
-  | typeof SFTP_URL_DIRECTORY_REFUSAL
-  | typeof MOUNTED_KEY_FILE_ABSENT_REFUSAL
-  | typeof MOUNTED_KEY_FILE_INVALID_REFUSAL
-  | typeof MOUNTED_KEY_FILE_NEWER_REFUSAL
-  | typeof MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
-  | typeof MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL
-  | typeof OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL
-  | typeof SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
-  | typeof WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL
-  | typeof WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
-  | typeof WORKING_FOLDER_UNWRITABLE_REFUSAL
-  | typeof COORDINATION_SERVER_CHANGED_REFUSAL;
+  (typeof JOB_CREATE_REFUSAL_REASONS)[number];
 
 /** Whether a value read off a create rejection's body is a refusal token this
  * bundle knows. An unknown token is treated as no token at all, so an older
@@ -108,28 +115,18 @@ export type JobCreateRefusalReason =
 export function isJobCreateRefusalReason(
   value: unknown,
 ): value is JobCreateRefusalReason {
-  return (
-    value === SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL ||
-    value === SFTP_FINGERPRINT_LIST_REFUSAL ||
-    value === SFTP_URL_DIRECTORY_REFUSAL ||
-    value === MOUNTED_KEY_FILE_ABSENT_REFUSAL ||
-    value === MOUNTED_KEY_FILE_INVALID_REFUSAL ||
-    value === MOUNTED_KEY_FILE_NEWER_REFUSAL ||
-    value === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL ||
-    value === MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL ||
-    value === OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL ||
-    value === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL ||
-    value === WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL ||
-    value === WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL ||
-    value === WORKING_FOLDER_UNWRITABLE_REFUSAL ||
-    value === COORDINATION_SERVER_CHANGED_REFUSAL
-  );
+  return (JOB_CREATE_REFUSAL_REASONS as ReadonlyArray<unknown>).includes(value);
 }
+
+const ZERO_SETUP_SFTP_REFUSAL_REASONS = [
+  SFTP_URL_DIRECTORY_REFUSAL,
+  SFTP_FINGERPRINT_LIST_REFUSAL,
+] as const satisfies ReadonlyArray<JobCreateRefusalReason>;
 
 /** The refusals a direct (zero-setup) sftp run raises over the saved
  * connection itself, before any job exists. */
 export type ZeroSetupSftpRefusalReason =
-  typeof SFTP_URL_DIRECTORY_REFUSAL | typeof SFTP_FINGERPRINT_LIST_REFUSAL;
+  (typeof ZERO_SETUP_SFTP_REFUSAL_REASONS)[number];
 
 /** The fields of a saved sftp connection a direct run's refusal reads. */
 export interface ZeroSetupSftpRefusalInput {
@@ -173,8 +170,7 @@ export function zeroSetupSftpCheck(
 export function isZeroSetupSftpRefusalReason(
   value: unknown,
 ): value is ZeroSetupSftpRefusalReason {
-  return (
-    value === SFTP_URL_DIRECTORY_REFUSAL ||
-    value === SFTP_FINGERPRINT_LIST_REFUSAL
+  return (ZERO_SETUP_SFTP_REFUSAL_REASONS as ReadonlyArray<unknown>).includes(
+    value,
   );
 }
