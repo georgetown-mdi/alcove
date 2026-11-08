@@ -58,7 +58,7 @@ Choose under **Who receives the matched results**. The party that receives no re
 | **Only your partner** | The accepting party gets the result. The inviter gets none, so the accepting party sends it no columns. | Only the accepting party needs the list. |
 
 > [!NOTE]
-> Under **Cascade**, the party that receives no result can still work out which of its own records are in the other's file, though not which of the other's records they are. Alcove shows it neither that list nor a count; a command line debug log shows the count. Keeping the result itself from that party depends on it honoring the agreed terms. If you only need to know how many people you have in common, choose a count instead: [A list or only a count](#a-list-or-only-a-count).
+> Under **Cascade**, the party that receives no result can still work out which of its own records are in the other's file. Alcove shows it neither that list nor a count; a command line debug log shows the count. It is sent none of the other's columns and saves no result. If you only need to know how many people you have in common, choose a count instead: [A list or only a count](#a-list-or-only-a-count).
 
 ## A list or only a count
 
