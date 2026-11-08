@@ -5,6 +5,8 @@ import { sanitizeForDisplay } from "@alcove/core";
 
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 
+import styles from "@styles/app.module.css";
+
 import {
   CLOSE_CONFIGURATION_LABEL,
   CONFIGURATION_LOAD_SEALED,
@@ -84,6 +86,7 @@ function NoticesAlert({
     <Alert
       color="yellow"
       role="presentation"
+      classNames={{ body: styles.wrapLongText }}
       icon={<IconAlertTriangle aria-hidden />}
       title={title}
     >
@@ -121,6 +124,7 @@ export function EditedTermsNotice({
         <Alert
           color="yellow"
           role="presentation"
+          classNames={{ body: styles.wrapLongText }}
           icon={<IconAlertTriangle aria-hidden />}
           title={EDITED_TERMS_TITLE}
         >
@@ -194,14 +198,25 @@ export function MountedConfigurationCard({
               ? CONFIGURATION_READ_UNAVAILABLE
               : OPEN_CONFIGURATION_INVITATION}
           </Text>
-          <Button size="xs" variant="default" onClick={onOpen}>
+          <Button
+            size="xs"
+            variant="default"
+            className={styles.wrapLabel}
+            onClick={onOpen}
+          >
             {OPEN_CONFIGURATION_LABEL}
           </Button>
         </>
       )}
       {withheld && <Text size="sm">{CONFIGURATION_LOAD_SEALED}</Text>}
       {state.status === "reading" && (
-        <Button size="xs" variant="default" loading disabled>
+        <Button
+          size="xs"
+          variant="default"
+          className={styles.wrapLabel}
+          loading
+          disabled
+        >
           {OPEN_CONFIGURATION_LABEL}
         </Button>
       )}
@@ -210,7 +225,12 @@ export function MountedConfigurationCard({
       )}
       {state.status === "opened" && (
         <>
-          <Alert color="blue" role="presentation" title={OPENED_TITLE}>
+          <Alert
+            color="blue"
+            role="presentation"
+            title={OPENED_TITLE}
+            classNames={{ body: styles.wrapLongText }}
+          >
             <Text size="sm">{CONFIGURATION_OPENED}</Text>
           </Alert>
           {!sealed && (
@@ -231,13 +251,18 @@ export function MountedConfigurationCard({
             <Alert
               color="yellow"
               role="presentation"
+              classNames={{ body: styles.wrapLongText }}
               icon={<IconAlertTriangle aria-hidden />}
               title={keyFile.title}
             >
               <Stack gap="xs" align="flex-start">
                 <Text size="sm">{keyFile.message}</Text>
                 {!sealed && state.runsInPlace !== true && (
-                  <Button size="xs" onClick={onNewInvitation}>
+                  <Button
+                    size="xs"
+                    className={styles.wrapLabel}
+                    onClick={onNewInvitation}
+                  >
                     {CREATE_INVITATION_FROM_SETTINGS_LABEL}
                   </Button>
                 )}
@@ -254,6 +279,7 @@ export function MountedConfigurationCard({
         <Alert
           color="red"
           role="presentation"
+          classNames={{ body: styles.wrapLongText }}
           icon={<IconAlertCircle aria-hidden />}
           title={REFUSED_TITLE}
         >

@@ -13,6 +13,8 @@ import { IconAlertCircle, IconRefresh } from "@tabler/icons-react";
 import { PROJECT_SITE_URL } from "@components/projectLinks";
 import { alertRoleFor } from "@theme";
 
+import styles from "@styles/app.module.css";
+
 import type { ReactNode } from "react";
 
 /**
@@ -66,8 +68,9 @@ export function MountStateNotice({
       <Alert
         color={color}
         role={alertRoleFor(color)}
-        icon={<IconAlertCircle />}
+        icon={<IconAlertCircle aria-hidden />}
         title={title}
+        classNames={{ body: styles.wrapLongText }}
       >
         {children}
       </Alert>
@@ -122,7 +125,11 @@ export function NoMountedFolderNotice({
           The console has no working folder, so it cannot {cannot}. Stop it and
           start it again with your folder mounted:
         </Text>
-        <Code block>{SINGLE_FOLDER_RUN_COMMAND}</Code>
+        {/* A tab stop, so a keyboard user can scroll the command when it is
+            wider than the block (WCAG 2.1.1). */}
+        <Code block tabIndex={0}>
+          {SINGLE_FOLDER_RUN_COMMAND}
+        </Code>
         <Text size="sm">
           Replace {"<your folder>"} with the folder holding your files. Other
           layouts are in{" "}

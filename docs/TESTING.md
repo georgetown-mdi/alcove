@@ -453,11 +453,12 @@ others cannot. Which WCAG 2.1 criterion each one is evidence for is mapped in
   console's) measures every rendered text element against the WCAG AA floor,
   and the resting border or fill of every field, checkbox, radio, and switch
   against 3:1, in both color schemes. It runs on the same route states as the
-  rule scan (`routeStates.ts`), and the test fails when a declared route has
-  none. A light-scheme failure not yet fixed is listed in `contrastSweep.ts`,
-  and the test fails when a listed one stops failing. A sweep sees each state
-  as it mounts, so the verify screen's states after a file loads are swept by
-  `verifyReceiptContrast.test.ts`, which loads them.
+  rule scan (`routeStates.ts`, and on the console `consoleStates.ts`), and the
+  test fails when a declared route has none. A light-scheme failure not yet
+  fixed is listed in `contrastSweep.ts`, and the test fails when a listed one
+  stops failing. A sweep sees each state as it mounts, so the verify screen's
+  states after a file loads are swept by `verifyReceiptContrast.test.ts`,
+  which loads them.
 - The rule scan (`accessibilityRules.ts`, run by
   `accessibilityRuleScan.test.ts`) checks a fixed set of DOM-decidable rules --
   unique ids, resolving label and description references, named controls and
@@ -485,6 +486,16 @@ others cannot. Which WCAG 2.1 criterion each one is evidence for is mapped in
   (`textSpacing.test.ts`), and fail on content past the viewport's edge or
   text an element clips. The keyboard journeys run the same checks on each
   step they reach, putting the viewport and spacing back after.
+- The console's own cards render only on the console profile, so they have
+  their own states and journeys. `consoleStates.ts` holds a state of each route
+  the console renders and its cards' empty, error, and running states, with the
+  console's job API stubbed at the fetch boundary.
+  `consoleAccessibility.test.ts` runs the step checks on each of them, and fails
+  when a declared route has none. The console journeys
+  (`keyboardConsoleInviteJourney.test.ts`,
+  `keyboardConsoleDirectJourney.test.ts`,
+  `keyboardConsoleAcceptJourney.test.ts`) drive the console's invite, quick
+  exchange, and accept over SFTP from the keyboard as the hosted journeys do.
 
 ## Cross-runtime interop suite
 

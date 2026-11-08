@@ -33,7 +33,7 @@ const STATUS_BADGES: Record<
 > = {
   refused: { color: "red", label: "Needs a change" },
   "retain-problem": { color: "orange", label: "Needs retain mode" },
-  ready: { color: "teal", label: "Ready to try" },
+  ready: { color: "green", label: "Ready to try" },
 };
 
 /**
@@ -180,6 +180,7 @@ export function SftpConnectionCard({
         <Button
           size="xs"
           variant="subtle"
+          className={styles.wrapLabel}
           style={{ alignSelf: "flex-start" }}
           onClick={() => {
             onRunHere?.();
@@ -200,7 +201,12 @@ export function SftpConnectionCard({
             Add connection
           </Button>
           {offerSaveFile && (
-            <Button size="xs" variant="subtle" onClick={onUseCli}>
+            <Button
+              size="xs"
+              variant="subtle"
+              className={styles.wrapLabel}
+              onClick={onUseCli}
+            >
               Run it in my own command-line tool instead
             </Button>
           )}

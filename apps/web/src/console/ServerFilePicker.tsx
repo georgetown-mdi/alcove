@@ -382,54 +382,58 @@ function ListingView({
         <h2 style={{ margin: 0 }}>Choose a file from your folder</h2>
         {refreshButton}
       </Group>
-      <Table
-        highlightOnHover
-        withRowBorders={false}
-        aria-label="Files in your folder"
-      >
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th scope="col">Name</Table.Th>
-            <Table.Th scope="col">Size</Table.Th>
-            <Table.Th scope="col">Modified</Table.Th>
-            <Table.Th scope="col" />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {files.map((file) => {
-            const isCommitted = committed?.name === file.name;
-            const displayName = sanitizeForDisplay(file.name);
-            const action = isCommitted ? "Re-profile" : "Select";
-            return (
-              <Table.Tr key={file.name}>
-                <Table.Td className={styles.mono}>
-                  {displayName}{" "}
-                  {isCommitted && (
-                    <Badge size="xs" color="green" variant="light">
-                      Selected
-                    </Badge>
-                  )}
-                </Table.Td>
-                <Table.Td className={styles.mono}>
-                  {byteSizeLabel(file.sizeBytes)}
-                </Table.Td>
-                <Table.Td>{dateTimeLabel(new Date(file.modifiedAt))}</Table.Td>
-                <Table.Td>
-                  <Button
-                    size="xs"
-                    variant="light"
-                    disabled={selectionClosed}
-                    aria-label={`${action} ${displayName}`}
-                    onClick={() => onSelect(file.name)}
-                  >
-                    {action}
-                  </Button>
-                </Table.Td>
-              </Table.Tr>
-            );
-          })}
-        </Table.Tbody>
-      </Table>
+      <div className={styles.tableScroll}>
+        <Table
+          highlightOnHover
+          withRowBorders={false}
+          aria-label="Files in your folder"
+        >
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th scope="col">Name</Table.Th>
+              <Table.Th scope="col">Size</Table.Th>
+              <Table.Th scope="col">Modified</Table.Th>
+              <Table.Th scope="col" />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {files.map((file) => {
+              const isCommitted = committed?.name === file.name;
+              const displayName = sanitizeForDisplay(file.name);
+              const action = isCommitted ? "Re-profile" : "Select";
+              return (
+                <Table.Tr key={file.name}>
+                  <Table.Td className={styles.mono}>
+                    {displayName}{" "}
+                    {isCommitted && (
+                      <Badge size="xs" color="green" variant="light">
+                        Selected
+                      </Badge>
+                    )}
+                  </Table.Td>
+                  <Table.Td className={styles.mono}>
+                    {byteSizeLabel(file.sizeBytes)}
+                  </Table.Td>
+                  <Table.Td>
+                    {dateTimeLabel(new Date(file.modifiedAt))}
+                  </Table.Td>
+                  <Table.Td>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      disabled={selectionClosed}
+                      aria-label={`${action} ${displayName}`}
+                      onClick={() => onSelect(file.name)}
+                    >
+                      {action}
+                    </Button>
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
+          </Table.Tbody>
+        </Table>
+      </div>
     </Stack>
   );
 }
@@ -554,7 +558,7 @@ function ConfirmPanel({
         <Alert
           role="alert"
           color="red"
-          icon={<IconAlertCircle />}
+          icon={<IconAlertCircle aria-hidden />}
           title={copy.title}
         >
           {copy.body}

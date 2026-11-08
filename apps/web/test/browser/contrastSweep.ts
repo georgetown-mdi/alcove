@@ -388,20 +388,27 @@ export function expectAaClean(
   expect(boundaries).toEqual([]);
 }
 
-/** Mount `state` in `scheme`, wait for its page heading and pending updates, un-hover
- * any filled-primary control, then sweep the mount. The browser project shares one
+/** Mount `state` in `scheme`, wait for its page heading, the text it shows once
+ * settled (`settled`, when given) and pending updates, un-hover any
+ * filled-primary control, then sweep the mount. The browser project shares one
  * pointer across the suite, so a stale hover can paint a lighter fill that reads
  * under the AA floor the resting colour clears; a surface with no such control
  * just no-ops. */
 export async function mountAndSweep(
   app: AppMount,
   scheme: "light" | "dark",
-  { heading, node }: Pick<RouteState, "heading" | "node">,
+  {
+    heading,
+    node,
+    settled,
+  }: Pick<RouteState, "heading" | "node"> & { settled?: string },
 ): Promise<SweepResult> {
   app.render(await node(), { forceColorScheme: scheme });
   await expect
     .element(page.getByRole("heading", { level: 1, name: heading }))
     .toBeInTheDocument();
+  if (settled !== undefined)
+    await expect.element(page.getByText(settled).first()).toBeInTheDocument();
   await flushPendingUpdates();
   for (const control of app.container.querySelectorAll<HTMLElement>(
     ".mantine-Button-root, .mantine-ActionIcon-root",

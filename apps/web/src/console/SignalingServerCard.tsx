@@ -361,7 +361,7 @@ export function SignalingServerCard({
     const reachProblem = signalingServerReachProblem(server);
     const enrollment = ownRelayEnrollmentNotice(server.ownRelay);
     return (
-      <Stack gap="xs" mt="xs">
+      <Stack gap="xs" mt="xs" className={styles.wrapLongText}>
         <Text size="sm">
           Connects through{" "}
           <span className={styles.mono}>
@@ -472,6 +472,7 @@ export function SignalingServerCard({
         <Button
           size="xs"
           variant="subtle"
+          className={styles.wrapLabel}
           onClick={() => setAddress(HOSTED_WEB_APP_ADDRESS)}
         >
           Use the Alcove web app's server

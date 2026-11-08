@@ -336,10 +336,11 @@ function PartnerLocatorReview({ locator }: { locator: SftpEndpointLocator }) {
   return (
     <Alert
       color="blue"
+      classNames={{ body: styles.wrapLongText }}
       icon={<IconAlertCircle aria-hidden />}
       title="Your partner's SFTP server"
     >
-      <Text size="sm" c="dimmed">
+      <Text size="sm">
         Your partner named this server in the invitation. Confirm it is where
         you expect to connect; sign in with your own account below.
       </Text>
@@ -383,6 +384,7 @@ function SplitDirectoryField({
       <Button
         variant="subtle"
         size="compact-sm"
+        className={styles.wrapLabel}
         aria-expanded={open}
         onClick={() => {
           setOpen((current) => !current);
@@ -566,6 +568,7 @@ function CredentialField({
           <Button
             variant="subtle"
             size="compact-sm"
+            className={styles.wrapLabel}
             onClick={togglePaste}
             aria-expanded={pasteOpen}
           >
@@ -899,6 +902,7 @@ function HostKeyProbe({
               ref={triggerRef}
               variant="subtle"
               size="compact-sm"
+              className={styles.wrapLabel}
               loading={state.phase === "probing"}
               disabled={host === undefined || state.phase === "probing"}
               onClick={() => void runProbe()}
