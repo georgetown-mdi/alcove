@@ -584,14 +584,11 @@ start: to turn it off, set it to `off` and
   Each request is counted before its id or body is read, so a malformed one,
   or one probing whether an id is held, counts too. These are arbitrary
   working values, raised on request; the reasoning behind them: one exchange
-  costs at most two enrollments, the inviter's and its partner's, and a
-  client retrying as core's registrar client does
-  ([PROTOCOL.md, Registering the rotated relay key](../../docs/spec/PROTOCOL.md#registering-the-rotated-relay-key),
-  Retries) sends a request that gets no answer, or a 429, three times in
-  all, so 20 in 10 minutes -- the length of the inviter's wait -- admits
-  about ten exchanges set up at once behind one address, such as a facility's
-  shared network address, or three whose every request was retried. The cap
-  on each client, below, bounds the rows an address holds.
+  costs at most two enrollments, the inviter's and its partner's, each sent
+  once with no retry, so 20 in 10 minutes -- the length of the inviter's
+  wait -- admits about ten exchanges set up at once behind one address, such
+  as a facility's shared network address. The cap on each client, below,
+  bounds the rows an address holds.
 - **The client's address.** On the registrar's own port, the connection's
   address. Through the front, the address in its PROXY header, since every
   connection the front passes comes from `127.0.0.1` (Where it listens,
