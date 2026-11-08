@@ -7,6 +7,10 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { getDefaultLinkageTerms, snakeizeKeys } from "@alcove/core";
 
 import {
+  CONFIGURATION_TERMS_APPLY_MESSAGE,
+  ConfigurationHandBackRefusedError,
+} from "@jobs/configHandBack";
+import {
   JOB_FILE_NAMES,
   SIGNING_IDENTITY_FILE_NAME,
 } from "@jobContract/intentSchemas";
@@ -17,7 +21,6 @@ import {
   SignalingServerChangedError,
   SignalingServerUnavailableError,
 } from "@jobs/jobManager";
-import { ConfigurationHandBackRefusedError } from "@jobs/configHandBack";
 import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
 import { WorkingFolderFilesRefusedError } from "@jobs/workingFolderExchangeFiles";
 import { partnerCertificatePinnedNotice } from "@jobs/partnerPinNotice";
@@ -893,6 +896,51 @@ describe("a run of the webrtc configuration the operator opened", () => {
     const before = fs.readFileSync(configPathIn(dataRoot), "utf8");
     expect(await manager.applyTermsProposal(id)).toEqual({ kind: "applied" });
     expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).not.toBe(before);
+  });
+
+  test("a save sent while a terms change is being applied is refused, and the apply's write is kept", async () => {
+    const { manager, dataRoot } = await opened({
+      STUB_EXIT_CODE: "64",
+      STUB_TERMS_PROPOSAL: "proposal",
+      STUB_APPLY_DELAY_MS: "300",
+      STUB_FD3_EVENTS: JSON.stringify([
+        {
+          v: 1,
+          type: "error",
+          category: "config",
+          message: "this run is not attended.",
+          termsChange: { proposalWritten: true, otherTerms: [] },
+        },
+      ]),
+    });
+    const id = await manager.createJob(openedRun);
+    await exited(manager, id);
+    const applying = manager.applyTermsProposal(id);
+    const save = {
+      linkageTerms: getDefaultLinkageTerms("County Health"),
+      csvDelimiter: ";",
+      signing: { mode: "none" as const },
+    };
+    let refusal: unknown;
+    try {
+      manager.handBackOpenedConfiguration(save);
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(ConfigurationHandBackRefusedError);
+    expect((refusal as ConfigurationHandBackRefusedError).message).toBe(
+      CONFIGURATION_TERMS_APPLY_MESSAGE,
+    );
+    expect((refusal as ConfigurationHandBackRefusedError).reason).toBe(
+      undefined,
+    );
+    expect(await applying).toEqual({ kind: "applied" });
+    const applied = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    expect(applied).toContain("# applied by the stub");
+    expect(applied).not.toContain("csv_delimiter");
+    expect(fs.existsSync(path.join(dataRoot, "alcove.yaml.previous"))).toBe(
+      false,
+    );
   });
 
   test("a save is refused while the run uses the file, and after it recorded a pin there", async () => {

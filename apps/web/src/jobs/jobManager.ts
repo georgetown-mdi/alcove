@@ -80,6 +80,7 @@ import {
 import {
   CONFIGURATION_CHANGED_SINCE_OPENED_MESSAGE,
   CONFIGURATION_IN_USE_MESSAGE,
+  CONFIGURATION_TERMS_APPLY_MESSAGE,
   ConfigurationHandBackRefusedError,
   handBackMountedConfiguration,
 } from "./configHandBack";
@@ -807,7 +808,8 @@ export class JobManager {
   /**
    * Whether an apply child is running ({@link applyTermsProposal}). Claimed
    * and cleared as {@link probeInFlight} is; independent of the exchange slot,
-   * whose failed run holds it until deleted.
+   * whose failed run holds it until deleted. A save is refused while it is set
+   * ({@link handBackOpenedConfiguration}).
    */
   private termsApplyInFlight = false;
   /**
@@ -1960,13 +1962,14 @@ export class JobManager {
    * ({@link handBackMountedConfiguration}), only while that file holds the
    * bytes this console opened or last wrote, so a save never replaces what a
    * run or another editor wrote since, such as a partner's recorded
-   * fingerprint; and never while a run is using the file. Returns whether the
+   * fingerprint; and never while a run or a terms apply
+   * ({@link applyTermsProposal}) is using the file. Returns whether the
    * file was written: a hand-back of the configuration the file already
    * states writes nothing. A signed save of a file run in place that names no
    * identity file writes the path `signing.identityLocation` resolves to.
    *
    * @throws {ConfigurationHandBackRefusedError} when the file changed since,
-   *   or a run is using it, or the write is refused.
+   *   or a run or a terms apply is using it, or the write is refused.
    * @throws {ConfigurationLoadRefusedError} when the mount no longer holds a
    *   configuration this hand-back applies to.
    * @throws {SigningIdentityLocationError} when that location does not resolve
@@ -1983,6 +1986,12 @@ export class JobManager {
         running.terminal === null)
     )
       throw new ConfigurationHandBackRefusedError(CONFIGURATION_IN_USE_MESSAGE);
+    // The apply's CLI child reads the whole file and writes it back, so a
+    // save landing between the two would be replaced.
+    if (this.termsApplyInFlight)
+      throw new ConfigurationHandBackRefusedError(
+        CONFIGURATION_TERMS_APPLY_MESSAGE,
+      );
     const opened = this.openedConfiguration;
     if (
       opened === undefined ||
