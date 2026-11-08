@@ -11,6 +11,7 @@ import {
   largestPairingSize,
   type Pair,
 } from "../utils/largestPairingOracle";
+import { mulberry32 } from "../utils/mulberry32";
 
 // The record-level resolution both strategies call, exercised on the exact
 // input it governs: a round's candidate pairs as each party's own record
@@ -92,16 +93,6 @@ function everyPairSet(senders: number, receivers: number): Array<Array<Pair>> {
   for (let mask = 0; mask < 1 << grid.length; ++mask)
     sets.push(grid.filter((_, i) => (mask & (1 << i)) !== 0));
   return sets;
-}
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 // Random pair sets on up to five records a side, the pairs drawn in an

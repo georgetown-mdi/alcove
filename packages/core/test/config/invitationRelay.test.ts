@@ -20,7 +20,7 @@ import type {
   ConnectionConfig,
   WebRTCConnectionConfig,
 } from "../../src/config/connection";
-import { encodeRawInvitation } from "../utils/support";
+import { encodeRawInvitation, minimalSsnTerms } from "../utils/support";
 
 const VALID_SECRET = "A".repeat(43);
 
@@ -32,15 +32,8 @@ function parsedConnectionConfig(raw: unknown): ConnectionConfig {
 }
 
 const baseTerms = {
-  version: "1.0.0",
-  identity: "Test Party",
-  date: "2025-01-01",
-  algorithm: "psi" as const,
+  ...minimalSsnTerms,
   linkageStrategy: "cascade" as const,
-  output: { expectsOutput: true, shareWithPartner: false },
-  deduplicate: false,
-  linkageFields: [{ name: "ssn", type: "ssn" as const }],
-  linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
 };
 
 const REGISTRAR = "https://registrar.example.org:8443";

@@ -29,6 +29,7 @@ import {
   abortNameFor,
   responsibleFilesOf,
   makeRendezvousPair,
+  stubListing,
 } from "../utils/fileSyncConnectionFixture";
 import { makeMockClient } from "../utils/support";
 import {
@@ -81,15 +82,10 @@ test("synchronize() cleans up hello and lock files when createExclusive() throws
 
   // Provide a consistent modifyTime: same for both so the name tiebreak decides.
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return []; // initial check: directory is clean
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+  ]);
 
   // Plant the peer hello body so the two-hellos branch's HelloEnvelope read
   // gate passes before reaching createExclusive.
@@ -325,15 +321,10 @@ test("synchronize() reports an over-cap peer hello as a terminal UsageError", as
   const peerHelloPath = `${conn.path}/${peerHelloName}`;
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return []; // initial check: directory is clean
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+  ]);
 
   // The peer hello is present in the listing, but the adapter refuses to read it
   // because it exceeds the cap (a server under-reporting its size in the listing
@@ -383,15 +374,10 @@ test("synchronize() reports a stalled peer-hello read as a terminal TransportOpe
   const peerHelloPath = `${conn.path}/${peerHelloName}`;
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return []; // initial check: directory is clean
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+  ]);
 
   // The peer hello is present in the listing, but the server withholds the
   // transfer so the adapter's liveness bound rejects the read. Count reads to
@@ -439,15 +425,10 @@ test("synchronize() propagates a base UsageError from a transport read as the te
   const peerHelloPath = `${conn.path}/${peerHelloName}`;
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return []; // initial check: directory is clean
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+  ]);
 
   // The peer-hello read rejects with a bare UsageError (the base class, not one of
   // the typed transport bounds). Count reads to prove the gate propagates it on
@@ -515,15 +496,10 @@ test("synchronize() throws when createExclusive throws EEXIST but lock file is a
   files.set(`${basePath}/${peerHelloName}`, LOCK_HELLO_BODY);
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return []; // initial check: directory is clean
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+  ]);
 
   // createExclusive() throws EEXIST but does NOT plant the lock file,
   // simulating the peer having already cleaned it up before exists() runs.
@@ -563,15 +539,10 @@ test("synchronize() rejects and cleans up hello and lock files when createExclus
   const lockPath = `${conn.path}/${lockName}`;
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+  ]);
 
   // Plant the peer's hello in the mock filesystem so the assertion below is
   // not vacuously true (and so the two-hellos read gate passes). The outer catch
@@ -613,15 +584,10 @@ test("synchronize() outer catch clears responsibleFiles so cleanup() makes no re
   const lockPath = `${conn.path}/${lockName}`;
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+  ]);
 
   // Plant the peer's hello so the safeDelete count is not skewed by a missing
   // file: if peerHelloName were absent, a safeDelete call for it would still
@@ -683,18 +649,13 @@ test("synchronize() resolves cleanly when it observes a lock file already create
   files.set(lockPath, Buffer.alloc(0));
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    // Initial check (sees only our own newly-written hello mid-flow).
-    // Subsequent listings expose the peer hello and the peer-created lock.
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-      { name: lockName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  // Initial check (sees only our own newly-written hello mid-flow).
+  // Subsequent listings expose the peer hello and the peer-created lock.
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+    { name: lockName, modifyTime: mtime, size: 0 },
+  ]);
 
   await conn.synchronize();
 
@@ -737,16 +698,11 @@ test("synchronize() lock-detection branch completes rendezvous with arbitrary st
   files.set(lockPath, Buffer.alloc(0));
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-      { name: lockName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+    { name: lockName, modifyTime: mtime, size: 0 },
+  ]);
 
   await conn.synchronize();
 
@@ -786,16 +742,11 @@ test("synchronize() lock-detection branch uses filename order (I7), not id order
   files.set(lockPath, Buffer.alloc(0));
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-      { name: lockName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+    { name: lockName, modifyTime: mtime, size: 0 },
+  ]);
 
   // Must not throw "lock does not reference this connection".
   await conn.synchronize();
@@ -830,16 +781,11 @@ test("synchronize() lock-detection branch rejects a stale lock from a different 
   files.set(staleLockPath, Buffer.alloc(0));
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-      { name: staleLockName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+    { name: staleLockName, modifyTime: mtime, size: 0 },
+  ]);
 
   await expect(conn.synchronize()).rejects.toThrow(
     "lock file does not reference this connection",
@@ -861,15 +807,10 @@ test("synchronize() createExclusive winner: leaves own hello and lock name in re
   const lockName = `${peerId}-${myId}-lock.json`;
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+  ]);
   // Peer hello body so the two-hellos read gate passes before createExclusive.
   files.set(`${conn.path}/${peerHelloName}`, LOCK_HELLO_BODY);
   // Default mock createExclusive succeeds (no EEXIST) -- this conn is the
@@ -917,17 +858,12 @@ test("synchronize() two-hellos branch: tiebreaker uses UUID order only, ignoring
     const myHelloName = helloName(myId);
     const peerHelloName = helloName(peerId);
 
-    let listCallCount = 0;
-    client.list = async () => {
-      listCallCount++;
-      if (listCallCount === 1) return []; // initial check: directory is clean
-      // This side's own hello has the EARLIER timestamp; under a
-      // modifyTime tiebreaker that would mark this side as "arrived first".
-      return [
-        { name: myHelloName, modifyTime: 1000, size: 0 },
-        { name: peerHelloName, modifyTime: 5000, size: 0 },
-      ];
-    };
+    // This side's own hello has the EARLIER timestamp; under a
+    // modifyTime tiebreaker that would mark this side as "arrived first".
+    stubListing(client, [
+      { name: myHelloName, modifyTime: 1000, size: 0 },
+      { name: peerHelloName, modifyTime: 5000, size: 0 },
+    ]);
     // Peer hello body so the two-hellos read gate passes before createExclusive.
     files.set(`${base}/${peerHelloName}`, LOCK_HELLO_BODY);
 
@@ -1721,15 +1657,10 @@ test("synchronize() lock path writes hello as <id>-hello-<n>.json and self-hello
   const peerHelloName = helloName(peerId);
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+  ]);
   // Peer hello body so the two-hellos read gate passes before createExclusive.
   files.set(`${conn.path}/${peerHelloName}`, LOCK_HELLO_BODY);
 
@@ -1943,29 +1874,24 @@ test("synchronize() lockless mode throws when more than one peer hello is detect
 
   const peerId1 = "00000000-0000-4000-8000-000000000001";
   const peerId2 = "00000000-0000-4000-8000-000000000002";
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return []; // initial synchronize() guard: clean
-    // Second call (inside waitForPeer): two peer hellos are present.
-    return [
-      {
-        name: helloName(conn.id, LOCKLESS_HELLO_BODY),
-        modifyTime: 0,
-        size: 0,
-      },
-      {
-        name: helloName(peerId1, LOCKLESS_HELLO_BODY),
-        modifyTime: 0,
-        size: 0,
-      },
-      {
-        name: helloName(peerId2, LOCKLESS_HELLO_BODY),
-        modifyTime: 0,
-        size: 0,
-      },
-    ];
-  };
+  // Second call (inside waitForPeer): two peer hellos are present.
+  stubListing(client, [
+    {
+      name: helloName(conn.id, LOCKLESS_HELLO_BODY),
+      modifyTime: 0,
+      size: 0,
+    },
+    {
+      name: helloName(peerId1, LOCKLESS_HELLO_BODY),
+      modifyTime: 0,
+      size: 0,
+    },
+    {
+      name: helloName(peerId2, LOCKLESS_HELLO_BODY),
+      modifyTime: 0,
+      size: 0,
+    },
+  ]);
 
   await expect(conn.synchronize()).rejects.toThrow(/more than one peer hello/);
 });
@@ -2016,16 +1942,11 @@ test("synchronize() lock-detection branch rejects a prefix-at-dash id pair", asy
   files.set(lockPath, Buffer.alloc(0));
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-      { name: lockName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+    { name: lockName, modifyTime: mtime, size: 0 },
+  ]);
 
   await expect(conn.synchronize()).rejects.toThrow("are too alike");
   // peerId must be reset so a retry is not blocked by "already synchronized".
@@ -2076,16 +1997,11 @@ test("synchronize() throws UsageError for multiple concurrent sessions detected 
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
   const myHello = helloName(conn.id);
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return []; // preexisting check: empty
-    return [
-      { name: myHello, modifyTime: 0, size: 0 },
-      { name: helloName("peer-aaa"), modifyTime: 0, size: 0 },
-      { name: helloName("peer-bbb"), modifyTime: 0, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHello, modifyTime: 0, size: 0 },
+    { name: helloName("peer-aaa"), modifyTime: 0, size: 0 },
+    { name: helloName("peer-bbb"), modifyTime: 0, size: 0 },
+  ]);
   // The hello write must succeed (put then rename, neither reflected into the
   // store the stubbed list() above bypasses); delete/safeDelete are no-ops.
   client.put = async () => {};
@@ -2106,16 +2022,11 @@ test("synchronize() throws UsageError for more than one joining sentinel in the 
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
   const myHello = helloName(conn.id);
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return []; // preexisting check: empty
-    return [
-      { name: myHello, modifyTime: 0, size: 0 },
-      { name: joiningSentinelName("peer-aaa"), modifyTime: 0, size: 0 },
-      { name: joiningSentinelName("peer-bbb"), modifyTime: 0, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHello, modifyTime: 0, size: 0 },
+    { name: joiningSentinelName("peer-aaa"), modifyTime: 0, size: 0 },
+    { name: joiningSentinelName("peer-bbb"), modifyTime: 0, size: 0 },
+  ]);
   // The hello write must succeed (put then rename, neither reflected into the
   // store the stubbed list() above bypasses).
   client.put = async () => {};
@@ -2308,16 +2219,11 @@ test("synchronize() lock-detection: mid-sync peer hello body retried, not malfor
   };
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-      { name: lockName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+    { name: lockName, modifyTime: mtime, size: 0 },
+  ]);
 
   await conn.synchronize();
 
@@ -2344,16 +2250,11 @@ test("synchronize() lock-detection: malformed peer hello body is a UsageError", 
   files.set(lockPath, Buffer.alloc(0));
 
   const mtime = Date.now();
-  let listCallCount = 0;
-  client.list = async () => {
-    listCallCount++;
-    if (listCallCount === 1) return [];
-    return [
-      { name: myHelloName, modifyTime: mtime, size: 0 },
-      { name: peerHelloName, modifyTime: mtime, size: 0 },
-      { name: lockName, modifyTime: mtime, size: 0 },
-    ];
-  };
+  stubListing(client, [
+    { name: myHelloName, modifyTime: mtime, size: 0 },
+    { name: peerHelloName, modifyTime: mtime, size: 0 },
+    { name: lockName, modifyTime: mtime, size: 0 },
+  ]);
 
   await expect(conn.synchronize()).rejects.toBeInstanceOf(UsageError);
 });

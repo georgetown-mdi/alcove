@@ -54,6 +54,7 @@ import {
 import {
   encodeRawInvitation,
   encodeRawInvitationPayload,
+  minimalSsnTerms,
 } from "../utils/support";
 
 // A SHARED_SECRET_REGEX-valid placeholder (43 base64url chars = 32 zero bytes).
@@ -62,15 +63,8 @@ import {
 const VALID_SECRET = "A".repeat(43);
 
 const baseTerms = {
-  version: "1.0.0",
-  identity: "Test Party",
-  date: "2025-01-01",
-  algorithm: "psi" as const,
+  ...minimalSsnTerms,
   linkageStrategy: "cascade" as const,
-  output: { expectsOutput: true, shareWithPartner: false },
-  deduplicate: false,
-  linkageFields: [{ name: "ssn", type: "ssn" as const }],
-  linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
 };
 
 const baseToken: InvitationToken = {

@@ -1,7 +1,7 @@
 // The helpers the core suites share: PSI participants and a two-party cascade
-// run over an in-memory pipe, a prepared exchange over first-name terms, the
-// in-memory file transport, and the invitation token encoding below its schema
-// check.
+// or single-pass run over an in-memory pipe, minimal terms fixtures, a
+// prepared exchange over first-name terms, the in-memory file transport, and
+// the invitation token encoding below its schema check.
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
@@ -25,7 +25,11 @@ import { prepareForExchange, type PreparedExchange } from "../../src/exchange";
 import type { CSVRow } from "../../src/file";
 import { PSIParticipant } from "../../src/psi/participant";
 import type { EntityClusterSummary } from "../../src/psi/entityClosure";
-import { linkViaPSI, type LinkageCardinality } from "../../src/psi/link";
+import {
+  linkViaPSI,
+  linkViaSinglePassPSI,
+  type LinkageCardinality,
+} from "../../src/psi/link";
 import type { AssociationTable } from "../../src/types";
 import {
   candidateSetBounds,
@@ -206,6 +210,52 @@ export function tablesOf(run: CascadeRun): {
   return { starter: run.starter, joiner: run.joiner };
 }
 
+/**
+ * Runs single-pass PSI between a starter and a joiner over an in-memory pipe,
+ * each bounded by the partner's row count and a fan-out factor of 1, and
+ * returns both tables; either party's failure rejects.
+ */
+export async function runSinglePass(
+  options: Pick<
+    CascadeRunOptions,
+    "library" | "starterKeys" | "joinerKeys" | "cardinality"
+  >,
+): Promise<{ starter: AssociationTable; joiner: AssociationTable }> {
+  const { library } = options;
+  const starterKeys = [...options.starterKeys];
+  const joinerKeys = [...options.joinerKeys];
+  const cardinality = options.cardinality ?? "one-to-one";
+  const [starterConn, joinerConn] = createMessagePipe();
+  const keyWidths = declaredKeyWidths(starterKeys, joinerKeys);
+  const [starter, joiner] = await Promise.all([
+    linkViaSinglePassPSI(
+      { cardinality },
+      makeParticipant(library, "starter"),
+      starterConn,
+      starterKeys,
+      {
+        ...candidateSetBounds(joinerKeys[0].length, keyWidths),
+        localFanOutFactor: 1,
+      },
+      false,
+      -1,
+    ),
+    linkViaSinglePassPSI(
+      { cardinality: mirrorCardinality(cardinality) },
+      makeParticipant(library, "joiner"),
+      joinerConn,
+      joinerKeys,
+      {
+        ...candidateSetBounds(starterKeys[0].length, keyWidths),
+        localFanOutFactor: 1,
+      },
+      false,
+      -1,
+    ),
+  ]);
+  return { starter, joiner };
+}
+
 // --- Prepared exchanges -------------------------------------------------------
 
 /** Both parties expect the output and share it. */
@@ -223,6 +273,21 @@ export const firstNameTerms = {
   deduplicate: false,
   linkageFields: [{ name: "firstName", type: "first_name" as const }],
   linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
+};
+
+/**
+ * PSI terms linking on one SSN key, stating no linkage strategy; a test that
+ * needs one spreads it in.
+ */
+export const minimalSsnTerms = {
+  version: "1.0.0",
+  identity: "Test Party",
+  date: "2025-01-01",
+  algorithm: "psi" as const,
+  output: { expectsOutput: true, shareWithPartner: false },
+  deduplicate: false,
+  linkageFields: [{ name: "ssn", type: "ssn" as const }],
+  linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
 };
 
 /** A first-name linkage column and a `note` column sent as payload. */
