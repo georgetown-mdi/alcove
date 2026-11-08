@@ -85,9 +85,10 @@ Return ONLY this, as raw text (it is data for the caller, not a message):
    step>", one waiting on the owner's call "action: decision -- <the
    question>". Before emitting a decision tag, run
    node .claude/scripts/find-rulings.mjs <the question's 2-3 subject words>
-   and when a ruling the owner gave in his own words, quoted verbatim, answers
-   the question, emit "ruled -- <board>/<itemId>" instead; documented
-   behavior and a ruling with no owner quote never replace the decision tag. An item whose body already cites its brief or Decision
+   and when a ruling answers the question by the ruling test in
+   .claude/orchestration/ruleset.md, Decisions, briefs and reporting, emit
+   "ruled -- <board>/<itemId>" instead; nothing else that test names
+   replaces the decision tag. An item whose body already cites its brief or Decision
    item is listed with that citation and no action tag. One whose body has a
    "Brief owed since <date>: ..." or "Decision item owed since <date>: ..."
    line is listed with that line in place of a new action tag.
@@ -114,9 +115,9 @@ close blocks no branch, and mid-work the owner is asked only what does
 (`.claude/orchestration/ruleset.md`, Decisions, briefs and reporting). Take every action line in this session: write the handoff brief or file
 the Decision item, as `.claude/orchestration/ruleset.md`, Decisions, briefs
 and reporting, sets out, then record it on the candidate item with
-`.claude/scripts/edit-issue.mjs` -- a dated line, added to the body read in
-full, naming the brief's path or the Decision item's id, from a body file you
-checked is non-empty and holds that whole body; a "ruled --" line is no action, but record its board item id the same way. The next shortlist
+`.claude/scripts/edit-issue.mjs` -- a dated line naming the brief's path or
+the Decision item's id, written under the whole-body rule in
+`.claude/pm/ruleset.md`, Filing and updating items; a "ruled --" line is no action, but record its board item id the same way. The next shortlist
 keys off a body citing it, so it does not emit the action again. An action
 line the session does not take becomes a docket entry in the follow-ups pass
 (step 5 of `.claude/commands/follow-ups.md`), as a listed "owed since" line

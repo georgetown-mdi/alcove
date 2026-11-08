@@ -287,10 +287,10 @@ and a decision becomes an item in Decision status. None is held only in a PR
 follow-on line, a report tail, or a chat aside.
 Before drafting a Decision item, run
 `node .claude/scripts/find-rulings.mjs <the question's 2-3 subject words>`:
-a question a ruling the owner gave in his own words, quoted verbatim, already
-answers is DECLINED, citing that ruling; documented behavior and a ruling with
-no owner quote are cited in the item as agent-written context, never a reason
-to decline it.
+a question a ruling already answers, by the ruling test in
+`.claude/orchestration/ruleset.md`, Decisions, briefs and reporting, is
+DECLINED, citing that ruling; what that test calls agent-written context is
+cited in the item, never a reason to decline it.
 
 The repo is `georgetown-mdi/alcove`; the owner for both projects is
 `georgetown-mdi`.
@@ -322,14 +322,16 @@ node .claude/scripts/edit-issue.mjs <PROJECT_NUMBER> <itemId> --title "..." --bo
 When revising an existing item, read it first
 (`node .claude/scripts/fetch-issues.mjs <PROJECT_NUMBER> <itemId>`) and work
 from the stored body, not from memory; preserve sections you were not asked to
-change. `--body-file` replaces the stored body with the file, so before the
-call check that the file is non-empty and holds the whole stored body, read in
-full, with your change made. Setting a field (e.g. `--status "In Progress"`) is done only when
+change. The whole-body rule: `--body-file` replaces the stored body with the
+file, so before every such call -- a revision, a ruling, a dated line -- check
+that the file is non-empty and holds the whole stored body, read in full, with
+your change made. Setting a field (e.g. `--status "In Progress"`) is done only when
 explicitly asked.
 
 The docket (`/docket`) is the only channel for rulings, one decision per
 message; a session that needs a ruling mid-work files the Decision item and
-presents it the same way. The ruling is recorded verbatim in the session's own
+parks it for the next docket, as `.claude/orchestration/ruleset.md`,
+Decisions, briefs and reporting, says. The ruling is recorded verbatim in the session's own
 record in the turn it is given, and reaches its item in the session's
 follow-ups pass (`.claude/commands/follow-ups.md`), which writes every
 ruling's text and its consequences to the board in one pass. On the item it

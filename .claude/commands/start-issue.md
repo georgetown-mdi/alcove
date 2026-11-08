@@ -206,7 +206,9 @@ steps above. When the instruction is to orchestrate:
   CI green on its head, its checklist resolved -- and a final report, or a stated
   blocker. Raise concerns in prose as you go and keep moving; stop early only
   for Step 4's STOP-and-ask cases or a fired step-back trigger (assess-review,
-  Step 2), batched into one message. The ready PR ends the session: the merge
+  Step 2), batched into one message. The ready PR ends a single-issue
+  orchestration (an `/orchestrate` session keeps working:
+  `.claude/orchestration/ruleset.md`, Session lifecycle): the merge
   and board work belong to a fresh session started from the final report,
   which doubles as the continuation note. Beyond the PR body it includes the
   rounds-ledger path and row count, assess-review's left-unaddressed table, and the Security review line's basis

@@ -23,10 +23,10 @@ later message from the caller as new input.
   reliably the branch under review. Widen only if the brief says to.
 - Verify every finding in the code before you report it. Speculation is not a
   finding.
-- Run a long command in the foreground with a raised `timeout` (ceiling
-  600000 ms), per the one-shot wait rule in `CLAUDE.md`, Spawns and reports.
-  You run inside a `Workflow` `agent()` call, so a chain past that ceiling
-  runs in foreground stages, never with `run_in_background`.
+- Run a long command as the one-shot wait rule in `CLAUDE.md`, Spawns and
+  reports, sets out. You run inside a `Workflow` `agent()` call, so a chain
+  past its 600000 ms ceiling runs in foreground stages, never with
+  `run_in_background`.
 - "No findings" is an accurate result; report it plainly when the diff earns it.
 - You are read-only: you inspect, you do not edit. Run a live CLI probe, or
   anything else that writes files, from a `mktemp -d` directory, never a

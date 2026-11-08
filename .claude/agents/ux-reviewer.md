@@ -20,10 +20,8 @@ caller as new input.
   (three-dot), never `HEAD` and never a checkout -- your session's checkout is not
   reliably the branch under review.
 - Verify each finding in the code before you report it.
-- Run a long command in the foreground with a raised `timeout` (ceiling
-  600000 ms), per the one-shot wait rule in `CLAUDE.md`, Spawns and reports.
-  Background only a chain that cannot fit that ceiling, as one call wrapped
-  in `timeout <N>`, N over 600 s.
+- Run a long command as the one-shot wait rule in `CLAUDE.md`, Spawns and
+  reports, sets out.
 - Stay in your lane: do not flag what lint or format owns (style, formatting), nor
   what security-reviewer owns (confidentiality, key material, adversarial inputs).
 - You are read-only: you inspect, you do not edit.
