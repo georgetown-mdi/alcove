@@ -228,9 +228,11 @@ function seededSending(identity: string, file: AcquiredCsv, column: string) {
 
 describe("spine derivation from the read file", () => {
   test("seeding derives default keys, and a marked column joins the send set", () => {
+    // Both parties receive the results by default, so the partner's result
+    // names this party's row numbers for matched records.
     const seeded = editorFromCsv("Dana Okafor", csv);
-    expect(ledgerValue(seeded, "You will send").muted).toBe(
-      "Nothing - matching only",
+    expect(ledgerValue(seeded, "You will send").value).toBe(
+      "Matched row numbers only",
     );
 
     const editor = seededSending("Dana Okafor", csv, "program_code");
@@ -238,7 +240,9 @@ describe("spine derivation from the read file", () => {
     expect(editor.draft.identity).toBe("Dana Okafor");
 
     const send = ledgerValue(editor, "You will send");
-    expect(send.value).toBe(isolatedColumnName("program_code"));
+    expect(send.value).toBe(
+      `Matched row numbers + ${isolatedColumnName("program_code")}`,
+    );
 
     const matchedOn = ledgerValue(editor, "Matched on");
     expect(Array.isArray(matchedOn.value)).toBe(true);
@@ -273,7 +277,9 @@ describe("spine derivation from the read file", () => {
     };
     const editor = seededSending("Dana", bidiCsv, bidiColumn);
     const send = ledgerValue(editor, "You will send");
-    expect(send.value).toBe(isolatedColumnName(bidiColumn));
+    expect(send.value).toBe(
+      `Matched row numbers + ${isolatedColumnName(bidiColumn)}`,
+    );
     expect(send.value).toContain(RLO);
   });
 
@@ -352,8 +358,8 @@ describe("spine derivation from the read file", () => {
 });
 
 describe("ledger tracks step-2 edits", () => {
-  test("undisclosing the sent column empties the send row", () => {
-    const seeded = editorFromCsv("Dana", csv);
+  test("undisclosing the sent column leaves only the matched row numbers", () => {
+    const seeded = seededSending("Dana", csv, "program_code");
     const { editor } = editorWithColumnDisclosure(
       seeded,
       csv,
@@ -361,8 +367,24 @@ describe("ledger tracks step-2 edits", () => {
       "ignored",
     );
     const send = ledgerValue(editor, "You will send");
-    expect(send.value).toBeUndefined();
-    expect(send.muted).toBe("Nothing - matching only");
+    expect(send.value).toBe("Matched row numbers only");
+    expect(send.muted).toBeUndefined();
+  });
+
+  test("the send row names no row numbers where the partner gets no matched results", () => {
+    const seeded = editorFromCsv("Dana", csv);
+    for (const editor of [
+      editorWithOutputDirection(seeded, "inviter"),
+      editorWithAlgorithm(seeded, "psi-c"),
+    ]) {
+      const send = ledgerValue(editor, "You will send");
+      expect(send.value).toBeUndefined();
+      expect(send.muted).toBe("Nothing - matching only");
+    }
+    expect(
+      ledgerValue(editorWithOutputDirection(seeded, "partner"), "You will send")
+        .value,
+    ).toBe("Matched row numbers only");
   });
 
   test("retyping a matched column reconciles the key set", () => {
@@ -402,7 +424,7 @@ describe("ledger tracks step-2 edits", () => {
     // The identifier-revealing draft keeps the promise it can keep.
     expect(
       ledgerValue(editorFromCsv("Dana", csv), "You will receive").value,
-    ).toBe("Matched rows + your partner's shared columns");
+    ).toBe("Matched rows + any columns your partner sends");
   });
 
   test("the receive row follows the result direction", () => {
@@ -426,7 +448,7 @@ describe("ledger tracks step-2 edits", () => {
         editorWithOutputDirection(seeded, "inviter"),
         "You will receive",
       ).value,
-    ).toBe("Matched rows + your partner's shared columns");
+    ).toBe("Matched rows + any columns your partner sends");
     for (const label of ["You will receive", "Results go to"])
       expect(ledgerValue(partnerOnly, label).reference).toBe("Step 2");
   });

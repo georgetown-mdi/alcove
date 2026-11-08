@@ -698,7 +698,7 @@ describe("acceptor screen: review terms", () => {
       .toBeInTheDocument();
     const ledger = document.querySelector('aside[aria-label="This exchange"]');
     expect(ledger?.textContent).toContain(
-      "The fields you match on are encrypted on your machine before they leave it.",
+      "The fields you match on are encrypted before they leave your machine.",
     );
 
     // The top bar walks the acceptor spine with Review the terms current;
@@ -1447,7 +1447,7 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
         "matches, never these settings.",
     );
     expect(ledger?.textContent).not.toContain(
-      "The fields you match on are encrypted on your machine before they leave it.",
+      "The fields you match on are encrypted before they leave your machine.",
     );
   });
 
@@ -2452,9 +2452,10 @@ describe("acceptor screen: run and completion", () => {
         shareBar.querySelectorAll(`.${styles.ledgerRow}`),
       ).find((row) => row.querySelector("dt")?.textContent === "You sent");
       // This run disclosed no extra columns, and the row says so rather than
-      // disappearing.
+      // disappearing: the partner received the matched results, so it got this
+      // party's row numbers for matched records.
       expect(sentRow?.querySelector("dd")?.textContent).toBe(
-        "No additional columns",
+        "Matched row numbers only",
       );
     } finally {
       await page.viewport(1280, 800);
@@ -2465,8 +2466,8 @@ describe("acceptor screen: run and completion", () => {
     // The full flow with an extra unrecognized `comment` column against a run token
     // whose terms request no payload from the acceptor. The operator marks the
     // column to send, so the settled "You sent" row must name it -- the completion
-    // footer attests "the results above are all your partner received about your
-    // data," so a ledger that hid this column would make that attestation false.
+    // footer says the partner's results show the columns this party sent, so a
+    // ledger that hid this column would make that statement false.
     window.location.hash = await encodeRunToken();
     app.render(createElement(AcceptorScreen));
     await expect
@@ -2521,9 +2522,13 @@ describe("acceptor screen: run and completion", () => {
       (row) => row.querySelector("dt")?.textContent === "You sent",
     );
     expect(sentRow).toBeDefined();
+    expect(sentRow?.querySelector("dd")?.textContent).toContain(
+      "Matched row numbers + ",
+    );
     expect(sentRow?.querySelector("dd")?.textContent).toContain("comment");
-    expect(sentRow?.querySelector("dd")?.textContent).not.toContain(
-      "No additional columns",
+    expect(ledger.textContent).toContain(
+      "Your partner's results show only the records you have in common and " +
+        "the columns you sent for them.",
     );
   });
 

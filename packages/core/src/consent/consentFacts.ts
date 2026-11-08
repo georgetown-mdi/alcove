@@ -248,9 +248,6 @@ export const CONSENT_FACTS = {
     reason:
       "Keeping a result from a partner rests on the agreed terms being " +
       "honored; one-sided PSI gives this side nothing to impose it with.",
-    note:
-      "Alcove cannot stop your partner from receiving the result. Keeping it " +
-      "from your partner depends on the agreed terms being honored.",
   },
   partnerLearnsOwnMembership: {
     basis: "enforced",
@@ -272,10 +269,7 @@ export const CONSENT_FACTS = {
       "from a second reading of the strategy and the payload declaration.",
     note:
       "Even when the terms are honored, your partner learns which of its own " +
-      "records are in your data, though not which of your records they are. " +
-      "A match that reveals identifiers discloses this whenever your partner " +
-      "is sent its half of the matched-pair table. That is inherent to the " +
-      "match, not a breach.",
+      "records are in your data, though not which of your records they are.",
   },
   partnerOwnMembershipWithheld: {
     basis: "enforced",
@@ -541,20 +535,7 @@ export const CONSENT_FACTS = {
       "acceptor consents on.",
     note:
       "A match on this key can rest on one part of a value, such as one word " +
-      "of a name, which is weaker evidence than the whole value. A record " +
-      "matched this way is left out of the later, less precise keys, even if " +
-      "that pairing does not stand. With neither party's duplicate matching " +
-      "set, it is paired at most once; with one party's set, a record of " +
-      "that party is paired at most once while a record of the other party " +
-      "may be paired with several; with both set, it is paired with every " +
-      "one of the other party's records any of its parts reached, and the " +
-      "records joined that way are disclosed to both parties as one group. " +
-      "Under single-pass linkage, the party that receives the other's key " +
-      "structure also learns how many parts each of the other's records " +
-      "produced for each key and which of those values came from the same " +
-      "record. Under cascade linkage, each party instead learns how the " +
-      "other's matched values group into records, round by round, for the " +
-      "records still in the running.",
+      "of a name, which is weaker evidence than the whole value.",
   },
   candidateSetChainsGrouping: {
     basis: "enforced",

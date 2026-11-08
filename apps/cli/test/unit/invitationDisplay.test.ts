@@ -767,12 +767,9 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     ).not.toContain("several values per record");
   });
 
-  test("displayInvitation: states what a splitting key pairs where the invitation declares duplicate matching", () => {
-    // A splitting key beside an inviting party's own `deduplicate`: the pair an
-    // accepting party's own value completes runs under either strategy, and a
-    // record matched on a candidate is paired with every partner record its
-    // candidates reached rather than once. The prompt states that before the
-    // acceptor sets its own side in its configuration file.
+  test("displayInvitation: states the splitting-key line where the invitation declares duplicate matching", () => {
+    // A splitting key beside an inviting party's own `deduplicate` takes the
+    // same one-sentence line as without it.
     const log = getLogger("accept-display-fan-out-deduplicate-test");
     log.setLevel("silent");
     const token = splittingKeyToken(FUTURE(), "cascade");
@@ -781,11 +778,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
       linkageTerms: { ...token.linkageTerms, deduplicate: true },
     });
     expect(rendered).toContain("several values per record (enforced):");
-    expect(rendered).toContain(
-      "with both set, it is paired with every one of the other party's " +
-        "records any of its parts reached",
-    );
-    expect(rendered).not.toContain("paired at most once and is then left out");
+    expect(rendered).toContain(CONSENT_FACTS.fanOutCandidates.note);
   });
 
   test("displayInvitation: states the grouping a candidate set makes, whichever declares it", () => {

@@ -112,6 +112,20 @@ function countOnlyLedgerValue(
  */
 export const COUNT_ONLY_RECEIVE_ROW_VALUE = `How many records you have in common - ${COUNT_ONLY_NO_TABLE}`;
 
+/** The send row's value, shared by both seats, when the partner receives no
+ * matched results: only the encrypted match values leave this machine. */
+export const NOTHING_SENT_BUT_MATCHING = "Nothing - matching only";
+
+/** The send row's value, shared by both seats, when the partner receives the
+ * matched results: this party's row numbers for matched records, which the
+ * partner's result names, then the columns it sends, each isolated as its
+ * column-name surfaces show it. */
+export function matchedSendValue(columns: ReadonlyArray<string>): string {
+  return columns.length > 0
+    ? `Matched row numbers + ${columns.map((name) => isolatedColumnName(name)).join(", ")}`
+    : "Matched row numbers only";
+}
+
 /** The receive row's value when the terms send the count to the partner alone. */
 export const ONLY_PARTNER_RECEIVES_COUNT =
   "Nothing - only your partner receives the count";
@@ -203,22 +217,31 @@ export function inviterLedgerRows(
       : {
           value: countOnly
             ? COUNT_ONLY_RECEIVE_ROW_VALUE
-            : "Matched rows + your partner's shared columns",
+            : "Matched rows + any columns your partner sends",
         };
+  const partnerReceivesMatchedResults =
+    editor.draft.outputDirection !== "inviter" && !countOnly;
   return [
-    sent.length > 0
+    partnerReceivesMatchedResults
       ? {
           label: "You will send",
           reference: "Step 2",
-          value: sent.map(isolatedColumnName).join(", "),
+          value: matchedSendValue(sent),
           shareBar: true,
         }
-      : {
-          label: "You will send",
-          reference: "Step 2",
-          muted: "Nothing - matching only",
-          shareBar: true,
-        },
+      : sent.length > 0
+        ? {
+            label: "You will send",
+            reference: "Step 2",
+            value: sent.map(isolatedColumnName).join(", "),
+            shareBar: true,
+          }
+        : {
+            label: "You will send",
+            reference: "Step 2",
+            muted: NOTHING_SENT_BUT_MATCHING,
+            shareBar: true,
+          },
     {
       label: "You will receive",
       reference: "Step 2",

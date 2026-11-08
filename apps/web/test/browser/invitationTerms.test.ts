@@ -1021,20 +1021,21 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     expect(app.container.textContent).toContain(
       "Your partner (the inviter) will receive the result: No",
     );
-    // The PARTNER's non-receipt is cooperative -- it rests on the terms being
-    // honored, not a guarantee this side imposes -- so its "No" is marked distinctly
-    // from an enforced one, and the acceptor's own "Yes" has no enforced caveat.
-    expect(app.container.textContent).toContain(
+    // The partner's "No" takes no caveat of its own -- the agreement covers its
+    // conduct -- and the acceptor's own "Yes" has no enforced caveat.
+    expect(app.container.textContent).not.toContain(
       "Alcove cannot stop your partner from receiving the result",
     );
     expect(app.container.textContent).not.toContain("You are sent no result");
-    // Partner does not receive: the honest-helper membership line appears, DISTINCT
-    // from the cooperative caveat above (it is about what an honest partner learns,
-    // not about a dishonest one keeping the table), and lands in the "What the
-    // exchange produces" tier where result sharing lives -- not merely somewhere in
-    // the panel.
+    // Partner does not receive: the honest-helper membership line appears, its
+    // one sentence, in the "What the exchange produces" tier where result sharing
+    // lives -- not merely somewhere in the panel.
     expect(app.container.textContent).toContain(
-      "learns which of its own records are in your data",
+      "Even when the terms are honored, your partner learns which of its own " +
+        "records are in your data, though not which of your records they are.",
+    );
+    expect(app.container.textContent).not.toContain(
+      "inherent to the match, not a breach",
     );
     await expect
       .element(group("What the exchange produces"))
@@ -1060,10 +1061,9 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     expect(app.container.textContent).not.toContain(
       "learns which of its own records are in your data",
     );
-    // Not the whole branch going missing: the cooperative caveat the membership line
-    // sits beneath is still rendered.
+    // Not the whole branch going missing: the partner's "No" is still rendered.
     expect(app.container.textContent).toContain(
-      "Alcove cannot stop your partner from receiving the result",
+      "Your partner (the inviter) will receive the result: No",
     );
   });
 
@@ -1082,9 +1082,9 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     expect(app.container.textContent).toContain(
       "Your partner will receive the result: No",
     );
-    // The proposer's partner does not receive: a cooperative "No", so it has the
-    // by-agreement caveat and the proposer's own "Yes" has none.
-    expect(app.container.textContent).toContain(
+    // The proposer's partner does not receive, and neither "No" nor the
+    // proposer's own "Yes" takes a caveat.
+    expect(app.container.textContent).not.toContain(
       "Alcove cannot stop your partner from receiving the result",
     );
     expect(app.container.textContent).not.toContain("You are sent no result");
@@ -1442,20 +1442,25 @@ describe("InvitationTerms: a partner-authored allowed-character constraint is on
     });
     const constraints = group(GROUP);
     await expect.element(constraints).toBeInTheDocument();
-    // The raw class stands alone in its own leaf node -- the fixed "unverified"
-    // label is a separate sibling, never joined into the same string.
+    // The raw class stands alone in its own leaf node -- the fixed label is a
+    // separate sibling, never joined into the same string.
     const classNode = Array.from(
       constraints.element().querySelectorAll("*"),
     ).find(
       (el) => el.children.length === 0 && el.textContent.trim() === "^A-Z",
     );
     expect(classNode).toBeTruthy();
-    // The fixed system label marking the class partner-supplied and unverified is
-    // present as its own text, not folded into the class node.
-    expect(constraints.element().textContent).toContain(
+    const labelNode = Array.from(
+      constraints.element().querySelectorAll("*"),
+    ).find(
+      (el) =>
+        el.children.length === 0 &&
+        el.textContent.trim() === "Allowed characters:",
+    );
+    expect(labelNode).toBeTruthy();
+    expect(constraints.element().textContent).not.toContain(
       "partner-supplied, unverified",
     );
-    expect(classNode!.textContent).not.toContain("unverified");
     // The class is not dressed up as a plain-language "limited to" guarantee.
     expect(constraints.element().textContent).not.toContain("limited to");
   });

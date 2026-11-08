@@ -129,7 +129,7 @@ import {
   invitationDecodeRefusal,
 } from "./invitationDecodeRefusal";
 
-import { preRunTrustFooter, settledTrustFooter } from "./trustFooter";
+import { PRE_RUN_TRUST_FOOTER, settledTrustFooter } from "./trustFooter";
 
 import {
   ACCEPTOR_COLUMNS_LEDGER_FOOTER,
@@ -143,6 +143,7 @@ import {
   acceptorLedgerTag,
   acceptorLegalAgreementDisplay,
   acceptorNameProblem,
+  acceptorPartnerResult,
   acceptorRailFacts,
   acceptorRunsAsServerJob,
   acceptorSpine,
@@ -1241,10 +1242,10 @@ function AcceptorInvitationScreen({
         }))}
         footer={
           settled
-            ? settledTrustFooter(acceptServerJob)
+            ? settledTrustFooter(acceptServerJob, acceptorPartnerResult(token))
             : step === "columns"
               ? ACCEPTOR_COLUMNS_LEDGER_FOOTER
-              : preRunTrustFooter(3)
+              : PRE_RUN_TRUST_FOOTER
         }
       />
     );

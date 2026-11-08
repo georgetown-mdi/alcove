@@ -1481,7 +1481,7 @@ describe("summarizeInvitation", () => {
     ).toBe("last name (pattern extraction)");
     expect(
       headerFor([{ function: "filter_regex", params: { pattern: ".*" } }]),
-    ).toBe("last name (pattern filter)");
+    ).toBe("last name (excludes values)");
     expect(
       headerFor([{ function: "null_if", params: { values: ["x"] } }]),
     ).toBe("last name (excludes values)");
@@ -2078,7 +2078,7 @@ describe("summarizeInvitation", () => {
     expect(headerFor([slice, pad, slice])).toBe("last name (partial)");
     // Single-step markers, pinned so compound precedence cannot change them.
     expect(headerFor([nullIf])).toBe("last name (excludes values)");
-    expect(headerFor([filterRegex])).toBe("last name (pattern filter)");
+    expect(headerFor([filterRegex])).toBe("last name (excludes values)");
     expect(headerFor([pad])).toBe("last name");
     expect(headerFor([pad, slice])).toBe("last name (padded slice)");
   });
@@ -2362,7 +2362,7 @@ describe("summarizeInvitation", () => {
       // direction indeterminate.
       replace_regex: "pattern replacement",
       extract_regex: "pattern extraction",
-      filter_regex: "pattern filter",
+      filter_regex: "excludes values",
       null_if: "excludes values",
       // Routine standardization, not flagged (parse_date is routine until its
       // output drops a component).

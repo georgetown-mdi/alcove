@@ -12,7 +12,10 @@ import {
   saveExchangeError,
   saveLeadCopy,
 } from "@exchange/saveExchangeModel";
-import { preRunTrustFooter, settledTrustFooter } from "@exchange/trustFooter";
+import {
+  PRE_RUN_TRUST_FOOTER,
+  settledTrustFooter,
+} from "@exchange/trustFooter";
 
 import type { LinkageTerms, Metadata } from "@alcove/core";
 import type { GeneratedInvitation } from "@psi/invitation";
@@ -131,13 +134,19 @@ describe("copy is transport-specific", () => {
 
 describe("live-run ledger footer by driver", () => {
   test("states the pre-run footer until a result lands, whatever the driver", () => {
-    expect(liveRunLedgerFooter(false, false)).toBe(preRunTrustFooter(2));
-    expect(liveRunLedgerFooter(true, false)).toBe(preRunTrustFooter(2));
+    expect(liveRunLedgerFooter(false, false, "matched")).toBe(
+      PRE_RUN_TRUST_FOOTER,
+    );
+    expect(liveRunLedgerFooter(true, false, "none")).toBe(PRE_RUN_TRUST_FOOTER);
   });
 
-  test("states the settled footer for the driver once a result lands", () => {
-    expect(liveRunLedgerFooter(false, true)).toBe(settledTrustFooter(false));
-    expect(liveRunLedgerFooter(true, true)).toBe(settledTrustFooter(true));
+  test("states the settled footer for the driver and the partner's result once a result lands", () => {
+    expect(liveRunLedgerFooter(false, true, "matched")).toBe(
+      settledTrustFooter(false, "matched"),
+    );
+    expect(liveRunLedgerFooter(true, true, "count-only")).toBe(
+      settledTrustFooter(true, "count-only"),
+    );
   });
 });
 

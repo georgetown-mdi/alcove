@@ -124,6 +124,12 @@ with. Marking the disclosure that certainly happens as merely the partner's word
 would be the same error as presenting the withholding as a guarantee, facing the
 other way.
 
+The `no` takes no caveat sentence: acceptors read a sentence saying Alcove cannot
+stop the partner receiving the result as conflicting with the `no` beside it, and
+the signed agreement covers the partner's conduct. The web states only what the
+partner still learns beneath that `no`; the CLI keeps the basis marker on the
+label.
+
 The caveat sentence is one shared string, not two agreeing ones. The web's copy
 was the material to promote: every line holding this classification there is
 markup-free text in a single element, so nothing about the markup forced a

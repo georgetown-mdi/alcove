@@ -206,7 +206,7 @@ import {
 } from "./saveExchangeModel";
 import { sampleInviterFile } from "./sampleData";
 
-import { preRunTrustFooter } from "./trustFooter";
+import { PRE_RUN_TRUST_FOOTER, partnerResultOf } from "./trustFooter";
 import { recordSampleInvitation } from "./sampleInvitationRecord";
 
 import { useBeforeUnloadPrompt, useUnloadGuard } from "./useUnloadGuard";
@@ -1914,10 +1914,15 @@ export function InviterScreen() {
           }))}
           footer={
             section === "save" && isCliTransport(transport)
-              ? preRunTrustFooter(2)
+              ? PRE_RUN_TRUST_FOOTER
               : liveRunLedgerFooter(
                   chosenRunMode === "server-job",
                   outputs !== undefined,
+                  partnerResultOf({
+                    partnerReceives:
+                      editor?.draft.outputDirection !== "inviter",
+                    countOnly: editor?.draft.algorithm === "psi-c",
+                  }),
                 )
           }
         />

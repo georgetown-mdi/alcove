@@ -18,6 +18,7 @@ import {
   acceptorLedgerTag,
   acceptorLegalAgreementDisplay,
   acceptorNameProblem,
+  acceptorPartnerResult,
   acceptorRailFacts,
   acceptorRunsAsServerJob,
   acceptorSpine,
@@ -214,11 +215,41 @@ describe("acceptor ledger rows", () => {
     );
   });
 
-  test("per-key matched-on rows are numbered, one entry per key", () => {
+  test("per-key matched-on rows are numbered and state each key's fields in plain words", () => {
+    // The key's own name is partner-authored shorthand ("LN + FN + DOB"), so
+    // each row states the fields the terms panel lists under the key instead.
     const rows = acceptorLedgerRows(makeToken(), HOW_IT_RUNS);
     expect(rowValue(rows, "Matched on")).toEqual([
-      "1. SSN + DOB + last name",
-      "2. last name + DOB + ZIP",
+      "1. SSN - date of birth - last name",
+      "2. last name - date of birth - ZIP",
+    ]);
+  });
+
+  test("a matched-on row carries the key's either-order and less-certain marks", () => {
+    const rows = acceptorLedgerRows(
+      makeToken({
+        linkageFields: [
+          { name: "first_name", type: "first_name" },
+          { name: "last_name", type: "last_name" },
+          { name: "dob", type: "date_of_birth" },
+        ],
+        linkageKeys: [
+          {
+            name: "swap(LN, FN) + DOB",
+            elements: [
+              { field: "last_name" },
+              { field: "first_name" },
+              { field: "dob" },
+            ],
+            swap: ["last_name", "first_name"],
+          },
+        ],
+      }),
+      HOW_IT_RUNS,
+    );
+    expect(rowValue(rows, "Matched on")).toEqual([
+      "1. last name - first name - date of birth (matched in either order) " +
+        "(less certain)",
     ]);
   });
 
@@ -231,10 +262,10 @@ describe("acceptor ledger rows", () => {
   });
 
   test("before a file, the send row forward-references the columns step", () => {
-    // No metadata yet (review/consent steps): the exact send set is not known, so
-    // the row points ahead rather than claiming "No additional columns" -- which
-    // would overclaim, since the acceptor's own file, not the invitation, decides
-    // what transmits.
+    // No metadata yet (review/consent steps) and the inviter receives the matched
+    // results: the exact send set is not known, so the row points ahead rather
+    // than naming a set, since the acceptor's own file, not the invitation,
+    // decides what transmits.
     const rows = acceptorLedgerRows(makeToken(), HOW_IT_RUNS);
     expect(rowMuted(rows, "You will send")).toBe(
       ACCEPTOR_SEND_FORWARD_REFERENCE,
@@ -351,21 +382,65 @@ describe("acceptor ledger rows", () => {
     // The header verbatim inside the isolate, which is how the confirm-columns step
     // beside this ledger shows the same disclosed set: escaping it here would put
     // one header two ways on the one screen where the operator decides what leaves.
-    expect(sent).toBe(isolatedColumnName(EVIL_COLUMN));
+    // The inviter receives the matched results, so it also gets this party's row
+    // numbers for matched records, which the row names first.
+    expect(sent).toBe(
+      `Matched row numbers + ${isolatedColumnName(EVIL_COLUMN)}`,
+    );
     expect(sent).toContain(RLO);
     expect(rowMuted(rows, "You will send")).toBeUndefined();
   });
 
-  test("a metadata that discloses nothing reads no additional columns", () => {
-    // Once a file exists but its metadata transmits nothing, the accurate reading is
-    // "No additional columns" -- the empty disclosed set, not the forward-reference.
+  test("a metadata that discloses nothing still sends the matched row numbers", () => {
     const rows = acceptorLedgerRows(
       makeToken(),
       HOW_IT_RUNS,
       NON_DISCLOSING_METADATA,
     );
-    expect(rowMuted(rows, "You will send")).toBe("No additional columns");
-    expect(rowValue(rows, "You will send")).toBeUndefined();
+    expect(rowValue(rows, "You will send")).toBe("Matched row numbers only");
+    expect(rowMuted(rows, "You will send")).toBeUndefined();
+  });
+
+  describe.each([
+    {
+      name: "the inviter receives no result",
+      terms: { output: { expectsOutput: false, shareWithPartner: true } },
+    },
+    {
+      name: "a count-only run",
+      terms: {
+        algorithm: "psi-c" as const,
+        linkageKeys: [baseTerms.linkageKeys[0]],
+        payload: { send: [], receive: [] },
+      },
+    },
+  ])("the send row where $name", (kase) => {
+    // Nothing beyond the encrypted match values leaves, whatever the file
+    // holds, so the row says so in every tense, as the terms panel does.
+    test("states that nothing is sent before a file is chosen", () => {
+      const rows = acceptorLedgerRows(makeToken(kase.terms), HOW_IT_RUNS);
+      expect(rowMuted(rows, "You will send")).toBe("Nothing - matching only");
+      expect(rowValue(rows, "You will send")).toBeUndefined();
+    });
+
+    test("states that nothing is sent once a file discloses a column", () => {
+      const rows = acceptorLedgerRows(
+        makeToken(kase.terms),
+        HOW_IT_RUNS,
+        DISCLOSING_METADATA,
+      );
+      expect(rowMuted(rows, "You will send")).toBe("Nothing - matching only");
+    });
+
+    test("states that nothing was sent once the exchange settles", () => {
+      const rows = acceptorDoneLedgerRows(
+        makeToken(kase.terms),
+        { kind: "withheld" },
+        NON_DISCLOSING_METADATA,
+        HOW_IT_RUNS,
+      );
+      expect(rowMuted(rows, "You sent")).toBe("Nothing - matching only");
+    });
   });
 
   test("results go to only-you when the inviter withholds its own receipt", () => {
@@ -384,12 +459,37 @@ describe("acceptor ledger rows", () => {
     expect(rowValue(rows, "Results go to")).toBe("Only your partner");
   });
 
-  test("an absent legal agreement mutes the Agreement row", () => {
-    const rows = acceptorLedgerRows(
-      makeToken({ legalAgreement: undefined }),
-      HOW_IT_RUNS,
-    );
-    expect(rowMuted(rows, "Agreement")).toBe("None");
+  test("an invitation naming no legal agreement shows no Agreement row", () => {
+    const token = makeToken({ legalAgreement: undefined });
+    expect(
+      acceptorLedgerRows(token, HOW_IT_RUNS).map((row) => row.label),
+    ).not.toContain("Agreement");
+    expect(
+      acceptorDoneLedgerRows(
+        token,
+        { kind: "matched", matchedRecordCount: 3 },
+        NON_DISCLOSING_METADATA,
+        HOW_IT_RUNS,
+      ).map((row) => row.label),
+    ).not.toContain("Agreement");
+  });
+
+  test("the partner's result for the settled footer follows the inviter's entitlement and the algorithm", () => {
+    expect(acceptorPartnerResult(makeToken())).toBe("matched");
+    expect(
+      acceptorPartnerResult(
+        makeToken({ output: { expectsOutput: false, shareWithPartner: true } }),
+      ),
+    ).toBe("none");
+    expect(
+      acceptorPartnerResult(
+        makeToken({
+          algorithm: "psi-c",
+          linkageKeys: [baseTerms.linkageKeys[0]],
+          payload: { send: [], receive: [] },
+        }),
+      ),
+    ).toBe("count-only");
   });
 
   test("the narrow share bar's marked subset is send, matched on, expires", () => {
@@ -431,7 +531,9 @@ describe("acceptor completion ledger", () => {
     ]);
     // The "You sent" row names the LAUNCHED metadata's disclosed set -- the frozen
     // pair that actually ran -- isolated, not the invitation's request.
-    expect(rowValue(rows, "You sent")).toBe(isolatedColumnName(EVIL_COLUMN));
+    expect(rowValue(rows, "You sent")).toBe(
+      `Matched row numbers + ${isolatedColumnName(EVIL_COLUMN)}`,
+    );
     expect(rowValue(rows, "You received")).toBe(
       "1,847 matched rows + enrollment_date, program_code",
     );
@@ -442,15 +544,15 @@ describe("acceptor completion ledger", () => {
     expect(rows.some((row) => row.label === "Expires")).toBe(false);
   });
 
-  test("a launched metadata that discloses nothing reads no additional columns", () => {
+  test("a launched metadata that discloses nothing sent the matched row numbers only", () => {
     const rows = acceptorDoneLedgerRows(
       makeToken(),
       { kind: "matched", matchedRecordCount: 1847 },
       NON_DISCLOSING_METADATA,
       HOW_IT_RUNS,
     );
-    expect(rowMuted(rows, "You sent")).toBe("No additional columns");
-    expect(rowValue(rows, "You sent")).toBeUndefined();
+    expect(rowValue(rows, "You sent")).toBe("Matched row numbers only");
+    expect(rowMuted(rows, "You sent")).toBeUndefined();
   });
 
   test("a withheld result states the caveat instead of a count", () => {

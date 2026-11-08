@@ -894,13 +894,8 @@ export function displayInvitation(params: {
         : "partnerReceivesNoResult",
     )}: ` + (summary.inviterReceivesOutput ? "yes" : "no"),
   );
-  emit(
-    `    ${
-      summary.inviterReceivesOutput
-        ? CONSENT_FACTS.partnerReceivesResult.note
-        : CONSENT_FACTS.partnerReceivesNoResult.note
-    }`,
-  );
+  if (summary.inviterReceivesOutput)
+    emit(`    ${CONSENT_FACTS.partnerReceivesResult.note}`);
   // The honest-helper membership disclosure, kept apart from the
   // cooperative caveat above: that caveat is about a partner that does not
   // honor the terms, while this holds however honestly the partner

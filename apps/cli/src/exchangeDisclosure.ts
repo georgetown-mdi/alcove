@@ -201,7 +201,8 @@ export function renderExchangeDisclosure(
     `  ${marked("your partner will receive the result", partnerFact)}: ` +
       (linkageTerms.output.shareWithPartner ? "yes" : "no"),
   );
-  emit(`    ${CONSENT_FACTS[partnerFact].note}`);
+  if (linkageTerms.output.shareWithPartner)
+    emit(`    ${CONSENT_FACTS.partnerReceivesResult.note}`);
   // What a partner entitled to no result still learns, which its receipt line
   // does not state: under `psi` an identifier-revealing match tells it which of
   // its own records are in this party's data, unless the run withholds its half

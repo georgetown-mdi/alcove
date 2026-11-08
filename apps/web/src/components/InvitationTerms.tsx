@@ -57,6 +57,7 @@ import {
 import { SINGLE_PASS_TERMS_STATEMENT } from "@psi/linkageStrategyChoice";
 import { acceptorMaySetDeduplicate } from "@psi/acceptInvitation";
 import { isConsoleBuild } from "@utils/clientConfig";
+import { keyFieldsLine } from "@psi/keyFieldsLine";
 
 import type { ReactNode, Ref } from "react";
 
@@ -338,10 +339,7 @@ function MatchKeyDisclosure({
   // if ever reached, so the joined line contains no unescaped partner text.
   const subline = (
     <Text id={sublineId} size="xs" c="dimmed">
-      Matches on {summary.headerFields.join(" - ")}
-      {summary.swapHeaderMarker !== undefined && ` ${summary.swapHeaderMarker}`}
-      {summary.lessCertainHeaderMarker !== undefined &&
-        ` ${summary.lessCertainHeaderMarker}`}
+      Matches on {keyFieldsLine(summary)}
     </Text>
   );
   return (
@@ -1049,7 +1047,8 @@ export function InvitationTerms({
             none, and its receive check fails closed on any it is sent), while the
             partner's is COOPERATIVE, resting on the agreed terms rather than a
             guarantee this side can impose (docs/notes/one-sided-disclosure.md).
-            Each "No" states the caveat for its register. */}
+            The viewer's "No" states its caveat; the partner's "No" states only
+            what the partner still learns, the agreement covering its conduct. */}
         <Term label="Result sharing">
           <Text size="sm">
             You will receive the matched result: {yesNo(viewerReceivesResult)}
@@ -1083,12 +1082,8 @@ export function InvitationTerms({
             </Text>
           ) : (
             <>
-              <Text size="xs" c="dimmed">
-                {CONSENT_FACTS.partnerReceivesNoResult.note}
-              </Text>
-              {/* The honest-helper membership disclosure, kept DISTINCT from the
-                  cooperative caveat above: this states what an HONEST partner learns
-                  intrinsically. A non-receiving partner in a `psi` exchange learns
+              {/* The honest-helper membership disclosure: what an HONEST partner
+                  learns intrinsically. A non-receiving partner in a `psi` exchange learns
                   which of ITS OWN records are in the viewer's data -- membership --
                   wherever the run returns it that half of the table
                   (docs/notes/one-sided-disclosure.md). Bounded so it cannot
@@ -1350,8 +1345,8 @@ export function InvitationTerms({
       {/* Partner-authored allowed-character constraints, promoted to the
           always-visible core so a partner-defined character-class rule is on notice
           at the consent point, not dimmed inside "Other details". Each entry names
-          the field, a FIXED system label marking the class as partner-supplied and
-          unverified, then the raw sanitized class in its OWN bounded Text -- never
+          the field, a FIXED system label, then the raw sanitized class in its OWN
+          bounded Text under the tier's partner-defined heading -- never
           joined into one sentence, since a crafted value could impersonate system
           chrome. Advisory (core's `withinAllowedCharacters` warns, does not
           enforce), so the copy states an expectation, not a guarantee. */}
@@ -1375,9 +1370,7 @@ export function InvitationTerms({
                       text cannot display as the label. field.allowedCharacters is
                       present here (the filter above selects on it), sanitized once
                       in summarizeInvitation. */}
-                <Text size="sm">
-                  Allowed characters (partner-supplied, unverified):
-                </Text>
+                <Text size="sm">Allowed characters:</Text>
                 <Text
                   size="sm"
                   ff="monospace"
