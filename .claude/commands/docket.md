@@ -130,6 +130,10 @@ option lacks it is not presented until it has one.
 Never open the item with AskUserQuestion, and never put a follow-up filing in a
 docket message.
 
+A question to the owner, a follow-on question after a ruling included, is its
+own message with its background, never a line trailing other content; wait for
+the answer before going on.
+
 ## Record and act on each ruling
 
 Record each ruling verbatim as the owner gives it, in the session's own
