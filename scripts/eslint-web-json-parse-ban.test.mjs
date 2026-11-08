@@ -71,7 +71,7 @@ async function syntaxHits(filePath, source) {
 // console server tree -- and a test file outside it: the web test tree parses
 // fixtures of its own and is not a trust boundary.
 const WEB_SRC = resolve(repoRoot, "apps/web/src/jobs/routeSupport.ts");
-const WEB_SERVER = resolve(repoRoot, "apps/web/server/upgradeHardening.ts");
+const WEB_SERVER = resolve(repoRoot, "apps/web/server/console/app.ts");
 const WEB_TEST = resolve(
   repoRoot,
   "apps/web/test/unit/routes/jobRoutes.unit.test.ts",

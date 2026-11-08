@@ -10,8 +10,10 @@ import {
   jobApiRequestTimeoutMs,
 } from "@jobs/routeSupport";
 
-import { SIGNALING_REQUEST_TIMEOUT_MS } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
-import { hardenUpgradeSurface } from "../../server/upgradeHardening";
+import {
+  SIGNALING_REQUEST_TIMEOUT_MS,
+  hardenUpgradeSurface,
+} from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
 import type { AddressInfo } from "node:net";
 
@@ -66,6 +68,7 @@ async function statusOfSteadyUpload(requestTimeoutMs: number): Promise<number> {
     headersTimeoutMs: 300,
     requestTimeoutMs,
     preHandshakeIdleMs: 1000,
+    closeOnClientError: true,
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;

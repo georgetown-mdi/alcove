@@ -214,6 +214,7 @@ describe("the standalone runner", () => {
       expect(await probeLine(runner.stderr, "server")).toEqual({
         headersTimeout: SIGNALING_HEADERS_TIMEOUT_MS,
         requestTimeout: SIGNALING_REQUEST_TIMEOUT_MS,
+        clientErrorListeners: 0,
       });
       const socket = connectTcp(Number(new URL(runner.url).port), "127.0.0.1");
       cleanups.push(() => socket.destroy());

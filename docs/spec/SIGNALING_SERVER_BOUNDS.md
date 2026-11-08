@@ -60,7 +60,7 @@ All values are fixed constants, not configurable, for the same reason as the fil
 The browser peer on the other side of that socket bounds what it accepts from this relay by its own two measures, stated in [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#budgets).
 
 **Upgrade-handshake timeout.**
-The console server bounds a pre-101 upgrade handshake with a **10-second** header timeout (`SIGNALING_HEADERS_TIMEOUT_MS`) and a **15-second** request timeout (`SIGNALING_REQUEST_TIMEOUT_MS`), applied in `apps/web/server/upgradeHardening.ts` from the broker package's constants (`packages/peerjs-broker/src/standaloneUpgradeBounds.ts`).
+The console server bounds a pre-101 upgrade handshake with a **10-second** header timeout (`SIGNALING_HEADERS_TIMEOUT_MS`) and a **15-second** request timeout (`SIGNALING_REQUEST_TIMEOUT_MS`), applied by the broker package's `hardenUpgradeSurface` (`packages/peerjs-broker/src/standaloneUpgradeBounds.ts`).
 A client that opens a connection and dribbles -- or never finishes -- its request headers is closed server-side rather than held open.
 The entry attaches its own `clientError` handler to perform the close rather than relying on Node's built-in default close-on-`clientError`, because that default is silently disabled the moment any other `clientError` listener is attached (an embedding framework, or under test a loaded `ws`, may attach one).
 Node checks the header and request timeouts on a periodic sweep (default 30 seconds, unverified against the pinned Node as of 2026-09-29), so the effective close is the bound plus up to one sweep interval -- coarse, which is sufficient for a resource-exhaustion guard.
@@ -70,7 +70,7 @@ Node applies the request timeout to the whole server, and a job-create or config
 Those two timeouts only arm once HTTP request parsing has begun, so they do not cover the cheapest hold of all: a peer that completes the TCP handshake and then sends nothing, which has no request for them to bound and would otherwise sit until the OS reaps the idle socket.
 A **10-second** per-socket idle timeout (`SIGNALING_PREHANDSHAKE_IDLE_MS`, applied on each new connection) closes that case, on its own precise timer rather than the periodic sweep.
 
-The standalone broker runner (`packages/peerjs-broker/src/standalone.ts`) applies the same three bounds to the server it owns, from the same constants in `standaloneUpgradeBounds.ts`, which the console server imports so the values have one home.
+The standalone broker runner (`packages/peerjs-broker/src/standalone.ts`) applies the same three bounds to the server it owns through the same function, so the values and the reap have one home; it leaves a client error to Node's own answer rather than attaching the console server's `clientError` handler.
 It terminates no TLS, so the TLS handoff below has no counterpart there.
 
 All three bounds cover the window in which the socket still owes the server a request.
