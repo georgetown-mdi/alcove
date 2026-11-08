@@ -340,6 +340,37 @@ test("a broker diagnostic opens with the prefix core would have written", async 
   expect(line?.slice(0, prefix.length + 1)).toBe(`${prefix} `);
 }, 60_000);
 
+test("a broker diagnostic escapes the peer's bytes once", async () => {
+  // The diagnostics module escapes the peer's text and the runner writes it as
+  // it stands: a second escape would double the backslash and the one in
+  // front of the escaped ESC.
+  const { inviterId } = await freshIds();
+  let socket: WebSocket | undefined;
+  const client = await connectToBroker({
+    location: location(),
+    id: inviterId,
+    handlers: { onMessage: () => {}, onClose: () => {} },
+    socketFactory: (url) => (socket = new WebSocket(url)),
+  });
+  opened.push(client);
+
+  const stderrBefore = broker.stderr().length;
+  socket?.send("not json \\ x \u001b[31m");
+  await waitFor(
+    () => broker.stderr().slice(stderrBefore).includes("[client-frame]"),
+    { timeoutMs: 10_000 },
+  );
+  const line = broker
+    .stderr()
+    .slice(stderrBefore)
+    .split("\n")
+    .find((written) => written.includes("[client-frame]"));
+  expect(line).toContain(String.raw`"not json \\ x \x1b[31m"`);
+  expect(line).toMatch(
+    /^\[[^\]]+\] \[WARN\] \[peerjs-broker\] peerjs signaling diagnostic \[client-frame\]: /,
+  );
+}, 60_000);
+
 test("a registered peer stays registered past the broker's silent-socket reaper", async () => {
   // The broker closes a registered socket that has sent nothing for about
   // twenty seconds. A heartbeat keeps the connection alive across a peer's

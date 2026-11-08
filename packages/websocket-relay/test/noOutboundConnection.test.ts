@@ -13,6 +13,12 @@ import { describe, expect, it } from "vitest";
 
 const sourceDirectory = join(dirname(fileURLToPath(import.meta.url)), "../src");
 
+const BROKER_MODULE = "@alcove/peerjs-broker/";
+const brokerSourceDirectory = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../peerjs-broker/src",
+);
+
 /** Each module the source may import, and the value names it may take from
  * it; a type-only import is admitted from any of them. */
 const ADMITTED_VALUE_IMPORTS: Record<string, ReadonlyArray<string>> = {
@@ -29,9 +35,21 @@ const ADMITTED_VALUE_IMPORTS: Record<string, ReadonlyArray<string>> = {
     "EXCHANGE_ID_PATTERN",
     "parseBoundedJson",
     "parseWebSocketRelayProof",
-    "redactAndSanitizeForDisplay",
     "RENDEZVOUS_ROLES",
     "WebSocketRelayProofRefusedError",
+  ],
+  "@alcove/core/untrusted-text": ["redactAndSanitizeForDisplay"],
+  "@alcove/peerjs-broker/requestRefusal": [
+    "refusePlainRequest",
+    "refuseUpgrade",
+    "requestPath",
+  ],
+  "@alcove/peerjs-broker/standaloneRunner": [
+    "exitOnSignal",
+    "refuseToStart",
+    "UNAVAILABLE_EXIT_CODE",
+    "USAGE_EXIT_CODE",
+    "writeLine",
   ],
   "@alcove/peerjs-broker/standaloneUpgradeBounds": [
     "applyStandaloneUpgradeBounds",
@@ -58,8 +76,9 @@ function isAdmittedImport(node: ts.ImportDeclaration, module: string): boolean {
 }
 
 /** The text of each import, re-export, dynamic import, `require` or dialing
- * global in `text` the relay may not use. */
-function refusedIn(file: string, text: string): string[] {
+ * global in `text` the relay may not use, and each relative import unless
+ * `admitLocal`. */
+function refusedIn(file: string, text: string, admitLocal = true): string[] {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const refused: string[] = [];
   const visit = (node: ts.Node): void => {
@@ -67,7 +86,7 @@ function refusedIn(file: string, text: string): string[] {
       const specifier = node.moduleSpecifier;
       if (specifier !== undefined && ts.isStringLiteral(specifier)) {
         const module = specifier.text;
-        const local = module.startsWith("./");
+        const local = admitLocal && module.startsWith("./");
         const admitted =
           ts.isImportDeclaration(node) && isAdmittedImport(node, module);
         if (!local && !admitted) refused.push(node.getText(source));
@@ -106,6 +125,21 @@ describe("the relay's source", () => {
       const file = join(sourceDirectory, name);
       expect(refusedIn(file, readFileSync(file, "utf8")), name).toEqual([]);
     }
+  });
+
+  it("holds each broker module it imports to the same rule", () => {
+    const modules = Object.keys(ADMITTED_VALUE_IMPORTS)
+      .filter((module) => module.startsWith(BROKER_MODULE))
+      .map((module) => `${module.slice(BROKER_MODULE.length)}.ts`);
+    expect(modules.length).toBeGreaterThan(0);
+    for (const name of modules) {
+      const file = join(brokerSourceDirectory, name);
+      const refused = refusedIn(file, readFileSync(file, "utf8"), false);
+      expect(refused, name).toEqual([]);
+    }
+    expect(
+      refusedIn("shape.ts", 'import { x } from "./x";', false),
+    ).not.toEqual([]);
   });
 
   it.each([

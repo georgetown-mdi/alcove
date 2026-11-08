@@ -2,16 +2,16 @@ import { connect } from "node:net";
 
 import { WebSocket, WebSocketServer } from "ws";
 
+import {
+  refuseUpgrade,
+  requestPath,
+} from "@alcove/peerjs-broker/requestRefusal";
 import { createControlFrameLimit } from "@alcove/websocket-relay/controlFrames";
 import { createFaultLatch } from "@alcove/websocket-relay/faultLatch";
 import {
   pongWithinWindow,
   sendWithinWindow,
 } from "@alcove/websocket-relay/forwarding";
-import {
-  refuseUpgrade,
-  requestPath,
-} from "@alcove/websocket-relay/upgradeRefusal";
 
 import {
   SFTP_RELAY_CLOSE_WAIT_MS,

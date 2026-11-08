@@ -298,6 +298,70 @@ describe("the standalone readiness probe", () => {
     expect((await fetch(`${base}${requestPath}`)).status).toBe(404);
   });
 
+  /** The status and `Connection` header of a GET to `url` on a keep-alive
+   * agent, once the server has closed the connection or a second has passed. */
+  async function getOnKeepAlive(url: string): Promise<{
+    status: number | undefined;
+    connection: string | undefined;
+    body: string;
+    closedByServer: boolean;
+  }> {
+    const agent = new http.Agent({ keepAlive: true });
+    try {
+      return await new Promise((resolve, reject) => {
+        http
+          .get(url, { agent }, (response) => {
+            // The agent detaches a kept-alive socket from the response at its end.
+            const { socket } = response;
+            let closedByServer = false;
+            socket.once("close", () => (closedByServer = true));
+            let body = "";
+            response.on("data", (chunk: Buffer) => (body += chunk.toString()));
+            response.on("end", () => {
+              const settle = (): void =>
+                resolve({
+                  status: response.statusCode,
+                  connection: response.headers.connection,
+                  body,
+                  closedByServer,
+                });
+              if (closedByServer) settle();
+              else {
+                const wait = setTimeout(settle, 1_000);
+                socket.once("close", () => {
+                  clearTimeout(wait);
+                  settle();
+                });
+              }
+            });
+          })
+          .on("error", reject);
+      });
+    } finally {
+      agent.destroy();
+    }
+  }
+
+  test("answers a refused request with 404 and closes its connection", async () => {
+    const base = await servedAt("/api/health");
+    expect(await getOnKeepAlive(`${base}/api/peerjs`)).toEqual({
+      status: 404,
+      connection: "close",
+      body: "",
+      closedByServer: true,
+    });
+  });
+
+  test("leaves the probe's connection open for the client to reuse", async () => {
+    const base = await servedAt("/api/health");
+    expect(await getOnKeepAlive(`${base}/api/health`)).toEqual({
+      status: 200,
+      connection: "keep-alive",
+      body: READINESS_BODY,
+      closedByServer: false,
+    });
+  });
+
   test("refuses a method other than GET or HEAD on the probe path", async () => {
     const base = await servedAt("/api/health");
     for (const method of ["POST", "PUT", "DELETE", "OPTIONS"]) {

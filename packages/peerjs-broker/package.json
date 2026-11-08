@@ -13,6 +13,8 @@
     "./diagnostics": "./src/diagnostics.ts",
     "./deploymentStatus": "./src/deploymentStatus.ts",
     "./standaloneUpgradeBounds": "./src/standaloneUpgradeBounds.ts",
+    "./standaloneRunner": "./src/standaloneRunner.ts",
+    "./requestRefusal": "./src/requestRefusal.ts",
     "./*": "./src/contrib/*.ts"
   },
   "scripts": {

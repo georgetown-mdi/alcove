@@ -7,6 +7,11 @@ import {
   deriveWebSocketRelayProofKey,
   WebSocketRelayProofRefusedError,
 } from "@alcove/core/websocket-relay";
+import {
+  refusePlainRequest,
+  refuseUpgrade,
+  requestPath,
+} from "@alcove/peerjs-broker/requestRefusal";
 
 import { createControlFrameLimit } from "./controlFrames.ts";
 import { createFaultLatch } from "./faultLatch.ts";
@@ -40,7 +45,6 @@ import {
   START_FRAME,
   readClientFrame,
 } from "./protocol.ts";
-import { refuseUpgrade, requestPath } from "./upgradeRefusal.ts";
 
 import type { RendezvousRole } from "@alcove/core/websocket-relay";
 import type { IncomingMessage, Server } from "node:http";
@@ -166,10 +170,7 @@ const RELAY_KEY_PATTERN = /^[0-9a-f]{64}$/;
 export function createWebSocketRelayServer(): Server {
   return createServer(
     { highWaterMark: RELAY_READ_HIGH_WATER_MARK_BYTES },
-    (_request, response) => {
-      response.writeHead(404, { Connection: "close" });
-      response.end();
-    },
+    (_request, response) => refusePlainRequest(response),
   );
 }
 

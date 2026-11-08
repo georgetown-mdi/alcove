@@ -4,10 +4,13 @@
 //
 // The relay listens on the internet, so its runtime closure is the set of
 // packages an advisory can force a redeploy of it over. Every name below
-// resolves without any package core declares, and the relay imports from core
-// through this entry alone (packages/websocket-relay/test/coreReach.test.ts
-// measures the built entry and holds the relay's source to it). A name belongs
-// here only when the relay's own source uses it.
+// resolves without any package core declares, and the relay's own source
+// imports from core through this entry alone
+// (packages/websocket-relay/test/coreReach.test.ts measures the built entry and
+// holds the relay's source to it). The broker's runner code the relay runs on
+// takes the line escape from `./untrusted-text`, which reaches no package
+// either (scripts/broker-core-reach.test.mjs). A name belongs here only when
+// the relay's own source uses it.
 
 export {
   checkWebSocketRelayProof,
@@ -20,4 +23,3 @@ export { EXCHANGE_ID_PATTERN } from "./relayRegistrarProof";
 export { RENDEZVOUS_ROLES } from "./rendezvousRoles";
 export type { RendezvousRole } from "./rendezvousRoles";
 export { parseBoundedJson } from "./utils/boundedJson";
-export { redactAndSanitizeForDisplay } from "./utils/sanitizeErrorForDisplay";

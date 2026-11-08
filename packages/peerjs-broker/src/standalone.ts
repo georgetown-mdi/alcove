@@ -1,7 +1,5 @@
 import { createServer } from "node:http";
 
-import { redactAndSanitizeForDisplay } from "@alcove/core/untrusted-text";
-
 import { CreatePeerServerWSOnly } from "./contrib/index.ts";
 import { createDeploymentStatusReader } from "./deploymentStatus.ts";
 import {
@@ -9,6 +7,13 @@ import {
   resolveStandaloneOptions,
   StandaloneOptionError,
 } from "./standaloneOptions.ts";
+import {
+  exitOnSignal,
+  refuseToStart,
+  UNAVAILABLE_EXIT_CODE,
+  USAGE_EXIT_CODE,
+  writeDisplayableLine,
+} from "./standaloneRunner.ts";
 import { applyStandaloneUpgradeBounds } from "./standaloneUpgradeBounds.ts";
 
 import type { StandaloneOptions } from "./standaloneOptions.ts";
@@ -62,38 +67,13 @@ const READY_PREFIX = "alcove-broker";
  * prefix with what core's prefixer writes for the same instant. */
 const DIAGNOSTIC_CONTEXT = "peerjs-broker";
 
-/** Exit code for an option the runner cannot act on, matching the CLI's usage
- * exit (docs/CLI.md). */
-const USAGE_EXIT_CODE = 64;
-
-/** Exit code for a bind the operating system refused -- an address that is not
- * this host's, a port already taken, or one this process may not have -- and for
- * a later fault on the listening socket. */
-const UNAVAILABLE_EXIT_CODE = 69;
-
-/** Write one line to stderr under this process's context. Diagnostics go to
- * stderr because stdout carries the ready-line protocol above and nothing else;
- * the text arrives escaped and capped, so this writes it as it stands. */
-function writeLine(level: "WARN" | "ERROR", message: Displayable): void {
-  const timestamp = new Date().toISOString();
-  process.stderr.write(
-    `[${timestamp}] [${level}] [${DIAGNOSTIC_CONTEXT}] ${message}\n`,
-  );
-}
-
 /** This runner's diagnostic sink, wired below with no flag in front of it: a
  * broker left unwatched is the case the reports exist for, so there is nothing
- * to switch on. The text arrives escaped, capped and rate limited from the
- * diagnostics module. */
+ * to switch on. Diagnostics go to stderr because stdout carries the ready-line
+ * protocol above. The text arrives escaped, capped and rate limited from the
+ * diagnostics module, so it is written as it stands. */
 function writeDiagnostic(message: Displayable): void {
-  writeLine("WARN", message);
-}
-
-/** Report a refusal to start and leave with `code`. The message composes an
- * operator-supplied value raw, so it is escaped once here, at the sink. */
-function refuseToStart(message: string, code: number): never {
-  writeLine("ERROR", redactAndSanitizeForDisplay(message));
-  process.exit(code);
+  writeDisplayableLine(DIAGNOSTIC_CONTEXT, "WARN", message);
 }
 
 function readOptions(): StandaloneOptions {
@@ -101,7 +81,7 @@ function readOptions(): StandaloneOptions {
     return resolveStandaloneOptions(process.argv.slice(2), process.env);
   } catch (error) {
     if (!(error instanceof StandaloneOptionError)) throw error;
-    refuseToStart(error.message, USAGE_EXIT_CODE);
+    refuseToStart(DIAGNOSTIC_CONTEXT, error.message, USAGE_EXIT_CODE);
   }
 }
 
@@ -135,6 +115,7 @@ server.on("error", (error: Error) => {
   const port =
     typeof bound === "object" && bound !== null ? bound.port : options.port;
   refuseToStart(
+    DIAGNOSTIC_CONTEXT,
     `the signaling broker could not serve ${host} port ${port}: ${error.message}`,
     UNAVAILABLE_EXIT_CODE,
   );
@@ -145,11 +126,4 @@ server.listen(options.port, options.host, () => {
   process.stdout.write(`${READY_PREFIX} ${address.port}\n`);
 });
 
-for (const signal of ["SIGTERM", "SIGINT"] as const) {
-  process.on(signal, () => {
-    server.close(() => process.exit(0));
-    // A live WebSocket keeps `close` from completing, so do not wait on it
-    // past the grace window: the parent is already tearing the run down.
-    setTimeout(() => process.exit(0), 500).unref();
-  });
-}
+exitOnSignal(server);

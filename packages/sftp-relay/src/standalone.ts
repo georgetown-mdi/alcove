@@ -1,13 +1,14 @@
 import { createServer } from "node:http";
 
-import { applyStandaloneUpgradeBounds } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
+import { refusePlainRequest } from "@alcove/peerjs-broker/requestRefusal";
 import {
   exitOnSignal,
   refuseToStart,
   UNAVAILABLE_EXIT_CODE,
   USAGE_EXIT_CODE,
   writeLine,
-} from "@alcove/websocket-relay/standaloneRunner";
+} from "@alcove/peerjs-broker/standaloneRunner";
+import { applyStandaloneUpgradeBounds } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
 import { attachSftpRelay } from "./relay.ts";
 import {
@@ -39,10 +40,9 @@ function readOptions(): SftpRelayRunnerOptions {
 
 const options = readOptions();
 
-const server = createServer((_request, response) => {
-  response.writeHead(404, { Connection: "close" });
-  response.end();
-});
+const server = createServer((_request, response) =>
+  refusePlainRequest(response),
+);
 
 applyStandaloneUpgradeBounds(server);
 

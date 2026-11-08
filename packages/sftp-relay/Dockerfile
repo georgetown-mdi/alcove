@@ -10,8 +10,9 @@ FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ea
 WORKDIR /build
 
 # The lockfile-exact install of the workspaces the bundle reads: core, built
-# for its `websocket-relay` entry, and the relay with its build tools. The
-# root .npmrc puts the install-script policy in force here as in CI.
+# for its `websocket-relay` and `untrusted-text` entries, and the relay with
+# its build tools. The root .npmrc puts the install-script policy in force
+# here as in CI.
 COPY .npmrc package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/peerjs-broker/package.json packages/peerjs-broker/
