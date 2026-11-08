@@ -91,21 +91,6 @@ function ctxTokens(u) {
   return u.in + u.cacheRead + u.cache5m + u.cache1h;
 }
 
-/**
- * The equivalent input tokens of usage `u` at a model's `rates`: a 5m cache
- * write weighs 1.25, a 1h write 2, output 5, and a cache read its model's read
- * rate over its input rate.
- */
-export function equivalentTokens(u, rates) {
-  return (
-    u.in +
-    1.25 * u.cache5m +
-    2 * u.cache1h +
-    (rates.cacheRead / rates.in) * u.cacheRead +
-    5 * u.out
-  );
-}
-
 function windowOf(aggregates) {
   const [first] = aggregates;
   for (const a of aggregates) {
@@ -195,7 +180,7 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
         });
       bm.calls += u.calls;
       bm.cost += c;
-      bm.eqTok += equivalentTokens(u, pricing[m]);
+      bm.eqTok += (c * 1e6) / pricing[m].in;
       bm[comp] += c;
       const bs =
         bySeat[store] ||
