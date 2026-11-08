@@ -2591,20 +2591,19 @@ describe("console inviter partner accept kit", () => {
       // the partner fills in themselves.
       expect(sheet.text).toContain("SFTP server:    dr.example.gov:2222");
       expect(sheet.text).toContain("Directory:      /drops/alcove");
-      expect(sheet.text).toContain("REPLACE_WITH_SSH_USERNAME");
+      expect(sheet.text).toContain("--server-username YOUR_ACCOUNT");
 
       // Retain mode was left off, so nothing of it reaches the sheet.
-      expect(sheet.text).not.toContain("THIS EXCHANGE KEEPS ITS FILES");
       expect(sheet.text).not.toContain("--retain-files");
 
       // What it must never hold: the minted secret or the token itself. The
-      // partner pastes their own copy over the placeholder.
+      // partner saves their own copy in the file the accept command names.
       await page.getByRole("button", { name: "Show full invitation" }).click();
       const encoded = (
         document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
       ).value;
       const token = await decodeInvitation(encoded);
-      expect(sheet.text).toContain("PASTE_YOUR_INVITATION");
+      expect(sheet.text).toContain('accept "@invitation.txt"');
       expect(sheet.text).not.toContain(encoded);
       expect(sheet.text).not.toContain(token.sharedSecret);
     } finally {
@@ -2635,13 +2634,12 @@ describe("console inviter partner accept kit", () => {
       const sheet = await capturedSheet(downloads);
 
       // The choice the operator made before the mint reaches the sheet the
-      // partner reads: what the exchange leaves behind and where it stays,
-      // and the partner's half of the bilateral agreement on their command.
-      expect(sheet.text).toContain("THIS EXCHANGE KEEPS ITS FILES");
+      // partner reads: the partner's half of the bilateral agreement on their
+      // command, named where they meet it.
+      expect(sheet.text).toContain("exchange --retain-files --server-username");
       expect(sheet.text).toContain(
-        "The files stay in the exchange directory on the SFTP",
+        "Leave --retain-files on: your partner keeps every exchange file",
       );
-      expect(sheet.text).toContain("exchange --retain-files your-file.csv");
     } finally {
       downloads.restore();
     }
@@ -2673,10 +2671,9 @@ describe("console inviter partner accept kit", () => {
       // run, so following the sheet verbatim meets this exchange instead of
       // stopping at rendezvous on a mismatch.
       expect(sheet.text).toContain(
-        "exchange --lockless-rendezvous your-file.csv",
+        "exchange --lockless-rendezvous --server-username",
       );
       // Retain mode was left off, so none of its material rides along.
-      expect(sheet.text).not.toContain("THIS EXCHANGE KEEPS ITS FILES");
       expect(sheet.text).not.toContain("--retain-files");
     } finally {
       downloads.restore();
@@ -2704,12 +2701,11 @@ describe("console inviter partner accept kit", () => {
       await page.getByRole("button", { name: ACCEPT_KIT_BUTTON }).click();
       const sheet = await capturedSheet(downloads);
 
-      // Both routing branches: the launcher for a network drive or DFS path,
-      // and the direct docker commands for a folder Docker can open.
-      expect(sheet.text).toContain("A. A Windows network drive or a DFS path");
+      // Both routes: the direct docker commands for a folder Docker can open,
+      // and the launcher for a network drive or DFS path.
+      expect(sheet.text).toContain('accept "@invitation.txt"');
+      expect(sheet.text).toContain("WINDOWS NETWORK DRIVE OR DFS PATH");
       expect(sheet.text).toContain("Start-Alcove.ps1");
-      expect(sheet.text).toContain("B. A folder that syncs on this PC");
-      expect(sheet.text).toContain("accept PASTE_YOUR_INVITATION");
 
       // The console's absolute rendezvous path stays off the sheet exactly as
       // it stays off the token: the shared folder's name is the whole locator.
@@ -2740,8 +2736,8 @@ describe("console inviter partner accept kit", () => {
       const sheet = await capturedSheet(downloads);
 
       expect(sheet.text).not.toContain("Shared folder:");
-      expect(sheet.text).toContain("could not put a name to the shared folder");
-      expect(sheet.text).toContain("accept PASTE_YOUR_INVITATION");
+      expect(sheet.text).not.toContain("your partner's name for it");
+      expect(sheet.text).toContain('accept "@invitation.txt"');
     } finally {
       downloads.restore();
     }

@@ -37,9 +37,7 @@ BeforeAll {
             Where-Object { $_.Trim().Length -gt 0 }
     )
 
-    # The placeholder the sheet's accept command holds, and what its tip tells
-    # the reader to write in its place.
-    $script:invitationPlaceholder = 'PASTE_YOUR_INVITATION'
+    # The invitation file argument the sheet's accept command holds.
     $script:invitationFileArgument = '"@invitation.txt"'
 
     . (Join-Path $PSScriptRoot 'DockerStandIn.ps1')
@@ -107,12 +105,11 @@ Describe 'The accept sheet''s commands in Windows PowerShell' {
     }
 
     It 'hands docker the invitation file name as one argument' {
-        $acceptLines = @($script:sheetCommandLines | Where-Object { $_.Contains(" accept $script:invitationPlaceholder ") })
+        $acceptLines = @($script:sheetCommandLines | Where-Object { $_.Contains(" accept $script:invitationFileArgument ") })
         $acceptLines.Count | Should -BeGreaterThan 0
         foreach ($acceptLine in $acceptLines) {
-            $command = $acceptLine.Replace($script:invitationPlaceholder, $script:invitationFileArgument)
-            $received = @(Get-DockerArgument -CommandLine $command)
-            ($received -join ' | ') | Should -Be (@(Get-IntendedArgument -CommandLine $command) -join ' | ')
+            $received = @(Get-DockerArgument -CommandLine $acceptLine)
+            ($received -join ' | ') | Should -Be (@(Get-IntendedArgument -CommandLine $acceptLine) -join ' | ')
             $received | Should -Contain '@invitation.txt'
         }
     }

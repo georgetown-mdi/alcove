@@ -23,7 +23,7 @@
  *
  * The exchange's own settings contribute only a SELECTOR, never a value:
  * {@link AcceptKitInput.retainFiles} and
- * {@link AcceptKitInput.locklessRendezvous} pick between fixed paragraphs and
+ * {@link AcceptKitInput.locklessRendezvous} pick between fixed lines and
  * fixed command flags, as the channel discriminant already picks between
  * fixed bodies. A future setting the partner must be told about is disclosed
  * the same way.
@@ -44,8 +44,6 @@
  * of the names: a split rendezvous the console cannot name is still
  * described as two folders.
  */
-import { PLACEHOLDER_SSH_USERNAME } from "@alcove/core";
-
 import { PROJECT_SITE_URL } from "@components/projectLinks";
 
 import { OPERATOR_USER_FLAG } from "@psi/containerAccount";
@@ -122,9 +120,9 @@ interface AcceptKitInput extends AcceptKitExchange {
    * index. */
   version?: string;
   /** The digest of the image the minting console runs, which the sheet prints
-   * beside each registry's reference; see `imageDigest`
+   * on each registry under its reference heading; see `imageDigest`
    * (`@utils/alcoveImage`). Absent, or in any other shape, the sheet names no
-   * digest and points at the release notes for it. */
+   * digest. */
   digest?: string;
 }
 
@@ -146,10 +144,15 @@ const ALCOVE_RELEASES_URL = "https://github.com/georgetown-mdi/alcove/releases";
 /** The command-line reference the sheet closes on. */
 const ALCOVE_CLI_DOC_URL = `${PROJECT_SITE_URL}/docs/CLI`;
 
-/** The placeholder the partner replaces with the invitation string. The sheet
- * holds this and never a token: the invitation travels separately, so a
- * mislaid sheet discloses nothing. */
-export const INVITATION_PLACEHOLDER = "PASTE_YOUR_INVITATION";
+/** The file the partner saves the invitation in. */
+const INVITATION_FILE_NAME = "invitation.txt";
+
+/** The accept command's argument naming {@link INVITATION_FILE_NAME}. The
+ * sheet holds this and never a token: the invitation travels separately, so a
+ * mislaid sheet discloses nothing. The `@` form keeps the invitation off the
+ * command line, and the double quotes are required because Windows PowerShell
+ * parses a bare `@name` as splatting. */
+export const INVITATION_FILE_ARGUMENT = `"@${INVITATION_FILE_NAME}"`;
 
 /** The container mount point the sheet's commands bind the partner's own
  * working folder to. It is the image's own working directory, part of the
@@ -168,83 +171,89 @@ const SYNC_MOUNT = "/sync";
 const INBOUND_SYNC_MOUNT = "/sync-in";
 const OUTBOUND_SYNC_MOUNT = "/sync-out";
 
+/** The container mount point and file name the sftp exchange command reads
+ * the partner's password from. Fixed, like {@link WORK_MOUNT}. */
+const SECRETS_MOUNT = "/run/secrets";
+const PASSWORD_FILE_NAME = "sftp-password";
+
+/** The account placeholder on the sftp exchange command, shouted so an
+ * unreplaced one is unmistakable; the server refuses it at sign-in. */
+const ACCOUNT_PLACEHOLDER = "YOUR_ACCOUNT";
+
 const RULE = "=".repeat(66);
 
 function heading(title: string): Array<string> {
   return [title, "-".repeat(title.length), ""];
 }
 
+/** Interpolated operator-authored text, held to the sheet's printable-ASCII
+ * contract: any byte outside printable ASCII renders as '?', so the stated
+ * invariant is enforced here rather than assumed of the console's inputs. */
+function printable(value: string): string {
+  return value.replace(/[^\x20-\x7e]/g, "?");
+}
+
 /**
- * The rendezvous locator, as the sheet prints it back for the partner to
- * check. Interpolating it is not a disclosure: it is exactly the
- * credential-free locator the invitation already holds, and on filedrop it
- * is the shared folder's name rather than any path on the inviter's machine.
+ * Where the two parties meet, printed back as the invitation holds it. On
+ * filedrop it is the inviter's name for the folder, which can differ from the
+ * reader's own (a share root mapped to a drive letter is the ordinary case),
+ * so the sheet says so rather than asking for a match; where the console
+ * could not name a folder, the sheet prints no name at all.
  *
- * The filedrop cross-check is a check, not a promise of equality: the same
- * shared folder can have a different name on each side (a share root mapped
- * to a drive letter is the ordinary case), so the sheet asks the partner to
- * check the name rather than match it.
+ * A split rendezvous names both folders from the INVITER's side, which the
+ * partner's own tool mirrors: the inviter's inbound is where the partner
+ * writes, its outbound where the partner reads. Labelled by what the READER
+ * does with them, not "inbound"/"outbound".
  */
-function rendezvousLines(endpoint: AcceptKitEndpoint): Array<string> {
-  if (endpoint.channel === "filedrop") {
-    // A split rendezvous names both folders from the INVITER's side, which
-    // the partner's own tool mirrors: the inviter's inbound is where the
-    // partner writes, the inviter's outbound is where the partner reads.
-    // Labelled by what the READER does with them, not "inbound"/"outbound".
-    if (endpoint.split === true)
-      return endpoint.inboundPath === undefined ||
-        endpoint.outboundPath === undefined
-        ? [
-            "This exchange uses two shared folders rather than one: you write into",
-            "one and read your partner's files out of the other. Your partner's",
-            "console could not put a name to either, so there is no name here to",
-            "check. Use the two folders you and your partner agreed on.",
-          ]
+function introLines(endpoint: AcceptKitEndpoint): Array<string> {
+  if (endpoint.channel === "sftp") {
+    const port = endpoint.port === undefined ? "" : `:${endpoint.port}`;
+    return [
+      "Your partner has invited you to an Alcove exchange through this SFTP",
+      "server:",
+      "",
+      `  SFTP server:    ${printable(endpoint.host)}${port}`,
+      ...(endpoint.inboundPath === undefined ||
+      endpoint.outboundPath === undefined
+        ? endpoint.path === undefined
+          ? []
+          : [`  Directory:      ${printable(endpoint.path)}`]
         : [
             `  You write to:   ${printable(endpoint.inboundPath)}`,
             `  You read from:  ${printable(endpoint.outboundPath)}`,
-            "",
-            "This exchange uses two shared folders rather than one. Those are",
-            "what your partner calls them. Your own names for them can differ,",
-            "such as a mapped drive letter or folders you named yourself, so",
-            "check them against the folders you were told to use rather than",
-            "expecting the names to match.",
-          ];
-    return endpoint.path === undefined
+          ]),
+    ];
+  }
+  if (endpoint.split === true)
+    return endpoint.inboundPath === undefined ||
+      endpoint.outboundPath === undefined
       ? [
-          "Your partner's console could not put a name to the shared folder, so",
-          "there is no name here to check. Use the folder you and your partner",
-          "agreed on.",
+          "Your partner has invited you to an Alcove exchange through two",
+          "shared folders you can both reach: you write into one and read",
+          "your partner's files from the other.",
         ]
       : [
-          `  Shared folder:  ${printable(endpoint.path)}`,
+          "Your partner has invited you to an Alcove exchange through two",
+          "shared folders you can both reach:",
           "",
-          "That is what your partner calls the shared folder. Your own name for",
-          "it can differ, such as a mapped drive letter or a folder you named",
-          "yourself, so check it against the folder you were told to use",
-          "rather than expecting the two to match.",
-        ];
-  }
-  const port = endpoint.port === undefined ? "" : `:${endpoint.port}`;
-  return [
-    `  SFTP server:    ${printable(endpoint.host)}${port}`,
-    // A split-directory invitation names both folders from the INVITER's
-    // side, which the partner's own command-line tool mirrors: the inviter's
-    // outbound is where the partner reads, and vice versa. Labelled by
-    // whose they are, not "inbound"/"outbound".
-    ...(endpoint.inboundPath === undefined ||
-    endpoint.outboundPath === undefined
-      ? endpoint.path === undefined
-        ? []
-        : [`  Directory:      ${printable(endpoint.path)}`]
-      : [
           `  You write to:   ${printable(endpoint.inboundPath)}`,
           `  You read from:  ${printable(endpoint.outboundPath)}`,
-        ]),
-    "",
-    "The invitation names the same location as the lines above. Check it against",
-    "what you were told to expect before you accept.",
-  ];
+          "",
+          "Those are your partner's names for them; yours can differ.",
+        ];
+  return endpoint.path === undefined
+    ? [
+        "Your partner has invited you to an Alcove exchange through a shared",
+        "folder you can both reach.",
+      ]
+    : [
+        "Your partner has invited you to an Alcove exchange through a shared",
+        "folder you can both reach:",
+        "",
+        `  Shared folder:  ${printable(endpoint.path)}`,
+        "",
+        "That is your partner's name for it; yours can differ.",
+      ];
 }
 
 /** The release page the launcher files are downloaded from: this build's own
@@ -266,55 +275,6 @@ function releasePageUrl(version: string | undefined): string {
  * shells in `.github/workflows/windows_resolution.yaml` and the unit tests. */
 const WORK_FOLDER_MOUNT = `-v "\${PWD}:${WORK_MOUNT}"`;
 
-/** The accept command, unindented; each caller indents it to its own step.
- * The CSV positional is part of the primary form: it is what makes the
- * consent display list the columns the partner would send, rather than
- * deferring that list to the exchange run. */
-function acceptCommand(version: string | undefined): string {
-  return (
-    `docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
-    `${commandImage(version)} accept ${INVITATION_PLACEHOLDER} your-file.csv`
-  );
-}
-
-/** What the partner substitutes in the accept command, then how to keep the
- * code out of the shell history, where the `@` file name is double-quoted
- * because Windows PowerShell parses a bare `@name` as splatting. Shared by
- * every body's accept step. */
-function acceptSubstitutionLines(): Array<string> {
-  return [
-    `   Replace ${INVITATION_PLACEHOLDER} with the invitation your`,
-    "   partner sent (the long block of letters and numbers, not the web",
-    "   link) and your-file.csv with your CSV file's name. Naming your",
-    "   file is what lets the display list the columns you would send",
-    "   before you confirm; without it, that list is worked out from your",
-    "   file only when the exchange runs, and you are not asked again.",
-    "",
-    "   To keep the invitation out of your command history, save it into",
-    "   a file named invitation.txt next to your CSV and write",
-    '   "@invitation.txt", double quotes included, in its place.',
-    "",
-  ];
-}
-
-/**
- * What the partner's `exchange` command holds beyond the run itself: the
- * one flag standing for the bilateral settings their side must match.
- *
- * Retain mode travels as the single flag whose implications the CLI resolves
- * for them (`withRetainModeImplications`); the lockless rendezvous flag
- * travels only where retain mode is not already holding it. Fixed strings
- * chosen by booleans, so nothing new is representable on the sheet.
- */
-function bilateralFlag(settings: BilateralSettings): string {
-  return chooseBilateral(
-    settings,
-    " --retain-files",
-    " --lockless-rendezvous",
-    "",
-  );
-}
-
 // The one rule for which bilateral agreement the sheet names: retain mode
 // already implies the lockless rendezvous, so its text wins; otherwise the
 // lockless setting speaks only where it is on.
@@ -329,564 +289,77 @@ function chooseBilateral<T>(
 }
 
 /**
- * The flag explained where the reader meets it, so a partner who edits the
- * command down keeps the half of the agreement their side has to run. Indented
- * to the step both bodies print the command in.
+ * The one flag on the partner's `exchange` command standing for the bilateral
+ * settings their side must match, placed straight after the subcommand.
+ * Retain mode travels as the single flag whose implications the CLI resolves
+ * for them (`withRetainModeImplications`); the lockless rendezvous flag
+ * travels only where retain mode is not already holding it.
  */
+function bilateralFlag(settings: BilateralSettings): string {
+  return chooseBilateral(
+    settings,
+    " --retain-files",
+    " --lockless-rendezvous",
+    "",
+  );
+}
+
+/** The flag explained where the reader meets it, so a partner who edits the
+ * command down keeps their half of the agreement. What retain mode leaves
+ * behind is stated by the terms accepting shows, not here. */
 function bilateralFlagLines(settings: BilateralSettings): Array<string> {
   return chooseBilateral(
     settings,
     [
-      "   --retain-files is your half of the agreement above. Leave it on the",
-      "   command, or the exchange stops with an error when the two sides",
-      "   connect.",
+      "   Leave --retain-files on: your partner keeps every exchange file,",
+      "   and the exchange stops with an error unless both sides do.",
       "",
     ],
     [
-      "   --lockless-rendezvous is your half of a setting your partner turned",
-      "   on: the two sides connect using acknowledgement files instead of a",
-      "   lock file. Both sides must use this setting. Leave it on the command,",
-      "   or the exchange stops with an error when the two sides connect.",
+      "   Leave --lockless-rendezvous on: the exchange stops with an error",
+      "   unless both sides use it.",
       "",
     ],
     [],
   );
 }
 
-/**
- * The same agreement, named as the console control that sets it, for the
- * filedrop launcher route: that route hands the partner to the console's
- * accept flow and never runs the commands below.
- */
+/** The same agreement, named as the console control that sets it, for the
+ * filedrop launcher route, which never runs the sheet's commands. */
 function consoleControlLines(settings: BilateralSettings): Array<string> {
   return chooseBilateral(
     settings,
     [
-      'Before you start the exchange there, open "How files are handled" in',
-      "that accept flow and choose to keep every exchange file. That is the",
-      "same agreement the section above describes, set on the console rather",
-      "than on the command line. Without it the exchange stops with an",
-      "error when the two sides connect.",
+      'Before you start the exchange there, open "How files are handled"',
+      "and choose to keep every exchange file. Both sides must.",
       "",
     ],
     [
-      'Before you start the exchange there, open "How files are handled" in',
-      'that accept flow and set "Lockless rendezvous" to On. Your partner',
-      "turned that setting on, and both sides must use it. Without it the",
-      "exchange stops with an error when the two sides connect.",
+      'Before you start the exchange there, open "How files are handled"',
+      'and set "Lockless rendezvous" to On. Both sides must.',
       "",
     ],
     [],
   );
 }
 
-/**
- * What retain mode leaves behind, and what the partner must do about it:
- * every protocol file stays in the rendezvous location as a permanent
- * transcript, which is the partner's to know before they join. Fixed
- * paragraphs per channel, selected by the boolean.
- *
- * The message bodies stay ciphertext (`docs/spec/CHANNEL_SECURITY.md`); the
- * control files the two sides meet through do not -- the hello bodies are
- * plaintext, and the filenames include each party's name, timestamps, sequence
- * numbers, and byte counts.
- */
-function retainLines(endpoint: AcceptKitEndpoint): Array<string> {
-  const split =
-    endpoint.channel === "sftp" &&
-    endpoint.inboundPath !== undefined &&
-    endpoint.outboundPath !== undefined;
-  const persistence =
-    endpoint.channel === "filedrop"
-      ? endpoint.split === true
-        ? [
-            "The files stay in both shared folders above, the one you write into",
-            "and the one you read from, in your copies of them and your",
-            "partner's alike. Nothing removes them when the exchange ends.",
-          ]
-        : [
-            "The files stay in the shared folder, in your copy of it and your",
-            "partner's alike. Nothing removes them when the exchange ends.",
-          ]
-      : split
-        ? [
-            "The files stay in both directories above, the one you write to and",
-            "the one you read from, on the SFTP server named above. Nothing",
-            "removes them when the exchange ends.",
-          ]
-        : [
-            "The files stay in the exchange directory on the SFTP",
-            "server named above. Nothing removes them when the exchange ends.",
-          ];
-  const reuse = [
-    "A later exchange in the same place ignores them, as long as each run",
-    "writes new file names. For runs that repeat, give peer_id date and",
-    "time fields, for example site-%Y%m%d%H%M%S. You and your partner decide",
-    "together whether to clear the files afterwards.",
+/** The first step on every route: where the invitation goes, and the folder
+ * every command runs from. A filedrop partner keeps that folder out of the
+ * shared ones, since accepting writes the key file into it. */
+function saveStep(endpoint: AcceptKitEndpoint): Array<string> {
+  const lead = [
+    "1. Save the invitation your partner sent as a file named",
+    endpoint.channel === "sftp"
+      ? `   ${INVITATION_FILE_NAME} in the folder that holds your CSV file, and run`
+      : `   ${INVITATION_FILE_NAME} in a folder of your own that holds your CSV file,`,
   ];
+  if (endpoint.channel === "sftp")
+    return [...lead, "   every command from there.", ""];
   return [
-    ...heading("THIS EXCHANGE KEEPS ITS FILES"),
-    "Your partner has turned on retain mode, so this exchange keeps every",
-    "file it writes as a permanent transcript instead of deleting each one",
-    "once it has been read.",
-    "",
-    ...persistence,
-    ...reuse,
-    "",
-    "The records you and your partner exchange are encrypted, and stay",
-    "encrypted in what is left behind. The small files the two sides use to",
-    "find each other are not: they are plaintext and they persist alongside",
-    "the rest, so anyone who can read that location afterwards can see",
-    "that an exchange happened, when, how many messages each side sent",
-    "and how large they were, the name each side ran under, and the",
-    "settings each side announced. Nothing there is your CSV file or the",
-    "matched result.",
-    "",
-    "Your side must run in retain mode too, or the exchange stops with an",
-    "error when the two sides connect. The commands below already include",
-    "it.",
-    "",
-  ];
-}
-
-/** Interpolated operator-authored text, held to the sheet's printable-ASCII
- * contract: any byte outside printable ASCII renders as '?', so the stated
- * invariant is enforced here rather than assumed of the console's inputs. */
-function printable(value: string): string {
-  return value.replace(/[^\x20-\x7e]/g, "?");
-}
-
-/** The shared opening: what this is, what the partner needs, and where the
- * terms actually live. The channel is named; the terms are not restated -- the
- * invitation's own consent display owns that disclosure. */
-function opening(
-  endpoint: AcceptKitEndpoint,
-  { retainFiles }: BilateralSettings,
-): Array<string> {
-  const channelLines =
-    endpoint.channel !== "filedrop"
-      ? ["This one runs over an SFTP server."]
-      : endpoint.split === true
-        ? [
-            "This one runs over two folders you and your partner can both reach:",
-            "you write your half into one and read their half out of the other.",
-          ]
-        : [
-            "This one runs over a shared folder you and your partner can both",
-            "reach.",
-          ];
-  return [
-    RULE,
-    "ALCOVE - HOW TO ACCEPT THIS EXCHANGE",
-    RULE,
-    "",
-    "Your partner has set up an Alcove record-linkage exchange with you and",
-    "sent you an invitation. This sheet takes you from nothing to accepting",
-    "it.",
-    "",
-    ...channelLines,
-    "",
-    "The invitation is confidential: it contains a one-time secret, so keep",
-    "it to the channel it arrived on. This sheet contains no secret of any",
-    "kind.",
-    "",
-    ...heading("WHAT YOU NEED"),
-    "Docker, installed and running. Docker Desktop (docker.com) is the",
-    "usual way to get it, on Windows, macOS, and Linux alike. Nothing else:",
-    "Alcove runs as a container, so there is nothing to install; what it",
-    "writes stays in the folders you mount below.",
-    "",
-    "Every command below is a single line, even where it wraps on screen.",
-    "On Windows, run the commands from PowerShell, not Command Prompt.",
-    "",
-    // Scoped to the accept command, the one place on this sheet that chooses
-    // the label: accepting writes it into alcove.yaml and the exchange
-    // steps read it from there. The flag SHAPE is shown and the value is
-    // shouted rather than plausible, since an unreplaced placeholder would
-    // otherwise reach the partner as this party's name.
-    ...heading("THE NAME YOUR PARTNER SEES"),
-    "Alcove records a name for your side. Your partner sees it as who they",
-    "exchanged with, in the agreed terms and in the record each of you",
-    "keeps. It picks none for you, so add this to the end of the accept",
-    "command on this sheet:",
-    "",
-    '  --identity "YOUR NAME, YOUR ORGANIZATION"',
-    "",
-    "with both parts replaced by what your partner will recognize: your",
-    "own name, and the organization you are exchanging on behalf of. Leave",
-    "it off and accepting stops and asks, rather than naming you itself.",
-    "",
-    "Accepting writes that name into alcove.yaml, so the exchange command",
-    "later on takes it from there and needs no flag of its own.",
-    "",
-    ...heading("WHICH DOCKER DO YOU HAVE?"),
-    "  * Docker Desktop, on Windows, macOS, or Linux: nothing to do here.",
-    "    Skip to the next section.",
-    "  * Docker Engine on Linux (the docker your distribution packages):",
-    "    read the rest of this section first.",
-    "",
-    "On Docker Engine, Alcove can hit 'permission denied' the moment it",
-    "tries to write in a folder you gave it. That is because Alcove runs",
-    "inside the container as a user numbered 1000 rather than as you, while",
-    "a folder you mount keeps the owner it has on your machine.",
-    "",
-    "To fix it, add this flag to every command on this sheet, straight",
-    "after the word run:",
-    "",
-    `  ${OPERATOR_USER_FLAG}`,
-    "",
-    "That runs Alcove as you. Every folder you can use, it can use:",
-    ...(endpoint.channel !== "filedrop"
-      ? [
-          "the folder holding your CSV file and the folder holding your",
-          "password file. Everything it writes stays yours afterwards.",
-        ]
-      : endpoint.split === true
-        ? [
-            "the folder holding your CSV file and your own copies of the two",
-            "shared folders. Everything it writes stays yours afterwards.",
-          ]
-        : [
-            "the folder holding your CSV file and your own copy of the shared",
-            "folder. Everything it writes stays yours afterwards.",
-          ]),
-    "",
-    "If you cannot change the commands, the other way is to hand a single",
-    "folder over to user 1000. From inside the folder that holds your CSV",
-    ...(endpoint.channel !== "filedrop"
-      ? ["file, run:"]
-      : endpoint.split === true
-        ? ["file (your own folder, never a shared one), run:"]
-        : ["file (your own folder, never the shared one), run:"]),
-    "",
-    "  sudo chown 1000:1000 .",
-    "",
-    "User 1000 is a number, not a name: whoever holds it on this machine",
-    "is who the folder now belongs to, and so is what Alcove writes in",
-    "it. On your own computer that is almost certainly you. On one you",
-    "share with other people it can be someone else, and the flag above",
-    "is the better answer there.",
-    "",
-    "If that asks for a password you do not have, or answers",
-    "'Operation not permitted', use the flag above instead. It also covers",
-    "only the folder you run it in, so any other folder a command below",
-    "mounts needs its own answer.",
-    "",
-    ...heading("WHAT YOU ARE AGREEING TO"),
-    "This sheet does not list the terms. Accepting prints your partner's",
-    "linkage terms and asks you to confirm them: what records are matched",
-    "on, what you receive, and who gets the result. Run accept with your CSV",
-    "file named, as the commands below do, and the display also lists which",
-    "of your columns would be sent. That display is the thing to read before",
-    "you answer; this sheet only gets you to it.",
-    "",
-    ...heading("WHERE THE FILES ARE EXCHANGED"),
-    ...rendezvousLines(endpoint),
-    "",
-    ...(retainFiles ? retainLines(endpoint) : []),
-  ];
-}
-
-/**
- * The opening of the step that repoints Alcove at the partner's own copy of
- * the shared folder, keyed on whether the sheet could name that folder.
- * Named, accepting wrote the inviter's name for it. Unnamed, what accepting
- * wrote is the console's own mount point, so the step calls it a placeholder
- * and directs the same replacement.
- */
-function repointStepOpening(named: boolean): Array<string> {
-  return named
-    ? [
-        "2. Point Alcove at your own copy of the shared folder. Accepting wrote",
-        "   your partner's own name for the folder; what Alcove needs is where",
-        "   that folder is on your machine. Open alcove.yaml and set:",
-      ]
-    : [
-        "2. Point Alcove at your own copy of the shared folder. Accepting wrote",
-        "   a placeholder for the folder, not a name either of you chose; what",
-        "   Alcove needs is where that folder is on your machine. Open",
-        "   alcove.yaml and set:",
-      ];
-}
-
-/** The split rendezvous's counterpart to {@link repointStepOpening}. Accepting
- * mirror-swaps the inviter's pair, so what it wrote is already this reader's own
- * inbound and outbound; only the machine-local locations are theirs to fill in. */
-function splitRepointStepOpening(named: boolean): Array<string> {
-  return named
-    ? [
-        "2. Point Alcove at your own copies of the two folders. Accepting wrote",
-        "   your partner's own names for them; what Alcove needs is where those",
-        "   folders are on your machine. Open alcove.yaml and set:",
-      ]
-    : [
-        "2. Point Alcove at your own copies of the two folders. Accepting wrote",
-        "   placeholders for them, not names either of you chose; what Alcove",
-        "   needs is where those folders are on your machine. Open alcove.yaml",
-        "   and set:",
-      ];
-}
-
-/** The accept step both filedrop bodies open on: run accept, then the two
- * caveats a reader needs before the next step (what to substitute, and keeping
- * the code out of the shell history). */
-function filedropAcceptStep(version: string | undefined): Array<string> {
-  return [
-    "1. Accept the invitation. This prints the terms, asks you to confirm,",
-    "   and on a yes writes alcove.yaml and .alcove.key into the folder:",
-    "",
-    `     ${acceptCommand(version)}`,
-    "",
-    ...acceptSubstitutionLines(),
-  ];
-}
-
-/**
- * The Windows launcher route, shared by both filedrop bodies: the launcher
- * takes one shared folder or a pair, so the two differ only in what it is told
- * to do with the folders it asks for.
- */
-function launcherRouteLines(
-  version: string | undefined,
-  settings: BilateralSettings,
-  split: boolean,
-): Array<string> {
-  return [
-    "Docker cannot see drive letters or network paths: they belong to",
-    "Windows, not to the small Linux virtual machine Docker runs inside. Your",
-    "file server also treats Docker as a different computer, so it needs its",
-    "own sign-in for the share. A launcher script does all of that for you.",
-    "",
-    "Download both files from the Alcove release page:",
-    "",
-    `  ${releasePageUrl(version)}`,
-    "",
-    "  Start-Alcove.ps1",
-    "  Setup-AlcoveFileDrop.ps1  (must sit beside it)",
-    "",
-    "Put them in a folder of their own. Use an ordinary PowerShell window,",
-    'not one opened with "Run as administrator": an elevated window cannot',
-    "see the drives you mapped as yourself. In that folder, run:",
-    "",
-    "  powershell -ExecutionPolicy Bypass -File .\\Start-Alcove.ps1",
-    "",
-    ...(split
-      ? [
-          "It asks for your folders. Answer yes when it asks whether your",
-          "partner named two, and give it the folder you READ their files out",
-          "of and then the folder you WRITE your own into. Getting the two the",
-          "wrong way round is the one mistake to watch for. It works out the",
-          "real server and share behind your drive letter or DFS path, creates",
-          "the Docker volume that reaches them, checks both folders, and opens",
-          "the Alcove console in your browser. Paste the invitation into the",
-          "console's accept flow there, and you are done. The rest of this",
-          "sheet is for situation B.",
-          "",
-          "Keep the two folders side by side inside one exchange folder on the",
-          "share. The launcher reaches them through a single connection to the",
-          "folder that holds both, and folders further apart leave it reaching",
-          "everything between them.",
-          "",
-        ]
-      : [
-          "It asks for your folders, works out the real server and share behind",
-          "your drive letter or DFS path, creates the Docker volume that reaches",
-          "it, checks the folder, and opens the Alcove console in your browser.",
-          "Paste the invitation into the console's accept flow there, and you are",
-          "done. The rest of this sheet is for situation B.",
-          "",
-        ]),
-    ...consoleControlLines(settings),
-    "(On macOS or Linux a network share is not situation A: mount it the way",
-    'you usually do, with Finder\'s "Connect to Server" or your file manager,',
-    "and once it shows as a folder, it is situation B below.)",
-    "",
-    "Why you can trust those files: they are plaintext PowerShell scripts,",
-    "meant to be read, so your IT department can review every line before",
-    "you run one. Take them from the release page above and nowhere else:",
-    "that is where the release publishes them together, and the release",
-    "copy of Start-Alcove.ps1 names the exact Alcove image it starts, so",
-    "what it runs is what that release built.",
-    "",
-  ];
-}
-
-/**
- * The split filedrop body: the same two commands as the single-folder route,
- * over two mounts instead of one.
- */
-function filedropSplitBody(
-  version: string | undefined,
-  named: boolean,
-  settings: BilateralSettings,
-): Array<string> {
-  return [
-    ...heading("STEP 1 - WHICH KIND OF FOLDERS ARE YOURS?"),
-    "This exchange uses two shared folders rather than one. The answer",
-    "decides everything below. Pick one.",
-    "",
-    "  A. A Windows network drive or a DFS path. Either folder opens in File",
-    "     Explorer as Z:\\Exchange, \\\\fileserver\\exchange, or a DFS namespace",
-    "     your IT department set up.",
-    "",
-    "  B. Folders that sync on this PC, or any other folders Docker can open:",
-    "     synced folders under your own user folder (OneDrive, Dropbox,",
-    "     Egnyte, and the like), plain local folders, or shares you mounted",
-    "     yourself on macOS or Linux.",
-    "",
-    ...heading("A - A WINDOWS NETWORK DRIVE OR A DFS PATH"),
-    ...launcherRouteLines(version, settings, true),
-    ...heading("B - FOLDERS DOCKER CAN OPEN"),
-    "Two commands, both run from the folder that holds your CSV file. Use a",
-    "folder of your own, neither of the shared folders: accepting writes",
-    "alcove.yaml and .alcove.key (your key file) beside your CSV, and",
-    "anything inside a shared folder can be read and changed by everyone",
-    "with access to it.",
-    "",
-    ...filedropAcceptStep(version),
-    ...splitRepointStepOpening(named),
-    "",
-    "     connection:",
-    "       channel: filedrop",
-    `       inbound_path: ${INBOUND_SYNC_MOUNT}`,
-    `       outbound_path: ${OUTBOUND_SYNC_MOUNT}`,
-    "",
-    "   Then mount your two folders there when you run the exchange. Mount",
-    `   the one you READ your partner's files out of at ${INBOUND_SYNC_MOUNT}, and the`,
-    `   one you WRITE your own into at ${OUTBOUND_SYNC_MOUNT}:`,
-    "",
-    `     docker run --rm ${WORK_FOLDER_MOUNT} ` +
-      `-v "/path/to/the/folder/you/read:${INBOUND_SYNC_MOUNT}" ` +
-      `-v "/path/to/the/folder/you/write:${OUTBOUND_SYNC_MOUNT}" ` +
-      `${commandImage(version)} exchange${bilateralFlag(settings)} ` +
-      `your-file.csv ./results`,
-    "",
-    "   Getting the two the wrong way round is the one mistake to watch for:",
-    "   the exchange would then wait for files in the folder it is writing",
-    "   into and never find your partner's. Replace your-file.csv with your",
-    "   CSV file's name. The matched records are written as",
-    "   alcove-results-<time>.csv inside the ./results folder, created if",
-    "   missing. You and your partner each run your own half; whichever runs",
-    "   first waits for the other.",
-    "",
-    ...bilateralFlagLines(settings),
-  ];
-}
-
-/** The filedrop routing decision: a network drive or DFS path needs the
- * launcher, any folder Docker can open takes the direct commands. */
-function filedropBody(
-  version: string | undefined,
-  named: boolean,
-  settings: BilateralSettings,
-): Array<string> {
-  return [
-    ...heading("STEP 1 - WHICH KIND OF FOLDER IS YOURS?"),
-    "The answer decides everything below. Pick one.",
-    "",
-    "  A. A Windows network drive or a DFS path. It opens in File Explorer",
-    "     as Z:\\Exchange, \\\\fileserver\\exchange, or a DFS namespace your",
-    "     IT department set up.",
-    "",
-    "  B. A folder that syncs on this PC, or any other folder Docker can",
-    "     open: a synced folder under your own user folder (OneDrive,",
-    "     Dropbox, Egnyte, and the like), a plain local folder, or a share",
-    "     you mounted yourself on macOS or Linux.",
-    "",
-    ...heading("A - A WINDOWS NETWORK DRIVE OR A DFS PATH"),
-    ...launcherRouteLines(version, settings, false),
-    ...heading("B - A FOLDER DOCKER CAN OPEN"),
-    "Two commands, both run from the folder that holds your CSV file. Use a",
-    "folder of your own, not the shared folder itself: accepting writes",
-    "alcove.yaml and .alcove.key (your key file) beside your CSV, and",
-    "anything inside the shared folder can be read and changed by everyone",
-    "with access to it.",
-    "",
-    ...filedropAcceptStep(version),
-    ...repointStepOpening(named),
-    "",
-    "     connection:",
-    "       channel: filedrop",
-    `       path: ${SYNC_MOUNT}`,
-    "",
-    "   Then mount your shared folder there when you run the exchange:",
-    "",
-    `     docker run --rm ${WORK_FOLDER_MOUNT} ` +
-      `-v "/path/to/your/shared/folder:${SYNC_MOUNT}" ` +
-      `${commandImage(version)} exchange${bilateralFlag(settings)} ` +
-      `your-file.csv ./results`,
-    "",
-    "   Replace your-file.csv with your CSV file's name. The matched records",
-    "   are written as alcove-results-<time>.csv inside the ./results folder,",
-    "   created if missing. You and your partner each run your own half;",
-    "   whichever runs first waits for the other.",
-    "",
-    ...bilateralFlagLines(settings),
-  ];
-}
-
-/** The SFTP body: accept, fill in the credentials acceptance leaves open, then
- * run -- in that order, because the exchange command only works after the
- * fill-in and a reader follows the sheet top to bottom. */
-function sftpBody(
-  version: string | undefined,
-  settings: BilateralSettings,
-): Array<string> {
-  return [
-    ...heading("THE THREE STEPS"),
-    "The commands run from the folder that holds your CSV file.",
-    "",
-    "1. Accept the invitation. This prints the terms, asks you to confirm,",
-    "   and on a yes writes alcove.yaml and .alcove.key into the folder:",
-    "",
-    `     ${acceptCommand(version)}`,
-    "",
-    ...acceptSubstitutionLines(),
-    "2. Fill in your credentials. Accepting wrote alcove.yaml with the",
-    "   server and directory taken from the invitation; two things are yours",
-    "   to supply, because an invitation never contains credentials:",
-    "",
-    // The placeholder is core's own constant, so the sheet cannot drift from
-    // what accept actually seeds into alcove.yaml.
-    `     username: ${PLACEHOLDER_SSH_USERNAME}`,
-    "         Replace this placeholder with the account the SFTP server",
-    "         accepts for you.",
-    "",
-    "     password (or private_key)",
-    "         Add one under the same server: block. Point it at a file with",
-    "         the @ convention rather than typing the secret into",
-    "         alcove.yaml:",
-    "",
-    "           connection:",
-    "             server:",
-    "               username: your-account",
-    "               password: '@/run/secrets/sftp-password'",
-    "",
-    "         A value beginning with @ is read from that file when Alcove",
-    "         runs, so the secret stays out of alcove.yaml, out of your",
-    "         shell history, and out of process listings.",
-    "",
-    "   Alcove never sends either one to your partner: your credential",
-    "   goes only from your machine to the server.",
-    "",
-    "3. Run the exchange. Docker sees only what you mount, so the command",
-    "   also mounts the folder holding your credential file, read-only:",
-    "",
-    `     docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
-      `-v "/your/secrets:/run/secrets:ro" ` +
-      `${commandImage(version)} exchange${bilateralFlag(settings)} ` +
-      `your-file.csv ./results`,
-    "",
-    "   Replace /your/secrets with the folder that holds your credential",
-    "   file, and your-file.csv with your CSV file's name. The matched",
-    "   records are written as alcove-results-<time>.csv inside the ./results",
-    "   folder, created if missing. You and your partner each run your own",
-    "   half; whichever runs first waits for the other.",
-    "",
-    ...bilateralFlagLines(settings),
-    "   The first run shows the server's SSH host-key fingerprint and asks",
-    "   you to confirm it. Check it against the value the server's",
-    "   administrator published; later runs verify it silently.",
+    ...lead,
+    endpoint.split === true
+      ? "   not either shared folder, and run every command from there."
+      : "   not the shared folder, and run every command from there.",
     "",
   ];
 }
@@ -894,82 +367,207 @@ function sftpBody(
 /** How the partner checks the image's signature before running it: one
  * `cosign verify` line against the image every command names. It needs no
  * digest, so a sheet from a console started without a launcher has it too. */
-function imageCheckLines(version: string | undefined): Array<string> {
+function imageCheckStep(version: string | undefined): Array<string> {
   return [
-    ...heading("CHECKING THE ALCOVE IMAGE"),
-    "You can check that the Alcove image the commands below run is the one",
-    "an Alcove release published. Install Cosign (see the Cosign",
-    "documentation for your platform), then run:",
+    "2. Optional, with Cosign installed: check the Alcove image's",
+    "   signature. If this reports an error, do not run the image; tell",
+    "   your partner.",
     "",
-    `  ${cosignVerifyCommand(commandImage(version))}`,
-    "",
-    "It checks the image's signature on Docker Hub and prints what it",
-    "found. If it reports an error instead, do not run the image: tell your",
-    "partner. If you use the GitHub Container Registry copy (see IF",
-    "SOMETHING GOES WRONG below), put that name in place of the Docker Hub",
-    "one here too.",
+    `     ${cosignVerifyCommand(commandImage(version))}`,
     "",
   ];
 }
 
-/** One registry's lines under REFERENCE: the image by its tag, as the commands
- * name it, and by its digest where the sheet has one. */
-function imageReferenceLines(
+/** The accept step every route shares. Accepting at a terminal asks for the
+ * party's identity before it shows the terms, so the sheet names no flag for
+ * it and no command carries a pre-filled one. */
+function acceptStep(version: string | undefined): Array<string> {
+  return [
+    "3. Accept, with your-file.csv replaced by your CSV file's name:",
+    "",
+    `     docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
+      `${commandImage(version)} accept ${INVITATION_FILE_ARGUMENT} your-file.csv`,
+    "",
+    "   It asks for your name and organization, which your partner sees,",
+    "   then shows the terms. Read them, and answer y to accept.",
+    "",
+  ];
+}
+
+/** The SFTP steps after accepting: the credential travels as flags on the
+ * exchange command, its password as an `@` path into a read-only mount, so
+ * nothing in alcove.yaml needs editing and no secret is typed. */
+function sftpSteps(
   version: string | undefined,
-  digest: string | undefined,
-  registry: ImageRegistry,
+  settings: BilateralSettings,
 ): Array<string> {
   return [
-    `    ${imageReference(version, registry)}`,
-    ...(digest === undefined
-      ? []
-      : [`    ${digestReference(digest, registry)}`]),
+    "4. Run the exchange, replacing your-file.csv as before, YOUR_ACCOUNT",
+    "   with your account on the server, and /your/secrets with the folder",
+    `   that holds your password in a file named ${PASSWORD_FILE_NAME}:`,
+    "",
+    `     docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
+      `-v "/your/secrets:${SECRETS_MOUNT}:ro" ` +
+      `${commandImage(version)} exchange${bilateralFlag(settings)} ` +
+      `--server-username ${ACCOUNT_PLACEHOLDER} ` +
+      `--server-password "@${SECRETS_MOUNT}/${PASSWORD_FILE_NAME}" ` +
+      "your-file.csv ./results",
+    "",
+    "   With an SSH key instead, write --server-private-key in place of",
+    "   --server-password, and your key file's name in place of",
+    `   ${PASSWORD_FILE_NAME}.`,
+    "",
+    "   The first run shows the server's key fingerprint: check it with the",
+    "   server's administrator before you answer. It then waits for your",
+    "   partner and writes the matched records into ./results.",
+    "",
+    ...bilateralFlagLines(settings),
   ];
 }
 
-/** The shared closing: recovery, the privacy reassurance, and the reference
- * links. */
+/** The filedrop steps after accepting, one shared folder or a split pair:
+ * point alcove.yaml at the container mount points, then mount the partner's
+ * own folders there. What accepting wrote in their place is not described, so
+ * the sheet never calls a value a name neither side chose. */
+function filedropSteps(
+  version: string | undefined,
+  split: boolean,
+  settings: BilateralSettings,
+): Array<string> {
+  return [
+    split
+      ? "4. In alcove.yaml, which accepting wrote, set the two folders:"
+      : "4. In alcove.yaml, which accepting wrote, set the shared folder:",
+    "",
+    "     connection:",
+    "       channel: filedrop",
+    ...(split
+      ? [
+          `       inbound_path: ${INBOUND_SYNC_MOUNT}`,
+          `       outbound_path: ${OUTBOUND_SYNC_MOUNT}`,
+        ]
+      : [`       path: ${SYNC_MOUNT}`]),
+    "",
+    ...(split
+      ? [
+          "5. Run the exchange, replacing your-file.csv as before and each",
+          "   /path/to/... with where that folder is on your machine:",
+          "",
+          `     docker run --rm ${WORK_FOLDER_MOUNT} ` +
+            `-v "/path/to/the/folder/you/read:${INBOUND_SYNC_MOUNT}" ` +
+            `-v "/path/to/the/folder/you/write:${OUTBOUND_SYNC_MOUNT}" ` +
+            `${commandImage(version)} exchange${bilateralFlag(settings)} ` +
+            "your-file.csv ./results",
+        ]
+      : [
+          "5. Run the exchange, replacing your-file.csv as before and",
+          "   /path/to/your/shared/folder with where that folder is on your",
+          "   machine:",
+          "",
+          `     docker run --rm ${WORK_FOLDER_MOUNT} ` +
+            `-v "/path/to/your/shared/folder:${SYNC_MOUNT}" ` +
+            `${commandImage(version)} exchange${bilateralFlag(settings)} ` +
+            "your-file.csv ./results",
+        ]),
+    "",
+    "   It waits for your partner, then writes the matched records into",
+    "   ./results.",
+    "",
+    ...bilateralFlagLines(settings),
+  ];
+}
+
+/** The heading the filedrop sheet routes a Windows network-drive reader to. */
+const LAUNCHER_HEADING = "WINDOWS NETWORK DRIVE OR DFS PATH";
+
+/** The filedrop routing line ahead of the steps: Docker cannot open a drive
+ * letter or network path, so that reader takes the launcher instead. */
+function launcherPointerLines(split: boolean): Array<string> {
+  return split
+    ? [
+        "If the folders are on a Windows network drive or DFS path, such as",
+        "Z:\\Exchange or \\\\fileserver\\exchange, Docker cannot open them:",
+        `skip to ${LAUNCHER_HEADING} below.`,
+        "",
+      ]
+    : [
+        "If the folder is on a Windows network drive or DFS path, such as",
+        "Z:\\Exchange or \\\\fileserver\\exchange, Docker cannot open it: skip",
+        `to ${LAUNCHER_HEADING} below.`,
+        "",
+      ];
+}
+
+/** The Windows launcher route, for a shared folder or a pair: the launcher
+ * resolves the share, mounts it, and opens the console's accept flow. */
+function launcherLines(
+  version: string | undefined,
+  settings: BilateralSettings,
+  split: boolean,
+): Array<string> {
+  return [
+    ...heading(LAUNCHER_HEADING),
+    "Download Start-Alcove.ps1 and Setup-AlcoveFileDrop.ps1 into one",
+    "folder, from this release page and nowhere else:",
+    "",
+    `  ${releasePageUrl(version)}`,
+    "",
+    "In that folder, in an ordinary PowerShell window (one opened with",
+    '"Run as administrator" cannot see your mapped drives), run:',
+    "",
+    "  powershell -ExecutionPolicy Bypass -File .\\Start-Alcove.ps1",
+    "",
+    ...(split
+      ? [
+          "When it asks whether your partner named two folders, answer yes,",
+          "then give it the folder you read from first and the folder you",
+          "write to second. Keep both inside one exchange folder on the",
+          "share: the launcher reaches everything in the folder holding them.",
+          "It opens the Alcove console in your browser: paste the invitation",
+          "into its accept flow.",
+        ]
+      : [
+          "Give it your shared folder when it asks. It opens the Alcove",
+          "console in your browser: paste the invitation into its accept flow.",
+        ]),
+    "",
+    ...consoleControlLines(settings),
+  ];
+}
+
+/** The image by its digest on each registry, Docker Hub first, under
+ * REFERENCE; nothing where the sheet has no digest. */
+function digestLines(digest: string | undefined): Array<string> {
+  return digest === undefined
+    ? []
+    : [
+        "  The exact image your partner runs, which works in place of the",
+        "  image in any command above:",
+        `    ${digestReference(digest, COMMAND_REGISTRY)}`,
+        `    ${digestReference(digest, ALTERNATIVE_REGISTRY)}`,
+      ];
+}
+
+/** The shared closing: recovery, then the reference links. */
 function closing(
   version: string | undefined,
   digest: string | undefined,
 ): Array<string> {
   return [
-    ...heading("KEEPING THE KEY FILE"),
-    "Accepting writes .alcove.key holding the shared secret: keep it",
-    "owner-only (chmod 600 on macOS or Linux) and never commit it.",
-    "",
     ...heading("IF SOMETHING GOES WRONG"),
-    "  * Invitations expire. If yours has, ask your partner for a new one.",
-    "    Nothing is lost by starting again.",
-    "  * If Docker cannot download the Alcove image from Docker Hub, use the",
-    "    same image from the GitHub Container Registry: in every command on",
-    "    this sheet, put",
+    "  * The invitation has expired: ask your partner for a new one.",
+    "  * Docker cannot download the image: in every command, put",
     `      ${imageReference(version, ALTERNATIVE_REGISTRY)}`,
     "    in place of",
     `      ${commandImage(version)}`,
-    "    A network can refuse one registry and allow the other, and Docker",
-    "    Hub limits how often one network downloads from it.",
-    "  * Every command prints what it did and which files it wrote.",
-    "  * Your input file itself is never sent. Alcove reads it in the folder",
-    "    you mounted and writes the result beside your input; what goes to",
-    "    your partner is what the accept display describes.",
+    "  * 'Permission denied' on Docker Engine for Linux: add",
+    `      ${OPERATOR_USER_FLAG}`,
+    "    straight after docker run in every command.",
     "",
     ...heading("REFERENCE"),
     "  Command-line reference:",
     `    ${ALCOVE_CLI_DOC_URL}`,
-    "  Alcove image used above, from Docker Hub:",
-    ...imageReferenceLines(version, digest, COMMAND_REGISTRY),
-    "  The same image from the GitHub Container Registry:",
-    ...imageReferenceLines(version, digest, ALTERNATIVE_REGISTRY),
-    ...(digest === undefined
-      ? [
-          "  The image's digest, the same on both, is in the Alcove release",
-          "  notes for this version.",
-        ]
-      : [
-          "  The @sha256: line names exactly the image your partner runs, and",
-          "  works in place of the image in any command above.",
-        ]),
+    ...digestLines(digest),
     "",
   ];
 }
@@ -986,19 +584,34 @@ export function buildAcceptKit({
 }: AcceptKitInput): string {
   const version = releaseVersion(buildVersion);
   const digest = imageDigest(consoleDigest);
+  const filedrop = endpoint.channel === "filedrop";
+  const split = endpoint.channel === "filedrop" && endpoint.split === true;
   const lines = [
-    ...opening(endpoint, settings),
-    ...imageCheckLines(version),
-    ...(endpoint.channel !== "filedrop"
-      ? sftpBody(version, settings)
-      : endpoint.split === true
-        ? filedropSplitBody(
-            version,
-            endpoint.inboundPath !== undefined &&
-              endpoint.outboundPath !== undefined,
-            settings,
-          )
-        : filedropBody(version, endpoint.path !== undefined, settings)),
+    RULE,
+    "ALCOVE - HOW TO ACCEPT THIS EXCHANGE",
+    RULE,
+    "",
+    ...introLines(endpoint),
+    "",
+    ...(filedrop
+      ? [
+          "You need Docker, installed and running (Docker Desktop, from",
+          "docker.com). On Windows, use PowerShell. Each command is one line.",
+        ]
+      : [
+          "You need your own account on that server, and Docker, installed",
+          "and running (Docker Desktop, from docker.com). On Windows, use",
+          "PowerShell. Each command is one line.",
+        ]),
+    "",
+    ...(filedrop ? launcherPointerLines(split) : []),
+    ...saveStep(endpoint),
+    ...imageCheckStep(version),
+    ...acceptStep(version),
+    ...(filedrop
+      ? filedropSteps(version, split, settings)
+      : sftpSteps(version, settings)),
+    ...(filedrop ? launcherLines(version, settings, split) : []),
     ...closing(version, digest),
   ];
   return `${lines.join("\n")}\n`;

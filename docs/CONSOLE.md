@@ -345,10 +345,10 @@ Contract: [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#the-recurring-run-hand-off)
 
 An SFTP or shared-folder exchange puts the partner on the command line, so the console offers a second artifact when it creates the invitation: a printable, plaintext instruction sheet to send with the invitation. It assumes the partner has Docker -- Desktop or Engine -- or can get it, and takes them to the point of accepting: the channel, the rendezvous the invitation names, a `cosign verify` command that checks the image's signature before it runs, the `docker run ... accept` and `exchange` commands, and, on a shared folder, routing a partner whose folder is a Windows network drive or DFS path to the release launchers (Docker cannot see a drive letter).
 
-- An exchange created with retain mode on adds a fixed disclosure of what it leaves behind and where those files persist, and the commands include the setting; on the launcher route it points the partner at the console's file-handling control.
+- An exchange created with retain mode on puts the setting on the exchange command, with a line saying both sides must use it; on the launcher route it points the partner at the console's file-handling control. What retain mode leaves behind is stated by the terms accepting displays.
 - Lockless rendezvous without retain mode is handled the same two ways, since the partner's side must match it.
 - It does not restate the linkage terms: accepting displays them and asks the partner to confirm.
-- The sheet contains no secret and no invitation token -- the partner pastes their own copy of the invitation over a placeholder -- so it can travel any way, including on paper.
+- The sheet contains no secret and no invitation token -- the partner saves their own copy of the invitation in the file the accept command names -- so it can travel any way, including on paper.
 
 Its contents and invariants are in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#the-partner-accept-kit).
 
