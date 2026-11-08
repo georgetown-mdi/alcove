@@ -25,26 +25,16 @@ import {
   MAX_NESTING_DEPTH,
   MAX_NODE_COUNT,
 } from "../../src/utils/camelizeKeys";
+import { minimalSsnTerms } from "../utils/support";
 
 // Minimal valid components used as a base.
-const minimalLinkageTerms = {
-  version: "1.0.0",
-  identity: "Test Party",
-  date: "2025-01-01",
-  algorithm: "psi",
-  output: { expectsOutput: true, shareWithPartner: false },
-  deduplicate: false,
-  linkageFields: [{ name: "ssn", type: "ssn" }],
-  linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
-};
-
 const minimalConnection = {
   channel: "webrtc",
   server: { host: "api.peerjs.com" },
 };
 
 const minimalSpec = {
-  linkageTerms: minimalLinkageTerms,
+  linkageTerms: minimalSsnTerms,
   connection: minimalConnection,
 };
 
@@ -62,7 +52,7 @@ test("a file whose create-mode server has no host is refused at connection.serve
   let raised: unknown;
   try {
     parseExchangeSpec({
-      linkageTerms: minimalLinkageTerms,
+      linkageTerms: minimalSsnTerms,
       connection: {
         channel: "sftp",
         server: {
@@ -124,7 +114,7 @@ test("expectedPartnerDeduplicate: a non-boolean is rejected", () => {
 
 test("parses an ExchangeSpec with an SFTP connection", () => {
   const result = parseExchangeSpec({
-    linkageTerms: minimalLinkageTerms,
+    linkageTerms: minimalSsnTerms,
     connection: {
       channel: "sftp",
       server: { host: "sftp.example.org", username: "alcove" },
@@ -167,7 +157,7 @@ test("retentionDisposition: an empty note is rejected (absence is the omitted ke
 // --- Required fields ---------------------------------------------------------
 
 test("missing connection is rejected", () => {
-  const result = safeParseExchangeSpec({ linkageTerms: minimalLinkageTerms });
+  const result = safeParseExchangeSpec({ linkageTerms: minimalSsnTerms });
   expect(result.success).toBe(false);
 });
 
@@ -185,7 +175,7 @@ test("a transform param over the content bound is rejected through this spec pat
   const result = safeParseExchangeSpec({
     ...minimalSpec,
     linkageTerms: {
-      ...minimalLinkageTerms,
+      ...minimalSsnTerms,
       linkageKeys: [
         {
           name: "SSN",
@@ -222,7 +212,7 @@ test("a name-class control character is rejected through this spec path", () => 
   const result = safeParseExchangeSpec({
     ...minimalSpec,
     linkageTerms: {
-      ...minimalLinkageTerms,
+      ...minimalSsnTerms,
       payload: { send: [{ name: "risk\u0007score" }] },
     },
   });
@@ -516,7 +506,7 @@ test("includeOwnColumns: a count-only exchange refuses the key at parse", () => 
   // credential, terms, or data moves.
   const countOnly = {
     ...minimalSpec,
-    linkageTerms: { ...minimalLinkageTerms, algorithm: "psi-c" },
+    linkageTerms: { ...minimalSsnTerms, algorithm: "psi-c" },
   };
   // The count-only terms themselves are valid, so a failure below is the key's.
   expect(safeParseExchangeSpec(countOnly).success).toBe(true);
@@ -570,7 +560,7 @@ test.each([
   ({ terms, phrase }) => {
     const spec = {
       ...minimalSpec,
-      linkageTerms: { ...minimalLinkageTerms, ...terms },
+      linkageTerms: { ...minimalSsnTerms, ...terms },
     };
     // The terms themselves are valid, so a failure below is the key's.
     expect(safeParseExchangeSpec(spec).success).toBe(true);
@@ -600,7 +590,7 @@ test.each([
 test("a key no block reads is refused, naming it as the file spells it", () => {
   const result = safeParseExchangeSpec({
     ...minimalSpec,
-    linkageTerms: { ...minimalLinkageTerms, mystery_setting: "held" },
+    linkageTerms: { ...minimalSsnTerms, mystery_setting: "held" },
   });
   expect(result.success).toBe(false);
   const issue = result.error?.issues[0];
@@ -623,7 +613,7 @@ test.each([
   (block, key) => {
     const document = {
       connection: minimalConnection,
-      [block]: { ...minimalLinkageTerms, [key]: RULE_SET_CITATION },
+      [block]: { ...minimalSsnTerms, [key]: RULE_SET_CITATION },
     };
     const expected = [
       {
@@ -711,7 +701,7 @@ test("an unread key is named in the spelling the file writes, not snake_case", (
   for (const key of ["zzProbeKey", "Mystery-Key"]) {
     const result = safeParseExchangeSpec({
       ...minimalSpec,
-      linkageTerms: { ...minimalLinkageTerms, [key]: "held" },
+      linkageTerms: { ...minimalSsnTerms, [key]: "held" },
     });
     expect(result.success, key).toBe(false);
     expect(result.error?.issues[0]?.message, key).toBe(
@@ -727,7 +717,7 @@ test("one unread key that begins another is named without swallowing it", () => 
   const result = safeParseExchangeSpec({
     ...minimalSpec,
     linkageTerms: {
-      ...minimalLinkageTerms,
+      ...minimalSsnTerms,
       zz_probe: "held",
       zz_probe_key: "held",
     },
@@ -770,7 +760,7 @@ test("a block read on its own refuses a key no part of it reads", () => {
   > = [
     [
       safeParseLinkageTermsTheReaderWrote,
-      { ...minimalLinkageTerms, zz_probe_key: "held" },
+      { ...minimalSsnTerms, zz_probe_key: "held" },
     ],
     [
       safeParseStandardizationTheReaderWrote,
@@ -807,7 +797,7 @@ test("no load yields a document with a setting dropped, at any depth", () => {
     [
       "linkage_terms.output",
       {
-        ...minimalLinkageTerms,
+        ...minimalSsnTerms,
         output: { expectsOutput: true, shareWithPartner: false, extra: 1 },
       },
     ],
@@ -865,7 +855,7 @@ test("every key of a document that parses survives into the parse result", () =>
 
 const sendingColumns = (send: ReadonlyArray<Record<string, unknown>>) => ({
   ...minimalSpec,
-  linkageTerms: { ...minimalLinkageTerms, payload: { send } },
+  linkageTerms: { ...minimalSsnTerms, payload: { send } },
 });
 
 test("a repeated payload column that states nothing beyond the entry kept is collapsed", () => {
@@ -940,7 +930,7 @@ test("both spellings of one key are refused inside a block too", () => {
   const result = safeParseExchangeSpec({
     ...minimalSpec,
     linkageTerms: {
-      ...minimalLinkageTerms,
+      ...minimalSsnTerms,
       output: {
         expects_output: true,
         expectsOutput: false,

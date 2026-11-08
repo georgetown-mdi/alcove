@@ -4,6 +4,7 @@
 
 import {
   FileSyncConnection,
+  type FileInfo,
   type FileTransportClient,
 } from "../../src/connection/fileSyncConnection";
 import type { FileDropConnectionConfig } from "../../src/config/connection";
@@ -153,6 +154,45 @@ export async function runPoller(
   conn.start();
   await Promise.race([signal, new Promise<void>((r) => setTimeout(r, 2_000))]);
   conn.stop();
+}
+
+// Stubs `client.list` so the entry scan sees an empty directory and every
+// later listing sees a fresh copy of `laterListing`.
+export function stubListing(
+  client: FileTransportClient,
+  laterListing: ReadonlyArray<FileInfo>,
+): void {
+  let listCallCount = 0;
+  client.list = async () => {
+    listCallCount++;
+    if (listCallCount === 1) return [];
+    return laterListing.map((entry) => ({ ...entry }));
+  };
+}
+
+// The list() calls a client has made, and a promise for a chosen call.
+export interface ListingCounter {
+  readonly reached: Promise<void>;
+  readonly calls: number;
+}
+
+// Wraps `client.list` to count its calls, passing each through to the listing
+// it already gives; `reached` resolves on call number `count`.
+export function notifyAfterListings(
+  client: FileTransportClient,
+  count: number,
+): ListingCounter {
+  let notifyReached!: () => void;
+  const counter = {
+    reached: new Promise<void>((r) => (notifyReached = r)),
+    calls: 0,
+  };
+  const origList = client.list.bind(client);
+  client.list = async (p: string) => {
+    if (++counter.calls === count) notifyReached();
+    return origList(p);
+  };
+  return counter;
 }
 
 // Builds two FileSyncConnections sharing one in-memory directory, each

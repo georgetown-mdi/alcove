@@ -11,6 +11,7 @@ import {
 
 import type { FrameStructureRefusal } from "../../src/connection/binaryPackBounds";
 import type { Packable, Unpackable } from "peerjs-js-binarypack";
+import { mulberry32 } from "../utils/mulberry32";
 
 // The differential counterpart to binaryPackBounds.test.ts, which drives the scan
 // against hand-written fixtures. Here the oracle is the REAL peerjs-js-binarypack:
@@ -333,19 +334,6 @@ async function numericKeyMapFrame(count: number): Promise<Uint8Array> {
     parts.push(await packBytes(i & 0x7f));
   }
   return concatBytes(parts);
-}
-
-/** A deterministic 32-bit PRNG (mulberry32), so the generated nested structures are
- * fixed run to run and no unseeded randomness gates an assertion. */
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 /** Seeded nested arrays and objects mixing every value kind, so the differential

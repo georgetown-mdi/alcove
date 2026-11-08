@@ -18,6 +18,7 @@ import {
 } from "../../src/config/connection";
 import { safeParseSigningConfig } from "../../src/config/signing";
 import { safeParseMetadata } from "../../src/config/metadata";
+import { minimalSsnTerms } from "../utils/support";
 
 // Every safeParseX config helper runs camelizeKeys before Zod's safeParse, so
 // a camelize structural bound (the depth bound or the node-count/width
@@ -88,19 +89,8 @@ for (const { name, fn } of safeHelpers) {
   });
 }
 
-const minimalLinkageTerms = {
-  version: "1.0.0",
-  identity: "Test Party",
-  date: "2025-01-01",
-  algorithm: "psi",
-  output: { expectsOutput: true, shareWithPartner: false },
-  deduplicate: false,
-  linkageFields: [{ name: "ssn", type: "ssn" }],
-  linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
-};
-
 test("a legitimate config still parses through the safe helper", () => {
-  const result = safeParseLinkageTerms(minimalLinkageTerms);
+  const result = safeParseLinkageTerms(minimalSsnTerms);
   expect(result.success).toBe(true);
 });
 

@@ -21,6 +21,7 @@ import {
 } from "../../src/connection/webrtcOutboundBound";
 import { MAX_MAP_SHARD_ENTRIES } from "../../src/psi/shardedMap";
 import { InternalConsistencyError, RoundSetLimitError } from "../../src/errors";
+import { mulberry32 } from "../utils/mulberry32";
 
 // The single-pass structures past the 2^24 entries one V8 Map holds, and the
 // fixed widths of the reply that bound a set over file-sync instead
@@ -142,16 +143,6 @@ function cellsView(cells: Cells): KeyCells {
   return {
     count: (row) => cells[row].length,
     valueAt: (row, k) => cells[row][k],
-  };
-}
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 

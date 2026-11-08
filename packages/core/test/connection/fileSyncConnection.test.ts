@@ -64,8 +64,10 @@ import {
   makeRendezvousPair,
   makeRetainConn,
   messageLoopInternals,
+  notifyAfterListings,
   responsibleFilesOf,
   runPoller,
+  type ListingCounter,
 } from "../utils/fileSyncConnectionFixture";
 import { makeMockClient, type MockClientOptions } from "../utils/support";
 
@@ -4391,7 +4393,6 @@ test("poll(): the loop recognizes a real temp-<uuid>.tmp but treats a non-UUID t
   // entry snapshot is not recognized and falls to the unexpected-file policy
   // (warned once under "warn"), proving the two shapes are handled differently.
   const errors: unknown[] = [];
-  let listCount = 0;
   const [, logs] = await withCapturedLogs(async () => {
     const { client, files } = makeMockClient();
     const conn = await makeConnectedConn(client, { pollingFrequency: 5 });
@@ -4405,17 +4406,11 @@ test("poll(): the loop recognizes a real temp-<uuid>.tmp but treats a non-UUID t
     files.set("/test/temp-export.tmp", Buffer.from("unrelated"));
     conn.on("error", (err) => errors.push(err));
 
-    let notifyEnough!: () => void;
-    const enough = new Promise<void>((r) => (notifyEnough = r));
-    const origList = client.list.bind(client);
-    client.list = async (p: string) => {
-      if (++listCount === 5) notifyEnough();
-      return origList(p);
-    };
+    const listings = notifyAfterListings(client, 5);
     conn.start();
     try {
       await Promise.race([
-        enough,
+        listings.reached,
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("timed out")), 2_000),
         ),
@@ -5175,7 +5170,7 @@ test("poll(): a peer-derived peerId with control/ANSI is escaped in a terminal e
 });
 
 test("poll(): an unrecognized file mid-loop warns once per name under the warn policy", async () => {
-  let listCount = 0;
+  let listings!: ListingCounter;
   const errors: unknown[] = [];
   const [, logs] = await withCapturedLogs(async () => {
     const { client, files } = makeMockClient();
@@ -5187,17 +5182,11 @@ test("poll(): an unrecognized file mid-loop warns once per name under the warn p
 
     // Resolve after several poll cycles so the once-per-name dedup is exercised
     // across multiple passes, not just one.
-    let notifyEnough!: () => void;
-    const enough = new Promise<void>((r) => (notifyEnough = r));
-    const origList = client.list.bind(client);
-    client.list = async (p: string) => {
-      if (++listCount === 5) notifyEnough();
-      return origList(p);
-    };
+    listings = notifyAfterListings(client, 5);
     conn.start();
     try {
       await Promise.race([
-        enough,
+        listings.reached,
         new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new Error("timed out waiting for poll cycles")),
@@ -5211,7 +5200,7 @@ test("poll(): an unrecognized file mid-loop warns once per name under the warn p
   });
 
   expect(errors).toHaveLength(0);
-  expect(listCount).toBeGreaterThanOrEqual(5);
+  expect(listings.calls).toBeGreaterThanOrEqual(5);
   const warns = logs.filter((l) => l.message.includes("intruder.json"));
   expect(warns).toHaveLength(1);
 });
@@ -5226,18 +5215,11 @@ test("poll(): an unrecognized file mid-loop is silently skipped under the ignore
   const errors: unknown[] = [];
   conn.on("error", (err) => errors.push(err));
 
-  let listCount = 0;
-  let notifyEnough!: () => void;
-  const enough = new Promise<void>((r) => (notifyEnough = r));
-  const origList = client.list.bind(client);
-  client.list = async (p: string) => {
-    if (++listCount === 5) notifyEnough();
-    return origList(p);
-  };
+  const listings = notifyAfterListings(client, 5);
   conn.start();
   try {
     await Promise.race([
-      enough,
+      listings.reached,
       new Promise<never>((_, reject) =>
         setTimeout(
           () => reject(new Error("timed out waiting for poll cycles")),
@@ -5254,7 +5236,6 @@ test("poll(): an unrecognized file mid-loop is silently skipped under the ignore
 
 test("poll(): with retain_files set and unexpected_files unset, a mid-session conflict file warns rather than aborts", async () => {
   const errors: unknown[] = [];
-  let listCount = 0;
   const [, logs] = await withCapturedLogs(async () => {
     const { client, files } = makeMockClient();
     // retainFiles set, unexpectedFiles unset -> effective default resolves to warn.
@@ -5275,17 +5256,11 @@ test("poll(): with retain_files set and unexpected_files unset, a mid-session co
     // A cloud-sync conflict copy: peer-prefixed but a non-grammar terminal.
     files.set("/test/peer-100 (conflicted copy).json", Buffer.from("x"));
 
-    let notifyEnough!: () => void;
-    const enough = new Promise<void>((r) => (notifyEnough = r));
-    const origList = client.list.bind(client);
-    client.list = async (p: string) => {
-      if (++listCount === 5) notifyEnough();
-      return origList(p);
-    };
+    const listings = notifyAfterListings(client, 5);
     conn.start();
     try {
       await Promise.race([
-        enough,
+        listings.reached,
         new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new Error("timed out waiting for poll cycles")),
@@ -5308,7 +5283,6 @@ test("poll(): with lockless_rendezvous set (retain off) and unexpected_files uns
   // retainFiles false, the `retainFiles || locklessRendezvous` resolution must
   // still yield warn. An `||` -> `&&` regression would resolve to error here.
   const errors: unknown[] = [];
-  let listCount = 0;
   const [, logs] = await withCapturedLogs(async () => {
     const { client, files } = makeMockClient();
     const conn = new FileSyncConnection(client, {
@@ -5325,17 +5299,11 @@ test("poll(): with lockless_rendezvous set (retain off) and unexpected_files uns
 
     files.set("/test/intruder.json", Buffer.from("x"));
 
-    let notifyEnough!: () => void;
-    const enough = new Promise<void>((r) => (notifyEnough = r));
-    const origList = client.list.bind(client);
-    client.list = async (p: string) => {
-      if (++listCount === 5) notifyEnough();
-      return origList(p);
-    };
+    const listings = notifyAfterListings(client, 5);
     conn.start();
     try {
       await Promise.race([
-        enough,
+        listings.reached,
         new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new Error("timed out waiting for poll cycles")),
@@ -5426,7 +5394,7 @@ test("poll(): retain mode recognizes our own accumulated message files rather th
   // be recognized via the own-prefix numeric-terminal branch, never flagged as
   // unexpected -- which would terminate the exchange on our own transcript.
   const errors: unknown[] = [];
-  let listCount = 0;
+  let listings!: ListingCounter;
   const [, logs] = await withCapturedLogs(async () => {
     const { client, files } = makeMockClient();
     const conn = new FileSyncConnection(client, {
@@ -5449,17 +5417,11 @@ test("poll(): retain mode recognizes our own accumulated message files rather th
     files.set("/test/me-20260101T000100-001-37.json", Buffer.alloc(37));
     files.set("/test/me-peer-20260101T000000-000-10-ack.json", Buffer.alloc(0));
 
-    let notifyEnough!: () => void;
-    const enough = new Promise<void>((r) => (notifyEnough = r));
-    const origList = client.list.bind(client);
-    client.list = async (p: string) => {
-      if (++listCount === 5) notifyEnough();
-      return origList(p);
-    };
+    listings = notifyAfterListings(client, 5);
     conn.start();
     try {
       await Promise.race([
-        enough,
+        listings.reached,
         new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new Error("timed out waiting for poll cycles")),
@@ -5473,7 +5435,7 @@ test("poll(): retain mode recognizes our own accumulated message files rather th
   });
 
   expect(errors).toHaveLength(0);
-  expect(listCount).toBeGreaterThanOrEqual(5);
+  expect(listings.calls).toBeGreaterThanOrEqual(5);
   expect(logs).toHaveLength(0);
 });
 
@@ -5903,7 +5865,6 @@ test("normalizeFiledropPath: leaves interior segments and case untouched", () =>
 
 test("poll(): a foreign file snapshotted at entry does not warn, but a new foreign file warns once", async () => {
   const errors: unknown[] = [];
-  let listCount = 0;
   const [, logs] = await withCapturedLogs(async () => {
     const { client, files } = makeMockClient();
     const conn = await makeConnectedConn(client, { pollingFrequency: 5 });
@@ -5920,17 +5881,11 @@ test("poll(): a foreign file snapshotted at entry does not warn, but a new forei
     files.set("/test/newcomer.json", Buffer.from("new"));
     conn.on("error", (err) => errors.push(err));
 
-    let notifyEnough!: () => void;
-    const enough = new Promise<void>((r) => (notifyEnough = r));
-    const origList = client.list.bind(client);
-    client.list = async (p: string) => {
-      if (++listCount === 5) notifyEnough();
-      return origList(p);
-    };
+    const listings = notifyAfterListings(client, 5);
     conn.start();
     try {
       await Promise.race([
-        enough,
+        listings.reached,
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("timed out")), 2_000),
         ),

@@ -11,21 +11,12 @@ vi.mock("../../src/linkageTermsPolicy", async (importOriginal) => {
   return { ...original, candidateSetIsImplementedForStrategy: () => true };
 });
 
-import {
-  linkViaSinglePassPSI,
-  type LinkageCardinality,
-} from "../../src/psi/link";
-import { createMessagePipe } from "../../src/connection/messageConnection";
+import type { LinkageCardinality } from "../../src/psi/link";
 import type { AssociationTable } from "../../src/types";
 import { sortAssociationTable } from "../../src/testing";
-import {
-  candidateSetBounds,
-  declaredKeyWidths,
-  mirrorCardinality,
-  type Column,
-} from "../utils/candidateSetBounds";
+import { mirrorCardinality, type Column } from "../utils/candidateSetBounds";
 import { entityClusters } from "../../src/psi/entityClosure";
-import { makeParticipant, runCascade, tablesOf } from "../utils/support";
+import { runCascade, runSinglePass, tablesOf } from "../utils/support";
 
 // The closure step every reader of a both-sided table runs locally over it, so
 // a table asserted equal between the strategies is asserted equal in the
@@ -59,39 +50,17 @@ async function cascadeTables(
   return [sortAssociationTable(starter), sortAssociationTable(joiner)];
 }
 
-async function runSinglePass(
+async function singlePassTables(
   cardinality: LinkageCardinality,
   starterKeys: Array<Column>,
   joinerKeys: Array<Column>,
 ): Promise<Tables> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const keyWidths = declaredKeyWidths(starterKeys, joinerKeys);
-  const [starter, joiner] = await Promise.all([
-    linkViaSinglePassPSI(
-      { cardinality },
-      makeParticipant(psiLibrary, "starter"),
-      starterConn,
-      starterKeys,
-      {
-        ...candidateSetBounds(joinerKeys[0].length, keyWidths),
-        localFanOutFactor: 1,
-      },
-      false,
-      -1,
-    ),
-    linkViaSinglePassPSI(
-      { cardinality: mirrorCardinality(cardinality) },
-      makeParticipant(psiLibrary, "joiner"),
-      joinerConn,
-      joinerKeys,
-      {
-        ...candidateSetBounds(starterKeys[0].length, keyWidths),
-        localFanOutFactor: 1,
-      },
-      false,
-      -1,
-    ),
-  ]);
+  const { starter, joiner } = await runSinglePass({
+    library: psiLibrary,
+    cardinality,
+    starterKeys,
+    joinerKeys,
+  });
   return [sortAssociationTable(starter), sortAssociationTable(joiner)];
 }
 
@@ -109,7 +78,7 @@ async function expectStrategiesAgree(
     starterKeys,
     joinerKeys,
   );
-  const [singlePassStarter, singlePassJoiner] = await runSinglePass(
+  const [singlePassStarter, singlePassJoiner] = await singlePassTables(
     cardinality,
     starterKeys,
     joinerKeys,
@@ -124,7 +93,7 @@ async function expectStrategiesAgree(
     starterKeys,
   );
   const [swappedSinglePassStarter, swappedSinglePassJoiner] =
-    await runSinglePass(mirrored, joinerKeys, starterKeys);
+    await singlePassTables(mirrored, joinerKeys, starterKeys);
   expect(swappedSinglePassStarter).toStrictEqual(swappedCascadeStarter);
   expect(swappedSinglePassJoiner).toStrictEqual(swappedCascadeJoiner);
   // The same records, whichever party took which role.

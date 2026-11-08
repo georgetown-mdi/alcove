@@ -15,27 +15,21 @@ vi.mock("../../src/linkageTermsPolicy", async (importOriginal) => {
 
 import {
   groupDuplicatesAndRemoveUndefineds,
-  linkViaSinglePassPSI,
   removeDuplicatesAndUndefineds,
   type LinkageCardinality,
 } from "../../src/psi/link";
-import { createMessagePipe } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
 import { sortAssociationTable } from "../../src/testing";
 import { recordingConnection } from "../utils/recordingConnection";
 import { readPartFrame } from "../utils/matchedListPartFrames";
+import type { Column } from "../utils/candidateSetBounds";
 import {
-  candidateSetBounds,
-  declaredKeyWidths,
-  mirrorCardinality,
-  type Column,
-} from "../utils/candidateSetBounds";
-import {
-  makeParticipant,
   runCascade,
+  runSinglePass,
   tablesOf,
   type CascadeRunOptions,
 } from "../utils/support";
+import { mulberry32 } from "../utils/mulberry32";
 
 const psiLibrary = await PSI();
 
@@ -115,16 +109,7 @@ test("a carried-forward round maps its rows back through the permutation", () =>
 // A randomized corpus over the property itself: whatever the fixture, the row
 // list a round is built with is non-decreasing, and the runs it breaks into
 // are one per record.
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
+//
 // A small value alphabet against a widish row count, so values recur across
 // rows rather than by luck, and some rows sit the round out.
 function randomRounds(count: number): Array<Column> {
@@ -430,42 +415,6 @@ const MINIMAL_ONE_SIDE: Array<Column> = [["V1", "V0", "V0", "V2"]];
 const OVERLAPPING_MANY_SIDE: Array<Column> = [[new Set(["V0", "V2"]), "V2"]];
 const OVERLAPPING_ONE_SIDE: Array<Column> = [["V0", "V2"]];
 
-async function runSinglePass(
-  starterKeys: Array<Column>,
-  joinerKeys: Array<Column>,
-  starterCardinality: LinkageCardinality,
-): Promise<CascadeRun> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const keyWidths = declaredKeyWidths(starterKeys, joinerKeys);
-  const [starter, joiner] = await Promise.all([
-    linkViaSinglePassPSI(
-      { cardinality: starterCardinality },
-      makeParticipant(psiLibrary, "starter"),
-      starterConn,
-      starterKeys,
-      {
-        ...candidateSetBounds(joinerKeys[0].length, keyWidths),
-        localFanOutFactor: 1,
-      },
-      false,
-      -1,
-    ),
-    linkViaSinglePassPSI(
-      { cardinality: mirrorCardinality(starterCardinality) },
-      makeParticipant(psiLibrary, "joiner"),
-      joinerConn,
-      joinerKeys,
-      {
-        ...candidateSetBounds(starterKeys[0].length, keyWidths),
-        localFanOutFactor: 1,
-      },
-      false,
-      -1,
-    ),
-  ]);
-  return { starter, joiner };
-}
-
 // Each shape in both role assignments: the sweep's order is role-derived, so a
 // pairing decided by the resolved ranks has to land whichever party holds the
 // PSI sender role. The table single-pass computes is what each is held to.
@@ -478,7 +427,12 @@ async function expectBothPartiesResolveAsSinglePass(
     [oneSide, manySide, "one-to-many"],
   ] as Array<[Array<Column>, Array<Column>, LinkageCardinality]>) {
     const cascade = await sortedCascade(starterKeys, joinerKeys, cardinality);
-    const single = await runSinglePass(starterKeys, joinerKeys, cardinality);
+    const single = await runSinglePass({
+      library: psiLibrary,
+      starterKeys,
+      joinerKeys,
+      cardinality,
+    });
     expect(sortAssociationTable(cascade.starter)).toStrictEqual(
       sortAssociationTable(single.starter),
     );
