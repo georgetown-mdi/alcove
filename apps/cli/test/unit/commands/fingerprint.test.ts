@@ -1538,6 +1538,84 @@ test("handler leaves a different export that appears during the write and leaves
   expect(fs.readdirSync(dir).sort()).toEqual(["cert.json", "id.json"]);
 });
 
+// The link step reports EPERM rather than EEXIST, as CreateHardLink does on
+// some Windows filesystems, after `planted` has appeared at `certPath`.
+function linkReportsEpermAfterPlanting(certPath: string, planted: string) {
+  return vi.spyOn(fs, "linkSync").mockImplementation(() => {
+    fs.writeFileSync(certPath, planted);
+    throw Object.assign(new Error("EPERM: operation not permitted, link"), {
+      code: "EPERM",
+    });
+  });
+}
+
+test("handler leaves an export that appears with this certificate when the link reports EPERM", async () => {
+  const idPath = path.join(dir, "id.json");
+  const identity = await generateSigningIdentity("Party A");
+  idFile.saveSigningIdentity(idPath, identity);
+  const certPath = path.join(dir, "cert.json");
+  const certificate = serializeCertificate(identity.certificate);
+  const link = linkReportsEpermAfterPlanting(certPath, certificate);
+  try {
+    await exportCertificate(idPath, certPath);
+  } finally {
+    link.mockRestore();
+  }
+  expect(fs.readFileSync(certPath, "utf8")).toBe(certificate);
+  expect(fs.readdirSync(dir).sort()).toEqual(["cert.json", "id.json"]);
+});
+
+test("handler refuses a different export that appears when the link reports EPERM", async () => {
+  const idPath = path.join(dir, "id.json");
+  idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));
+  const certPath = path.join(dir, "cert.json");
+  const planted = "planted during the write\n";
+  const link = linkReportsEpermAfterPlanting(certPath, planted);
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await expect(exportCertificate(idPath, certPath)).rejects.toThrow(
+      "exit:64",
+    );
+  } finally {
+    link.mockRestore();
+    logged.mockRestore();
+  }
+  expect(fs.readFileSync(certPath, "utf8")).toBe(planted);
+  expect(fs.readdirSync(dir).sort()).toEqual(["cert.json", "id.json"]);
+});
+
+test.skipIf(process.platform === "win32")(
+  "handler leaves no export behind when the directory flush fails",
+  async () => {
+    const idPath = path.join(dir, "id.json");
+    idFile.saveSigningIdentity(
+      idPath,
+      await generateSigningIdentity("Party A"),
+    );
+    const certPath = path.join(dir, "cert.json");
+    const realFsync = fs.fsyncSync;
+    const fsync = vi.spyOn(fs, "fsyncSync").mockImplementation((fd) => {
+      if (fs.fstatSync(fd).isDirectory())
+        throw Object.assign(new Error("EIO: i/o error, fsync"), {
+          code: "EIO",
+        });
+      return realFsync(fd);
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(exportCertificate(idPath, certPath)).rejects.toThrow(
+        "exit:64",
+      );
+    } finally {
+      fsync.mockRestore();
+      logged.mockRestore();
+    }
+    expect(fs.readdirSync(dir)).toEqual(["id.json"]);
+    await exportCertificate(idPath, certPath);
+    expect(fs.existsSync(certPath)).toBe(true);
+  },
+);
+
 test("handler replaces a different existing export with --force", async () => {
   const idPath = path.join(dir, "id.json");
   idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));

@@ -444,10 +444,11 @@ export function detectFileConflicts(paths: string[]): string[] {
 }
 
 /**
- * Thrown by {@link writeFileOwnerOnly} in `exclusive` mode when the destination
- * already exists (another process created it first). Distinct from a generic
- * write failure so a caller can recover -- e.g. by loading the file the winning
- * process wrote -- rather than treating the lost race as a hard error.
+ * Thrown by {@link writeFileOwnerOnly} and {@link writeFileAtomic} in
+ * `exclusive` mode when the destination already exists (another process
+ * created it first). Distinct from a generic write failure so a caller can
+ * recover -- e.g. by loading the file the winning process wrote -- rather
+ * than treating the lost race as a hard error.
  */
 export class FileExistsError extends Error {
   constructor(public readonly path: string) {
@@ -465,8 +466,8 @@ const FILE_EXISTS_REASON =
   ": it already exists (another process may have created it concurrently)";
 
 /**
- * The refusal both Windows writers raise when icacls could not narrow the
- * access list of the temp file they write through: the run refuses to put
+ * The refusal the owner-only temp-file create raises on Windows when icacls
+ * could not narrow the temp file's access list: the run refuses to put
  * content in a file whose ACL it could not restrict, and states that
  * `destPath` is unchanged, the failure path having removed the temp file.
  */
@@ -516,7 +517,7 @@ export interface WriteFileOwnerOnlyOptions {
 // durable too, not just the (already fsync'd) file data -- the entry is
 // separate metadata a crash could lose independently. POSIX only: Node's fs
 // cannot open a directory handle on Windows, so NTFS journaling governs there
-// instead. Shared by both atomic writers. See
+// instead. Shared by the write path and the result stream. See
 // docs/spec/CREDENTIAL_STORAGE.md#posix-write-discipline.
 function fsyncParentDir(filePath: string): void {
   if (process.platform === "win32") return;
@@ -537,9 +538,11 @@ function fsyncParentDir(filePath: string): void {
 }
 
 /**
- * The sibling temp path {@link writeFileOwnerOnly} creates for `destPath` in
- * this process before renaming or linking it into place. The key-file
- * pre-flight checks this name too, since it is longer than `destPath`'s own.
+ * The sibling temp path the atomic writers ({@link writeFileOwnerOnly},
+ * {@link writeFileAtomic}, {@link createOwnerOnlyWriteStream}) create for
+ * `destPath` in this process before renaming or linking it into place. The
+ * key-file pre-flight checks this name too, since it is longer than
+ * `destPath`'s own.
  */
 export function ownerOnlyTempPath(destPath: string): string {
   return `${destPath}.tmp.${process.pid}`;
@@ -571,184 +574,23 @@ export function writeFileOwnerOnly(
   content: string,
   options: WriteFileOwnerOnlyOptions = {},
 ): void {
-  fs.mkdirSync(path.dirname(destPath), { recursive: true });
-  // Same-directory temp guarantees an atomic (same-filesystem) rename; a
-  // cross-filesystem rename (EXDEV) is not attempted. The PID-qualified
-  // suffix keeps concurrent invocations from clobbering each other's temp
-  // file.
-  const tmp = ownerOnlyTempPath(destPath);
-  // Remove any stale temp file left by a previous crashed run so the subsequent
-  // create always produces a fresh file rather than reusing one whose
-  // permissions may not match what we are about to set.
-  try {
-    fs.unlinkSync(tmp);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-  }
-  try {
-    if (process.platform === "win32") {
-      // whoami returns the domain-qualified name (DOMAIN\user or COMPUTER\user),
-      // which icacls requires to resolve domain accounts unambiguously. Resolve
-      // it before creating the temp file so a whoami failure does not leave a
-      // placeholder on disk.
-      const owner = whoami();
-      // Create an empty placeholder and narrow its ACL before writing any
-      // sensitive content. The brief window while the empty file has
-      // inherited ACEs (e.g. BUILTIN\Users read) exposes only the file's
-      // existence, not its contents.
-      //
-      // One descriptor serves the file's whole life: narrowing runs against
-      // the path while this descriptor stays open, and the content goes
-      // through the same descriptor, so it can be fsync'd before the rename
-      // as on POSIX. A truncating reopen of the narrowed path is refused:
-      // Node maps O_TRUNC without O_CREAT to TRUNCATE_EXISTING, which fails
-      // EINVAL here. Only the directory-entry flush (fsyncParentDir below)
-      // stays POSIX-only.
-      const fd = fs.openSync(
-        tmp,
-        fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
-      );
-      try {
-        try {
-          restrictAclToOwner(tmp, owner);
-        } catch {
-          // State a clear remediation; the outer catch removes the placeholder,
-          // which this branch's close has already released, so the destination
-          // is left as the run found it.
-          const message = aclRestrictFailureMessage(destPath);
-          throw keepOperatorSuppliedText(new Error(message.text), message);
-        }
-        fs.writeFileSync(fd, content, "utf8");
-        fs.fsyncSync(fd);
-      } finally {
-        try {
-          fs.closeSync(fd);
-        } catch {
-          /* best-effort close; a write/fsync failure above already propagates */
-        }
-      }
-    } else {
-      // Exclusive, non-following create (O_EXCL | O_NOFOLLOW) so a symlink
-      // planted at the temp path in the unlink->create window cannot redirect
-      // the write. fchmodSync then sets the exact mode on the descriptor,
-      // correcting for a restrictive umask rather than chmod-ing a resolved
-      // path after the write. See
-      // docs/spec/CREDENTIAL_STORAGE.md#posix-write-discipline.
-      const fd = fs.openSync(
-        tmp,
-        fs.constants.O_CREAT |
-          fs.constants.O_EXCL |
-          fs.constants.O_WRONLY |
-          fs.constants.O_NOFOLLOW,
-        0o600,
-      );
-      try {
-        fs.fchmodSync(fd, 0o600);
-        stripExtendedAcls(tmp, {
-          symlinks: "do-not-follow",
-          reportedPath: destPath,
-        });
-        fs.writeFileSync(fd, content, "utf8");
-        // Flush the temp file's data to stable storage before the rename, so a
-        // power loss cannot leave the rename durable while the contents are
-        // lost. Paired with the parent-directory fsync after the rename below.
-        fs.fsyncSync(fd);
-      } finally {
-        // Guard the close so its failure cannot mask an fchmod/write/fsync error
-        // in flight; the outer catch removes the temp file regardless.
-        try {
-          fs.closeSync(fd);
-        } catch {
-          /* best-effort close; a failure in the body above already propagates */
-        }
-      }
-    }
-    // Known limitation: a narrow window remains between the exclusive create
-    // above and the rename/link below, where a directory-writer could swap
-    // tmp for a symlink and leave destPath a redirecting link. It leaks
-    // nothing -- the secret was written into the real tmp inode, never
-    // through a link -- and the next write heals it. Closing it needs
-    // renameat2(RENAME_NOREPLACE)/O_TMPFILE, which Node's fs does not expose.
-    if (options.exclusive) {
-      // Atomic create-if-absent: linkSync fails if destPath already exists,
-      // closing the create-time race that renameSync (which silently overwrites)
-      // would leave open. The temp file already has the owner-only
-      // permissions/ACL, and a hard link shares them, so the destination is
-      // owner-only the instant it appears.
-      try {
-        fs.linkSync(tmp, destPath);
-      } catch (e) {
-        const code = (e as NodeJS.ErrnoException).code;
-        // EEXIST is the normal "lost the race" signal. On Windows,
-        // CreateHardLink can report EPERM instead of EEXIST on some filesystems
-        // (FAT32, network shares) when the target exists; treat that as
-        // "exists" only when the destination is in fact present, otherwise
-        // rethrow the original error. The temp file is cleaned up by the outer
-        // catch.
-        if (code === "EEXIST" || (code === "EPERM" && fs.existsSync(destPath)))
-          // eslint-disable-next-line no-restricted-syntax -- FileExistsError marks the path in its own constructor.
-          throw new FileExistsError(destPath);
-        throw e;
-      }
-      // The link succeeded; destPath is the authoritative copy. Removing the
-      // temp name is best-effort -- an orphaned temp is harmless and the next
-      // run's stale-temp sweep removes it -- so a failure here must NOT mask the
-      // successful creation by propagating to the outer catch.
-      try {
-        fs.unlinkSync(tmp);
-      } catch {
-        /* best-effort: destination is already correctly created */
-      }
-      // A create-if-absent write either creates the file or fails, so a
-      // directory flush that fails removes the entry this call just linked
-      // before the failure propagates; the removal is best-effort.
-      try {
-        fsyncParentDir(destPath);
-      } catch (flushErr) {
-        try {
-          fs.unlinkSync(destPath);
-        } catch {
-          /* best-effort: the flush failure below is the one reported */
-        }
-        throw flushErr;
-      }
-    } else {
-      fs.renameSync(tmp, destPath);
-      // Flush the parent directory so the rename's new entry is durable too.
-      fsyncParentDir(destPath);
-    }
-  } catch (err) {
-    // Remove the temp file on any failure -- not just the icacls case -- so a
-    // partial write never leaves a `.tmp.<pid>` orphan beside the destination.
-    // A caller's own rollback cannot do this: it does not know the pid-qualified
-    // temp name. When the failure was the exclusive open refusing a symlink
-    // planted at the temp path, this removes that link itself (unlink never
-    // follows it, so the link's target is untouched), clearing the slot.
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* best-effort cleanup before re-throwing */
-    }
-    throw err;
-  }
+  writeFileThroughTemp(
+    destPath,
+    content,
+    "owner-only",
+    options.exclusive === true,
+  );
 }
 
 /**
- * Atomically write `content` to `destPath` with an explicit, world-readable
- * mode (default `0644`), via a sibling temp file and rename. For NON-secret,
- * shareable artifacts -- the exported public certificate -- where
- * {@link writeFileOwnerOnly} would force the wrong (owner-only) mode. Kept
- * separate so the owner-only, ACL-hardened path is not entangled with
- * public-file semantics.
- *
- * The macOS extended-ACL strip that {@link writeFileOwnerOnly} performs runs
- * here too, at any `mode`, since an inherited ACE can grant access an explicit
- * mode withholds. Durability matches {@link writeFileOwnerOnly}: the data is
- * `fsync`'d before the rename and the parent directory after it. See
+ * Atomically write `content` to `destPath` with an explicit mode (default
+ * `0644`), for a NON-secret, shareable artifact -- the exported public
+ * certificate -- where {@link writeFileOwnerOnly} would force the wrong mode.
+ * The write path is {@link writeFileOwnerOnly}'s, including its `exclusive`
+ * create-if-absent and its durability, except that no mode makes the file
+ * owner-only on Windows: the mode only sets the read-only bit there, and the
+ * access list stays the one the file inherits. See
  * docs/spec/CREDENTIAL_STORAGE.md.
- *
- * With `exclusive`, the final step creates `destPath` only if absent and
- * throws {@link FileExistsError} otherwise.
  */
 export function writeFileAtomic(
   destPath: string,
@@ -756,95 +598,166 @@ export function writeFileAtomic(
   mode = 0o644,
   options: { exclusive?: boolean } = {},
 ): void {
+  writeFileThroughTemp(destPath, content, { mode }, options.exclusive === true);
+}
+
+/** The access a temp file is given before any content is written to it. */
+type TempFileAccess = "owner-only" | { readonly mode: number };
+
+// The one write path behind writeFileOwnerOnly and writeFileAtomic. The
+// temp file sits in destPath's directory so the rename is a same-filesystem
+// (atomic) one, and its PID-qualified name keeps concurrent writers apart.
+function writeFileThroughTemp(
+  destPath: string,
+  content: string,
+  access: TempFileAccess,
+  exclusive: boolean,
+): void {
   fs.mkdirSync(path.dirname(destPath), { recursive: true });
-  // Same-directory temp guarantees a same-filesystem (atomic) rename; the
-  // PID-qualified suffix keeps concurrent writers from clobbering each other.
-  const tmp = `${destPath}.tmp.${process.pid}`;
+  const tmp = ownerOnlyTempPath(destPath);
+  removeStaleTemp(tmp);
+  try {
+    const fd = createTempFile(tmp, destPath, access);
+    try {
+      fs.writeFileSync(fd, content, "utf8");
+      // Flush the data before the rename, so a power loss cannot leave the
+      // rename durable while the contents are lost; the parent directory is
+      // flushed after it.
+      fs.fsyncSync(fd);
+    } finally {
+      closeBestEffort(fd);
+    }
+    // Known limitation: a narrow window remains between the exclusive create
+    // and the rename/link below, where a directory-writer could swap tmp for a
+    // symlink and leave destPath a redirecting link. It leaks nothing -- the
+    // content was written into the real tmp inode -- and the next write heals
+    // it. Closing it needs renameat2(RENAME_NOREPLACE)/O_TMPFILE, which Node's
+    // fs does not expose.
+    if (exclusive) linkIntoPlace(tmp, destPath);
+    else {
+      fs.renameSync(tmp, destPath);
+      fsyncParentDir(destPath);
+    }
+  } catch (err) {
+    // A caller cannot remove the temp file itself: it does not know the
+    // pid-qualified name. When the failure was the exclusive open refusing a
+    // symlink planted at the temp path, this removes that link itself (unlink
+    // never follows it, so the link's target is untouched).
+    removeBestEffort(tmp);
+    throw err;
+  }
+}
+
+// Create-if-absent: linkSync fails if destPath exists, where renameSync would
+// replace it. The link shares the temp file's mode and ACL, so destPath has
+// its final access the instant it appears.
+function linkIntoPlace(tmp: string, destPath: string): void {
+  try {
+    fs.linkSync(tmp, destPath);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    // CreateHardLink can report EPERM rather than EEXIST when the target
+    // exists on some Windows filesystems (FAT32, network shares); EPERM is the
+    // refusal only when the destination is in fact present.
+    if (code === "EEXIST" || (code === "EPERM" && fs.existsSync(destPath)))
+      // eslint-disable-next-line no-restricted-syntax -- FileExistsError marks the path in its own constructor.
+      throw new FileExistsError(destPath);
+    throw e;
+  }
+  // destPath is the authoritative copy: an orphaned temp name is harmless and
+  // the next run's stale-temp removal clears it.
+  removeBestEffort(tmp);
+  // A create-if-absent write either creates the file or fails, so a failed
+  // directory flush removes the entry just linked before it propagates.
+  try {
+    fsyncParentDir(destPath);
+  } catch (flushErr) {
+    removeBestEffort(destPath);
+    throw flushErr;
+  }
+}
+
+// Remove a stale temp file a crashed run left, so the exclusive create makes
+// a fresh file rather than reusing one whose permissions may not match.
+function removeStaleTemp(tmp: string): void {
   try {
     fs.unlinkSync(tmp);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }
-  try {
-    // Exclusive, non-following create (O_EXCL | O_NOFOLLOW) guards the temp
-    // path the same way writeFileOwnerOnly's does. @types/node types
-    // O_NOFOLLOW as a number but it is genuinely absent on Windows, so `?? 0`
-    // drops it from the mask there rather than relying on
-    // `undefined | x === x`, leaving the O_EXCL create unchanged.
+}
+
+// Create the temp file exclusively and give it its access before any content
+// is written, returning its descriptor. A failure after the create closes and
+// removes the temp file, so destPath is left as the run found it.
+function createTempFile(
+  tmp: string,
+  destPath: string,
+  access: TempFileAccess,
+): number {
+  if (access === "owner-only" && process.platform === "win32") {
+    // whoami gives the domain-qualified name icacls needs; resolved before the
+    // create so a whoami failure leaves nothing on disk. The empty file's
+    // inherited ACEs expose only its existence until narrowed, and the content
+    // goes through this same descriptor: Node maps a truncating reopen
+    // (O_TRUNC without O_CREAT) to TRUNCATE_EXISTING, which fails EINVAL here.
+    const owner = whoami();
     const fd = fs.openSync(
       tmp,
-      fs.constants.O_CREAT |
-        fs.constants.O_EXCL |
-        fs.constants.O_WRONLY |
-        (fs.constants.O_NOFOLLOW ?? 0),
-      mode,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
     );
     try {
-      // The open mode is masked by the umask; fchmod sets it exactly on the
-      // descriptor so a restrictive umask cannot leave the shared file
-      // unreadable to its audience. (On Windows fchmod only toggles the
-      // read-only bit; the public default ACL already lets a partner read the
-      // exported certificate.)
-      fs.fchmodSync(fd, mode);
-      stripExtendedAcls(tmp, {
-        symlinks: "do-not-follow",
-        reportedPath: destPath,
-      });
-      fs.writeFileSync(fd, content, "utf8");
-      // Flush the temp file's data before the rename so a power loss cannot
-      // leave the rename durable while the contents are lost; the parent
-      // directory is flushed after the rename below. Mirrors writeFileOwnerOnly,
-      // including its Windows branch: both writers retain a write fd and fsync
-      // the data on every platform, so only the directory flush below is
-      // POSIX-only.
-      fs.fsyncSync(fd);
-    } finally {
-      // Guard the close so its failure cannot mask an fchmod/write/fsync error
-      // in flight; the outer catch removes the temp file regardless.
-      try {
-        fs.closeSync(fd);
-      } catch {
-        /* best-effort close; a failure in the body above already propagates */
-      }
-    }
-    // Same narrow tmp-swap window as writeFileOwnerOnly (between the close above
-    // and this rename); for this public artifact it only risks leaving destPath
-    // a redirecting symlink, which the next write heals. No portable fix in
-    // Node's fs (it needs renameat2/O_TMPFILE).
-    if (options.exclusive) {
-      // Create-if-absent: linkSync fails when destPath exists, where
-      // renameSync would silently replace it.
-      try {
-        fs.linkSync(tmp, destPath);
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code === "EEXIST")
-          // eslint-disable-next-line no-restricted-syntax -- FileExistsError marks the path in its own constructor.
-          throw new FileExistsError(destPath);
-        throw e;
-      }
-      try {
-        fs.unlinkSync(tmp);
-      } catch {
-        /* best-effort: destination is already created */
-      }
-    } else {
-      fs.renameSync(tmp, destPath);
-    }
-    // Flush the parent directory so the new directory entry is durable too
-    // (POSIX only; see fsyncParentDir). Inside the try so a flush failure
-    // runs the temp cleanup and propagates.
-    fsyncParentDir(destPath);
-  } catch (err) {
-    // Remove the temp file on any failure so a partial write leaves no orphan.
-    // If the failure was the exclusive open refusing a symlink planted at the
-    // temp path, this removes that link itself (unlink never follows it, so the
-    // link's target is untouched).
-    try {
-      fs.unlinkSync(tmp);
+      restrictAclToOwner(tmp, owner);
     } catch {
-      /* best-effort cleanup before re-throwing */
+      closeBestEffort(fd);
+      removeBestEffort(tmp);
+      const message = aclRestrictFailureMessage(destPath);
+      throw keepOperatorSuppliedText(new Error(message.text), message);
     }
+    return fd;
+  }
+  const mode = access === "owner-only" ? 0o600 : access.mode;
+  // Exclusive, non-following create, so a symlink planted at the temp path
+  // cannot redirect the write; fchmod then sets the exact mode on the
+  // descriptor despite the umask. O_NOFOLLOW is absent on Windows, though
+  // typed as a number, so `?? 0` drops it from the mask there. See
+  // docs/spec/CREDENTIAL_STORAGE.md#posix-write-discipline.
+  const fd = fs.openSync(
+    tmp,
+    fs.constants.O_CREAT |
+      fs.constants.O_EXCL |
+      fs.constants.O_WRONLY |
+      (fs.constants.O_NOFOLLOW ?? 0),
+    mode,
+  );
+  try {
+    fs.fchmodSync(fd, mode);
+    stripExtendedAcls(tmp, {
+      symlinks: "do-not-follow",
+      reportedPath: destPath,
+    });
+  } catch (err) {
+    closeBestEffort(fd);
+    removeBestEffort(tmp);
     throw err;
+  }
+  return fd;
+}
+
+// A removal failure must not replace the error that led here.
+function removeBestEffort(filePath: string): void {
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    /* best-effort: a failed removal leaves the file in place */
+  }
+}
+
+function closeBestEffort(fd: number): void {
+  try {
+    fs.closeSync(fd);
+  } catch {
+    /* best-effort close; the failure that led here propagates */
   }
 }
 
@@ -866,14 +779,8 @@ export function writeFileAtomic(
  */
 export function createOwnerOnlyWriteStream(destPath: string): fs.WriteStream {
   const tmp = ownerOnlyTempPath(destPath);
-  // Remove a stale temp file a crashed run left, so the exclusive create below
-  // makes a fresh file.
-  try {
-    fs.unlinkSync(tmp);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-  }
-  const fd = openOwnerOnlyResultTemp(tmp, destPath);
+  removeStaleTemp(tmp);
+  const fd = createTempFile(tmp, destPath, "owner-only");
   // The stream's own close step is where the temp file is placed: `flush`
   // fsyncs the descriptor before it runs, so the data is durable before the
   // rename, as in writeFileOwnerOnly. Node requires `fsync` here under
@@ -901,10 +808,10 @@ export function createOwnerOnlyWriteStream(destPath: string): fs.WriteStream {
           if (stream.writableFinished && !syncFailed) {
             fs.renameSync(tmp, destPath);
             fsyncParentDir(destPath);
-          } else removeResultTemp(tmp);
+          } else removeBestEffort(tmp);
           callback(null);
         } catch (err) {
-          removeResultTemp(tmp);
+          removeBestEffort(tmp);
           callback(err as NodeJS.ErrnoException);
         }
       });
@@ -918,70 +825,6 @@ export function createOwnerOnlyWriteStream(destPath: string): fs.WriteStream {
     fs: streamFs,
   });
   return stream;
-}
-
-// Best-effort removal of the result CSV's temp file; a removal failure must
-// not replace the error that led here.
-function removeResultTemp(tmp: string): void {
-  try {
-    fs.unlinkSync(tmp);
-  } catch {
-    /* best-effort: a failed removal leaves the temp file in place */
-  }
-}
-
-// Create the result CSV's temp file and make it owner-only before any row is
-// written, returning its descriptor. Any failure closes and removes the temp
-// file, so the destination is left as the run found it.
-function openOwnerOnlyResultTemp(tmp: string, destPath: string): number {
-  if (process.platform === "win32") {
-    // Resolved before the create so a whoami failure leaves nothing behind.
-    const owner = whoami();
-    const fd = fs.openSync(
-      tmp,
-      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
-    );
-    try {
-      restrictAclToOwner(tmp, owner);
-    } catch {
-      closeBestEffort(fd);
-      removeResultTemp(tmp);
-      const message = aclRestrictFailureMessage(destPath);
-      throw keepOperatorSuppliedText(new Error(message.text), message);
-    }
-    return fd;
-  }
-  // The exclusive, non-following create and descriptor-set mode of
-  // writeFileOwnerOnly's temp file. See
-  // docs/spec/CREDENTIAL_STORAGE.md#posix-write-discipline.
-  const fd = fs.openSync(
-    tmp,
-    fs.constants.O_CREAT |
-      fs.constants.O_EXCL |
-      fs.constants.O_WRONLY |
-      fs.constants.O_NOFOLLOW,
-    0o600,
-  );
-  try {
-    fs.fchmodSync(fd, 0o600);
-    stripExtendedAcls(tmp, {
-      symlinks: "do-not-follow",
-      reportedPath: destPath,
-    });
-  } catch (err) {
-    closeBestEffort(fd);
-    removeResultTemp(tmp);
-    throw err;
-  }
-  return fd;
-}
-
-function closeBestEffort(fd: number): void {
-  try {
-    fs.closeSync(fd);
-  } catch {
-    /* best-effort close; the failure that led here propagates */
-  }
 }
 
 /**
