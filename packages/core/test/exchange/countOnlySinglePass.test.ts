@@ -22,8 +22,8 @@ import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 
 // Every single-pass run here is over the single-pass dataset ceiling, so one
 // that reached the single-pass link would be refused.
-vi.mock("../../src/connection/frameSize", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../src/connection/frameSize")>()),
+vi.mock("../../src/psi/singlePassSizing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/psi/singlePassSizing")>()),
   singlePassCeilingBreach: () => "both",
 }));
 vi.mock("../../src/psi/link", async (importOriginal) => {

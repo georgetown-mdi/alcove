@@ -1,12 +1,11 @@
 import fs from "node:fs";
 
 import {
+  certificateFromIdentityDocument,
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
-  parseCertificate,
   parseSigningIdentity,
-  recordedVersionMatches,
   serializeSigningIdentity,
   SIGNING_IDENTITY_VERSION,
   UsageError,
@@ -217,27 +216,11 @@ export async function loadSigningCertificate(
 ): Promise<SigningCertificate | undefined> {
   const read = readIdentityDocument(identityPath);
   if (read === undefined) return undefined;
-  // The certificate holds its own version literal, but the document around it
-  // does not have to be an identity file at all; checking it keeps an
-  // unrecognized identity format from being mined for a certificate here while
-  // loadSigningIdentity refuses it.
-  if (!recordedVersionMatches(read.document, SIGNING_IDENTITY_VERSION))
-    throw malformedIdentity(
-      identityPath,
-      new Error(
-        `expected version ${SIGNING_IDENTITY_VERSION}; this is not a signing ` +
-          "identity file of a recognized format",
-      ),
-    );
-  let certificate: SigningCertificate;
   try {
-    certificate = await parseCertificate(
-      (read.document as Record<string, unknown>)["certificate"],
-    );
+    return await certificateFromIdentityDocument(read.document);
   } catch (err: unknown) {
     throw malformedIdentity(identityPath, err);
   }
-  return certificate;
 }
 
 /**

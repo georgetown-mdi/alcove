@@ -1,4 +1,4 @@
-import type { PsiElementBounds } from "../../src/connection/frameSize";
+import type { PsiElementBounds } from "../../src/psi/singlePassSizing";
 
 /**
  * PSI element-count bounds that never reject, for unit tests exercising PSI

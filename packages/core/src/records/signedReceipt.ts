@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 
+import { boundedBase64UrlSchema } from "./boundedBase64Url.js";
 import { canonicalBytes } from "../utils/canonical.js";
 import { safeParseLinkageTerms } from "../config/linkageTermsSchema.js";
 import { migrateOnRead } from "../config/formatMigration.js";
@@ -405,37 +405,21 @@ export interface DualSignedRecord {
 
 // --- Schema (for the verification item to parse back) ------------------------
 
-// Length cap for the fixed-size base64url crypto values a receipt holds
-// (each MAC/hash is a 32-byte value = 43 unpadded base64url characters, a
-// signature 64 bytes = 86), matching the record format's
-// MAX_BASE64URL_LENGTH: 256 is far above any legitimate value yet refuses a
-// megabyte-scale hostile string. The signature travels on an untrusted
-// partner wire frame, so a ~512MB frame would otherwise pass the shape schema
-// before any signature work; the cap rejects it at parse. Length-capped, not
-// length-locked -- the exact byte length is re-checked after decoding, so it
-// is not pinned here. The certificate beside it is bounded by
+// The signature travels on an untrusted partner wire frame, so a ~512MB frame
+// would otherwise pass the shape schema before any signature work; the
+// base64url cap (boundedBase64Url.ts) rejects it at parse. The certificate beside it is bounded by
 // boundedWireCertificateSchema, shared with the terms exchange's own
 // certificate field (signingIdentity.ts).
-const MAX_BASE64URL_LENGTH = 256;
-
-// Unpadded base64url, alphabet only, length-capped; exact byte lengths are checked
-// after decoding, mirroring signingIdentity/exchangeRecord (a verifier re-checks the
-// signature over the decoded bytes, so the exact length is not schema-pinned).
-const base64UrlSchema = z
-  .string()
-  .check(maxCodeUnits(MAX_BASE64URL_LENGTH))
-  .regex(/^[A-Za-z0-9_-]+$/, "must be an unpadded base64url string");
-
 const ReceiptContentSchema: z.ZodType<ReceiptContent> = z.object({
-  termsHash: base64UrlSchema,
-  initiatorToResponderPayload: base64UrlSchema,
-  responderToInitiatorPayload: base64UrlSchema,
-  binder: base64UrlSchema,
+  termsHash: boundedBase64UrlSchema,
+  initiatorToResponderPayload: boundedBase64UrlSchema,
+  responderToInitiatorPayload: boundedBase64UrlSchema,
+  binder: boundedBase64UrlSchema,
 });
 
 const SignedReceiptPartySchema: z.ZodType<SignedReceiptParty> = z.object({
   certificate: boundedWireCertificateSchema,
-  signature: base64UrlSchema,
+  signature: boundedBase64UrlSchema,
 });
 
 // The carried terms are partner-authored, so they are read through
@@ -508,7 +492,7 @@ export function parseDualSignedRecord(
 // content therefore fails verification here, not by a content comparison.
 const receiptWireSchema = z.object({
   certificate: boundedWireCertificateSchema,
-  signature: base64UrlSchema,
+  signature: boundedBase64UrlSchema,
 });
 
 type ReceiptWireMessage = z.infer<typeof receiptWireSchema>;

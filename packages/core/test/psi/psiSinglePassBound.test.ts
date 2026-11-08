@@ -7,7 +7,7 @@ import { PSIParticipant, type PsiSetCeilings } from "../../src/psi/participant";
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 
-import type { PsiElementBounds } from "../../src/connection/frameSize";
+import type { PsiElementBounds } from "../../src/psi/singlePassSizing";
 
 // A single-pass setup or request arrives whole in its message, so the element
 // scan is the one check on its count: it is held to the least of the

@@ -33,6 +33,7 @@ import {
 
 import { migrateOnRead } from "../config/formatMigration.js";
 import { AGREED_TERMS_VERSION } from "./agreedTerms.js";
+import { boundedBase64UrlSchema } from "./boundedBase64Url.js";
 
 import type { AgreedTerms } from "./agreedTerms.js";
 import type { FormatMigrations } from "../config/formatMigration.js";
@@ -340,15 +341,6 @@ export interface VerificationKeys {
 // back. The name shape is not applied: the record is a frozen log. See
 // docs/spec/EXCHANGE_RECORD.md#record-fields.
 
-// Every legitimate value is 43 characters; the cap refuses a hostile string
-// without pinning the width.
-const MAX_BASE64URL_LENGTH = 256;
-
-const base64UrlSchema = z
-  .string()
-  .check(maxCodeUnits(MAX_BASE64URL_LENGTH))
-  .regex(/^[A-Za-z0-9_-]+$/, "must be an unpadded base64url string");
-
 const nonNegativeCountSchema = (label: string) =>
   safeIntegerSchema.refine((n) => n >= 0, {
     message: `${label} must be non-negative`,
@@ -368,9 +360,9 @@ const createdAtSchema = z.iso.datetime();
 const identitySchema = z.string().min(1).check(maxCodeUnits(MAX_TEXT_LENGTH));
 
 const base64UrlCommitmentTripleSchema = z.object({
-  localPayloadSent: base64UrlSchema,
-  partnerPayloadReceived: base64UrlSchema,
-  associationTable: base64UrlSchema.optional(),
+  localPayloadSent: boundedBase64UrlSchema,
+  partnerPayloadReceived: boundedBase64UrlSchema,
+  associationTable: boundedBase64UrlSchema.optional(),
 });
 
 const ExchangeRecordCommitmentsSchema: z.ZodType<ExchangeRecordCommitments> =
@@ -436,15 +428,15 @@ const ExchangeRecordSchema: z.ZodType<ExchangeRecord> = z.object({
   createdAt: createdAtSchema,
   outcome: outcomeSchema,
   certificateMismatchObserved: certificateMismatchObservedSchema,
-  termsHash: base64UrlSchema,
+  termsHash: boundedBase64UrlSchema,
   localIdentity: identitySchema.optional(),
   partnerIdentity: identitySchema.optional(),
   governance: ExchangeRecordGovernanceSchema,
   recordsExposed: recordsExposedSchema,
   resultSize: resultSizeSchema.optional(),
   retentionDisposition: retentionDispositionSchema.optional(),
-  bindingNonce: base64UrlSchema,
-  receiptBinder: base64UrlSchema.optional(),
+  bindingNonce: boundedBase64UrlSchema,
+  receiptBinder: boundedBase64UrlSchema.optional(),
   commitments: ExchangeRecordCommitmentsSchema,
 });
 
@@ -695,7 +687,7 @@ export async function buildExchangeRecord(
       : {}),
     bindingNonce: toBase64Url(bindingNonce),
     ...(inputs.receiptBinder !== undefined
-      ? { receiptBinder: base64UrlSchema.parse(inputs.receiptBinder) }
+      ? { receiptBinder: boundedBase64UrlSchema.parse(inputs.receiptBinder) }
       : {}),
     commitments: recordCommitments as ExchangeRecordCommitments,
   };

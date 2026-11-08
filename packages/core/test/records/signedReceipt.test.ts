@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "vitest";
+import { z } from "zod";
 
 import {
   SIGNED_RECEIPT_VERSION,
@@ -692,6 +693,52 @@ describe("exchangeSignedReceipt (two-party over the pipe)", () => {
       await connParked.close();
     });
   }
+});
+
+// The responder reads the initiator's receipt frame under a schema that caps
+// the signature at 256 characters: one past it is refused as a protocol
+// violation at the parse, one at it passes the parse and fails at verification.
+describe("exchangeSignedReceipt (cap on the partner's signature)", () => {
+  async function responderRefusing(signature: string): Promise<unknown> {
+    const [connInit, connResp] = createMessagePipe();
+    await connInit.send({ certificate: identityA.certificate, signature });
+    const reason = await exchangeSignedReceipt(
+      connResp,
+      "responder",
+      inputsFor(identityB, fingerprintA, partnerIdentityForB, content()),
+    ).then(
+      () => {
+        throw new Error("expected the responder to reject, but it resolved");
+      },
+      (rejection: unknown) => rejection,
+    );
+    await connInit.close();
+    await connResp.close();
+    return reason;
+  }
+
+  test("a 257-character signature is refused by the length check, as a protocol error", async () => {
+    const reason = await responderRefusing("a".repeat(257));
+    expect(reason).toBeInstanceOf(ConnectionError);
+    expect(reason).not.toBeInstanceOf(ReceiptVerificationError);
+    expect((reason as ConnectionError).kind).toBe("protocol");
+    const cause = (reason as ConnectionError).cause;
+    expect(cause).toBeInstanceOf(z.ZodError);
+    expect((cause as z.ZodError).issues).toEqual([
+      expect.objectContaining({
+        code: "too_big",
+        origin: "string",
+        maximum: 256,
+        path: ["signature"],
+      }),
+    ]);
+  });
+
+  test("a 256-character signature passes the parse and fails at verification", async () => {
+    const reason = await responderRefusing("a".repeat(256));
+    expect(reason).toBeInstanceOf(ReceiptVerificationError);
+    expect((reason as Error).message).toMatch(/signature does not verify/);
+  });
 });
 
 // --- Serialize / parse -------------------------------------------------------

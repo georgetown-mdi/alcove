@@ -161,6 +161,44 @@ export interface MessageConnection {
   raiseInactivityTimeout?(minMs: number): void;
 }
 
+/** The members of {@link MessageConnection} a connection may omit. */
+export type OptionalConnectionMember = {
+  [K in keyof MessageConnection]-?: object extends Pick<MessageConnection, K>
+    ? K
+    : never;
+}[keyof MessageConnection];
+
+/**
+ * Every optional member of {@link MessageConnection}, marked by where a
+ * {@link QueuedMessageConnection} takes it from: `"forward"` from the
+ * transport's hook of the same name, which a transport with no use for it
+ * omits, and `"override"` from the connection itself or a layer over it, with
+ * no transport hook. A member added to the interface fails to compile here
+ * until it is marked, and then at each site built over this table.
+ */
+export const OPTIONAL_CONNECTION_MEMBERS = {
+  terminated: "override",
+  setInboundFrameCap: "forward",
+  holdInboundQueueBytes: "override",
+  frameCeilingBytes: "override",
+  inboundPollIntervalMs: "forward",
+  outboundWebRtcFrameBound: "forward",
+  outboundFileSyncFrameBound: "forward",
+  inboundPsiSetElementCeiling: "forward",
+  outboundFrameOverheadBytes: "override",
+  useEnvelopeVersion: "forward",
+  requireBinaryFrames: "forward",
+  markLastSentUnread: "forward",
+  raiseInactivityTimeout: "override",
+} as const satisfies Record<OptionalConnectionMember, "forward" | "override">;
+
+/** The members {@link OPTIONAL_CONNECTION_MEMBERS} marks `"forward"`. */
+export type ForwardedConnectionMember = {
+  [
+    K in OptionalConnectionMember
+  ]: (typeof OPTIONAL_CONNECTION_MEMBERS)[K] extends "forward" ? K : never;
+}[OptionalConnectionMember];
+
 /**
  * Where the limit a timed-out wait reports came from, as told to a function
  * `inactivityHint`: the operator setting the connection names, whether set or
@@ -218,8 +256,17 @@ export interface TransportControls {
   receiveWaiting: () => boolean;
 }
 
-/** The transport-specific operations the queue drives. */
-interface TransportHooks {
+/**
+ * The transport-specific operations the queue drives, and a hook for each
+ * member {@link OPTIONAL_CONNECTION_MEMBERS} marks `"forward"`, as
+ * {@link MessageConnection} states it. A transport with no use for a member
+ * omits its hook, and the connection's member then reports nothing or does
+ * nothing.
+ */
+interface TransportHooks extends Pick<
+  MessageConnection,
+  ForwardedConnectionMember
+> {
   /**
    * Hands a message to the transport. Resolution means the message has been
    * accepted locally for delivery (buffered, or durably written), NOT that the
@@ -252,54 +299,6 @@ interface TransportHooks {
    * here.
    */
   start?: () => void;
-  /**
-   * Optional: forward a per-exchange inbound frame cap to the transport read
-   * gate (see {@link MessageConnection.setInboundFrameCap}). A transport that
-   * caps its inbound path another way omits it, making the connection's
-   * `setInboundFrameCap` a no-op.
-   */
-  setInboundFrameCap?: (maxBytes: number | undefined) => void;
-  /**
-   * Optional: the transport's inbound poll interval (see
-   * {@link MessageConnection.inboundPollIntervalMs}); a push transport omits it.
-   */
-  inboundPollIntervalMs?: () => number;
-  /**
-   * Optional: the partner's receive-side frame bound (see
-   * {@link MessageConnection.outboundWebRtcFrameBound}); a transport with no
-   * such bound omits it.
-   */
-  outboundWebRtcFrameBound?: () => number;
-  /**
-   * Optional: the partner's message-file bound (see
-   * {@link MessageConnection.outboundFileSyncFrameBound}); a transport with no
-   * such bound omits it.
-   */
-  outboundFileSyncFrameBound?: () => number;
-  /**
-   * Optional: this party's own ceiling on a partner's PSI set (see
-   * {@link MessageConnection.inboundPsiSetElementCeiling}); a party held to
-   * the protocol's maximum alone omits it.
-   */
-  inboundPsiSetElementCeiling?: () => number;
-  /**
-   * Optional: take the negotiated envelope version (see
-   * {@link MessageConnection.useEnvelopeVersion}); a transport whose frames
-   * hold none omits it.
-   */
-  useEnvelopeVersion?: (version: number) => void;
-  /**
-   * Optional: refuse partner frames that are not binary from now on (see
-   * {@link MessageConnection.requireBinaryFrames}); a transport that parses no
-   * frame omits it.
-   */
-  requireBinaryFrames?: () => void;
-  /**
-   * Optional: mark the last frame sent as unread (see
-   * {@link MessageConnection.markLastSentUnread}); a transport whose close
-   * does not wait on the peer omits it.
-   */
-  markLastSentUnread?: () => void;
 }
 
 type TransportConnect = (controls: TransportControls) => TransportHooks;
@@ -449,7 +448,11 @@ type TerminalState =
  * events through the {@link TransportControls} it receives. Used by both
  * {@link fromEventConnection} and {@link createMessagePipe}.
  */
-export class QueuedMessageConnection implements MessageConnection {
+export class QueuedMessageConnection
+  implements
+    MessageConnection,
+    Required<Pick<MessageConnection, ForwardedConnectionMember>>
+{
   private readonly queue: Array<unknown> = [];
   private readonly queueBytes: Array<number> = [];
   private queuedBytes = 0;
@@ -1017,7 +1020,22 @@ export function fromEventConnection(
         controls.queuedMessages,
         controls.receiveWaiting,
       );
+      // Each forwarded member the transport may implement, bound to `conn` so
+      // it keeps its receiver through the hook; one the transport lacks leaves
+      // its hook undefined.
+      const forwarded = {
+        setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
+        inboundPollIntervalMs: conn.inboundPollIntervalMs?.bind(conn),
+        outboundFileSyncFrameBound: conn.outboundFileSyncFrameBound?.bind(conn),
+        useEnvelopeVersion: conn.useEnvelopeVersion?.bind(conn),
+        requireBinaryFrames: conn.requireBinaryFrames?.bind(conn),
+        markLastSentUnread: conn.markLastSentUnread?.bind(conn),
+      } satisfies Record<
+        Extract<ForwardedConnectionMember, keyof Connection>,
+        unknown
+      >;
       return {
+        ...forwarded,
         send: (data) => conn.send(data),
         close: () => {
           conn.removeListener("data", onData);
@@ -1029,16 +1047,6 @@ export function fromEventConnection(
           if (buffered !== undefined)
             controls.fail(asConnectionError(buffered, "transport"));
         },
-        // Forward to the underlying transport only when it bounds its inbound
-        // reads (file-sync); a transport without the method leaves this undefined,
-        // so the connection's setInboundFrameCap no-ops. Bound to `conn` so the
-        // method keeps its receiver when invoked through the hook.
-        setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
-        inboundPollIntervalMs: conn.inboundPollIntervalMs?.bind(conn),
-        outboundFileSyncFrameBound: conn.outboundFileSyncFrameBound?.bind(conn),
-        useEnvelopeVersion: conn.useEnvelopeVersion?.bind(conn),
-        requireBinaryFrames: conn.requireBinaryFrames?.bind(conn),
-        markLastSentUnread: conn.markLastSentUnread?.bind(conn),
       };
     },
     {

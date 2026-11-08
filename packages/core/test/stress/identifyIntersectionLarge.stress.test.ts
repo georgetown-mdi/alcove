@@ -4,7 +4,7 @@ import PSI from "@openmined/psi.js";
 
 import { PSIParticipant } from "../../src/psi/participant";
 import { createMessagePipe } from "../../src/connection/messageConnection";
-import { psiElementBounds } from "../../src/connection/frameSize";
+import { psiElementBounds } from "../../src/psi/singlePassSizing";
 
 // End-to-end stress: a full identifyIntersection round at large N,
 // exercising the whole pipeline including protobuf marshalling cost --

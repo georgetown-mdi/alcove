@@ -164,9 +164,17 @@ export const MAX_AEAD_FRAME_BYTES = MAX_AEAD_PLAINTEXT_BYTES - 1;
  * inner connection cancels the parked receive with kind "closed", which
  * passes through unchanged.
  *
+ * It declares every optional member of {@link MessageConnection}, so one
+ * added there fails to compile here until this layer answers it, except
+ * `requireBinaryFrames`: {@link EncryptedMessageConnection.create} calls it on
+ * the inner connection, and this layer refuses a frame that is not binary
+ * itself.
+ *
  * Construct via the static {@link EncryptedMessageConnection.create} factory.
  */
-export class EncryptedMessageConnection implements MessageConnection {
+export class EncryptedMessageConnection implements Required<
+  Omit<MessageConnection, "requireBinaryFrames">
+> {
   private readonly inner: MessageConnection;
   private readonly sendKey: CryptoKey;
   private readonly recvKey: CryptoKey;
@@ -782,6 +790,14 @@ export class EncryptedMessageConnection implements MessageConnection {
 
   useEnvelopeVersion(version: number): void {
     this.inner.useEnvelopeVersion?.(version);
+  }
+
+  inboundPollIntervalMs(): number | undefined {
+    return this.inner.inboundPollIntervalMs?.();
+  }
+
+  markLastSentUnread(): void {
+    this.inner.markLastSentUnread?.();
   }
 
   // A failure this layer detected ends the inner connection with a local

@@ -5,8 +5,8 @@ import type { MessageConnection } from "../connection/messageConnection";
 import {
   MAX_PSI_DECODE_ELEMENTS,
   MAX_SINGLE_PASS_SET_ELEMENTS,
-  type PsiElementBounds,
 } from "../connection/frameSize";
+import type { PsiElementBounds } from "./singlePassSizing";
 import {
   countDeclaredPsiElements,
   PSI_ELEMENT_BYTES,
@@ -256,7 +256,7 @@ export class PSIParticipant {
     // Per-message caps on the encrypted-element count each inbound PSI
     // frame may declare, derived from authenticated session state (the
     // agreed key count and the two exchanged record counts; see
-    // psiElementBounds in frameSize.ts) and enforced at every
+    // psiElementBounds in singlePassSizing.ts) and enforced at every
     // deserializeBinary call site below. Required, not defaulted: a
     // fail-open default would silently drop the amplification guard on a
     // caller that forgot it.

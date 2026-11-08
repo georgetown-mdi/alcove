@@ -25,7 +25,7 @@ import {
 import {
   SINGLE_PASS_LOCAL_REMEDY,
   singlePassDatasetExceedsCap,
-} from "../../src/connection/frameSize";
+} from "../../src/psi/singlePassSizing";
 import {
   declaredEffectiveKeyCount,
   FAN_OUT_CANDIDATES_PER_ELEMENT,

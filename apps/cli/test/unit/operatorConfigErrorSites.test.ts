@@ -191,7 +191,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "party wrote, and a cardinality includes none of it, whichever document it " +
       "was read off. Interpolating a NAME from those same terms here would not " +
       "inherit this reasoning. `SINGLE_PASS_LOCAL_REMEDY` " +
-      "(connection/frameSize.ts) is a module constant of fixed prose, shared " +
+      "(psi/singlePassSizing.ts) is a module constant of fixed prose, shared " +
       "with the two-party gate's message so the two state one remedy; it quotes " +
       "no value at all.",
   },

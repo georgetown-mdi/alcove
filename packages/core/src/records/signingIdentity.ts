@@ -23,6 +23,7 @@ import {
   signWithP256,
   verifyWithP256,
 } from "./signingKeys.js";
+import { boundedBase64UrlSchema } from "./boundedBase64Url.js";
 
 import type { CanonicalValue } from "../utils/canonical.js";
 import type { P256PrivateJwk, P256PublicJwk } from "./signingKeys.js";
@@ -172,19 +173,6 @@ const SigningIdentitySchema: z.ZodType<SigningIdentity> = z.object({
   certificate: SigningCertificateSchema,
 });
 
-// Length cap for the base64url crypto values a certificate read off an
-// untrusted partner frame holds (a coordinate is a 32-byte value = 43 unpadded
-// base64url characters, a signature 64 bytes = 86), matching the record
-// format's own cap: 256 is far above any legitimate value yet refuses a
-// megabyte-scale hostile string. Length-capped, not length-locked -- the exact
-// byte length is re-checked after decoding, so it is not pinned here.
-const MAX_WIRE_BASE64URL_LENGTH = 256;
-
-const boundedBase64UrlSchema = z
-  .string()
-  .check(maxCodeUnits(MAX_WIRE_BASE64URL_LENGTH))
-  .regex(/^[A-Za-z0-9_-]+$/, "must be an unpadded base64url string");
-
 /**
  * A certificate parsed from an untrusted partner wire frame -- the terms
  * exchange's `certificate` field and the receipt swap's frame -- with every
@@ -192,7 +180,7 @@ const boundedBase64UrlSchema = z
  * parse, before any fingerprint or signature work, rather than forcing
  * proportional allocation. The bounds mirror the on-disk record format's caps
  * (identity -> {@link MAX_TEXT_LENGTH}, every base64url field ->
- * {@link MAX_WIRE_BASE64URL_LENGTH}). The identity must also be well-formed
+ * {@link boundedBase64UrlSchema}). The identity must also be well-formed
  * UTF-16, since the pin match and self-signature check canonically encode
  * it; this is the wire safety check the shared
  * {@link SigningCertificateSchema} (used for operator-trusted on-disk
@@ -393,6 +381,34 @@ export async function parseCertificate(
   const cert = SigningCertificateSchema.parse(camelizeKeys(raw));
   await assertCertificateSelfSignature(cert);
   return cert;
+}
+
+/**
+ * The certificate in a parsed signing identity document, read as
+ * {@link parseCertificate} reads one, without importing the private key
+ * beside it. The document's own version is checked first, so a document of
+ * an unrecognized format is not mined for a certificate. Each app keeps its
+ * own file read and decides what a refusal means.
+ *
+ * @throws {Error} if the document's version is not
+ *   {@link SIGNING_IDENTITY_VERSION}.
+ * @throws {ZodError} if the certificate's shape is invalid.
+ * @throws {SigningError} if its key is malformed or its self-signature does
+ *   not verify.
+ */
+export async function certificateFromIdentityDocument(
+  document: unknown,
+): Promise<SigningCertificate> {
+  const version =
+    document !== null && typeof document === "object"
+      ? (document as Record<string, unknown>)["version"]
+      : undefined;
+  if (version !== SIGNING_IDENTITY_VERSION)
+    throw new Error(
+      `expected version ${SIGNING_IDENTITY_VERSION}; this is not a signing ` +
+        "identity file of a recognized format",
+    );
+  return parseCertificate((document as Record<string, unknown>)["certificate"]);
 }
 
 /**

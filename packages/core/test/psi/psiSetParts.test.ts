@@ -50,7 +50,7 @@ import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { readPartFrame } from "../utils/matchedListPartFrames";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
-import type { PsiElementBounds } from "../../src/connection/frameSize";
+import type { PsiElementBounds } from "../../src/psi/singlePassSizing";
 
 const psiLibrary = await PSI();
 

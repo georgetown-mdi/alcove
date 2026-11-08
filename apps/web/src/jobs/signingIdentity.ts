@@ -3,10 +3,8 @@ import path from "node:path";
 
 import {
   FINGERPRINT_REGEX,
-  SIGNING_IDENTITY_VERSION,
-  parseCertificate,
+  certificateFromIdentityDocument,
   parseSensitiveJson,
-  recordedVersionMatches,
 } from "@alcove/core";
 
 import { SIGNING_IDENTITY_FILE_NAME } from "@jobContract/intentSchemas";
@@ -234,13 +232,8 @@ export async function readBoundIdentity(
   } catch {
     return undefined;
   }
-  if (!recordedVersionMatches(document, SIGNING_IDENTITY_VERSION))
-    return undefined;
   try {
-    const certificate = await parseCertificate(
-      (document as Record<string, unknown>)["certificate"],
-    );
-    return certificate.identity;
+    return (await certificateFromIdentityDocument(document)).identity;
   } catch {
     return undefined;
   }

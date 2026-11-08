@@ -36,6 +36,8 @@ import {
   MAX_PSI_DECODE_ELEMENTS,
   MAX_SINGLE_PASS_SET_ELEMENTS,
   MAX_UINT32,
+} from "../connection/frameSize";
+import {
   partyFansOut,
   SINGLE_PASS_LOCAL_REMEDY,
   singlePassCeilingBreach,
@@ -44,7 +46,7 @@ import {
   valueSlots,
   type SinglePassCeilingBreach,
   type SinglePassPartySize,
-} from "../connection/frameSize";
+} from "./singlePassSizing";
 import {
   assertRoundDiagonalClosure,
   type ClosureBlock,

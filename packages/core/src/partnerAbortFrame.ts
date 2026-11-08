@@ -1,10 +1,16 @@
 // A partner parked on its next receive is read for an abort frame (see
 // `sendAbort`) before the frame is parsed as the one awaited, so it reports
 // that the partner ended the exchange, not a schema or decode failure.
-import { parseOrProtocolError } from "./connection/messageConnection";
+import {
+  OPTIONAL_CONNECTION_MEMBERS,
+  parseOrProtocolError,
+} from "./connection/messageConnection";
 import { PeerAbortError } from "./errors";
 
-import type { MessageConnection } from "./connection/messageConnection";
+import type {
+  MessageConnection,
+  OptionalConnectionMember,
+} from "./connection/messageConnection";
 
 /**
  * The reason a party puts on the abort it sends the partner in place of a set
@@ -279,26 +285,21 @@ export function parseAfterTerms<T>(
   return parseOrProtocolError(schema, frame);
 }
 
-// Every member of MessageConnection, so a member added there and not forwarded
-// by afterFirstFrameNotAbort fails to compile here.
-const FORWARDED_CONNECTION_MEMBERS = {
+// Every member of MessageConnection, the optional ones from their table, so a
+// member added there and not forwarded by afterFirstFrameNotAbort fails to
+// compile here.
+const REQUIRED_CONNECTION_MEMBERS = {
   send: true,
   receive: true,
   close: true,
-  terminated: true,
-  setInboundFrameCap: true,
-  holdInboundQueueBytes: true,
-  frameCeilingBytes: true,
-  inboundPollIntervalMs: true,
-  outboundWebRtcFrameBound: true,
-  outboundFileSyncFrameBound: true,
-  inboundPsiSetElementCeiling: true,
-  outboundFrameOverheadBytes: true,
-  useEnvelopeVersion: true,
-  requireBinaryFrames: true,
-  markLastSentUnread: true,
-  raiseInactivityTimeout: true,
-} as const satisfies Record<keyof MessageConnection, true>;
+} as const satisfies Record<
+  Exclude<keyof MessageConnection, OptionalConnectionMember>,
+  true
+>;
+const FORWARDED_CONNECTION_MEMBERS = [
+  ...Object.keys(REQUIRED_CONNECTION_MEMBERS),
+  ...Object.keys(OPTIONAL_CONNECTION_MEMBERS),
+];
 
 /**
  * `conn` with `hook` awaited once, when the first received frame that is not
@@ -312,7 +313,7 @@ export function afterFirstFrameNotAbort(
 ): MessageConnection {
   let pending = true;
   const forwarded: Record<string, unknown> = {};
-  for (const name of Object.keys(FORWARDED_CONNECTION_MEMBERS)) {
+  for (const name of FORWARDED_CONNECTION_MEMBERS) {
     const member = (conn as unknown as Record<string, unknown>)[name];
     if (typeof member === "function") forwarded[name] = member.bind(conn);
   }

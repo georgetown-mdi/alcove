@@ -19,7 +19,7 @@ import { sanitizeErrorForDisplay } from "../utils/sanitizeErrorForDisplay.js";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
-import type { PsiElementBounds } from "../connection/frameSize.js";
+import type { PsiElementBounds } from "../psi/singlePassSizing.js";
 import type { MessageConnection } from "../connection/messageConnection.js";
 import type { RunExchangeOptions } from "../exchange.js";
 import type { EntityClusterSummary } from "../psi/entityClosure.js";
@@ -136,7 +136,7 @@ export async function runPsiPhase(p: {
   // too: the partner's record count and both parties' effective key counts
   // derive the per-exchange frame cap, the abort-if-over-ceiling gate, and the
   // index-table layout, identically on both parties (see linkViaSinglePassPSI
-  // and frameSize.ts).
+  // and singlePassSizing.ts).
   //
   // The engine is built before the disposing try, so a throw in the
   // PSIParticipant constructor still reaches the finally that terminates its

@@ -5,9 +5,11 @@ import PSI from "@openmined/psi.js";
 import {
   MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
+} from "../src/connection/frameSize";
+import {
   singlePassReplyByteCap,
   singlePassRequestByteCap,
-} from "../src/connection/frameSize";
+} from "../src/psi/singlePassSizing";
 import { sendAbort, sendLocalFaultAbort } from "../src/protocolSetup";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import {

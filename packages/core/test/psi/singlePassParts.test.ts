@@ -15,7 +15,7 @@ import {
 import {
   singlePassReplyByteCap,
   singlePassRequestByteCap,
-} from "../../src/connection/frameSize";
+} from "../../src/psi/singlePassSizing";
 import { ConnectionError, PartnerProtocolRefusalError } from "../../src/errors";
 import {
   decodeSinglePassReply,
