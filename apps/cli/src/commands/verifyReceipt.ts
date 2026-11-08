@@ -80,46 +80,13 @@ import { agreedTermsPathFor, keysPathFor } from "../recordFile";
 import { parseSensitiveJson, parseSensitiveYaml } from "../sensitiveFile";
 import { loadSigningCertificate } from "../signingIdentityFile";
 import { openInputSource } from "../util/dataIo";
-import {
-  exitCodeForError,
-  exitWithError,
-  worseReceiptVerdictExitCode,
-} from "../util/exit";
+import { runOrExit, worseReceiptVerdictExitCode } from "../util/exit";
 import { firstIssue } from "../util/firstIssue";
 import { declarePositionals } from "../util/positionals";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 
-// `alcove verify-receipt` reports whether a stored exchange artifact holds up. It
-// is READ-ONLY -- it never mutates or re-signs an artifact -- and it verifies the
-// two artifacts an exchange produces, separately or together:
-//
-//   - The self-attested exchange record (UNSIGNED): internal consistency. Its
-//     commitments open against the holder's re-supplied data, and its
-//     agreed-terms hash re-derives from both parties' terms -- the agreed-terms
-//     file the exchange wrote beside it, or the documents the operator names.
-//     This proves nothing about the partner.
-//   - The signed receipt (SIGNED): evidence against the partner. Each party's
-//     receipt signature is checked against the certificate the record holds, each
-//     certificate's identity binding is checked, and each certificate is checked
-//     against what anchors it outside the record -- a fingerprint the verifier
-//     pinned, or the verifier's own signing identity.
-//
-// The positional accepts either artifact, dispatched on its format `version`; the
-// signed receipt can also be named with --signed-record to verify both
-// artifacts of one exchange in a single run, which is what lets the record's terms
-// hash, party identities, and binder be included in the signature checks. The
-// binder is the pairing: without the exchange record beside it a receipt
-// verifies against a partnership under a set of terms, not against one run of it.
-//
-// The verification keys hold only salts, so the committed data is RE-SUPPLIED from
-// the holder's retained input and result and re-canonicalized (see
-// reconstructCommittedData). With no input/result the command still runs -- the
-// third-party-auditor case: it checks structure and version and reports each
-// commitment as not-opened rather than failing. The same case on the signed side is
-// an unanchored certificate: signatures and identity bindings are still checked,
-// the verdict names the certificate nothing outside the receipt confirms, and it
-// is graded short of verified rather than failed.
+// Specified in docs/CLI.md, "Verifying a receipt", and docs/spec/PROTOCOL.md.
 
 export function builder(cmd: Argv): Argv {
   const beforeLogging = addCsvDelimiterOption(
@@ -1274,229 +1241,237 @@ export async function handler(argv: Arguments): Promise<void> {
   );
 
   try {
-    const recordPath = singleValue(argv, "record") as string | undefined;
-    if (recordPath === undefined || recordPath.length === 0)
-      throw new UsageError("a record file to verify is required");
-    const inputFile = singleValue(argv, "input-file") as string | undefined;
-    // Both CSVs this command re-reads are the party's own files, written and
-    // read by one delimiter, so one flag governs both. Read here, ahead of any
-    // file, so a value outside the accepted set stops the command at once; what
-    // it resolves against the configuration's own csv_delimiter is settled
-    // below, once that file has been read.
-    const csvDelimiterArg = csvDelimiterFlag(argv);
-    const resultFile = singleValue(argv, "result-file") as string | undefined;
-    const keysArg = singleValue(argv, "keys") as string | undefined;
-    const configFile = namedConfigFileFlag(argv);
-    const partnerTermsFile = singleValue(argv, "partner-terms") as
-      string | undefined;
-    const signedRecordArg = singleValue(argv, "signed-record") as
-      string | undefined;
-    const identityFileArg = singleValue(argv, "identity-file") as
-      string | undefined;
-    // Repeatable, one pinned value per signer, so it is read as a list rather
-    // than through singleValue, which refuses a repeat.
-    const partnerFingerprintArgs = ((): string[] => {
-      const value = argv["partner-fingerprint"];
-      if (value === undefined) return [];
-      return (Array.isArray(value) ? value : [value]).map(String);
-    })();
+    await runOrExit(log, async () => {
+      const recordPath = singleValue(argv, "record") as string | undefined;
+      if (recordPath === undefined || recordPath.length === 0)
+        throw new UsageError("a record file to verify is required");
+      const inputFile = singleValue(argv, "input-file") as string | undefined;
+      // Both CSVs this command re-reads are the party's own files, written and
+      // read by one delimiter, so one flag governs both. Read here, ahead of any
+      // file, so a value outside the accepted set stops the command at once; what
+      // it resolves against the configuration's own csv_delimiter is settled
+      // below, once that file has been read.
+      const csvDelimiterArg = csvDelimiterFlag(argv);
+      const resultFile = singleValue(argv, "result-file") as string | undefined;
+      const keysArg = singleValue(argv, "keys") as string | undefined;
+      const configFile = namedConfigFileFlag(argv);
+      const partnerTermsFile = singleValue(argv, "partner-terms") as
+        string | undefined;
+      const signedRecordArg = singleValue(argv, "signed-record") as
+        string | undefined;
+      const identityFileArg = singleValue(argv, "identity-file") as
+        string | undefined;
+      // Repeatable, one pinned value per signer, so it is read as a list rather
+      // than through singleValue, which refuses a repeat.
+      const partnerFingerprintArgs = ((): string[] => {
+        const value = argv["partner-fingerprint"];
+        if (value === undefined) return [];
+        return (Array.isArray(value) ? value : [value]).map(String);
+      })();
 
-    if ((inputFile === undefined) !== (resultFile === undefined))
-      throw new UsageError(
-        "supply both an input file and a result file to open the commitments, " +
-          "or neither (a structure-only check)",
+      if ((inputFile === undefined) !== (resultFile === undefined))
+        throw new UsageError(
+          "supply both an input file and a result file to open the commitments, " +
+            "or neither (a structure-only check)",
+        );
+
+      const artifact = readVerifiableArtifact(recordPath);
+      // A signed receipt holds no commitments and no terms, so the options
+      // that only apply to an exchange record are refused rather than ignored.
+      if (artifact.kind === "signed") {
+        if (signedRecordArg !== undefined) {
+          const message = messageWithOperatorText`${operatorSuppliedText(
+            recordPath,
+          )}${SIGNED_RECORD_FLAG_REMEDY}`;
+          throw keepOperatorSuppliedText(new UsageError(message.text), message);
+        }
+        if (inputFile !== undefined || keysArg !== undefined) {
+          const message = messageWithOperatorText`${operatorSuppliedText(
+            recordPath,
+          )}${COMMITMENT_FLAGS_REMEDY}`;
+          throw keepOperatorSuppliedText(new UsageError(message.text), message);
+        }
+      }
+
+      const localSource = configFileSource(configFile);
+      // The flag governs this verification and the configuration's csv_delimiter
+      // a verification given none, the precedence every command reading a CSV
+      // applies: the files being verified are the ones that configuration's own
+      // exchange wrote, and the paths named here need not be those files.
+      // Nothing later reads by this value, so a difference is not reported.
+      const csvDelimiter = csvDelimiterArg ?? localSource?.csvDelimiter;
+      await checkInputFitsMainThreadHeap(
+        [inputFile, resultFile].filter((file) => file !== undefined),
+        { offerOverride: false },
       );
+      const inputParse =
+        inputFile === undefined
+          ? undefined
+          : await loadCSVFile(
+              openInputSource(inputFile, { allowStdin: true }),
+              undefined,
+              csvDelimiter,
+            );
+      // The exchange record's own run wrote both parties' terms beside it. Each
+      // half is taken from the first source that supplies it: the flag naming
+      // it, then (for the partner's half) the signed receipt's carried copy,
+      // then this file.
+      const agreedTerms =
+        artifact.kind === "record"
+          ? agreedTermsBesideRecord(recordPath, log)
+          : undefined;
+      const localTerms =
+        localSource === undefined
+          ? agreedTerms?.localTerms
+          : localTermsAsTheRunStatedThem(localSource, inputParse?.meta, log);
+      const suppliedPartnerTerms = partnerTermsFrom(partnerTermsFile, log);
+      const signedRecord =
+        artifact.kind === "signed"
+          ? artifact.signed
+          : signedRecordArg !== undefined
+            ? readSignedRecordFile(signedRecordArg)
+            : undefined;
+      // The signed receipt holds the partner's terms, so a run naming one
+      // checks the agreed-terms hash with no second file; a file the operator
+      // named wins over that copy.
+      const partnerTerms =
+        partnerTermsForVerification(suppliedPartnerTerms, signedRecord) ??
+        agreedTerms?.partnerTerms;
 
-    const artifact = readVerifiableArtifact(recordPath);
-    // A signed receipt holds no commitments and no terms, so the options
-    // that only apply to an exchange record are refused rather than ignored.
-    if (artifact.kind === "signed") {
-      if (signedRecordArg !== undefined) {
-        const message = messageWithOperatorText`${operatorSuppliedText(
-          recordPath,
-        )}${SIGNED_RECORD_FLAG_REMEDY}`;
-        throw keepOperatorSuppliedText(new UsageError(message.text), message);
-      }
-      if (inputFile !== undefined || keysArg !== undefined) {
-        const message = messageWithOperatorText`${operatorSuppliedText(
-          recordPath,
-        )}${COMMITMENT_FLAGS_REMEDY}`;
-        throw keepOperatorSuppliedText(new UsageError(message.text), message);
-      }
-    }
+      if (signedRecord === undefined && partnerFingerprintArgs.length > 0)
+        throw new UsageError(
+          "--partner-fingerprint pins a certificate in a signed receipt, " +
+            "and no signed receipt was named; pass --signed-record, or name " +
+            "the signed receipt as the artifact to verify",
+        );
+      if (signedRecord === undefined && identityFileArg !== undefined)
+        throw new UsageError(
+          "--identity-file anchors your own certificate in a signed receipt, " +
+            "and no signed receipt was named; pass --signed-record, or name " +
+            "the signed receipt as the artifact to verify",
+        );
 
-    const localSource = configFileSource(configFile);
-    // The flag governs this verification and the configuration's csv_delimiter
-    // a verification given none, the precedence every command reading a CSV
-    // applies: the files being verified are the ones that configuration's own
-    // exchange wrote, and the paths named here need not be those files.
-    // Nothing later reads by this value, so a difference is not reported.
-    const csvDelimiter = csvDelimiterArg ?? localSource?.csvDelimiter;
-    await checkInputFitsMainThreadHeap(
-      [inputFile, resultFile].filter((file) => file !== undefined),
-      { offerOverride: false },
-    );
-    const inputParse =
-      inputFile === undefined
-        ? undefined
-        : await loadCSVFile(
-            openInputSource(inputFile, { allowStdin: true }),
+      const supplied: SuppliedVerificationInputs = {
+        configFile,
+        localTerms: localTerms !== undefined,
+        partnerTerms: partnerTerms !== undefined,
+      };
+      const lines: string[] = [];
+      let exitCode = 0;
+      let recordVerification:
+        | { report: RecordVerificationReport; warnings: Displayable[] }
+        | undefined;
+
+      if (artifact.kind === "record") {
+        const record = artifact.record;
+        const keysPath = keysArg ?? keysPathFor(recordPath);
+        const keys = readVerificationKeysFile(keysPath);
+
+        const warnings: Displayable[] = [];
+        let data: Awaited<ReturnType<typeof reconstructCommittedData>>["data"] =
+          {};
+        if (inputParse !== undefined && resultFile !== undefined) {
+          const resultParse = await loadCSVFile(
+            openInputSource(resultFile),
             undefined,
             csvDelimiter,
           );
-    // The exchange record's own run wrote both parties' terms beside it. Each
-    // half is taken from the first source that supplies it: the flag naming
-    // it, then (for the partner's half) the signed receipt's carried copy,
-    // then this file.
-    const agreedTerms =
-      artifact.kind === "record"
-        ? agreedTermsBesideRecord(recordPath, log)
-        : undefined;
-    const localTerms =
-      localSource === undefined
-        ? agreedTerms?.localTerms
-        : localTermsAsTheRunStatedThem(localSource, inputParse?.meta, log);
-    const suppliedPartnerTerms = partnerTermsFrom(partnerTermsFile, log);
-    const signedRecord =
-      artifact.kind === "signed"
-        ? artifact.signed
-        : signedRecordArg !== undefined
-          ? readSignedRecordFile(signedRecordArg)
-          : undefined;
-    // The signed receipt holds the partner's terms, so a run naming one
-    // checks the agreed-terms hash with no second file; a file the operator
-    // named wins over that copy.
-    const partnerTerms =
-      partnerTermsForVerification(suppliedPartnerTerms, signedRecord) ??
-      agreedTerms?.partnerTerms;
+          const result = toRetainedResult(resultParse);
+          const ourIdColumn = deriveOurIdColumn(
+            result.headers,
+            new Set(inputParse.meta.fields ?? []),
+          );
+          const reconstructed = reconstructCommittedData({
+            record,
+            inputRows: inputParse.data,
+            result,
+            ourIdColumn,
+          });
+          data = reconstructed.data;
+          warnings.push(...reconstructed.warnings);
+        }
 
-    if (signedRecord === undefined && partnerFingerprintArgs.length > 0)
-      throw new UsageError(
-        "--partner-fingerprint pins a certificate in a signed receipt, " +
-          "and no signed receipt was named; pass --signed-record, or name " +
-          "the signed receipt as the artifact to verify",
-      );
-    if (signedRecord === undefined && identityFileArg !== undefined)
-      throw new UsageError(
-        "--identity-file anchors your own certificate in a signed receipt, " +
-          "and no signed receipt was named; pass --signed-record, or name " +
-          "the signed receipt as the artifact to verify",
-      );
-
-    const supplied: SuppliedVerificationInputs = {
-      configFile,
-      localTerms: localTerms !== undefined,
-      partnerTerms: partnerTerms !== undefined,
-    };
-    const lines: string[] = [];
-    let exitCode = 0;
-    let recordVerification:
-      { report: RecordVerificationReport; warnings: Displayable[] } | undefined;
-
-    if (artifact.kind === "record") {
-      const record = artifact.record;
-      const keysPath = keysArg ?? keysPathFor(recordPath);
-      const keys = readVerificationKeysFile(keysPath);
-
-      const warnings: Displayable[] = [];
-      let data: Awaited<ReturnType<typeof reconstructCommittedData>>["data"] =
-        {};
-      if (inputParse !== undefined && resultFile !== undefined) {
-        const resultParse = await loadCSVFile(
-          openInputSource(resultFile),
-          undefined,
-          csvDelimiter,
-        );
-        const result = toRetainedResult(resultParse);
-        const ourIdColumn = deriveOurIdColumn(
-          result.headers,
-          new Set(inputParse.meta.fields ?? []),
-        );
-        const reconstructed = reconstructCommittedData({
-          record,
-          inputRows: inputParse.data,
-          result,
-          ourIdColumn,
+        const report = await verifyExchangeRecord(record, keys, {
+          data,
+          localTerms,
+          partnerTerms,
         });
-        data = reconstructed.data;
-        warnings.push(...reconstructed.warnings);
+        // A reproduction limitation is named only once the verdict shows it could
+        // be the cause, so it joins the notes after the report, not before it.
+        warnings.push(...reproductionMismatchCauses(report, data));
+        recordVerification = { report, warnings };
       }
 
-      const report = await verifyExchangeRecord(record, keys, {
-        data,
-        localTerms,
-        partnerTerms,
-      });
-      // A reproduction limitation is named only once the verdict shows it could
-      // be the cause, so it joins the notes after the report, not before it.
-      warnings.push(...reproductionMismatchCauses(report, data));
-      recordVerification = { report, warnings };
-    }
+      let signedRendered: { lines: string[]; exitCode: number } | undefined;
+      let signatureFailed = false;
+      if (signedRecord !== undefined) {
+        // This command never auto-loads a config, so a path that reaches here was
+        // named on the command line.
+        const signing = readConfigSigningBlock(
+          configFile,
+          configFile !== undefined,
+        );
+        const expectations = await signedRecordExpectations({
+          record: artifact.kind === "record" ? artifact.record : undefined,
+          localTerms,
+          partnerTerms,
+        });
+        const report = await verifyDualSignedRecord(signedRecord, {
+          pinnedFingerprints: resolvePinnedFingerprints(
+            partnerFingerprintArgs,
+            signing,
+          ),
+          ...expectations,
+          localIdentity: await chosenLocalIdentity(
+            identityFileArg,
+            signing,
+            log,
+          ),
+        });
+        signatureFailed =
+          report.initiator.signature === "failed" ||
+          report.responder.signature === "failed";
+        signedRendered = formatSignedRecordReport(report, {
+          ...supplied,
+          // The note explaining a config that defines no terms belongs beside
+          // the first agreed-terms line it explains, and a combined run has
+          // already printed that line above.
+          noteConfigTerms: artifact.kind !== "record",
+          // A source WAS in hand -- both branches of signedRecordExpectations
+          // supply the hash -- and still yielded no identity pair, which is a
+          // party that named itself none rather than an input the operator has
+          // yet to pass.
+          unnamedParty:
+            expectations.expectedTermsHash !== undefined &&
+            expectations.expectedIdentities === undefined,
+        });
+      }
 
-    let signedRendered: { lines: string[]; exitCode: number } | undefined;
-    let signatureFailed = false;
-    if (signedRecord !== undefined) {
-      // This command never auto-loads a config, so a path that reaches here was
-      // named on the command line.
-      const signing = readConfigSigningBlock(
-        configFile,
-        configFile !== undefined,
-      );
-      const expectations = await signedRecordExpectations({
-        record: artifact.kind === "record" ? artifact.record : undefined,
-        localTerms,
-        partnerTerms,
-      });
-      const report = await verifyDualSignedRecord(signedRecord, {
-        pinnedFingerprints: resolvePinnedFingerprints(
-          partnerFingerprintArgs,
-          signing,
-        ),
-        ...expectations,
-        localIdentity: await chosenLocalIdentity(identityFileArg, signing, log),
-      });
-      signatureFailed =
-        report.initiator.signature === "failed" ||
-        report.responder.signature === "failed";
-      signedRendered = formatSignedRecordReport(report, {
-        ...supplied,
-        // The note explaining a config that defines no terms belongs beside
-        // the first agreed-terms line it explains, and a combined run has
-        // already printed that line above.
-        noteConfigTerms: artifact.kind !== "record",
-        // A source WAS in hand -- both branches of signedRecordExpectations
-        // supply the hash -- and still yielded no identity pair, which is a
-        // party that named itself none rather than an input the operator has
-        // yet to pass.
-        unnamedParty:
-          expectations.expectedTermsHash !== undefined &&
-          expectations.expectedIdentities === undefined,
-      });
-    }
+      // Rendered once the signature outcome is known, which decides its headline.
+      if (recordVerification !== undefined) {
+        const rendered = formatVerificationReport(
+          recordVerification.report,
+          recordVerification.warnings,
+          signedRecord !== undefined,
+          supplied,
+          signatureFailed,
+        );
+        lines.push(...rendered.lines);
+        exitCode = worseReceiptVerdictExitCode(exitCode, rendered.exitCode);
+      }
+      if (signedRendered !== undefined) {
+        lines.push(...signedRendered.lines);
+        exitCode = worseReceiptVerdictExitCode(
+          exitCode,
+          signedRendered.exitCode,
+        );
+      }
 
-    // Rendered once the signature outcome is known, which decides its headline.
-    if (recordVerification !== undefined) {
-      const rendered = formatVerificationReport(
-        recordVerification.report,
-        recordVerification.warnings,
-        signedRecord !== undefined,
-        supplied,
-        signatureFailed,
-      );
-      lines.push(...rendered.lines);
-      exitCode = worseReceiptVerdictExitCode(exitCode, rendered.exitCode);
-    }
-    if (signedRendered !== undefined) {
-      lines.push(...signedRendered.lines);
-      exitCode = worseReceiptVerdictExitCode(exitCode, signedRendered.exitCode);
-    }
-
-    // The verdict is the command's result, so it goes to stdout; the log level
-    // still governs any diagnostics the readers above emit.
-    for (const line of lines) console.log(line);
-    process.exitCode = exitCode;
-  } catch (err) {
-    exitWithError(log, err, exitCodeForError(err));
+      // The verdict is the command's result, so it goes to stdout; the log level
+      // still governs any diagnostics the readers above emit.
+      for (const line of lines) console.log(line);
+      process.exitCode = exitCode;
+    });
   } finally {
     closeLogging();
   }

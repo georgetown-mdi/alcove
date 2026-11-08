@@ -27,7 +27,10 @@ import {
   verdictLines,
   verdictOf,
 } from "../../../src/doctor/verdict";
-import type { DoctorReport } from "../../../src/doctor/verdict";
+import type {
+  DoctorCheckRecord,
+  DoctorReport,
+} from "../../../src/doctor/verdict";
 import { currentWindowsUser, isOwnerOnly } from "../../windowsAcl";
 
 const PASSWORD = "correct horse battery";
@@ -481,6 +484,181 @@ describe("staged failures", () => {
     expect(check.status).toBe("warn");
     expect(check.action).toContain("quota");
     expect(overallOf(report)).toBe("ok");
+  });
+});
+
+describe("each share stage reports its own record and stops the run", () => {
+  type StageId = "share_open" | "subdirectory" | "write" | "rename" | "delete";
+  const STAGE_COMMAND: Record<StageId, (args: string[]) => boolean> = {
+    share_open: (args) => commandOf(args) === "ls" && !args.includes("-D"),
+    subdirectory: (args) => commandOf(args) === "ls" && args.includes("-D"),
+    write: (args) =>
+      commandOf(args) === "put alcove-probe-abc123.tmp alcove-probe-abc123.tmp",
+    rename: (args) =>
+      commandOf(args) ===
+      "rename alcove-probe-abc123.tmp alcove-probe-abc123.tmp.renamed",
+    delete: (args) => commandOf(args) === "del alcove-probe-abc123.tmp.renamed",
+  };
+
+  /** Each check's status for a run the stage `stoppedAt` failed. */
+  function statusesStoppedAt(stoppedAt: StageId): string[] {
+    const index = PROBE_CHECK_IDS.indexOf(stoppedAt);
+    return PROBE_CHECK_IDS.map((id, i) =>
+      i < index ? `${id}:ok` : i === index ? `${id}:fail` : `${id}:skipped`,
+    );
+  }
+
+  async function runFailingAt(
+    stage: StageId,
+    answer: Partial<CommandResult>,
+  ): Promise<DoctorReport> {
+    return runProbe(
+      INPUT,
+      deps((args) =>
+        STAGE_COMMAND[stage](args) ? answer : healthyReply(args),
+      ),
+    );
+  }
+
+  test.each(Object.keys(STAGE_COMMAND) as StageId[])(
+    "a %s run the connection dropped is a stopped connection",
+    async (stage) => {
+      const report = await runFailingAt(stage, { code: 1, output: "" });
+      expect(checkById(report, stage)).toEqual({
+        id: stage,
+        status: "fail",
+        summary: "the connection to files.example.org stopped responding.",
+        meaning:
+          "smbclient could not finish the request and the server gave no " +
+          "reason for it (exit 1). Nothing about your credentials or your " +
+          "folder has been established either way.",
+        action:
+          "a firewall or VPN that allows the connection and then drops the " +
+          "traffic behaves exactly like this. See 'The container cannot " +
+          "reach the server' on the troubleshooting page, " +
+          TROUBLESHOOTING_URL,
+        detail: "",
+      });
+      expect(
+        report.checks.map((check) => `${check.id}:${check.status}`),
+      ).toEqual(statusesStoppedAt(stage));
+    },
+  );
+
+  const STATUS_CASES: Array<{
+    stage: StageId;
+    output: string;
+    record: Omit<DoctorCheckRecord, "id" | "status">;
+  }> = [
+    {
+      stage: "share_open",
+      output: "tree connect failed: NT_STATUS_NOT_A_DIRECTORY",
+      record: {
+        summary: "NT_STATUS_NOT_A_DIRECTORY",
+        meaning: "'exchange' names a file rather than a share or folder.",
+        action: "give the folder the exchange runs in, not a file inside it.",
+      },
+    },
+    {
+      stage: "subdirectory",
+      output: "NT_STATUS_OBJECT_NAME_NOT_FOUND listing \\dropbox",
+      record: {
+        summary: "NT_STATUS_OBJECT_NAME_NOT_FOUND",
+        meaning: "the share is fine but this subfolder does not exist.",
+        action: "check the spelling, or create it in File Explorer first.",
+        detail: "NT_STATUS_OBJECT_NAME_NOT_FOUND listing \\dropbox",
+      },
+    },
+    {
+      stage: "write",
+      output: "NT_STATUS_ACCESS_DENIED opening remote file",
+      record: {
+        summary: "NT_STATUS_ACCESS_DENIED - could not create a file.",
+        meaning: "this account can read the folder but not write to it.",
+        action:
+          "ask whoever administers the share for write permission on this " +
+          "folder. Mount options such as file_mode cannot grant it. They " +
+          "only change how permissions look inside the container, not what " +
+          "the server allows.",
+        detail: "NT_STATUS_ACCESS_DENIED opening remote file",
+      },
+    },
+    {
+      stage: "rename",
+      output: "NT_STATUS_ACCESS_DENIED renaming files",
+      record: {
+        summary:
+          "NT_STATUS_ACCESS_DENIED - created a file but could not rename it.",
+        meaning:
+          "creating files is allowed here and renaming them is not. Alcove " +
+          "renames every message into place, so this stops an exchange even " +
+          "though the folder looks writable.",
+        action:
+          "ask for full change rights on this folder rather than create-only. " +
+          "On a Windows share this is usually the DELETE right being " +
+          "withheld, which a rename needs.",
+        detail: "NT_STATUS_ACCESS_DENIED renaming files",
+      },
+    },
+    {
+      stage: "delete",
+      output: "NT_STATUS_ACCESS_DENIED deleting remote file",
+      record: {
+        summary:
+          "NT_STATUS_ACCESS_DENIED - created and renamed a file but could " +
+          "not delete it.",
+        meaning:
+          "Alcove removes each message once the other side has read it. " +
+          "Without delete rights the folder fills up and a second exchange " +
+          "in it will not start.",
+        action:
+          "ask for delete rights on this folder. If they cannot be granted, " +
+          "the exchange can still be run with --retain-files, but the " +
+          "folder has to be emptied by hand between exchanges.",
+        detail: "NT_STATUS_ACCESS_DENIED deleting remote file",
+      },
+    },
+  ];
+
+  test.each(STATUS_CASES)(
+    "a status the server named at $stage is that stage's finding",
+    async ({ stage, output, record }) => {
+      const report = await runFailingAt(stage, { code: 1, output });
+      expect(checkById(report, stage)).toEqual({
+        id: stage,
+        status: "fail",
+        ...record,
+      });
+      expect(
+        report.checks.map((check) => `${check.id}:${check.status}`),
+      ).toEqual(statusesStoppedAt(stage));
+    },
+  );
+
+  test("a passing stage reports its own summary", async () => {
+    const report = await runProbe(INPUT, deps(healthyReply));
+    expect(
+      ["share_open", "write", "rename", "delete"].map(
+        (id) => checkById(report, id).summary,
+      ),
+    ).toEqual([
+      "share opened.",
+      "created a file (and removed probe files left by an earlier run).",
+      "renamed it.",
+      "deleted it.",
+    ]);
+  });
+
+  test("a stale-file sweep that removed nothing leaves the write summary plain", async () => {
+    const report = await runProbe(
+      INPUT,
+      deps((args) =>
+        commandOf(args) === "del alcove-probe-*.tmp*"
+          ? { code: 1, output: "NT_STATUS_NO_SUCH_FILE listing" }
+          : healthyReply(args),
+      ),
+    );
+    expect(checkById(report, "write").summary).toBe("created a file.");
   });
 });
 

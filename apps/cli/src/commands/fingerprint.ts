@@ -42,7 +42,7 @@ import {
   loadSigningIdentity,
   saveSigningIdentity,
 } from "../signingIdentityFile";
-import { exitCodeForError, exitWithError } from "../util/exit";
+import { runOrExit } from "../util/exit";
 import { parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 
@@ -533,8 +533,8 @@ export async function handler(argv: Arguments): Promise<void> {
   // This command resolves and applies the log level before the logger exists, so
   // a bad --log-level is reported on stderr and exited 64 here (via the shared
   // parseOrExit boundary, the same one exchange/zeroSetup use) rather than
-  // through the logger-based catch below. Both usage errors -- a repeated flag
-  // and an unrecognized value -- reach that boundary as UsageErrors out of
+  // through the logger-based runOrExit below. Both usage errors -- a repeated
+  // flag and an unrecognized value -- reach that boundary as UsageErrors out of
   // logLevelFlag; the command reads only the log-level flag through it rather
   // than the shared bootstrap parser, which a fingerprint run does not need.
   const logLevel = parseOrExit(() => logLevelFlag(argv));
@@ -549,92 +549,95 @@ export async function handler(argv: Arguments): Promise<void> {
   );
 
   try {
-    // Read the single-value flags through singleValue inside the try so a
-    // repeated flag raises a UsageError mapped to exit 64 by the catch below.
-    // `force` is a boolean (last-one-wins on repeat), so it keeps a plain cast.
-    const identityArg = singleValue(argv, "identity") as string | undefined;
-    const identityFileArg = singleValue(argv, "identity-file") as
-      string | undefined;
-    const configFileArg = namedConfigFileFlag(argv);
-    const force = argv["force"] as boolean;
-    const exportCertificate = singleValue(argv, "export-certificate") as
-      string | undefined;
-    const hints = readConfigHints(configFileArg, configFileArg !== undefined);
-    const namedIdentityFile = identityFileArg ?? hints.identityFile;
-    if (namedIdentityFile === undefined)
-      throw new UsageError(NO_IDENTITY_PATH_REFUSAL);
-    const identityPath = expandTilde(namedIdentityFile);
-    const exportPath =
-      exportCertificate !== undefined
-        ? expandTilde(exportCertificate)
-        : undefined;
-    // Pointing --export-certificate at the identity file would replace the
-    // private key with the public certificate, destroying the key and every
-    // partner's pin.
-    if (
-      exportPath !== undefined &&
-      exportReplacesIdentity(exportPath, identityPath)
-    ) {
-      const message = messageWithOperatorText`--export-certificate path ${operatorSuppliedText(
-        exportPath,
-      )}${EXPORT_OVER_IDENTITY_REMEDY}`;
-      throw keepOperatorSuppliedText(new UsageError(message.text), message);
-    }
-    // An existing file at the export path is replaced only on --force. One
-    // already holding the certificate of the identity on disk is left as it
-    // is, so a repeated run succeeds. Decided before anything may change the
-    // identity.
-    let onDisk: { identity: SigningIdentity | undefined } | undefined;
-    if (exportPath !== undefined && !force) {
-      onDisk = { identity: await loadSigningIdentity(identityPath) };
-      const existing = readExistingExport(exportPath);
-      if (existing !== undefined) {
-        if (
-          onDisk.identity === undefined ||
-          existing !== serializeCertificate(onDisk.identity.certificate)
-        )
-          throw exportWouldReplaceFileError(exportPath);
+    await runOrExit(log, async () => {
+      // Read the single-value flags through singleValue inside the boundary so
+      // a repeated flag raises a UsageError mapped to exit 64.
+      // `force` is a boolean (last-one-wins on repeat), so it keeps a plain cast.
+      const identityArg = singleValue(argv, "identity") as string | undefined;
+      const identityFileArg = singleValue(argv, "identity-file") as
+        string | undefined;
+      const configFileArg = namedConfigFileFlag(argv);
+      const force = argv["force"] as boolean;
+      const exportCertificate = singleValue(argv, "export-certificate") as
+        string | undefined;
+      const hints = readConfigHints(configFileArg, configFileArg !== undefined);
+      const namedIdentityFile = identityFileArg ?? hints.identityFile;
+      if (namedIdentityFile === undefined)
+        throw new UsageError(NO_IDENTITY_PATH_REFUSAL);
+      const identityPath = expandTilde(namedIdentityFile);
+      const exportPath =
+        exportCertificate !== undefined
+          ? expandTilde(exportCertificate)
+          : undefined;
+      // Pointing --export-certificate at the identity file would replace the
+      // private key with the public certificate, destroying the key and every
+      // partner's pin.
+      if (
+        exportPath !== undefined &&
+        exportReplacesIdentity(exportPath, identityPath)
+      ) {
+        const message = messageWithOperatorText`--export-certificate path ${operatorSuppliedText(
+          exportPath,
+        )}${EXPORT_OVER_IDENTITY_REMEDY}`;
+        throw keepOperatorSuppliedText(new UsageError(message.text), message);
       }
-    }
-
-    const { identity, action } = await resolveSigningIdentity({
-      identityPath,
-      identityArg,
-      configIdentity: hints.identity,
-      force,
-      log,
-      ...(onDisk !== undefined ? { onDisk } : {}),
-    });
-
-    const fingerprint = await computeCertificateFingerprint(
-      identity.certificate,
-    );
-
-    if (exportPath !== undefined) {
-      const certificate = serializeCertificate(identity.certificate);
-      try {
-        // Public, shareable artifact: world-readable and atomic, NOT owner-only.
-        // Without --force the create is exclusive, so a file that appeared
-        // since the preflight is compared rather than replaced.
-        writeFileAtomic(exportPath, certificate, undefined, {
-          exclusive: !force,
-        });
-      } catch (err) {
-        if (err instanceof FileExistsError) {
-          if (readExistingExport(exportPath) !== certificate)
+      // An existing file at the export path is replaced only on --force. One
+      // already holding the certificate of the identity on disk is left as it
+      // is, so a repeated run succeeds. Decided before anything may change the
+      // identity.
+      let onDisk: { identity: SigningIdentity | undefined } | undefined;
+      if (exportPath !== undefined && !force) {
+        onDisk = { identity: await loadSigningIdentity(identityPath) };
+        const existing = readExistingExport(exportPath);
+        if (existing !== undefined) {
+          if (
+            onDisk.identity === undefined ||
+            existing !== serializeCertificate(onDisk.identity.certificate)
+          )
             throw exportWouldReplaceFileError(exportPath);
-        } else {
-          const message = messageWithOperatorText`could not write certificate to ${operatorSuppliedText(
-            exportPath,
-          )}: ${err instanceof Error ? err.message : String(err)}`;
-          throw keepOperatorSuppliedText(new UsageError(message.text), message);
         }
       }
-    }
 
-    report(log, action, identityPath, identity, fingerprint);
-  } catch (err) {
-    exitWithError(log, err, exitCodeForError(err));
+      const { identity, action } = await resolveSigningIdentity({
+        identityPath,
+        identityArg,
+        configIdentity: hints.identity,
+        force,
+        log,
+        ...(onDisk !== undefined ? { onDisk } : {}),
+      });
+
+      const fingerprint = await computeCertificateFingerprint(
+        identity.certificate,
+      );
+
+      if (exportPath !== undefined) {
+        const certificate = serializeCertificate(identity.certificate);
+        try {
+          // Public, shareable artifact: world-readable and atomic, NOT owner-only.
+          // Without --force the create is exclusive, so a file that appeared
+          // since the preflight is compared rather than replaced.
+          writeFileAtomic(exportPath, certificate, undefined, {
+            exclusive: !force,
+          });
+        } catch (err) {
+          if (err instanceof FileExistsError) {
+            if (readExistingExport(exportPath) !== certificate)
+              throw exportWouldReplaceFileError(exportPath);
+          } else {
+            const message = messageWithOperatorText`could not write certificate to ${operatorSuppliedText(
+              exportPath,
+            )}: ${err instanceof Error ? err.message : String(err)}`;
+            throw keepOperatorSuppliedText(
+              new UsageError(message.text),
+              message,
+            );
+          }
+        }
+      }
+
+      report(log, action, identityPath, identity, fingerprint);
+    });
   } finally {
     closeLogging();
   }

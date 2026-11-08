@@ -16,7 +16,7 @@ import { channelFromURL } from "../connectionFromUrl";
 import { SSH2SFTPClientAdapter } from "../connection/ssh2SftpAdapter";
 import { HOST_KEY_PROBE_DIALS_ONCE } from "../hostKeyTrust";
 import { peerIdentificationDiagnosisOf } from "../connection/sftpPeerIdentification";
-import { exitCodeForError, exitWithError } from "../util/exit";
+import { runOrExit } from "../util/exit";
 import { declarePositionals } from "../util/positionals";
 import {
   durationFlagSeconds,
@@ -278,33 +278,37 @@ export async function handler(argv: Arguments): Promise<void> {
 
   const json = argv["json"] === true;
   try {
-    // singleValue and durationFlagSeconds raise a flag-named UsageError (exit 64)
-    // on a repeated or malformed flag; buildProbeConfig raises one on a bad URL.
-    const result = await probeHostKeyLines({
-      sftpUrl: singleValue(argv, "sftp-url") as string,
-      connectTimeoutSeconds: durationFlagSeconds(
-        argv,
-        "connect-timeout",
-        MAX_TIMEOUT_SECONDS,
-      ),
-      json,
-      verbosity: (argv["verbose"] as number | undefined) ?? 0,
+    await runOrExit(log, async () => {
+      // singleValue and durationFlagSeconds raise a flag-named UsageError
+      // (exit 64) on a repeated or malformed flag; buildProbeConfig raises one
+      // on a bad URL.
+      const result = await probeHostKeyLines({
+        sftpUrl: singleValue(argv, "sftp-url") as string,
+        connectTimeoutSeconds: durationFlagSeconds(
+          argv,
+          "connect-timeout",
+          MAX_TIMEOUT_SECONDS,
+        ),
+        json,
+        verbosity: (argv["verbose"] as number | undefined) ?? 0,
+      }).catch((err: unknown) => {
+        // The dial's own diagnosis of a peer that never identified itself goes
+        // to stdout on the --json path, where the exit-69 result would
+        // otherwise be indistinguishable from an unreachable host: a machine
+        // consumer discards stderr because it can hold server-controlled
+        // bytes. The human path reads it off the rendered cause chain.
+        const diagnosis = json ? peerIdentificationDiagnosisOf(err) : undefined;
+        if (diagnosis !== undefined)
+          console.log(probeDiagnosisJsonLine(diagnosis));
+        throw err;
+      });
+      // The --json line is the command's sole result, so it goes to stdout via
+      // console.log (like `alcove fingerprint`), keeping a capture/pipe clean;
+      // the human summary is a diagnostic and routes through the logger to
+      // stderr.
+      if (result.stdout !== undefined) console.log(result.stdout);
+      if (result.summary !== undefined) log.info(result.summary);
     });
-    // The --json line is the command's sole result, so it goes to stdout via
-    // console.log (like `alcove fingerprint`), keeping a capture/pipe clean; the
-    // human summary is a diagnostic and routes through the logger to stderr.
-    if (result.stdout !== undefined) console.log(result.stdout);
-    if (result.summary !== undefined) log.info(result.summary);
-  } catch (err) {
-    // The dial's own diagnosis of a peer that never identified itself goes to
-    // stdout on the --json path, where the exit-69 result would otherwise be
-    // indistinguishable from an unreachable host: a machine consumer discards
-    // stderr precisely because it can hold server-controlled bytes, so the
-    // classification and the bounded excerpt need a route of their own. The
-    // human path keeps reading it off the rendered cause chain below.
-    const diagnosis = json ? peerIdentificationDiagnosisOf(err) : undefined;
-    if (diagnosis !== undefined) console.log(probeDiagnosisJsonLine(diagnosis));
-    exitWithError(log, err, exitCodeForError(err));
   } finally {
     closeLogging();
   }

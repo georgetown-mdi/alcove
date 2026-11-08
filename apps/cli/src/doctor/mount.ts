@@ -4,7 +4,7 @@ import path from "node:path";
 import { windowsTroubleshootingSection } from "../docLinks";
 import type { SmbMountInput } from "./smbEnvironment";
 import type { DoctorCheckRecord, DoctorReport } from "./verdict";
-import { fail, ok, skipped, SKIPPED_BY_FAILURE_MEANING, warn } from "./verdict";
+import { fail, ok, padSkipped, skipped, warn } from "./verdict";
 
 // The kernel half of the file-drop checks: the operations Alcove's rendezvous
 // is built on, run over the real mount rather than over smbclient, which refuses
@@ -80,23 +80,6 @@ export const nodeMountFs: MountFs = {
 
 function errorCode(err: unknown): string {
   return (err as NodeJS.ErrnoException).code ?? "unknown error";
-}
-
-/**
- * Append a `skipped` record for every id the run never reached. Each names the
- * check it stands for; the reason they share is stated once where they are
- * rendered.
- */
-function padSkipped(checks: DoctorCheckRecord[]): DoctorCheckRecord[] {
-  const seen = new Set(checks.map((check) => check.id));
-  return [
-    ...checks,
-    ...MOUNT_CHECK_IDS.filter((id) => !seen.has(id)).map((id) =>
-      skipped(id, `${MOUNT_CHECK_NAMES[id]} - not run.`, {
-        meaning: SKIPPED_BY_FAILURE_MEANING,
-      }),
-    ),
-  ];
 }
 
 /** The marker cross-check: is the mounted folder the one the probe tested? */
@@ -211,7 +194,10 @@ export function runMountChecks(
         { blocksRun: true },
       ),
     );
-    return { mode: "mount", checks: padSkipped(checks) };
+    return {
+      mode: "mount",
+      checks: padSkipped(checks, MOUNT_CHECK_IDS, MOUNT_CHECK_NAMES),
+    };
   }
   checks.push(ok("mount_readable", `${directory} is readable.`));
 
@@ -224,7 +210,10 @@ export function runMountChecks(
       : undefined;
   if (writeBlocked !== undefined) {
     checks.push(occupied("write_rename", writeBlocked));
-    return { mode: "mount", checks: padSkipped(checks) };
+    return {
+      mode: "mount",
+      checks: padSkipped(checks, MOUNT_CHECK_IDS, MOUNT_CHECK_NAMES),
+    };
   }
   try {
     // Write under a temporary name and rename into place, which is what Alcove
@@ -249,7 +238,10 @@ export function runMountChecks(
     );
     clearName(WRITE_NAME);
     clearName(WRITE_RENAMED_NAME);
-    return { mode: "mount", checks: padSkipped(checks) };
+    return {
+      mode: "mount",
+      checks: padSkipped(checks, MOUNT_CHECK_IDS, MOUNT_CHECK_NAMES),
+    };
   }
 
   if (!clearName(EXCLUSIVE_NAME)) {

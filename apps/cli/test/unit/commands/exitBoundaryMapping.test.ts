@@ -5,9 +5,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 
 import { mountHandler } from "../../../src/commands/doctor";
+import { handler as enrollRelayHandler } from "../../../src/commands/enrollRelay";
+import { loadConfig } from "../../../src/commands/exchange";
 import { handler as fingerprintHandler } from "../../../src/commands/fingerprint";
-import { handler as probeHostKeyHandler } from "../../../src/commands/probeHostKey";
+import {
+  probeDiagnosisJsonLine,
+  handler as probeHostKeyHandler,
+} from "../../../src/commands/probeHostKey";
 import { handler as verifyReceiptHandler } from "../../../src/commands/verifyReceipt";
+import { explainPeerIdentificationFailure } from "../../../src/connection/sftpPeerIdentification";
 import { runMountChecks } from "../../../src/doctor/mount";
 import { parseSensitiveJson } from "../../../src/sensitiveFile";
 import { loadSigningIdentity } from "../../../src/signingIdentityFile";
@@ -38,6 +44,14 @@ vi.mock("../../../src/signingIdentityFile", async (importActual) => {
   const actual =
     await importActual<typeof import("../../../src/signingIdentityFile")>();
   return { ...actual, loadSigningIdentity: vi.fn(actual.loadSigningIdentity) };
+});
+
+// enroll-relay's first module call is the configuration load it shares with
+// the exchange command, spy-wrapped the same way.
+vi.mock("../../../src/commands/exchange", async (importActual) => {
+  const actual =
+    await importActual<typeof import("../../../src/commands/exchange")>();
+  return { ...actual, loadConfig: vi.fn(actual.loadConfig) };
 });
 
 vi.mock("../../../src/sensitiveFile", async (importActual) => {
@@ -147,6 +161,68 @@ describe("probe-host-key reports the class of what stopped the dial", () => {
             $0: "alcove",
             "sftp-url": "sftp://sftp.example.org",
             json: false,
+            "log-level": "silent",
+          } as unknown as Arguments),
+        code,
+      );
+    },
+  );
+});
+
+describe("probe-host-key --json prints the peer diagnosis before it exits", () => {
+  const diagnosed = (): unknown =>
+    explainPeerIdentificationFailure(
+      new Error("Connection lost before handshake"),
+      { kind: "closed-unanswered" },
+      { host: "sftp.example.org", port: 22 },
+    );
+
+  test.each([
+    {
+      json: true,
+      printed: [probeDiagnosisJsonLine({ kind: "closed-unanswered" })],
+    },
+    { json: false, printed: [] },
+  ])(
+    "--json $json prints $printed.length line(s) and exits 69",
+    async ({ json, printed }) => {
+      probeState.error = diagnosed();
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        await expectExit(
+          () =>
+            probeHostKeyHandler({
+              _: [],
+              $0: "alcove",
+              "sftp-url": "sftp://sftp.example.org",
+              json,
+              "log-level": "silent",
+            } as unknown as Arguments),
+          69,
+        );
+        expect(consoleLog.mock.calls).toEqual(printed.map((line) => [line]));
+      } finally {
+        consoleLog.mockRestore();
+      }
+    },
+  );
+});
+
+describe("enroll-relay reports the class of what stopped the enrollment", () => {
+  test.each(ERROR_CLASS_EXIT_CODES)(
+    "$planted exits $code",
+    async ({ plant, code }) => {
+      vi.mocked(loadConfig).mockImplementationOnce(() => {
+        throw plant();
+      });
+      await expectExit(
+        () =>
+          enrollRelayHandler({
+            _: [],
+            $0: "alcove",
+            "config-file": path.join(dir, "alcove.yaml"),
+            "key-file": path.join(dir, "alcove.key"),
+            "replace-relay-key": false,
             "log-level": "silent",
           } as unknown as Arguments),
         code,
