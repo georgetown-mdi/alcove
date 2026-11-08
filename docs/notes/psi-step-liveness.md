@@ -71,9 +71,13 @@ What the figures decide:
   A still-working frame: the JSON object `{"working":true}`, exactly that, sent inside the encrypted stream like every frame after the key exchange.
   It states nothing but its presence.
 - **Who sends it, and when.**
-  Each party sends one when its PSI phase starts, then one whenever 30 s have passed since it last sent any frame, until it sends its last frame of the phase.
-  It stops the timer, and waits for a still-working send in flight, before sending that last frame, so none arrives after it.
-  A queue in front of `send()` keeps a still-working send and a data send from overlapping.
+  Each party sends one when its PSI phase starts, then one whenever 30 s have passed since it last sent any frame.
+  Every send the phase makes, a data frame, an abort (`sendAbort`, from `participant.ts`, `link.ts`, `psiSetParts.ts` and the rest) or its last frame, goes through one queue in front of `send()`, so no two overlap.
+  Before any abort, the phase's last frame, or the phase's exit on a failure or cancellation, the timer stops and a still-working send in flight settles, and none is sent after one.
+  The exit is the `finally` in `psiPhase.ts`, which runs ahead of `sendLocalFaultAbort` and the close in the run's teardown.
+- **Which connections send it** (a proposal).
+  An optional connection member, in the shape of `conn.raiseInactivityTimeout?.` in `psiPhase.ts`, which the WebRTC and both WebSocket relay connections state and the encryption layer forwards, as does the member list in `afterFirstFrameNotAbort`.
+  A file-sync connection states none, so core sends no still-working frame and arms no bound there; one that arrives on file-sync is a `protocol` error, as is any frame the phase does not await.
 - **The waiting side.**
   A connection wrapper in the PSI phase, following `afterFirstFrameNotAbort` in `packages/core/src/partnerAbortFrame.ts`, drops each still-working frame and receives again.
   The partner's first still-working frame arms the silence bound, 120 s, on the transport's parked receive; the partner's last PSI-phase frame disarms it.
@@ -95,11 +99,22 @@ What the figures decide:
 
 - **Interval, 30 s.**
   The cadence at which the transports already check a link: the relay's ping, and the CLI's consent-freshness detection.
-  The inbound queue sets a floor: a party computing its longest step does not receive, so frames queue, and the queue admits 1,024 (`DEFAULT_CAPACITY`, `messageConnection.ts`).
-  The longest step the derived wait admits is 16,878.8 s, so the interval must exceed 16.5 s; at 30 s at most 563 queue.
+- **What bounds a step** (a proposal).
+  Nothing on the waiting side bounds a step's length: it ends when it completes, after 120 s of silence, on the computing party's own stall check (split operations only), or on an interrupt.
+  The one limit left is the inbound queue.
+  A party running its own operation does not receive, so the partner's still-working frames queue, and the queue fails the run as a peer sending out of turn at 1,024 messages (`DEFAULT_CAPACITY`, `messageConnection.ts`).
+  At 30 s that is 30,720 s of one party's own operation, 3.0 times the slowest one measured above: 10,167 s for 2^24 elements (`MAX_PSI_DECODE_ELEMENTS`, the most a set holds) at 0.606 ms.
+  An operation past it ends on that refusal, a stated limit.
+- **The byte bound** (a proposal).
+  Queued still-working frames also count against `DEFAULT_QUEUE_BYTE_CAPACITY`, which is exactly the longest run of maximum-size frames and admits an oversized frame only to an empty queue.
+  The build adds 1,024 still-working frames, each at the wire length the queue charges it, to that bound and to the browser's, and TRANSPORT_BOUNDS.md states it.
 - **Silence bound, 120 s.**
-  It must exceed the interval plus the longest delay on the sending thread: 30 s, plus the 12 s CLI hold, plus up to 60 s if Chrome delays a hidden tab's timers to once a minute, a throttling not verified here and not measured in this container.
-  That is 102 s; 120 s is four intervals, the tolerance the relay applies to its own pings.
+  It must exceed the longest gap the receiver can see between two frames.
+  On the sending side: the 30 s interval, the 12 s CLI hold, and up to 60 s if Chrome delays a hidden tab's timers to once a minute, a throttling not verified here and not measured in this container.
+  On the receiving side: its own hold, 12 s on the CLI, since a frame that arrives during the hold is handled after it and the expired timer can run first.
+  A throttled receiving tab only fires the timer later, so it adds nothing.
+  That is 114 s; 120 s is four intervals, the tolerance the relay applies to its own pings.
+  The browser main thread's hold, on either side, is not measured.
 - **Both are working values.**
   Neither rests on a measurement of the message's delivery.
   The figures still needed, each in a real browser on the x86-64 host: the gap between still-working frames sent from a hidden tab through a step of an hour or more, the browser main thread's longest hold at the ceiling, and whether Chrome freezes a tab with an open data channel.
@@ -136,6 +151,8 @@ How each pair behaves:
 | This build | Earlier | The earlier build reads the first still-working frame as the frame it awaits and fails with a `protocol` error at the start of the PSI phase |
 | Earlier | This build | No still-working frame arrives, so the bound never arms; a partner step past the 1 h default ends on the peer-inactivity refusal, as before the derived wait |
 
+Every pair runs both directions, so a mixed pair ends on the second row's failure at the start of the PSI phase; the third row names the one direction on its own and is never reached alone.
+
 The argument from the user:
 
 - **The pair is short-lived.**
@@ -153,7 +170,10 @@ A proposal for ratification: set `RELAY_IDLE_TIMEOUT_MS` (`packages/websocket-re
 - A still-working frame is a message to the relay, which counts messages and not pings ([WEBSOCKET_RELAY.md, Quotas](../spec/WEBSOCKET_RELAY.md#quotas)), so the PSI phase is never idle for 120 s.
 - It cannot fall to 120 s: outside the PSI phase the longest silence is a human step bounded by the 1 h default.
 - It removes the stated limit that a pair past 16,777,216 value slots can be closed by the relay first.
-- Deploy it only after the hosted web app runs this build, with the relay's redeploy; until then an earlier client's step past 3,900 s would be closed.
+- It newly closes two kinds of pair with 4009, which the plan states rather than avoids (a proposal):
+  - A CLI run whose `inactivity_timeout_ms` is above 3,900 s, against a partner that sends nothing outside the PSI phase. The setting reaches 7 days (`MAX_TIMEOUT_SECONDS`), so no idle limit can follow it, and today's 8,739.4 s already closes such a run.
+  - Two earlier-build clients whose silent step passes 3,900 s. RELEASES.md, Project-run services, bars tightening a bound below what a kept release sends; no release is published (`gh release list` names none), so none is kept.
+- Deploy it with the relay's redeploy, after stage 1 runs in the hosted web app and the CLI image.
 
 ## Size and stages
 
@@ -165,12 +185,12 @@ About 600 to 700 added or changed non-test lines, under the ~1,200 line split th
 | Core and web: chunk activity in the two reassemblers and the queue | 80 to 120 |
 | Core, CLI, web: the failure cause, its remedy line, its web copy | 50 to 70 |
 | The stale comment and the retired wait's call sites | 20 |
-| Spec: the WebRTC section rewritten, the message in PROTOCOL.md, the sentence list | 150 to 200 |
+| Spec: the WebRTC section rewritten, the message in PROTOCOL.md, the byte bound in TRANSPORT_BOUNDS.md, the sentence list | 150 to 200 |
 
 Two stages, split for the deploy order rather than for size:
 
 1. **The message and the bound.**
-   Everything above but the relay, with the unit tests the acceptance criteria name, plus: a still-working send never overlaps a data send; none arrives after the phase's last frame; a frame before the terms exchange ends is refused; chunk activity restarts the bound and the whole-frame budget still ends a trickle.
+   Everything above but the relay, with unit tests that hold: a still-working send never overlaps a data send; none arrives after the phase's last frame; a frame before the terms exchange ends is refused; chunk activity restarts the bound and the whole-frame budget still ends a trickle.
 2. **The relay's idle limit.**
    The constant, its test (`packages/websocket-relay/test/quotas.test.ts`), and WEBSOCKET_RELAY.md, merged with the relay's redeploy after stage 1 is deployed.
 
@@ -183,6 +203,7 @@ Its claims to verify:
   It is authenticated and sequenced like every frame after the key exchange; check that no channel admits it unencrypted.
 - **No overlapping sends.**
   The send queue keeps the sequence counter, and so the GCM nonce, from being reused or skipped.
+  On every exit, an abort, the last frame, a failure or a cancellation, the timer stops and an in-flight still-working send settles first, and none is sent after.
 - **The relay cannot hold a run open.**
   Chunk activity restarts only the 120 s bound; the whole-frame budget still ends a run whose relay trickles bytes or injects frames that fail authentication.
 - **Nothing partner-written reaches a display or a log.**
@@ -190,8 +211,9 @@ Its claims to verify:
 - **The frame discloses nothing new.**
   It has a fixed size and no count; a relay sees a small frame every 30 s, which shows the PSI phase's bounds that the frame sizes already show ([PROTOCOL.md](../spec/PROTOCOL.md), "What a relay sees").
 - **The resource bounds hold.**
-  The frames queued through the longest step stay under the queue's 1,024, and the partner cannot choose the interval or the bound.
-- **The relay change tightens a bound and loosens none,** and respects the services' compatibility rule ([RELEASES.md](../RELEASES.md#compatibility-policy), "Project-run services").
+  Queued still-working frames stay within the queue's count and byte bounds as sized above, and the partner cannot choose the interval or the bound.
+- **The relay change loosens no bound.**
+  The pairs it newly closes are the two named above, and no published release is among them ([RELEASES.md](../RELEASES.md#compatibility-policy), "Project-run services").
 
 ## Not in this plan
 
