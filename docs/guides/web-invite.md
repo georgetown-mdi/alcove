@@ -91,7 +91,7 @@ Choose **Continue to review & create**.
 In the side panel, under **Customize**, choose **Matching keys**. The **Matching keys** screen opens.
 
 - **Built-in rules**: **Broader matching** is the default; **Highest precision** keeps only the most precise keys. Untick any key you agreed to leave out ([What you match on](./agree-on-terms.md#what-you-match-on)). The info button beside the key list explains the key names, such as `LN` for last name.
-- For a count only, untick each key with a name containing `split(`, `+/-` or `day/month exchanged`. The count is taken across every key left ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
+- For a count only, the count is taken across every key left, split and fuzzy-date keys included ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
 
 Choose **Back to Review & create**.
 
