@@ -3407,12 +3407,20 @@ describe("the configuration-only record", () => {
   > = [
     ["expires", { expires: "2026-04-06T14:00:00.000Z" }],
     ["schedule", { schedule }],
-    ["lastRun", { lastRun: { at: "2026-03-07T14:00:00.000Z", outcome: "succeeded" } }],
+    [
+      "lastRun",
+      { lastRun: { at: "2026-03-07T14:00:00.000Z", outcome: "succeeded" } },
+    ],
     [
       "recentRuns",
-      { recentRuns: [{ at: "2026-03-07T14:00:00.000Z", outcome: "succeeded" }] },
+      {
+        recentRuns: [{ at: "2026-03-07T14:00:00.000Z", outcome: "succeeded" }],
+      },
     ],
-    ["rotationInFlightSince", { rotationInFlightSince: "2026-03-07T14:00:00.000Z" }],
+    [
+      "rotationInFlightSince",
+      { rotationInFlightSince: "2026-03-07T14:00:00.000Z" },
+    ],
     [
       "relayRegistrar",
       {
