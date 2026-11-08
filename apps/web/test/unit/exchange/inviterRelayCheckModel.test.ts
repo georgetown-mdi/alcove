@@ -469,7 +469,7 @@ describe("what the share screen says to do", () => {
         "not checked.",
     );
     expect(INVITER_RELAY_CHECK_FAILS_VERDICT).toBe(
-      "No relay accepts this exchange from this page. Follow the steps below.",
+      "No WebSocket relay accepts this exchange from this page. Follow the steps below.",
     );
     expect(actions).toEqual({
       remove:

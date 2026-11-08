@@ -31,7 +31,7 @@ export const INVITER_RELAY_CHECK_WORKS_VERDICT =
 
 /** The verdict where no relay accepts the exchange. */
 export const INVITER_RELAY_CHECK_FAILS_VERDICT =
-  "No relay accepts this exchange from this page. Follow the steps below.";
+  "No WebSocket relay accepts this exchange from this page. Follow the steps below.";
 
 /**
  * The share screen's remedies. Create fixes the Connection settings, so a
