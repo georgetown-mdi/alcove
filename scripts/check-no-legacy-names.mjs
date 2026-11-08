@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Legacy product name check, run by static_checks.yaml through check:all.
+// Legacy product name check.
 //
 // Alcove's earlier name was psilink, spelled "PSI Link" in prose, its
 // repository's jspsi and its container image's psi-link. This check fails on

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Nested root-package check: `npm run check:nested-root-package`, run by
-// static_checks.yaml on every pull request. Reads the committed
-// package-lock.json only, with no install and no network, and fails on any
+// Nested root-package check: `npm run check:nested-root-package`. Reads the
+// committed package-lock.json only, with no install and no network, and fails
+// on any
 // package installed at the top level of both the root node_modules and a
 // workspace's, naming the package and both entries, unless NESTED_BY_DESIGN
 // records the nested entry with its reason. A pair whose two entries' `name`

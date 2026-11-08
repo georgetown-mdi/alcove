@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Vectors-against-generator check: `npm run check:vectors`, run by
-// static_checks.yaml on every PR. Without it a failing conformance assertion
-// could be silenced by editing a vectors file instead of fixing the code.
+// Vectors-against-generator check: `npm run check:vectors`. Without it a
+// failing conformance assertion could be silenced by editing a vectors file
+// instead of fixing the code.
 //
 // Classifies every entry under packages/core/test/vectors/ as GENERATED_VECTORS
 // (regenerated and compared), VERIFIERS (run elsewhere, named per entry) or

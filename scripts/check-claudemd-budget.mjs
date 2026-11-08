@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CLAUDE.md byte budget, run by static_checks.yaml on every PR.
+// CLAUDE.md byte budget.
 //
 // Fails when CLAUDE.md is over BUDGET_BYTES. CLAUDE.md is loaded into every
 // agent session, so its size is its cost: this bounds size, where

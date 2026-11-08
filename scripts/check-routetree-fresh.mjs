@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Route tree freshness check: `npm run check:routetree`, run by
-// static_checks.yaml on every pull request. The checked-in
+// Route tree freshness check: `npm run check:routetree`. The checked-in
 // apps/web/src/routeTree.gen.ts must match, byte for byte, what the TanStack
 // Router codegen the lockfile pins produces. The codegen is triggered by
 // REGENERATE_COMMAND, a `vitest list` that loads apps/web/vite.config.ts, over a

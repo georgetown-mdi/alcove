@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Cryptographic-call guard: `npm run check:crypto-claims`, run by check:all.
+// Cryptographic-call guard: `npm run check:crypto-claims`.
 // Holds two docs/COMPLIANCE.md claims against first-party drift: the parties'
 // protocol code makes its cryptographic operations through `crypto.subtle`
 // (the SC-13 row), and Alcove encrypts nothing on disk (the SC-28 row).
@@ -32,7 +32,7 @@ import {
   SCANNED_FILES,
   SCANNED_ROOTS,
   isJavaScriptFamily,
-} from "./check-egress-claims.mjs";
+} from "./lib/shippedSources.mjs";
 import { lineOf } from "./lib/text.mjs";
 import {
   descendants,

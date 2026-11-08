@@ -9,14 +9,17 @@
 // here: one load per child `node` process, made by re-invoking the check's own
 // file in child mode, so the load runs in an environment the check controls and
 // a load that ends the process is a result the check reports rather than its own
-// death.
+// death. The Vite load both drive is here too, with the loader, the base Vite
+// is resolved from and the config environment left to each check.
 //
 // The status vocabulary is shared for the same reason: both checks report the
 // same word for the same outcome, so a contributor who has read one failure can
 // read the other.
 
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** argv[2] that puts a check's own file in child mode: perform one load and
  * exit. */
@@ -88,6 +91,33 @@ export function loadConfigInChild({ childModule, args, cwd }) {
     code: marker ? marker[1] : null,
     output,
   };
+}
+
+/**
+ * Load `configFile` through Vite's own `loadConfigFromFile`, with the
+ * `{ command, mode }` config environment and `loader` as its config-loader
+ * argument. Vite is resolved from `resolveFrom`, a file the check names so
+ * the copy driven is the one the web config would really be loaded by. The
+ * loader's own "failed to load config from ..." line is silenced: it adds
+ * nothing to the error a check reports, and would be the first thing a
+ * contributor read on an unrelated failure.
+ */
+export async function loadThroughVite(
+  configFile,
+  { resolveFrom, command, mode, loader },
+) {
+  const require = createRequire(pathToFileURL(resolveFrom));
+  const { loadConfigFromFile } = await import(
+    pathToFileURL(require.resolve("vite")).href
+  );
+  await loadConfigFromFile(
+    { command, mode },
+    configFile,
+    dirname(configFile),
+    "silent",
+    undefined,
+    loader,
+  );
 }
 
 /**

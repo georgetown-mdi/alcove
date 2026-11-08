@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Markdown link/anchor checker run by static_checks.yaml on every PR.
+// Markdown link/anchor checker: `npm run linkcheck`.
 //
 // It walks every tracked-or-untracked-but-not-ignored Markdown file, and for
 // each inline link `](target)` asserts that the target resolves: a relative
@@ -17,7 +17,7 @@ import { readFileSync, existsSync, statSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { slugify } from "./lib/headingSlug.mjs";
+import { headingAnchors } from "./lib/markdownHeadings.mjs";
 import {
   stripCodeSpans,
   stripFences,
@@ -38,30 +38,9 @@ function listMarkdown(root) {
   return out.split("\n").filter(Boolean);
 }
 
-export { slugify };
-
 // A fence error names the document it read, so a target reached by absolute
 // path is named the way a reader would type it.
 const relativeToCwd = (absPath) => relative(process.cwd(), absPath) || absPath;
-
-/**
- * The anchor slugs the headings of a Markdown `source` take, with GitHub's
- * -1/-2 disambiguation suffixes for repeated headings. `file` names the source
- * in a fence error.
- */
-export function headingAnchors(source, file) {
-  const anchors = new Set();
-  const counts = new Map();
-  for (const line of stripFences(source, file).split("\n")) {
-    const m = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
-    if (!m) continue;
-    const base = slugify(m[2]);
-    const n = counts.get(base) ?? 0;
-    counts.set(base, n + 1);
-    anchors.add(n === 0 ? base : `${base}-${n}`);
-  }
-  return anchors;
-}
 
 // Map of file path -> Set of available anchor slugs.
 const anchorCache = new Map();

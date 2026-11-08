@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import {
   existsSync,
   globSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -27,6 +28,7 @@ import {
   rootScripts,
   summarize,
 } from "./run-checks.mjs";
+import { BUILD_OUTPUT } from "./lib/hostedBuild.mjs";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -111,61 +113,51 @@ describe("the repo-guards job against the list", () => {
 });
 
 describe("the shared web build", () => {
-  const checks = [
-    { script: "a", group: SHARED, usesBuild: true, description: "" },
-    {
-      script: "b",
-      group: SHARED,
-      buildFrom: "a",
-      usesBuild: true,
-      description: "",
-    },
-    { script: "c", group: INDEPENDENT, description: "" },
-  ];
-
-  it("skips the check reading a build whose maker failed, and runs the rest", async () => {
-    const ran = [];
-    const lines = [];
-    const results = await runAll(
-      "/nonexistent-root",
-      (line) => lines.push(line),
-      checks,
-      (check) => {
-        ran.push(check.script);
-        return { script: check.script, ok: check.script !== "a", seconds: 0 };
-      },
-    );
-    expect(ran).toEqual(["a", "c"]);
-    expect(results.map((result) => result.ok)).toEqual([false, false, true]);
-    expect(lines.join("\n")).toContain("web build it reads failed in a");
-  });
-
-  it("runs the dependent check when the build succeeded", async () => {
-    const ran = [];
-    await runAll(
-      "/nonexistent-root",
-      () => {},
-      checks,
-      (check) => {
-        ran.push(check.script);
+  it("is cleared before the first check runs when a check uses it, and kept otherwise", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run-checks-build-"));
+    try {
+      const stale = join(root, BUILD_OUTPUT, "index.html");
+      const writeStale = () => {
+        mkdirSync(dirname(stale), { recursive: true });
+        writeFileSync(stale, "");
+      };
+      const seen = [];
+      const run = (check) => {
+        seen.push([check.script, existsSync(stale)]);
         return { script: check.script, ok: true, seconds: 0 };
-      },
-    );
-    expect(ran).toEqual(["a", "b", "c"]);
-  });
+      };
 
-  it("refuses a check reading the build of one that is not shared", () => {
-    expect(() =>
-      assertRunnable([
-        { script: "a", group: INDEPENDENT, description: "" },
-        { script: "b", group: SHARED, buildFrom: "a", description: "" },
-      ]),
-    ).toThrow("b reads the build of a");
+      writeStale();
+      await runAll(
+        root,
+        () => {},
+        [
+          { script: "first", group: SHARED, description: "" },
+          { script: "builds", group: SHARED, usesBuild: true, description: "" },
+        ],
+        run,
+      );
+      writeStale();
+      await runAll(
+        root,
+        () => {},
+        [{ script: "reads-nothing", group: SHARED, description: "" }],
+        run,
+      );
+
+      expect(seen).toEqual([
+        ["first", false],
+        ["builds", false],
+        ["reads-nothing", true],
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
 describe("the two groups", () => {
-  it("puts every check in one of them, and every builder in the shared one", () => {
+  it("puts every check in one of them", () => {
     for (const check of CHECKS) {
       expect([SHARED, INDEPENDENT], check.script).toContain(check.group);
     }

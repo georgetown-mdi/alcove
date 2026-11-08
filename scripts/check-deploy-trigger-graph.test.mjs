@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   BUILD_COMMAND,
-  BUILD_OUTPUT,
   DEPLOY_ACTION,
   DEPLOY_WORKFLOW,
   RECORDER_MODULE,
@@ -29,6 +28,7 @@ import {
   trackedFiles,
   unreachedRoots,
 } from "./check-deploy-trigger-graph.mjs";
+import { BUILD_OUTPUT } from "./lib/hostedBuild.mjs";
 import {
   PATH_SCOPE_ACTION,
   parseWorkflow,

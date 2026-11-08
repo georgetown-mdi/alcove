@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Built-in STUN default claim check: `npm run check:stun-default-claims`, run
-// by static_checks.yaml on every pull request. SOURCE is the one place the
+// Built-in STUN default claim check: `npm run check:stun-default-claims`.
+// SOURCE is the one place the
 // default endpoint is decided, and the CLI's WebRTC integration suite measures
 // it against the library. This check fails unless every hand-written copy
 // agrees with SOURCE: each CODE_COPIES constant, and each claim in a

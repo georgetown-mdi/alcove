@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Rule citation check, run by static_checks.yaml through check:all.
+// Rule citation check.
 //
 // Agent rules point at each other as `<file>, <section>`, and a rule that moves
 // leaves every pointer to its old section naming a heading that no longer
@@ -39,6 +39,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { stripFences } from "./lib/markdownFences.mjs";
+import { headingNames } from "./lib/markdownHeadings.mjs";
 
 const CITATION =
   /\\?`((?:CLAUDE|CONTRIBUTING)\.md|(?:\.claude|docs)\/[\w./-]+\.md)\\?`,(?: |$)/g;
@@ -50,9 +51,6 @@ const PATH_LIKE = /^[\w./-]+\.\w+\b/;
 // The leaders a wrapped continuation line opens with: a comment's `//` or `*`,
 // a concatenated string's opening quote.
 const CONTINUATION_LEADER = /^\s*(?:\/\/|\*|["'`])?\s*/;
-
-const HEADING = /^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$/;
-const SHORT_NAME_END = / -- | - |: /;
 
 /** Whether `path` is a file whose rules other files cite by section. */
 export function isInstructionFile(path) {
@@ -67,23 +65,6 @@ export function isInstructionFile(path) {
 export function isCitingFile(path) {
   if (path === "CLAUDE.md" || path === "CONTRIBUTING.md") return true;
   return /^\.claude\/.+\.(?:md|mjs)$/.test(path) && !/\.test\.mjs$/.test(path);
-}
-
-/**
- * The names a citation may give each heading of a Markdown `source`: the
- * heading's whole text, and the part before its first " -- ", " - " or ": ".
- */
-export function headingNames(source, file = "<source>") {
-  const names = new Set();
-  for (const line of stripFences(source, file).split("\n")) {
-    const match = HEADING.exec(line);
-    if (!match) continue;
-    const text = match[1];
-    names.add(text);
-    const end = text.search(SHORT_NAME_END);
-    if (end > 0) names.add(text.slice(0, end));
-  }
-  return names;
 }
 
 /**

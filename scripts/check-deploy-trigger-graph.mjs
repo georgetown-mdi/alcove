@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Deploy-trigger check: `npm run check:deploy-trigger-graph`, run by
-// `npm run check:all` in static_checks.yaml. It fails unless:
+// Deploy-trigger check: `npm run check:deploy-trigger-graph`. It fails unless:
 //
 //   - The CREDENTIAL_WORKFLOWS hold the only deploys. A job uploads with
 //     DEPLOY_ACTION, names a Cloudflare secret or runs in a GitHub environment
@@ -42,6 +41,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { BUILD_OUTPUT } from "./lib/hostedBuild.mjs";
 import {
   WORKFLOW_DIR,
   parseWorkflow,
@@ -72,9 +72,6 @@ export const RELEASE_ENVIRONMENT = "Release";
 
 /** The one job that may run in RELEASE_ENVIRONMENT without holding the deploy credentials. */
 export const RELEASE_JOB = { path: RELEASE_WORKFLOW, id: "dockerhub" };
-
-/** The build output the deploy uploads. */
-export const BUILD_OUTPUT = "apps/web/dist/hosted";
 
 /** The module that installs the recorder this check reads. */
 export const RECORDER_MODULE = "apps/web/hosted/deployGraphRecorder.ts";

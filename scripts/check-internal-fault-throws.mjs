@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Internal-fault throw check, run by static_checks.yaml on every PR.
+// Internal-fault throw check.
 //
 // The CLI's error->exit boundary (`exitCodeForError`, apps/cli/src/util/exit.ts)
 // reads an error's class, not its message: an `InternalConsistencyError` exits

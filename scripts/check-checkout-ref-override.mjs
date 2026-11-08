@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checkout ref override check, run by static_checks.yaml on every PR.
+// Checkout ref override check.
 //
 // On a `pull_request` event, an actions/checkout step naming no ref of its own
 // checks out the head merged with the base tip, so the pull-request gates test

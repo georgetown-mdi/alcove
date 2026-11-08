@@ -13,8 +13,7 @@
 // running. On SIGINT or SIGTERM the run prints each check still running with
 // the output it had, stops them, and exits non-zero. A check
 // marked `usesBuild` needs the production web build, and the run clears
-// apps/web/dist/hosted first; one naming another in `buildFrom` reads that
-// build and is skipped with a line saying so when the build fails.
+// apps/web/dist/hosted first.
 // scripts/run-checks.test.mjs holds every `check:*` script in the root
 // package.json to one list or the other, and the repo-guards job to this one
 // step plus the dependency audit. Rationale: docs/notes/repo-check-scripts.md.
@@ -25,7 +24,7 @@ import { availableParallelism, loadavg } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { BUILD_OUTPUT } from "./check-deploy-trigger-graph.mjs";
+import { BUILD_OUTPUT } from "./lib/hostedBuild.mjs";
 
 /** A check that runs alone: see `group` on CHECKS. */
 export const SHARED = "shared";
@@ -41,9 +40,8 @@ export const INDEPENDENT = "independent";
  * runs beside the others in its group after every shared check has ended (the
  * one exception, the route tree the web tooling rewrites only when it is
  * stale: docs/notes/repo-check-scripts.md, Check runner);
- * `usesBuild` marks a check that reads the shared web build and `buildFrom`
- * names the check that makes it; `description` states in one line what the
- * check holds; `expiresOn` is the last date, YYYY-MM-DD, the entry stands
+ * `usesBuild` marks a check that needs the shared web build; `description`
+ * states in one line what the check holds; `expiresOn` is the last date, YYYY-MM-DD, the entry stands
  * before it is renewed or deleted, held by scripts/check-expiry-dates.mjs as
  * on every entry in the two lists below. The pool starts its checks in list
  * order, so the longest independent check is listed first.
@@ -498,24 +496,14 @@ export function runCheck(check, root, { buffer = false, onStart } = {}) {
 }
 
 /**
- * Throws unless every check names a known group and every `buildFrom` names a
- * shared check listed before it, which has ended before the pool starts.
+ * Throws unless every check names a known group.
  *
  */
 export function assertRunnable(checks) {
-  for (const [index, check] of checks.entries()) {
+  for (const check of checks) {
     if (check.group !== SHARED && check.group !== INDEPENDENT) {
       throw new Error(
         `${check.script} has group ${JSON.stringify(check.group)}; set it to SHARED or INDEPENDENT in scripts/run-checks.mjs.`,
-      );
-    }
-    if (check.buildFrom === undefined) continue;
-    const builder = checks.findIndex(
-      (candidate) => candidate.script === check.buildFrom,
-    );
-    if (builder < 0 || builder >= index || checks[builder].group !== SHARED) {
-      throw new Error(
-        `${check.script} reads the build of ${check.buildFrom}, which is not a shared check listed before it.`,
       );
     }
   }
@@ -550,15 +538,6 @@ export async function runAll(
   };
   const running = new Map();
   const attempt = async (check, buffer) => {
-    const builder = results.get(check.buildFrom);
-    if (builder && !builder.ok) {
-      return {
-        script: check.script,
-        ok: false,
-        seconds: 0,
-        output: `  skipped: the web build it reads failed in ${check.buildFrom}, whose output is above.`,
-      };
-    }
     const entry = { check, buffer };
     running.set(check.script, entry);
     try {

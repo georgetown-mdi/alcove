@@ -9,7 +9,7 @@ import { defineConfig } from "vitest/config";
 // their deterministic tests.
 export default defineConfig({
   test: {
-    name: "repo-scripts",
+    name: "scripts",
     root: fileURLToPath(new URL(".", import.meta.url)),
     include: ["**/*.test.mjs"],
     environment: "node",

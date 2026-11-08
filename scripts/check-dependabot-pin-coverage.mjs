@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Dependabot checklist-pin coverage check:
-// `npm run check:dependabot-pin-coverage`, run by static_checks.yaml on every
-// PR. A package with an upgrade checklist must not ride a batched Dependabot
-// pull request, where the checklist is skimmed, nor be declared two ways.
+// `npm run check:dependabot-pin-coverage`. A package with an upgrade checklist
+// must not ride a batched Dependabot pull request, where the checklist is
+// skimmed, nor be declared two ways.
 //
 // Reads the packages each "Upgrading ... (a / b)" heading of
 // docs/spec/DEPENDENCY_PINS.md names, the npm groups of .github/dependabot.yml,

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CONTRIBUTING.md scope guard, run by static_checks.yaml on every PR.
+// CONTRIBUTING.md scope guard.
 //
 // CONTRIBUTING.md is the pre-contribution quickstart, not a reference (see its
 // "Scope of this document" section). This is a mechanical SAFETY CHECK for two tells

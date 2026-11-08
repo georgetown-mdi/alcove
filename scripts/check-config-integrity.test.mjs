@@ -399,7 +399,7 @@ describe("the guarded tables", () => {
       (guard) => guard.directory === ".",
     );
     expect(rootGuard?.projects).toEqual(
-      expect.arrayContaining(["harness", "scripts", "hooks", "repo-scripts"]),
+      expect.arrayContaining(["harness", "claude-scripts", "hooks", "scripts"]),
     );
   });
 });

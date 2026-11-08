@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // PROTOCOL_VERSION bump check after the compatibility policy binds:
-// `npm run check:protocol-version-bump`, run by static_checks.yaml on every PR;
+// `npm run check:protocol-version-bump`;
 // `--root <tree>` reads another tree. Enforces docs/spec/PROTOCOL.md's
 // "Wire-format deltas: existing frames only, and no version bump": from release
 // 1.0.0 on, a wire-format delta takes a version bump.

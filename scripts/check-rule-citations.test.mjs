@@ -6,10 +6,10 @@ import { describe, expect, it } from "vitest";
 import {
   citationProblems,
   citations,
-  headingNames,
   isCitingFile,
   isInstructionFile,
 } from "./check-rule-citations.mjs";
+import { headingNames } from "./lib/markdownHeadings.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

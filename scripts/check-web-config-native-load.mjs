@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Web config native-load check: `npm run check:web-config-native-load`, run by
-// static_checks.yaml on every pull request. apps/web/vite.config.ts and every
+// Web config native-load check: `npm run check:web-config-native-load`.
+// apps/web/vite.config.ts and every
 // module it imports must load under Node's strip-only type stripping, which
 // refuses TypeScript needing generated code (a parameter property, an `enum`,
 // a non-`declare` `namespace`, an `import x = require(...)` alias). Two loaders
@@ -17,13 +17,13 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   CHILD_FLAG,
   LOAD_STATUSES,
   loadConfigInChild,
+  loadThroughVite,
   runChildLoad,
 } from "./lib/configLoadHarness.mjs";
 
@@ -33,27 +33,18 @@ export const WEB_CONFIG = "apps/web/vite.config.ts";
 /** Node's refusal of a construct strip-only type stripping cannot erase. */
 export const REJECTION_CODE = "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX";
 
-async function loadThroughVite(configFile, viteFrom) {
+async function loadThroughNativeVite(configFile, viteFrom) {
   // Resolve Vite from the web app rather than from this script or from the file
   // being loaded: the workspace copy the web config would really be loaded by is
   // the one to drive, and the control fixture -- which sits outside the
   // repository and so resolves no bare specifier of its own -- has to be driven
   // through that same copy for its refusal to say anything about this one.
-  const require = createRequire(pathToFileURL(viteFrom));
-  const { loadConfigFromFile } = await import(
-    pathToFileURL(require.resolve("vite")).href
-  );
-  await loadConfigFromFile(
-    { command: "serve", mode: "development" },
-    configFile,
-    dirname(configFile),
-    // Silent: the loader's own "failed to load config from ..." line adds
-    // nothing to the error this check reports, and would be the first thing a
-    // contributor read on an unrelated failure.
-    "silent",
-    undefined,
-    "native",
-  );
+  await loadThroughVite(configFile, {
+    resolveFrom: viteFrom,
+    command: "serve",
+    mode: "development",
+    loader: "native",
+  });
 }
 
 async function loadThroughNode(configFile) {
@@ -68,7 +59,7 @@ export const LOADERS = [
   {
     id: "vite-native",
     label: 'Vite\'s `configLoader: "native"`',
-    load: loadThroughVite,
+    load: loadThroughNativeVite,
   },
   {
     id: "node-import",
@@ -107,7 +98,7 @@ export function writeStripOnlyControl(directory) {
  * Load `configFile` through the loader named by `loaderId`, in a child `node`
  * process, and report `{ok, code, output}` -- `code` being the `code` property
  * of whatever the load threw, or null on success. `viteFrom` is the file Vite is
- * resolved from (see loadThroughVite); the plain-import loader ignores it.
+ * resolved from (see loadThroughNativeVite); the plain-import loader ignores it.
  */
 export function loadInChildProcess(loaderId, configFile, viteFrom) {
   return loadConfigInChild({

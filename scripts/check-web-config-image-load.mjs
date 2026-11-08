@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Web config image-load check: `npm run check:web-config-image-load`, run by
-// static_checks.yaml on every pull request. apps/web's config must load from
+// Web config image-load check: `npm run check:web-config-image-load`.
+// apps/web's config must load from
 // the file subset the Dockerfile builder stage copies. The stage's COPY lines
 // are read from the Dockerfile and replayed into a temporary tree, with this
 // checkout's node_modules symlinked in, and the config is loaded there through
@@ -27,13 +27,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
-import { createRequire } from "node:module";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import {
   CHILD_FLAG,
   LOAD_STATUSES,
   loadConfigInChild,
+  loadThroughVite,
   runChildLoad,
 } from "./lib/configLoadHarness.mjs";
 
@@ -391,30 +391,19 @@ export function checkWebConfigImageLoad({
   };
 }
 
-/** Load one config through Vite's own loader, resolving Vite from the config
- * being loaded so the copy driven is the one the app would really use. */
-async function loadThroughVite(configFile) {
-  const require = createRequire(pathToFileURL(configFile));
-  const { loadConfigFromFile } = await import(
-    pathToFileURL(require.resolve("vite")).href
-  );
-  await loadConfigFromFile(
-    { command: "build", mode: "production" },
-    configFile,
-    dirname(configFile),
-    // Silent: the loader's own "failed to load config from ..." line adds
-    // nothing to the error this check reports.
-    "silent",
-    undefined,
-  );
-}
-
 // CLI entry: child mode performs one load; otherwise the full check. Neither
 // runs on import, so the test can drive the functions above directly.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === CHILD_FLAG) {
+    // Vite is resolved from the config being loaded, so the copy driven is the
+    // one the app in the replayed tree would really use.
     await runChildLoad(
-      () => loadThroughVite(process.argv[3]),
+      () =>
+        loadThroughVite(process.argv[3], {
+          resolveFrom: process.argv[3],
+          command: "build",
+          mode: "production",
+        }),
       (error) => error?.message ?? String(error),
     );
   } else {

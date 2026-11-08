@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // WebRTC provider_options unread check:
-// `npm run check:webrtc-provider-options-unread`, run by static_checks.yaml.
+// `npm run check:webrtc-provider-options-unread`.
 // Enforces the claim in docs/spec/WEBRTC_TRANSPORT.md (ICE) and
 // docs/EXCHANGE_REFERENCE.md (`### connection.provider_options`) that no WebRTC
 // transport reads `connection.provider_options`.

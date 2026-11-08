@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Failure display-sink check: `npm run check:run-failure-sink`, run by
-// static_checks.yaml. A failed run's `message` and `reportedCause` are cause
-// chains laid out line by line, and each renders through exactly one component
+// Failure display-sink check: `npm run check:run-failure-sink`. A failed
+// run's `message` and `reportedCause` are cause chains laid out line by line,
+// and each renders through exactly one component
 // in apps/web/src/exchange/RunSurface.tsx; an inline render elsewhere collapses
 // the chain onto one line.
 //

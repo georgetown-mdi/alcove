@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Rule-ledger split check, run by static_checks.yaml on every PR.
+// Rule-ledger split check.
 //
 // The agent rules live in two files with different readers. CLAUDE.md is loaded
 // into every spawn, so each rule there costs every agent;
