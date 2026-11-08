@@ -27,3 +27,4 @@
 - - -> Request, 70,000,002 bytes (2,000,000 elements), WebAssembly library | 29.36 | 28.54
 - - -> On each library the largest figure is at the smallest of these requests, 35,000,002 bytes, and no request past 140,000,002 bytes was measured.
 - - -> A smaller request can run above its multiple: one of 3,500,002 bytes (100,000 elements), handed over on the native library, peaked at 134,725,632 bytes beyond the frame, 38.49 times its size, about 29 MB more than `handedOverRequest` charges.
+- Each multiple is the largest figure measured for what it counts. -> Each multiple is the largest figure measured for what it counts, over the sizes its row names; a smaller request can run above its multiple ([The masking of a request](#the-masking-of-a-request)).
