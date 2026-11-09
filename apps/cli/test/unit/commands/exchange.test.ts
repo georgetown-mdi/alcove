@@ -19,6 +19,7 @@ import {
   generateSigningIdentity,
   getDefaultLinkageTerms,
   getLogger,
+  PLACEHOLDER_SSH_USERNAME,
   prepareForExchange,
   sanitizeErrorForDisplay,
   snakeizeKeys,
@@ -375,12 +376,28 @@ const placeholderUsernameConfig = {
   },
 };
 
-test("loadConfig refuses the placeholder SSH username before reading the key", () => {
+const PLACEHOLDER_USERNAME_REFUSAL =
+  "The SFTP username is still REPLACE_WITH_SSH_USERNAME. " +
+  "Replace it with your account on the SFTP server.";
+
+test("loadConfig refuses the placeholder SSH username in the file before reading the key", () => {
   fs.writeFileSync(configFile, YAML.stringify(placeholderUsernameConfig));
   expect(() => loadConfig(baseOptions())).toThrow(UsageError);
   expect(() => loadConfig(baseOptions())).toThrow(
-    "still has a REPLACE_WITH_... placeholder as connection.server.username. " +
-      "Set it to your account on the SFTP server, or pass --server-username",
+    new UsageError(PLACEHOLDER_USERNAME_REFUSAL),
+  );
+});
+
+test("loadConfig refuses the placeholder SSH username passed as --server-username with the same sentence", () => {
+  fs.writeFileSync(configFile, YAML.stringify(minimalSFTPConfig));
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  const options = {
+    ...baseOptions(),
+    serverUsername: PLACEHOLDER_SSH_USERNAME,
+  };
+  expect(() => loadConfig(options)).toThrow(UsageError);
+  expect(() => loadConfig(options)).toThrow(
+    new UsageError(PLACEHOLDER_USERNAME_REFUSAL),
   );
 });
 
@@ -2419,7 +2436,7 @@ const LOCALLY_REFUSED_RUNS: Array<{
   {
     name: "with a placeholder SSH username",
     seed: seedConfig(placeholderUsernameConfig),
-    says: "placeholder as connection.server.username",
+    says: "The SFTP username is still REPLACE_WITH_SSH_USERNAME.",
   },
   {
     name: "that signs receipts and names no signing identity",

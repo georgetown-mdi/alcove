@@ -119,7 +119,9 @@ export function configPlaceholderFields(
  * resolved here, and its content is not echoed.
  *
  * `remedyFor` may return the closing sentence for a field, in place of the
- * default, for a field a flag can also set for one run.
+ * default, for a field a flag can also set for one run. `messageFor` may
+ * return the whole refusal for a field, in place of the file-naming message,
+ * for a placeholder that reads the same whether the file or a flag holds it.
  *
  * @throws {UsageError} naming the field.
  */
@@ -128,9 +130,12 @@ export function assertNoConfigPlaceholder(params: {
   path: ReadonlyArray<string>;
   configFile: string;
   remedyFor?: (field: string) => string | undefined;
+  messageFor?: (field: string) => string | undefined;
 }): void {
   const field = configPlaceholderFields(params.value, params.path)[0];
   if (field === undefined) return;
+  const wholeMessage = params.messageFor?.(field);
+  if (wholeMessage !== undefined) throw new UsageError(wholeMessage);
   const remedy =
     params.remedyFor?.(field) ??
     `Replace it with this exchange's value before running the exchange.`;
