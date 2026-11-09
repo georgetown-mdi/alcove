@@ -281,6 +281,26 @@ describe("the settings of the imported document", () => {
     await expect.element(cadenceNote).not.toBeInTheDocument();
   });
 
+  test("the days of inactivity step by buttons named for the field", async () => {
+    const created = await createManagedExchange({
+      ...configurationOnly(),
+      tokenMaxAgeDays: 30,
+    });
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    const days = page.getByRole("textbox", { name: "Days of inactivity" });
+    await expect.element(days).toHaveValue("30");
+    await page
+      .getByRole("button", { name: "One more day of inactivity" })
+      .click();
+    await expect.element(days).toHaveValue("31");
+    await page
+      .getByRole("button", { name: "One fewer day of inactivity" })
+      .click();
+    await expect.element(days).toHaveValue("30");
+  });
+
   test("the edits land on the stored record and in the download", async () => {
     const created = await createManagedExchange(configurationOnly());
     const downloads = captureDownloads();

@@ -539,7 +539,7 @@ export function rerunFailureLastRun(
  * did not confirm a pending registration, and `"stopped"` before the
  * rotation-in-flight marker, once this window's re-invite or relay
  * enrollment stopped the run. */
-type BenignRerunOutcome =
+export type BenignRerunOutcome =
   | "expired"
   | "custody-unreadable"
   | "input"

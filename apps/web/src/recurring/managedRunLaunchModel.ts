@@ -84,6 +84,7 @@ import type {
   ManagedExchangeRecord,
   TooLargeReading,
 } from "@psi/managed/managedExchangeRecord";
+import type { BenignRerunOutcome } from "@psi/managed/managedRun";
 import type { ManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 import type { MatchingKeyUnavailableReason } from "@alcove/core";
@@ -153,27 +154,9 @@ export interface ManagedRunFailure {
   /** The state's kind. The benign states read from the error, plus the recorded
    * tiers derived from the record's bookkeeping. */
   kind:
-    | "expired"
-    | "input"
-    | "terms-shortfall"
-    | "too-large"
-    | "partner-set-too-large"
-    | "partner-refused-set"
-    | "partner-storage"
-    | "partner-refused-terms"
-    | "partner-protocol-refusal"
-    | "terms-change"
-    | "relay-registration"
-    | "saved-address-refused"
-    | "custody-unreadable"
-    | "already-running"
-    | "stopped"
-    | "missed"
-    | "storage"
-    | "partial-rotation"
-    | "imported"
-    | "transport"
-    | "unexplained";
+    | Exclude<ManagedFailureTier, "none">
+    | BenignRerunOutcome
+    | "saved-address-refused";
   /** The surface title. */
   title: string;
   /** The operator-facing message. */
@@ -1187,24 +1170,44 @@ function classifyLaunchState(
   dataExchangeStarted: boolean,
 ): ManagedRunFailure {
   const benign = benignRerunOutcome(error, dataExchangeStarted);
-  if (benign === "expired" && error instanceof ManagedExchangeExpiredError)
-    return expiredFailure(error.expires);
-  if (benign === "already-running") return ALREADY_RUNNING_FAILURE;
-  if (benign === "stopped") return STOPPED_FAILURE;
-  if (benign === "custody-unreadable") return NOT_RUNNABLE_FAILURE;
-  if (benign === "input") return inputFailure(error);
-  if (benign === "terms-shortfall") return shortfallFailure(error);
-  if (benign === "missed") return missedFailure(records.atLaunch, local, now);
-  if (benign === "too-large") return tooLargeFailure(error);
-  if (benign === "partner-set-too-large")
-    return partnerSetTooLargeFailure(error);
-  if (benign === "partner-refused-set") return PARTNER_REFUSED_SET_FAILURE;
-  if (benign === "partner-storage")
-    return partnerStorageFailure(records.afterRun, now);
-  if (benign === "partner-refused-terms") return PARTNER_REFUSED_TERMS_FAILURE;
-  if (benign === "partner-protocol-refusal")
-    return partnerProtocolRefusalFailure(partnerProtocolRefusalCopy(error));
-  if (benign === "relay-registration") return relayRegistrationFailure(error);
+  switch (benign) {
+    case "expired":
+      if (error instanceof ManagedExchangeExpiredError)
+        return expiredFailure(error.expires);
+      break;
+    case "already-running":
+      return ALREADY_RUNNING_FAILURE;
+    case "stopped":
+      return STOPPED_FAILURE;
+    case "custody-unreadable":
+      return NOT_RUNNABLE_FAILURE;
+    case "input":
+      return inputFailure(error);
+    case "terms-shortfall":
+      return shortfallFailure(error);
+    case "missed":
+      return missedFailure(records.atLaunch, local, now);
+    case "too-large":
+      return tooLargeFailure(error);
+    case "partner-set-too-large":
+      return partnerSetTooLargeFailure(error);
+    case "partner-refused-set":
+      return PARTNER_REFUSED_SET_FAILURE;
+    case "partner-storage":
+      return partnerStorageFailure(records.afterRun, now);
+    case "partner-refused-terms":
+      return PARTNER_REFUSED_TERMS_FAILURE;
+    case "partner-protocol-refusal":
+      return partnerProtocolRefusalFailure(partnerProtocolRefusalCopy(error));
+    case "relay-registration":
+      return relayRegistrationFailure(error);
+    case undefined:
+      break;
+    default: {
+      const unreachable: never = benign;
+      return unreachable;
+    }
+  }
   if (
     error instanceof ManagedSignalingEndpointRefusedError &&
     !dataExchangeStarted
