@@ -552,10 +552,10 @@ export function addCommonBootstrapOptions(
         "before the exchange fails " +
         `(maximum: ${MAX_TIMEOUT_SECONDS / 86_400}d); overrides ` +
         "connection.options.inactivity_timeout_ms. On webrtc it defaults " +
-        "to 1h; during matching each still-working message from your " +
-        `partner restarts it, and ${PARTNER_SILENCE_BOUND_MS / 60_000} ` +
+        "to 1h; during matching each sign from your partner that it is " +
+        `still working restarts it, and ${PARTNER_SILENCE_BOUND_MS / 60_000} ` +
         "minutes with nothing from them ends the run. The project's " +
-        "WebSocket relay closes a pairing idle for about 2h26m, so a" +
+        "WebSocket relay closes a pairing idle for about 2h26m, so a " +
         "longer value there waits no longer. " +
         DURATION_VALUE_HELP,
     })

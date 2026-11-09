@@ -48,7 +48,7 @@
 - - -> From the start of a party's PSI phase until it reads the partner's first other frame after its own phase ended, a still-working frame is dropped and never reaches a step.
 - - -> Outside that window it is a `protocol` error, and so, anywhere, is any other object with a `working` key.
 - - -> On a file-sync channel no window exists, so a still-working frame fails the awaited frame's parse as a `protocol` error.
-- - -> A party not reading, because it runs its own operation, reads and drops the still-working frames already queued at each interval, so the partner's frames never fill its inbound queue.
+- - -> A party not reading, because it runs its own operation, reads and drops the still-working frames at the head of its inbound queue at each interval; behind a data frame they wait until it reads that frame, charged against the queue's bounds ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)).
 - - -> **A partner on an earlier build.**
 - - -> The first partner frame a party reads in its PSI phase is a still-working frame from a partner on this build.
 - - -> A first frame that is data, or the partner's local-fault abort, means the partner sends none: the party refuses it as a `PartnerProtocolRefusalError` naming the partner as on the older version, "Matching could not start, most likely because your partner runs an older version of Alcove.
@@ -58,8 +58,10 @@
 - - -> The frame is a wire-format delta within `PROTOCOL_VERSION` 1, as [Wire-format deltas](#wire-format-deltas-existing-frames-only-and-no-version-bump) states for deltas below `1.0.0`.
 - - -> **Still-working frames.**
 - - -> Through the PSI phase the partner sends a still-working frame at least every 30 s ([WEBRTC_TRANSPORT.md, The wait through a partner's PSI step](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)), and a party running its own operation does not receive them.
-- - -> At each interval of its own the party reads and drops the frames at the head of the queue whose received length is a still-working frame's, so they never accumulate, whatever the operation's length; a frame of that length that is not one is held and read next, in order.
-- - -> No bound is added or raised for them: each is charged against the count and byte bounds above like any frame.
+- - -> At each interval of its own the party reads and drops the frames at the head of the queue whose received length is a still-working frame's, and stops at the first frame of another length; a frame of that length that is not one is held and read next, in order.
+- - -> Still-working frames queued behind a data frame are not drained: they wait until the consumer reads that frame.
+- - -> No bound is added or raised for them: each is charged against the count bound, 1024 messages, and the byte bound above like any frame, and a frame past either fails the connection with the inbound-buffer-overflow `protocol` error.
+- - -> The partner sends a still-working frame only when 30 s has passed with nothing sent, so they reach the count bound only after more than 8 hours with a data frame unread at the head of the queue.
 - - -> Partner silence | 2 min (`PARTNER_SILENCE_BOUND_MS`) | A parked receive with nothing arriving, each part of a frame restarting it, from the partner's first still-working frame to the end of this party's PSI phase. A working value not yet measured in a real browser
 - - -> Still-working interval | 30 s (`STILL_WORKING_INTERVAL_MS`) | The longest this party goes without sending through its PSI phase. A working value not yet measured in a real browser
 - - -> So that a step of any length is waited through, and a partner that stops is found within minutes, each party sends still-working frames through its PSI phase ([PROTOCOL.md](PROTOCOL.md#the-still-working-frame)), and the waiting party ends the run when they stop.
@@ -79,7 +81,8 @@
 - - -> `inactivity_timeout_ms` does not change the silence bound.
 - - -> **Unread frames.**
 - - -> A party running its own operation does not receive, so the partner's still-working frames queue.
-- - -> On each interval the party reads and drops the still-working frames already queued, so a still-working frame replaces any unread one and the inbound queue's bounds ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)) are never reached by them.
+- - -> On each interval the party reads and drops the still-working frames at the head of the queue, stopping at the first other frame.
+- - -> Behind a data frame they wait until the party reads that frame, charged against the inbound queue's message-count and byte bounds like any frame ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)).
 - - -> A still-working frame is a message to the relay, so the PSI phase never comes near the relay's idle bound ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#quotas)).
 - - -> **Working values.**
 - - -> Neither the interval nor the bound is measured in a real browser: a hidden tab's timers, the browser main thread's longest hold, and whether Chrome freezes a tab with an open data channel are open.

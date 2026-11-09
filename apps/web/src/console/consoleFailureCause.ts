@@ -11,6 +11,8 @@ import {
   relayRegistrarUnreachableRemedy,
 } from "@alcove/core";
 
+import { PARTNER_STOPPED_RESPONDING_TITLE } from "@psi/managed/managedFailureCopy";
+
 import {
   CONNECTION_TUNING_HEADING,
   IGNORE_FILES_OLDER_THAN_LABEL,
@@ -121,7 +123,7 @@ export const CONSOLE_FAILURE_REMEDIES: {
     remedy: relayRegistrarUnreachableRemedy(cause),
   }),
   "partner-stopped-responding": () => ({
-    title: "Your partner stopped responding",
+    title: PARTNER_STOPPED_RESPONDING_TITLE,
     remedy: PARTNER_STOPPED_RESPONDING_REMEDY,
   }),
 };

@@ -11,8 +11,8 @@ connection:
   role: acceptor
   # Connection tuning, all optional; the defaults are shown below. Uncomment
   # and edit to change one.
-  # During matching, each still-working message from the partner restarts the
-  # inactivity_timeout_ms wait, and the run ends after
+  # During matching, each sign from the partner that it is still working
+  # restarts the inactivity_timeout_ms wait, and the run ends after
   # 2 minutes with nothing from the partner.
   # options:
   #   peer_timeout_ms: 600000

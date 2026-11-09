@@ -1205,9 +1205,10 @@ ends the run when they stop.
   not change the silence bound.
 - **Unread frames.** A party running its own operation does not receive, so the
   partner's still-working frames queue. On each interval the party reads and
-  drops the still-working frames already queued, so a still-working frame
-  replaces any unread one and the inbound queue's bounds
-  ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)) are never reached by them.
+  drops the still-working frames at the head of the queue, stopping at the
+  first other frame. Behind a data frame they wait until the party reads that
+  frame, charged against the inbound queue's message-count and byte bounds
+  like any frame ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)).
 - **Through the WebSocket relay.** A still-working frame is a message to the
   relay, so the PSI phase never comes near the relay's idle bound
   ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#quotas)).

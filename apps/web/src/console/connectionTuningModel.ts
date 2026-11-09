@@ -669,8 +669,8 @@ export function inactivityTimeoutDescription(
     "Once your partner has started, how long this side waits for each next " +
     "step from them before it gives up.";
   return capabilities.channel === "webrtc"
-    ? `${what} While matching runs, each still-working message from your ` +
-        "partner restarts this wait, and the run ends after " +
+    ? `${what} While matching runs, each sign from your partner that it is ` +
+        "still working restarts this wait, and the run ends after " +
         `${PARTNER_SILENCE_BOUND_MS / 60_000} minutes with nothing from them.`
     : `${what} Raise it for a partner working through a large file.`;
 }

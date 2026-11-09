@@ -58,8 +58,8 @@ export const POLL_INTERVAL_LINES = [
 const POLL_INTERVAL_KEY = "poll_interval_ms";
 
 const WEBRTC_INACTIVITY_LINES = [
-  `During matching, each still-working message from the partner restarts the`,
-  `${INACTIVITY_TIMEOUT_KEY} wait, and the run ends after`,
+  `During matching, each sign from the partner that it is still working`,
+  `restarts the ${INACTIVITY_TIMEOUT_KEY} wait, and the run ends after`,
   `${PARTNER_SILENCE_BOUND_MS / 60_000} minutes with nothing from the partner.`,
 ];
 

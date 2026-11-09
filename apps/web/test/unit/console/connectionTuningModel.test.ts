@@ -681,9 +681,9 @@ describe("the placeholder shows core's own default in the chosen unit", () => {
     },
   );
 
-  test("the quiet-partner field states the hour default on every channel, and on webrtc the still-working messages and the silence bound", () => {
+  test("the quiet-partner field states the hour default on every channel, and on webrtc the partner's signs it is still working and the silence bound", () => {
     expect(inactivityTimeoutDescription(WEBRTC_CONNECTION_TUNING)).toContain(
-      "each still-working message from your partner restarts this wait, " +
+      "each sign from your partner that it is still working restarts this wait, " +
         "and the run ends after 2 minutes with nothing from them.",
     );
     for (const capabilities of [
