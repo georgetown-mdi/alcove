@@ -1,2 +1,5 @@
-# The placeholder-username limits line, removed with the wording it described.
+# The placeholder-username refusal wording, as the spec states it.
 - Limits: a partner who runs the sftp exchange command with the account placeholder unreplaced is refused by the command-line application's placeholder check, whose message names `alcove.yaml`'s `connection.server.username` and the `--server-username` flag rather than the flag's value alone. -> -
+- The placeholder is not a valid credential: `alcove exchange` refuses a configuration that still holds any `REPLACE_WITH_` value before it connects, naming the field -- here `connection.server.username`, unless `--server-username` replaces it for the run. -> -
+- - -> The placeholder is not a valid credential: `alcove exchange` refuses a configuration that still holds any `REPLACE_WITH_` value before it connects, naming the field.
+- - -> For the username, whether the file or `--server-username` holds the placeholder, the refusal names the SFTP username instead.
