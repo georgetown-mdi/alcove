@@ -553,6 +553,109 @@ describe("queued still-working frames", () => {
   });
 });
 
+describe("a forged, replayed or altered still-working envelope", () => {
+  const keying = {
+    sessionKey: new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>,
+    negotiated: { kex: 3, protocol: 1, envelope: SINGLE_CALL_ENVELOPE_VERSION },
+  };
+
+  async function encryptedPair() {
+    const [rawLocal, rawPartner] = createMessagePipe({
+      stillWorkingFrames: true,
+      capacity: 64,
+    });
+    const armed = vi.spyOn(rawLocal, "armPartnerSilenceBound");
+    const [local, partner] = await Promise.all([
+      EncryptedMessageConnection.create(rawLocal, keying, "initiator"),
+      EncryptedMessageConnection.create(rawPartner, keying, "responder"),
+    ]);
+    return { rawPartner, local, partner, armed };
+  }
+
+  // The envelope `partner` puts on the wire for `frame`, delivered or not.
+  async function envelopeOf(
+    rawPartner: MessageConnection,
+    partner: MessageConnection,
+    frame: unknown,
+    deliver: boolean,
+  ): Promise<Uint8Array> {
+    const send = rawPartner.send.bind(rawPartner);
+    let captured: Uint8Array | undefined;
+    vi.spyOn(rawPartner, "send").mockImplementationOnce((data) => {
+      captured = data as Uint8Array;
+      return deliver ? send(data) : Promise.resolve();
+    });
+    await partner.send(frame);
+    if (captured === undefined) throw new Error("no envelope sent");
+    return captured;
+  }
+
+  async function refusalOf(layer: StillWorkingLayer): Promise<unknown> {
+    return layer.conn.receive().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+  }
+
+  function expectSecurityRefusal(error: unknown): void {
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect((error as ConnectionError).kind).toBe("security");
+  }
+
+  test("random bytes the length of a still-working envelope are refused as a security error and leave the silence bound unarmed", async () => {
+    const { rawPartner, local, armed } = await encryptedPair();
+    const layer = layerOver(local);
+    const frameBytes = JSON.stringify(STILL_WORKING_FRAME).length;
+    const forged = new Uint8Array(
+      frameBytes + local.outboundFrameOverheadBytes(frameBytes),
+    );
+    forged[0] = SINGLE_CALL_ENVELOPE_VERSION;
+    crypto.getRandomValues(forged.subarray(1));
+    await rawPartner.send(forged);
+
+    expectSecurityRefusal(await refusalOf(layer));
+    expect(armed).not.toHaveBeenCalled();
+  });
+
+  test("a genuine still-working envelope sent again is refused as a security error and does not arm the silence bound again", async () => {
+    const { rawPartner, local, partner, armed } = await encryptedPair();
+    const layer = layerOver(local);
+    const genuine = await envelopeOf(
+      rawPartner,
+      partner,
+      STILL_WORKING_FRAME,
+      true,
+    );
+    await partner.send({ round: 1 });
+    expect(await layer.conn.receive()).toStrictEqual({ round: 1 });
+    expect(armed).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveBeenCalledWith(PARTNER_SILENCE_BOUND_MS);
+
+    armed.mockClear();
+    await rawPartner.send(genuine);
+
+    expectSecurityRefusal(await refusalOf(layer));
+    expect(armed).not.toHaveBeenCalled();
+  });
+
+  test("a genuine still-working envelope with a flipped tag byte is refused as a security error and leaves the silence bound unarmed", async () => {
+    const { rawPartner, local, partner, armed } = await encryptedPair();
+    const layer = layerOver(local);
+    const genuine = await envelopeOf(
+      rawPartner,
+      partner,
+      STILL_WORKING_FRAME,
+      false,
+    );
+    const altered = new Uint8Array(genuine);
+    altered[altered.length - 1] ^= 1;
+    await rawPartner.send(altered);
+
+    expectSecurityRefusal(await refusalOf(layer));
+    expect(armed).not.toHaveBeenCalled();
+  });
+});
+
 describe("a whole exchange", () => {
   // `conn` with each frame it is handed to send recorded.
   function recordingSends(
