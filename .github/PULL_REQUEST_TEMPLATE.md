@@ -19,6 +19,11 @@ Board items are GitHub Project draft itemIds, not issue numbers -- `Closes #<id>
   Follow-on -- spun off, tracked separately
 -->
 
+Follows [#<pr-number>](https://github.com/georgetown-mdi/alcove/pull/<pr-number>).
+<!--
+Keep this line only when this PR amends a pull request merged in the last 7 days; delete it otherwise. It names the source pull request, so planned rework can be told from unplanned. A pull request number, not a board itemId. It sits beside the line above, not instead of it, and nothing follows its period either.
+-->
+
 ## Changes
 
 <!-- The map of the diff (the "how"); the "why" is in Summary. Focused PR (<= ~5 files): one bullet per file. Broad PR (rename, refactor, cross-cutting): group by area and call out only what is non-obvious. -->
