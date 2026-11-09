@@ -48,6 +48,18 @@ const noDelayClient = () => ({
   _sock: { setKeepAlive: () => {}, destroy: () => {} },
 });
 
+// Keep a repeat connect's recovery warning out of the test output.
+function silenceLog(adapter: SSH2SFTPClientAdapter): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (adapter as any).log = {
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    trace: vi.fn(),
+    error: vi.fn(),
+  };
+}
+
 // --- connect retry -----------------------------------------------------------
 
 describe("connect retry", () => {
@@ -410,7 +422,10 @@ describe("keyboard-interactive", () => {
       maxReconnectAttempts: 0,
     };
     await adapter.connect({ ...opts });
-    await adapter.connect({ ...opts });
+    // The repeat absorbs the first session as a partner drop, which the budget
+    // has to admit.
+    silenceLog(adapter);
+    await adapter.connect({ ...opts, maxReconnectAttempts: 1 });
 
     expect(keyboardAttaches(client)).toBe(1);
   });
@@ -430,11 +445,12 @@ describe("keyboard-interactive", () => {
       tryKeyboard: true,
       maxReconnectAttempts: 0,
     });
+    silenceLog(adapter);
     await adapter.connect({
       host: "sftp.example.org",
       password: "second",
       tryKeyboard: true,
-      maxReconnectAttempts: 0,
+      maxReconnectAttempts: 1,
     });
 
     // Still attached exactly once, but answering with the latest password.
@@ -2378,7 +2394,10 @@ describe("fatal wrapper-error guard", () => {
       client: noDelayClient(),
     };
     await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
-    await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
+    // The repeat absorbs the first session as a partner drop, which the budget
+    // has to admit.
+    silenceLog(adapter);
+    await adapter.connect({ host: "h", maxReconnectAttempts: 1 });
     // Idempotent on the same wrapper instance: no second listener, because the
     // wrapper identity is unchanged. Accumulation would climb against the
     // WRAPPER's own default ceiling; the raise the constructor applies is on the
@@ -2402,7 +2421,8 @@ describe("fatal wrapper-error guard", () => {
     // cycle: a different object identity. The guard must attach to it too.
     const second = makeWrapper();
     client.sftp = second;
-    await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
+    silenceLog(adapter);
+    await adapter.connect({ host: "h", maxReconnectAttempts: 1 });
 
     expect(first.listenerCount("error")).toBe(1);
     expect(second.listenerCount("error")).toBe(1);

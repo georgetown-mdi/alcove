@@ -1420,11 +1420,12 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     });
   }
 
-  // Charge the generation this re-dial found ended, and spend the cumulative
-  // mid-exchange budget for it. Both happen here, under the transition lock, so
-  // the read and the charge cannot be separated by another arm's drop: the budget
-  // bounds SESSIONS LOST, which is what the exhaustion message already tells the
-  // operator, so a re-dial that then fails or is refused has still spent its unit.
+  // Charge the generation a re-dial found ended, or a dial absorbed, and spend
+  // the cumulative mid-exchange budget for it. Both happen here, under the
+  // transition lock, so the read and the charge cannot be separated by another
+  // arm's drop: the budget bounds SESSIONS LOST, which is what the exhaustion
+  // message already tells the operator, so a re-dial that then fails or is
+  // refused has still spent its unit.
   //
   // Reports whether THIS call recorded the loss. A sibling arm over the same drop,
   // or a release that already charged the boundary it took, gets `false` and so
@@ -1624,12 +1625,6 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       unavailablePrimitives,
       this.log,
     );
-    // Whether the session was live when the attempt that succeeded started:
-    // the difference between this side replacing a session and the partner
-    // having taken one (see the charge below). Read per attempt, because an
-    // attempt the library refused over a live session leaves that session in
-    // place, and the partner can drop it before the retry.
-    let replacedLiveSession = false;
     this.originalConnectOptions = options;
     const maxReconnects = this.operativeMaxReconnectAttempts();
     // Exclude the alcove-specific key before handing options to ssh2.
@@ -1670,7 +1665,6 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
         () => {
           if (connectAttempted) this.ledger.countConnectRetry();
           connectAttempted = true;
-          replacedLiveSession = this.hasLiveSession();
           return this.dialOnce(connectOptions, held);
         },
         maxReconnects,
@@ -1712,24 +1706,20 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       );
     }
 
-    // A dial reaching here with a generation still live ended that generation,
-    // and the session reading taken before the succeeding attempt is what says
-    // how. A session that was LIVE was REPLACED by this dial -- this side's own
-    // doing; a session already gone was taken by the partner and absorbed by
-    // this dial without any operation or release observing it, which a
-    // cycle-start re-dial does when a drop lands in the tail of a poll cycle,
-    // and a repeat connect() does when its refused attempt is retried after a
-    // drop. A dial during teardown has the teardown's own exemption instead.
-    // Charged before the advance below, so that advance can refuse a generation
-    // it would otherwise overwrite silently.
-    const cause: LossCause = replacedLiveSession
-      ? "deliberate"
-      : this.session.isTearingDown
-        ? "teardown"
-        : "partner";
-    const absorbedAPartnerDrop =
-      this.ledger.recordLoss(this.ledger.liveGeneration, cause) &&
-      cause === "partner";
+    // A generation still live here was absorbed by this dial: ssh2-sftp-client
+    // refuses a connect() over a live session, so the partner had taken it with
+    // nothing observing the drop. Charged as a recovery re-dial charges a drop,
+    // budget included, and before the advance below, so that advance can refuse
+    // a generation it would otherwise overwrite silently.
+    let absorbedAPartnerDrop = false;
+    if (this.ledger.liveGeneration !== undefined) {
+      try {
+        absorbedAPartnerDrop = this.chargeRecoveredSessionLoss();
+      } catch (error: unknown) {
+        await this.closeLandedDial(held);
+        throw error;
+      }
+    }
     // A different session is in place, whatever dialed it -- the first connect, a
     // cycle start, a recovery re-dial, a teardown's. Advanced where the session
     // becomes LIVE rather than at the end of the sequence below, unlike the
@@ -1866,6 +1856,20 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // the dial rather than at the charge, so the line describes a session this
     // side has in fact re-established.
     if (absorbedAPartnerDrop) this.warnSessionRecovered();
+  }
+
+  // Close the session a dial landed when the budget refuses the drop it absorbed,
+  // so the run ends with no session open, as a refused recovery re-dial leaves
+  // it. Silent and best effort: the budget error is what the run reports, and the
+  // terminal close still runs over whatever this leaves.
+  private async closeLandedDial(held: HeldSessionTransition): Promise<void> {
+    this.heartbeat.stop();
+    const internals = this.client as unknown as Ssh2SftpClientInternals;
+    const seams = resolveForcedCloseSeams(internals);
+    if ("missing" in seams) return;
+    await this.forceCloseEndedTransport(held, internals, seams).catch(
+      () => false,
+    );
   }
 
   // One dial attempt, bounded for its whole length. ssh2's readyTimeout covers

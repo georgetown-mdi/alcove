@@ -85,8 +85,7 @@ answer to what separates a partner loss from a deliberate release.
 | `DialRetried` | the dialing loop re-attempts past the first | `connectLocked`, via `countConnectRetry` |
 | `DialFailed(fatal?)` | retry exhausted; a `"Host denied"` rejection is fatal, as is a key exchange this process cannot perform | `connectLocked`'s retry predicate, and `isFatalDialError` at the cycle-start dial |
 | `PartnerDropObserved(g)` | an operation rejects and the trigger reads a loss | `shouldRecoverFromSessionLoss`, charged in `redialForRecovery` |
-| `PartnerDropAbsorbedByDial(g)` | a dial completes with `g` still live and its session already gone when the succeeding attempt started -- including a repeat `connect()` refused over a live session and retried after the partner dropped it | `connectLocked`, ahead of the advance |
-| `SessionReplacedByDial(g)` | a dial completes with `g`'s session still live when the succeeding attempt started -- a repeat `connect()` on an open connection that the library admits | the same site |
+| `PartnerDropAbsorbedByDial(g)` | a dial completes with `g` still live -- including a repeat `connect()` refused over a live session and retried after the partner dropped it | `connectLocked`, ahead of the advance, charged and budgeted by `chargeRecoveredSessionLoss` |
 | `PartnerFinAtBoundary(g)` | the peer's FIN already consumed at release entry | `releaseSessionForIdle`'s entry classification |
 | `PartnerDropAbsorbedAtBoundary(g)` | this side's write half ended without this release | the same classification |
 | `PartnerDropFoundAtBoundary(g)` | no session at release entry, with `g` still live | `releaseSessionForIdle` |
@@ -108,8 +107,7 @@ answer to what separates a partner loss from a deliberate release.
 | `DialRetried` | Dialing | Dialing | -- | -- | -- |
 | `DialFailed` | Dialing | `Unconnected` / `Lost` | -- | -- | the caller's |
 | `PartnerDropObserved` | `Live` / `LiveOverEndedTransport` | `Lost` | yes | `partner` | re-dial and re-issue |
-| `PartnerDropAbsorbedByDial` | `Lost` | `Live(g+1)` | yes | `partner` | the dial itself |
-| `SessionReplacedByDial` | `Live(g)` | `Live(g+1)` | yes | `deliberate` | -- |
+| `PartnerDropAbsorbedByDial` | `Lost` | `Live(g+1)` | yes | `partner` | the dial itself, closed again when the budget is spent |
 | `PartnerFinAtBoundary` | Releasing | `Lost` | yes | `partner` | the next cycle-start dial |
 | `PartnerDropAbsorbedAtBoundary` | Releasing | `Released` | yes | `partner` | the next cycle-start dial |
 | `PartnerDropFoundAtBoundary` | Releasing | `Lost` | yes | `partner` | the next cycle-start dial |
@@ -120,6 +118,10 @@ answer to what separates a partner loss from a deliberate release.
 | `Teardown` | any | `Closed` | yes | `teardown` | the teardown re-dial, exempt |
 | `FatalSession` | `Live` | `Closed` | yes | `fatal` | none, terminal |
 | `TransitionDeclined` / `TransitionSkipped` / `BoundaryHeld` | queued | unchanged | no | -- | -- |
+
+No dial replaces a live session: the pinned ssh2-sftp-client never admits a
+dial over one (`apps/cli/test/integration/sftpStackPremises.test.ts`, "a
+connect() over a live session is refused and leaves that session in place").
 
 > **INV-L1 -- no generation leaves the live state without exactly one recorded
 > loss cause.**
