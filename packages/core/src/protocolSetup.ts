@@ -85,27 +85,12 @@ import type { SigningCertificate } from "./records/signingIdentity";
 // gates the count before per-element validation.
 const MAX_ABORT_REASONS = 256;
 
-// The optional `hostKey` advertisement rides the terms exchange so each party
-// reports the SFTP host key it observed (fingerprint + key type) to the
-// other, for cross-party reconciliation against a one-sided interception
-// (see reconcileHostKeyFingerprints). It rides the AEAD-wrapped
-// post-handshake channel, so an unauthenticated party cannot forge it. A
-// party that observed no host key omits the field, so a one-sided absence
-// reconciles to no divergence. The bounds below are defense-in-depth, far
-// above any real value.
-//
-// hostKeyField is fail-soft: a malformed or over-bound advertisement is
-// read as absent rather than aborting the linkage. The reconciliation only
-// warns even on a genuine divergence, so a malformed advertisement must
-// degrade to "no reconciliation" rather than abort the exchange over
-// otherwise-valid terms.
-//
-// The raw field is parsed and tagged rather than collapsed to one
-// `undefined`: an absent field and a well-formed value both report
-// `malformed: false`, while a present-but-invalid value reports
-// `malformed: true` with no `value`. That distinguishes a benign
-// no-host-key partner from a non-conforming one (see
-// TermsExchangeResult.partnerHostKeyMalformed).
+// The optional `hostKey` advertisement on the terms message, for cross-party
+// host-key reconciliation (docs/spec/SFTP_CONNECTION.md, Cross-party
+// fingerprint reconciliation). The bounds below are defense-in-depth, far
+// above any real value. hostKeyField is fail-soft: a malformed or over-bound
+// advertisement is read as absent, never aborting the linkage, and tagged
+// `malformed` (TermsExchangeResult.partnerHostKeyMalformed).
 const hostKeyAdvertisement = z.object({
   fingerprint: z.string().check(maxCodeUnits(100)),
   keyType: z.string().check(maxCodeUnits(64)),

@@ -24,9 +24,6 @@ export type ConsentFactBasis = "enforced" | "trust-contingent";
 export interface ConsentFact {
   /** Which of the two registers this fact belongs to. */
   basis: ConsentFactBasis;
-  /** Why the fact has that basis, for a person auditing the table; no renderer
-   * reads it. */
-  reason: string;
   /** The caveat both surfaces render where the marker alone would understate
    * the fact. */
   note?: string;
@@ -35,87 +32,92 @@ export interface ConsentFact {
 /**
  * Every fact an acceptance surface states, with its basis and shared caveat copy.
  * A renderer reads both the marker and the caveat from here, never inline.
+ * Each entry's comment states why the fact has its basis, for a person auditing
+ * the table.
  */
 export const CONSENT_FACTS = {
+  /**
+   * The acceptor's own disclosure, derived from its resolved metadata through
+   * the same predicate the payload step transmits on, so no column outside the
+   * displayed set leaves the machine. The acceptance records the displayed set
+   * as this party's consent to it, and a run whose own resolved set differs -
+   * including one on a configuration already on disk, whose stored metadata
+   * this line is not rendered from - stops and asks rather than transmit a set
+   * that was never shown. Where the set is not resolvable at acceptance the
+   * line says so, and the same confirmation is taken at the first run that can
+   * resolve it.
+   */
   outboundSend: {
     basis: "enforced",
-    reason:
-      "The acceptor's own disclosure, derived from its resolved metadata " +
-      "through the same predicate the payload step transmits on, so no column " +
-      "outside the displayed set leaves the machine. The acceptance records the " +
-      "displayed set as this party's consent to it, and a run whose own resolved " +
-      "set differs - including one on a configuration already on disk, whose " +
-      "stored metadata this line is not rendered from - stops and asks rather " +
-      "than transmit a set that was never shown. Where the set is not resolvable " +
-      "at acceptance the line says so, and the same confirmation is taken at the " +
-      "first run that can resolve it.",
   },
+  /**
+   * The same disclosure at the seat that wrote its own configuration, where the
+   * half of `outboundSend` resting on a recorded acceptance has nothing to rest
+   * on: this party consented to no set and Alcove holds none for it. What
+   * remains is the derivation, which is the whole basis here. The displayed set
+   * comes from the run's own resolved metadata through the same predicate the
+   * payload step transmits on, so no column outside it leaves the machine. A
+   * later run whose file discloses a different set displays that set rather
+   * than stopping, since there is no confirmed set to differ from.
+   */
   outboundSendSelfAuthored: {
     basis: "enforced",
-    reason:
-      "The same disclosure at the seat that wrote its own configuration, where " +
-      "the half of `outboundSend` resting on a recorded acceptance has nothing " +
-      "to rest on: this party consented to no set and Alcove holds none for " +
-      "it. What remains is the derivation, which is the whole basis here. The " +
-      "displayed set comes from the run's own resolved metadata through the " +
-      "same predicate the payload step transmits on, so no column outside it " +
-      "leaves the machine. A later run whose file discloses a different set " +
-      "displays that set rather than stopping, since there is no confirmed set " +
-      "to differ from.",
   },
+  /**
+   * A free-text name the inviter typed, carried in an invitation accepted on a
+   * transcription checksum. Nothing authenticates it, and Alcove substitutes
+   * nothing for an inviter that typed none - but the absence marker shown in
+   * its place is itself free text an inviter could type, so display does not
+   * separate the two cases.
+   */
   invitingParty: {
     basis: "trust-contingent",
-    reason:
-      "A free-text name the inviter typed, carried in an invitation accepted " +
-      "on a transcription checksum. Nothing authenticates it, and Alcove " +
-      "substitutes nothing for an inviter that typed none - but the absence " +
-      "marker shown in its place is itself free text an inviter could type, so " +
-      "display does not separate the two cases.",
     note:
       "Your partner chose what you see here; Alcove has not verified it and " +
       "adds no name of its own.",
   },
+  /**
+   * A mandatory-consistency term both parties adopt, asserted on every run
+   * path: an algorithm this version does not implement aborts the exchange.
+   */
   algorithm: {
     basis: "enforced",
-    reason:
-      "A mandatory-consistency term both parties adopt, asserted on every run " +
-      "path: an algorithm this version does not implement aborts the exchange.",
   },
+  /**
+   * The half docs/spec/PROTOCOL.md assigns to the run rather than to the
+   * partner: a party's own count-only outcome. Its engine is built count-only,
+   * keeps every round's matches inside the engine and returns only the count,
+   * and the operations returning matched positions or an association table
+   * throw in that mode, so its own software cannot produce a pairing; the
+   * sender computes no match at all. A partner whose terms name the
+   * identifier-revealing algorithm is refused before any round. None of this
+   * asks for the partner's cooperation or its honesty. What it does not reach
+   * is what the partner's software derives beside the count and the partner's
+   * choice of contributed values, each a fact of its own below.
+   */
   countOnlyResult: {
     basis: "enforced",
-    reason:
-      "The half docs/spec/PROTOCOL.md assigns to the run rather than to the " +
-      "partner: a party's own count-only outcome. Its engine is built " +
-      "count-only, keeps every round's matches inside the engine and returns " +
-      "only the count, and the operations returning matched positions or an " +
-      "association table throw in that mode, so its own software cannot " +
-      "produce a pairing; the sender computes no match at all. A partner whose " +
-      "terms name the identifier-revealing algorithm is refused before any " +
-      "round. None of this asks for the partner's cooperation or its honesty. " +
-      "What it does not reach is what the partner's software derives beside " +
-      "the count and the partner's choice of contributed values, each a fact " +
-      "of its own below.",
     note:
       "Alcove shows each of you only the count, never a matched identifier " +
       "or a record-by-record pairing.",
   },
+  /**
+   * What a count-only run discloses beside the count, however either party
+   * behaves. Each party's raw record count is sent in the terms exchange that
+   * opens every exchange, and every round's frame holds the same number of
+   * encrypted elements for each record, values or random dummies, so the frames
+   * add nothing to it. The receiver's software also derives, from genuine
+   * inputs, the number of matches on each key, the overlap between keys, and a
+   * table pairing its own request slots with sender pseudonyms; with its own
+   * records' key coverage, a slot that matched on a set of keys narrows to the
+   * receiver's records holding values for all of them, or names one
+   * (docs/spec/PROTOCOL.md, PSI-C, What each party learns). None of it needs a
+   * deviation from the protocol and none of it is shown to the operator, so
+   * this sits in the run's register rather than the partner's - the same one as
+   * the own-membership disclosure a one-sided `psi` exchange carries.
+   */
   countOnlyRoundDisclosures: {
     basis: "enforced",
-    reason:
-      "What a count-only run discloses beside the count, however either party " +
-      "behaves. Each party's raw record count is sent in the terms exchange " +
-      "that opens every exchange, and every round's frame holds the same " +
-      "number of encrypted elements for each record, values or random " +
-      "dummies, so the frames add nothing to it. The receiver's software also derives, from genuine " +
-      "inputs, the number of matches on each key, the overlap between keys, " +
-      "and a table pairing its own request slots with sender pseudonyms; " +
-      "with its own records' key coverage, a slot that matched on a set of " +
-      "keys narrows to the receiver's records holding values for all of " +
-      "them, or names one (docs/spec/PROTOCOL.md, PSI-C, What each party " +
-      "learns). None of it needs a deviation from the protocol and none of it " +
-      "is shown to the operator, so this sits in the run's register rather " +
-      "than the partner's - the same one as the own-membership disclosure a " +
-      "one-sided `psi` exchange carries.",
     note:
       "Your partner learns how many records you hold. Each round sends the " +
       "same number of encrypted values for every record, so it does not " +
@@ -126,23 +128,23 @@ export const CONSENT_FACTS = {
       "have values for, it can narrow a match to a few of its own records, " +
       "or name one. Alcove does not show this to that party's operator.",
   },
+  /**
+   * What a count-only run discloses beside the count on a key matching several
+   * values per record, however either party behaves. Every record sends the
+   * key's declared width of elements, its candidates padded with random
+   * dummies, so the frames state no record's candidate count, and each round
+   * counts the size of a largest one-to-one pairing of its candidate pairs, the
+   * number of pairs a `psi` round accepts. The receiver's software derives,
+   * from genuine inputs, how many sender pseudonyms each of its slots matched
+   * and how many candidates each matched pair shares (docs/spec/PROTOCOL.md,
+   * PSI-C, What each party learns), which needs no deviation from the protocol
+   * and is shown to no operator, so it sits in the run's register beside the
+   * per-key counts. A receiver choosing its input can also place up to the
+   * declared width of values in one record, the crafted set
+   * `countOnlyInputChoice` states, scaled by the width.
+   */
   countOnlyCandidateSets: {
     basis: "enforced",
-    reason:
-      "What a count-only run discloses beside the count on a key matching " +
-      "several values per record, however either party behaves. Every record " +
-      "sends the key's declared width of elements, its candidates padded with " +
-      "random dummies, so the frames state no record's candidate count, and " +
-      "each round counts the size of a largest one-to-one pairing of its " +
-      "candidate pairs, the number of pairs a `psi` round accepts. The " +
-      "receiver's software derives, from genuine inputs, how many sender " +
-      "pseudonyms each of its slots matched and how many candidates each " +
-      "matched pair shares (docs/spec/PROTOCOL.md, PSI-C, What each party " +
-      "learns), which needs no deviation from the protocol and is shown to " +
-      "no operator, so it sits in the run's register beside the per-key " +
-      "counts. A receiver choosing its input can also place up to the " +
-      "declared width of values in one record, the crafted set " +
-      "`countOnlyInputChoice` states, scaled by the width.",
     note:
       "A key here matches several values per record, such as the parts of " +
       "a split name or a date read approximately. Every record sends the " +
@@ -153,39 +155,40 @@ export const CONSENT_FACTS = {
       "each of its records matched. Alcove does not show this to that " +
       "party's operator.",
   },
+  /**
+   * Only the receiver computes the count. Where both parties are entitled to it
+   * the other party's copy arrives as the receiver's report, and Alcove does
+   * not stop a receiver that reports a different number - the same arrangement
+   * as the `psi` association-table return leg, where the sender's half of the
+   * pairing likewise arrives as the receiver's word. Which party computes
+   * follows from the record counts the run exchanges, so acceptance cannot tell
+   * either side which of the two it will be, and the fact is stated for both.
+   */
   countOnlyReportedCount: {
     basis: "trust-contingent",
-    reason:
-      "Only the receiver computes the count. Where both parties are entitled to " +
-      "it the other party's copy arrives as the receiver's report, and Alcove " +
-      "does not stop a receiver that reports a different number - the same " +
-      "arrangement as the `psi` association-table return leg, where the sender's " +
-      "half of the pairing likewise arrives as the receiver's word. Which party " +
-      "computes follows from the record counts the run exchanges, so acceptance " +
-      "cannot tell either side which of the two it will be, and the fact is " +
-      "stated for both.",
     note:
       "Alcove does not check a count your partner sends you against a run of " +
       "its own. Only one of you computes the count and sends it to the " +
       "other, and which one follows from the record counts you exchange when " +
       "the run starts.",
   },
+  /**
+   * The count-only claim holds against a partner that contributes a genuine
+   * dataset, and Alcove checks no such thing. A partner that chooses its
+   * contributed values - one live candidate padded with values it knows this
+   * party cannot hold, or two runs differing in a single value - reads that
+   * value's membership off the count, and nothing on the wire distinguishes a
+   * crafted set from a genuine one. A receiver has a cheaper route still: it
+   * gives each of its records its own pattern of keys with a value and keys
+   * left blank, and reads the membership of most matched records from one run
+   * with unmodified software. All three are accepted rather than prevented, so
+   * the protection they bound rests on the partner's conduct even though the
+   * round itself is enforced. This matters most here: a count-only exchange is
+   * the one run before the agreement the honest-but-curious model leans on
+   * exists.
+   */
   countOnlyInputChoice: {
     basis: "trust-contingent",
-    reason:
-      "The count-only claim holds against a partner that contributes a genuine " +
-      "dataset, and Alcove checks no such thing. A partner that chooses its " +
-      "contributed values - one live candidate padded with values it knows this " +
-      "party cannot hold, or two runs differing in a single value - reads that " +
-      "value's membership off the count, and nothing on the wire distinguishes a " +
-      "crafted set from a genuine one. A receiver has a cheaper route still: " +
-      "it gives each of its records its own pattern of keys with a value and " +
-      "keys left blank, and reads the membership of most matched records " +
-      "from one run with unmodified software. All three are accepted rather " +
-      "than prevented, so the protection they bound rests on the partner's " +
-      "conduct even though the round itself is enforced. This matters most " +
-      "here: a count-only exchange is the one " +
-      "run before the agreement the honest-but-curious model leans on exists.",
     note:
       "Your partner can learn whether one person is in your data by choosing " +
       "which records to ask about. A count-only exchange bounds what Alcove " +
@@ -196,137 +199,140 @@ export const CONSENT_FACTS = {
       "learn, in one run, which of them are in your data. Alcove does not " +
       "check what your partner contributes.",
   },
+  /**
+   * A count-only exchange carries no payload in either direction: a psi-c terms
+   * document declaring a non-empty payload send or receive, or input metadata
+   * that would transmit a column, is refused when the terms are authored, again
+   * at the local prepare step, and again at the agreed-terms run boundary,
+   * fail-closed at all three. The reason no column leaves the machine is
+   * therefore the algorithm rather than this exchange's output entitlements,
+   * which is what OUTBOUND_SEND_NO_PAYLOAD_SENTENCE reasons from and so cannot
+   * state here.
+   */
   countOnlyNoPayload: {
     basis: "enforced",
-    reason:
-      "A count-only exchange carries no payload in either direction: a psi-c " +
-      "terms document declaring a non-empty payload send or receive, or input " +
-      "metadata that would transmit a column, is refused when the terms are " +
-      "authored, again at the local prepare step, and again at the agreed-terms " +
-      "run boundary, fail-closed at all three. The reason no column leaves the " +
-      "machine is therefore the algorithm rather than this exchange's output " +
-      "entitlements, which is what OUTBOUND_SEND_NO_PAYLOAD_SENTENCE reasons " +
-      "from and so cannot state here.",
     note:
       "No columns are sent to your partner, whatever your file contains. A " +
       "count-only exchange sends no data columns in either direction.",
   },
+  /**
+   * A mandatory-consistency term: the parties must end up agreeing on it or the
+   * exchange aborts.
+   */
   linkageStrategy: {
     basis: "enforced",
-    reason:
-      "A mandatory-consistency term: the parties must end up agreeing on it or " +
-      "the exchange aborts.",
   },
+  /**
+   * The viewer's own receipt is settled by the exchange, not by the partner's
+   * conduct.
+   */
   viewerReceivesResult: {
     basis: "enforced",
-    reason:
-      "The viewer's own receipt is settled by the exchange, not by the " +
-      "partner's conduct.",
   },
+  /**
+   * A party set to receive no result is sent none, and its receive check fails
+   * closed on any result it is sent.
+   */
   viewerReceivesNoResult: {
     basis: "enforced",
-    reason:
-      "A party set to receive no result is sent none, and its receive check " +
-      "fails closed on any result it is sent.",
     note: "You are sent no result, and Alcove rejects any result sent to you.",
   },
+  /**
+   * The receipt is settled by the run rather than by the partner's conduct: the
+   * two parties' output directions are compared as a mirror before data moves,
+   * and the run then delivers the result to the party those agreed terms
+   * entitle to it. What the partner does with the result once it holds it is
+   * governed by the agreement, not by Alcove - a limit on its use, which the
+   * note carries, not on whether the disclosure happens.
+   */
   partnerReceivesResult: {
     basis: "enforced",
-    reason:
-      "The receipt is settled by the run rather than by the partner's conduct: " +
-      "the two parties' output directions are compared as a mirror before data " +
-      "moves, and the run then delivers the result to the party those agreed " +
-      "terms entitle to it. What the partner does with the result once it holds " +
-      "it is governed by the agreement, not by Alcove - a limit on its use, " +
-      "which the note carries, not on whether the disclosure happens.",
     note:
       "Your agreement governs how your partner uses the result; Alcove does " +
       "not control it.",
   },
+  /**
+   * Role resolution makes a partner entitled to no result the sender, this
+   * side's software sends it none of this side's columns, and its own software
+   * saves no result. The pairing the cascade sends it, as does a single-pass
+   * run it sends columns in, is the membership fact below, not a result.
+   */
   partnerReceivesNoResult: {
     basis: "enforced",
-    reason:
-      "Role resolution makes a partner entitled to no result the sender, this " +
-      "side's software sends it none of this side's columns, and its own " +
-      "software saves no result. The pairing the cascade sends it, as does a " +
-      "single-pass run it sends columns in, is the membership fact below, not " +
-      "a result.",
   },
+  /**
+   * An intrinsic property of an identifier-revealing match rather than a matter
+   * of conduct: under `psi` a non-receiving partner whose half of the
+   * association table the run returns learns its own records' membership
+   * however honestly it behaves. Its process is also sent the viewer's row
+   * number for each matched record, which it does not save, and the partner
+   * learns nothing about the rest of the set beyond its size. Gated first on
+   * the ALGORITHM: no `psi-c` exchange states it at all, since the role rule
+   * makes the non-receiving party of a count-only run the sender - which
+   * computes nothing from the round and is sent no count-report frame
+   * (docs/spec/PROTOCOL.md, PSI-C), so it learns no membership to state, and
+   * what a count-only run does disclose is the `countOnly*` tier's. Within
+   * `psi` it is the case where that half is returned at all: a single-pass run
+   * that withholds the partner's half discloses no membership either, and
+   * `partnerOwnMembershipWithheld` below is that case, selected from the run's
+   * own resolution rather than from a second reading of the strategy and the
+   * payload declaration.
+   */
   partnerLearnsOwnMembership: {
     basis: "enforced",
-    reason:
-      "An intrinsic property of an identifier-revealing match rather than a " +
-      "matter of conduct: under `psi` a non-receiving partner whose half of " +
-      "the association table the run returns learns its own records' " +
-      "membership however honestly it behaves. Its process is also sent the " +
-      "viewer's row number for each matched record, which it does not save, " +
-      "and the partner learns nothing about the rest of the set beyond its " +
-      "size. Gated " +
-      "first on the ALGORITHM: no `psi-c` exchange " +
-      "states it at all, since the role rule makes the non-receiving party of " +
-      "a count-only run the sender - which computes nothing from the round " +
-      "and is sent no count-report frame (docs/spec/PROTOCOL.md, PSI-C), so it " +
-      "learns no membership to state, and what a count-only run does disclose " +
-      "is the `countOnly*` tier's. Within `psi` it is the case where that half " +
-      "is returned at all: a single-pass run that withholds the partner's half " +
-      "discloses no membership either, and `partnerOwnMembershipWithheld` " +
-      "below is that case, selected from the run's own resolution rather than " +
-      "from a second reading of the strategy and the payload declaration.",
     note: "Your partner learns which of its own records are in your data.",
   },
+  /**
+   * The other case of the same line, on the one combination the exchange closes
+   * itself: a single-pass run whose sole receiver is the VIEWER, leaving the
+   * partner entitled to no result, over a document declaring that partner's
+   * payload direction present and empty. Role resolution seats the party
+   * entitled to the result as the receiver, so the partner is the sender the
+   * withholding covers, and the receiver suppresses that party's half of the
+   * association table entirely while it skips awaiting it, both sides deriving
+   * the decision from the same authenticated session state - so the partner's
+   * process never receives, and so never learns, which of its own records the
+   * viewer also holds (docs/spec/PROTOCOL.md, Withholding the sender's table
+   * from a blind helper). The declared-empty direction is what binds the
+   * partner to disclosing no column, which is the second condition the rule
+   * asks. Resolved off the run's own predicate -
+   * `withholdsInviterAssociationTable` where the partner is the inviting party,
+   * `withholdsAcceptorAssociationTable` where it is the accepting party, and
+   * `withholdsPartnerAssociationTable` where the viewer reads linkage terms it
+   * wrote itself (consent/invitationSummary.ts) - so a surface never states
+   * this basis for a run that does not withhold. The third of those reads two
+   * documents from one of them, and its own documentation states the shape it
+   * cannot see.
+   */
   partnerOwnMembershipWithheld: {
     basis: "enforced",
-    reason:
-      "The other case of the same line, on the one combination the exchange " +
-      "closes itself: a single-pass run whose sole receiver is the VIEWER, " +
-      "leaving the partner entitled to no result, over a document declaring " +
-      "that partner's payload direction present and empty. Role resolution " +
-      "seats the party entitled to the result as the receiver, so the partner " +
-      "is the sender the withholding covers, and the receiver suppresses that " +
-      "party's half of the association table entirely while it skips awaiting " +
-      "it, both sides deriving the decision from the same authenticated " +
-      "session state - so the partner's process never receives, and so never " +
-      "learns, which of its own records the viewer also holds " +
-      "(docs/spec/PROTOCOL.md, Withholding the sender's table from a blind " +
-      "helper). The declared-empty direction is what binds the partner to " +
-      "disclosing no column, which is the second condition the rule asks. " +
-      "Resolved off the run's own predicate - " +
-      "`withholdsInviterAssociationTable` where the partner is the inviting " +
-      "party, `withholdsAcceptorAssociationTable` where it is the accepting " +
-      "party, and `withholdsPartnerAssociationTable` where the viewer reads " +
-      "linkage terms it wrote itself (consent/invitationSummary.ts) - so a " +
-      "surface never states this basis for a run that does not withhold. The " +
-      "third of those reads two documents from one of them, and its own " +
-      "documentation states the shape it cannot see.",
     note:
       "Your partner's process is never sent which of its own records are in " +
       "your data, because this exchange withholds its half of the " +
       "matched-pair table. The exchange enforces this whatever software your " +
       "partner runs.",
   },
+  /**
+   * The same case at the seat reading terms it wrote itself
+   * (`withholdsPartnerAssociationTable`), which holds this party's declared
+   * `payload.receive` against the partner's DECLARED `payload.send` rather than
+   * against what the partner's resolved metadata will transmit.
+   * `validateCompatibility` passes a partner config with no payload block by
+   * comparing against `partner.payload?.send ?? []`. The run does not leave
+   * that difference to the agreement: both parties resolve each direction's
+   * disclosure from the two agreed documents and both parties' asserted
+   * disclosure immediately after the terms exchange, so a partner whose
+   * metadata discloses a column against this party's declared-empty
+   * `payload.receive` refuses BOTH parties before the linkage round, the
+   * association table and the payload (`resolveBothDirectionsDisclosePayload`,
+   * exchange/termsRefusals.ts). Either the partner's half is withheld or the
+   * exchange stops before it could move, which is what `enforced` means here.
+   * It stays a fact of its own rather than folding into
+   * `partnerOwnMembershipWithheld` because an acceptance surface must not
+   * address a seat that accepted no invitation.
+   */
   partnerOwnMembershipWithheldSelfAuthored: {
     basis: "enforced",
-    reason:
-      "The same case at the seat reading terms it wrote itself " +
-      "(`withholdsPartnerAssociationTable`), which holds this party's " +
-      "declared `payload.receive` against the partner's DECLARED " +
-      "`payload.send` rather than against what the partner's resolved " +
-      "metadata will transmit. `validateCompatibility` passes a partner " +
-      "config with no payload block by comparing against " +
-      "`partner.payload?.send ?? []`. The run does not leave that " +
-      "difference to the agreement: both parties resolve each " +
-      "direction's disclosure from the two agreed documents and both " +
-      "parties' asserted disclosure immediately after the terms exchange, so " +
-      "a partner whose metadata discloses a column against this party's " +
-      "declared-empty `payload.receive` refuses BOTH parties before the " +
-      "linkage round, the association table and the payload " +
-      "(`resolveBothDirectionsDisclosePayload`, exchange/termsRefusals.ts). " +
-      "Either the " +
-      "partner's half is withheld or the exchange stops before it could " +
-      "move, which is what `enforced` means here. It stays a fact of its own " +
-      "rather than folding into `partnerOwnMembershipWithheld` because an " +
-      "acceptance surface must not address a seat that accepted no " +
-      "invitation.",
     note:
       "Your partner's process is never sent which of its own records are in " +
       "your data, because this exchange withholds its half of the " +
@@ -334,67 +340,67 @@ export const CONSENT_FACTS = {
       "agreed terms declare none for, the exchange is refused for both " +
       "parties before the match starts.",
   },
+  /**
+   * Matching multiplicity is fixed by the run: the cardinality both parties
+   * resolve from the agreed pair decides which side's within-dataset duplicates
+   * take part, and a pair no strategy matches aborts the exchange rather than
+   * matching looser. The marker carries that fact and no more. Where the
+   * invitation makes the inviting party the sole receiver, what reaches the
+   * accepting party of the grouping is a further fact of its own -
+   * `duplicateGroupingWithheld` where the exchange closes it,
+   * `duplicateGroupingDisplayLimit` in the other register where the client
+   * alone does - so this marker is never read as covering either.
+   */
   duplicateMatches: {
     basis: "enforced",
-    reason:
-      "Matching multiplicity is fixed by the run: the cardinality both parties " +
-      "resolve from the agreed pair decides which side's within-dataset " +
-      "duplicates take part, and a pair no strategy matches aborts the " +
-      "exchange rather than matching looser. The marker carries that fact and " +
-      "no more. Where the invitation makes the inviting party the sole " +
-      "receiver, what reaches the accepting party of the grouping is a further " +
-      "fact of its own - `duplicateGroupingWithheld` where the exchange " +
-      "closes it, `duplicateGroupingDisplayLimit` in the other register where " +
-      "the client alone does - so this marker is never read as covering " +
-      "either.",
   },
+  /**
+   * What a sole-receiver acceptance is not handed is the RESULT, and the
+   * entitlement gate on the table `runExchange` returns holds that. On the runs
+   * this basis is measured over the grouping still reaches the accepting
+   * party's process: under cascade the rounds carry each matched position once
+   * per group member, and under single-pass the wire-level withholding does not
+   * reach a party that transmits a payload column of its own or is left free
+   * to. So presenting none of the grouping is the client's doing rather than
+   * the exchange's, and what an operator on that side is shown rests on the
+   * software that side runs - the partner's register, not the run's. The
+   * combination the exchange does close is `duplicateGroupingWithheld` below,
+   * resolved from the run's own rule (`withholdsAcceptorAssociationTable`)
+   * rather than from a second reading here, so neither entry claims the other's
+   * ground. Carried as a fact of its own rather than inside
+   * DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT: it renders beside that
+   * statement, under the same enforced headline, but as a classified fact of
+   * its own rather than as a clause of a sentence whose basis is the
+   * headline's.
+   */
   duplicateGroupingDisplayLimit: {
     basis: "trust-contingent",
-    reason:
-      "What a sole-receiver acceptance is not handed is the RESULT, and the " +
-      "entitlement gate on the table `runExchange` returns holds that. On the " +
-      "runs this basis is measured over the grouping still reaches the " +
-      "accepting party's process: under cascade the rounds carry each matched " +
-      "position once per group member, and under single-pass the wire-level " +
-      "withholding does not reach a party that transmits a payload column of " +
-      "its own or is left free to. So presenting none of the grouping is the " +
-      "client's doing rather than the exchange's, and what an operator on that " +
-      "side is shown rests on the software that side runs - the partner's " +
-      "register, not the run's. The combination the exchange does close is " +
-      "`duplicateGroupingWithheld` below, resolved from the run's own rule " +
-      "(`withholdsAcceptorAssociationTable`) rather than from a second reading " +
-      "here, so neither entry claims the other's ground. Carried as a fact of " +
-      "its own rather than inside " +
-      "DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT: it renders beside that " +
-      "statement, under the same enforced headline, but as a classified fact " +
-      "of its own rather than as a clause of a sentence whose basis is the " +
-      "headline's.",
     note:
       "Your side receives the group sizes and row positions, and Alcove does " +
       "not show them to you. The exchange does not withhold them, so other " +
       "software on your side could show them.",
   },
+  /**
+   * The other case of the same line, on the one combination the exchange itself
+   * closes: a single-pass run whose sole receiver is the inviting party and
+   * whose invitation requests no payload column of the accepting party. The
+   * receiver suppresses the accepting party's half of the association table
+   * entirely and that party skips awaiting it, both sides deriving the decision
+   * from the same authenticated session state, so its process is sent neither
+   * the group sizes and row positions nor its own records' membership
+   * (docs/spec/PROTOCOL.md, Withholding the sender's table from a blind helper,
+   * and its composition with a deduplicating cardinality under Where the "one"
+   * party receives no output). Enforced in the register's own sense rather than
+   * merely likely: the empty payload request mirrors to an empty `payload.send`
+   * for the accepting party, which is held to exactly the columns its metadata
+   * discloses before any data moves, so a run whose file would disclose a
+   * column stops there instead of reaching the linkage with the table
+   * exchanged. The condition is resolved by `withholdsAcceptorAssociationTable`
+   * (consent/invitationSummary.ts) off the run's own predicate, so a surface
+   * never states this basis for a run that does not withhold.
+   */
   duplicateGroupingWithheld: {
     basis: "enforced",
-    reason:
-      "The other case of the same line, on the one combination the exchange " +
-      "itself closes: a single-pass run whose sole receiver is the inviting " +
-      "party and whose invitation requests no payload column of the accepting " +
-      "party. The receiver suppresses the accepting party's half of the " +
-      "association table entirely and that party skips awaiting it, both sides " +
-      "deriving the decision from the same authenticated session state, so its " +
-      "process is sent neither the group sizes and row positions nor its own " +
-      "records' membership (docs/spec/PROTOCOL.md, Withholding the sender's " +
-      "table from a blind helper, and its composition with a deduplicating " +
-      'cardinality under Where the "one" party receives no output). Enforced ' +
-      "in the register's own sense rather than merely likely: the empty " +
-      "payload request mirrors to an empty `payload.send` for the accepting " +
-      "party, which is held to exactly the columns its metadata discloses " +
-      "before any data moves, so a run whose file would disclose a column " +
-      "stops there instead of reaching the linkage with the table exchanged. " +
-      "The condition is resolved by `withholdsAcceptorAssociationTable` " +
-      "(consent/invitationSummary.ts) off the run's own predicate, so a " +
-      "surface never states this basis for a run that does not withhold.",
     note:
       "You are shown no group sizes, no row positions, and nothing about " +
       "which of your own records matched. This exchange withholds your half " +
@@ -402,66 +408,68 @@ export const CONSENT_FACTS = {
       "partner running Alcove never sends it. Withholding them is a limit of " +
       "the exchange rather than this software's choice.",
   },
+  /**
+   * The same two registers as the pair above, read from the other side: the
+   * ACCEPTING party groups its own records and the inviting party is entitled
+   * to no result. The result gate hands that party none, but the run still
+   * reaches its process. Under cascade the rounds carry each matched position
+   * once per group member, and under single-pass the wire-level withholding
+   * does not reach a party that transmits a payload column of its own or is
+   * left free to. So what a partner is shown of the grouping rests on the
+   * software it runs, which is the partner's register rather than the run's.
+   * The combination the exchange does close is
+   * `partnerDuplicateGroupingWithheld` below, resolved from the run's own rule
+   * (`withholdsInviterAssociationTable`) rather than from a second reading
+   * here.
+   */
   partnerReadsDuplicateGrouping: {
     basis: "trust-contingent",
-    reason:
-      "The same two registers as the pair above, read from the other side: " +
-      "the ACCEPTING party groups its own records and the inviting party is " +
-      "entitled to no result. The result gate hands that party none, but the " +
-      "run still reaches its process. Under cascade the rounds carry each " +
-      "matched position once per group member, and under single-pass the " +
-      "wire-level withholding does not reach a party that transmits a payload " +
-      "column of its own or is left free to. So what a partner is shown of " +
-      "the grouping rests on the software it runs, which is the partner's " +
-      "register rather than the run's. The combination the exchange does " +
-      "close is `partnerDuplicateGroupingWithheld` below, resolved from the " +
-      "run's own rule (`withholdsInviterAssociationTable`) rather than from a " +
-      "second reading here.",
     note:
       "Your partner's process is sent the group sizes and row positions your " +
       "matched records fall into, though these terms hand it no result. What " +
       "it shows of them depends on the software your partner runs.",
   },
+  /**
+   * The other case of the same line: a single-pass run whose sole receiver is
+   * the ACCEPTING party and whose inviting party declares an empty
+   * `payload.send`. Role resolution seats the party entitled to the result as
+   * the receiver, so the inviting party is the sender the withholding covers,
+   * and the receiver suppresses its half of the association table entirely
+   * while that party skips awaiting it, both sides deriving the decision from
+   * the same authenticated session state (docs/spec/PROTOCOL.md, Withholding
+   * the sender's table from a blind helper, and its composition with a
+   * deduplicating cardinality under Where the "one" party receives no output).
+   * The declared-empty send is what binds the inviting party to disclosing no
+   * column, which is the second condition the rule asks. Resolved by
+   * `withholdsInviterAssociationTable` (consent/invitationSummary.ts) off the
+   * run's own predicate, so a surface never states this basis for a run that
+   * does not withhold.
+   */
   partnerDuplicateGroupingWithheld: {
     basis: "enforced",
-    reason:
-      "The other case of the same line: a single-pass run whose sole receiver " +
-      "is the ACCEPTING party and whose inviting party declares an empty " +
-      "`payload.send`. Role resolution seats the party entitled to the result " +
-      "as the receiver, so the inviting party is the sender the withholding " +
-      "covers, and the receiver suppresses its half of the association table " +
-      "entirely while that party skips awaiting it, both sides deriving the " +
-      "decision from the same authenticated session state (docs/spec/" +
-      "PROTOCOL.md, Withholding the sender's table from a blind helper, and " +
-      'its composition with a deduplicating cardinality under Where the "one" ' +
-      "party receives no output). The declared-empty send is what binds the " +
-      "inviting party to disclosing no column, which is the second condition " +
-      "the rule asks. Resolved by `withholdsInviterAssociationTable` " +
-      "(consent/invitationSummary.ts) off the run's own predicate, so a " +
-      "surface never states this basis for a run that does not withhold.",
     note:
       "Your partner's process is sent no group sizes and no row positions " +
       "for your matched records, because this exchange withholds its half " +
       "of the matched-pair table. The exchange enforces this whatever " +
       "software your partner runs.",
   },
+  /**
+   * What this party's own `deduplicate` would do against an invitation that
+   * declares the inviting party's own `deduplicate` under a linkage strategy
+   * pairing no both-sided cardinality: the pair resolves to a many-to-many
+   * match that strategy does not run, so the accept boundary refuses it
+   * (`assertBothSidedDeduplicateImplemented`, reached from
+   * `deriveAcceptedLinkageTerms`) and the agreed-terms run boundary refuses it
+   * again (`resolveLinkageCardinality`). Both of the conditions this party does
+   * not set are the invitation's own, so the consequence is stated before the
+   * value that completes the combination is set rather than met at the accept.
+   * Resolved by `acceptorDeduplicateRefused` (consent/invitationSummary.ts) off
+   * the refusal's own predicate, so a surface never states it for an invitation
+   * the accept would take. The exchange does not run at all, which is a fact of
+   * the run rather than of the partner's conduct.
+   */
   acceptorDeduplicateRefused: {
     basis: "enforced",
-    reason:
-      "What this party's own `deduplicate` would do against an invitation " +
-      "that declares the inviting party's own `deduplicate` under a linkage " +
-      "strategy pairing no both-sided cardinality: the pair resolves to a " +
-      "many-to-many match that strategy does not run, so the accept boundary " +
-      "refuses it (`assertBothSidedDeduplicateImplemented`, reached from " +
-      "`deriveAcceptedLinkageTerms`) and the agreed-terms run boundary " +
-      "refuses it again (`resolveLinkageCardinality`). Both of the " +
-      "conditions this party does not set are the invitation's own, so the " +
-      "consequence is stated before the value that completes the " +
-      "combination is set rather than met at the accept. Resolved by " +
-      "`acceptorDeduplicateRefused` (consent/invitationSummary.ts) off the " +
-      "refusal's own predicate, so a surface never states it for an " +
-      "invitation the accept would take. The exchange does not run at all, " +
-      "which is a fact of the run rather than of the partner's conduct.",
     note:
       "With duplicate matching set for your own records, the exchange will " +
       "refuse to run. Your partner declares that several of its records may " +
@@ -471,71 +479,77 @@ export const CONSENT_FACTS = {
       "to run these terms, or ask your partner for an invitation that drops " +
       "its own duplicate matching.",
   },
+  /**
+   * The fields the linkage keys are computed over - what the exchange actually
+   * hashes and compares.
+   */
   matchedFields: {
     basis: "enforced",
-    reason:
-      "The fields the linkage keys are computed over - what the exchange " +
-      "actually hashes and compares.",
   },
+  /**
+   * This party's own declared columns that the payload step does not transmit
+   * and no linkage key reads, from `heldBackColumnNames` (standardization.ts),
+   * which applies the predicate the payload step sends on and the column
+   * binding the run matches on. Stated at the seat that wrote its own terms, so
+   * a column recognized as a linkage key that no key uses is listed rather than
+   * absent from every line.
+   */
   heldBackColumnsSelfAuthored: {
     basis: "enforced",
-    reason:
-      "This party's own declared columns that the payload step does not " +
-      "transmit and no linkage key reads, from `heldBackColumnNames` " +
-      "(standardization.ts), which applies the predicate the payload step " +
-      "sends on and the column binding the run matches on. Stated at the " +
-      "seat that wrote its own terms, so a column recognized as a linkage " +
-      "key that no key uses is listed rather than absent from every line.",
   },
+  /**
+   * The semantic categories the keys draw on, resolved from the
+   * schema-validated field types the run binds.
+   */
   personalDataCategories: {
     basis: "enforced",
-    reason:
-      "The semantic categories the keys draw on, resolved from the schema-" +
-      "validated field types the run binds.",
   },
+  /**
+   * Data standards the inviting party commits its own values to. Alcove warns
+   * where a value falls outside one; it does not filter or reject.
+   */
   declaredDataStandards: {
     basis: "trust-contingent",
-    reason:
-      "Data standards the inviting party commits its own values to. Alcove " +
-      "warns where a value falls outside one; it does not filter or reject.",
   },
+  /**
+   * A partner-authored regular expression, never vetted. A crafted class reads
+   * very differently to a human than the set it admits, and the check
+   * evaluating it warns rather than enforces.
+   */
   allowedCharacterPatterns: {
     basis: "trust-contingent",
-    reason:
-      "A partner-authored regular expression, never vetted. A crafted class " +
-      "reads very differently to a human than the set it admits, and the check " +
-      "evaluating it warns rather than enforces.",
     note:
       "Alcove does not enforce these allowed-character patterns. Each is a " +
       "regular expression your partner supplied for these fields, which " +
       "Alcove has not verified, stating what your partner expects the data " +
       "to hold.",
   },
+  /**
+   * The keys, their elements, and every declared matching rule are what the run
+   * computes; under `psi` they decide which identifiers are revealed.
+   */
   linkageKeys: {
     basis: "enforced",
-    reason:
-      "The keys, their elements, and every declared matching rule are what the " +
-      "run computes; under `psi` they decide which identifiers are revealed.",
   },
+  /**
+   * What the run does with a record that has several candidate values for one
+   * key, not what the partner does with it. Every candidate enters that key's
+   * round as its own entry; a record appearing in any of the round's candidate
+   * pairs leaves candidacy for every later key, paired or not; and each
+   * strategy discloses a grouping of its own. The index table the single-pass
+   * receiver holds carries each sender record's candidate grouping for every
+   * key, matched or not, where a cascade round states each party's grouping of
+   * that round's matched values alone. All three are properties of the round
+   * rather than of anyone's conduct. The normative rows are
+   * docs/spec/PROTOCOL.md's (Fan-out matching, the disclosure delta fan-out
+   * pays, the per-side rules, which the pairing counts under a one-sided
+   * duplicate matching are read from, and the `many-to-many` entity closure,
+   * which the count under both parties' duplicate matching is read from), so a
+   * row reclassified there and not here is a divergence between a specification
+   * and the sentence an acceptor consents on.
+   */
   fanOutCandidates: {
     basis: "enforced",
-    reason:
-      "What the run does with a record that has several candidate values for " +
-      "one key, not what the partner does with it. Every candidate enters that " +
-      "key's round as its own entry; a record appearing in any of the round's " +
-      "candidate pairs leaves candidacy for every later key, paired or not; and " +
-      "each strategy discloses a grouping of its own. The index table " +
-      "the single-pass receiver holds carries each sender record's candidate " +
-      "grouping for every key, matched or not, where a cascade round states " +
-      "each party's grouping of that round's matched values alone. All three " +
-      "are properties of the round rather than of anyone's conduct. The " +
-      "normative rows are docs/spec/PROTOCOL.md's (Fan-out matching, the " +
-      "disclosure delta fan-out pays, the per-side rules, which the pairing " +
-      "counts under a one-sided duplicate matching are read from, and the " +
-      "`many-to-many` entity closure, which the count under both parties' " +
-      "duplicate matching is read from), so a row reclassified there and not " +
-      "here is a divergence between a specification and the sentence an " +
-      "acceptor consents on.",
     note:
       "A match on this key can rest on one part of a value, such as one word " +
       "of a name, which is weaker evidence than the whole value. A record " +
@@ -545,29 +559,29 @@ export const CONSENT_FACTS = {
       "which came from the same record. Under cascade linkage, your partner " +
       "learns this for your matched values only, round by round.",
   },
+  /**
+   * What the run's own pairing does with a record holding several candidate
+   * values for one key once BOTH parties group their duplicates: acceptance is
+   * total there, so every record any of those values matched is paired with it,
+   * and one group can hold two records no linkage key links to each other. The
+   * pairs that grouping rests on stand in the association table both parties
+   * hold, so it is a property of the round rather than of anyone's conduct, and
+   * the closure reading them is each party's own local pass. The normative row
+   * is docs/spec/PROTOCOL.md's (the `many-to-many` entity closure), so a row
+   * reclassified there and not here is a divergence between a specification and
+   * the sentence an acceptor consents on. Resolved by
+   * `candidateSetChainsGrouping` (consent/invitationSummary.ts) over every
+   * producer of a candidate set rather than over the `split_on` half alone, and
+   * off the accept boundary's own verdict on the other party's value rather
+   * than the strategy rule alone, so no surface withholds the sentence for a
+   * key that expands its value by another route and none states it where that
+   * value is one the accept refuses - a sole-receiver document, which leaves
+   * that party none to set, as much as a refused pair. The sentence states the
+   * pair conditionally, since the party reading it holds one side and not the
+   * other wherever it is rendered.
+   */
   candidateSetChainsGrouping: {
     basis: "enforced",
-    reason:
-      "What the run's own pairing does with a record holding several " +
-      "candidate values for one key once BOTH parties group their duplicates: " +
-      "acceptance is total there, so every record any of those values matched " +
-      "is paired with it, and one group can hold two records no linkage key " +
-      "links to each other. The pairs that grouping rests on stand in the " +
-      "association table both parties hold, so it is a property of the round " +
-      "rather than of anyone's conduct, and the closure reading them is each " +
-      "party's own local pass. The normative row is docs/spec/PROTOCOL.md's " +
-      "(the `many-to-many` entity closure), so a row reclassified there and " +
-      "not here is a divergence between a specification and the sentence an " +
-      "acceptor consents on. Resolved by `candidateSetChainsGrouping` " +
-      "(consent/invitationSummary.ts) over every producer of a candidate set " +
-      "rather than over the `split_on` half alone, and off the accept " +
-      "boundary's own verdict on the other party's value rather than the " +
-      "strategy rule alone, so no surface withholds the sentence for a key " +
-      "that expands its value by another route and none states it where that " +
-      "value is one the accept refuses - a sole-receiver document, which " +
-      "leaves that party none to set, as much as a refused pair. The " +
-      "sentence states the pair conditionally, since the party reading it " +
-      "holds one side and not the other wherever it is rendered.",
     note:
       "Where both parties set duplicate matching for their own records, " +
       "records sharing no matched value are disclosed to both parties as one " +
@@ -575,74 +589,79 @@ export const CONSENT_FACTS = {
       "record matching any one of those values is grouped with that record " +
       "and with each other.",
   },
+  /**
+   * The inviting party's declared payload send, which the acceptance mirrors
+   * into its own payload receive list. Every run's terms exchange compares that
+   * list against the send set the inviting party's run states, before any key
+   * or payload moves, and refuses the run on a difference unless this party
+   * takes the change on as its new terms. Once the payload arrives, this party
+   * compares the column names it received against that agreed send, and the run
+   * ends with a protocol error, before its result is returned, when they
+   * differ. The check holds the names, not the values: what the received
+   * columns contain remains the inviting party's word.
+   */
   inboundPayloadColumns: {
     basis: "enforced",
-    reason:
-      "The inviting party's declared payload send, which the acceptance " +
-      "mirrors into its own payload receive list. Every run's terms exchange " +
-      "compares that list against the send set the inviting party's run " +
-      "states, before any key or payload moves, and refuses the run on a " +
-      "difference unless this party takes the change on as its new terms. " +
-      "Once the payload arrives, this party compares the column names it " +
-      "received against that agreed send, and the run ends with a protocol " +
-      "error, before its result is returned, when they differ. The check holds the names, not the values: " +
-      "what the received columns contain remains the inviting party's word.",
   },
+  /**
+   * A request for the acceptor's columns, not a statement of what the acceptor
+   * sends. That is settled by the acceptor's own metadata.
+   */
   requestedPayloadColumns: {
     basis: "trust-contingent",
-    reason:
-      "A request for the acceptor's columns, not a statement of what the " +
-      "acceptor sends. That is settled by the acceptor's own metadata.",
   },
+  /**
+   * Partner-authored text. The reference and expiry are byte-compared against
+   * this party's own copy before data moves, but Alcove vets neither the
+   * agreement nor the purpose it states.
+   */
   legalAgreement: {
     basis: "trust-contingent",
-    reason:
-      "Partner-authored text. The reference and expiry are byte-compared " +
-      "against this party's own copy before data moves, but Alcove vets " +
-      "neither the agreement nor the purpose it states.",
   },
+  /**
+   * Derived by this build from the declared keys, which both parties' terms are
+   * compared on before data moves; the statement names no provenance the
+   * invitation claims.
+   */
   builtInRuleChoice: {
     basis: "enforced",
-    reason:
-      "Derived by this build from the declared keys, which both parties' " +
-      "terms are compared on before data moves; the statement names no " +
-      "provenance the invitation claims.",
   },
+  /**
+   * Re-checked before and after the key exchange; an expired invitation is
+   * refused.
+   */
   invitationExpiry: {
     basis: "enforced",
-    reason:
-      "Re-checked before and after the key exchange; an expired invitation is " +
-      "refused.",
   },
   // The note's "what you send stays encrypted there" is true only because every
   // path rendering this fact is an authenticated accept. The zero-setup exchange
   // takes --retain-files over the bare transport and renders no consent fact,
   // which apps/cli/test/unit/commands/zeroSetup.test.ts pins.
+  /**
+   * That the exchange runs in retain mode, and the mode AGREEMENT is the half
+   * the run holds: both parties advertise their retain_files setting in the
+   * hello and a disagreement aborts both sides before any data moves
+   * (BilateralModeMismatchError), so an exchange that runs at all is one both
+   * parties ran in the stated mode. What the run does not hold is what becomes
+   * of the transcript once it ends - retain mode deletes nothing, and the
+   * rendezvous location is the inviting party's to keep or clear - so that half
+   * is carried by the note rather than by the marker. Nothing applies the
+   * inviter's declaration: the accepting party still sets its own half, which
+   * is what leaves the mismatch to fast-fail (see
+   * InvitationToken.inviterRetainsFiles). Stated on either ground that puts an
+   * acceptor's run in retain mode - the inviter declaring it, or an invitation
+   * endpoint whose split-directory shape requires it of the connection the
+   * acceptor is seeded with, where a display gated on the declaration alone
+   * would say nothing to a party consenting to a permanent transcript. One
+   * wording covers both: a split rendezvous cannot be configured without retain
+   * mode on either side, so the inviter offering one is running the mode this
+   * states. Delete mode is not the mirror claim: a run killed outright, or one
+   * that fails after the handshake, leaves files behind in either mode, so a
+   * stated negative would promise a cleanup the transport does not make - and
+   * an invitation carrying no declaration has made no claim to state at all.
+   */
   retainedFiles: {
     basis: "enforced",
-    reason:
-      "That the exchange runs in retain mode, and the mode AGREEMENT is the " +
-      "half the run holds: both parties advertise their retain_files setting in " +
-      "the hello and a disagreement aborts both sides before any data moves " +
-      "(BilateralModeMismatchError), so an exchange that runs at all is one both " +
-      "parties ran in the stated mode. What the run does not hold is what " +
-      "becomes of the transcript once it ends - retain mode deletes nothing, " +
-      "and the rendezvous location is the inviting party's to keep or clear - " +
-      "so that half is carried by the note rather than by the marker. Nothing " +
-      "applies the inviter's declaration: the accepting party still sets its own " +
-      "half, which is what leaves the mismatch to fast-fail (see " +
-      "InvitationToken.inviterRetainsFiles). " +
-      "Stated on either ground that puts an acceptor's run in retain mode - the " +
-      "inviter declaring it, or an invitation endpoint whose split-directory " +
-      "shape requires it of the connection the acceptor is seeded with, where a " +
-      "display gated on the declaration alone would say nothing to a party " +
-      "consenting to a permanent transcript. One wording covers both: a split " +
-      "rendezvous cannot be configured without retain mode on either side, so " +
-      "the inviter offering one is running the mode this states. Delete mode is " +
-      "not the mirror claim: a run killed outright, or one that fails after the " +
-      "handshake, leaves files behind in either mode, so a stated negative would " +
-      "promise a cleanup the transport does not make - and an invitation " +
-      "carrying no declaration has made no claim to state at all.",
     note:
       "Every file your partner writes stays in the shared folder or on the " +
       "server after it is read, because your partner runs in retain mode. " +
@@ -655,18 +674,18 @@ export const CONSENT_FACTS = {
       "stops with an error when the two sides connect. Your partner decides " +
       "what happens to these files afterwards; Alcove does not.",
   },
+  /**
+   * The urls shown are the invitation's own, and a side that relays through
+   * them is choosing to with its own software: each lists them beside its own
+   * relay only where its own allowed relays keep them, and mints the credential
+   * itself, so nothing about which relay a side contacts rests on the partner's
+   * cooperation. What the relay's operator can observe is the note's, since
+   * that follows from contacting the relay at all. The note says a run may
+   * contact the relay rather than that it does, since a command-line run
+   * allocates on the first TURN url it lists alone.
+   */
   invitationRelay: {
     basis: "enforced",
-    reason:
-      "The urls shown are the invitation's own, and a side that relays " +
-      "through them is choosing to with its own software: each lists them " +
-      "beside its own relay only where its own allowed relays keep them, " +
-      "and mints the credential itself, so nothing about which relay a side " +
-      "contacts rests on the partner's cooperation. What the relay's " +
-      "operator can observe is the note's, since that follows from " +
-      "contacting the relay at all. The note says a run may contact the " +
-      "relay rather than that it does, since a command-line run allocates " +
-      "on the first TURN url it lists alone.",
     note:
       "Your partner named this relay for the exchange. A run on your side " +
       "may contact it unless your allowed relays leave it out, and the " +

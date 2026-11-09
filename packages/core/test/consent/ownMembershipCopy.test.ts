@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, test } from "vitest";
 
 import {
@@ -23,6 +26,26 @@ import type { LinkageTerms } from "../../src/config/linkageTermsSchema.js";
 // other sentence there.
 
 const LINKAGE_COLUMNS = ["ssn", "first_name", "last_name", "dob"];
+
+const CONSENT_FACTS_SOURCE = readFileSync(
+  fileURLToPath(new URL("../../src/consent/consentFacts.ts", import.meta.url)),
+  "utf8",
+);
+
+/** The text of the JSDoc directly above a CONSENT_FACTS entry, which states
+ * why the fact has its basis; no renderer reads it, so the source is read. */
+function factBasisComment(id: string): string {
+  const entry = CONSENT_FACTS_SOURCE.indexOf(`\n  ${id}: {`);
+  expect(entry).toBeGreaterThan(-1);
+  const close = CONSENT_FACTS_SOURCE.lastIndexOf("*/", entry);
+  const open = CONSENT_FACTS_SOURCE.lastIndexOf("/**", close);
+  expect(CONSENT_FACTS_SOURCE.slice(close + 2, entry).trim()).toBe("");
+  return CONSENT_FACTS_SOURCE.slice(open + 3, close)
+    .split("\n")
+    .map((line) => line.replace(/^\s*\*\s?/, "").trim())
+    .filter((line) => line !== "")
+    .join(" ");
+}
 
 /** Terms whose non-receiving party -- the helper the fact speaks about -- is
  * the INVITING party, read at the accept seat. */
@@ -142,7 +165,13 @@ describe("the own-membership consent pair", () => {
     );
     // And not the reading where that half moves before the run stops.
     expect(fact.note).not.toContain("while the exchange runs");
-    expect(fact.reason).not.toContain("after the exchange");
+    const basisComment = factBasisComment(
+      "partnerOwnMembershipWithheldSelfAuthored",
+    );
+    expect(basisComment).toContain(
+      "refuses BOTH parties before the linkage round",
+    );
+    expect(basisComment).not.toContain("after the exchange");
     // A restatement for its own seat, not a copy of the sibling's sentence.
     expect(fact.note).not.toContain(
       CONSENT_FACTS.partnerOwnMembershipWithheld.note,

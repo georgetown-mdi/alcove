@@ -1819,29 +1819,12 @@ const declaredSinglePassSize = (
   `across ${party.recordCount} record(s), which is ${valueSlots(party)} ` +
   "value slot(s)";
 
-// Actionable guidance for an exchange that exceeds the single-pass ceiling a
-// browser party holds both parties to. By design this does not recommend
-// cascade: linkage_strategy is a mandatory-consistency agreed term that cannot
-// change unilaterally mid-exchange, so pointing at it here would mislead
-// (docs/spec/PROTOCOL.md, the single-pass dataset ceiling).
-//
-// That ceiling is a PER-PARTY budget on the value slot count
-// effectiveKeyCount * recordCount, so the guidance is oriented to the party
-// it is shown to: it states the products the gate weighed, names which
-// side's declared size reached the budget, and offers each side's remedies
-// to the side that can apply them -- the two parties reach mirrored
-// verdicts (singlePassCeilingBreach), so the abort stays symmetric.
-// Reducing the record count or splitting the dataset is the actionable
-// remedy on a breaching side, and removing a fan-out is another when that
-// side declares one; the key count is an agreed term, so it is offered only
-// as a renegotiation (SINGLE_PASS_LOCAL_REMEDY). The partner's cleaning is
-// invisible here, so the partner's hint rests on the agreed width alone.
-//
-// Every remedy it names is a change one of the two operators can carry
-// through, so its raise site is a UsageError (CLI exit 64), the same class
-// as the width refusals below. It interpolates only authenticated session
-// state -- the two parties' declared effective key counts, record counts,
-// and value slot products -- and no partner-authored text.
+// Guidance past the single-pass ceiling a browser party holds both parties to
+// (docs/spec/PROTOCOL.md, The single-pass dataset ceiling). The partner's
+// cleaning is invisible here, so its fan-out hint rests on the agreed width
+// alone. Raised as a UsageError (CLI exit 64). It interpolates only
+// authenticated session state -- the two parties' declared effective key
+// counts, record counts, and value slot products -- and no partner-authored text.
 function singlePassOverCapMessage(
   id: string,
   numLinkageKeys: number,
@@ -2039,16 +2022,10 @@ function singlePassReplyOverCapMessage(
   );
 }
 
-// Force a major collection to release a phase's transient allocations
-// before the next phase allocates, lowering the peak RSS that bounds the
-// single-pass dataset ceiling (measured sizes, methodology, and breakdown:
-// docs/spec/PROTOCOL.md). A no-op unless the runtime exposes a global gc:
-// the CLI launches Node with --expose-gc (the Dockerfile entrypoint and the
-// apps/cli dev script), so it gets the relief; a browser never exposes gc,
-// so the web receiver does not, and its ceiling rests on the same
-// conservative cap. Called only at a handful of coarse phase boundaries,
-// never per element or per key, so its pause is negligible beside the curve
-// operations it follows.
+// Forces a major collection where the runtime exposes a global gc, lowering
+// the single-pass peak RSS (docs/spec/PROTOCOL.md, The single-pass dataset
+// ceiling). Called only at coarse phase boundaries, never per element or per
+// key, so its pause is negligible beside the curve operations it follows.
 function relieveTransientMemory(): void {
   (globalThis as typeof globalThis & { gc?: () => void }).gc?.();
 }
@@ -2063,60 +2040,18 @@ function handOffOverFileSync(fileSync: boolean): PsiFrameHandOff | undefined {
 
 /**
  * Whether the single-pass receiver withholds the sender's association-table
- * half ({@link linkViaSinglePassPSI}'s message 3) entirely, so a blind
- * helper's process never receives -- and so never learns -- its own
- * membership (which of its records matched).
+ * half ({@link linkViaSinglePassPSI}'s message 3) entirely, never sending it
+ * empty: exactly when the sender is a non-receiving helper (`expectsOutput:
+ * false`) that also discloses no payload.
  *
- * Withhold exactly when the SENDER is a non-receiving helper (`expectsOutput:
- * false`, so it gets no result table of its own) that ALSO discloses no
- * payload (its metadata transmits no column, so it has no matched rows to
- * enrich). That is the one closeable case in a one-sided single-pass
- * exchange: the helper needs its association-table half only to build its
- * own result (it has none) or to enrich the payload it discloses (it
- * discloses none), so withholding leaves it needing nothing back. A helper
- * that discloses payload still receives the full table (it reads
- * `associationTable[0]` to build enrichment for the overlap -- an
- * intrinsic, threat-model-accepted membership disclosure), and a party
- * entitled to output always receives it.
+ * Stated limit: a sender advertising `disclosesPayload` false while its
+ * metadata discloses a column, against a receiver declaring no
+ * `payload.receive` at all, leaves the receiver suppressing the frame and the
+ * sender awaiting it until the peer-inactivity budget runs out.
  *
- * Both parties compute this from the same authenticated session state -- the
- * resolved sender's output entitlement, and the disclosure the agreed terms
- * and the advertised `disclosesPayload` flag together resolve
- * (`resolveDirectionDisclosesPayload`, exchange/termsRefusals.ts): a direction
- * whose receiving party is entitled to no output discloses none, since the send
- * gate transmits nothing that way; a sender whose `payload.send` the terms
- * declare present and empty discloses none whatever it advertises; a
- * receiver's `payload.receive` declared present and empty against an asserted
- * disclosure contradicts the terms and is refused there, on either seat,
- * rather than resolved either way; otherwise the assertion decides.
- *
- * The two parties do not read the same assertion, though: the sender takes
- * its own metadata and the receiver the advertised flag. So the receiver's
- * decision to suppress the frame and the sender's decision to skip awaiting
- * it are the same against a CONFORMING peer -- one advertising exactly what
- * its metadata discloses -- and the refusal above covers the divergent
- * advertisement wherever a `payload.receive` is declared present and empty
- * to hold it against. One case is left outside both: a sender advertising
- * false while its metadata discloses a column, against a receiver declaring
- * no `payload.receive` at all, leaves the receiver suppressing the frame
- * and the sender awaiting it until the peer-inactivity budget runs out. It
- * takes a modified partner, and this is a stated limit rather than a
- * closed case.
- *
- * The frame is suppressed ENTIRELY, never sent empty: an
- * empty-versus-populated association table would leak the match count by
- * the frame's presence and size, so only omitting it closes the channel. See
- * docs/notes/one-sided-disclosure.md and docs/spec/PROTOCOL.md.
- *
- * A deduplicating cardinality does not move the rule and cannot reach the
- * withheld path from the "many" side: a party declaring `deduplicate: true`
- * must declare `output.expectsOutput`, so a "many" sender is always
- * entitled to output. Under multiplicity, the withheld path covers the
- * "one" party as a no-output helper, which role resolution makes the
- * SENDER (the output-entitled party becomes the receiver); the "many" party
- * then resolves the whole pairing, applying the one-side uniqueness rule to
- * the helper's index table on its behalf, needing nothing back for the same
- * two reasons as under `one-to-one`. Pinned in link.test.ts.
+ * The rule, how both parties derive it, and the limit: docs/spec/PROTOCOL.md,
+ * Withholding the sender's table from a blind helper. The deduplicating
+ * cardinalities are pinned in link.test.ts.
  */
 export function withholdsSenderAssociationTable(
   senderExpectsOutput: boolean,
