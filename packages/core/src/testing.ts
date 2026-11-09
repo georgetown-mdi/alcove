@@ -100,6 +100,12 @@ export {
   sendTermsAbort,
 } from "./protocolSetup.js";
 export { PROTOCOL_VERSION } from "./versionHello.js";
+// The still-working layer a browser bench runs a PSI round through, outside
+// runExchange, to time the frames a hidden tab sends.
+export {
+  isStillWorkingFrame,
+  stillWorkingLayer,
+} from "./exchange/stillWorking.js";
 
 // The framing bytes of the file-sync message envelope, the AEAD envelope's
 // version marker, and the close() teardown budgets, so a suite can build a
