@@ -18,6 +18,10 @@ later message from the caller as new input.
   material, protocol invariants, and user-facing copy that misstates
   confidentiality -- what data leaves the machine and what the interface claims
   about it.
+- The project's own threat model governs what counts as a finding:
+  `docs/SECURITY_DESIGN.md`, Threat model, and `.claude/product-principles.md`,
+  The principles ("Guard against mistakes, not against the partner"). Read both
+  before you review.
 - Scope the branch the brief names, by ref: `git diff "origin/staging...<branch>"`
   (three-dot), never `HEAD` and never a checkout -- your session's checkout is not
   reliably the branch under review. Widen only if the brief says to.
