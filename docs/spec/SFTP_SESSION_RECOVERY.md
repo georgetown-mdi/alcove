@@ -158,6 +158,7 @@ The boundary totals therefore cover every release that ran to its count -- the r
 | peer FIN observed at an idle boundary | yes | yes | no | paced | `notReleased` |
 | session already cleared at idle-release entry | yes | yes | no | paced | `notReleased` |
 | partner drop absorbed by the next cycle-start dial | yes | yes | no | paced | `notReleased`, on the dial's success |
+| partner drop absorbed by a repeat `connect()` retried after a refusal over the live session | yes | yes | mode-dependent, as above | paced | `notReleased`, on the dial's success |
 | deliberate idle release, then the next cycle's dial | yes | no | no | no | `deliberatelyReleased` |
 | forced idle release (close withheld past the bound) | yes | as its entry classification above | as its entry classification above | paced | the entry classification, unchanged |
 | teardown re-dial (abort marker / terminal drain) | yes | no | no (teardown exemption) | no | `notReleased`, on the dial's success |

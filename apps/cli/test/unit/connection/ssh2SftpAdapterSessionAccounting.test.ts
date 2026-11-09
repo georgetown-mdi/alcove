@@ -251,6 +251,57 @@ describe("SFTP adapter session accounting", () => {
     expect(adapter.midExchangeReconnectCount).toBe(0);
   });
 
+  test("a drop absorbed by a refused-then-retried connect() is charged to the partner", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, connect, state, dropFromServer } = accountingClient();
+      // ssh2-sftp-client refuses a connect() over a live session before reaching
+      // the server and leaves that session in place.
+      connect.mockImplementation(async () => {
+        if (state.live)
+          throw Object.assign(
+            new Error(
+              "connect: An existing SFTP connection is already defined",
+            ),
+            { code: "ERR_NOT_CONNECTED" },
+          );
+        state.live = true;
+      });
+      const adapter = new SSH2SFTPClientAdapter();
+      install(adapter, client);
+      state.live = false;
+      await adapter.connect({ host: "h", maxReconnectAttempts: 1 });
+
+      const repeat = adapter.connect({ host: "h", maxReconnectAttempts: 1 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(connect).toHaveBeenCalledTimes(2);
+      // The partner drops the session while the refused attempt waits to retry.
+      dropFromServer();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await repeat;
+
+      expect(connect).toHaveBeenCalledTimes(3);
+      expect(lossesAfter(adapter)).toEqual({
+        partner: 1,
+        deliberate: 0,
+        teardown: 0,
+        fatal: 0,
+      });
+      expect(adapter.connectRetryCount).toBe(1);
+      expect(adapter.reconnectCount).toBe(2);
+      expect(adapter.midExchangeReconnectCount).toBe(1);
+
+      // That drop spent the one unit of the mid-exchange budget, so the next
+      // drop is refused before any dial.
+      const refused = adapter.exists("/remote/out.json");
+      dropFromServer();
+      await expect(refused).rejects.toBeInstanceOf(UsageError);
+      expect(connect).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("a drop the exhausted budget refuses is charged like every other", async () => {
     // The budget bounds sessions LOST rather than re-dials made, so the drop it
     // refuses is recorded exactly as the ones it allowed: the generation ended,

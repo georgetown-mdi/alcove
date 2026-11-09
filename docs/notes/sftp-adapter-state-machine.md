@@ -85,8 +85,8 @@ answer to what separates a partner loss from a deliberate release.
 | `DialRetried` | the dialing loop re-attempts past the first | `connectLocked`, via `countConnectRetry` |
 | `DialFailed(fatal?)` | retry exhausted; a `"Host denied"` rejection is fatal, as is a key exchange this process cannot perform | `connectLocked`'s retry predicate, and `isFatalDialError` at the cycle-start dial |
 | `PartnerDropObserved(g)` | an operation rejects and the trigger reads a loss | `shouldRecoverFromSessionLoss`, charged in `redialForRecovery` |
-| `PartnerDropAbsorbedByDial(g)` | a dial completes with `g` still live and its session already gone | `connectLocked`, ahead of the advance |
-| `SessionReplacedByDial(g)` | a dial completes with `g`'s session still live -- a repeat `connect()` on an open connection | the same site |
+| `PartnerDropAbsorbedByDial(g)` | a dial completes with `g` still live and its session already gone when the succeeding attempt started -- including a repeat `connect()` refused over a live session and retried after the partner dropped it | `connectLocked`, ahead of the advance |
+| `SessionReplacedByDial(g)` | a dial completes with `g`'s session still live when the succeeding attempt started -- a repeat `connect()` on an open connection that the library admits | the same site |
 | `PartnerFinAtBoundary(g)` | the peer's FIN already consumed at release entry | `releaseSessionForIdle`'s entry classification |
 | `PartnerDropAbsorbedAtBoundary(g)` | this side's write half ended without this release | the same classification |
 | `PartnerDropFoundAtBoundary(g)` | no session at release entry, with `g` still live | `releaseSessionForIdle` |
@@ -120,13 +120,6 @@ answer to what separates a partner loss from a deliberate release.
 | `Teardown` | any | `Closed` | yes | `teardown` | the teardown re-dial, exempt |
 | `FatalSession` | `Live` | `Closed` | yes | `fatal` | none, terminal |
 | `TransitionDeclined` / `TransitionSkipped` / `BoundaryHeld` | queued | unchanged | no | -- | -- |
-
-Against the real library, `SessionReplacedByDial` is reached only by a repeat
-`connect()` whose first attempt is refused and whose retry succeeds after a
-partner drop, which charges `deliberate` for that drop: ssh2-sftp-client refuses
-a `connect()` over a live session before reaching the server, and leaves that
-session in place (`apps/cli/test/integration/sftpStackPremises.test.ts`, "a
-connect() over a live session is refused and leaves that session in place").
 
 > **INV-L1 -- no generation leaves the live state without exactly one recorded
 > loss cause.**

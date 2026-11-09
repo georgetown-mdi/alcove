@@ -1624,11 +1624,12 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       unavailablePrimitives,
       this.log,
     );
-    // Read before the dial, because the dial is what makes it live: whether a
-    // generation this dial ends was ended by the dial or was already gone when it
-    // started is the difference between this side replacing a session and the
-    // partner having taken one (see the charge below).
-    const replacedLiveSession = this.hasLiveSession();
+    // Whether the session was live when the attempt that succeeded started:
+    // the difference between this side replacing a session and the partner
+    // having taken one (see the charge below). Read per attempt, because an
+    // attempt the library refused over a live session leaves that session in
+    // place, and the partner can drop it before the retry.
+    let replacedLiveSession = false;
     this.originalConnectOptions = options;
     const maxReconnects = this.operativeMaxReconnectAttempts();
     // Exclude the alcove-specific key before handing options to ssh2.
@@ -1669,6 +1670,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
         () => {
           if (connectAttempted) this.ledger.countConnectRetry();
           connectAttempted = true;
+          replacedLiveSession = this.hasLiveSession();
           return this.dialOnce(connectOptions, held);
         },
         maxReconnects,
@@ -1711,14 +1713,15 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     }
 
     // A dial reaching here with a generation still live ended that generation,
-    // and the session reading taken before the dial is what says how. A session
-    // that was LIVE was REPLACED by this dial -- this side's own doing; a
-    // session already gone was taken by the partner and absorbed by this dial
-    // without any operation or release observing it, which a cycle-start re-dial
-    // does when a drop lands in the tail of a poll cycle. A dial during teardown
-    // has the teardown's own exemption instead. Charged before the advance
-    // below, so that advance can refuse a generation it would otherwise
-    // overwrite silently.
+    // and the session reading taken before the succeeding attempt is what says
+    // how. A session that was LIVE was REPLACED by this dial -- this side's own
+    // doing; a session already gone was taken by the partner and absorbed by
+    // this dial without any operation or release observing it, which a
+    // cycle-start re-dial does when a drop lands in the tail of a poll cycle,
+    // and a repeat connect() does when its refused attempt is retried after a
+    // drop. A dial during teardown has the teardown's own exemption instead.
+    // Charged before the advance below, so that advance can refuse a generation
+    // it would otherwise overwrite silently.
     const cause: LossCause = replacedLiveSession
       ? "deliberate"
       : this.session.isTearingDown
