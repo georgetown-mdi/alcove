@@ -657,7 +657,7 @@ describe("the verdict", () => {
   test("says whether every relay works, or at least one", () => {
     expect(exchangeRelayCheckVerdict([works])).toBe("Every relay works.");
     expect(exchangeRelayCheckVerdict([works, refused])).toBe(
-      "At least one relay works, so the exchange can connect through it. " +
+      "At least one relay works from this computer. " +
         "The steps below fix the others.",
     );
   });

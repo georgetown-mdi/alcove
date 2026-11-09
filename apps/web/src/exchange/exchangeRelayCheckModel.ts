@@ -473,7 +473,7 @@ export function exchangeRelayCheckVerdict(
   if (working === lines.length) return "Every relay works.";
   if (working > 0)
     return (
-      "At least one relay works, so the exchange can connect through it. " +
+      "At least one relay works from this computer. " +
       "The steps below fix the others."
     );
   return (
