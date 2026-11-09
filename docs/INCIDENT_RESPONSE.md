@@ -1,7 +1,7 @@
 ---
 title: "Security Incident Response Runbook"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-07"
+last_reviewed: "2026-11-09"
 ---
 
 # Security incident response runbook
@@ -188,7 +188,7 @@ After a deploy-token incident, rotate the token first ([Rotate a leaked credenti
 
 1. **Roll production back to the last deploy with a signed manifest.** Re-run the `pages_deploy.yaml` run on `main` that deployed the last build known good. The re-run deploys that run's build to production, the demo site's with it, and publishes that build's signed manifest ([RELEASES.md](RELEASES.md#the-manifest-of-a-main-deploy)). A `release.yaml` run does not serve here: it uploads only while `main` holds no commit its tag's commit lacks ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)), so once `main` has moved past the tag, its re-run deploys nothing. Where GitHub no longer offers that run's re-run, revert the cause on `staging` and promote `main`: the push deploys a build of the reverted commit, with a signed manifest of its own.
 2. **Take the cause out of `main`.** The next push to `main` deploys its tip, so after a re-run the cause is reverted on `staging` before the next promotion. Until the revert is on `main`, push no release tag: `release.yaml` redeploys production from a tag on the newest release line whose commit `main` has not moved past ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)).
-3. **Roll back the staging previews and the project site** by reverting the cause on `staging`, and for the project site promoting `main`: a push redeploys each ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages), [The project site](DEPLOYMENT.md#the-project-site)). Neither has a signed manifest, so neither has a signed deploy to roll back to.
+3. **Roll back the staging previews and the project site.** Revert the cause on `staging`: a push redeploys each preview ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages), [The project site](DEPLOYMENT.md#the-project-site)). A push to `main` does not redeploy the project site, so run the "Publish site" workflow from `main` with its ref set to a known-good commit, or to the reverted `main` ([RELEASES.md](RELEASES.md#11-publish-the-project-site)). Neither has a signed manifest, so neither has a signed deploy to roll back to.
 4. **Delete the deployments that serve the affected build.** Every upload stays served at its own address, `<hash>.<project>.pages.dev`, after a later one replaces it, so a rollback alone leaves the affected build reachable there. From a checkout, with the locked deploy tool and a token in `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` set:
 
    ```sh

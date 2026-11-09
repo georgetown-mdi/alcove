@@ -350,7 +350,7 @@ A push to `main` does not update the project site at `data-bridge.org`. Its prod
 2. Run the workflow from `main` with its ref left at `main`: `gh workflow run site_publish.yaml --ref main`, or "Run workflow" on the Actions page.
 3. Check the run: the build job's summary lists the files that changed since the last publish, and the tag job's summary names the commit `site-published` points at.
 
-The same workflow publishes at any other time, for a documentation fix between releases; its ref input takes a branch, a tag, or a commit. Run it only from `main`: a run from another branch builds nothing.
+The same workflow publishes at any other time, for a documentation fix between releases. Its ref input takes a branch, a tag, or a commit, and the commit it names must be on `main` or `staging`: the build job fails on any other, such as a pull request's head or an unmerged branch, so merge the change first. Run it only from `main`: a run from another branch fails before it builds, and publishes nothing.
 
 ### 12. Reconverge staging after an older-line hotfix
 

@@ -1,7 +1,7 @@
 name: Publish site
 
-# Builds the project site from a chosen ref, `main` unless another is named,
-# uploads it as the production deployment of the site's Cloudflare Pages
+# Builds the project site from a chosen ref on `main` or `staging`, `main`
+# unless another is named, uploads it as the production deployment of the site's Cloudflare Pages
 # project, and moves the PUBLISHED_TAG tag to the commit it built. Run by hand
 # only; a push uploads nothing but the staging preview (site_deploy.yaml). When
 # to run it and the review before it: docs/RELEASES.md, "Publish the project
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Branch, tag or commit to publish"
+        description: "Branch, tag or commit to publish, on main or staging"
         type: string
         required: true
         default: main
@@ -31,15 +31,23 @@ env:
 jobs:
   build:
     name: Build the project site
-    # Runs main's copy of this workflow only, the one Production admits.
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     outputs:
       artifactName: ${{ steps.artifact-name.outputs.artifactName }}
       commit: ${{ steps.commit.outputs.commit }}
     steps:
-      # The full history and tags, for the comparison with PUBLISHED_TAG.
+      # Production admits main's copy of this workflow only, so a run of
+      # another branch's copy fails here rather than finishing green.
+      - name: Refuse a run from a branch other than main
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "::error::Publish site ran from ${GITHUB_REF}, and it publishes only from main. Run it again from main and set its ref input to the commit to publish: gh workflow run site_publish.yaml --ref main -f ref=<commit>" >&2
+            exit 1
+          fi
+      # The full history, branches and tags: for the ancestry check against
+      # main and staging, and the comparison with PUBLISHED_TAG.
       - name: Checkout source code
         uses: actions/checkout@v7
         with:
@@ -56,6 +64,18 @@ jobs:
             exit 1
           fi
           echo "commit=${commit}" >>"$GITHUB_OUTPUT"
+      # Production's branch rule tests the workflow's ref, never the input, so
+      # this is what keeps a pull-request head or an unmerged branch off it.
+      - name: Refuse a commit outside main and staging
+        env:
+          COMMIT: ${{ steps.commit.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor "${COMMIT}" refs/remotes/origin/main &&
+            ! git merge-base --is-ancestor "${COMMIT}" refs/remotes/origin/staging; then
+            echo "::error::${COMMIT} is on neither main nor staging, and only a commit on one of them can be published. Merge the change, then publish a commit on main or staging." >&2
+            exit 1
+          fi
       # The same comparison docs/RELEASES.md has the publisher review first.
       - name: List the site changes since the last publish
         env:
@@ -174,15 +194,28 @@ jobs:
           echo "\`${PUBLISHED_TAG}\` points at ${COMMIT}." >>"$GITHUB_STEP_SUMMARY"
 
   # As in site_deploy.yaml: a job of its own, since it runs repository code.
+  # It runs main's checker, which an older published commit may lack, against
+  # the published commit's SECURITY.md, the one that build served.
   check-security-txt:
     name: Check the served security.txt
-    needs: deploy
+    needs: [build, deploy]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Take SECURITY.md from the published commit
+        env:
+          COMMIT: ${{ needs.build.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the build job's commit output is not 40 lowercase hex characters" >&2
+            exit 1
+          fi
+          git show "${COMMIT}:SECURITY.md" >SECURITY.md
       - name: Setup Node
         uses: actions/setup-node@v7
         with:

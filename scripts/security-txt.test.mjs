@@ -276,3 +276,36 @@ describe("each Pages upload", () => {
     },
   );
 });
+
+// The publish can deploy a commit older than main's checker, so the check runs
+// main's script against the SECURITY.md of the commit the site was built from.
+describe("the project site publish's security.txt check", () => {
+  const { jobs } = workflowDocument(repoRoot, SITE_PUBLISH_WORKFLOW);
+  const check = jobs["check-security-txt"];
+
+  it("compares against the published commit's SECURITY.md", () => {
+    expect([check.needs].flat()).toEqual(
+      expect.arrayContaining(["build", "deploy"]),
+    );
+    const steps = check.steps;
+    const checkout = steps.find((step) =>
+      (step.uses ?? "").startsWith("actions/checkout@"),
+    );
+    expect(checkout.with.ref).toBeUndefined();
+    expect(checkout.with["fetch-depth"]).toBe(0);
+    const takeIndex = steps.findIndex((step) =>
+      (step.run ?? "").includes("git show"),
+    );
+    expect(steps[takeIndex].env.COMMIT).toBe(
+      "${{ needs.build.outputs.commit }}",
+    );
+    expect(steps[takeIndex].run).toContain(
+      'git show "${COMMIT}:SECURITY.md" >SECURITY.md',
+    );
+    expect(takeIndex).toBeLessThan(
+      steps.findIndex(
+        (step) => step.run === "node scripts/check-served-security-txt.mjs",
+      ),
+    );
+  });
+});

@@ -91,7 +91,8 @@ function wranglerCommand(job) {
 }
 
 // site_publish.yaml is the one route to the site's production deployment: run
-// by hand, from main's copy of the workflow, for a chosen ref.
+// by hand, from main's copy of the workflow, for a chosen commit on main or
+// staging.
 describe("the project site's publish", () => {
   const publish = workflowDocument(repoRoot, SITE_PUBLISH_WORKFLOW);
   const { build, deploy, tag } = publish.jobs;
@@ -109,11 +110,55 @@ describe("the project site's publish", () => {
     });
   });
 
-  it("runs from main's copy of the workflow", () => {
-    expect(build.if).toBe("github.ref == 'refs/heads/main'");
-    expect([deploy.needs].flat()).toContain("build");
-    expect([tag.needs].flat()).toEqual(
-      expect.arrayContaining(["build", "deploy"]),
+  // A skipped build would skip every job after it and finish green.
+  it("fails a run from any branch but main before it checks anything out", () => {
+    expect(build.if).toBeUndefined();
+    const [guard] = build.steps;
+    expect(guard.uses).toBeUndefined();
+    expect(guard.run).toContain(
+      'if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then',
+    );
+    expect(guard.run).toMatch(/::error::.*Run it again from main/);
+    expect(guard.run).toMatch(/\n\s*exit 1\n/);
+    for (const [id, job] of Object.entries(publish.jobs)) {
+      if (id === "build") continue;
+      expect([job.needs].flat(), id).toContain("build");
+    }
+    expect([tag.needs].flat()).toContain("deploy");
+  });
+
+  // Production's branch rule tests the workflow's ref, not the ref input.
+  it("refuses a commit on neither main nor staging before it builds", () => {
+    const stepIndex = (predicate) => {
+      const index = build.steps.findIndex(predicate);
+      expect(index).toBeGreaterThanOrEqual(0);
+      return index;
+    };
+    const checkoutIndex = stepIndex((step) =>
+      (step.uses ?? "").startsWith("actions/checkout@"),
+    );
+    expect(build.steps[checkoutIndex].with["fetch-depth"]).toBe(0);
+    const ancestryIndex = stepIndex((step) =>
+      (step.run ?? "").includes("git merge-base --is-ancestor"),
+    );
+    const ancestry = build.steps[ancestryIndex];
+    expect(ancestry.env.COMMIT).toBe("${{ steps.commit.outputs.commit }}");
+    for (const branch of ["main", "staging"]) {
+      expect(ancestry.run).toContain(
+        `! git merge-base --is-ancestor "\${COMMIT}" refs/remotes/origin/${branch}`,
+      );
+    }
+    expect(ancestry.run).toMatch(
+      /::error::.*publish a commit on main or staging/,
+    );
+    expect(ancestry.run).toMatch(/\n\s*exit 1\n/);
+
+    expect(checkoutIndex).toBeLessThan(ancestryIndex);
+    expect(ancestryIndex).toBeLessThan(
+      stepIndex((step) => (step.uses ?? "").startsWith("./.github/actions/")),
+    );
+    expect(ancestryIndex).toBeLessThan(
+      stepIndex((step) => step.run === "npm run site:build"),
     );
   });
 
