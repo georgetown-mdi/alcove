@@ -6,8 +6,8 @@
 // compile here until bound.
 
 import {
-  failureCauseSentence,
   PARTNER_STOPPED_RESPONDING_REMEDY,
+  failureCauseSentence,
   relayRegistrarUnreachableRemedy,
 } from "@alcove/core";
 

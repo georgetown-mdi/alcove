@@ -145,9 +145,7 @@ describe("the failure-cause catalog", () => {
       "The relay registrar at relay.example.org port 8443 closed the connection without answering (ECONNRESET).",
       "The relay registrar at relay.example.org port 8443 did not answer within 15 seconds.",
     ]);
-    expect(
-      failureCauseSentence(SAMPLES["partner-stopped-responding"][0]),
-    ).toBe(
+    expect(failureCauseSentence(SAMPLES["partner-stopped-responding"][0])).toBe(
       "Your partner stopped responding during matching: nothing arrived from them for 2 minutes.",
     );
   });
