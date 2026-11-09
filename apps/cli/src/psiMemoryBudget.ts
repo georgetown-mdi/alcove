@@ -193,6 +193,10 @@ function gigabytes(bytes: number): string {
   return `${(bytes / 1e9).toFixed(2)} GB`;
 }
 
+function roundedToHundredthGigabyte(bytes: number): number {
+  return Math.round(bytes / 1e7) * 1e7;
+}
+
 const LIMIT_NAMES: Record<PsiMemoryAssessment["limitedBy"], string> = {
   heap: "the PSI engine's heap limit",
   host: "this host's memory",
@@ -400,11 +404,11 @@ export function checkSinglePassPartnerMemory(params: {
       `could take up to ${gigabytes(partnerShareBytes)} of memory` +
       (ownSetupBytes > 0
         ? `, plus ${gigabytes(ownSetupBytes)} for your own masked values, ` +
-          `${gigabytes(needBytes)} in all`
+          `${gigabytes(roundedToHundredthGigabyte(partnerShareBytes) + roundedToHundredthGigabyte(ownSetupBytes))} in all`
         : "") +
       `, but this machine has ${gigabytes(availableBytes)} available now`;
     const split =
-      ownSetupBytes > 0
+      ownSetupBytes > 0 || outboundBytes > inboundBytes
         ? `split your input, or ask your partner to split theirs, into smaller ` +
           `files and run one exchange for each`
         : `ask your partner to split their input into smaller files and run ` +
