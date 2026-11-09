@@ -33,10 +33,10 @@ import { resolveExchangeSpecRefs } from "../util/atSignRefs";
 
 import {
   describeConfigSchemaError,
-  errnoClause,
   readConfigDocument,
   type ConfigDocumentFailure,
 } from "./loaders";
+import { errnoClause } from "./persist";
 
 // The recurring-exchange configuration loader: `alcove exchange` reads its
 // configuration and key file through here, and so do `doctor` and

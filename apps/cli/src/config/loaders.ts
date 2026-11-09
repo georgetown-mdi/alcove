@@ -29,6 +29,7 @@ import {
   configFileLabel,
   configFileRefusal,
   editConfigInPlace,
+  errnoClause,
   normalizeKeyPathSpelling,
 } from "./persist";
 
@@ -110,11 +111,6 @@ function configDocumentRefusal(
         return failure.error;
     }
   };
-}
-
-/** An errno code as a read-failure message states it: " (EACCES)", or nothing. */
-export function errnoClause(code: string | undefined): string {
-  return code === undefined ? "" : ` (${code})`;
 }
 
 /**

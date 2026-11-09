@@ -77,7 +77,7 @@ partner to.
 ## The three readers
 
 **The CLI's config load** (`apps/cli/src/config/loaders.ts`, `loadConfig` in
-`apps/cli/src/commands/exchange.ts`). It honors what it reads or refuses loudly:
+`apps/cli/src/config/exchangeConfig.ts`). It honors what it reads or refuses loudly:
 an algorithm, a deduplicate shape, or a signing mode this build does not implement
 is already its own refusal, and a runtime-injected `authentication` field is warned
 about by name rather than dropped. Four divergences, each a refusal at load

@@ -34,7 +34,10 @@ import {
   handler as acceptHandler,
   validateAccept,
 } from "../../../src/commands/accept";
-import { saveConfig } from "../../../src/config";
+import {
+  persistExpectedPartnerDeduplicate,
+  saveConfig,
+} from "../../../src/config";
 import { resolveSigningPersist } from "../../../src/commands/exchange";
 import {
   loadConfig,
@@ -584,6 +587,25 @@ for (const [command, read] of CONFIG_READERS)
       expect(rendered).not.toContain(escaped(filePath));
     },
   );
+
+// The in-place edit reads the same file, and fails the same way: a directory
+// standing where the file should be reads as EISDIR, whose fs message ("EISDIR:
+// illegal operation on a directory, read") would not mark the path at all.
+test("an in-place config edit that cannot read the file names the path once, with the errno code", async () => {
+  const filePath = backslashedPath("a-directory");
+  fs.mkdirSync(filePath);
+
+  const thrown = await raised(() =>
+    persistExpectedPartnerDeduplicate(filePath, true),
+  );
+
+  expect(markedFragments(thrown)).toEqual([filePath]);
+  expect((thrown as Error).message.split(filePath)).toHaveLength(2);
+  const rendered = sanitizeErrorForDisplay(thrown);
+  expect(rendered).toContain(`${filePath} could not be read (EISDIR)`);
+  expect(rendered).not.toContain(escaped(filePath));
+  expect(rendered).not.toContain("illegal operation on a directory");
+});
 
 // --- log and prompt lines ----------------------------------------------------
 

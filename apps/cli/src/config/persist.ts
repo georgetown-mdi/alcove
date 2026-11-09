@@ -44,8 +44,59 @@ export function configFileRefusal(
   configPath: string,
   rest: string,
 ): UsageError {
-  const message = messageWithOperatorText`config file ${operatorSuppliedText(configPath)} ${rest}`;
+  const message = configFileMessage(configPath, rest);
   return keepOperatorSuppliedText(new UsageError(message.text), message);
+}
+
+function configFileMessage(configPath: string, rest: string) {
+  return messageWithOperatorText`config file ${operatorSuppliedText(configPath)} ${rest}`;
+}
+
+/** An errno code as a read-failure message states it: " (EACCES)", or nothing. */
+export function errnoClause(code: string | undefined): string {
+  return code === undefined ? "" : ` (${code})`;
+}
+
+/**
+ * The refusal for a configuration file that cannot be read, keeping the errno
+ * `code` alone since the fs message repeats the path unmarked. A
+ * {@link UsageError} that a caller wrapping its own class around other
+ * failures can tell from the document refusals.
+ */
+export class ConfigReadError extends UsageError {
+  constructor(
+    message: string,
+    readonly code: string | undefined,
+  ) {
+    super(message);
+  }
+}
+
+/** Read the configuration file at `configPath`, or throw {@link ConfigReadError}. */
+function readConfigText(configPath: string): string {
+  try {
+    return fs.readFileSync(configPath, "utf8");
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    const message = configFileMessage(
+      configPath,
+      `could not be read${errnoClause(code)}`,
+    );
+    throw keepOperatorSuppliedText(
+      new ConfigReadError(message.text, code),
+      message,
+    );
+  }
+}
+
+/**
+ * What a caller that wraps its own error around a failure of
+ * {@link editConfigInPlace} quotes of it: the errno code alone for a read
+ * failure, whose message names the path the wrapper already names.
+ */
+function failureText(err: unknown): string {
+  if (err instanceof ConfigReadError) return err.code ?? "read failed";
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -60,9 +111,9 @@ export function configFileRefusal(
  * nothing is written, for a caller that checks or conditions the write
  * itself and then writes the returned text through {@link writeFileOwnerOnly}.
  *
- * Throws if the file cannot be read or parsed: every caller edits a file it
- * has just loaded, and a silent failure would leave the operator believing
- * the change was recorded.
+ * Throws if the file cannot be read ({@link ConfigReadError}) or parsed: every
+ * caller edits a file it has just loaded, and a silent failure would leave the
+ * operator believing the change was recorded.
  */
 export function editConfigInPlace(
   configPath: string,
@@ -70,7 +121,7 @@ export function editConfigInPlace(
   options: { write?: boolean } = {},
 ): string {
   const serialized = editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
+    readConfigText(configPath),
     configFileLabel(configPath),
     edit,
   );
@@ -293,12 +344,11 @@ export function persistPartnerFingerprint(
     // A UsageError (OperatorConfigError included) is already an operator-facing
     // refusal the document edit composed; anything else is the read or the
     // atomic replace, which reaches the operator only here.
-    if (err instanceof UsageError) throw err;
+    if (err instanceof UsageError && !(err instanceof ConfigReadError))
+      throw err;
     const message = messageWithOperatorText`${PARTNER_PIN_UNRECORDED_PREAMBLE}${operatorSuppliedText(
       configPath,
-    )} (${
-      err instanceof Error ? err.message : String(err)
-    }), so the run stops here. The partner's fingerprint is ${fingerprint}; before the next run, either ${PARTNER_FINGERPRINT_REMEDIES}.`;
+    )} (${failureText(err)}), so the run stops here. The partner's fingerprint is ${fingerprint}; before the next run, either ${PARTNER_FINGERPRINT_REMEDIES}.`;
     throw keepOperatorSuppliedText(
       new OperatorConfigError(message.text),
       message,
@@ -399,9 +449,7 @@ export function persistFilledPayloadReceive(
   } catch (err) {
     const message = messageWithOperatorText`the payload columns your partner declares it sends could not be recorded as linkage_terms.payload.receive in ${operatorSuppliedText(
       configPath,
-    )} (${
-      err instanceof Error ? err.message : String(err)
-    }), so the run stopped before any data moved. Make the file writable and run again, or list the columns you expect under linkage_terms.payload.receive yourself.`;
+    )} (${failureText(err)}), so the run stopped before any data moved. Make the file writable and run again, or list the columns you expect under linkage_terms.payload.receive yourself.`;
     throw keepOperatorSuppliedText(
       new OperatorConfigError(message.text),
       message,

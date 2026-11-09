@@ -40,6 +40,7 @@ export type {
 } from "./config/reconcileDiffs";
 export {
   assertPartnerFingerprintRecordable,
+  errnoClause,
   persistExpectedPartnerDeduplicate,
   persistFilledPayloadReceive,
   persistHostKeyFingerprint,
@@ -58,7 +59,6 @@ export {
   configLinkageSourceFrom,
   csvDelimiterForRun,
   describeConfigSchemaError,
-  errnoClause,
   loadConfigLinkageSource,
   loadConfigProvisionedSFTPConnection,
   loadConfigWebRTCConnection,

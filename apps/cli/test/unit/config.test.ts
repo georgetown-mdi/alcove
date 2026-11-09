@@ -1582,6 +1582,23 @@ describe("persistPartnerFingerprint", () => {
 });
 
 describe("persistPartnerFingerprint", () => {
+  test("names the fingerprint and the remedies when the config cannot be read, quoting the errno alone", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    fs.mkdirSync(configPath);
+    let caught: unknown;
+    try {
+      persistPartnerFingerprint(configPath, PARTNER_FP_A);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(OperatorConfigError);
+    const message = (caught as Error).message;
+    expect(message).toContain(`${configPath} (EISDIR), so the run stops here`);
+    expect(message).toContain(PARTNER_FP_A);
+    expect(message).toContain("mount the configuration writable");
+    expect(message).not.toContain("illegal operation");
+  });
+
   test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "names the fingerprint and the remedies when the write fails (skipped where a directory cannot be made read-only for its owner)",
     () => {
@@ -5512,7 +5529,6 @@ const CONFIG_REFUSALS: ReadonlyArray<
   [
     "a partner pin whose configuration file is not there to record it",
     (configPath) => persistPartnerFingerprint(configPath, PIN_FINGERPRINT),
-    "escaped",
   ],
   [
     "a stated-send write to a configuration that cannot be parsed",
