@@ -105,7 +105,7 @@ const DROPPED = Symbol("dropped still-working frame");
  * the partner-silence bound; the end of this party's PSI phase clears it.
  * Each time the interval passes, still-working frames at the head of the
  * inbound queue are read and dropped; one behind a data frame waits for the
- * reader, held by the queue's message-count and byte bounds.
+ * reader, charged against the queue's message-count and byte bounds.
  */
 export function stillWorkingLayer(
   conn: MessageConnection,

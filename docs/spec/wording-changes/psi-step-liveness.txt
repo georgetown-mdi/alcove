@@ -61,7 +61,6 @@
 - - -> At each interval of its own the party reads and drops the frames at the head of the queue whose received length is a still-working frame's, and stops at the first frame of another length; a frame of that length that is not one is held and read next, in order.
 - - -> Still-working frames queued behind a data frame are not drained: they wait until the consumer reads that frame.
 - - -> No bound is added or raised for them: each is charged against the count bound, 1024 messages, and the byte bound above like any frame, and a frame past either fails the connection with the inbound-buffer-overflow `protocol` error.
-- - -> The partner sends a still-working frame only when 30 s has passed with nothing sent, so they reach the count bound only after more than 8 hours with a data frame unread at the head of the queue.
 - - -> Partner silence | 2 min (`PARTNER_SILENCE_BOUND_MS`) | A parked receive with nothing arriving, each part of a frame restarting it, from the partner's first still-working frame to the end of this party's PSI phase. A working value not yet measured in a real browser
 - - -> Still-working interval | 30 s (`STILL_WORKING_INTERVAL_MS`) | The longest this party goes without sending through its PSI phase. A working value not yet measured in a real browser
 - - -> So that a step of any length is waited through, and a partner that stops is found within minutes, each party sends still-working frames through its PSI phase ([PROTOCOL.md](PROTOCOL.md#the-still-working-frame)), and the waiting party ends the run when they stop.

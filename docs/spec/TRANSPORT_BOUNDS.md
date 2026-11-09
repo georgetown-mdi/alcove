@@ -490,7 +490,6 @@ Through the PSI phase the partner sends a still-working frame at least every 30 
 At each interval of its own the party reads and drops the frames at the head of the queue whose received length is a still-working frame's, and stops at the first frame of another length; a frame of that length that is not one is held and read next, in order.
 Still-working frames queued behind a data frame are not drained: they wait until the consumer reads that frame.
 No bound is added or raised for them: each is charged against the count bound, 1024 messages, and the byte bound above like any frame, and a frame past either fails the connection with the inbound-buffer-overflow `protocol` error.
-The partner sends a still-working frame only when 30 s has passed with nothing sent, so they reach the count bound only after more than 8 hours with a data frame unread at the head of the queue.
 
 **The single-pass reply in parts.**
 Single-pass message 2 in parts is its setup, response and tail sent back to back, with no receive between ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)).

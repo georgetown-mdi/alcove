@@ -46,6 +46,7 @@ import {
   type PsiEngineMode,
 } from "../../src/psi/psiEngine";
 import { psiElementBounds } from "../../src/psi/singlePassSizing";
+import type { StandardizedKeyIterable } from "../../src/standardization";
 import { prepared } from "../utils/support";
 
 const HOUR_MS = 3_600_000;
@@ -101,6 +102,72 @@ function settledOf(promise: Promise<unknown>): {
     },
   );
   return { state };
+}
+
+// A PSI phase whose engine's dispose throws `disposeFailure`.
+async function runPhaseOnThrowingDispose(
+  layer: StillWorkingLayer,
+  linkageKeyIterables: StandardizedKeyIterable[],
+  disposeFailure: Error,
+): ReturnType<typeof runPsiPhase> {
+  const psiLibrary = await PSI();
+  const own = prepared("Party A", [{ first_name: "ann" }]);
+  // A refused progress observer makes the participant's constructor throw,
+  // so the phase ends before any data frame.
+  const engineFor = (
+    role: "starter" | "joiner",
+    id: string,
+    mode: PsiEngineMode,
+  ): PsiEngine => {
+    const inner = new InProcessPsiEngine(psiLibrary, role, id, mode);
+    return new Proxy(inner, {
+      get(target, property) {
+        if (property === "observeProcessedElements")
+          return () => {
+            throw new Error("progress observer refused");
+          };
+        if (property === "dispose")
+          return () => {
+            target.dispose();
+            throw disposeFailure;
+          };
+        const member: unknown = Reflect.get(target, property, target);
+        return typeof member === "function" ? member.bind(target) : member;
+      },
+    });
+  };
+
+  return runPsiPhase({
+    conn: layer.conn,
+    psiLibrary,
+    psiEngineFactory: engineFor,
+    isReceiver: false,
+    countOnly: false,
+    verbosity: 0,
+    elementBounds: psiElementBounds(
+      { effectiveKeyCount: 1, recordCount: 1 },
+      { effectiveKeyCount: 1, recordCount: 1 },
+    ),
+    onPsiProgress: () => {},
+    roundsSentInParts: true,
+    localReceiveCeiling: MAX_PSI_DECODE_ELEMENTS,
+    partnerReceiveCeiling: MAX_PSI_DECODE_ELEMENTS,
+    stillWorking: layer,
+    linkageKeyIterables,
+    linkageTerms: own.linkageTerms,
+    partnerTerms: own.linkageTerms,
+    rowCount: 1,
+    declaredRecordCount: 1,
+    partnerRecordCount: 1,
+    cardinality: "one-to-one",
+    singlePassBounds: {
+      partnerRecordCount: 1,
+      keyWidths: [],
+      localFanOutFactor: 1,
+    },
+    withholdSenderTable: false,
+    onStage: () => {},
+  });
 }
 
 describe("sending", () => {
@@ -188,73 +255,36 @@ describe("sending", () => {
   });
 
   test("a party sends no still-working frame once its PSI phase ends on an engine whose dispose throws", async () => {
-    const psiLibrary = await PSI();
     vi.useFakeTimers();
     const { conn, sent } = recordingConnection();
     const layer = layerOver(conn);
-    const own = prepared("Party A", [{ first_name: "ann" }]);
     const disposeFailure = new Error("dispose failed");
-    // A refused progress observer makes the participant's constructor throw,
-    // so the phase ends before any data frame.
-    const engineFor = (
-      role: "starter" | "joiner",
-      id: string,
-      mode: PsiEngineMode,
-    ): PsiEngine => {
-      const inner = new InProcessPsiEngine(psiLibrary, role, id, mode);
-      return new Proxy(inner, {
-        get(target, property) {
-          if (property === "observeProcessedElements")
-            return () => {
-              throw new Error("progress observer refused");
-            };
-          if (property === "dispose")
-            return () => {
-              target.dispose();
-              throw disposeFailure;
-            };
-          const member: unknown = Reflect.get(target, property, target);
-          return typeof member === "function" ? member.bind(target) : member;
-        },
-      });
-    };
 
-    const phase = runPsiPhase({
-      conn: layer.conn,
-      psiLibrary,
-      psiEngineFactory: engineFor,
-      isReceiver: false,
-      countOnly: false,
-      verbosity: 0,
-      elementBounds: psiElementBounds(
-        { effectiveKeyCount: 1, recordCount: 1 },
-        { effectiveKeyCount: 1, recordCount: 1 },
-      ),
-      onPsiProgress: () => {},
-      roundsSentInParts: true,
-      localReceiveCeiling: MAX_PSI_DECODE_ELEMENTS,
-      partnerReceiveCeiling: MAX_PSI_DECODE_ELEMENTS,
-      stillWorking: layer,
-      linkageKeyIterables: [],
-      linkageTerms: own.linkageTerms,
-      partnerTerms: own.linkageTerms,
-      rowCount: 1,
-      declaredRecordCount: 1,
-      partnerRecordCount: 1,
-      cardinality: "one-to-one",
-      singlePassBounds: {
-        partnerRecordCount: 1,
-        keyWidths: [],
-        localFanOutFactor: 1,
-      },
-      withholdSenderTable: false,
-      onStage: () => {},
-    });
-    await expect(phase).rejects.toBe(disposeFailure);
+    await expect(
+      runPhaseOnThrowingDispose(layer, [], disposeFailure),
+    ).rejects.toBe(disposeFailure);
 
     const atEnd = sent.length;
     await vi.advanceTimersByTimeAsync(10 * STILL_WORKING_INTERVAL_MS);
     expect(sent).toHaveLength(atEnd);
+  });
+
+  test("a PSI phase whose engine's dispose throws still closes each round's row reporting", async () => {
+    const { conn } = recordingConnection();
+    const layer = layerOver(conn);
+    const disposeFailure = new Error("dispose failed");
+    const closeRowReporting = vi.fn();
+    const rounds = [{ closeRowReporting }, { closeRowReporting }];
+
+    await expect(
+      runPhaseOnThrowingDispose(
+        layer,
+        rounds as unknown as StandardizedKeyIterable[],
+        disposeFailure,
+      ),
+    ).rejects.toBe(disposeFailure);
+
+    expect(closeRowReporting).toHaveBeenCalledTimes(rounds.length);
   });
 
   test("a connection whose parties exchange no still-working frames takes no layer", () => {

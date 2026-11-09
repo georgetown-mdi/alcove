@@ -267,15 +267,16 @@ export async function runPsiPhase(p: {
     try {
       if (participant !== undefined) participant.dispose();
       else engine.dispose();
+    } finally {
       // Every round has been read as far as it ever will be, so each one states
       // the drop and wide-row totals its per-row lines stopped short of. Inside
       // the finally so a round that reached either sink before the PSI phase
-      // threw still reports it, and after the disposal, which frees key material
-      // and is not to be risked on a diagnostic line. closeRowReporting never
-      // throws, so this teardown's own exception -- the failure the operator
-      // needs -- is never at risk of being replaced by a diagnostic sink's.
+      // threw, or whose disposal threw, still reports it, and after the
+      // disposal, which frees key material and is not to be risked on a
+      // diagnostic line. closeRowReporting never throws, so this teardown's own
+      // exception -- the failure the operator needs -- is never at risk of being
+      // replaced by a diagnostic sink's.
       for (const round of linkageKeyIterables) round.closeRowReporting();
-    } finally {
       await stillWorking?.endPhase();
     }
   }

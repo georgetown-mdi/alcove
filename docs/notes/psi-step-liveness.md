@@ -76,7 +76,7 @@ What the figures decide:
   Before the bound arms, and after this party's phase ends, the whole-frame budget alone applies; a still-working frame still arriving then restarts it.
 - **Queued still-working frames are dropped from the head of the queue.**
   A party running its own operation does not receive, so the partner's frames would otherwise queue.
-  On each interval, the layer reads and drops the still-working frames at the head of the queue, picking them out by their wire length before reading; one behind a data frame waits for the reader, held by the inbound queue's message-count and byte bounds.
+  On each interval, the layer reads and drops the still-working frames at the head of the queue, picking them out by their wire length before reading; one behind a data frame waits for the reader, charged against the inbound queue's message-count and byte bounds.
   A queued frame of that length that is not one is held and handed to the next read, in order.
   So the inbound queue's count and byte bounds are unchanged, and no operation length reaches them.
 - **Where it is refused.**
