@@ -299,7 +299,7 @@ export function ManagedRelayRegistration({
           disabled={busy}
         />
         <Checkbox
-          label="Replace the key the registrar holds for this exchange id"
+          label="Replace the key the relay holds for this exchange"
           checked={replace}
           onChange={(event) => setReplace(event.currentTarget.checked)}
           disabled={busy || ownerToken === ""}

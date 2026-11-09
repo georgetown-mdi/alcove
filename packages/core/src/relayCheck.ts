@@ -475,15 +475,6 @@ export function isWebSocketRelayRefusal(code: number): boolean {
   return WEBSOCKET_RELAY_REFUSALS.has(code);
 }
 
-/**
- * What the WebSocket relay's refusal of a hello with `code` means, as a
- * check's headline states it; undefined for a code that is not such a
- * refusal ({@link isWebSocketRelayRefusal}).
- */
-export function webSocketRelayRefusalClause(code: number): string | undefined {
-  return WEBSOCKET_RELAY_REFUSALS.get(code);
-}
-
 /** The closed fields of one check of a `relay` verdict, as `--json` has them. */
 export interface RelayCheckFields {
   id: string;

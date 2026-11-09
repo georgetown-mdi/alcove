@@ -19,15 +19,11 @@ export const INVITER_RELAY_CHECK_INTRO =
   "Check whether the WebSocket relays accept this exchange. This uses " +
   "connections this page already has open and contacts nothing new.";
 
-/** A WebSocket relay holding the run's socket after its hello. */
-export const INVITER_RELAY_WAITING_SUMMARY =
-  "the relay accepted this exchange's proof, and this page is waiting " +
-  "there for your partner.";
+/** The status of a WebSocket relay holding the run's socket after its hello. */
+export const INVITER_RELAY_WAITING_STATUS = "Waiting for your partner";
 
-/** The verdict where at least one relay accepts the exchange. */
-export const INVITER_RELAY_CHECK_WORKS_VERDICT =
-  "A relay accepts this exchange from this page. Your partner's side is " +
-  "not checked.";
+/** The verdict where at least one relay holds the run's socket. */
+export const INVITER_RELAY_CHECK_WAITING_VERDICT = "Waiting for your partner.";
 
 /** The verdict where no relay accepts the exchange. */
 export const INVITER_RELAY_CHECK_FAILS_VERDICT =
@@ -58,9 +54,9 @@ export const INVITER_RELAY_ACTIONS = {
   slowPath:
     "Check the network path to the relay, including any proxy, then choose " +
     "Replace this invitation.",
-  keyTable:
-    "Ask the relay's operator to check its key table, then choose Replace " +
-    "this invitation.",
+  operator:
+    "Ask whoever runs the relay to check it, then choose Replace this " +
+    "invitation.",
   notReachedTrying:
     "Check that this computer can reach the relay. This page keeps trying, " +
     "so check again afterwards.",
@@ -152,7 +148,7 @@ export function inviterRelayCheckVerdict(
   lines: ReadonlyArray<ExchangeRelayCheckLineShown>,
 ): string {
   return lines.some((line) => line.works)
-    ? INVITER_RELAY_CHECK_WORKS_VERDICT
+    ? INVITER_RELAY_CHECK_WAITING_VERDICT
     : INVITER_RELAY_CHECK_FAILS_VERDICT;
 }
 
@@ -194,7 +190,7 @@ function webSocketLine(
     return {
       url: sanitizeForDisplay(url),
       works: true,
-      summary: INVITER_RELAY_WAITING_SUMMARY,
+      status: INVITER_RELAY_WAITING_STATUS,
     };
   return {
     ...exchangeRelayCheckLineShown(
@@ -242,7 +238,7 @@ function webSocketAction(
         case 1001:
           return actions.replaceLater;
         case 1011:
-          return actions.keyTable;
+          return actions.operator;
         default:
           return relay.own ? actions.correct : actions.replace;
       }

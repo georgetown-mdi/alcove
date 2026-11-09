@@ -155,8 +155,8 @@ export function relayRegistrationPendingLine(
       `Relay key registration unconfirmed since ${since}: the registrar did ` +
       "not confirm the key of the secret the re-invite made, and no run can " +
       "register it. Enroll the exchange again with the relay-owner token " +
-      "under Relay registration, choosing to replace the key the registrar " +
-      "holds."
+      "under Relay registration, ticking Replace the key the relay holds " +
+      "for this exchange."
     );
   return (
     `Relay key registration pending since ${since}; the next run through ` +

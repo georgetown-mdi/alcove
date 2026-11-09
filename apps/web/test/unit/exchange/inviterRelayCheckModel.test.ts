@@ -12,8 +12,8 @@ import {
   INVITER_RELAY_ACTIONS,
   INVITER_RELAY_CHECK_FAILS_VERDICT,
   INVITER_RELAY_CHECK_INTRO,
-  INVITER_RELAY_CHECK_WORKS_VERDICT,
-  INVITER_RELAY_WAITING_SUMMARY,
+  INVITER_RELAY_CHECK_WAITING_VERDICT,
+  INVITER_RELAY_WAITING_STATUS,
   inviterRelayCheckAt,
   inviterRelayCheckShown,
 } from "../../../src/exchange/inviterRelayCheckModel.js";
@@ -213,7 +213,7 @@ describe("while it runs", () => {
       {
         url: OWN_WEBSOCKET,
         works: true,
-        summary: INVITER_RELAY_WAITING_SUMMARY,
+        status: INVITER_RELAY_WAITING_STATUS,
       },
     ]);
   });
@@ -229,13 +229,13 @@ describe("each result", () => {
     const waiting = (url: string) => ({
       url,
       works: true,
-      summary: INVITER_RELAY_WAITING_SUMMARY,
+      status: INVITER_RELAY_WAITING_STATUS,
     });
     expect(result.lines).toEqual([
       waiting(OWN_WEBSOCKET),
       waiting(DEFAULT_WEBSOCKET),
     ]);
-    expect(result.verdict).toBe(INVITER_RELAY_CHECK_WORKS_VERDICT);
+    expect(result.verdict).toBe(INVITER_RELAY_CHECK_WAITING_VERDICT);
   });
 
   test("a paired socket works", () => {
@@ -252,7 +252,7 @@ describe("each result", () => {
       {
         url: OWN_WEBSOCKET,
         works: true,
-        summary: INVITER_RELAY_WAITING_SUMMARY,
+        status: INVITER_RELAY_WAITING_STATUS,
       },
     ]);
   });
@@ -334,7 +334,7 @@ describe("each result", () => {
     ).toEqual({
       url: OWN_WEBSOCKET,
       works: true,
-      summary: INVITER_RELAY_WAITING_SUMMARY,
+      status: INVITER_RELAY_WAITING_STATUS,
     });
   });
 
@@ -421,7 +421,7 @@ describe("what the share screen says to do", () => {
     ["own", 4007, OWN_ONLY, [4007], refusedEnded, actions.slowPath],
     ["own", 4008, OWN_ONLY, [4008], refusedEnded, actions.replaceLater],
     ["own", 1001, OWN_ONLY, [1001], refusedEnded, actions.replaceLater],
-    ["own", 1011, OWN_ONLY, [1011], refusedEnded, actions.keyTable],
+    ["own", 1011, OWN_ONLY, [1011], refusedEnded, actions.operator],
     ["own", 4001, OWN_ONLY, [4001], refusedEnded, actions.correct],
     ["this site's", 4001, DEFAULT_ONLY, [4001], refusedEnded, actions.replace],
   ] as const)(
@@ -460,13 +460,9 @@ describe("what the share screen says to do", () => {
   });
 
   test("the share screen's words", () => {
-    expect(INVITER_RELAY_WAITING_SUMMARY).toBe(
-      "the relay accepted this exchange's proof, and this page is waiting " +
-        "there for your partner.",
-    );
-    expect(INVITER_RELAY_CHECK_WORKS_VERDICT).toBe(
-      "A relay accepts this exchange from this page. Your partner's side is " +
-        "not checked.",
+    expect(INVITER_RELAY_WAITING_STATUS).toBe("Waiting for your partner");
+    expect(INVITER_RELAY_CHECK_WAITING_VERDICT).toBe(
+      "Waiting for your partner.",
     );
     expect(INVITER_RELAY_CHECK_FAILS_VERDICT).toBe(
       "No WebSocket relay accepts this exchange from this page. Follow the steps below.",
@@ -492,9 +488,9 @@ describe("what the share screen says to do", () => {
       slowPath:
         "Check the network path to the relay, including any proxy, then " +
         "choose Replace this invitation.",
-      keyTable:
-        "Ask the relay's operator to check its key table, then choose " +
-        "Replace this invitation.",
+      operator:
+        "Ask whoever runs the relay to check it, then choose Replace this " +
+        "invitation.",
       notReachedTrying:
         "Check that this computer can reach the relay. This page keeps " +
         "trying, so check again afterwards.",
@@ -520,6 +516,48 @@ describe("what the share screen says to do", () => {
     for (const action of Object.values(actions))
       if (!waitsOnTheRun.includes(action))
         expect(action).toContain(REPLACE_INVITATION_LABEL);
+  });
+
+  test("a remedy reaches the read-only Connection settings only through Replace this invitation", () => {
+    for (const action of Object.values(actions)) {
+      const settingsAt = action.indexOf("Connection settings");
+      if (settingsAt === -1) continue;
+      const replaceAt = action.indexOf(REPLACE_INVITATION_LABEL);
+      expect(replaceAt).toBeGreaterThanOrEqual(0);
+      expect(replaceAt).toBeLessThan(settingsAt);
+    }
+  });
+
+  test("every line it can show names no internal term, and each remedy is the share screen's", () => {
+    const shareActions: ReadonlyArray<string> = Object.values(actions);
+    const lines = [
+      ...[4003, 4004, 4005, 4007, 4008, 1001, 1011, 4001].flatMap((code) =>
+        [OWN_ONLY, DEFAULT_ONLY].flatMap((hosts) => [
+          lineAfter(hosts, [code]),
+          lineAfter(hosts, [code], refusedEnded),
+          lineAfter(hosts, [code, code], refusedEnded),
+        ]),
+      ),
+      ...[OWN_ONLY, DEFAULT_ONLY].flatMap((hosts) => [
+        lineAfter(hosts, [1006]),
+        lineAfter(hosts, [1006], ENDED),
+        lineAfter(hosts, [], new ConnectionError("bad", "usage")),
+        lineAfter(hosts, [], new ConnectionError("bad", "protocol")),
+        lineAfter(hosts, [4006]),
+      ]),
+    ];
+    const { watch } = watchAt();
+    watch.onDefaultRelayEnrollment({ cause: "other" });
+    watch.relayOptions(OWN_WEBSOCKET).onHelloSent?.();
+    lines.push(...done(checkAt(watch, HELLO_ANSWER_WAIT_MS)).lines);
+    for (const line of lines) {
+      if (line.action !== undefined)
+        expect(shareActions).toContain(line.action);
+      for (const text of [line.status, line.summary, line.meaning, line.action])
+        expect(text ?? "").not.toMatch(
+          /[Rr]egistrar|[Ee]xchange id|[Pp]roof|close code|alcove /,
+        );
+    }
   });
 });
 

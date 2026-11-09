@@ -57,8 +57,8 @@ export type RelayRegistrationFailure = Exclude<
 /** The step every lost-key outcome names. */
 export const MANAGED_RELAY_REENROLLMENT_STEP =
   "enroll the exchange again with the relay-owner token under Relay " +
-  "registration on this exchange's page, choosing to replace the key the " +
-  "registrar holds";
+  "registration on this exchange's page, ticking Replace the key the relay " +
+  "holds for this exchange";
 
 /**
  * The registrar a run of `record` registers at: the one the record was
