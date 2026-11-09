@@ -84,7 +84,7 @@ function NoticesAlert({
   if (notices.length === 0) return null;
   return (
     <Alert
-      color="yellow"
+      color="warn"
       role="presentation"
       classNames={{ body: styles.wrapLongText }}
       icon={<IconAlertTriangle aria-hidden />}
@@ -122,7 +122,7 @@ export function EditedTermsNotice({
       </VisuallyHidden>
       {warning !== undefined && (
         <Alert
-          color="yellow"
+          color="warn"
           role="presentation"
           classNames={{ body: styles.wrapLongText }}
           icon={<IconAlertTriangle aria-hidden />}
@@ -226,7 +226,7 @@ export function MountedConfigurationCard({
       {state.status === "opened" && (
         <>
           <Alert
-            color="blue"
+            color="info"
             role="presentation"
             title={OPENED_TITLE}
             classNames={{ body: styles.wrapLongText }}
@@ -249,7 +249,7 @@ export function MountedConfigurationCard({
           {converted !== undefined && <Text size="sm">{converted}</Text>}
           {keyFile !== undefined && (
             <Alert
-              color="yellow"
+              color="warn"
               role="presentation"
               classNames={{ body: styles.wrapLongText }}
               icon={<IconAlertTriangle aria-hidden />}
@@ -277,7 +277,7 @@ export function MountedConfigurationCard({
       <NoticesAlert notices={notices} />
       {state.status === "refused" && (
         <Alert
-          color="red"
+          color="error"
           role="presentation"
           classNames={{ body: styles.wrapLongText }}
           icon={<IconAlertCircle aria-hidden />}

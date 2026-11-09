@@ -85,44 +85,36 @@ const PrimaryActionIcon = ActionIcon as unknown as ComponentType<{
 //    text) and variant="light" (1.4.11's 3:1, an uncustomized Mantine color).
 //    The focus ring and input border stay in the unit test. The Button label
 //    and ActionIcon glyph are also read hovered and pressed.
-//  - Resolver-owned tokens (theme.ts cssVariablesResolver): dimmed,
-//    placeholder, error, and the yellow/red/green light-variant status text.
-//    Each case pins the exact resolved token color as well as the AA floor,
-//    since a floor-only check would miss a token regressing to a default
-//    that happens to still clear the floor (as red's does). The status text
-//    is the one group the resolver overrides in light only: its dark cases
-//    pin what Mantine itself paints there, so the theme's claim that the
-//    dark arrangement needs no tuning is measured rather than asserted.
+//  - Status colours (the --app-* tokens theme.ts paints them from): dimmed,
+//    placeholder and error, each status as page text, and each status as an
+//    Alert on its tint. Each case pins the exact resolved token color as well
+//    as the AA floor, since a floor-only check would miss a token regressing
+//    to a default that happens to still clear the floor.
 
 const app = createAppMount();
 
-// Exact computed colours each token paints, pinned by the token cases below so a
-// case cannot pass on a coincidental value or a default that happens to clear the
-// floor. MUTED_TEXT (dimmed + placeholder) and ERROR_TEXT mirror theme.ts, which
-// tunes both in both schemes. STATUS_TEXT's light row mirrors theme.ts too; its
-// dark row is Mantine's own `{hue}-light-color` (the shade-0 near-white on the
-// darkened tint), which the resolver leaves alone -- pinned so a Mantine change to
-// that arrangement fails here rather than passing unmeasured.
-const MUTED_TEXT = {
-  light: "rgb(99, 107, 115)",
-  dark: "rgb(146, 150, 155)",
-} as const;
-const ERROR_TEXT = {
-  light: "rgb(201, 42, 42)",
-  dark: "rgb(255, 135, 135)",
-} as const;
+// Exact computed colour of each status token (styles/tokens.css), pinned by the
+// cases below so a case cannot pass on a coincidental value or a Mantine default
+// that happens to clear the floor.
 const STATUS_TEXT = {
   light: {
-    yellow: "rgb(146, 64, 14)",
-    red: "rgb(165, 17, 17)",
-    green: "rgb(34, 104, 58)",
+    success: "rgb(46, 110, 69)",
+    info: "rgb(11, 114, 129)",
+    warn: "rgb(138, 91, 6)",
+    error: "rgb(178, 58, 38)",
+    secondary: "rgb(86, 91, 87)",
   },
   dark: {
-    yellow: "rgb(255, 249, 219)",
-    red: "rgb(255, 245, 245)",
-    green: "rgb(235, 251, 238)",
+    success: "rgb(124, 199, 154)",
+    info: "rgb(63, 182, 201)",
+    warn: "rgb(217, 168, 96)",
+    error: "rgb(224, 137, 114)",
+    secondary: "rgb(163, 168, 159)",
   },
 } as const;
+const STATUSES = Object.keys(STATUS_TEXT.light) as Array<
+  keyof typeof STATUS_TEXT.light
+>;
 
 // The filled-primary fill at rest and under the pointer, per scheme. Light rests
 // on cyan-9 and hovers on theme.ts's FILLED_PRIMARY_HOVER (Mantine's own cyan-8
@@ -154,11 +146,13 @@ async function restingBackground(el: HTMLElement): Promise<string> {
   return getComputedStyle(el).backgroundColor;
 }
 
-/** sRGB channels of a computed `rgb(r, g, b)` / `rgba(...)` color string. */
+/** sRGB channels (0..255) of a computed `rgb(r, g, b)` / `rgba(...)` color
+ * string, or of the `color(srgb r g b)` form (0..1) a color-mix() computes to. */
 function channels(color: string): [number, number, number] {
-  const m = color.match(/-?\d+(\.\d+)?/g);
+  const m = color.match(/-?\d+(\.\d+)?(e-?\d+)?/g);
   if (!m || m.length < 3) throw new Error(`unparseable color: ${color}`);
-  return [Number(m[0]), Number(m[1]), Number(m[2])];
+  const scale = color.startsWith("color(srgb") ? 255 : 1;
+  return [Number(m[0]) * scale, Number(m[1]) * scale, Number(m[2]) * scale];
 }
 
 /** WCAG 2.1 relative luminance of a computed color string. The 0.03928 threshold is
@@ -432,7 +426,7 @@ describe("filled-primary contrast in each interaction state (WCAG 2.1 AA)", () =
 });
 
 describe("rendered resolver-owned token contrast (WCAG 2.1 AA)", () => {
-  // dimmed, error, and green page text sit on the app body surface; wrap the render
+  // dimmed, error, and status page text sit on the app body surface; wrap the render
   // in a container painted with --mantine-color-body so the measured background is
   // the real per-scheme body (white light / dark-7 dark), not a transparent ancestor.
   function bodySurface(node: ReactNode): ReactNode {
@@ -448,7 +442,7 @@ describe("rendered resolver-owned token contrast (WCAG 2.1 AA)", () => {
 
   for (const scheme of ["light", "dark"] as const) {
     test(`dimmed text is AA-legible (${scheme})`, async () => {
-      // c="dimmed" -> --mantine-color-dimmed, raised by the resolver in both schemes
+      // c="dimmed" -> --mantine-color-dimmed, the secondary token in both schemes
       // (Mantine's gray-6 / dark-2 default fails 4.5:1 on the body).
       app.render(
         bodySurface(
@@ -466,12 +460,12 @@ describe("rendered resolver-owned token contrast (WCAG 2.1 AA)", () => {
       const bg = getComputedStyle(surface).backgroundColor;
       // Pin the resolved token colour (proof the resolver reached the surface), then
       // the AA floor against the real body background.
-      expect(color).toBe(MUTED_TEXT[scheme]);
+      expect(color).toBe(STATUS_TEXT[scheme].secondary);
       expect(contrast(color, bg)).toBeGreaterThanOrEqual(4.5);
     });
 
     test(`input placeholder is AA-legible (${scheme})`, async () => {
-      // --mantine-color-placeholder, raised by the resolver in both schemes (Mantine's
+      // --mantine-color-placeholder, the secondary token in both schemes (Mantine's
       // gray-5 / dark-3 default is the lightest failing token, 2.08:1 / 2.47:1). The
       // placeholder paints on the input's own fill (white light / dark-6 dark).
       app.render(
@@ -487,14 +481,14 @@ describe("rendered resolver-owned token contrast (WCAG 2.1 AA)", () => {
       // Pin the resolved token colour: this both proves the resolver reached the
       // placeholder and guards the vacuous pass where the ::placeholder pseudo read
       // falls back to the input's own (dark, high-contrast) text colour.
-      expect(placeholderColor).toBe(MUTED_TEXT[scheme]);
+      expect(placeholderColor).toBe(STATUS_TEXT[scheme].secondary);
       expect(contrast(placeholderColor, bg)).toBeGreaterThanOrEqual(4.5);
     });
   }
 
   for (const scheme of ["light", "dark"] as const) {
     test(`error validation text is AA-legible (${scheme})`, async () => {
-      // --mantine-color-error, raised by the resolver in both schemes. Mantine's
+      // --mantine-color-error, the error token in both schemes. Mantine's
       // defaults fail the 1.4.3 validation-text floor from opposite directions:
       // red-6 at 3.28:1 on the white page, red-8 at 3.44:1 on the dark-7 body.
       app.render(
@@ -519,56 +513,41 @@ describe("rendered resolver-owned token contrast (WCAG 2.1 AA)", () => {
       const surface = await waitForEl('[data-testid="surface"]');
       const color = getComputedStyle(errorEl).color;
       const bg = getComputedStyle(surface).backgroundColor;
-      expect(color).toBe(ERROR_TEXT[scheme]);
+      expect(color).toBe(STATUS_TEXT[scheme].error);
       expect(contrast(color, bg)).toBeGreaterThanOrEqual(4.5);
     });
 
-    test(`green status token is AA-legible as page text (${scheme})`, async () => {
-      // The green status token rendered as plain page text, matching how
-      // TermsImportExport's import-success message uses it on a white/body
-      // background (distinct from the Alert case's green tint; c="green" alone
-      // is only 4.37:1 in light, under the floor). This is a stand-in, not a
-      // render of TermsImportExport, so it does not catch that component's own c
-      // prop regressing to "green"; that call site has its own guard comment.
-      app.render(
-        bodySurface(
-          createElement(
-            ColoredText,
-            {
-              c: "var(--mantine-color-green-light-color)",
-              "data-testid": "success",
-            },
-            "Terms imported",
+    for (const status of STATUSES)
+      test(`${status} text is AA-legible as page text (${scheme})`, async () => {
+        app.render(
+          bodySurface(
+            createElement(
+              ColoredText,
+              { c: status, "data-testid": "status" },
+              "Status text",
+            ),
           ),
-        ),
-        { forceColorScheme: scheme },
-      );
-      const text = await waitForEl('[data-testid="success"]');
-      const surface = await waitForEl('[data-testid="surface"]');
-      const color = getComputedStyle(text).color;
-      const bg = getComputedStyle(surface).backgroundColor;
-      expect(color).toBe(STATUS_TEXT[scheme].green);
-      expect(contrast(color, bg)).toBeGreaterThanOrEqual(4.5);
-    });
+          { forceColorScheme: scheme },
+        );
+        const text = await waitForEl('[data-testid="status"]');
+        const surface = await waitForEl('[data-testid="surface"]');
+        const color = getComputedStyle(text).color;
+        const bg = getComputedStyle(surface).backgroundColor;
+        expect(color).toBe(STATUS_TEXT[scheme][status]);
+        expect(contrast(color, bg)).toBeGreaterThanOrEqual(4.5);
+      });
   }
 
-  for (const { color, label } of [
-    { color: "yellow", label: "warning" },
-    { color: "green", label: "success" },
-    { color: "red", label: "error" },
-  ] as const)
+  for (const status of STATUSES)
     for (const scheme of ["light", "dark"] as const) {
-      test(`${label} alert title is AA-legible (${scheme})`, async () => {
-        // --mantine-color-{color}-light-color on the {color}-light tint. The
-        // resolver raises it in light (Mantine's yellow-9 on yellow-1 = 2.69:1 fails
-        // even 3:1; red-9 on red-1 = 4.51:1 is a fragile hairline) and leaves dark at
-        // Mantine's inverse shade-0-on-darkened-tint arrangement. The Alert owns both
-        // the title colour and its tint background, so this is self-contained; the
+      test(`${status} alert title is AA-legible (${scheme})`, async () => {
+        // The status token on the theme's tint of it. The Alert owns both the
+        // title colour and its tint background, so this is self-contained; the
         // body copy takes the same --alert-color, so the title stands for both.
         app.render(
           createElement(
             StatusAlert,
-            { color, title: "Heads up" },
+            { color: status, title: "Heads up" },
             "Body copy for the alert.",
           ),
           { forceColorScheme: scheme },
@@ -580,10 +559,10 @@ describe("rendered resolver-owned token contrast (WCAG 2.1 AA)", () => {
         const title = await waitForEl('.mantine-Alert-root [class*="title"]');
         const titleColor = getComputedStyle(title).color;
         const bg = getComputedStyle(alert).backgroundColor;
-        // Pin the resolved status colour: unlike the other tokens, red's Mantine
-        // light default clears the floor, and the whole dark row is Mantine's, so
-        // only pinning the colour catches either regressing.
-        expect(titleColor).toBe(STATUS_TEXT[scheme][color]);
+        // The tint must have resolved: an unset variable paints transparent,
+        // and the dark text would then be measured against nothing.
+        expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+        expect(titleColor).toBe(STATUS_TEXT[scheme][status]);
         expect(contrast(titleColor, bg)).toBeGreaterThanOrEqual(4.5);
       });
     }
@@ -611,43 +590,6 @@ describe("rendered app-token surface contrast (WCAG 2.1 AA)", () => {
       expect(
         contrast(style.borderTopColor, style.backgroundColor),
       ).toBeGreaterThanOrEqual(3);
-    });
-  }
-
-  // --app-caution colours the cleaning editor's notices, which sit on a Mantine
-  // Paper (--mantine-color-body). An undefined token would fall back to the
-  // inherited body text and pass the floor, so the token is checked first.
-  for (const scheme of ["light", "dark"] as const) {
-    test(`caution notice text on a Paper surface (${scheme})`, async () => {
-      app.render(
-        createElement(
-          "div",
-          {
-            "data-testid": "surface",
-            style: { background: "var(--mantine-color-body)" },
-          },
-          createElement(
-            "p",
-            {
-              "data-testid": "caution",
-              style: { color: "var(--app-caution)" },
-            },
-            "This value appears in more than one rule",
-          ),
-        ),
-        { forceColorScheme: scheme },
-      );
-      const text = await waitForEl('[data-testid="caution"]');
-      const surface = await waitForEl('[data-testid="surface"]');
-      expect(
-        getComputedStyle(text).getPropertyValue("--app-caution").trim(),
-      ).not.toBe("");
-      expect(
-        contrast(
-          getComputedStyle(text).color,
-          getComputedStyle(surface).backgroundColor,
-        ),
-      ).toBeGreaterThanOrEqual(4.5);
     });
   }
 

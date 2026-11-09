@@ -244,7 +244,7 @@ export function ConnectionTuningCard({
 
         {advisories.length > 0 && (
           <Alert
-            color="blue"
+            color="info"
             icon={<IconInfoCircle aria-hidden />}
             title="How these settings affect the SFTP server"
           >
@@ -259,7 +259,7 @@ export function ConnectionTuningCard({
         {problems.length > 0 && (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             icon={<IconAlertTriangle aria-hidden />}
             title="These settings cannot be used"
           >

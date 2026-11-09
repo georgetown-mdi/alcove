@@ -122,7 +122,7 @@ export function CleaningErrorBoundary({
           role="alert"
           ref={ref}
           tabIndex={-1}
-          color="red"
+          color="error"
           variant="light"
           icon={<IconAlertTriangle aria-hidden />}
           title="The cleaning editor hit an unexpected state"

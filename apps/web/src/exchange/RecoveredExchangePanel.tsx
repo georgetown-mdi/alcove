@@ -175,7 +175,7 @@ function LeftoverFolderNotice({
       {discardFailed && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           icon={<IconAlertCircle aria-hidden />}
           title="The folder was not deleted"
           mt="md"
@@ -189,7 +189,7 @@ function LeftoverFolderNotice({
           Keep the folder
         </Button>
         <Button
-          color="red"
+          color="error"
           variant="light"
           loading={discarding}
           aria-haspopup="dialog"
@@ -212,7 +212,7 @@ function LeftoverFolderNotice({
             Cancel
           </Button>
           <Button
-            color="red"
+            color="error"
             variant="light"
             loading={discarding}
             onClick={discard}
@@ -453,7 +453,7 @@ export function RecoveredExchangePanel() {
       {failure !== undefined && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           icon={<IconAlertCircle aria-hidden />}
           title={failure.title}
           mb="md"
@@ -483,7 +483,7 @@ export function RecoveredExchangePanel() {
           </Button>
         )}
         <Button
-          color="red"
+          color="error"
           variant="light"
           loading={discarding}
           onClick={() => setConfirming(true)}
@@ -507,7 +507,7 @@ export function RecoveredExchangePanel() {
             Cancel
           </Button>
           <Button
-            color="red"
+            color="error"
             variant="light"
             loading={discarding}
             onClick={discard}

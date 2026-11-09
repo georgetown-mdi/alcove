@@ -55,6 +55,7 @@ import type {
   FuzzyComparison,
 } from "@psi/authoring/advancedInvite";
 import type { KeyVerdict } from "@psi/inviterEditor";
+import type { StatusColour } from "@theme";
 
 /** The expert-editor badge copy and Mantine color for a per-key verdict
  * ({@link KeyVerdict}). A dead key is amber rather than red because its columns
@@ -63,28 +64,28 @@ import type { KeyVerdict } from "@psi/inviterEditor";
  * field reference is the document author's text. */
 function keyVerdictBadge(verdict: KeyVerdict): {
   label: string;
-  color: string;
+  color: StatusColour;
   ariaLabel: string;
 } {
   switch (verdict.fitness) {
     case "satisfiable":
       return {
         label: "your file supplies it",
-        color: "green",
+        color: "success",
         ariaLabel: "Your file supplies every field this key uses",
       };
     case "unsatisfiable": {
       const field = sanitizeForDisplay(verdict.missingField);
       return {
         label: `no column for ${field}`,
-        color: "red",
+        color: "error",
         ariaLabel: `Your file has no column for ${field}`,
       };
     }
     case "dead":
       return {
         label: "cleaning drops every value",
-        color: "yellow",
+        color: "warn",
         ariaLabel:
           "This key's cleaning drops every value; review the transform",
       };
@@ -281,7 +282,7 @@ export function ExpertKeyEditor({
 
   if (firstField === undefined)
     return (
-      <Text size="sm" c="red" role="alert">
+      <Text size="sm" c="error" role="alert">
         Your columns declare no linkage fields to build a key from. Set a
         column&apos;s type under Your columns above.
       </Text>
@@ -382,7 +383,7 @@ export function ExpertKeyEditor({
                     </ActionIcon>
                     <ActionIcon
                       variant="subtle"
-                      color="red"
+                      color="error"
                       onClick={() => {
                         onChange(removeKey(draft, keyIndex));
                         announce(`Removed key ${keyLabel}.`);
@@ -507,7 +508,7 @@ export function ExpertKeyEditor({
                                     </ActionIcon>
                                     <ActionIcon
                                       variant="subtle"
-                                      color="red"
+                                      color="error"
                                       disabled={key.elements.length === 1}
                                       onClick={() => {
                                         applyKeyStructureEdit(

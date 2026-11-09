@@ -92,7 +92,7 @@ export function ConsoleSampleData({
           <Text size="sm">{SAMPLE_FILES_ADDED}</Text>
         )}
         {state.status === "failed" && (
-          <Text size="sm" c="red">
+          <Text size="sm" c="error">
             {state.message}
           </Text>
         )}

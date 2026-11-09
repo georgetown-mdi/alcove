@@ -10,15 +10,30 @@ import {
   Paper,
   Select,
   Tooltip,
+  colorsTuple,
   createTheme,
   rem,
 } from "@mantine/core";
+
+import { STATUS_COLOURS } from "./styles/statusColours.ts";
 
 import type {
   CSSVariablesResolver,
   MantineColorScheme,
   MantineThemeOverride,
 } from "@mantine/core";
+
+/**
+ * A status colour: a name in the status table the colour lint rule holds
+ * (STATUS_COLOURS in styles/statusColours.ts), each a
+ * Mantine colour this theme paints from its --app-* token. The layer map:
+ * docs/STATUS_COLOURS.md.
+ */
+export type StatusColour = keyof typeof STATUS_COLOURS;
+
+const statusEntries = Object.entries(STATUS_COLOURS) as Array<
+  [StatusColour, string]
+>;
 
 /**
  * The color scheme every `MantineProvider` and the documents' pre-paint
@@ -85,11 +100,11 @@ type ContainerWidth = keyof typeof CONTAINER_SIZES;
 export const ALERT_DEFAULT_ROLE = "status";
 
 /**
- * The role for an Alert whose color is chosen at runtime: an error (red)
- * interrupts with `alert`; any other color takes {@link ALERT_DEFAULT_ROLE}.
+ * The role for an Alert whose color is chosen at runtime: an error interrupts
+ * with `alert`; any other status takes {@link ALERT_DEFAULT_ROLE}.
  */
-export function alertRoleFor(color: string): "alert" | undefined {
-  return color === "red" ? "alert" : undefined;
+export function alertRoleFor(color: StatusColour): "alert" | undefined {
+  return color === "error" ? "alert" : undefined;
 }
 
 export const mantineTheme: MantineThemeOverride = createTheme({
@@ -116,6 +131,14 @@ export const mantineTheme: MantineThemeOverride = createTheme({
     "3xl": rem("32px"),
   },
   primaryColor: "cyan",
+  // One colour per status, every shade the status token: the light-variant
+  // tints Mantine would derive from the shades are set by cssVariablesResolver.
+  colors: Object.fromEntries(
+    statusEntries.map(([status, token]) => [
+      status,
+      colorsTuple(`var(${token})`),
+    ]),
+  ),
   // Enabled so Mantine computes `--mantine-primary-color-contrast` per scheme (white
   // on the light cyan-9 fill, black on the dark cyan-6 fill), the variable the
   // filled-primary overrides below route their text/icon color to; without it that
@@ -210,6 +233,7 @@ export const mantineTheme: MantineThemeOverride = createTheme({
     Alert: Alert.extend({
       defaultProps: {
         role: ALERT_DEFAULT_ROLE,
+        color: "info" satisfies StatusColour,
       },
     }),
     // A link inside a sentence must differ from its text by more than color
@@ -239,83 +263,6 @@ export const mantineTheme: MantineThemeOverride = createTheme({
 });
 
 /**
- * Accessible value for Mantine's low-emphasis text tokens -- `dimmed`
- * secondary text and input `placeholder` text. Mantine's defaults fail WCAG
- * 2.1 AA 1.4.3 (4.5:1 for normal-weight text) in both schemes and for both
- * tokens; no in-scale gray step both clears the floor and stays clearly
- * lower-emphasis than body text, so these are tuned values.
- *
- * Both are global tokens: overriding them via {@link cssVariablesResolver}
- * raises every `c="dimmed"` site and every input placeholder at once.
- *
- * Ratios (WCAG relative-luminance contrast, against the real surfaces):
- * - light #636b73: 5.41:1 on the white body/input, 5.13:1 on the gray-0
- *   card/paper surface.
- * - dark #92969b: 5.22:1 on the dark-7 body, 4.56:1 on the dark-6 input
- *   (the binding case).
- *
- * Inputs use Mantine's default variant (light bg white, dark bg dark-6); a
- * `filled`/`unstyled` input's darker dark-5 bg would not clear 4.5:1 with
- * this value, but the app uses none.
- */
-const MUTED_TEXT = {
-  light: "#636b73",
-  dark: "#92969b",
-} as const;
-
-/**
- * Accessible text color for the yellow "warning", red "error", and green
- * "success" Mantine `light` variant surfaces in the light scheme -- the
- * Alert title and icon, the yellow constraint-warning Badge label, and the
- * green satisfiability surfaces (AcceptorColumnsStep, ExpertKeyEditor).
- * Mantine's default `--mantine-color-{c}-light-color` (shade 9 on shade-1
- * tint) fails WCAG 2.1 AA 1.4.3 for normal-weight text in all three hues.
- *
- * Darkened in-hue rather than to plain black so each title still displays as
- * amber/caution, red/error, and green/success; the meaning does not rest
- * on the title color alone, since the Alerts also hold a severity icon
- * (WCAG 1.4.1). Ratios against the real shade-1 tints:
- * - warning #92400e on yellow-1 = 6.36:1.
- * - error #a51111 on red-1 = 6.45:1.
- * - success #22683a on green-1 = 5.89:1 (6.75:1 as page text on white,
- *   6.41:1 on the gray-0 card).
- *
- * Only the light scheme is overridden. In dark, Mantine resolves the same
- * tokens to shade 0 on a `darken(shade 9, 0.5)` tint -- warning 8.35:1,
- * error 11.75:1, success 10.27:1 -- so no tuned value is needed there. Both
- * schemes are measured by test/unit/themeContrast.test.ts and
- * test/browser/themeContrast.test.ts, so a Mantine change that drops the
- * dark arrangement under the floor fails rather than resting on this note.
- */
-const STATUS_TEXT = {
-  warning: "#92400e",
-  error: "#a51111",
-  success: "#22683a",
-} as const;
-
-/**
- * Accessible color for Mantine's `error` token -- the input validation
- * message text, the `withAsterisk` required marker, and the error-state
- * input border. Mantine's default is dark-on-light in one scheme and
- * dark-on-dark in the other, and both fail WCAG 2.1 AA 1.4.3:
- * - light red-6 (#fa5252) = 3.28:1 on the white page/input; red-9
- *   (#c92a2a) = 5.46:1 clears it.
- * - dark red-8 (#e03131) = 3.44:1 on the dark-7 body and 3.01:1 on the
- *   dark-6 input; red-4 (#ff8787) = 6.70:1 and 5.86:1. That is also the
- *   color Mantine gives `c="red"` in dark, so inline error text and the
- *   validation message match.
- *
- * The light value differs from {@link STATUS_TEXT}.error, which sits on the
- * red-1 Alert tint where #c92a2a is only 4.51:1 -- the two light error reds
- * are tuned to their different backgrounds. Ratios enforced by
- * test/unit/themeContrast.test.ts.
- */
-const ERROR_TEXT = {
-  light: "#c92a2a",
-  dark: "#ff8787",
-} as const;
-
-/**
  * The light filled-primary hover fill, also painted while pressed on a touch
  * screen. Mantine's cyan-8 hover holds white text at 4.35:1, under 1.4.3's
  * 4.5:1; cyan-9 darkened by 15% holds it at 7.09:1, 1.27:1 from the resting
@@ -327,28 +274,53 @@ const FILLED_PRIMARY_HOVER = {
 } as const;
 
 /**
- * Raises the `dimmed` and input `placeholder` tokens to {@link MUTED_TEXT} and
- * the `error` token to {@link ERROR_TEXT} in both color schemes, and the
- * yellow/red/green `light`-variant text tokens to {@link STATUS_TEXT} and the
- * primary filled hover to {@link FILLED_PRIMARY_HOVER} in the light scheme.
- * Mantine deep-merges this over the default resolver, so only the
- * overridden variables need be returned. Passed to `MantineProvider` in the root
- * route.
+ * The share of a status token in the tint behind its `light` variant (an
+ * Alert, a light Badge or Button), mixed over the --app-column work surface,
+ * at rest and under the pointer. Mantine would derive the tint from the
+ * colour's shades, which are all the token here. Every status text clears
+ * 4.5:1 on both tints in both schemes, measured by
+ * test/unit/themeContrast.test.ts and test/browser/themeContrast.test.ts.
  */
-export const cssVariablesResolver: CSSVariablesResolver = () => ({
-  variables: {},
-  light: {
-    "--mantine-color-dimmed": MUTED_TEXT.light,
-    "--mantine-color-placeholder": MUTED_TEXT.light,
-    "--mantine-color-yellow-light-color": STATUS_TEXT.warning,
-    "--mantine-color-red-light-color": STATUS_TEXT.error,
-    "--mantine-color-green-light-color": STATUS_TEXT.success,
-    "--mantine-color-error": ERROR_TEXT.light,
-    "--mantine-color-cyan-filled-hover": FILLED_PRIMARY_HOVER.light,
-  },
-  dark: {
-    "--mantine-color-dimmed": MUTED_TEXT.dark,
-    "--mantine-color-placeholder": MUTED_TEXT.dark,
-    "--mantine-color-error": ERROR_TEXT.dark,
-  },
-});
+const STATUS_TINT_PERCENT = { rest: 10, hover: 15 } as const;
+
+const statusTint = (token: string, percent: number) =>
+  `color-mix(in srgb, var(${token}) ${percent}%, var(--app-column))`;
+
+/** The `light`-variant tint variables of every status colour. */
+const statusTintVariables = Object.fromEntries(
+  statusEntries.flatMap(([status, token]) => [
+    [
+      `--mantine-color-${status}-light`,
+      statusTint(token, STATUS_TINT_PERCENT.rest),
+    ],
+    [
+      `--mantine-color-${status}-light-hover`,
+      statusTint(token, STATUS_TINT_PERCENT.hover),
+    ],
+  ]),
+);
+
+/**
+ * Points Mantine's secondary-text (`dimmed`), input `placeholder` and input
+ * `error` colours at the status tokens and sets each status colour's
+ * `light`-variant tint, in both color schemes, and sets the primary filled
+ * hover to {@link FILLED_PRIMARY_HOVER} in the light scheme. Mantine
+ * deep-merges this over the default resolver, so only the overridden variables
+ * need be returned. Passed to `MantineProvider` in the root route.
+ */
+export const cssVariablesResolver: CSSVariablesResolver = () => {
+  const statusText = {
+    "--mantine-color-dimmed": `var(${STATUS_COLOURS.secondary})`,
+    "--mantine-color-placeholder": `var(${STATUS_COLOURS.secondary})`,
+    "--mantine-color-error": `var(${STATUS_COLOURS.error})`,
+  };
+  return {
+    variables: {},
+    light: {
+      ...statusText,
+      ...statusTintVariables,
+      "--mantine-color-cyan-filled-hover": FILLED_PRIMARY_HOVER.light,
+    },
+    dark: { ...statusText, ...statusTintVariables },
+  };
+};

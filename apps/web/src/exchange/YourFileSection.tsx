@@ -206,7 +206,7 @@ export function YourFileSection({
             <p className={styles.dropzoneMax}>(Max file size: {maxMb} MB)</p>
           </Dropzone>
           {rejectionMessage !== undefined && (
-            <Text role="alert" c="red" size="sm" mt="xs">
+            <Text role="alert" c="error" size="sm" mt="xs">
               {rejectionMessage}
             </Text>
           )}
@@ -254,7 +254,7 @@ export function YourFileSection({
       {alert !== undefined && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           title={alert.title}
           icon={<IconAlertCircle />}
           mt="md"
@@ -268,7 +268,7 @@ export function YourFileSection({
       )}
       {notice !== undefined && (
         <Alert
-          color="yellow"
+          color="warn"
           title={notice.title}
           icon={<IconAlertCircle />}
           mt="md"

@@ -63,7 +63,7 @@ export function AcceptorSftpConnectionCard({
     return (
       <Stack gap="xs" mt="xs">
         <Group gap="xs" align="center">
-          <Badge color="green" variant="light">
+          <Badge color="success" variant="light">
             Ready to try
           </Badge>
           <Text size="sm">
@@ -86,7 +86,7 @@ export function AcceptorSftpConnectionCard({
           <Button size="xs" variant="default" onClick={() => setFormOpen(true)}>
             Edit connection
           </Button>
-          <Button size="xs" variant="subtle" color="red" onClick={onCleared}>
+          <Button size="xs" variant="subtle" color="error" onClick={onCleared}>
             Clear connection
           </Button>
         </Group>

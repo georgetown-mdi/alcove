@@ -259,7 +259,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
             <DonePanel outputs={outputs} finishedAt={finishedAt} />
             {runOutcomeUnsavedReason !== undefined && (
               <Alert
-                color="yellow"
+                color="warn"
                 title={RUN_OUTCOME_UNSAVED_NOTE.title}
                 mb="sm"
               >
@@ -292,7 +292,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 {exportFailed && (
                   <Alert
                     role="alert"
-                    color="red"
+                    color="error"
                     title="Could not save the backup"
                     mb="sm"
                   >
@@ -337,7 +337,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
             ) : (
               failure !== undefined && (
                 <>
-                  <Alert role="alert" color="red" title={failure.title} mb="md">
+                  <Alert
+                    role="alert"
+                    color="error"
+                    title={failure.title}
+                    mb="md"
+                  >
                     <FailureBody failure={failure} />
                   </Alert>
                   {/* Below the failure, not in place of it: a run that stopped

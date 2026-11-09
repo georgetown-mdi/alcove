@@ -234,7 +234,7 @@ export function ManageExchangeOffer({
       {status === "error" && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           title={refusal?.title ?? "Could not save this recurring exchange"}
           mt="sm"
         >

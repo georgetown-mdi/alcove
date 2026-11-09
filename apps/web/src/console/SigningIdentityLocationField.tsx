@@ -91,7 +91,7 @@ export function SigningIdentityLocationField({
         )}
       </Group>
       {fileIdentity !== undefined && (
-        <Text size="sm" c="red">
+        <Text size="sm" c="error">
           {IN_PLACE_IDENTITY_FILE_NOTICE}
         </Text>
       )}

@@ -40,16 +40,18 @@ import type { RouteState } from "./routeStates";
 //     states it pins, and verifyReceiptContrast.test.ts sweeps the verify
 //     screen's loaded states.
 
-/** sRGB channels + alpha of a computed `rgb(r, g, b)` / `rgba(r, g, b, a)`
- * string. Alpha defaults to 1 when absent. */
+/** sRGB channels (0..255) + alpha of a computed `rgb(r, g, b)` /
+ * `rgba(r, g, b, a)` string, or of the `color(srgb r g b / a)` form (channels
+ * 0..1) a color-mix() computes to. Alpha defaults to 1 when absent. */
 function rgba(color: string): [number, number, number, number] {
-  const m = color.match(/-?\d+(\.\d+)?/g);
+  const m = color.match(/-?\d+(\.\d+)?(e-?\d+)?/g);
   if (m === null || m.length < 3)
     throw new Error(`unparseable color: ${color}`);
+  const scale = color.startsWith("color(srgb") ? 255 : 1;
   return [
-    Number(m[0]),
-    Number(m[1]),
-    Number(m[2]),
+    Number(m[0]) * scale,
+    Number(m[1]) * scale,
+    Number(m[2]) * scale,
     m.length >= 4 ? Number(m[3]) : 1,
   ];
 }

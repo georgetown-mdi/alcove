@@ -1,5 +1,16 @@
 import type { Rule } from "eslint";
 
+export { STATUS_COLOURS } from "../src/styles/statusColours.ts";
+
+/** Mantine's own name for secondary text, allowed as a `c` value. */
+export const SECONDARY_TEXT_ALIAS: "dimmed";
+
+/** True when `value` names a status. */
+export function isStatusColour(value: string): boolean;
+
+/** True when `value` is a status or the secondary-text alias. */
+export function isStatusTextColour(value: string): boolean;
+
 /** The theme's filled-primary predicate, held equal to `isFilledPrimary` in
  * apps/web/src/theme.ts by the rule's unit test. */
 export function isFilledPrimary(

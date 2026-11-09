@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 // Error Alert role check; scripts/run-checks.mjs lists it.
 //
-// WHAT IS HELD. A red (error) Mantine `<Alert>` under apps/web/src sets a role
-// a screen reader announces: `role="alert"` or `role="status"` written at the
-// call site, or `role={alertRoleFor(color)}` (apps/web/src/theme.ts) where the
-// color is chosen at runtime. A red Alert that sets no role takes the theme's
-// polite default rather than the interrupting `alert` an error is given, and
-// one set to `presentation`, `none` or `note` is not announced at all. An
-// Alert whose color is an expression rather than a literal may be red, so it
-// is held the same way, and its `alertRoleFor` argument must be its own color
+// WHAT IS HELD. A Mantine `<Alert>` of the `error` status colour
+// (docs/STATUS_COLOURS.md) under apps/web/src sets a role a screen reader
+// announces: `role="alert"` or `role="status"` written at the call site, or
+// `role={alertRoleFor(color)}` (apps/web/src/theme.ts) where the color is
+// chosen at runtime. An error Alert that sets no role takes the theme's polite
+// default rather than the interrupting `alert` an error is given, and one set
+// to `presentation`, `none` or `note` is not announced at all. An Alert whose
+// color is an expression rather than a literal may be an error, so it is held
+// the same way, and its `alertRoleFor` argument must be its own color
 // expression.
 //
-// THE DOCUMENTED EXCEPTIONS are QUIET_ERROR_ALERTS below: a red Alert that is
+// THE DOCUMENTED EXCEPTIONS are QUIET_ERROR_ALERTS below: an error Alert that is
 // visible only because a separate live region already announces its text, or
 // a standing note beside a control whose own status line announces the block.
 // Each entry names the site by file, enclosing component and title, and states
@@ -25,9 +26,8 @@
 // both after it by name.
 //
 // WHAT IT DOES NOT COVER: an Alert rendered under another name (an import
-// alias, a wrapper component whose own `color` prop is forwarded), a color
-// that becomes red through a theme variant rather than the `color` prop, and
-// any tree but apps/web/src.
+// alias, a wrapper component whose own `color` prop is forwarded), and any
+// tree but apps/web/src.
 
 import ts from "typescript";
 import { fileURLToPath } from "node:url";
@@ -49,11 +49,14 @@ export const ROLE_HELPER = {
   file: "apps/web/src/theme.ts",
 };
 
+/** The status colour an error Alert names. */
+export const ERROR_COLOR = "error";
+
 /** The role values a screen reader announces as a live region. */
 const ANNOUNCED_ROLES = new Set(["alert", "status"]);
 
 /**
- * The red Alerts that are not live regions by design, each keyed by file,
+ * The error Alerts that are not live regions by design, each keyed by file,
  * enclosing component and the source text of its `title` attribute, with where
  * its text is announced instead.
  */
@@ -115,7 +118,7 @@ function attributeExpression(attribute) {
   return initializer;
 }
 
-/** The text of a string literal, `"red"` or `{"red"}`, or undefined. */
+/** The text of a string literal, `"error"` or `{"error"}`, or undefined. */
 function literalText(expression) {
   if (!expression) return undefined;
   if (
@@ -127,7 +130,7 @@ function literalText(expression) {
 }
 
 /**
- * Every `<Alert>` in `sourceFile` that may be red, as `{line, component, title,
+ * Every `<Alert>` in `sourceFile` that may be an error, as `{line, component, title,
  * problem}` records in source order. `problem` is undefined where the Alert
  * sets an announced role, and otherwise states what it sets instead.
  */
@@ -171,7 +174,7 @@ export function errorAlerts(sourceFile) {
     const colorLiteral = literalText(colorExpression);
     if (
       color === undefined ||
-      (colorLiteral !== undefined && colorLiteral !== "red")
+      (colorLiteral !== undefined && colorLiteral !== ERROR_COLOR)
     )
       continue;
     found.push(
@@ -191,7 +194,7 @@ export function errorAlerts(sourceFile) {
 }
 
 /**
- * What is wrong with a may-be-red Alert's `role` attribute, or undefined when it
+ * What is wrong with a may-be-error Alert's `role` attribute, or undefined when it
  * is announced. `runtimeColor` is the color expression when it is not a
  * literal, which an `alertRoleFor` call must take as its argument.
  */
@@ -251,13 +254,13 @@ export function alertRoleFailures(scanned, exceptions = QUIET_ERROR_ALERTS) {
         continue;
       }
       failures.push(
-        `${file}:${line}: the red Alert titled ${title} in ${component} ${problem} -- an error Alert is announced, so set role="alert" (role={${ROLE_HELPER.name}(color)} where the color is chosen at runtime); if a separate live region already announces its text, add the site to QUIET_ERROR_ALERTS in scripts/check-alert-roles.mjs with where.`,
+        `${file}:${line}: the error Alert titled ${title} in ${component} ${problem} -- an error Alert is announced, so set role="alert" (role={${ROLE_HELPER.name}(color)} where the color is chosen at runtime); if a separate live region already announces its text, add the site to QUIET_ERROR_ALERTS in scripts/check-alert-roles.mjs with where.`,
       );
     }
   exceptions.forEach(({ file, component, title }, index) => {
     if (!used.has(index))
       failures.push(
-        `QUIET_ERROR_ALERTS names ${file} ${component} ${title}, but no unannounced red Alert there has that title -- it moved, was renamed, or now sets an announced role; update or delete the entry in scripts/check-alert-roles.mjs.`,
+        `QUIET_ERROR_ALERTS names ${file} ${component} ${title}, but no unannounced error Alert there has that title -- it moved, was renamed, or now sets an announced role; update or delete the entry in scripts/check-alert-roles.mjs.`,
       );
   });
   return failures;
@@ -286,7 +289,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const total = scanned.reduce((sum, { alerts }) => sum + alerts.length, 0);
   if (total === 0)
     failures.push(
-      `No red Alert was found under ${WEB_SOURCE_DIR}, so the scan in scripts/check-alert-roles.mjs no longer recognizes them and checks nothing. If you changed how a red Alert is written, update the scan to match.`,
+      `No error Alert was found under ${WEB_SOURCE_DIR}, so the scan in scripts/check-alert-roles.mjs no longer recognizes them and checks nothing. If you changed how an error Alert is written, update the scan to match.`,
     );
   failures.push(...alertRoleFailures(scanned));
   if (failures.length > 0) {
@@ -294,6 +297,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   console.log(
-    `Error Alert role check passed: ${total} red or runtime-color Alert(s) across ${files.length} scanned file(s), ${QUIET_ERROR_ALERTS.length} documented quiet site(s).`,
+    `Error Alert role check passed: ${total} error or runtime-color Alert(s) across ${files.length} scanned file(s), ${QUIET_ERROR_ALERTS.length} documented quiet site(s).`,
   );
 }

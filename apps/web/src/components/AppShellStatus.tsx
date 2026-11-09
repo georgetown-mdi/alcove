@@ -146,7 +146,7 @@ export function AppShellStatus() {
       </VisuallyHidden>
       {!online && (
         <Alert
-          color="yellow"
+          color="warn"
           variant="light"
           radius={0}
           role="presentation"
@@ -159,7 +159,7 @@ export function AppShellStatus() {
       )}
       {applying && (
         <Alert
-          color="blue"
+          color="info"
           variant="light"
           radius={0}
           role="presentation"
@@ -170,7 +170,7 @@ export function AppShellStatus() {
       )}
       {updateReady && !applying && (
         <Alert
-          color="blue"
+          color="info"
           variant="light"
           radius={0}
           role="presentation"
@@ -188,7 +188,7 @@ export function AppShellStatus() {
       )}
       {updated && (
         <Alert
-          color="blue"
+          color="info"
           variant="light"
           radius={0}
           role="presentation"

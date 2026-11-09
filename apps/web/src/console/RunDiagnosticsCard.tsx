@@ -99,7 +99,7 @@ export function RunDiagnosticsCard({
 
         {draft.diagnosticRun && (
           <Alert
-            color="blue"
+            color="info"
             icon={<IconInfoCircle aria-hidden />}
             title="What the log holds"
           >
@@ -125,7 +125,7 @@ export function RunDiagnosticsCard({
         {draft.sweepExchangeFiles && (
           <>
             <Alert
-              color="yellow"
+              color="warn"
               icon={<IconAlertTriangle aria-hidden />}
               title="Before you clear them"
             >
@@ -147,7 +147,7 @@ export function RunDiagnosticsCard({
         {problems.length > 0 && (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             icon={<IconAlertTriangle aria-hidden />}
             title="This run cannot start yet"
           >

@@ -455,7 +455,7 @@ export function ReceiptsCard({
                       : ""}
                   </Text>
                   {divergent && (
-                    <Text size="sm" c="red">
+                    <Text size="sm" c="error">
                       {SIGNING_IDENTITY_DIVERGENCE_POINTER}
                     </Text>
                   )}
@@ -463,7 +463,7 @@ export function ReceiptsCard({
               )}
               {failure !== undefined && (
                 <>
-                  <Text role="alert" c="red" size="sm">
+                  <Text role="alert" c="error" size="sm">
                     {failure.message}
                   </Text>
                   {failure.command !== undefined && (
@@ -494,7 +494,7 @@ export function ReceiptsCard({
             </Stack>
 
             <Alert
-              color="gray"
+              color="secondary"
               icon={<IconInfoCircle aria-hidden />}
               title="About your signing identity"
             >
@@ -551,7 +551,7 @@ export function ReceiptsCard({
 
         {warnings.length > 0 && (
           <Alert
-            color="yellow"
+            color="warn"
             icon={<IconAlertTriangle aria-hidden />}
             title="Before you start this run"
           >
@@ -573,7 +573,7 @@ export function ReceiptsCard({
 
         {notices.length > 0 && (
           <Alert
-            color="blue"
+            color="info"
             icon={<IconInfoCircle aria-hidden />}
             title="Where your signing key and receipt are kept"
           >
@@ -596,7 +596,7 @@ export function ReceiptsCard({
         {problems.length > 0 && (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             icon={<IconAlertTriangle aria-hidden />}
             title="These settings cannot be used"
           >

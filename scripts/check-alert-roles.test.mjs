@@ -23,28 +23,28 @@ const problemsIn = (jsx) =>
   ).map(({ problem }) => problem);
 
 describe("errorAlerts", () => {
-  it("passes a red Alert set to alert or status", () => {
-    expect(problemsIn(`<Alert color="red" role="alert" title="x" />`)).toEqual([
-      undefined,
-    ]);
-    expect(problemsIn(`<Alert color="red" role="status" title="x" />`)).toEqual(
-      [undefined],
-    );
-  });
-
-  it("reports a red Alert that sets no role", () => {
-    expect(problemsIn(`<Alert color="red" title="x">Failed</Alert>`)).toEqual([
-      "sets no role",
-    ]);
-  });
-
-  it("reports a red Alert set to a role that is not announced", () => {
+  it("passes an error Alert set to alert or status", () => {
     expect(
-      problemsIn(`<Alert color="red" role="presentation" title="x" />`),
-    ).toEqual(['sets role="presentation"']);
-    expect(problemsIn(`<Alert role="note" color={"red"} title="x" />`)).toEqual(
-      ['sets role="note"'],
+      problemsIn(`<Alert color="error" role="alert" title="x" />`),
+    ).toEqual([undefined]);
+    expect(
+      problemsIn(`<Alert color="error" role="status" title="x" />`),
+    ).toEqual([undefined]);
+  });
+
+  it("reports an error Alert that sets no role", () => {
+    expect(problemsIn(`<Alert color="error" title="x">Failed</Alert>`)).toEqual(
+      ["sets no role"],
     );
+  });
+
+  it("reports an error Alert set to a role that is not announced", () => {
+    expect(
+      problemsIn(`<Alert color="error" role="presentation" title="x" />`),
+    ).toEqual(['sets role="presentation"']);
+    expect(
+      problemsIn(`<Alert role="note" color={"error"} title="x" />`),
+    ).toEqual(['sets role="note"']);
   });
 
   it("passes alertRoleFor given the Alert's own runtime color", () => {
@@ -52,7 +52,7 @@ describe("errorAlerts", () => {
       problemsIn(`<Alert color={color} role={alertRoleFor(color)} />`),
     ).toEqual([undefined]);
     expect(
-      problemsIn(`<Alert color="red" role={alertRoleFor("red")} />`),
+      problemsIn(`<Alert color="error" role={alertRoleFor("error")} />`),
     ).toEqual([undefined]);
   });
 
@@ -61,14 +61,14 @@ describe("errorAlerts", () => {
       "sets no role",
     ]);
     expect(
-      problemsIn(`<Alert color={color} role={alertRoleFor("yellow")} />`),
-    ).toEqual(['passes "yellow" to alertRoleFor but its color is color']);
+      problemsIn(`<Alert color={color} role={alertRoleFor("warn")} />`),
+    ).toEqual(['passes "warn" to alertRoleFor but its color is color']);
   });
 
-  it("passes over an Alert of a literal color other than red, or none", () => {
+  it("passes over an Alert of a literal color other than error, or none", () => {
     expect(
       problemsIn(
-        `<><Alert color="yellow" role="presentation" /><Alert title="x" /></>`,
+        `<><Alert color="warn" role="presentation" /><Alert title="x" /></>`,
       ),
     ).toEqual([]);
   });
@@ -78,14 +78,14 @@ describe("errorAlerts", () => {
       "spreads props, so its color and role cannot be read",
     ]);
     expect(
-      problemsIn(`<Alert {...props} color="red" role="alert" title="x" />`),
+      problemsIn(`<Alert {...props} color="error" role="alert" title="x" />`),
     ).toEqual([undefined]);
   });
 
   it("does not read an Alert in a comment or a string", () => {
     expect(
       problemsIn(
-        `(<p>{/* <Alert color="red" /> */}{'<Alert color="red" />'}</p>)`,
+        `(<p>{/* <Alert color="error" /> */}{'<Alert color="error" />'}</p>)`,
       ),
     ).toEqual([]);
   });
@@ -94,7 +94,7 @@ describe("errorAlerts", () => {
     expect(
       errorAlertsInSource(
         FILE,
-        `const Card = () => <Alert color="red" title={REFUSED} />;`,
+        `const Card = () => <Alert color="error" title={REFUSED} />;`,
       ),
     ).toEqual([
       {
@@ -110,7 +110,7 @@ describe("errorAlerts", () => {
 describe("alertRoleFailures", () => {
   const quiet = errorAlertsInSource(
     FILE,
-    `function Verdict() { return <Alert color="red" role="presentation" title={verdict.title} />; }`,
+    `function Verdict() { return <Alert color="error" role="presentation" title={verdict.title} />; }`,
   );
   const entry = {
     file: FILE,
@@ -128,7 +128,7 @@ describe("alertRoleFailures", () => {
   it("reports the site without the entry, and the entry without the site", () => {
     const [unexcused] = alertRoleFailures([{ file: FILE, alerts: quiet }], []);
     expect(unexcused).toMatch(
-      /fixture\.tsx:1: the red Alert titled \{verdict\.title\} in Verdict sets role="presentation"/,
+      /fixture\.tsx:1: the error Alert titled \{verdict\.title\} in Verdict sets role="presentation"/,
     );
     const [stale] = alertRoleFailures([{ file: FILE, alerts: [] }], [entry]);
     expect(stale).toMatch(/QUIET_ERROR_ALERTS names .* Verdict/);
@@ -136,7 +136,7 @@ describe("alertRoleFailures", () => {
 });
 
 describe("the web source tree", () => {
-  it("has every red Alert announced or documented as quiet", () => {
+  it("has every error Alert announced or documented as quiet", () => {
     const scanned = sourceModules(WEB_SOURCE_DIR)
       .filter((file) => file.endsWith(".tsx"))
       .map((file) => ({ file, alerts: errorAlerts(parseFile(file)) }));

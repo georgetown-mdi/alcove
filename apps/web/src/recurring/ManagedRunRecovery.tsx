@@ -123,7 +123,7 @@ export function FailureRecovery({
  * taken from. */
 function ClearFailureAlert() {
   return (
-    <Alert role="alert" color="red" title="Could not clear this" mt="sm">
+    <Alert role="alert" color="error" title="Could not clear this" mt="sm">
       Nothing changed here, so this still stands. Try again.
     </Alert>
   );
@@ -161,11 +161,16 @@ export function CompromiseResponsePanel({
   return (
     <>
       {unsaved && (
-        <Alert color="yellow" title={COMPROMISE_RESPONSE_UNSAVED_TITLE} mb="md">
+        <Alert color="warn" title={COMPROMISE_RESPONSE_UNSAVED_TITLE} mb="md">
           {COMPROMISE_RESPONSE_UNSAVED_REASON}
         </Alert>
       )}
-      <Alert role="alert" color="red" title={COMPROMISE_RESPONSE_TITLE} mb="md">
+      <Alert
+        role="alert"
+        color="error"
+        title={COMPROMISE_RESPONSE_TITLE}
+        mb="md"
+      >
         <span style={{ whiteSpace: "pre-line" }}>
           {COMPROMISE_RESPONSE_MESSAGE}
         </span>
@@ -264,7 +269,7 @@ export function StandingConditionSection({
       />
     ) : null;
   if (view === undefined) return null;
-  const color = view.clearance === "confirmation" ? "red" : "yellow";
+  const color = view.clearance === "confirmation" ? "error" : "warn";
   return (
     <>
       <Alert
@@ -366,7 +371,7 @@ function ReinviteRecovery({
           {reinviteFailure !== undefined && (
             <Alert
               role="alert"
-              color="red"
+              color="error"
               title={reinviteFailure.title}
               mb="sm"
             >
@@ -480,7 +485,7 @@ function ConfirmationPanel({
           {confirmation.confirmedOption}
         </Button>{" "}
         <Button
-          color="red"
+          color="error"
           variant="light"
           disabled={busy}
           onClick={() => onResolve("does-not-add-up")}

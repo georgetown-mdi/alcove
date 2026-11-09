@@ -800,7 +800,7 @@ export function FailureAlert({
   return (
     <Alert
       role="alert"
-      color="red"
+      color="error"
       icon={<IconAlertCircle aria-hidden />}
       title={failure.title}
       ref={alertRef}
@@ -988,7 +988,7 @@ export function FailureRecoveryButton({
   const commit = (marginTop: string | undefined) =>
     to === undefined ? (
       <Button
-        color="red"
+        color="error"
         variant="light"
         className={styles.wrapLabel}
         mt={marginTop}
@@ -1000,7 +1000,7 @@ export function FailureRecoveryButton({
       <Button
         component={Link}
         to={to}
-        color="red"
+        color="error"
         variant="light"
         className={styles.wrapLabel}
         mt={marginTop}
@@ -1020,7 +1020,7 @@ export function FailureRecoveryButton({
   return (
     <>
       <Button
-        color="red"
+        color="error"
         variant="light"
         className={styles.wrapLabel}
         mt="sm"
@@ -1097,7 +1097,7 @@ export function RunWarningsAlert({
       </VisuallyHidden>
       {warnings.length > 0 && (
         <Alert
-          color="yellow"
+          color="warn"
           icon={<IconAlertTriangle aria-hidden />}
           title={
             warnings.length === 1
@@ -1316,7 +1316,7 @@ export function AnotherExchangeFoot({
           <Button
             component={Link}
             to="/quick"
-            color="red"
+            color="error"
             variant="light"
             onClick={() => onNavigate?.()}
           >

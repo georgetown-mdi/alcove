@@ -80,7 +80,7 @@ export function TermsProposalPanel({
   onDecline: () => void;
 }) {
   return (
-    <Alert color="yellow" title={TERMS_CHANGE_QUESTION_TITLE} mb="md">
+    <Alert color="warn" title={TERMS_CHANGE_QUESTION_TITLE} mb="md">
       <Text size="sm" mb="sm">
         {termsProposalText(matchingKeyTurnedOff)}
       </Text>

@@ -387,7 +387,7 @@ export function SignalingServerCard({
         )}
         {reachProblem !== undefined && (
           <Alert
-            color="yellow"
+            color="warn"
             icon={<IconAlertTriangle aria-hidden />}
             title="Your partner may not reach this server"
           >
@@ -397,7 +397,7 @@ export function SignalingServerCard({
         {server.warnings.map((warning) => (
           <Alert
             key={warning}
-            color="yellow"
+            color="warn"
             icon={<IconAlertTriangle aria-hidden />}
           >
             {sanitizeForDisplay(warning)}
@@ -413,7 +413,7 @@ export function SignalingServerCard({
         )}
         {enrollment !== undefined && (
           <Alert
-            color="blue"
+            color="info"
             icon={<IconInfoCircle aria-hidden />}
             title="Enroll this exchange at your relay"
           >
@@ -431,7 +431,7 @@ export function SignalingServerCard({
           <Button
             size="xs"
             variant="subtle"
-            color="red"
+            color="error"
             onClick={() => void clear()}
           >
             Clear address and relay

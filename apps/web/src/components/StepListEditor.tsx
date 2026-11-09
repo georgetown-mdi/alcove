@@ -237,7 +237,7 @@ function StepRow({
                 even when editable. An unrecognized step takes the alert below
                 instead, which says what the operator has to do about it. */}
             {isRegexTier && (
-              <Badge size="xs" variant="light" color="gray">
+              <Badge size="xs" variant="light" color="secondary">
                 advanced
               </Badge>
             )}
@@ -252,7 +252,7 @@ function StepRow({
           {descriptor === undefined && (
             <Alert
               role="alert"
-              color="red"
+              color="error"
               variant="light"
               p="xs"
               icon={<IconAlertTriangle size={16} aria-hidden />}
@@ -270,7 +270,7 @@ function StepRow({
           {declaresBothNullIfValues(step) && (
             <Alert
               role="alert"
-              color="red"
+              color="error"
               variant="light"
               p="xs"
               icon={<IconAlertTriangle size={16} aria-hidden />}
@@ -297,7 +297,7 @@ function StepRow({
           {inertCoalesce !== undefined && (
             <Alert
               role="note"
-              color="yellow"
+              color="warn"
               variant="light"
               p="xs"
               icon={<IconAlertTriangle size={16} aria-hidden />}
@@ -328,7 +328,7 @@ function StepRow({
           </ActionIcon>
           <ActionIcon
             variant="subtle"
-            color="red"
+            color="error"
             onClick={onRemove}
             aria-label={`Remove ${label}`}
             data-step-action="remove"

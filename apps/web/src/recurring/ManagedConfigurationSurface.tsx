@@ -97,7 +97,7 @@ export function ManagedConfigurationSurface({
         <p className={styles.sub}>{configurationOnlyLead(record)}</p>
         {referenceNotice !== undefined && (
           <Alert
-            color="yellow"
+            color="warn"
             title="Files Alcove reads when it runs"
             mt="sm"
             mb="sm"
@@ -185,7 +185,7 @@ function ConfigurationExportPanel({
     return (
       <Alert
         role="alert"
-        color="red"
+        color="error"
         title="This configuration cannot be exported"
         mt="sm"
         mb="sm"
@@ -374,7 +374,7 @@ function ConfigurationSettingsEditor({
       {failed && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           title="That could not be saved"
           mt="sm"
           mb="sm"

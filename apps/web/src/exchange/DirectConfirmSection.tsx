@@ -262,7 +262,7 @@ export function DirectConfirmSection({
         </Radio.Group>
         {runsSinglePassLink(preview.linkageTerms) && (
           <Alert
-            color="yellow"
+            color="warn"
             title={SINGLE_PASS_DISCLOSURE_TITLE}
             // Pinned so the consent-critical warning is announced on selection
             // even if Mantine's default role changes.
@@ -286,7 +286,7 @@ export function DirectConfirmSection({
         </Text>
         {bothSidedNotice !== undefined && (
           <Alert
-            color="yellow"
+            color="warn"
             icon={<IconAlertCircle aria-hidden />}
             title="If your partner sets this too, the exchange stops"
             // Pinned for the same reason the single-pass note above is: the
@@ -301,7 +301,7 @@ export function DirectConfirmSection({
       {overlongAlert !== undefined && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           icon={<IconAlertCircle aria-hidden />}
           title={overlongAlert.title}
         >
@@ -311,7 +311,7 @@ export function DirectConfirmSection({
 
       {sanitizedNotice !== undefined && (
         <Alert
-          color="yellow"
+          color="warn"
           icon={<IconAlertCircle aria-hidden />}
           title={sanitizedNotice.title}
         >
@@ -338,7 +338,7 @@ export function DirectConfirmSection({
         ) : (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             icon={<IconAlertCircle aria-hidden />}
             title={unlinkable.title}
           >

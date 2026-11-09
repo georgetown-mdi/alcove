@@ -102,7 +102,7 @@ export function BackupPanel({
       {failed && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           title="Could not save the backup"
           mb="sm"
         >
@@ -128,7 +128,7 @@ interface FolderWriteNoteProps {
 export function FolderWriteNote({ write }: FolderWriteNoteProps) {
   const note = attendedFolderWriteNote(write);
   return note.failed ? (
-    <Alert color="yellow" title="Not written to your folder" mb="sm">
+    <Alert color="warn" title="Not written to your folder" mb="sm">
       {note.message}
     </Alert>
   ) : (
@@ -179,7 +179,7 @@ export function WorkingFolderPrompt({ onGrant }: WorkingFolderPromptProps) {
         {WORKING_FOLDER_SCOPE_NOTE}
       </p>
       {failed && (
-        <Alert color="yellow" title="That folder was not set" mt="sm" mb="sm">
+        <Alert color="warn" title="That folder was not set" mt="sm" mb="sm">
           Nothing changed. Try choosing the folder again.
         </Alert>
       )}

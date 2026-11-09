@@ -21,7 +21,7 @@ const app = createAppMount();
 afterEach(app.unmount);
 
 test("an Alert that sets no role is a polite status, not an interrupting alert", async () => {
-  app.render(createElement(Alert, { color: "yellow", title: "A warning" }));
+  app.render(createElement(Alert, { color: "warn", title: "A warning" }));
   await expect
     .element(page.getByRole("status"))
     .toMatchTextContent("A warning");
@@ -31,19 +31,19 @@ test("an Alert that sets no role is a polite status, not an interrupting alert",
 test("an error Alert keeps the role it sets", async () => {
   app.render(
     createElement(Alert, {
-      color: "red",
-      role: alertRoleFor("red"),
+      color: "error",
+      role: alertRoleFor("error"),
       title: "An error",
     }),
   );
   await expect.element(page.getByRole("alert")).toMatchTextContent("An error");
 });
 
-test("a runtime color other than red takes the polite default", async () => {
+test("a runtime status other than error takes the polite default", async () => {
   app.render(
     createElement(Alert, {
-      color: "green",
-      role: alertRoleFor("green"),
+      color: "success",
+      role: alertRoleFor("success"),
       title: "Verified",
     }),
   );

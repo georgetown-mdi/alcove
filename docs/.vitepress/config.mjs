@@ -280,6 +280,7 @@ export default {
           page("Incident response", "docs/INCIDENT_RESPONSE.md"),
           page("Contributing", "CONTRIBUTING.md"),
           page("Testing", "docs/TESTING.md"),
+          page("Status colours", "docs/STATUS_COLOURS.md"),
           page("Support", "SUPPORT.md"),
           page("License", "LICENSE.md"),
         ],

@@ -67,6 +67,7 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 - [RELEASES.md](RELEASES.md) - the versioning policy, the release checklist, and verifying the published artifacts
 - [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) - replacing the vendored native PSI build: the integrity controls, the procedure, and chain of custody
 - [TESTING.md](TESTING.md) - where a test goes, the integration backends and profiles, the console check, the browser suite, and coverage
+- [STATUS_COLOURS.md](STATUS_COLOURS.md) - the web app's status colours: the token table, the theme, and what a component names
 - [ROADMAP.md](ROADMAP.md) - what is planned next
 
 ### Technical specifications ([`docs/spec/`](spec/README.md))

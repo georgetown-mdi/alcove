@@ -233,12 +233,12 @@ export function KeysTab({
       <p className={styles.eyebrow}>Customize</p>
       <h1 tabIndex={-1}>Matching keys</h1>
       {keysFromOpenedConfiguration && (
-        <Alert variant="light" color="gray" role="note" my="sm">
+        <Alert variant="light" color="secondary" role="note" my="sm">
           {OPENED_CONFIGURATION_KEYS_NOTE}
         </Alert>
       )}
       {keysAuthored && !keysFromOpenedConfiguration && (
-        <Alert variant="light" color="gray" role="note" my="sm">
+        <Alert variant="light" color="secondary" role="note" my="sm">
           <p>{AUTHORED_KEYS_FLOOR_NOTE}</p>
           {offersUseBuiltInRules && (
             <ConfirmedActionButton
@@ -390,7 +390,7 @@ export function KeysTab({
         })}
       </ol>
       {showsSharedValueKey && (
-        <Alert variant="light" color="gray" role="note" my="sm">
+        <Alert variant="light" color="secondary" role="note" my="sm">
           {SHARED_VALUE_CAVEAT}
         </Alert>
       )}
@@ -418,7 +418,7 @@ export function KeysTab({
           announce={announce}
         />
       ) : (
-        <Alert variant="light" color="gray" role="note">
+        <Alert variant="light" color="secondary" role="note">
           Turn on expert authoring to edit keys element by element and to import
           or export the terms.
         </Alert>
@@ -457,7 +457,7 @@ export function KeysTab({
       </Radio.Group>
       {runsSinglePassLink(editor.draft) && (
         <Alert
-          color="yellow"
+          color="warn"
           title={SINGLE_PASS_DISCLOSURE_TITLE}
           // Pinned so the consent-critical warning is announced on selection
           // even if Mantine's default role changes.
@@ -471,7 +471,7 @@ export function KeysTab({
         <Alert
           id={countOnlyStatementId}
           variant="light"
-          color="gray"
+          color="secondary"
           role="note"
           mt="sm"
         >

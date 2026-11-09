@@ -138,8 +138,8 @@ export function ResumeInvitationOffer({
       </p>
       {alert !== undefined && (
         <Alert
-          color="red"
-          role={alertRoleFor("red")}
+          color="error"
+          role={alertRoleFor("error")}
           icon={<IconAlertCircle aria-hidden />}
           title={alert.title}
           mt="sm"
