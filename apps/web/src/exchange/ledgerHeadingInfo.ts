@@ -6,10 +6,6 @@
  * either party. */
 export const LEDGER_HEADING_INFO: Readonly<Record<string, string | undefined>> =
   {
-    "You will send":
-      "Your partner gets what is listed here only for the records you both hold.",
-    "You sent":
-      "Your partner got what is listed here only for the records you both hold.",
     "You will receive":
       "What you get when the exchange finishes, if anything: the records " +
       "you both hold and any columns your partner sends, or only how many " +

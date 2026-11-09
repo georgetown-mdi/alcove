@@ -3,13 +3,9 @@ import { describe, expect, test } from "vitest";
 import { LEDGER_HEADING_INFO } from "@exchange/ledgerHeadingInfo";
 
 describe("the ledger's heading explanations", () => {
-  test("the send rows say the columns go only with the records both parties hold", () => {
-    expect(LEDGER_HEADING_INFO["You will send"]).toBe(
-      "Your partner gets what is listed here only for the records you both hold.",
-    );
-    expect(LEDGER_HEADING_INFO["You sent"]).toBe(
-      "Your partner got what is listed here only for the records you both hold.",
-    );
+  test("the send rows have no explanation, so they render without an info icon", () => {
+    expect(LEDGER_HEADING_INFO["You will send"]).toBeUndefined();
+    expect(LEDGER_HEADING_INFO["You sent"]).toBeUndefined();
   });
 
   test("the receive rows name the columns the partner sends", () => {
