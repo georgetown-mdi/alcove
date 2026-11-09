@@ -107,7 +107,7 @@ answer to what separates a partner loss from a deliberate release.
 | `DialRetried` | Dialing | Dialing | -- | -- | -- |
 | `DialFailed` | Dialing | `Unconnected` / `Lost` | -- | -- | the caller's |
 | `PartnerDropObserved` | `Live` / `LiveOverEndedTransport` | `Lost` | yes | `partner` | re-dial and re-issue |
-| `PartnerDropAbsorbedByDial` | `Lost` | `Live(g+1)` | yes | `partner` | the dial itself, closed again when the budget is spent |
+| `PartnerDropAbsorbedByDial` | `Lost` | `Live(g+1)`, or no session when the budget is spent (the landed dial is closed and `connect()` rejects) | yes | `partner` | the dial itself |
 | `PartnerFinAtBoundary` | Releasing | `Lost` | yes | `partner` | the next cycle-start dial |
 | `PartnerDropAbsorbedAtBoundary` | Releasing | `Released` | yes | `partner` | the next cycle-start dial |
 | `PartnerDropFoundAtBoundary` | Releasing | `Lost` | yes | `partner` | the next cycle-start dial |
