@@ -229,26 +229,143 @@ describe("SFTP adapter session accounting", () => {
     expect(adapter.midExchangeReconnectCount).toBe(0);
   });
 
-  test("a repeat connect() over a live session charges the replaced generation as deliberate", async () => {
-    const { client } = accountingClient();
+  // ssh2-sftp-client refuses a connect() over a live session before reaching the
+  // server and leaves that session in place
+  // (test/integration/sftpStackPremises.test.ts).
+  function refuseConnectOverLiveSession(
+    connect: ReturnType<typeof accountingClient>["connect"],
+    state: ReturnType<typeof accountingClient>["state"],
+  ): void {
+    connect.mockImplementation(async () => {
+      if (state.live)
+        throw Object.assign(
+          new Error("connect: An existing SFTP connection is already defined"),
+          { code: "ERR_NOT_CONNECTED" },
+        );
+      state.live = true;
+    });
+  }
+
+  function lastRedialWarnings(adapter: SSH2SFTPClientAdapter): unknown[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const warn = (adapter as any).log.warn as ReturnType<typeof vi.fn>;
+    return warn.mock.calls.filter((call) =>
+      String(call[0]).includes("last re-dial allowed"),
+    );
+  }
+
+  test("a drop absorbed by a refused-then-retried connect() is charged to the partner", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, connect, state, dropFromServer } = accountingClient();
+      refuseConnectOverLiveSession(connect, state);
+      const adapter = new SSH2SFTPClientAdapter();
+      install(adapter, client);
+      state.live = false;
+      await adapter.connect({ host: "h", maxReconnectAttempts: 1 });
+
+      const repeat = adapter.connect({ host: "h", maxReconnectAttempts: 1 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(connect).toHaveBeenCalledTimes(2);
+      // The partner drops the session while the refused attempt waits to retry.
+      dropFromServer();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await repeat;
+
+      expect(connect).toHaveBeenCalledTimes(3);
+      expect(lossesAfter(adapter)).toEqual({
+        partner: 1,
+        deliberate: 0,
+        teardown: 0,
+        fatal: 0,
+      });
+      expect(adapter.connectRetryCount).toBe(1);
+      expect(adapter.reconnectCount).toBe(2);
+      expect(adapter.midExchangeReconnectCount).toBe(1);
+
+      // That drop spent the one unit of the mid-exchange budget, so the next
+      // drop is refused before any dial.
+      const refused = adapter.exists("/remote/out.json");
+      dropFromServer();
+      await expect(refused).rejects.toBeInstanceOf(UsageError);
+      expect(connect).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a drop a connect() absorbs at a budget of 0 ends the run and closes the landed dial", async () => {
+    const { client, connect, state, socket } = accountingClient();
+    refuseConnectOverLiveSession(connect, state);
     const adapter = new SSH2SFTPClientAdapter();
     install(adapter, client);
-
+    state.live = false;
     await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
-    await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
 
-    const accounting = adapter.sessionAccounting;
-    expect(accounting.losses).toEqual({
-      partner: 0,
-      deliberate: 1,
+    // The partner drops the session with nothing on the wire to observe it.
+    state.live = false;
+    const repeat = adapter.connect({ host: "h", maxReconnectAttempts: 0 });
+    await expect(repeat).rejects.toBeInstanceOf(UsageError);
+    await expect(repeat).rejects.toThrow(
+      "max_reconnect_attempts=0 permits no mid-exchange reconnection",
+    );
+
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(socket.destroy).toHaveBeenCalledTimes(1);
+    expect(state.live).toBe(false);
+    expect(lossesAfter(adapter)).toEqual({
+      partner: 1,
+      deliberate: 0,
       teardown: 0,
       fatal: 0,
     });
-    expect(accounting.generationsEnded).toBe(1);
-    // Replacing a session this side still held is this side's doing, so nothing
-    // an operator would treat as a drop.
-    expect(adapter.reconnectCount).toBe(0);
-    expect(adapter.midExchangeReconnectCount).toBe(0);
+    expect(adapter.midExchangeReconnectCount).toBe(1);
+    expect(lastRedialWarnings(adapter)).toEqual([]);
+  });
+
+  test("a drop a retried connect() absorbs past the budget ends the run and closes the landed dial", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, connect, state, socket, dropFromServer } =
+        accountingClient();
+      refuseConnectOverLiveSession(connect, state);
+      const adapter = new SSH2SFTPClientAdapter();
+      install(adapter, client);
+      state.live = false;
+      await adapter.connect({ host: "h", maxReconnectAttempts: 1 });
+
+      // A drop recovered mid-exchange spends the one unit of the budget.
+      const first = adapter.exists("/remote/out.json");
+      dropFromServer();
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(first).resolves.toBe(true);
+      expect(adapter.midExchangeReconnectCount).toBe(1);
+      socket.destroy.mockClear();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((adapter as any).log.warn as ReturnType<typeof vi.fn>).mockClear();
+      const dialsBefore = connect.mock.calls.length;
+
+      const repeat = adapter.connect({ host: "h", maxReconnectAttempts: 1 });
+      const refused = expect(repeat).rejects.toThrow(
+        "no reconnections are left",
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(connect).toHaveBeenCalledTimes(dialsBefore + 1);
+      // The partner drops the session while the refused attempt waits to retry.
+      dropFromServer();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await refused;
+      await expect(repeat).rejects.toBeInstanceOf(UsageError);
+
+      expect(connect).toHaveBeenCalledTimes(dialsBefore + 2);
+      expect(socket.destroy).toHaveBeenCalledTimes(1);
+      expect(state.live).toBe(false);
+      expect(lossesAfter(adapter).partner).toBe(2);
+      expect(adapter.midExchangeReconnectCount).toBe(2);
+      expect(lastRedialWarnings(adapter)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a drop the exhausted budget refuses is charged like every other", async () => {

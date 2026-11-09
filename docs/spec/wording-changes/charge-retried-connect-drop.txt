@@ -1,0 +1,3 @@
+# The trigger table gains a row for a partner drop that a repeat connect()
+# absorbs, which counts against the cumulative cap like any other partner loss.
+- - -> partner drop absorbed by a repeat `connect()`, on its first attempt or on a retry after a refusal over the live session | yes | yes | mode-dependent, as above, and capped like any other partner loss: past the cap the dial is closed and the exchange fails | paced | `notReleased`, on the dial's success

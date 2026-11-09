@@ -48,6 +48,18 @@ const noDelayClient = () => ({
   _sock: { setKeepAlive: () => {}, destroy: () => {} },
 });
 
+// Keep a repeat connect's recovery warning out of the test output.
+function silenceLog(adapter: SSH2SFTPClientAdapter): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (adapter as any).log = {
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    trace: vi.fn(),
+    error: vi.fn(),
+  };
+}
+
 // --- connect retry -----------------------------------------------------------
 
 describe("connect retry", () => {
@@ -289,22 +301,35 @@ describe("keyboard-interactive", () => {
 
   // Install a mock ssh2-sftp-client on the adapter whose underlying ssh2 Client
   // is `ssh2Client`, so connect() drives the real keyboard-interactive attach.
+  // Each dial lands a session by setting `sftp`, as ssh2-sftp-client's connect()
+  // does, so a case can end the session with dropSession() before it dials again.
   function installClient(
     adapter: SSH2SFTPClientAdapter,
     ssh2Client: unknown,
   ): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (adapter as any).client = {
-      sftp: {
-        open: vi.fn(),
-        close: vi.fn(),
-        opendir: vi.fn(),
-        readdir: vi.fn(),
-        on: vi.fn(),
-      },
-      connect: vi.fn().mockResolvedValue(undefined),
+    const stub: { sftp: unknown; [key: string]: unknown } = {
+      sftp: undefined,
+      connect: vi.fn(async () => {
+        stub.sftp = {
+          open: vi.fn(),
+          close: vi.fn(),
+          opendir: vi.fn(),
+          readdir: vi.fn(),
+          on: vi.fn(),
+        };
+      }),
       client: ssh2Client,
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).client = stub;
+  }
+
+  // The server ends the session without anything on this side observing it:
+  // ssh2-sftp-client's connect() refuses to run while a session is in place, so
+  // a repeat dial only lands after one is gone.
+  function dropSession(adapter: SSH2SFTPClientAdapter): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).client.sftp = undefined;
   }
 
   test("answers the server's prompts with the password when tryKeyboard is set", async () => {
@@ -410,7 +435,12 @@ describe("keyboard-interactive", () => {
       maxReconnectAttempts: 0,
     };
     await adapter.connect({ ...opts });
-    await adapter.connect({ ...opts });
+    // The partner drops the first session, then the repeat dial lands. Nothing
+    // on this side observed the drop, so the dial charges it to the budget, which
+    // therefore has to admit one.
+    dropSession(adapter);
+    silenceLog(adapter);
+    await adapter.connect({ ...opts, maxReconnectAttempts: 1 });
 
     expect(keyboardAttaches(client)).toBe(1);
   });
@@ -430,11 +460,15 @@ describe("keyboard-interactive", () => {
       tryKeyboard: true,
       maxReconnectAttempts: 0,
     });
+    // The partner drops the first session before the reconnect, and the dial
+    // charges that drop to a budget of one.
+    dropSession(adapter);
+    silenceLog(adapter);
     await adapter.connect({
       host: "sftp.example.org",
       password: "second",
       tryKeyboard: true,
-      maxReconnectAttempts: 0,
+      maxReconnectAttempts: 1,
     });
 
     // Still attached exactly once, but answering with the latest password.
@@ -2371,14 +2405,23 @@ describe("fatal wrapper-error guard", () => {
   test("a repeated connect on the same wrapper does not duplicate the listener", async () => {
     const adapter = new SSH2SFTPClientAdapter();
     const wrapper = makeWrapper();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (adapter as any).client = {
-      sftp: wrapper,
-      connect: vi.fn().mockResolvedValue(undefined),
+    const client: { sftp: EventEmitter | undefined; [key: string]: unknown } = {
+      sftp: undefined,
+      // Each dial lands the same wrapper again.
+      connect: vi.fn(async () => {
+        client.sftp = wrapper;
+      }),
       client: noDelayClient(),
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).client = client;
     await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
-    await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
+    // The partner drops the first session, then the repeat dial lands. Nothing
+    // on this side observed the drop, so the dial charges it to the budget,
+    // which therefore has to admit one.
+    client.sftp = undefined;
+    silenceLog(adapter);
+    await adapter.connect({ host: "h", maxReconnectAttempts: 1 });
     // Idempotent on the same wrapper instance: no second listener, because the
     // wrapper identity is unchanged. Accumulation would climb against the
     // WRAPPER's own default ceiling; the raise the constructor applies is on the
@@ -2389,20 +2432,26 @@ describe("fatal wrapper-error guard", () => {
   test("a fresh wrapper after a reconnect gets its own listener", async () => {
     const adapter = new SSH2SFTPClientAdapter();
     const first = makeWrapper();
-    const client = {
-      sftp: first as EventEmitter,
-      connect: vi.fn().mockResolvedValue(undefined),
+    const second = makeWrapper();
+    const wrappers = [first, second];
+    const client: { sftp: EventEmitter | undefined; [key: string]: unknown } = {
+      sftp: undefined,
+      connect: vi.fn(async () => {
+        client.sftp = wrappers.shift();
+      }),
       client: noDelayClient(),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (adapter as any).client = client;
     await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
 
-    // Model ssh2-sftp-client handing back a new wrapper after an end()/connect()
-    // cycle: a different object identity. The guard must attach to it too.
-    const second = makeWrapper();
-    client.sftp = second;
-    await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
+    // The partner drops the first session, and ssh2-sftp-client hands back a new
+    // wrapper on the repeat dial: a different object identity. The guard must
+    // attach to it too. The dial charges the unobserved drop to the budget,
+    // which therefore has to admit one.
+    client.sftp = undefined;
+    silenceLog(adapter);
+    await adapter.connect({ host: "h", maxReconnectAttempts: 1 });
 
     expect(first.listenerCount("error")).toBe(1);
     expect(second.listenerCount("error")).toBe(1);
