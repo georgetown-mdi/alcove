@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 634" role="img"><title>Architecture of an invited SFTP exchange</title><desc>Agency A sends an invitation with the terms, shared secret and SFTP address to Agency B over a trusted channel. Each agency runs the Alcove CLI container with its local files inside its own trust boundary, Alcove writing the key file and result owner-only, and connects over SSH with its own login and a pinned host key to an SFTP server whose operator is untrusted for content and sees the handshake, rendezvous and abort files, ciphertext, sizes and timing. The exchange is encrypted end to end between the two CLI containers.</desc>
+<style>
+text{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+.th{font-size:14px;font-weight:500;fill:#2C2C2A}
+.ts{font-size:12px;fill:#5F5E5A}
+.box{fill:#FFFFFF;stroke:#888780}
+.arr{stroke:#5F5E5A;stroke-width:1.5;fill:none}
+.leader{stroke:#888780;stroke-width:0.5;stroke-dasharray:3 3}
+.e2e{stroke:#1D9E75;stroke-width:1.5;stroke-dasharray:5 4;fill:none}
+.c-teal rect,rect.c-teal{fill:#E1F5EE;stroke:#0F6E56}
+.c-teal .th{fill:#085041}
+.c-coral rect,rect.c-coral{fill:#FAECE7;stroke:#993C1D}
+.c-coral .th{fill:#712B13}
+.c-coral .ts{fill:#993C1D}
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker><marker id="arrow-e2e" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#1D9E75" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="0" y="0" width="680" height="634" fill="#FFFFFF"/>
+<rect class="box" x="220" y="36" width="240" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="54" text-anchor="middle" dominant-baseline="central">Invitation over a trusted channel</text>
+<text class="ts" x="340" y="74" text-anchor="middle" dominant-baseline="central">terms, secret, SFTP address</text>
+<path d="M170 110 L170 64 L218 64" class="arr" marker-end="url(#arrow)"/>
+<path d="M462 64 L510 64 L510 108" class="arr" marker-end="url(#arrow)"/>
+<g class="c-teal">
+<rect x="40" y="110" width="260" height="238" rx="20" stroke-width="0.5"/>
+<text class="th" x="60" y="132" dominant-baseline="central">Agency A (inviter)</text>
+</g>
+<g class="c-teal">
+<rect x="380" y="110" width="260" height="238" rx="20" stroke-width="0.5"/>
+<text class="th" x="400" y="132" dominant-baseline="central">Agency B</text>
+</g>
+<rect class="box" x="60" y="150" width="220" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="170" y="168" text-anchor="middle" dominant-baseline="central">Alcove CLI container</text>
+<text class="ts" x="170" y="188" text-anchor="middle" dominant-baseline="central">optional FIPS image</text>
+<rect class="box" x="400" y="150" width="220" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="510" y="168" text-anchor="middle" dominant-baseline="central">Alcove CLI container</text>
+<text class="ts" x="510" y="188" text-anchor="middle" dominant-baseline="central">optional FIPS image</text>
+<rect class="box" x="60" y="222" width="220" height="106" rx="8" stroke-width="0.5"/>
+<text class="th" x="170" y="242" text-anchor="middle" dominant-baseline="central">Local files</text>
+<text class="ts" x="170" y="262" text-anchor="middle" dominant-baseline="central">config + SFTP login file</text>
+<text class="ts" x="170" y="280" text-anchor="middle" dominant-baseline="central">.alcove.key (shared secret)</text>
+<text class="ts" x="170" y="298" text-anchor="middle" dominant-baseline="central">input and result CSVs</text>
+<text class="ts" x="170" y="316" text-anchor="middle" dominant-baseline="central">key and result written owner-only</text>
+<rect class="box" x="400" y="222" width="220" height="106" rx="8" stroke-width="0.5"/>
+<text class="th" x="510" y="242" text-anchor="middle" dominant-baseline="central">Local files</text>
+<text class="ts" x="510" y="262" text-anchor="middle" dominant-baseline="central">config + SFTP login file</text>
+<text class="ts" x="510" y="280" text-anchor="middle" dominant-baseline="central">.alcove.key (shared secret)</text>
+<text class="ts" x="510" y="298" text-anchor="middle" dominant-baseline="central">input and result CSVs</text>
+<text class="ts" x="510" y="316" text-anchor="middle" dominant-baseline="central">key and result written owner-only</text>
+<text class="ts" x="340" y="164" text-anchor="middle" dominant-baseline="central">end to end</text>
+<line x1="282" y1="178" x2="398" y2="178" class="e2e" marker-start="url(#arrow-e2e)" marker-end="url(#arrow-e2e)"/>
+<path d="M170 348 L170 448 L218 448" class="arr" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<path d="M510 348 L510 448 L462 448" class="arr" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text class="ts" x="180" y="374" dominant-baseline="central">SSH, own login,</text>
+<text class="ts" x="180" y="392" dominant-baseline="central">pinned host key</text>
+<text class="ts" x="500" y="374" text-anchor="end" dominant-baseline="central">SSH, own login,</text>
+<text class="ts" x="500" y="392" text-anchor="end" dominant-baseline="central">pinned host key</text>
+<g class="c-coral">
+<rect x="220" y="420" width="240" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="438" text-anchor="middle" dominant-baseline="central">SFTP server</text>
+<text class="ts" x="340" y="458" text-anchor="middle" dominant-baseline="central">shared exchange folder</text>
+</g>
+<line class="leader" x1="340" y1="476" x2="340" y2="504"/>
+<rect class="box" x="200" y="504" width="280" height="72" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="522" text-anchor="middle" dominant-baseline="central">Operator can see</text>
+<text class="ts" x="340" y="542" text-anchor="middle" dominant-baseline="central">handshake, rendezvous and abort files,</text>
+<text class="ts" x="340" y="560" text-anchor="middle" dominant-baseline="central">ciphertext, sizes and timing</text>
+<rect class="c-teal" x="40" y="601" width="14" height="14" rx="3" stroke-width="0.5"/>
+<text class="ts" x="62" y="608" dominant-baseline="central">Agency trust boundary</text>
+<rect class="c-coral" x="250" y="601" width="14" height="14" rx="3" stroke-width="0.5"/>
+<text class="ts" x="272" y="608" dominant-baseline="central">Untrusted for content</text>
+<line x1="440" y1="608" x2="470" y2="608" class="e2e"/>
+<text class="ts" x="478" y="608" dominant-baseline="central">End-to-end AES-256-GCM</text>
+</svg>
