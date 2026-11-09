@@ -577,9 +577,8 @@ A send waiting on the window ends when the data channel leaves `open`, when the
 peer connection leaves `connected`, or when the connection closes, and the send
 then fails with a transport error; nothing more of its frame is handed over.
 Otherwise a send whose frame has not all been handed over fails once the
-parked-receive budget below has elapsed from the send's start (1 h or the wait
-the terms exchange raises it to, or `inactivity_timeout_ms`): core bounds every
-send's hand-off by that value, and
+parked-receive budget below has elapsed from the send's start (1 h, or
+`inactivity_timeout_ms`): core bounds every send's hand-off by that value, and
 the failure tears the connection down without sending the close sentinel. The
 browser peer leaves pacing to PeerJS.
 
@@ -1105,7 +1104,9 @@ condition holds.
 | Minimum offer re-send interval | 10 s | The least time between two sends of the CLI acceptor's offer on an `EXPIRE`; above the broker's 5 to 6 s hold, so a copy sent on an `EXPIRE` is never held beside the one before it |
 | Unreported offer re-send | 30 s | How long the CLI acceptor waits after sending its offer for an answer or an `EXPIRE` before sending it again; far above the broker's 5 to 6 s report of an undelivered frame, so the copy it replaces is no longer held |
 | Channel open | 30 s | The data channel opening once both descriptions are exchanged; reaching it means the peer is present but no candidate pair worked. On a run that lists WebSocket relays, its first expiry, on any attempt of a CLI run, also sends this side's start there ([Falling back to the WebSocket relay](#falling-back-to-the-websocket-relay)). An arbitrary working value: no time for a channel to open was measured on either runtime |
-| Parked receive | 1 h, raised at the terms exchange ([The wait through a partner's PSI step](#the-wait-through-a-partners-psi-step)) | Peer silence on an open channel; it bounds the peer's single-threaded PSI compute, which sends no keepalive while it runs |
+| Parked receive | 1 h | Peer silence on an open channel, each frame that arrives restarting it; through the PSI phase the partner's still-working frames restart it ([The wait through a partner's PSI step](#the-wait-through-a-partners-psi-step)) |
+| Partner silence | 2 min (`PARTNER_SILENCE_BOUND_MS`) | A parked receive with nothing arriving, each part of a frame restarting it, from the partner's first still-working frame to the end of this party's PSI phase. A working value not yet measured in a real browser |
+| Still-working interval | 30 s (`STILL_WORKING_INTERVAL_MS`) | The longest this party goes without sending through its PSI phase. A working value not yet measured in a real browser |
 | Close drain | 5 min | The clean close's wait above -- the CLI's acknowledgement drain, the web's wait for the peer's close -- sized from the largest admissible frame and the measured send rate |
 | Sentinel hand-off | 2 s | Getting the close sentinel itself onto the wire |
 | Channel close | 2 s | The data channel's own close completing on a clean close -- the peer answering the stream reset. A partner that goes during the teardown spends it whole, ICE being slower than this to call the link dead; reaching it closes the session anyway |
@@ -1174,47 +1175,47 @@ own ICE agent.
 
 ### The wait through a partner's PSI step
 
-A partner computing a PSI step sends nothing until the step ends, so the
-parked-receive budget bounds that step. Once the terms exchange has fixed both
-parties' sizes, each party raises its budget, before its PSI phase waits on the
-partner, to
+A partner computing a PSI step sends no PSI frame until the step ends. So that
+a step of any length is waited through, and a partner that stops is found
+within minutes, each party sends still-working frames through its PSI phase
+([PROTOCOL.md](PROTOCOL.md#the-still-working-frame)), and the waiting party
+ends the run when they stop.
 
-```text
-W = max(1 h, 4,219.7 s / 8,388,608 value slots * (n_local + n_partner))
-```
-
-- **The counts.** `n_local` and `n_partner` are the two parties' value slots
-  (`effectiveKeyCount * recordCount`), each held to the receive ceiling the
-  other party states and to `MAX_PSI_DECODE_ELEMENTS`, since no set a party
-  sends may hold more.
-- **The rate.** 4,219.7 s at 8,388,608 value slots, about 503.0 microseconds a
-  value slot, is the slowest rate recorded for a PSI step with the streamed
-  match: a browser party creating its single-pass request in the
-  development container
-  ([PROTOCOL.md](PROTOCOL.md#what-a-browser-tab-can-match), "Single-pass in a
-  browser"). No factor is applied above it. The steps recorded on the x86-64
-  host ran at 289.0 to 355.2 microseconds a value slot.
-- **Why the sum.** A single-pass receiver waits through the sender's setup and
-  its answer back to back, one step over each party's set. A cascade or
-  count-only party waits through one step at a time.
-- **The values.** 1 h up to 7,156,667 value slots together, so a smaller
-  exchange keeps the default. 8,439.4 s at the browser's receive ceiling,
-  8,388,608 value slots a side. 16,878.8 s at most, at `MAX_PSI_DECODE_ELEMENTS`
-  a side.
 - **Where it applies.** The web and CLI WebRTC transports and both WebSocket
-  relay clients, and only while the transport's own default is in force: a CLI
-  run given `inactivity_timeout_ms` waits that value. The raise never lowers a
-  budget. Each send's hand-off is bounded by the raised budget too
-  ([Outbound pacing](#outbound-pacing)). The file-sync channels are not raised.
-- **Through the WebSocket relay.** The relay's idle bound is W at the browser's
-  receive ceiling a side plus the close drain
-  ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#quotas)). A run whose W is longer,
-  only between two parties whose value slots together pass 16,777,216, can be
-  closed by the relay (4009) before its own budget expires.
-- **A stated limit.** The rate is the slowest recorded, not a bound on every
-  host. A host slower than the development container under the load recorded
-  there can run a step past W, and the run then ends with the peer-inactivity
-  refusal.
+  relay clients. The file-sync channels send none, and a file-sync run's wait
+  through a partner step is the parked-receive budget alone
+  ([FILE_SYNC.md](FILE_SYNC.md)).
+- **Sending.** A party sends one when its PSI phase starts, before its PSI
+  engine is built, and then whenever the still-working interval, 30 s, passes
+  with nothing sent. Every send through the phase goes through one queue, so a
+  still-working send never overlaps another. It stops, once a send in flight
+  settles, when the phase ends, on success, failure or cancellation, or when
+  the party sends an abort.
+- **Waiting.** The partner's first still-working frame arms the partner-silence
+  bound, 2 min, on a parked receive: a receive with nothing arriving for that
+  long ends the run with the `partner-stopped-responding` cause ([CLI_EVENTS.md](CLI_EVENTS.md)),
+  "Your partner stopped responding during matching: nothing arrived from them
+  for 2 minutes." Each frame and each part of a frame being reassembled
+  restarts it, so a large frame on a slow link is not cut off. The end of this
+  party's own PSI phase clears it.
+- **The whole-frame budget still runs.** The parked-receive budget, 1 h or
+  `inactivity_timeout_ms`, bounds each whole frame beside the silence bound, so
+  a relay that trickles bytes cannot hold a run open past it. A still-working
+  frame is a frame, so it restarts that budget. `inactivity_timeout_ms` does
+  not change the silence bound.
+- **Unread frames.** A party running its own operation does not receive, so the
+  partner's still-working frames queue. On each interval the party reads and
+  drops the still-working frames already queued, so a still-working frame
+  replaces any unread one and the inbound queue's bounds
+  ([TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)) are never reached by them.
+- **Through the WebSocket relay.** A still-working frame is a message to the
+  relay, so the PSI phase never comes near the relay's idle bound
+  ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#quotas)).
+- **Working values.** Neither the interval nor the bound is measured in a real
+  browser: a hidden tab's timers, the browser main thread's longest hold, and
+  whether Chrome freezes a tab with an open data channel are open. The bound
+  allows the interval, a 12 s CLI hold on each side, and up to 60 s of
+  hidden-tab timer delay.
 
 What ends the wait on a partner that has gone is whichever comes first:
 
@@ -1230,13 +1231,13 @@ What ends the wait on a partner that has gone is whichever comes first:
   - Through the WebSocket relay, a partner whose socket ends closes this side
     with 4000 at once, and a lost socket is dropped 90 to 120 s after its last
     answer ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#keepalive)).
-- **W itself**, with the peer-inactivity refusal (`no message arrived within W
-  ms; the partner appears to have gone silent`). It alone ends the wait on a
-  partner still connected that sends nothing. On the CLI the refusal, and a
-  send's hand-off refusal under the same budget, name after the figure where it
-  came from: `(the wait set from the two parties' record counts)` for W, and
-  `(the limit inactivity_timeout_ms sets)` for the one-hour default or a value
-  that setting gave.
+- **The partner-silence bound**, once armed, on a partner still connected whose
+  frames stop.
+- **The parked-receive budget**, with the peer-inactivity refusal (`no message
+  arrived within N ms; the partner appears to have gone silent`), on a partner
+  that sent no still-working frame or once this party's phase has ended. On the
+  CLI the refusal, and a send's hand-off refusal under the same budget, add
+  `(the limit inactivity_timeout_ms sets)`.
 
 ## See also
 
