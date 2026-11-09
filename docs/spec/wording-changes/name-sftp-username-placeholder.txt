@@ -1,0 +1,2 @@
+# The placeholder-username limits line, removed with the wording it described.
+- Limits: a partner who runs the sftp exchange command with the account placeholder unreplaced is refused by the command-line application's placeholder check, whose message names `alcove.yaml`'s `connection.server.username` and the `--server-username` flag rather than the flag's value alone. -> -

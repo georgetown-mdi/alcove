@@ -274,8 +274,6 @@ Four invariants hold by construction -- nothing else is representable as an inpu
 
 Every `docker run` line mounts the working folder as `-v "${PWD}:/work"`, one form for every shell the sheet addresses: it reaches docker as one argument in Windows PowerShell 5.1, bash, and POSIX sh. Limits: from a network-share location, Windows PowerShell 5.1's `$PWD` is provider-qualified (`Microsoft.PowerShell.Core\FileSystem::\\server\share\...`), which is not a path docker can mount, so the sheet's commands run from a folder on a local drive; measured in CI on Windows PowerShell 5.1.
 
-Limits: a partner who runs the sftp exchange command with the account placeholder unreplaced is refused by the command-line application's placeholder check, whose message names `alcove.yaml`'s `connection.server.username` and the `--server-username` flag rather than the flag's value alone.
-
 ### The single-slot occupancy probe
 
 `GET /api/jobs/slot` reports whether the console's single exchange slot is occupied, and by which job: `{ "occupied": false }` when free, else `{ "occupied": true, "id": "<uuid>" }` naming the occupying exchange. Occupied is exactly the state in which a create is refused with a `409` (see [Job lifetime and orphan handling](#job-lifetime-and-orphan-handling)), so this probe and the busy create disclose the same occupant and cannot drift.

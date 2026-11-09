@@ -60,7 +60,7 @@ test("a core-minted sftp YAML reaches the CLI config path with the placeholder u
     `username: ${PLACEHOLDER_SSH_USERNAME}`,
   );
   expect(() => loadConfig({ configFile, keyFile })).toThrow(
-    "still has a REPLACE_WITH_... placeholder as connection.server.username",
+    "The SFTP username is still REPLACE_WITH_SSH_USERNAME.",
   );
   const result = loadConfig({ configFile, keyFile, serverUsername: "alice" });
   expect(result.connection.channel).toBe("sftp");

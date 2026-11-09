@@ -11,6 +11,7 @@ import {
   getLogger,
   matchingKeyUnavailableReason,
   OperatorConfigError,
+  PLACEHOLDER_SSH_USERNAME,
   prepareForExchange,
   resolveExchangeInputs,
   sanitizeErrorForDisplay,
@@ -679,10 +680,10 @@ function readExchangeConfig(
     value: connection,
     path: ["connection"],
     configFile: options.configFile,
-    remedyFor: (field) =>
+    messageFor: (field) =>
       field === "connection.server.username"
-        ? "Set it to your account on the SFTP server, or pass " +
-          "--server-username, before running the exchange."
+        ? `The SFTP username is still ${PLACEHOLDER_SSH_USERNAME}. ` +
+          "Replace it with your account on the SFTP server."
         : undefined,
   });
 
