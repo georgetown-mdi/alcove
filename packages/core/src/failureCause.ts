@@ -5,6 +5,7 @@
 // that has no remedy for it. No flag, control or command name belongs here; a
 // remedy every app states alike, naming none, is here for the apps to share.
 
+import { ConnectionError } from "./errors";
 import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
 import { formatCount } from "./utils/formatCount";
 
@@ -114,7 +115,15 @@ export type FailureCause =
       readonly kind: "relay-registrar-unreachable";
       readonly host: string;
       readonly port: number;
-    } & RelayRegistrarUnreachableFailure);
+    } & RelayRegistrarUnreachableFailure)
+  | {
+      /**
+       * The partner's still-working messages stopped during matching, and
+       * nothing else arrived from it for `silentMs`.
+       */
+      readonly kind: "partner-stopped-responding";
+      readonly silentMs: number;
+    };
 
 /** The discriminant of {@link FailureCause}. */
 export type FailureCauseKind = FailureCause["kind"];
@@ -134,6 +143,7 @@ export const FAILURE_CAUSE_KINDS = [
   "partner-never-arrived",
   "folder-missing",
   "relay-registrar-unreachable",
+  "partner-stopped-responding",
 ] as const satisfies ReadonlyArray<FailureCauseKind>;
 
 const FAILURE_CAUSE = annotationKey<FailureCause>("failure cause");
@@ -248,6 +258,10 @@ const FROM_UNTRUSTED: {
       ? undefined
       : { kind: "relay-registrar-unreachable", host, port, ...failure };
   },
+  "partner-stopped-responding": ({ silentMs }) =>
+    isWholeNumber(silentMs)
+      ? { kind: "partner-stopped-responding", silentMs }
+      : undefined,
 };
 
 /**
@@ -368,6 +382,9 @@ const SENTENCES: {
       ? `The shared folder ${path} does not exist (ENOENT).`
       : `The shared folder path ${path} does not name a folder (ENOTDIR).`,
   "relay-registrar-unreachable": relayRegistrarUnreachableSentence,
+  "partner-stopped-responding": ({ silentMs }) =>
+    "Your partner stopped responding during matching: nothing arrived from " +
+    `them for ${formatWaitDuration(silentMs)}.`,
 };
 
 /**
@@ -385,4 +402,23 @@ export function failureCauseSentence(cause: FailureCause): string {
  */
 export function failureCauseError(cause: FailureCause): Error {
   return markFailureCause(new Error(failureCauseSentence(cause)), cause);
+}
+
+/** The remedy for a partner that stopped responding during matching. */
+export const PARTNER_STOPPED_RESPONDING_REMEDY =
+  "Ask your partner to check their run, then start the exchange again.";
+
+/**
+ * The `transport` failure a parked receive raises when the partner-silence
+ * bound passes with nothing from the partner, tagged with the
+ * `partner-stopped-responding` cause.
+ */
+export function partnerStoppedRespondingError(
+  silentMs: number,
+): ConnectionError {
+  const cause: FailureCause = { kind: "partner-stopped-responding", silentMs };
+  return markFailureCause(
+    new ConnectionError(failureCauseSentence(cause), "transport"),
+    cause,
+  );
 }

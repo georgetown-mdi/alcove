@@ -158,6 +158,7 @@ import {
 } from "./exchange/termsRefusals.js";
 import { buildOwedExchangeRecord } from "./exchange/owedRecord.js";
 import { psiParticipantId, runPsiPhase } from "./exchange/psiPhase.js";
+import { stillWorkingLayer } from "./exchange/stillWorking.js";
 import type {
   DualSignedRecord,
   ReceiptContent,
@@ -2023,6 +2024,10 @@ export async function runExchange(
     );
   }
 
+  // The payload exchange after the phase reads through the layer too, which
+  // drops the partner's still-working frames sent before its own phase ended.
+  const stillWorking = stillWorkingLayer(conn);
+  if (stillWorking !== undefined) conn = stillWorking.conn;
   const {
     associationTable,
     intersectionCount,
@@ -2030,6 +2035,7 @@ export async function runExchange(
     matchedKeyOfPair,
   } = await runPsiPhase({
     conn,
+    stillWorking,
     psiLibrary,
     psiEngineFactory: options.psiEngineFactory,
     isReceiver,
@@ -2040,8 +2046,6 @@ export async function runExchange(
     roundsSentInParts,
     localReceiveCeiling,
     partnerReceiveCeiling,
-    localValueSlots: valueSlots(localSize),
-    partnerValueSlots: valueSlots(partnerSize),
     linkageKeyIterables,
     linkageTerms,
     partnerTerms,

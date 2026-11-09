@@ -4,11 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import WebSocket from "ws";
 
-import {
-  BROWSER_PSI_SET_MAX_ELEMENTS,
-  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
-  partnerStepWaitMs,
-} from "@alcove/core";
+import { DEFAULT_WEBRTC_PEER_TIMEOUT_MS } from "@alcove/core";
 
 import {
   PAIRED_FRAME,
@@ -287,14 +283,10 @@ describe("the per-pairing byte rate", () => {
 });
 
 describe("the idle bound", () => {
-  it("is a party's parked-receive budget at the browser's ceiling a side plus the close drain", () => {
-    expect(RELAY_IDLE_TIMEOUT_MS).toBe(
-      partnerStepWaitMs({
-        localValueSlots: BROWSER_PSI_SET_MAX_ELEMENTS,
-        partnerValueSlots: BROWSER_PSI_SET_MAX_ELEMENTS,
-        localReceiveCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
-        partnerReceiveCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
-      }) + RELAY_CLOSE_WAIT_MS,
+  it("is the working value, above a client's one-hour default wait plus the close drain", () => {
+    expect(RELAY_IDLE_TIMEOUT_MS).toBe(8_739_400);
+    expect(RELAY_IDLE_TIMEOUT_MS).toBeGreaterThan(
+      60 * 60 * 1000 + RELAY_CLOSE_WAIT_MS,
     );
   });
 
