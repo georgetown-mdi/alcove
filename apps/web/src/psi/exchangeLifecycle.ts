@@ -398,12 +398,12 @@ interface RunExchangeLifecycleOptions<
  * aborts mid-flight.
  *
  * Guarantees:
- * - **Teardown always runs, exactly once, and never throws** (F1, F2). It is a
+ * - **Teardown always runs, exactly once, and never throws.** It is a
  *   run-once latch: even when two triggers race (a wait timeout and an
  *   unmount-abort), the effect runs once. A teardown-only failure is logged and
  *   raises no alert -- the results are available and there is nothing for the
  *   operator to act on.
- * - **The exchange-vs-output distinction survives** (F2). A failure from
+ * - **The exchange-vs-output distinction survives.** A failure from
  *   acquire/open/run is `"exchange"`, except a failure the core
  *   classifier reads as a trust-boundary failure, behind transport wraps or
  *   bare, which is `"security"` so the UI shows an authentication failure
@@ -413,11 +413,11 @@ interface RunExchangeLifecycleOptions<
  *   run failure core attached a record to and an `"output"` failure of a
  *   completed run report it on {@link ExchangeFailure.record}, so the owner
  *   can still offer it for download.
- * - **The broker socket drops on the first inbound frame** (F4) on the PeerJS
+ * - **The broker socket drops on the first inbound frame** on the PeerJS
  *   path, while the data channel stays open for the exchange: armed by
  *   {@link openOneShotPeerConnection} inside `acquire`. Best-effort: a throw in
  *   that listener cannot fail the exchange.
- * - **Abort tears down in any phase** (F1, F3). An abort while the connection
+ * - **Abort tears down in any phase.** An abort while the connection
  *   opens is `acquire`'s to tear down; after that the owner closes the
  *   connection regardless of phase; an in-flight `runExchange` then rejects with
  *   a `closed` ConnectionError and lands in the same latched teardown. Every

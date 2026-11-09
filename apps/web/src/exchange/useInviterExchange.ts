@@ -228,8 +228,9 @@ function retryDispositionFor(
 /**
  * Escape a failure's text at this boundary rather than with
  * `sanitizeErrorForDisplay`'s per-value default. A {@link RelayedTerminalError}
- * alone holds a chain the relay already rendered and escaped link-by-link, so
- * it alone is safe to split on the renderer's framing and rejoin -- escaping
+ * alone holds a chain joined on the renderer's framing, its links escaped by
+ * the relay or raw from a terminal the job manager synthesized, so it alone is
+ * split on that framing, each link escaped once, and rejoined -- escaping
  * that chain as one value instead cuts it inside the first link or two
  * (docs/spec/CLI_EVENTS.md, "Sanitization"; docs/spec/DISPLAY_REDACTION.md,
  * "Message display budgets"). Every other failure is raw, thrown in

@@ -18,7 +18,9 @@ import {
 import {
   MAX_JOB_STATUS_RESPONSE_BYTES,
   MAX_SFTP_CONNECTION_RESPONSE_BYTES,
+  isRecord,
   readBoundedJson,
+  readJsonOrNull,
 } from "@psi/jobClient/jobApiBody";
 import {
   isJobCreateRefusalReason,
@@ -320,13 +322,14 @@ export class JobIntentColumnNameError extends Error {
   }
 }
 
-/** The failure a relayed terminal `error` event raises. Its `message` is a
- * RENDERED cause chain, not a raw one: every piece came off the relay's own
- * display pass -- the links {@link ERROR_MESSAGE_CHAIN_FIELD} held apart,
- * rejoined by the renderer's own framing, or the escaped flat field when the
- * relay derived no chain (see {@link errorMessageOf}). Anything else renders
- * through the escaping renderer instead (`sanitizedFailureMessage` in
- * `@exchange/useInviterExchange`). {@link internalFault} is the event's
+/** The failure a relayed terminal `error` event raises. Its `message` is the
+ * cause chain {@link errorMessageOf} rejoins on the renderer's framing from
+ * the links {@link ERROR_MESSAGE_CHAIN_FIELD} holds, or the flat field: escaped
+ * by the relay where the CLI emitted the terminal, raw where the job manager
+ * synthesized it (`diagnosedTerminal` in `@jobs/jobManager`). The seat escapes
+ * it once, link by link (`sanitizedFailureMessage` in
+ * `@exchange/useInviterExchange`); rendering `error.message` directly shows a
+ * synthesized terminal's stderr tail raw. {@link internalFault} is the event's
  * `internalFault` marker (docs/spec/CLI_EVENTS.md, "The internal-fault code"):
  * a fault in Alcove itself, which a retry reaches again. */
 export class RelayedTerminalError extends Error {
@@ -370,8 +373,8 @@ function stringList(value: unknown): Array<string> | undefined {
 }
 
 function columnsChangeOf(value: unknown): PayloadColumnsChange | undefined {
-  if (value === null || typeof value !== "object") return undefined;
-  const { added, removed } = value as Record<string, unknown>;
+  if (!isRecord(value)) return undefined;
+  const { added, removed } = value;
   const addedNames = stringList(added);
   const removedNames = stringList(removed);
   return addedNames !== undefined && removedNames !== undefined
@@ -385,9 +388,9 @@ export function relayedTermsChangeOf(
   event: RelayEvent,
 ): RelayedTermsChange | undefined {
   const source = event.termsChange;
-  if (source === null || typeof source !== "object") return undefined;
+  if (!isRecord(source)) return undefined;
   const { proposalWritten, received, sent, partnerDeduplicate, otherTerms } =
-    source as Record<string, unknown>;
+    source;
   const otherTermsList = stringList(otherTerms);
   if (typeof proposalWritten !== "boolean" || otherTermsList === undefined)
     return undefined;
@@ -428,8 +431,9 @@ export function relayedTermsChangeOf(
  * and the seat shows the message rather than fixed copy that would contradict
  * it.
  *
- * The assurance is the CLI's: its tagged messages are composed from local
- * values, and the relay escapes every one before it crosses.
+ * Its message is the CLI's tagged one, composed from local values and escaped
+ * by the relay, or raw from a terminal the job manager synthesized; the seat
+ * escapes either once, by link.
  */
 export class RelayedSelfExplainingError extends RelayedTerminalError {
   constructor(message: string, internalFault = false) {
@@ -468,11 +472,16 @@ export function createFetchJobApiClient(
           // A busy (409) body holds `{ id }` -- the exchange occupying the
           // single slot -- so the caller can re-attach to it. Absent on every
           // other status (an empty-bodied 400/413/500 is treated as no id).
-          response.status === 409 ? await readBodyJobId(response) : undefined,
+          // A body without one (an older server, or an empty 409) leaves the
+          // caller on its persisted id.
+          response.status === 409
+            ? await readBodyField(response, "id", isJobId)
+            : undefined,
           // A refused (400) or failed (500) body may hold `{ reason }`; an
-          // empty body reads as no reason.
+          // empty body reads as no reason. The token selects fixed console
+          // copy; nothing from the body is displayed.
           response.status === 400 || response.status === 500
-            ? await readBodyRefusalReason(response)
+            ? await readBodyField(response, "reason", isJobCreateRefusalReason)
             : undefined,
         );
       const body: unknown = await readBoundedJson(
@@ -546,40 +555,23 @@ export function createFetchJobApiClient(
   };
 }
 
-/** Read a `{ id }` string off a job-API response body, or undefined when the
- * body is absent, unparseable, or has no non-empty string id. Used to pull
- * the occupying exchange's id off a busy (409) create so the caller can
- * re-attach; a body without one (an older server, or an empty 409) is undefined,
- * and the caller falls back to its persisted id. */
-async function readBodyJobId(response: Response): Promise<string | undefined> {
-  try {
-    const body: unknown = await readBoundedJson(
-      response,
-      MAX_JOB_STATUS_RESPONSE_BYTES,
-    );
-    const id = (body as { id?: unknown }).id;
-    return typeof id === "string" && id.length > 0 ? id : undefined;
-  } catch {
-    return undefined;
-  }
+/** Read the `field` of a failed create's JSON object body where `accept`
+ * takes it, or undefined when the body is absent, unparseable, not an object,
+ * or holds no such value. */
+async function readBodyField<TValue>(
+  response: Response,
+  field: string,
+  accept: (value: unknown) => value is TValue,
+): Promise<TValue | undefined> {
+  const body = await readJsonOrNull(response, MAX_JOB_STATUS_RESPONSE_BYTES);
+  if (!isRecord(body)) return undefined;
+  const value = body[field];
+  return accept(value) ? value : undefined;
 }
 
-/** Read a `{ reason }` refusal token off a refused create's body, or undefined
- * when the body is absent, unparseable, or names no token this bundle knows. The
- * token selects fixed console copy; nothing from the body is displayed. */
-async function readBodyRefusalReason(
-  response: Response,
-): Promise<JobCreateRefusalReason | undefined> {
-  try {
-    const body: unknown = await readBoundedJson(
-      response,
-      MAX_JOB_STATUS_RESPONSE_BYTES,
-    );
-    const reason = (body as { reason?: unknown }).reason;
-    return isJobCreateRefusalReason(reason) ? reason : undefined;
-  } catch {
-    return undefined;
-  }
+/** Whether `value` is a non-empty string id. */
+function isJobId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 /**
@@ -599,7 +591,7 @@ const NOTHING_MORE_TO_READ: FinalRunStatus = {
  * teardown report has had its chance to arrive. A body holding no `terminal` at
  * all answers nothing about the exit, and is not one to keep asking. */
 function finalRunStatusOf(body: unknown): FinalRunStatus {
-  if (body === null || typeof body !== "object") return NOTHING_MORE_TO_READ;
+  if (!isRecord(body)) return NOTHING_MORE_TO_READ;
   const read = body as {
     recordAvailable?: unknown;
     recordCreatedAt?: unknown;
@@ -622,10 +614,7 @@ function finalRunStatusOf(body: unknown): FinalRunStatus {
  * exchange is present; erring toward `running` keeps the discard poll waiting for
  * a graceful cancel rather than deleting under a live child. */
 function jobStatusViewOf(body: unknown): JobStatusView {
-  const status =
-    body !== null && typeof body === "object"
-      ? (body as { status?: unknown }).status
-      : undefined;
+  const status = isRecord(body) ? body.status : undefined;
   return {
     status:
       status === "succeeded" || status === "failed" || status === "cancelled"
@@ -672,9 +661,8 @@ export async function fetchSlotOccupancy(
  * unoccupied for anything but an `{ occupied: true }` body holding a non-empty
  * string id. */
 function slotOccupancyOf(body: unknown): SlotOccupancy {
-  if (body === null || typeof body !== "object" || Array.isArray(body))
-    return { occupied: false };
-  const { occupied, id } = body as Record<string, unknown>;
+  if (!isRecord(body)) return { occupied: false };
+  const { occupied, id } = body;
   if (occupied !== true || typeof id !== "string" || id.length === 0)
     return { occupied: false };
   return { occupied: true, id };
@@ -735,8 +723,7 @@ export async function fetchSftpConnection(
 export function sftpConnectionProjectionOf(
   body: unknown,
 ): SftpConnectionProjection | null {
-  if (body === null || typeof body !== "object" || Array.isArray(body))
-    return null;
+  if (!isRecord(body)) return null;
   const {
     configured,
     host,
@@ -746,7 +733,7 @@ export function sftpConnectionProjectionOf(
     outboundPath,
     credentialWarnings,
     zeroSetupRefusal,
-  } = body as Record<string, unknown>;
+  } = body;
   if (configured !== true) return null;
   if (typeof host !== "string" || host.length === 0) return null;
   if (
@@ -1041,13 +1028,7 @@ function parseSseFrame(frame: string): RelayEvent | null {
   } catch {
     parsed = UNREADABLE_EVENT;
   }
-  if (
-    parsed !== null &&
-    typeof parsed === "object" &&
-    !Array.isArray(parsed) &&
-    (parsed as Record<string, unknown>).v === 1 &&
-    isEventType((parsed as Record<string, unknown>).type)
-  )
+  if (isRecord(parsed) && parsed.v === 1 && isEventType(parsed.type))
     return parsed as RelayEvent;
   return { v: 1, type: "warning", message: unknownFrameNotice(parsed) };
 }
@@ -1061,9 +1042,8 @@ function stagesOf(event: RelayEvent): Array<StageDefinition> {
   const stages = event.stages;
   if (!Array.isArray(stages)) return [];
   return stages.flatMap((entry) => {
-    if (entry === null || typeof entry !== "object") return [];
-    const id = (entry as { id?: unknown }).id;
-    const label = (entry as { label?: unknown }).label;
+    if (!isRecord(entry)) return [];
+    const { id, label } = entry;
     return typeof id === "string" && typeof label === "string"
       ? [{ id, label, state: ProcessState.BeforeStart }]
       : [];
@@ -1077,10 +1057,7 @@ function stagesOf(event: RelayEvent): Array<StageDefinition> {
  * integers is treated as absent, keeping a malformed frame off the counted shape
  * rather than rendering a nonsense figure. */
 function countOnlyResultCount(event: RelayEvent): number | undefined {
-  const count = event.intersectionCount;
-  return typeof count === "number" && Number.isSafeInteger(count) && count >= 0
-    ? count
-    : undefined;
+  return relayCount(event.intersectionCount);
 }
 
 /** One count read off a relay frame, or undefined for anything outside the
@@ -1096,12 +1073,11 @@ function relayCount(value: unknown): number | undefined {
 /** One entry of a cluster summary's shape distribution, or undefined when any
  * of its four figures is missing or out of range. */
 function entityClusterShapeOf(value: unknown): EntityClusterShape | undefined {
-  if (value === null || typeof value !== "object") return undefined;
-  const shape = value as Record<string, unknown>;
-  const localRows = relayCount(shape.localRows);
-  const partnerRows = relayCount(shape.partnerRows);
-  const distinctValues = relayCount(shape.distinctValues);
-  const clusters = relayCount(shape.clusters);
+  if (!isRecord(value)) return undefined;
+  const localRows = relayCount(value.localRows);
+  const partnerRows = relayCount(value.partnerRows);
+  const distinctValues = relayCount(value.distinctValues);
+  const clusters = relayCount(value.clusters);
   return localRows !== undefined &&
     partnerRows !== undefined &&
     distinctValues !== undefined &&
@@ -1150,11 +1126,8 @@ function entityClusterSummaryOf(
   event: RelayEvent,
 ): EntityClusterSummary | undefined {
   const summary = event.entityClusters;
-  if (summary === null || typeof summary !== "object") return undefined;
-  const { clusterCount, localRows, partnerRows, shapes } = summary as Record<
-    string,
-    unknown
-  >;
+  if (!isRecord(summary)) return undefined;
+  const { clusterCount, localRows, partnerRows, shapes } = summary;
   if (!Array.isArray(shapes)) return undefined;
   const read = shapes.map(entityClusterShapeOf);
   const counts = [clusterCount, localRows, partnerRows].map(relayCount);

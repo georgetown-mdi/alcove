@@ -735,8 +735,8 @@ export function editorWithIncludeMatchingKey(
   return { ...editor, draft: { ...editor.draft, includeMatchingKey: true } };
 }
 
-/** Set input deduplication. Gated exactly as {@link editorWithAlgorithm}: the
- * build clamps minted terms to no-dedup until the run honors it. */
+/** Set input deduplication. Ungated, as {@link editorWithAlgorithm}: the built
+ * terms hold it as authored. */
 export function editorWithDeduplicate(
   editor: InviterEditor,
   deduplicate: boolean,

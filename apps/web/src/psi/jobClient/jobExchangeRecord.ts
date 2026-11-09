@@ -10,9 +10,9 @@
 import { EXCHANGE_RECORD_OUTCOMES, recordFileStamp } from "@alcove/core";
 
 import {
-  MAX_JOB_STATUS_RESPONSE_BYTES,
-  readBoundedJson,
-} from "@psi/jobClient/jobApiBody";
+  askUntilAnswered,
+  readJobStatusBody,
+} from "@psi/jobClient/jobStatusAsk";
 import { delayUntilAborted } from "@psi/delayUntilAborted";
 
 import type { ExchangeRecordOutcome } from "@alcove/core";
@@ -115,34 +115,28 @@ function recordOutcomeOf(value: unknown): ExchangeRecordOutcome | undefined {
  * `recordOutcome` is `unanswered`, never `none`, as is an ask with no readable
  * body.
  */
-export async function fetchJobExchangeRecordOffer(
+export function fetchJobExchangeRecordOffer(
   jobId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<JobExchangeRecordAnswer> {
-  try {
-    const response = await fetchImpl(`/api/jobs/${jobId}`, { method: "GET" });
-    if (!response.ok) return { kind: "unanswered" };
-    const body: unknown = await readBoundedJson(
-      response,
-      MAX_JOB_STATUS_RESPONSE_BYTES,
-    );
-    if (body === null || typeof body !== "object") return { kind: "none" };
-    const status = body as JobStatusFields;
-    if (status.recordAvailable !== true)
-      return offerForUnavailableRecord(status.recordUnavailableReason);
-    const outcome = recordOutcomeOf(status.recordOutcome);
-    if (typeof status.recordCreatedAt !== "string" || outcome === undefined)
-      return { kind: "unanswered" };
-    return {
-      kind: "available",
-      outcome,
-      recordCertificateMismatchObserved:
-        status.recordCertificateMismatchObserved === true,
-      downloads: jobRecordDownloads(jobId, status.recordCreatedAt),
-    };
-  } catch {
-    return { kind: "unanswered" };
-  }
+  return readJobStatusBody<JobExchangeRecordAnswer>(jobId, fetchImpl, {
+    unanswered: { kind: "unanswered" },
+    notAnObject: { kind: "none" },
+    read: (status: JobStatusFields) => {
+      if (status.recordAvailable !== true)
+        return offerForUnavailableRecord(status.recordUnavailableReason);
+      const outcome = recordOutcomeOf(status.recordOutcome);
+      if (typeof status.recordCreatedAt !== "string" || outcome === undefined)
+        return { kind: "unanswered" };
+      return {
+        kind: "available",
+        outcome,
+        recordCertificateMismatchObserved:
+          status.recordCertificateMismatchObserved === true,
+        downloads: jobRecordDownloads(jobId, status.recordCreatedAt),
+      };
+    },
+  });
 }
 
 /** The gap between asks while the run is unsettled or an ask had no answer. */
@@ -173,18 +167,18 @@ export async function askJobExchangeRecordOffer(
     delay?: (ms: number, signal: AbortSignal) => Promise<void>;
   } = {},
 ): Promise<JobExchangeRecordOffer> {
-  // Read the live abort state through a call so the re-check after the ask is not
-  // narrowed to a constant by the first guard.
-  const aborted = () => signal.aborted;
-  let unanswered = 0;
-  for (;;) {
-    if (aborted()) return { kind: "none" };
-    const offer = await fetchJobExchangeRecordOffer(jobId, fetchImpl);
-    if (offer.kind === "not-settled") unanswered = 0;
-    else if (offer.kind !== "unanswered") return offer;
-    else if (++unanswered >= RECORD_AVAILABILITY_UNANSWERED_LIMIT)
-      return { kind: "unanswered" };
-    if (aborted()) return { kind: "none" };
-    await delay(RECORD_AVAILABILITY_RETRY_MS, signal);
-  }
+  return askUntilAnswered<JobExchangeRecordAnswer, JobExchangeRecordOffer>({
+    ask: () => fetchJobExchangeRecordOffer(jobId, fetchImpl),
+    step: (answer) => {
+      if (answer.kind === "not-settled") return "reask";
+      if (answer.kind === "unanswered") return "unanswered";
+      return { end: answer };
+    },
+    stopped: { kind: "none" },
+    gaveUp: { kind: "unanswered" },
+    unansweredLimit: RECORD_AVAILABILITY_UNANSWERED_LIMIT,
+    retryMs: RECORD_AVAILABILITY_RETRY_MS,
+    signal,
+    delay,
+  });
 }

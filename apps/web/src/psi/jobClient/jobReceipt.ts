@@ -7,9 +7,9 @@
  */
 
 import {
-  MAX_JOB_STATUS_RESPONSE_BYTES,
-  readBoundedJson,
-} from "@psi/jobClient/jobApiBody";
+  askUntilAnswered,
+  readJobStatusBody,
+} from "@psi/jobClient/jobStatusAsk";
 import { delayUntilAborted } from "@psi/delayUntilAborted";
 
 import { recordFileStamp } from "@alcove/core";
@@ -60,31 +60,25 @@ interface JobStatusFields {
  * Only a literal `true` on either receipt field answers; any other readable
  * body is `none`. An ask with no readable body is `unanswered`.
  */
-export async function fetchJobReceiptOffer(
+export function fetchJobReceiptOffer(
   jobId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<JobReceiptOffer> {
-  try {
-    const response = await fetchImpl(`/api/jobs/${jobId}`, { method: "GET" });
-    if (!response.ok) return { kind: "unanswered" };
-    const body: unknown = await readBoundedJson(
-      response,
-      MAX_JOB_STATUS_RESPONSE_BYTES,
-    );
-    if (body === null || typeof body !== "object") return { kind: "none" };
-    const status = body as JobStatusFields;
-    if (status.receiptAvailable === true)
-      return {
-        kind: "available",
-        receiptUrl: jobReceiptUrl(jobId),
-        receiptFileName: receiptFileName(jobId, status),
-      };
-    return status.receiptRequested === true
-      ? { kind: "missing" }
-      : { kind: "none" };
-  } catch {
-    return { kind: "unanswered" };
-  }
+  return readJobStatusBody<JobReceiptOffer>(jobId, fetchImpl, {
+    unanswered: { kind: "unanswered" },
+    notAnObject: { kind: "none" },
+    read: (status: JobStatusFields) => {
+      if (status.receiptAvailable === true)
+        return {
+          kind: "available",
+          receiptUrl: jobReceiptUrl(jobId),
+          receiptFileName: receiptFileName(jobId, status),
+        };
+      return status.receiptRequested === true
+        ? { kind: "missing" }
+        : { kind: "none" };
+    },
+  });
 }
 
 /** The gap between asks after one with no answer. */
@@ -115,17 +109,15 @@ export async function askJobReceiptOffer(
     delay?: (ms: number, signal: AbortSignal) => Promise<void>;
   } = {},
 ): Promise<JobReceiptOffer> {
-  // Read the live abort state through a call so the re-check after the ask is
-  // not narrowed to a constant by the first guard.
-  const aborted = () => signal.aborted;
-  let unanswered = 0;
-  for (;;) {
-    if (aborted()) return { kind: "none" };
-    const offer = await fetchJobReceiptOffer(jobId, fetchImpl);
-    if (offer.kind !== "unanswered") return offer;
-    if (++unanswered >= RECEIPT_AVAILABILITY_UNANSWERED_LIMIT)
-      return { kind: "unanswered" };
-    if (aborted()) return { kind: "none" };
-    await delay(RECEIPT_AVAILABILITY_RETRY_MS, signal);
-  }
+  return askUntilAnswered<JobReceiptOffer, JobReceiptOffer>({
+    ask: () => fetchJobReceiptOffer(jobId, fetchImpl),
+    step: (offer) =>
+      offer.kind === "unanswered" ? "unanswered" : { end: offer },
+    stopped: { kind: "none" },
+    gaveUp: { kind: "unanswered" },
+    unansweredLimit: RECEIPT_AVAILABILITY_UNANSWERED_LIMIT,
+    retryMs: RECEIPT_AVAILABILITY_RETRY_MS,
+    signal,
+    delay,
+  });
 }

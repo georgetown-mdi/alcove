@@ -1,6 +1,8 @@
 import { loadCSVFile } from "@alcove/core";
 
-import { errorFromWorkerEvent } from "./workerEventError";
+import { attachWorkerFailure, errorFromWorkerEvent } from "./workerEventError";
+
+import type { WorkerFailureEvents } from "./workerEventError";
 
 /**
  * Off-main-thread CSV parse for the web app: a browser File above a size
@@ -116,11 +118,9 @@ export function replyBatchRows(rowCount: number, fileBytes: number): number {
 
 /** The slice of the `Worker` API the off-thread parse drives. The real `Worker` is
  * adapted to it in {@link ./csvParseWorkerClient}; a unit test supplies a fake. */
-export interface CSVParseWorker {
+export interface CSVParseWorker extends WorkerFailureEvents {
   postMessage: (message: CSVParseRequest) => void;
   onmessage: ((event: { data: CSVParseResponse }) => void) | null;
-  onerror: ((event: unknown) => void) | null;
-  onmessageerror: ((event: unknown) => void) | null;
   terminate: () => void;
 }
 
@@ -260,19 +260,19 @@ function parseInWorker(
         resolve({ data: rows, errors: response.errors, meta: response.meta }),
       );
     };
-    worker.onerror = (event) =>
+    // No reply this worker sends today can fail to deserialize (an all-string
+    // CSVRow tree), so the messageerror branch is a safety check
+    // csvParseController.test.ts drives, for a reply that gains an uncloneable
+    // field.
+    attachWorkerFailure(worker, (event, source) =>
       settle(() =>
-        reject(errorFromWorkerEvent(event, "CSV parse worker failed")),
-      );
-    // A reply that fails to deserialize on this thread fires onmessageerror, not
-    // onmessage/onerror; without a handler the promise would hang. No reply this
-    // worker sends today can fail to clone (an all-string CSVRow tree), so this is a
-    // safety check rather than a live path -- one csvParseController.test.ts drives, so
-    // the never-hang guarantee holds if a reply ever gains an uncloneable field.
-    worker.onmessageerror = () =>
-      settle(() =>
-        reject(new Error("CSV parse worker reply could not be deserialized")),
-      );
+        reject(
+          source === "error"
+            ? errorFromWorkerEvent(event, "CSV parse worker failed")
+            : new Error("CSV parse worker reply could not be deserialized"),
+        ),
+      ),
+    );
 
     try {
       worker.postMessage({ file, byteCeiling, delimiter });

@@ -173,12 +173,14 @@ export function relayForRun(
   readOwn: () => OwnRelayRead = () => NO_OWN_RELAY,
 ): RelayLocator | undefined {
   const own = readOwn();
-  const ownRelay = own.kind === "set" ? own.relay : undefined;
-  const turn = [
-    ...new Set([...(ownRelay?.turn ?? []), ...(invitationRelay?.turn ?? [])]),
-  ].filter((url) => turnUrlIsAllowed(url, allowedRelays));
+  const turn = orderedRelayUrls(own, invitationRelay).turn.filter((url) =>
+    turnUrlIsAllowed(url, allowedRelays),
+  );
   const stun = [
-    ...new Set([...(ownRelay?.stun ?? []), ...(invitationRelay?.stun ?? [])]),
+    ...new Set([
+      ...(own.kind === "set" ? own.relay.stun : []),
+      ...(invitationRelay?.stun ?? []),
+    ]),
   ];
   if (turn.length + stun.length === 0) return undefined;
   return { turn, stun };
@@ -193,18 +195,47 @@ export function webSocketRelaysForRun(
   allowedRelays: ReadonlyArray<string> | undefined,
   readOwn: () => OwnRelayRead = () => NO_OWN_RELAY,
 ): Array<string> {
-  const own = readOwn();
-  const listed = [
-    ...(own.kind === "set" && own.relay.websocket !== undefined
-      ? [own.relay.websocket]
-      : []),
-    ...(invitationRelay?.websocket !== undefined
-      ? [invitationRelay.websocket]
-      : []),
-  ];
-  return [...new Set(listed)].filter((url) =>
+  return orderedRelayUrls(readOwn(), invitationRelay).websocket.filter((url) =>
     webSocketRelayUrlIsAllowed(url, allowedRelays),
   );
+}
+
+/** A default relay's urls, as {@link orderedRelayUrls} lists them last. */
+export interface DefaultRelayUrls {
+  turnUrl: string;
+  websocketUrl?: string;
+}
+
+/**
+ * The TURN and the WebSocket relay urls a run lists before its allowed
+ * relays apply: the exchange's own, then the invitation's, then
+ * `defaultRelay`'s, each listed once. Every caller filters each list by the
+ * allowed relays itself.
+ */
+export function orderedRelayUrls(
+  own: OwnRelayRead,
+  invitationRelay: RelayUrls | undefined,
+  defaultRelay?: DefaultRelayUrls,
+): { turn: Array<string>; websocket: Array<string> } {
+  const ownRelay = own.kind === "set" ? own.relay : undefined;
+  return {
+    turn: [
+      ...new Set([
+        ...(ownRelay?.turn ?? []),
+        ...(invitationRelay?.turn ?? []),
+        ...(defaultRelay !== undefined ? [defaultRelay.turnUrl] : []),
+      ]),
+    ],
+    websocket: [
+      ...new Set(
+        [
+          ownRelay?.websocket,
+          invitationRelay?.websocket,
+          defaultRelay?.websocketUrl,
+        ].filter((url) => url !== undefined),
+      ),
+    ],
+  };
 }
 
 /**
