@@ -37,8 +37,8 @@ jobs:
       artifactName: ${{ steps.artifact-name.outputs.artifactName }}
       commit: ${{ steps.commit.outputs.commit }}
     steps:
-      # Production admits main's copy of this workflow only, so a run of
-      # another branch's copy fails here rather than finishing green.
+      # Only main's copy publishes, so a run from any other branch or tag
+      # fails here rather than finishing green.
       - name: Refuse a run from a branch other than main
         run: |
           set -euo pipefail
