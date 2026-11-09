@@ -35,6 +35,7 @@ import {
   readMemory,
   SINGLE_PASS_MAIN_HEAP_BYTES_PER_VALUE,
   SINGLE_PASS_MAIN_HEAP_FIXED_BYTES,
+  SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT,
   singlePassMainHeapNeedBytes,
   type MemoryReadings,
 } from "../../src/psiMemoryBudget";
@@ -494,7 +495,8 @@ describe("the single-pass partner size at the terms exchange", () => {
 
   // A reply read with its decryption under each envelope version, a reply
   // read without it and handed to the worker, and a request the worker
-  // decodes and masks. Version 1 opens a frame in one call, at four times its
+  // decodes and masks, beside this party's own setup of 350,000 value slots,
+  // 256,900,000 bytes. Version 1 opens a frame in one call, at four times its
   // size; version 2 one chunk at a time, at its size and the 101,023,744 bytes
   // the chunked open peaked at, as the file-sync read gate charges it. At 40 MB
   // the read is the larger charge, and at 100 MB under version 2 the hand-off
@@ -556,7 +558,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       SINGLE_CALL_ENVELOPE,
-      3_110_000_000,
+      3_366_900_000,
     ],
     [
       "a 100 MB encrypted request under envelope version 2",
@@ -564,7 +566,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       CHUNKED_ENVELOPE,
-      3_110_000_000,
+      3_366_900_000,
     ],
   ] as const)(
     "weighs %s the counts allow at the measured multiples",
@@ -713,30 +715,60 @@ describe("the single-pass partner size at the terms exchange", () => {
       inboundFrameUse: "decode" as const,
       envelopeVersion: CHUNKED_ENVELOPE,
     };
-    const masked =
+    const ownSetup = 350_000 * SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT;
+    const maskedWithoutOwnSetup =
       REQUEST_BYTES +
       REQUEST_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.handedOverRequest;
+    const masked = maskedWithoutOwnSetup + ownSetup;
     // The request and its decoding alone, which the masking is above.
     const decodedOnly =
       REQUEST_BYTES * (1 + INBOUND_FRAME_MEMORY_MULTIPLES.psiDecode);
 
-    it("proceeds when the masking fits what is available", () => {
+    it("proceeds when the masking and this party's own setup fit what is available", () => {
       const { shortfall } = run(request, masked);
       expect(shortfall).toEqual([]);
     });
 
-    it("refuses a request whose masking is over what is available, naming both figures and the override", () => {
+    it("refuses a run whose masking fits but not with this party's own setup", () => {
+      expect(ownSetup).toBe(256_900_000);
+      expect(() => run(request, maskedWithoutOwnSetup)).toThrow(
+        RoundCapacityError,
+      );
       expect(() => run(request, masked - 1)).toThrow(RoundCapacityError);
+    });
+
+    it("charges no own setup where this party receives", () => {
+      const reply = { ...request, inboundFrameUse: "stream" as const };
+      const replyNeed =
+        REQUEST_BYTES +
+        REQUEST_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.handedOverReply;
+      expect(() => run(reply, replyNeed)).not.toThrow();
+      expect(() => run(reply, replyNeed - 1)).toThrow(RoundCapacityError);
+    });
+
+    it("refuses a request whose masking is over what is available, naming both shares, the total and the override", () => {
       expect(() => run(request, decodedOnly)).toThrow(
         "your partner declared 150,000 records, and reading and masking what " +
-          "they send could take up to 4.35 GB of memory, but this machine has " +
+          "they send could take up to 4.35 GB of memory, plus 0.26 GB for " +
+          "your own masked values, 4.61 GB in all, but this machine has " +
           "1.21 GB available now, so the exchange stopped before any value " +
           "was masked and told your partner. Run the exchange on a host with " +
-          "more memory, or ask your partner to split their input into smaller " +
-          "files and run one exchange for each. Pass --allow-memory-shortfall " +
-          "to run anyway; the exchange may then run out of memory partway " +
-          "through, which fails it for both parties.",
+          "more memory, or split your input, or ask your partner to split " +
+          "theirs, into smaller files and run one exchange for each. Pass " +
+          "--allow-memory-shortfall to run anyway; the exchange may then run " +
+          "out of memory partway through, which fails it for both parties.",
       );
+    });
+
+    it("names this party's own share only where it has one", () => {
+      const ownShare =
+        /plus 0\.26 GB for your own masked values, 4\.61 GB in all/;
+      expect(() => run(request, maskedWithoutOwnSetup)).toThrow(ownShare);
+      const reply = { ...request, inboundFrameUse: "stream" as const };
+      expect(() => run(reply, 1)).toThrow(
+        /could take up to 0\.31 GB of memory, but this machine has .*ask your partner to split their input/,
+      );
+      expect(() => run(reply, 1)).not.toThrow(/your own masked values/);
     });
 
     it("warns instead under --allow-memory-shortfall", () => {
@@ -744,9 +776,10 @@ describe("the single-pass partner size at the terms exchange", () => {
       expect(shortfall).toEqual([
         "running with --allow-memory-shortfall: your partner declared " +
           "150,000 records, and reading and masking what they send could " +
-          "take up to 4.35 GB of memory, but this machine has 1.21 GB " +
-          "available now. The exchange may run out of memory partway " +
-          "through, which fails it for both parties.",
+          "take up to 4.35 GB of memory, plus 0.26 GB for your own masked " +
+          "values, 4.61 GB in all, but this machine has 1.21 GB available " +
+          "now. The exchange may run out of memory partway through, which " +
+          "fails it for both parties.",
       ]);
     });
 
@@ -761,7 +794,8 @@ describe("the single-pass partner size at the terms exchange", () => {
       };
       const copied =
         REQUEST_BYTES +
-        REQUEST_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.copiedRequest;
+        REQUEST_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.copiedRequest +
+        ownSetup;
       expect(() => run(overWebRtc, copied)).not.toThrow();
       expect(() => run(overWebRtc, copied - 1)).toThrow(RoundCapacityError);
     });

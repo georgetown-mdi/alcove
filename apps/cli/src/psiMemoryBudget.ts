@@ -193,6 +193,10 @@ function gigabytes(bytes: number): string {
   return `${(bytes / 1e9).toFixed(2)} GB`;
 }
 
+function roundedToHundredthGigabyte(bytes: number): number {
+  return Math.round(bytes / 1e7) * 1e7;
+}
+
 const LIMIT_NAMES: Record<PsiMemoryAssessment["limitedBy"], string> = {
   heap: "the PSI engine's heap limit",
   host: "this host's memory",
@@ -336,11 +340,31 @@ export function singlePassOutboundPeakBytes(
 }
 
 /**
+ * Resident memory a single-pass sender's own setup holds per element while it
+ * reads and masks the partner's request, in bytes: the largest figure measured
+ * at setups of 2^20 to 2^23 elements, rounded up.
+ */
+export const SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT = 734;
+
+/**
+ * The memory this party's own single-pass setup holds through the read and
+ * masking of the partner's request, in bytes: where it sends, its own value
+ * slots, the most elements its setup can hold, at
+ * {@link SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT}; where it receives, none.
+ */
+export function singlePassOwnSetupBytes(size: SinglePassPartnerSize): number {
+  return size.inboundFrameUse === "decode"
+    ? size.localValueSlots * SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT
+    : 0;
+}
+
+/**
  * What a single-pass run does with the partner's declared size at the terms
  * exchange. When reading the partner's PSI frame, a request with the engine's
- * masking of it, or over WebRTC sending this party's own, can take more
- * memory than is available now
- * ({@link singlePassInboundPeakBytes}, {@link singlePassOutboundPeakBytes}),
+ * masking of it, or over WebRTC sending this party's own, together with the
+ * sender's own setup, can take more memory than is available now
+ * ({@link singlePassInboundPeakBytes}, {@link singlePassOutboundPeakBytes},
+ * {@link singlePassOwnSetupBytes}),
  * the run is a {@link RoundCapacityError}, or, with `allowShortfall`, a
  * warning and the run continues. Every run states the partner's value slots and its worst-case
  * memory and time. `envelopeVersion` is the one the key exchange negotiated,
@@ -362,7 +386,9 @@ export function checkSinglePassPartnerMemory(params: {
     params.envelopeVersion,
   );
   const outboundBytes = singlePassOutboundPeakBytes(size);
-  const needBytes = Math.max(inboundBytes, outboundBytes);
+  const partnerShareBytes = Math.max(inboundBytes, outboundBytes);
+  const ownSetupBytes = singlePassOwnSetupBytes(size);
+  const needBytes = partnerShareBytes + ownSetupBytes;
   if (needBytes > availableBytes) {
     const sentence =
       `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +
@@ -375,15 +401,23 @@ export function checkSinglePassPartnerMemory(params: {
             ? "sending your reply"
             : "sending your values"
       } ` +
-      `could take up to ${gigabytes(needBytes)} ` +
-      `of memory, but this machine has ${gigabytes(availableBytes)} available ` +
-      `now`;
+      `could take up to ${gigabytes(partnerShareBytes)} of memory` +
+      (ownSetupBytes > 0
+        ? `, plus ${gigabytes(ownSetupBytes)} for your own masked values, ` +
+          `${gigabytes(roundedToHundredthGigabyte(partnerShareBytes) + roundedToHundredthGigabyte(ownSetupBytes))} in all`
+        : "") +
+      `, but this machine has ${gigabytes(availableBytes)} available now`;
+    const split =
+      ownSetupBytes > 0 || outboundBytes > inboundBytes
+        ? `split your input, or ask your partner to split theirs, into smaller ` +
+          `files and run one exchange for each`
+        : `ask your partner to split their input into smaller files and run ` +
+          `one exchange for each`;
     if (!params.allowShortfall)
       throw new RoundCapacityError(
         `${sentence}, so the exchange stopped before any value was masked and ` +
           `told your partner. Run the exchange on a host with more memory, or ` +
-          `ask your partner to split their input into smaller files and run one ` +
-          `exchange for each. Pass --allow-memory-shortfall to run anyway; the ` +
+          `${split}. Pass --allow-memory-shortfall to run anyway; the ` +
           `exchange may then run out of memory partway through, which fails it ` +
           `for both parties.`,
         "terms-exchange",
