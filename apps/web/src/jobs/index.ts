@@ -3,7 +3,6 @@ import { getLogger } from "@alcove/core";
 import {
   CONSOLE_PROFILE,
   DEPLOYMENT_PROFILE_ENV,
-  JOB_DATA_ROOT_ENV,
   isJobApiEnabled,
   readJobApiConfig,
 } from "./gate";
@@ -15,6 +14,7 @@ import {
   resolveSftpCredentialScratchDir,
   setupSftpCredentialScratchDir,
 } from "./sftpScratch";
+import { JOB_DATA_ROOT_ENV } from "./jobEnv";
 import { JobManager } from "./jobManager";
 import { useJobInputDir } from "./workInputs";
 import { useJobSecretsDir } from "./jobSecrets";

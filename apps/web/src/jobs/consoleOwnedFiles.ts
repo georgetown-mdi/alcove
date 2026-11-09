@@ -4,6 +4,10 @@ import path from "node:path";
 import { parseSensitiveJson } from "@alcove/core";
 
 import {
+  CREDENTIAL_FILE_FIELDS,
+  credentialFileReference,
+} from "@jobContract/connectionPathFields";
+import {
   JOB_FILE_NAMES,
   PREVIOUS_CONFIGURATION_FILE_NAME,
   SIGNING_IDENTITY_FILE_NAME,
@@ -12,6 +16,8 @@ import { SIGNING_CERTIFICATE_FILE_NAME } from "./signingIdentity";
 import { isPathWithin } from "./pathContainment";
 import { isValidJobId } from "./workdir";
 import { readBoundedMountedFile } from "./boundedMountedFile";
+
+import type { CredentialFileField } from "@jobContract/connectionPathFields";
 
 /** The names the console writes into the working folder itself, none of them
  * an input, each with how a refusal names it to the operator. */
@@ -193,17 +199,6 @@ function fileHoldsSigningIdentity(filePath: string): boolean {
   );
 }
 
-/** The SFTP connection fields whose values are `@path` credential file
- * references. */
-export const CREDENTIAL_FILE_FIELDS = [
-  "password",
-  "privateKey",
-  "privateKeyPassphrase",
-] as const;
-
-/** One of {@link CREDENTIAL_FILE_FIELDS}. */
-export type CredentialFileField = (typeof CREDENTIAL_FILE_FIELDS)[number];
-
 /**
  * The first credential field whose `@path` reference names one of the
  * console's own files, with the console-owned name it resolved to, else
@@ -221,9 +216,8 @@ export function consoleOwnedCredentialField(
 ): { field: CredentialFileField; ownedName: string } | undefined {
   const identityTargets = identityPaths.map(realpathOrResolved);
   for (const field of CREDENTIAL_FILE_FIELDS) {
-    const value = credentials[field];
-    if (value?.startsWith("@") !== true) continue;
-    const filePath = value.slice(1);
+    const filePath = credentialFileReference(credentials[field]);
+    if (filePath === undefined) continue;
     if (identityTargets.includes(realpathOrResolved(filePath)))
       return { field, ownedName: SIGNING_IDENTITY_FILE_NAME };
     const ownedName = consoleOwnedCredentialEntry(filePath, roots);

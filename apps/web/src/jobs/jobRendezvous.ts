@@ -10,33 +10,14 @@ import {
 
 import { browseSegment } from "@jobContract/workInputName";
 
-import { JOB_DATA_ROOT_ENV } from "./gate";
+import {
+  JOB_DATA_ROOT_ENV,
+  JOB_RENDEZVOUS_DIR_ENV,
+  JOB_RENDEZVOUS_OUTBOUND_DIR_ENV,
+  jobDirectory,
+  readJobDirectory,
+} from "./jobEnv";
 import { isPathWithin } from "./pathContainment";
-
-/**
- * Names the operator-mounted shared folder a filedrop exchange reads and
- * writes. Falls back to `JOB_DATA_ROOT` when unset or empty; filedrop is
- * unavailable only when both are unset. Server-side configuration, never a
- * browser-sent path.
- *
- * With {@link JOB_RENDEZVOUS_OUTBOUND_DIR_ENV} also set, this names the INBOUND
- * (peer-written) leg of a split rendezvous, not a directory both parties write.
- */
-const JOB_RENDEZVOUS_DIR_ENV = "JOB_RENDEZVOUS_DIR";
-
-/**
- * Names the OUTBOUND (self-written) shared folder of a split filedrop
- * exchange, the companion to {@link JOB_RENDEZVOUS_DIR_ENV}'s inbound leg. Set it
- * when the partner-shared mailbox is two folders; every filedrop exchange the
- * console runs then uses the CLI's `inbound_path`/`outbound_path` pair instead of
- * a single shared `path`.
- *
- * No {@link JOB_DATA_ROOT_ENV} fallback: this variable being set is the only signal
- * that a split is provisioned. An inbound leg that arrived through the data-root
- * fallback is refused rather than synced (see {@link rendezvousSplitFaults}).
- * Server-side configuration, never a browser-sent path.
- */
-const JOB_RENDEZVOUS_OUTBOUND_DIR_ENV = "JOB_RENDEZVOUS_OUTBOUND_DIR";
 
 /**
  * Names the SHARED FOLDER the rendezvous mount stands for, for when a launcher
@@ -116,8 +97,8 @@ interface JobRendezvousProvisioning {
 /** The job data root as configured, or undefined when it is unset -- which is the
  * job API's own feature gate, so on a console that runs at all it resolves. */
 function resolveDataRoot(env: NodeJS.ProcessEnv): string | undefined {
-  const configured = (env[JOB_DATA_ROOT_ENV] ?? "").trim();
-  return configured.length > 0 ? path.resolve(configured) : undefined;
+  const configured = jobDirectory(env, "dataRoot");
+  return configured !== undefined ? path.resolve(configured) : undefined;
 }
 
 /** The inbound (or single shared) rendezvous mount together with WHERE it came
@@ -129,10 +110,11 @@ function resolveInboundRendezvousMount(env: NodeJS.ProcessEnv): {
   dir: string | undefined;
   fromOwnVariable: boolean;
 } {
-  const configured = (env[JOB_RENDEZVOUS_DIR_ENV] ?? "").trim();
-  if (configured.length > 0)
-    return { dir: path.resolve(configured), fromOwnVariable: true };
-  return { dir: resolveDataRoot(env), fromOwnVariable: false };
+  const mount = readJobDirectory(env, "rendezvousDir");
+  return {
+    dir: mount?.path,
+    fromOwnVariable: mount?.fromOwnVariable ?? false,
+  };
 }
 
 /** Resolve the outbound rendezvous leg from
@@ -144,8 +126,7 @@ function resolveInboundRendezvousMount(env: NodeJS.ProcessEnv): {
 export function resolveJobRendezvousOutboundDir(
   env: NodeJS.ProcessEnv,
 ): string | undefined {
-  const configured = (env[JOB_RENDEZVOUS_OUTBOUND_DIR_ENV] ?? "").trim();
-  return configured.length > 0 ? path.resolve(configured) : undefined;
+  return jobDirectory(env, "rendezvousOutboundDir");
 }
 
 /** The last non-empty segment of a directory path, on either separator, or the

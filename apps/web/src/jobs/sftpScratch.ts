@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { JOB_FILE_MODE, WORKDIR_MODE } from "./workdir";
+import { JOB_SFTP_CREDENTIAL_DIR_ENV, jobDirectory } from "./jobEnv";
 import { JobApiConfigError } from "./gate";
 import { isPathWithin } from "./pathContainment";
 
@@ -23,29 +24,12 @@ import { isPathWithin } from "./pathContainment";
  */
 export const SFTP_CREDENTIAL_SCRATCH_DIR = "/run/alcove/sftp-credentials";
 
-/**
- * A server-side override for the scratch directory, defaulting to
- * {@link SFTP_CREDENTIAL_SCRATCH_DIR}. The container image ships that default
- * directory owned by the unprivileged account it runs as, so it uses the default;
- * a deployment running under some other account -- a container started with
- * `--user`, which is how the console launcher runs one against a data root the
- * operator owns -- or the integration harness, which runs the built server as an
- * ordinary user, points it at a writable, non-partner-syncable location instead,
- * since the fixed default sits under root-owned `/run` and cannot be created at
- * boot. It is server-side
- * configuration, never derived from a request, and the boot containment assertion
- * guards it exactly as it does the default -- a value inside the data root or
- * rendezvous mount refuses the boot.
- */
-export const JOB_SFTP_CREDENTIAL_DIR_ENV = "JOB_SFTP_CREDENTIAL_DIR";
-
 /** Resolve the scratch directory from {@link JOB_SFTP_CREDENTIAL_DIR_ENV},
  * falling back to the fixed container-internal default. */
 export function resolveSftpCredentialScratchDir(
   env: NodeJS.ProcessEnv,
 ): string {
-  const configured = (env[JOB_SFTP_CREDENTIAL_DIR_ENV] ?? "").trim();
-  return configured.length > 0 ? configured : SFTP_CREDENTIAL_SCRATCH_DIR;
+  return jobDirectory(env, "sftpCredentialDir") ?? SFTP_CREDENTIAL_SCRATCH_DIR;
 }
 
 /**

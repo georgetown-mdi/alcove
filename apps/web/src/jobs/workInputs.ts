@@ -28,7 +28,8 @@ import {
   stepPatternsWithinCap,
 } from "@jobContract/intentSchemas";
 import { CONSOLE_WRITTEN_NAMES } from "./consoleOwnedFiles";
-import { JOB_DATA_ROOT_ENV } from "./gate";
+
+import { JOB_DATA_ROOT_ENV, JOB_INPUT_DIR_ENV, jobDirectory } from "./jobEnv";
 
 import type {
   ColumnDateInputFormat,
@@ -40,17 +41,6 @@ import type {
 } from "@jobContract/workInputResponses";
 import type { DateFormatInferrer, Standardization } from "@alcove/core";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
-
-/**
- * The environment variable naming the operator-mounted directory the console
- * lists and reads input CSVs from. When unset or empty, falls back to
- * `JOB_DATA_ROOT` (so a single-folder console, one mount with only
- * `JOB_DATA_ROOT` set, still lists inputs). The feature is off only when both
- * are unset: the listing reports `configured: false` with an empty list and
- * the profile/coverage routes answer 404. The operator mounts their own data,
- * so this is trusted local input, not a shared-service surface.
- */
-const JOB_INPUT_DIR_ENV = "JOB_INPUT_DIR";
 
 export {
   MAX_INPUT_NAME_LENGTH,
@@ -363,29 +353,22 @@ export async function coverageJobInput(
   return accumulator.result();
 }
 
-/** Resolve the input directory to an absolute path from {@link JOB_INPUT_DIR_ENV},
- * falling back to {@link JOB_DATA_ROOT_ENV} when it is unset so one mount runs a full
- * console, or undefined when both are unset. The mounted directory is trusted
- * operator data, so this is a plain resolve -- no containment check against the data
- * root, no fail-closed existence assertion (a mis-mount shows as an empty
- * listing). */
-function loadJobInputDir(env: NodeJS.ProcessEnv): string | undefined {
-  const configured = (env[JOB_INPUT_DIR_ENV] ?? "").trim();
-  const resolved =
-    configured.length > 0 ? configured : (env[JOB_DATA_ROOT_ENV] ?? "").trim();
-  if (resolved.length === 0) return undefined;
-  return path.resolve(resolved);
-}
-
 /**
  * Resolve the input directory once and memoize it on globalThis, so dev-mode HMR
- * does not re-read it. The wrapper distinguishes "loaded, feature off" (an
- * undefined `resolvedDir`) from "not yet loaded".
+ * does not re-read it: {@link JOB_INPUT_DIR_ENV}, falling back to
+ * {@link JOB_DATA_ROOT_ENV} so one mount runs a full console, or undefined when
+ * both are unset. The wrapper distinguishes "loaded, feature off" (an undefined
+ * `resolvedDir`) from "not yet loaded". The mounted directory is trusted
+ * operator data, so this is a plain resolve -- no containment check against the
+ * data root, no fail-closed existence assertion (a mis-mount shows as an empty
+ * listing).
  */
 export function useJobInputDir(
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
-  globalThis.jobInputDirConfig ??= { resolvedDir: loadJobInputDir(env) };
+  globalThis.jobInputDirConfig ??= {
+    resolvedDir: jobDirectory(env, "inputDir"),
+  };
   return globalThis.jobInputDirConfig.resolvedDir;
 }
 

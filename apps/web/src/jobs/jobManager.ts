@@ -131,7 +131,6 @@ import type {
   JobExchangeIntent,
   JobInputFileReference,
   JobSigningIdentityLocation,
-  JobSigningPaths,
   JobWebrtcExchangeIntent,
 } from "@jobContract/intentSchemas";
 
@@ -722,6 +721,11 @@ interface JobManagerOptions {
   childEnv?: NodeJS.ProcessEnv;
 }
 
+/** A captured CLI child that runs one at a time: the host-key probe, the relay
+ * check, the signing fingerprint, and the terms apply. */
+type SingleFlightKind =
+  "hostKeyProbe" | "relayCheck" | "signingFingerprint" | "termsApply";
+
 /**
  * The single-exchange job manager and lifecycle. Owns the CLI driver, the event
  * buffer, cancellation escalation, and the shutdown hook that SIGTERMs the running
@@ -787,31 +791,13 @@ export class JobManager {
    * `PUT` changes nothing, so it never makes an earlier `PUT` stale. */
   private signalingAuthoringCommittedTicket = 0;
   /**
-   * Whether a host-key probe child is running. The probe is single-flight, so a
-   * concurrent {@link probeSftpHostKey} is refused with {@link SftpProbeBusyError}.
-   * Set synchronously at entry (before any await) so two concurrent calls cannot
-   * both pass; cleared when the child settles. Independent of the exchange slot.
-   */
-  private probeInFlight = false;
-  /**
-   * Whether a relay check child is running. Claimed and cleared as
-   * {@link probeInFlight} is, so a concurrent {@link checkRelay} is refused
-   * with {@link RelayCheckBusyError}.
-   */
-  private relayCheckInFlight = false;
-  /**
-   * Whether a signing-fingerprint child is running. Claimed and cleared exactly as
-   * {@link probeInFlight} is, and for the reason
-   * {@link SigningFingerprintBusyError} states.
-   */
-  private fingerprintInFlight = false;
-  /**
-   * Whether an apply child is running ({@link applyTermsProposal}). Claimed
-   * and cleared as {@link probeInFlight} is; independent of the exchange slot,
-   * whose failed run holds it until deleted. A save is refused while it is set
+   * The single-flight captured children running ({@link runSingleFlight}).
+   * Each kind is independent of the exchange slot and of the others; a
+   * concurrent request of a running kind is refused by its entry point, and a
+   * save is refused while `termsApply` runs
    * ({@link handBackOpenedConfiguration}).
    */
-  private termsApplyInFlight = false;
+  private readonly singleFlightsRunning = new Set<SingleFlightKind>();
   /**
    * The captured CLI children running ({@link runStoppableChild}): the host-key
    * probe, the signing fingerprint, the terms apply, and the relay check.
@@ -1248,11 +1234,7 @@ export class JobManager {
         "a webrtc run reached its files without a server or a secret",
       );
     const config = composedFromIntent(() =>
-      composeWebrtcConfigDocument(
-        intent,
-        signalingServer,
-        this.signingPathsFor(identityPath),
-      ),
+      composeWebrtcConfigDocument(intent, signalingServer, identityPath),
     );
     const written = createWorkingFolderExchangeFiles(this.dataRoot, {
       config,
@@ -1441,28 +1423,44 @@ export class JobManager {
    * by spawning the CLI's `probe-host-key` subcommand. Stateless: touches no
    * authored connection and records nothing -- the console offers the
    * observation beside the paste field for comparison, never trusting it.
-   * Single-flight: the flag is claimed synchronously (no await before the
-   * assignment), so a concurrent probe is {@link SftpProbeBusyError} (a 409).
+   * Single-flight ({@link runSingleFlight}): a concurrent probe is
+   * {@link SftpProbeBusyError} (a 409).
    */
   async probeSftpHostKey(args: {
     host: string;
     port?: number;
   }): Promise<SftpProbeResult> {
     if (this.shuttingDown) throw new ConsoleShuttingDownError();
-    if (this.probeInFlight) throw new SftpProbeBusyError();
-    this.probeInFlight = true;
+    if (this.singleFlightsRunning.has("hostKeyProbe"))
+      throw new SftpProbeBusyError();
+    return this.runSingleFlight("hostKeyProbe", (stop) =>
+      probeSftpHostKey({
+        host: args.host,
+        ...(args.port !== undefined ? { port: args.port } : {}),
+        binaryPath: this.binaryPath,
+        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+        stop,
+      }),
+    );
+  }
+
+  /**
+   * Claim `kind`, run its child through {@link runStoppableChild}, and release
+   * the claim once the child settles. The claim is taken before this method's
+   * first await, so a caller whose last pre-check is followed by this call
+   * with no await between cannot let a second request of the same kind pass.
+   */
+  private async runSingleFlight<TResult>(
+    kind: SingleFlightKind,
+    start: (stop: CapturedChildStop) => Promise<TResult>,
+  ): Promise<TResult> {
+    if (this.singleFlightsRunning.has(kind))
+      throw new Error(`a ${kind} child is already running`);
+    this.singleFlightsRunning.add(kind);
     try {
-      return await this.runStoppableChild((stop) =>
-        probeSftpHostKey({
-          host: args.host,
-          ...(args.port !== undefined ? { port: args.port } : {}),
-          binaryPath: this.binaryPath,
-          ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
-          stop,
-        }),
-      );
+      return await this.runStoppableChild(start);
     } finally {
-      this.probeInFlight = false;
+      this.singleFlightsRunning.delete(kind);
     }
   }
 
@@ -1509,8 +1507,8 @@ export class JobManager {
    * `alcove.yaml` there is the one `configurationDigest` names
    * ({@link relayCheckOffer}). `exchange-running` while the slot holds an
    * exchange whose child has not exited, so the check never reads a pair a
-   * run is rotating. One check at a time: the flag is claimed synchronously,
-   * so a concurrent check is {@link RelayCheckBusyError} (a 409).
+   * run is rotating. One check at a time ({@link runSingleFlight}): a
+   * concurrent check is {@link RelayCheckBusyError} (a 409).
    */
   async checkRelay(args: {
     configurationDigest: string;
@@ -1521,7 +1519,8 @@ export class JobManager {
     | Extract<RelayCheckOffer, { kind: "unavailable" }>
   > {
     if (this.shuttingDown) throw new ConsoleShuttingDownError();
-    if (this.relayCheckInFlight) throw new RelayCheckBusyError();
+    if (this.singleFlightsRunning.has("relayCheck"))
+      throw new RelayCheckBusyError();
     const running = this.activeSlotRecord();
     if (
       this.slot?.phase === "starting" ||
@@ -1532,28 +1531,14 @@ export class JobManager {
     if (offer.kind === "unavailable") return offer;
     if (offer.configurationDigest !== args.configurationDigest)
       return { kind: "configuration-changed" };
-    this.relayCheckInFlight = true;
-    try {
-      return await this.runStoppableChild((stop) =>
-        runRelayCheck({
-          dataRoot: this.dataRoot,
-          binaryPath: this.binaryPath,
-          ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
-          stop,
-        }),
-      );
-    } finally {
-      this.relayCheckInFlight = false;
-    }
-  }
-
-  /**
-   * The absolute path a `certificate`-mode job's composed `signing` block
-   * names: the long-lived identity file at the location this run resolved
-   * ({@link identityPathFor}).
-   */
-  private signingPathsFor(identityPath: string): JobSigningPaths {
-    return { identityFile: identityPath };
+    return this.runSingleFlight("relayCheck", (stop) =>
+      runRelayCheck({
+        dataRoot: this.dataRoot,
+        binaryPath: this.binaryPath,
+        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+        stop,
+      }),
+    );
   }
 
   /**
@@ -1567,9 +1552,9 @@ export class JobManager {
    * a second fixed name in the same mount. The manager owns both paths, so no
    * request value is ever a path.
    *
-   * Single-flight: the flag is claimed synchronously, so a concurrent
-   * request is {@link SigningFingerprintBusyError} (a 409) rather than a
-   * second child racing the same file.
+   * Single-flight ({@link runSingleFlight}): a concurrent request is
+   * {@link SigningFingerprintBusyError} (a 409) rather than a second child
+   * racing the same file.
    *
    * Creating the identity is answered `syncing` -- no child runs -- while a
    * filedrop exchange occupies the exchange slot and its rendezvous holds the
@@ -1600,7 +1585,8 @@ export class JobManager {
     identityLocation?: JobSigningIdentityLocation;
   }): Promise<SigningFingerprintResult> {
     if (this.shuttingDown) throw new ConsoleShuttingDownError();
-    if (this.fingerprintInFlight) throw new SigningFingerprintBusyError();
+    if (this.singleFlightsRunning.has("signingFingerprint"))
+      throw new SigningFingerprintBusyError();
     const identityPath = resolveSigningIdentityPath({
       dataRoot: this.dataRoot,
       secretsDir: this.jobSecretsDir,
@@ -1610,24 +1596,19 @@ export class JobManager {
       if (!signingIdentityTargetExists(identityPath)) return { kind: "absent" };
     } else if (this.mintWouldLandInSyncedFolder(identityPath))
       return { kind: "syncing" };
-    this.fingerprintInFlight = true;
-    try {
-      return await this.runStoppableChild((stop) =>
-        runSigningFingerprint({
-          binaryPath: this.binaryPath,
-          dataRoot: this.dataRoot,
-          identityPath,
-          identityLabel: args.identityLabel,
-          ...(args.exportCertificate
-            ? { exportPath: signingCertificatePath(this.dataRoot) }
-            : {}),
-          ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
-          stop,
-        }),
-      );
-    } finally {
-      this.fingerprintInFlight = false;
-    }
+    return this.runSingleFlight("signingFingerprint", (stop) =>
+      runSigningFingerprint({
+        binaryPath: this.binaryPath,
+        dataRoot: this.dataRoot,
+        identityPath,
+        identityLabel: args.identityLabel,
+        ...(args.exportCertificate
+          ? { exportPath: signingCertificatePath(this.dataRoot) }
+          : {}),
+        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+        stop,
+      }),
+    );
   }
 
   private async startJobInWorkdir(
@@ -1819,7 +1800,7 @@ export class JobManager {
         this.jobRendezvousDir,
         this.jobRendezvousOutboundDir,
         serverEntry,
-        this.signingPathsFor(identityPath),
+        identityPath,
       ),
     );
     const configPath = await writeJobFile(
@@ -1988,7 +1969,7 @@ export class JobManager {
       throw new ConfigurationHandBackRefusedError(CONFIGURATION_IN_USE_MESSAGE);
     // The apply's CLI child reads the whole file and writes it back, so a
     // save landing between the two would be replaced.
-    if (this.termsApplyInFlight)
+    if (this.singleFlightsRunning.has("termsApply"))
       throw new ConfigurationHandBackRefusedError(
         CONFIGURATION_TERMS_APPLY_MESSAGE,
       );
@@ -2150,7 +2131,7 @@ export class JobManager {
       record.termsProposal !== "available"
     )
       return { kind: "unavailable" };
-    if (this.termsApplyInFlight || record.terminal === null)
+    if (this.singleFlightsRunning.has("termsApply") || record.terminal === null)
       return { kind: "busy" };
     if (
       basis.openedSource === undefined ||
@@ -2163,23 +2144,20 @@ export class JobManager {
       termsProposalDigest(workdir) !== record.termsProposalDigest
     )
       return { kind: "proposal-changed" };
-    this.termsApplyInFlight = true;
-    try {
-      const result = await this.runStoppableChild((stop) =>
-        runTermsProposalApply({
-          binaryPath: this.binaryPath,
-          dataRoot: this.dataRoot,
-          workdir,
-          keyPath: basis.keyPath,
-          ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
-          stop,
-        }),
-      );
+    // Marked applied inside the claim, so a request arriving after the release
+    // finds the proposal already taken.
+    return this.runSingleFlight("termsApply", async (stop) => {
+      const result = await runTermsProposalApply({
+        binaryPath: this.binaryPath,
+        dataRoot: this.dataRoot,
+        workdir,
+        keyPath: basis.keyPath,
+        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+        stop,
+      });
       if (result.kind === "applied") record.termsProposal = "applied";
       return result;
-    } finally {
-      this.termsApplyInFlight = false;
-    }
+    });
   }
 
   /** The directory the run's configuration and proposal file are in: the data
@@ -2704,13 +2682,6 @@ function rawChainLinks(error: Error): Array<string> {
 }
 
 /**
- * A fixed-name artifact's path inside a job workdir, resolved through the
- * containment check {@link resolveWorkdirFile} rather than joined directly.
- * Every name is a server constant, so a null resolution is a caller bug --
- * reported as a hard error rather than a path outside the workdir the
- * artifact's endpoint would then serve.
- */
-/**
  * The warning a run of the opened configuration raises when what it composes
  * from is not what the working folder holds now, or undefined when the two
  * agree. The run and its hand-off state the configuration as it was opened;
@@ -2764,6 +2735,13 @@ function namesSignalingServer(
   );
 }
 
+/**
+ * A fixed-name artifact's path inside a job workdir, resolved through the
+ * containment check {@link resolveWorkdirFile} rather than joined directly.
+ * Every name is a server constant, so a null resolution is a caller bug --
+ * reported as a hard error rather than a path outside the workdir the
+ * artifact's endpoint would then serve.
+ */
 function workdirArtifactPath(workdir: string, name: string): string {
   const artifactPath = resolveWorkdirFile(workdir, name);
   if (artifactPath === null)
@@ -3037,12 +3015,12 @@ function composeDocumentByChannel(
   rendezvousDir: string | undefined,
   outboundRendezvousDir: string | undefined,
   serverEntry: JobSftpServerEntry | undefined,
-  signingPaths: JobSigningPaths,
+  identityFile: string,
 ): string {
   if (intent.channel === "sftp") {
     if (serverEntry === undefined)
       throw new Error("sftp job reached compose without a resolved server");
-    return composeSftpConfigDocument(intent, serverEntry, signingPaths);
+    return composeSftpConfigDocument(intent, serverEntry, identityFile);
   }
   if (rendezvousDir === undefined)
     throw new Error("filedrop job reached compose without a shared folder");
@@ -3050,6 +3028,6 @@ function composeDocumentByChannel(
     intent,
     rendezvousDir,
     outboundRendezvousDir,
-    signingPaths,
+    identityFile,
   );
 }

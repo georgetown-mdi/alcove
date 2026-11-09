@@ -5,13 +5,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { JOB_FILE_MODE, WORKDIR_MODE } from "@jobs/workdir";
 import {
-  JOB_SFTP_CREDENTIAL_DIR_ENV,
   SFTP_CREDENTIAL_SCRATCH_DIR,
   materializeSftpCredential,
   removeSftpCredentialFile,
   resolveSftpCredentialScratchDir,
   setupSftpCredentialScratchDir,
 } from "@jobs/sftpScratch";
+import { JOB_SFTP_CREDENTIAL_DIR_ENV } from "@jobs/jobEnv";
 import { JobApiConfigError } from "@jobs/gate";
 import { bootSftpCredentialScratchDir } from "@jobs/index";
 import { useJobRendezvousProvisioning } from "@jobs/jobRendezvous";

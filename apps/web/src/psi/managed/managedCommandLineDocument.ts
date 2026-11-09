@@ -38,6 +38,11 @@ import {
 } from "@alcove/core";
 
 import {
+  CREDENTIAL_FILE_FIELDS,
+  CREDENTIAL_FILE_FIELD_SPELLINGS,
+} from "@jobContract/connectionPathFields";
+
+import {
   DOCUMENT_PARTS_THIS_APP_DOES_NOT_RUN,
   composeManagedExchangeFile,
 } from "./managedExchangeRecord";
@@ -171,9 +176,7 @@ const SFTP_HELD_CONNECTION_FIELDS = [
 
 /** The sftp `server` fields held beyond the locator's expansion. */
 const SFTP_HELD_SERVER_FIELDS = [
-  "password",
-  "privateKey",
-  "privateKeyPassphrase",
+  ...CREDENTIAL_FILE_FIELDS,
   "keyboardInteractive",
   "hostKeyFingerprint",
   "provision",
@@ -362,21 +365,11 @@ function sftpFileReadableValues(
       ? []
       : [server.hostKeyFingerprint].flat();
   return [
-    {
-      field: "connection.server.password",
-      value: server.password,
+    ...CREDENTIAL_FILE_FIELDS.map((field) => ({
+      field: CREDENTIAL_FILE_FIELD_SPELLINGS[field].yamlPath,
+      value: server[field],
       credential: true,
-    },
-    {
-      field: "connection.server.private_key",
-      value: server.privateKey,
-      credential: true,
-    },
-    {
-      field: "connection.server.private_key_passphrase",
-      value: server.privateKeyPassphrase,
-      credential: true,
-    },
+    })),
     ...pins.map((pin) => ({
       field: "connection.server.host_key_fingerprint",
       value: pin,

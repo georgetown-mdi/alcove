@@ -96,7 +96,6 @@ import {
 
 import type { CertificateBody, LinkageTerms } from "@alcove/core";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
-import type { JobSigningPaths } from "@jobContract/intentSchemas";
 import type { ReceiptsDraft } from "@psi/receiptsModel";
 import type { WorkingFolderCommandLines } from "@psi/dockerRunCommand";
 
@@ -147,9 +146,7 @@ afterEach(() => {
   removeScratchDirs();
 });
 
-const signingPaths = (): JobSigningPaths => ({
-  identityFile: "/data/.alcove-signing-identity.json",
-});
+const SIGNING_IDENTITY_FILE = "/data/.alcove-signing-identity.json";
 
 /** The composed document parsed as data, and re-validated through core's own
  * exchange-spec schema so a block this composer emits is one the CLI would load. */
@@ -428,7 +425,7 @@ describe("the intent boundary admits only a mode an exchange honors", () => {
         validIntent({ retentionDisposition: multiline }),
         "/rendezvous",
         undefined,
-        signingPaths(),
+        SIGNING_IDENTITY_FILE,
       ),
     );
     expect(composed["retention_disposition"]).toBe(multiline);
@@ -461,7 +458,7 @@ describe("the composed signing block, per mode", () => {
         validIntent(),
         "/rendezvous",
         undefined,
-        signingPaths(),
+        SIGNING_IDENTITY_FILE,
       ),
     );
     expect(composed["signing"]).toBeUndefined();
@@ -474,7 +471,7 @@ describe("the composed signing block, per mode", () => {
         validIntent({ signing: { mode: "none" } }),
         "/rendezvous",
         undefined,
-        signingPaths(),
+        SIGNING_IDENTITY_FILE,
       ),
     );
     expect(composed["signing"]).toBeUndefined();
@@ -491,7 +488,7 @@ describe("the composed signing block, per mode", () => {
         }),
         "/rendezvous",
         undefined,
-        signingPaths(),
+        SIGNING_IDENTITY_FILE,
       ),
     );
     expect(composed["signing"]).toEqual({
@@ -511,7 +508,7 @@ describe("the composed signing block, per mode", () => {
           },
         }),
         testSftpServerEntry(),
-        signingPaths(),
+        SIGNING_IDENTITY_FILE,
       ),
     );
     expect(composed["signing"]).toEqual({
@@ -542,14 +539,14 @@ describe("the composed signing block, per mode", () => {
           validIntent({ signing: { mode: "certificate" } }),
           "/rendezvous",
           undefined,
-          signingPaths(),
+          SIGNING_IDENTITY_FILE,
         ),
       ),
       composedSpec(
         composeSftpConfigDocument(
           validSftpIntent({ signing: { mode: "certificate" } }),
           testSftpServerEntry(),
-          signingPaths(),
+          SIGNING_IDENTITY_FILE,
         ),
       ),
     ]) {
@@ -567,7 +564,7 @@ describe("the retention note reaches the composed config verbatim", () => {
         validIntent({ retentionDisposition: RETENTION_NOTE }),
         "/rendezvous",
         undefined,
-        signingPaths(),
+        SIGNING_IDENTITY_FILE,
       ),
     );
     expect(composed["retention_disposition"]).toBe(RETENTION_NOTE);
@@ -578,7 +575,7 @@ describe("the retention note reaches the composed config verbatim", () => {
       composeSftpConfigDocument(
         validSftpIntent({ retentionDisposition: RETENTION_NOTE }),
         testSftpServerEntry(),
-        signingPaths(),
+        SIGNING_IDENTITY_FILE,
       ),
     );
     expect(composed["retention_disposition"]).toBe(RETENTION_NOTE);
@@ -2039,7 +2036,7 @@ describe("the verify screen reads a config the way --config-file does", () => {
       validIntent(),
       "/rendezvous",
       undefined,
-      signingPaths(),
+      SIGNING_IDENTITY_FILE,
     );
     const imported = importLinkageTerms(yaml);
     expect(imported.success).toBe(true);

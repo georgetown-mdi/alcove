@@ -5,8 +5,17 @@
  * browser composes, so this module imports nothing from Node.
  */
 
+import {
+  CREDENTIAL_FILE_FIELDS,
+  FILEDROP_FOLDER_FIELDS,
+  HANDOFF_CREDENTIAL_PATH_PLACEHOLDER,
+  HANDOFF_PASSPHRASE_PATH_PLACEHOLDER,
+  credentialFileReference,
+} from "./connectionPathFields";
+
 import type { ExchangeSpec } from "@alcove/core";
 
+import type { CredentialFileField } from "./connectionPathFields";
 import type { JobSftpServerEntry } from "./sftpConnection";
 
 /** A host path the scheduled container run mounts at the same path. */
@@ -33,16 +42,6 @@ export const HANDOFF_LOG_FILE_NAME = "exchange.log";
  */
 export const HANDOFF_SIGNING_IDENTITY_PLACEHOLDER =
   "/path/to/your/signing-identity.json";
-
-/** The placeholder a container-internal credential `@path` is shown as. The
- * operator replaces it with the path to their own credential file. */
-export const HANDOFF_CREDENTIAL_PATH_PLACEHOLDER =
-  "@/path/to/your/credential-file";
-
-/** The placeholder a container-internal private-key passphrase `@path` is shown
- * as, kept distinct from the primary credential so the two files read clearly. */
-export const HANDOFF_PASSPHRASE_PATH_PLACEHOLDER =
-  "@/path/to/your/passphrase-file";
 
 /** The placeholder the filedrop shared folder is shown as in the exchange
  * config's `connection.path`. */
@@ -81,7 +80,7 @@ export function bindPathsIn(handoffSpec: ExchangeSpec): Array<HandoffBindPath> {
   const { connection, signing } = handoffSpec;
   const folders =
     connection.channel === "filedrop"
-      ? [connection.path, connection.inboundPath, connection.outboundPath]
+      ? FILEDROP_FOLDER_FIELDS.map((field) => connection[field])
       : [];
   return uniqueAbsoluteBindPaths([
     ...(connection.channel === "sftp"
@@ -94,20 +93,12 @@ export function bindPathsIn(handoffSpec: ExchangeSpec): Array<HandoffBindPath> {
 
 /** The files a server's credential `@path` references name, read-only. */
 export function credentialBindPaths(
-  server: Pick<
-    JobSftpServerEntry,
-    "password" | "privateKey" | "privateKeyPassphrase"
-  >,
+  server: Pick<JobSftpServerEntry, CredentialFileField>,
 ): Array<{ path: string; readOnly: boolean }> {
-  return [
-    server.password,
-    server.privateKey,
-    server.privateKeyPassphrase,
-  ].flatMap((value) =>
-    value?.startsWith("@") === true
-      ? [{ path: value.slice(1), readOnly: true }]
-      : [],
-  );
+  return CREDENTIAL_FILE_FIELDS.flatMap((field) => {
+    const path = credentialFileReference(server[field]);
+    return path !== undefined ? [{ path, readOnly: true }] : [];
+  });
 }
 
 /** The stated absolute paths, each once, read-write where any use writes it. */

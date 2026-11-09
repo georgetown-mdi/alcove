@@ -23,67 +23,31 @@ import type {
   JobExchangeOptions,
   JobFiledropExchangeIntent,
   JobSftpExchangeIntent,
-  JobSigningPaths,
   JobWebrtcExchangeIntent,
 } from "@jobContract/intentSchemas";
 import type { AuthoredSignalingServer } from "./signalingServer";
 
 /**
  * Compose the CLI config document (snake_case YAML the CLI loads verbatim) from a
- * validated filedrop {@link JobExchangeIntent}, setting the connection directory to
- * the operator-configured rendezvous mount (`JOB_RENDEZVOUS_DIR`) both parties can
- * reach. The directory is server-side environment configuration, never a
- * browser-sent string.
+ * validated filedrop {@link JobExchangeIntent}. `rendezvousPath` is the
+ * resolved rendezvous mount; with `outboundRendezvousPath` beside it, the two
+ * are a split pair's inbound and outbound legs, composed as
+ * `inbound_path`/`outbound_path` in place of `path`. Both are server-side
+ * configuration, never a browser-sent string. `identityFile` is the
+ * `signing.identity_file` the intent cannot hold, read only under
+ * `certificate` mode, so a caller composing an unsigned exchange may omit it.
+ * Contract: docs/spec/SERVER_JOB_API.md, "Composed CLI configuration".
  *
- * On a split-provisioned console (`JOB_RENDEZVOUS_OUTBOUND_DIR` set) the
- * caller passes both mounts and the connection holds the CLI's
- * `inbound_path`/`outbound_path` pair instead of the single `path`, never
- * both together, which `mintExchangeSpec`'s own schema refuses. The pair's
- * own rules are core's.
- *
- * The connection is built as a credential-free filedrop locator, so by
- * core's {@link ExchangeFileInput} typing no credential is representable. The
- * shared secret rides the key file; the one `authentication` key composed is
- * the intent's max-age policy ({@link composedAuthentication}). The client's
- * `linkageTerms`, `metadata`, and
- * `standardization` reach the file only after core's schema validation; the
- * one path field (`path`) is set by the server, not the client.
- *
- * Forwarding `metadata`/`standardization` is what makes the operator's data-prep
- * edits authoritative on the console path: the CLI's `prepareForExchange` uses the
- * composed metadata rather than falling back to `inferMetadata`, so a column the
- * operator marked ignored (or non-payload) is not silently disclosed.
- *
- * `expectedPartnerDeduplicate`, when present, is forwarded as the config's
- * `expected_partner_deduplicate`: the CLI holds the inviter's presented
- * `deduplicate` to the value its invitation declared and refuses a
- * contradiction before any key or payload moves. `false` is forwarded
- * verbatim, a real declaration; only an omitted field binds nothing.
- *
- * `signingPaths` supplies the two paths a `signing` block names, which the
- * intent cannot hold; it is read only under `certificate` mode, so a caller
- * composing an unsigned exchange may omit it. The `retention_disposition`
- * note is forwarded verbatim.
- *
- * `include_own_columns` is forwarded verbatim too: a local output-composition
+ * `include_own_columns` is forwarded verbatim: a local output-composition
  * setting the CLI reads when it writes this party's result file, adding nothing
  * to what the partner is sent. The schema refuses it beside a count-only
  * algorithm, so an intent pairing the two fails here rather than at the run.
- * `include_matching_key` is forwarded the same way, and refused here beside
- * terms that do not admit it (`matchingKeyUnavailableReason` in core).
- *
- * `csv_delimiter` is forwarded the same way: the field delimiter the CLI reads
- * this party's own input by and writes its own result with. Core's spec schema
- * resolves the spellings a party may write (`tab`, `detect`) and grades the
- * result, so the composed document holds the same value a hand-authored
- * configuration would. An absent field composes no key, which reads and writes
- * commas.
  */
 export function composeConfigDocument(
   intent: JobFiledropExchangeIntent,
   rendezvousPath: string,
   outboundRendezvousPath?: string,
-  signingPaths?: JobSigningPaths,
+  identityFile?: string,
 ): string {
   return stringifyYaml(
     snakeizeKeys(
@@ -91,7 +55,7 @@ export function composeConfigDocument(
         intent,
         rendezvousPath,
         outboundRendezvousPath,
-        signingPaths,
+        identityFile,
       ),
     ),
   );
@@ -107,7 +71,7 @@ export function composeFiledropConfigSpec(
   intent: JobFiledropExchangeIntent,
   rendezvousPath: string,
   outboundRendezvousPath?: string,
-  signingPaths?: JobSigningPaths,
+  identityFile?: string,
 ): ExchangeSpec {
   const options = intentOptionsToFileSyncOptions(intent.options);
   const {
@@ -119,7 +83,7 @@ export function composeFiledropConfigSpec(
     includeMatchingKey,
     csvDelimiter,
   } = intent;
-  const signing = composedSigning(intent, signingPaths);
+  const signing = composedSigning(intent, identityFile);
   const authentication = composedAuthentication(intent);
   const fileInput: ExchangeFileInput = {
     connection: {
@@ -157,31 +121,17 @@ export function composeFiledropConfigSpec(
  * document fields this composition emits at all, instead of restating them
  * ({@link ./configLoad}).
  *
- * The connection's `server` block is exactly the authored entry: every
- * host, port, identity, and credential-reference field is server-side data
- * validated when authored; the intent contributes nothing to it. The
- * entry's `@path` credential strings land in the YAML verbatim -- references
- * the CLI child resolves at exchange time, so no secret byte transits this
- * process. The client's `linkageTerms`, `metadata`, `standardization`,
- * `expectedPartnerDeduplicate`, `signing`, `retention_disposition`,
- * `include_own_columns`, and `csv_delimiter` are composed as they are on the
- * filedrop path; `options` is the same
- * numeric/boolean/enum subset, plus the `connectionPerPoll` dialing mode
- * this channel alone admits.
- *
- * This path does not use `mintExchangeFile`: its {@link ExchangeFileInput}
- * typing makes credentials unrepresentable, an invariant shared with the
- * browser minting flow that must not admit the console's credential-reference
- * entries. Instead the exchange spec is assembled directly, stated at its
- * lowest format version as the minting path states it, and validated
- * through core's {@link ExchangeSpecSchema}. The shared secret rides the key
- * file; the one `authentication` key composed is the intent's max-age policy
- * ({@link composedAuthentication}).
+ * The connection's `server` block is exactly the authored entry, its `@path`
+ * credential references verbatim; the intent contributes nothing to it. The
+ * spec is assembled directly rather than minted, stated at its lowest format
+ * version as the minting path states it. `identityFile` is as in
+ * {@link composeConfigDocument}. Contract: docs/spec/SERVER_JOB_API.md,
+ * "Composed CLI configuration".
  */
 export function composeSftpConfigSpec(
   intent: JobSftpExchangeIntent,
   serverEntry: JobSftpServerEntry,
-  signingPaths?: JobSigningPaths,
+  identityFile?: string,
 ): ExchangeSpec {
   const options = intentOptionsToFileSyncOptions(intent.options);
   return assembledConfigSpec(
@@ -191,7 +141,7 @@ export function composeSftpConfigSpec(
       server: serverEntry,
       ...(options !== undefined ? { options } : {}),
     },
-    signingPaths,
+    identityFile,
   );
 }
 
@@ -211,7 +161,7 @@ export function composeSftpConfigSpec(
 export function composeWebrtcConfigSpec(
   intent: JobWebrtcExchangeIntent,
   signalingServer: AuthoredSignalingServer,
-  signingPaths?: JobSigningPaths,
+  identityFile?: string,
 ): ExchangeSpec {
   const options = intentOptionsToFileSyncOptions(intent.options);
   const { host, port, path, secure, invitationRelay, ownRelay } =
@@ -245,7 +195,7 @@ export function composeWebrtcConfigSpec(
         : {}),
       ...(options !== undefined ? { options } : {}),
     },
-    signingPaths,
+    identityFile,
   );
 }
 
@@ -255,10 +205,10 @@ export function composeWebrtcConfigSpec(
 export function composeWebrtcConfigDocument(
   intent: JobWebrtcExchangeIntent,
   signalingServer: AuthoredSignalingServer,
-  signingPaths?: JobSigningPaths,
+  identityFile?: string,
 ): string {
   return serializeExchangeDocument(
-    composeWebrtcConfigSpec(intent, signalingServer, signingPaths),
+    composeWebrtcConfigSpec(intent, signalingServer, identityFile),
   );
 }
 
@@ -267,7 +217,7 @@ export function composeWebrtcConfigDocument(
 function assembledConfigSpec(
   intent: JobExchangeIntent,
   connection: ExchangeSpec["connection"],
-  signingPaths: JobSigningPaths | undefined,
+  identityFile: string | undefined,
 ): ExchangeSpec {
   const {
     metadata,
@@ -278,7 +228,7 @@ function assembledConfigSpec(
     includeMatchingKey,
     csvDelimiter,
   } = intent;
-  const signing = composedSigning(intent, signingPaths);
+  const signing = composedSigning(intent, identityFile);
   const authentication = composedAuthentication(intent);
   const assembled: ExchangeSpec = {
     connection,
@@ -305,10 +255,10 @@ function assembledConfigSpec(
 export function composeSftpConfigDocument(
   intent: JobSftpExchangeIntent,
   serverEntry: JobSftpServerEntry,
-  signingPaths?: JobSigningPaths,
+  identityFile?: string,
 ): string {
   return stringifyYaml(
-    snakeizeKeys(composeSftpConfigSpec(intent, serverEntry, signingPaths)),
+    snakeizeKeys(composeSftpConfigSpec(intent, serverEntry, identityFile)),
   );
 }
 
