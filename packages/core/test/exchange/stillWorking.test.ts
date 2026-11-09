@@ -654,6 +654,48 @@ describe("a forged, replayed or altered still-working envelope", () => {
     expectSecurityRefusal(await refusalOf(layer));
     expect(armed).not.toHaveBeenCalled();
   });
+
+  test.each(["forged", "altered"] as const)(
+    "the drain holds a %s envelope it reads and raises it as a security error at the next receive",
+    async (kind) => {
+      const { rawPartner, local, partner, armed } = await encryptedPair();
+      let queued: Uint8Array<ArrayBuffer>;
+      if (kind === "forged") {
+        const frameBytes = JSON.stringify(STILL_WORKING_FRAME).length;
+        queued = new Uint8Array(
+          frameBytes + local.outboundFrameOverheadBytes(frameBytes),
+        );
+        queued[0] = SINGLE_CALL_ENVELOPE_VERSION;
+        crypto.getRandomValues(queued.subarray(1));
+      } else {
+        queued = new Uint8Array(
+          await envelopeOf(rawPartner, partner, STILL_WORKING_FRAME, false),
+        );
+        queued[queued.length - 1] ^= 1;
+      }
+      await rawPartner.send(queued);
+
+      const reads = vi.spyOn(local, "receive");
+      vi.useFakeTimers();
+      const layer = layerOver(local);
+      layer.start();
+      await vi.advanceTimersByTimeAsync(STILL_WORKING_INTERVAL_MS);
+
+      expect(reads).toHaveBeenCalledTimes(1);
+      await (reads.mock.results[0].value as Promise<unknown>).catch(() => {});
+      await vi.advanceTimersByTimeAsync(PARTNER_SILENCE_BOUND_MS);
+      expect(armed).not.toHaveBeenCalled();
+
+      expect(reads).toHaveBeenCalledTimes(1);
+      const refusal = refusalOf(layer);
+      await vi.advanceTimersByTimeAsync(0);
+      expectSecurityRefusal(await refusal);
+      // The encrypted layer latches its failure, so a second read would
+      // reject too; one read shows the error came from the drain's hold.
+      expect(reads).toHaveBeenCalledTimes(1);
+      await layer.endPhase();
+    },
+  );
 });
 
 describe("a whole exchange", () => {

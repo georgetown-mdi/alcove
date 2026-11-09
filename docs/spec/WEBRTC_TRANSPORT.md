@@ -1214,9 +1214,10 @@ ends the run when they stop.
   party with no upper bound. Each still-working frame restarts the whole-frame
   budget, and the silence bound never fires while they arrive.
 - **A stated limit: a refusal the drain reads is raised at the next read.** Such
-  a refusal is a malformed frame of still-working length, or the older-version
-  reading. The party raises it at its next receive, not when the drain reads it,
-  and carries on with its own step until then.
+  a refusal is a malformed frame of still-working length, the older-version
+  reading, or a forged, replayed or altered envelope of still-working length.
+  The party raises it at its next receive, not when the drain reads it, and
+  carries on with its own step until then.
 - **Through the WebSocket relay.** A still-working frame is a message to the
   relay, so the PSI phase never comes near the relay's idle bound
   ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#quotas)).
