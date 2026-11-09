@@ -57,7 +57,7 @@ rect.c-teal{fill:#E1F5EE;stroke:#0F6E56}
 <text class="ts" x="340" y="824" text-anchor="middle" dominant-baseline="central">Signed receipt, ECDSA P-256 (optional)</text>
 <line x1="124" y1="836" x2="556" y2="836" class="arr" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
 <rect class="c-gray" x="40" y="873" width="14" height="14" rx="3" stroke-width="0.5"/>
-<text class="ts" x="62" y="880" dominant-baseline="central">Outside the AEAD: transport protection only</text>
+<text class="ts" x="62" y="880" dominant-baseline="central">Outside the AEAD: authenticated handshake</text>
 <rect class="c-teal" x="380" y="873" width="14" height="14" rx="3" stroke-width="0.5"/>
 <text class="ts" x="402" y="880" dominant-baseline="central">Inside the AEAD, end to end</text>
 </svg>
