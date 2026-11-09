@@ -1,8 +1,7 @@
 // What a relay check says a cause means and what to do about it, held here so
-// `alcove doctor relay`, the console that shows its verdict, and the web
-// app's check of an exchange's relays state each cause alike. Contract:
-// docs/spec/CLI_DOCTOR.md, The relay check, and docs/spec/PROTOCOL.md, The web
-// application's relay check.
+// `alcove doctor relay` and the console that shows its verdict state each
+// cause alike. The web app's check of an exchange's relays words each cause
+// itself. Contract: docs/spec/CLI_DOCTOR.md, The relay check.
 
 /** A cause's meaning and the change that fixes it. */
 export interface RelayCheckWords {

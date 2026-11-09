@@ -116,7 +116,7 @@ const exchangeIdField = () =>
 const tokenField = () => page.getByLabelText("Relay-owner token");
 const replaceChoice = () =>
   page.getByRole("checkbox", {
-    name: "Replace the key the registrar holds for this exchange id",
+    name: "Replace the key the relay holds for this exchange",
   });
 
 describe("the relay registration section", () => {

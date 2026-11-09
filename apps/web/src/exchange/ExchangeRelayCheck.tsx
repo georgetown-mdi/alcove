@@ -82,8 +82,10 @@ export function ExchangeRelayCheckReport({
           <li key={index}>
             <Text size="sm">
               <span className={styles.mono}>{line.url}</span>{" "}
-              <strong>{line.works ? "Works" : "Does not work"}</strong>:{" "}
-              {line.summary}
+              <strong>
+                {line.status ?? (line.works ? "Works" : "Does not work")}
+              </strong>
+              {line.summary !== undefined && `: ${line.summary}`}
             </Text>
             {line.meaning !== undefined && (
               <Text size="sm">What this means: {line.meaning}</Text>
