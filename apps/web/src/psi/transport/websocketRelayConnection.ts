@@ -972,7 +972,10 @@ function forwardingConnection(
           controls.fail(asConnectionError(err, "protocol"));
           return;
         }
-        if (outcome.kind === "pending") return;
+        if (outcome.kind === "pending") {
+          controls.inboundProgress();
+          return;
+        }
         if (outcome.kind === "close") {
           peerCloseRead = true;
           settleCloseWait?.("peer-closed");
@@ -1051,13 +1054,13 @@ function forwardingConnection(
           // partner's own close waits for.
           socket.close(peerCloseRead ? CLOSE_NORMAL : CLOSE_ABNORMAL);
         },
+        exchangesStillWorkingFrames: () => true,
       };
     },
     {
       byteCapacity: BROWSER_QUEUE_BYTE_CAPACITY,
       inactivityTimeoutMs:
         options.inactivityTimeoutMs ?? DEFAULT_RELAY_INACTIVITY_TIMEOUT_MS,
-      inactivityTimeoutRaisable: options.inactivityTimeoutMs === undefined,
     },
   );
   return {

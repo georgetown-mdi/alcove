@@ -12,6 +12,7 @@ import {
   messageWithOperatorText,
   NEW_INVITATION_REMEDY,
   operatorSuppliedText,
+  PARTNER_STOPPED_RESPONDING_REMEDY,
   redactAndRenderOperatorSuppliedText,
   relayRegistrarUnreachableRemedy,
   IGNORE_FILES_OLDER_THAN_KEY,
@@ -124,6 +125,7 @@ export const CLI_FAILURE_REMEDIES: {
         );
     }
   },
+  "partner-stopped-responding": () => PARTNER_STOPPED_RESPONDING_REMEDY,
 };
 
 /** The CLI's remedy sentence for `cause` on a run described by `context`. */

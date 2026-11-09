@@ -83,6 +83,9 @@ const SAMPLES: {
       timedOutMs: 15_000,
     },
   ],
+  "partner-stopped-responding": [
+    { kind: "partner-stopped-responding", silentMs: 120_000 },
+  ],
 };
 
 const ARRIVAL_WAITS: ArrivalWait[] = ["exchange", "online-invitation"];

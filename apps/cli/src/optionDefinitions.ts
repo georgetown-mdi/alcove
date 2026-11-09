@@ -8,6 +8,7 @@ import {
   isSftpPort,
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
+  PARTNER_SILENCE_BOUND_MS,
   provisionRequest,
   IGNORE_FILES_OLDER_THAN_INFINITE,
   UsageError,
@@ -550,9 +551,12 @@ export function addCommonBootstrapOptions(
         "folder may go unanswered, " +
         "before the exchange fails " +
         `(maximum: ${MAX_TIMEOUT_SECONDS / 86_400}d); overrides ` +
-        "connection.options.inactivity_timeout_ms. Unset on webrtc, the " +
-        "wait is set from both parties' record counts, at least 1h; a " +
-        "value given replaces it. " +
+        "connection.options.inactivity_timeout_ms. On webrtc it defaults " +
+        "to 1h; during matching each still-working message from your " +
+        `partner restarts it, and ${PARTNER_SILENCE_BOUND_MS / 60_000} ` +
+        "minutes with nothing from them ends the run. The project's " +
+        "WebSocket relay closes a pairing idle for about 2h25m, so a " +
+        "longer value there waits no longer. " +
         DURATION_VALUE_HELP,
     })
     .option("polling-frequency", {

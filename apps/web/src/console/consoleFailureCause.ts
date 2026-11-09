@@ -7,6 +7,7 @@
 
 import {
   failureCauseSentence,
+  PARTNER_STOPPED_RESPONDING_REMEDY,
   relayRegistrarUnreachableRemedy,
 } from "@alcove/core";
 
@@ -118,6 +119,10 @@ export const CONSOLE_FAILURE_REMEDIES: {
   "relay-registrar-unreachable": (cause) => ({
     title: "The relay registrar could not be reached",
     remedy: relayRegistrarUnreachableRemedy(cause),
+  }),
+  "partner-stopped-responding": () => ({
+    title: "Your partner stopped responding",
+    remedy: PARTNER_STOPPED_RESPONDING_REMEDY,
   }),
 };
 

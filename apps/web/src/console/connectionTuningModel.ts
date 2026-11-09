@@ -11,6 +11,7 @@ import {
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
   MAX_TIMER_MS,
+  PARTNER_SILENCE_BOUND_MS,
   defaultPollingFrequencyMs,
 } from "@alcove/core";
 
@@ -173,11 +174,6 @@ export interface TimeoutFieldRow {
   /** The longest value the field may state, in milliseconds. */
   ceilingMs: number;
   description: (capabilities: ConnectionTuningCapabilities) => string;
-  /** The placeholder where it states more than {@link defaultMs} does. */
-  placeholder?: (
-    capabilities: ConnectionTuningCapabilities,
-    unit: DurationUnit,
-  ) => string;
 }
 
 /** The placeholder a timeout field shows in `unit` on the flow's channel. */
@@ -186,10 +182,7 @@ export function timeoutFieldPlaceholder(
   capabilities: ConnectionTuningCapabilities,
   unit: DurationUnit,
 ): string {
-  return (
-    row.placeholder?.(capabilities, unit) ??
-    defaultPlaceholder(row.defaultMs(capabilities), unit)
-  );
+  return defaultPlaceholder(row.defaultMs(capabilities), unit);
 }
 
 /** The timeout fields, keyed by draft field. */
@@ -218,7 +211,6 @@ const TIMEOUT_FIELDS: {
     defaultMs: () => DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
     ceilingMs: MAX_TIMEOUT_MS,
     description: inactivityTimeoutDescription,
-    placeholder: inactivityTimeoutPlaceholder,
   },
   serverConnectTimeout: {
     field: "serverConnectTimeout",
@@ -669,22 +661,6 @@ export function defaultPlaceholder(
   return `default ${natural.magnitude} ${natural.unit}`;
 }
 
-/** The quiet-partner field's placeholder: core's default, which on `webrtc` is
- * only the least wait, since a blank field there leaves the run to set the
- * wait from both parties' record counts. */
-export function inactivityTimeoutPlaceholder(
-  capabilities: ConnectionTuningCapabilities,
-  unit: DurationUnit,
-): string {
-  const placeholder = defaultPlaceholder(
-    DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
-    unit,
-  );
-  return capabilities.channel === "webrtc"
-    ? `at least ${placeholder}`
-    : placeholder;
-}
-
 /** The quiet-partner field's description for the flow's channel. */
 export function inactivityTimeoutDescription(
   capabilities: ConnectionTuningCapabilities,
@@ -693,8 +669,9 @@ export function inactivityTimeoutDescription(
     "Once your partner has started, how long this side waits for each next " +
     "step from them before it gives up.";
   return capabilities.channel === "webrtc"
-    ? `${what} Left blank, it is set from both sides' record counts and is ` +
-        "at least an hour. A value entered is used instead, even a shorter one."
+    ? `${what} While matching runs, each still-working message from your ` +
+        "partner restarts this wait, and the run ends after " +
+        `${PARTNER_SILENCE_BOUND_MS / 60_000} minutes with nothing from them.`
     : `${what} Raise it for a partner working through a large file.`;
 }
 

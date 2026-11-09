@@ -57,10 +57,9 @@ import type { RTCDataChannel } from "werift";
 /**
  * Parked-receive inactivity budget, matching the web WebRTC transport's.
  * Hour-scale because the timer arms only while a receive waits on an empty
- * queue, so it bounds the peer's per-step single-threaded PSI compute -- which
- * sends no keepalive while it runs. Where no `inactivity_timeout_ms` is set the
- * exchange raises it once the agreed sizes are known
- * (`MessageConnection.raiseInactivityTimeout`).
+ * queue. Through the PSI phase each still-working frame restarts it, and the
+ * partner-silence bound ends a wait for a partner whose frames stop
+ * (`MessageConnection.armPartnerSilenceBound`).
  *
  * By design a transport-local constant rather than core's file-sync
  * `DEFAULT_PEER_TIMEOUT_MS`: the two govern unrelated transports and only
@@ -363,6 +362,7 @@ export function webRtcMessageConnection(
           await session.close();
           if (unconfirmed !== undefined) throw unconfirmed;
         },
+        exchangesStillWorkingFrames: () => true,
         // No `setInboundFrameCap`: this transport bounds its inbound path with
         // its own fixed reassembly envelope rather than a per-exchange cap, so
         // the connection's setInboundFrameCap is a no-op here by construction
@@ -373,7 +373,6 @@ export function webRtcMessageConnection(
       byteCapacity: options?.inboundQueueByteCapacity,
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
-      inactivityTimeoutRaisable: options?.inactivityTimeoutMs === undefined,
       inactivityHint: inactivityTimeoutGuidance,
       inactivityTimeoutSetting: INACTIVITY_TIMEOUT_KEY,
     },

@@ -294,8 +294,11 @@ export function assertChunkReassemblySupported(conn: DataConnection): void {
  *
  * @param conn   The PeerJS data connection (open or not yet open).
  * @param fail   Latches a terminal failure (the connection's `controls.fail`).
- * @param options  Per-bound overrides defaulting to the fixed core constants;
- *                 set only by tests, never an operator-facing setting.
+ * @param options  Per-bound overrides defaulting to the fixed core constants,
+ *                 set only by tests, never an operator-facing setting; and
+ *                 `onChunkKept`, called for each chunk kept toward a frame
+ *                 that is not yet whole (the connection's
+ *                 `controls.inboundProgress`).
  * @returns `requireBinaryFrames`, which the connection's hook of that name
  *   calls (see `MessageConnection.requireBinaryFrames`).
  * @throws If the PeerJS internals are not as expected (a broken upgrade
@@ -311,6 +314,7 @@ export function boundChunkReassembly(
     maxChunks?: number;
     minChunkResidentBytes?: number;
     maxStringBytes?: number;
+    onChunkKept?: () => void;
   },
 ): { requireBinaryFrames: () => void } {
   const maxFrameBytes = options?.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES;
@@ -429,6 +433,8 @@ export function boundChunkReassembly(
     if (internals._chunkedData[id] === undefined) {
       bytesInFlight -= inFlight.get(id)?.bytes ?? 0;
       inFlight.delete(id);
+    } else if (!failed) {
+      options?.onChunkKept?.();
     }
   };
 

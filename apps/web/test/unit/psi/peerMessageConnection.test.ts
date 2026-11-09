@@ -3,12 +3,12 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { default as EventEmitter } from "eventemitter3";
 
 import {
-  BROWSER_PSI_SET_MAX_ELEMENTS,
   BROWSER_QUEUE_BYTE_CAPACITY,
   ConnectionError,
   MAX_WEBRTC_FRAME_BYTES,
+  PARTNER_SILENCE_BOUND_MS,
   PeerJsFrameEncoder,
-  partnerStepWaitMs,
+  failureCauseOf,
 } from "@alcove/core";
 
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
@@ -724,62 +724,21 @@ describe("openPeerMessageConnection", () => {
 
 describe("the wait through a partner's PSI step", () => {
   const HOUR_MS = 60 * 60 * 1000;
-  // The wait an exchange at the browser's receive ceiling a side raises to.
-  const atCeiling = () =>
-    partnerStepWaitMs({
-      localValueSlots: BROWSER_PSI_SET_MAX_ELEMENTS,
-      partnerValueSlots: BROWSER_PSI_SET_MAX_ELEMENTS,
-      localReceiveCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
-      partnerReceiveCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
-    });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  test("a receive waiting through a partner step past the one-hour default is not ended once the wait is raised", async () => {
-    const { fake, conn } = makeConn();
+  test("the parties on a data channel exchange still-working frames", async () => {
+    const { conn } = makeConn();
     const mc = await openWithoutCloseWait(conn);
-    vi.useFakeTimers();
-    mc.raiseInactivityTimeout?.(atCeiling());
-
-    const received = mc.receive();
-    await vi.advanceTimersByTimeAsync(atCeiling() - 1);
-    fake.emit("data", { setup: true }, 20);
-
-    expect(atCeiling()).toBeGreaterThan(2 * HOUR_MS);
-    expect(await received).toEqual({ setup: true });
+    expect(mc.exchangesStillWorkingFrames?.()).toBe(true);
   });
 
-  test("a partner silent past the raised wait ends the run with the peer-inactivity refusal", async () => {
+  test("a parked receive is bounded by the one-hour default", async () => {
     const { conn } = makeConn();
     const mc = await openWithoutCloseWait(conn);
     vi.useFakeTimers();
-    mc.raiseInactivityTimeout?.(atCeiling());
-
-    const received = mc.receive().catch((e: unknown) => e);
-    await vi.advanceTimersByTimeAsync(atCeiling());
-    const failure = await received;
-
-    expect(failure).toBeInstanceOf(ConnectionError);
-    expect((failure as ConnectionError).kind).toBe("transport");
-    expect((failure as ConnectionError).message).toBe(
-      `no message arrived within ${atCeiling()} ms; the partner appears to have gone silent`,
-    );
-  });
-
-  test("a small exchange keeps the one-hour default", async () => {
-    const { conn } = makeConn();
-    const mc = await openWithoutCloseWait(conn);
-    vi.useFakeTimers();
-    mc.raiseInactivityTimeout?.(
-      partnerStepWaitMs({
-        localValueSlots: 10_000,
-        partnerValueSlots: 10_000,
-        localReceiveCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
-        partnerReceiveCeiling: BROWSER_PSI_SET_MAX_ELEMENTS,
-      }),
-    );
 
     const received = mc.receive().catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(HOUR_MS);
@@ -789,35 +748,32 @@ describe("the wait through a partner's PSI step", () => {
     );
   });
 
-  test("a partner whose channel closes ends the raised wait at once", async () => {
+  test("a partner silent past the silence bound ends the run as stopped responding", async () => {
+    const { conn } = makeConn();
+    const mc = await openWithoutCloseWait(conn);
+    vi.useFakeTimers();
+    mc.armPartnerSilenceBound?.(PARTNER_SILENCE_BOUND_MS);
+
+    const received = mc.receive().catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(PARTNER_SILENCE_BOUND_MS);
+    const failure = await received;
+
+    expect(failure).toBeInstanceOf(ConnectionError);
+    expect(failureCauseOf(failure)?.kind).toBe("partner-stopped-responding");
+  });
+
+  test("a partner whose channel closes ends a wait under the silence bound at once", async () => {
     const { fake, conn } = makeConn();
     const mc = await openWithoutCloseWait(conn);
     vi.useFakeTimers();
-    mc.raiseInactivityTimeout?.(atCeiling());
+    mc.armPartnerSilenceBound?.(PARTNER_SILENCE_BOUND_MS);
 
     const received = mc.receive().catch((e: unknown) => e);
-    await vi.advanceTimersByTimeAsync(HOUR_MS);
+    await vi.advanceTimersByTimeAsync(PARTNER_SILENCE_BOUND_MS / 2);
     fake.emit("close");
     const failure = (await received) as ConnectionError;
 
     expect(failure.kind).toBe("transport");
     expect(failure.message).toBe("peer connection closed");
-  });
-
-  test("a budget given at open is not raised", async () => {
-    const { conn } = makeConn();
-    const mc = await openPeerMessageConnection(conn, {
-      closeDrainTimeoutMs: 0,
-      inactivityTimeoutMs: 1_000,
-    });
-    vi.useFakeTimers();
-    mc.raiseInactivityTimeout?.(atCeiling());
-
-    const received = mc.receive().catch((e: unknown) => e);
-    await vi.advanceTimersByTimeAsync(1_000);
-
-    expect(((await received) as ConnectionError).message).toContain(
-      "no message arrived within 1000 ms",
-    );
   });
 });

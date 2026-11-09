@@ -218,6 +218,7 @@ test("every emitted cause passes the allowlist a consumer checks it against", ()
       failure: "no-answer",
       timedOutMs: 15_000,
     },
+    { kind: "partner-stopped-responding", silentMs: 120_000 },
   ];
   expect(new Set(emitted.map((cause) => cause.kind))).toEqual(
     new Set(FAILURE_CAUSE_KINDS),

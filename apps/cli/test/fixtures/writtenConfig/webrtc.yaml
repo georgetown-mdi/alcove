@@ -11,8 +11,9 @@ connection:
   role: acceptor
   # Connection tuning, all optional; the defaults are shown below. Uncomment
   # and edit to change one.
-  # Unset, inactivity_timeout_ms is set from both parties' record counts,
-  # at least the 3600000 shown; a value set here replaces it.
+  # During matching, each still-working message from the partner restarts the
+  # inactivity_timeout_ms wait, and the run ends after
+  # 2 minutes with nothing from the partner.
   # options:
   #   peer_timeout_ms: 600000
   #   inactivity_timeout_ms: 3600000

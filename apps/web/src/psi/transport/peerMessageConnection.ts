@@ -27,10 +27,10 @@ import type { WebRtcPathFailure } from "./relayFallback";
 
 /**
  * Parked-receive inactivity budget for the WebRTC transport. Hour-scale: the
- * timer arms only while a receive waits on an empty queue, so it bounds the
- * peer's per-step single-threaded WASM compute time (no keepalive while
- * running). The exchange raises it once the agreed sizes are known
- * (`MessageConnection.raiseInactivityTimeout`). A transport-local constant by
+ * timer arms only while a receive waits on an empty queue. Through the PSI
+ * phase each still-working frame restarts it, and the partner-silence bound
+ * ends a wait for a partner whose frames stop
+ * (`MessageConnection.armPartnerSilenceBound`). A transport-local constant by
  * design, not core's file-sync `DEFAULT_PEER_TIMEOUT_MS`: the two govern
  * unrelated transports and only coincide in value today.
  */
@@ -114,6 +114,7 @@ export async function openPeerMessageConnection(
       const inbound = boundChunkReassembly(conn, controls.fail, {
         maxFrameBytes,
         maxConcurrentReassemblies: options?.maxConcurrentReassemblies,
+        onChunkKept: controls.inboundProgress,
       });
       // Replace PeerJS's recursive BinaryPack encode before the first send: its
       // own packer overflows the stack a few thousand matched records in, on
@@ -160,6 +161,7 @@ export async function openPeerMessageConnection(
       return {
         outboundWebRtcFrameBound: () => maxFrameBytes,
         inboundPsiSetElementCeiling: () => BROWSER_PSI_SET_MAX_ELEMENTS,
+        exchangesStillWorkingFrames: () => true,
         requireBinaryFrames: inbound.requireBinaryFrames,
         send: (data) => conn.send(data),
         close: async (closeOptions) => {
@@ -197,7 +199,6 @@ export async function openPeerMessageConnection(
       byteCapacity: options?.byteCapacity ?? BROWSER_QUEUE_BYTE_CAPACITY,
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
-      inactivityTimeoutRaisable: options?.inactivityTimeoutMs === undefined,
     },
   );
   try {

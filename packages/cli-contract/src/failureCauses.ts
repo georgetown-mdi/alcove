@@ -87,6 +87,10 @@ export const FAILURE_CAUSE_STREAM_FIELDS: {
     port: cause.port,
     ...relayRegistrarFailureFields(cause),
   }),
+  "partner-stopped-responding": ({ silentMs }) => ({
+    kind: "partner-stopped-responding",
+    silentMs: toStreamCount(silentMs),
+  }),
 };
 
 /** Every cause kind the stream states: the keys of {@link FAILURE_CAUSE_STREAM_FIELDS}. */
