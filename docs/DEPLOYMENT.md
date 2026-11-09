@@ -539,7 +539,7 @@ Two folders on one share take **one** network-share volume, over the folder that
 
 - `alcove exchange` stops at the key-file preflight, before any key exchange, with `key file parent directory . is not writable: EACCES: permission denied, open '.alcove-write-probe-<pid>-<hex>'. Restore write access ...`.
 - `alcove accept` displays and confirms the terms, then fails with `EACCES: permission denied, open './alcove.yaml.tmp.<pid>'` and exit 69. The invitation is still good: fix the ownership and run `accept` again.
-- An existing `alcove.yaml` the container cannot read fails at config load: `config file ./alcove.yaml could not be read: EACCES: permission denied, open './alcove.yaml'`. The recursive `chown` above clears it.
+- An existing `alcove.yaml` the container cannot read fails at config load: `config file ./alcove.yaml could not be read (EACCES)`. The recursive `chown` above clears it.
 
 In all three the remedy is ownership, not mode: a `chmod` on a directory or file the container's account does not own changes nothing it can reach.
 

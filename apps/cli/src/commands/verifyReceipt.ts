@@ -68,7 +68,12 @@ import {
   RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
 } from "@alcove/cli-contract";
 
-import { readConfigLinkageSource, type ConfigLinkageSource } from "../config";
+import {
+  configLinkageSourceFrom,
+  readConfigDocument,
+  readConfigLinkageSource,
+  type ConfigLinkageSource,
+} from "../config";
 import { expandTilde } from "../fileUtils";
 import { checkInputFitsMainThreadHeap } from "../inputHeapCheck";
 import {
@@ -77,7 +82,7 @@ import {
   namedConfigFileFlag,
 } from "../optionDefinitions";
 import { agreedTermsPathFor, keysPathFor } from "../recordFile";
-import { parseSensitiveJson, parseSensitiveYaml } from "../sensitiveFile";
+import { parseSensitiveJson } from "../sensitiveFile";
 import { loadSigningCertificate } from "../signingIdentityFile";
 import { openInputSource } from "../util/dataIo";
 import { runOrExit, worseReceiptVerdictExitCode } from "../util/exit";
@@ -794,27 +799,46 @@ export function formatSignedRecordReport(
 // --- Handler -----------------------------------------------------------------
 
 /**
- * What the config named by `--config-file` supplies this verification: this
- * party's linkage terms and the `csv_delimiter` its files were read and
- * written by. That file also supplies `signing.partner_fingerprint` and
- * `signing.identity_file` -- so a config that defines no `linkage_terms` is
- * accepted rather than refused, reported here as no source at all. A path
- * that does not exist is a usage error (this command never auto-loads a
- * config).
+ * What the config named by `--config-file` supplies this verification, read
+ * and parsed once: this party's linkage terms and the `csv_delimiter` its
+ * files were read and written by, and the `signing` block.
+ * @internal exported for testing
  */
-function configFileSource(
+export interface VerificationConfig {
+  /**
+   * The linkage source, absent where the config defines no `linkage_terms`:
+   * such a config is accepted rather than refused, since the signing block
+   * alone serves a signed receipt.
+   */
+  source: ConfigLinkageSource | undefined;
+  signing: ConfigSigningBlock;
+}
+
+/**
+ * Read the config `--config-file` names. A path that does not exist is a usage
+ * error, so a typo'd `--config-file` does not silently verify unanchored (this
+ * command never auto-loads a config).
+ * @internal exported for testing
+ */
+export function readVerificationConfig(
   configFile: string | undefined,
-): ConfigLinkageSource | undefined {
+): VerificationConfig | undefined {
   if (configFile === undefined) return undefined;
-  const source = readConfigLinkageSource(expandTilde(configFile));
-  if (source.status === "no-config-file") {
+  const target = expandTilde(configFile);
+  const raw = readConfigDocument(target, { whenMissing: "absent" });
+  if (raw === undefined) {
     const message = messageWithOperatorText`config file ${operatorSuppliedText(
       configFile,
     )} does not exist`;
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
-  if (source.status === "no-linkage-terms") return undefined;
-  return source.source;
+  // Refuses a document that is not a mapping, so `raw` is one below.
+  const terms = configLinkageSourceFrom(raw, target);
+  const signing = (raw as Record<string, unknown>)["signing"] ?? {};
+  return {
+    source: terms.status === "loaded" ? terms.source : undefined,
+    signing: { configFile, fields: signing as Record<string, unknown> },
+  };
 }
 
 /** What the command says when this party's payload send set cannot be
@@ -987,63 +1011,15 @@ function agreedTermsBesideRecord(
 }
 
 /**
- * The `signing` block of an exchange config, read once per invocation and shared
- * by the two fields this command takes from it: the config is a secret-bearing
- * document, so it is read and parsed once rather than once per field. It holds
- * the config path as the operator wrote it, for the messages that name it.
+ * The `signing` block of an exchange config, so a party re-verifying its own
+ * exchange gets the pin and the identity it already configured, shared by the
+ * two fields this command takes from it. It holds the config path as the
+ * operator wrote it, for the messages that name it.
  * @internal exported for testing
  */
 export interface ConfigSigningBlock {
   configFile: string;
   fields: Record<string, unknown>;
-}
-
-/**
- * Read the `signing` block out of an exchange config, so a party
- * re-verifying its own exchange gets the pin and the identity it already
- * configured. Only the two fields this command uses are read from it.
- *
- * `explicit` marks a path named on the command line: a missing explicit
- * path is a usage error, not an empty block (the same distinction `alcove
- * fingerprint` draws for its own config hint) -- so a typo'd `--config-file`
- * does not silently verify unanchored.
- * @internal exported for testing
- */
-export function readConfigSigningBlock(
-  configFile: string | undefined,
-  explicit: boolean,
-): ConfigSigningBlock | undefined {
-  if (configFile === undefined) return undefined;
-  const target = expandTilde(configFile);
-  let text: string;
-  try {
-    text = fs.readFileSync(target, "utf8");
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      if (explicit) {
-        const missing = messageWithOperatorText`config file ${operatorSuppliedText(
-          configFile,
-        )} does not exist`;
-        throw keepOperatorSuppliedText(new UsageError(missing.text), missing);
-      }
-      return undefined;
-    }
-    const message = messageWithOperatorText`config file ${operatorSuppliedText(
-      configFile,
-    )} could not be read: ${err instanceof Error ? err.message : String(err)}`;
-    throw keepOperatorSuppliedText(new UsageError(message.text), message);
-  }
-  // A YAML parse can echo source bytes (an inline connection credential), so it
-  // routes through the sensitive-file chokepoint, which reports path-only.
-  const raw = parseSensitiveYaml(
-    text,
-    messageWithOperatorText`config file ${operatorSuppliedText(configFile)}`,
-  );
-  const root = (raw ?? {}) as Record<string, unknown>;
-  return {
-    configFile,
-    fields: (root["signing"] ?? {}) as Record<string, unknown>,
-  };
 }
 
 /** What {@link pinnedFingerprintFrom} states behind the config path. */
@@ -1293,7 +1269,8 @@ export async function handler(argv: Arguments): Promise<void> {
         }
       }
 
-      const localSource = configFileSource(configFile);
+      const localConfig = readVerificationConfig(configFile);
+      const localSource = localConfig?.source;
       // The flag governs this verification and the configuration's csv_delimiter
       // a verification given none, the precedence every command reading a CSV
       // applies: the files being verified are the ones that configuration's own
@@ -1405,12 +1382,7 @@ export async function handler(argv: Arguments): Promise<void> {
       let signedRendered: { lines: string[]; exitCode: number } | undefined;
       let signatureFailed = false;
       if (signedRecord !== undefined) {
-        // This command never auto-loads a config, so a path that reaches here was
-        // named on the command line.
-        const signing = readConfigSigningBlock(
-          configFile,
-          configFile !== undefined,
-        );
+        const signing = localConfig?.signing;
         const expectations = await signedRecordExpectations({
           record: artifact.kind === "record" ? artifact.record : undefined,
           localTerms,

@@ -311,8 +311,8 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "fixed prose; not even the configured path is quoted.",
   },
   {
-    file: "apps/cli/src/commands/exchange.ts",
-    anchor: "readConfigDocument",
+    file: "apps/cli/src/config/exchangeConfig.ts",
+    anchor: "configReadRefusal",
     raises: "OperatorConfigError",
     interpolates: ["configFile"],
     provenance:
@@ -321,22 +321,24 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "The rest is fixed prose naming the command that writes one.",
   },
   {
-    file: "apps/cli/src/commands/exchange.ts",
-    anchor: "readConfigDocument",
+    file: "apps/cli/src/config/exchangeConfig.ts",
+    anchor: "configReadRefusal",
     raises: "OperatorConfigError",
-    interpolates: ["String(err)", "configFile", "err.message"],
+    interpolates: ["configFile", "errnoClause(failure.code)"],
     provenance:
-      "`configFile` is the operator's own path, as above. `err` is the Node " +
-      "filesystem error of this party's own read of that path: an errno and " +
-      "the local path, holding no byte of the document.",
+      "`configFile` is the operator's own path, as above. `failure.code` is " +
+      "the errno code of the Node filesystem error of this party's own read " +
+      "of that path (readConfigDocument in config/loaders.ts), holding no " +
+      "byte of the document; the fs message, which repeats the path, is not " +
+      "quoted.",
   },
   {
-    file: "apps/cli/src/commands/exchange.ts",
-    anchor: "readConfigDocument",
+    file: "apps/cli/src/config/exchangeConfig.ts",
+    anchor: "configReadRefusal",
     raises: "OperatorConfigError",
-    interpolates: ["configFile", "position"],
+    interpolates: ["at", "configFile"],
     provenance:
-      "`configFile` is the operator's own path, as above. `position` is " +
+      "`configFile` is the operator's own path, as above. `at` is empty or " +
       "the parser's line and column numbers of the operator's own " +
       "configuration and a fixed phrase chosen by its error code " +
       "(describeYamlSyntaxPosition in core's sensitiveFile.ts); the " +
@@ -344,7 +346,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "document reaches the message.",
   },
   {
-    file: "apps/cli/src/commands/exchange.ts",
+    file: "apps/cli/src/config/exchangeConfig.ts",
     anchor: "invalidExchangeSpecError",
     raises: "OperatorConfigError",
     interpolates: ["configFile", "describeConfigSchemaError(err)"],

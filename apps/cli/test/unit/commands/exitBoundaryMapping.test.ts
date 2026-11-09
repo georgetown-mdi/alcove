@@ -6,7 +6,7 @@ import type { Arguments } from "yargs";
 
 import { mountHandler } from "../../../src/commands/doctor";
 import { handler as enrollRelayHandler } from "../../../src/commands/enrollRelay";
-import { loadConfig } from "../../../src/commands/exchange";
+import { loadConfig } from "../../../src/config/exchangeConfig";
 import { handler as fingerprintHandler } from "../../../src/commands/fingerprint";
 import {
   probeDiagnosisJsonLine,
@@ -48,9 +48,9 @@ vi.mock("../../../src/signingIdentityFile", async (importActual) => {
 
 // enroll-relay's first module call is the configuration load it shares with
 // the exchange command, spy-wrapped the same way.
-vi.mock("../../../src/commands/exchange", async (importActual) => {
+vi.mock("../../../src/config/exchangeConfig", async (importActual) => {
   const actual =
-    await importActual<typeof import("../../../src/commands/exchange")>();
+    await importActual<typeof import("../../../src/config/exchangeConfig")>();
   return { ...actual, loadConfig: vi.fn(actual.loadConfig) };
 });
 

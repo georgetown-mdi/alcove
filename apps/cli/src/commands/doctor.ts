@@ -42,7 +42,7 @@ import { runOrExit } from "../util/exit";
 import { declarePositionals } from "../util/positionals";
 import { parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
-import { loadConfig } from "./exchange";
+import { loadConfig } from "../config/exchangeConfig";
 
 // `alcove doctor` answers "why did the file drop not work" before an exchange
 // is attempted: `doctor probe` checks over the network as smbclient sees it,

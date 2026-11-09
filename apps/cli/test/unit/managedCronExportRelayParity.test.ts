@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 
 import { COMMAND_LINE_EXPORT_RELAY_CASES } from "@alcove/core/testing";
 
-import { loadConfig } from "../../src/commands/exchange";
+import { loadConfig } from "../../src/config/exchangeConfig";
 import { saveKeyFile } from "../../src/keyFile";
 import { relayRegistrarForRun } from "../../src/relayRegistrar";
 

@@ -1,18 +1,14 @@
-import fs from "node:fs";
-
 import type { LinkageTerms } from "@alcove/core";
 import { parseExchangeSpec, snakeizeKey, snakeizeKeys } from "@alcove/core";
 
 import { writeFileOwnerOnly } from "../fileUtils";
-import {
-  parseSensitiveYaml,
-  editSensitiveYamlDocument,
-} from "../sensitiveFile";
+import { parseSensitiveYaml } from "../sensitiveFile";
 
 import { describeConfigSchemaError, type SchemaIssue } from "./loaders";
 import {
   configFileLabel,
   configFileRefusal,
+  editConfigInPlace,
   normalizeKeyPathSpelling,
 } from "./persist";
 
@@ -30,15 +26,11 @@ export interface TermsUpdateWrite {
  * that follows from it -- `expected_partner_deduplicate` -- in one write, so
  * the record does not state a commitment the new terms do not back. Every
  * other key, the connection block included, keeps its values and its key
- * order, and a line the write does not change keeps its bytes as
- * {@link editSensitiveYamlDocument} allows.
+ * order, as {@link editConfigInPlace} keeps them.
  *
  * The edited document is read back through the same schema `alcove
  * exchange` loads it with before it is written; a document that would not
  * load is refused and the file is left unchanged.
- *
- * Rewritten with the same owner-only permissions, and the same atomic rename,
- * {@link saveConfig} uses.
  *
  * @throws {UsageError} if the edited document would not load.
  */
@@ -108,9 +100,8 @@ function termsUpdateDocument(
   configPath: string,
   write: TermsUpdateWrite,
 ): string {
-  return editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
-    configFileLabel(configPath),
+  return editConfigInPlace(
+    configPath,
     (doc) => {
       for (const record of ["linkage_terms", "expected_partner_deduplicate"])
         normalizeKeyPathSpelling(configPath, doc, [record]);
@@ -124,6 +115,7 @@ function termsUpdateDocument(
           write.expectedPartnerDeduplicate,
         );
     },
+    { write: false },
   );
 }
 

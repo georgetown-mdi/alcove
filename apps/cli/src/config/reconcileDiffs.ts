@@ -680,21 +680,11 @@ const RECONCILE_NOTICE_RESERVE_CEILING = renderedDisplayCostKeepingLineBreaks(
  * {@link renderedDisplayCostKeepingLineBreaks} measures -- a break costs one
  * character, not the four of the escape's `\x0a`.
  *
- * The budget is shared out by NEED, not by count: every line is charged its
- * first-party skeleton, each side is measured at what it would actually
- * render to, and what a short value does not take is available to a longer
- * one beside it -- so a constraint falls only on the sides too wide for the
- * room. A clause side sub-partitions its own slot among its values the same
- * way ({@link reconcileClause}). A side that cannot be given the least it
- * can display as drops both of that LINE's values, naming only the field,
- * with a first-party notice under the block explaining why.
- *
- * A cut always lands inside a delimited run closed properly (marker inside,
- * per {@link fitToRenderedCostClosingRuns}), which a check over the rendered
- * lines holds (`apps/cli/test/unit/config.test.ts`) rather than this comment.
- * The one property recorded rather than closed: the marker is plain ASCII a
- * value could also spell, so a value can claim a cut that did not happen --
- * what an operator can rely on is the marker's ABSENCE.
+ * How the budget is shared among the lines and their values, and when a line
+ * is named without its values: docs/spec/DISPLAY_REDACTION.md#message-display-budgets,
+ * the accept-time reconcile refusal. A cut always lands inside a delimited run
+ * closed properly ({@link fitToRenderedCostClosingRuns}), which a check over
+ * the rendered lines holds (`apps/cli/test/unit/config.test.ts`).
  *
  * @internal exported for testing; `reconcileConflictMessage` is the caller.
  */

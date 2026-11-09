@@ -35,11 +35,11 @@ import {
   validateAccept,
 } from "../../../src/commands/accept";
 import { saveConfig } from "../../../src/config";
+import { resolveSigningPersist } from "../../../src/commands/exchange";
 import {
   loadConfig,
-  resolveSigningPersist,
   warnAndStripInjectedAuthFields,
-} from "../../../src/commands/exchange";
+} from "../../../src/config/exchangeConfig";
 import {
   handler as fingerprintHandler,
   readConfigHints,
@@ -58,7 +58,7 @@ import {
 import { provisionConfigAndKey } from "../../../src/commands/provision";
 import {
   pinnedFingerprintFrom,
-  readConfigSigningBlock,
+  readVerificationConfig,
   readExchangeRecordFile,
   readSignedRecordFile,
   handler as verifyReceiptHandler,
@@ -468,7 +468,7 @@ const REFUSALS: readonly SinkCase<RefusalOutcome>[] = [
       const filePath = backslashedPath("alcove.yaml");
       return {
         filePath,
-        thrown: await raised(() => readConfigSigningBlock(filePath, true)),
+        thrown: await raised(() => readVerificationConfig(filePath)),
       };
     },
   },
@@ -480,7 +480,7 @@ const REFUSALS: readonly SinkCase<RefusalOutcome>[] = [
       fs.mkdirSync(filePath);
       return {
         filePath,
-        thrown: await raised(() => readConfigSigningBlock(filePath, true)),
+        thrown: await raised(() => readVerificationConfig(filePath)),
       };
     },
   },
@@ -533,7 +533,7 @@ const REFUSALS: readonly SinkCase<RefusalOutcome>[] = [
       return {
         filePath,
         thrown: await raised(() =>
-          pinnedFingerprintFrom(readConfigSigningBlock(filePath, true)),
+          pinnedFingerprintFrom(readVerificationConfig(filePath)?.signing),
         ),
       };
     },
@@ -553,6 +553,37 @@ for (const { name, says, drive } of REFUSALS)
     expect(rendered).toContain(filePath);
     expect(rendered).not.toContain(escaped(filePath));
   });
+
+// A config read whose fs message names the path a second time, unmarked: a file
+// standing where a directory of the path should be (ENOTDIR off Windows, which
+// reports ENOENT instead). Each reader states the errno code alone.
+const CONFIG_READERS: ReadonlyArray<[string, (filePath: string) => unknown]> = [
+  [
+    "exchange",
+    (filePath) =>
+      loadConfig({ configFile: filePath, keyFile: backslashedPath("k") }),
+  ],
+  ["fingerprint", (filePath) => readConfigHints(filePath, true)],
+  ["verify-receipt", (filePath) => readVerificationConfig(filePath)],
+];
+
+for (const [command, read] of CONFIG_READERS)
+  test.skipIf(process.platform === "win32")(
+    `${command}: a config read failure names the path once, with the errno code`,
+    async () => {
+      const notADirectory = backslashedPath("not-a-directory");
+      fs.writeFileSync(notADirectory, "");
+      const filePath = path.join(notADirectory, "alcove.yaml");
+
+      const thrown = await raised(() => read(filePath));
+
+      expect(markedFragments(thrown)).toEqual([filePath]);
+      expect((thrown as Error).message.split(filePath)).toHaveLength(2);
+      const rendered = sanitizeErrorForDisplay(thrown);
+      expect(rendered).toContain(`${filePath} could not be read (ENOTDIR)`);
+      expect(rendered).not.toContain(escaped(filePath));
+    },
+  );
 
 // --- log and prompt lines ----------------------------------------------------
 

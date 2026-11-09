@@ -1,5 +1,3 @@
-import fs from "node:fs";
-
 import type { Argv, Arguments } from "yargs";
 
 import {
@@ -34,8 +32,10 @@ import {
   applyConnectionOverrides,
   csvDelimiterForRun,
   describeConfigSchemaError,
+  errnoClause,
   persistExpectedPartnerDeduplicate,
   persistInvitationRelay,
+  readConfigDocument,
   reconcileConflictError,
   type InvitationRelayRefresh,
   type ReconcileDiff,
@@ -53,7 +53,6 @@ import {
   resolveIdentity,
   resolveKeptConfigurationIdentity,
 } from "../partyIdentity";
-import { parseSensitiveYaml } from "../sensitiveFile";
 import { decodeAndValidateInvitation } from "../invitationDecode";
 import {
   consentSurfaceSink,
@@ -1107,12 +1106,11 @@ const RECONCILE_RETRY_REMEDY =
  * result to everything that needs it: the label the run proceeds under and the
  * terms {@link reconcileAcceptConfig} compares then act on one read of one file.
  *
- * Parse, then validate, in two steps. The YAML parse can echo source bytes (an
- * inline credential) and warn to stderr, so it routes through the sensitive-file
- * chokepoint (see sensitiveFile.ts); on any parse failure this reports the path
- * and reconciliation guidance, never the parser's message. A schema failure from
- * parseExchangeSpec (Zod) names field paths and issue kinds, not the offending
- * values, so its message is safe to show.
+ * Read through {@link readConfigDocument}, then validated: on a read or parse
+ * failure this reports the path and reconciliation guidance, never the
+ * parser's message. A schema failure from parseExchangeSpec (Zod) names field
+ * paths and issue kinds, not the offending values, so its message is safe to
+ * show.
  */
 function readExistingAcceptConfig(
   configPath: string,
@@ -1120,33 +1118,21 @@ function readExistingAcceptConfig(
 ): ExchangeSpec | undefined {
   if (detectFileConflicts([configPath]).length === 0) return undefined;
   const { against, retryWith } = sources;
-  let source: string;
-  try {
-    source = fs.readFileSync(configPath, "utf8");
-  } catch (err) {
-    // The errno code alone: the fs message repeats the path unmarked.
-    const code = (err as NodeJS.ErrnoException).code;
-    const reason = code === undefined ? "" : ` (${code})`;
-    const message = messageWithOperatorText`${EXISTING_CONFIG_PREAMBLE}${operatorSuppliedText(
-      configPath,
-    )} but could not be read${reason}, so it cannot be compared against ${against}.${RECONCILE_RETRY_REMEDY} ${retryWith}.`;
-    throw keepOperatorSuppliedText(new UsageError(message.text), message);
-  }
-  let parsed: unknown;
-  try {
-    // The chokepoint's own path-only message is discarded by the catch below,
-    // which re-labels with reconciliation guidance; the label is passed only to
-    // keep the call signature uniform.
-    parsed = parseSensitiveYaml(
-      source,
-      `a configuration file at ${configPath}`,
-    );
-  } catch {
-    const message = messageWithOperatorText`${EXISTING_CONFIG_PREAMBLE}${operatorSuppliedText(
-      configPath,
-    )} but is not valid YAML, so it cannot be compared against ${against}.${RECONCILE_RETRY_REMEDY} ${retryWith}.`;
-    throw keepOperatorSuppliedText(new UsageError(message.text), message);
-  }
+  const parsed = readConfigDocument(configPath, {
+    whenMissing: "refuse",
+    refusal: (failure) => {
+      const what =
+        failure.reason === "unparseable"
+          ? "is not valid YAML"
+          : `could not be read${errnoClause(
+              failure.reason === "missing" ? "ENOENT" : failure.code,
+            )}`;
+      const message = messageWithOperatorText`${EXISTING_CONFIG_PREAMBLE}${operatorSuppliedText(
+        configPath,
+      )} but ${what}, so it cannot be compared against ${against}.${RECONCILE_RETRY_REMEDY} ${retryWith}.`;
+      return keepOperatorSuppliedText(new UsageError(message.text), message);
+    },
+  });
   try {
     return parseExchangeSpec(parsed);
   } catch (err) {

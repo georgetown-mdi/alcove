@@ -53,7 +53,7 @@ import {
   formatVerificationReport,
   handler,
   pinnedFingerprintFrom,
-  readConfigSigningBlock,
+  readVerificationConfig,
   readExchangeRecordFile,
   readSignedRecordFile,
   readVerifiableArtifact,
@@ -959,8 +959,8 @@ describe("the config's signing block", () => {
     writeFileSync(path, body);
     return path;
   };
-  const pinIn = (configFile: string | undefined, explicit: boolean) =>
-    pinnedFingerprintFrom(readConfigSigningBlock(configFile, explicit));
+  const pinIn = (configFile: string | undefined) =>
+    pinnedFingerprintFrom(readVerificationConfig(configFile)?.signing);
 
   test("reads signing.partner_fingerprint", async () => {
     const identity = await generateSigningIdentity("Party B");
@@ -971,25 +971,21 @@ describe("the config's signing block", () => {
       tmp(),
       `signing:\n  mode: certificate\n  partner_fingerprint: ${fingerprint}\n`,
     );
-    expect(pinIn(path, true)).toBe(fingerprint);
+    expect(pinIn(path)).toBe(fingerprint);
   });
 
   test("no signing block and no config named each yield no pin", () => {
     const dir = tmp();
-    expect(pinIn(writeConfig(dir, "linkage_terms:\n"), true)).toBeUndefined();
-    expect(pinIn(undefined, false)).toBeUndefined();
+    expect(pinIn(writeConfig(dir, "linkage_terms:\n"))).toBeUndefined();
+    expect(pinIn(undefined)).toBeUndefined();
   });
 
   test("a config path named on the command line must exist", () => {
     // Mapping the missing file to "no pin" would verify a typo'd path unpinned
     // and report the fingerprint trust as merely not established.
     const path = join(tmp(), "absent.yaml");
-    expect(() => pinIn(path, true)).toThrow(UsageError);
-    expect(() => pinIn(path, true)).toThrow(/absent\.yaml does not exist/);
-  });
-
-  test("a defaulted config path that does not exist yields no pin", () => {
-    expect(pinIn(join(tmp(), "absent.yaml"), false)).toBeUndefined();
+    expect(() => pinIn(path)).toThrow(UsageError);
+    expect(() => pinIn(path)).toThrow(/absent\.yaml does not exist/);
   });
 
   test("a malformed pin is a usage error, not a silent mismatch later", () => {
@@ -999,8 +995,8 @@ describe("the config's signing block", () => {
       tmp(),
       "signing:\n  mode: certificate\n  partner_fingerprint: too-short\n",
     );
-    expect(() => pinIn(path, true)).toThrow(UsageError);
-    expect(() => pinIn(path, true)).toThrow(/not a certificate fingerprint/);
+    expect(() => pinIn(path)).toThrow(UsageError);
+    expect(() => pinIn(path)).toThrow(/not a certificate fingerprint/);
   });
 });
 
@@ -2690,10 +2686,9 @@ describe("handler", () => {
     },
   );
 
-  test("the config's signing block is read once per invocation", async () => {
-    // The pin and the identity path are two fields of one block of a
-    // secret-bearing document, so the run parses it once for both; the other
-    // read of the same config is the linkage-terms half.
+  test("the config is read once per invocation", async () => {
+    // A secret-bearing document, so the run parses it once for its
+    // linkage-terms half and for both fields of its signing block.
     const { recordPath, signedPath, identityPath, pin } =
       await exchangeArtifacts();
     const configPath = writeYaml(
@@ -2711,7 +2706,7 @@ describe("handler", () => {
       expect(stdout).toContain("SIGNED RECEIPT VERIFIED");
       expect(
         readFile.mock.calls.filter(([target]) => target === configPath),
-      ).toHaveLength(2);
+      ).toHaveLength(1);
     } finally {
       readFile.mockRestore();
     }

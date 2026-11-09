@@ -27,7 +27,7 @@ import {
 } from "@alcove/core";
 import type { SigningIdentity } from "@alcove/core";
 
-import { DEFAULT_CONFIG_PATH } from "../config";
+import { DEFAULT_CONFIG_PATH, readConfigDocument } from "../config";
 import { expandTilde, FileExistsError, writeFileAtomic } from "../fileUtils";
 import {
   addLoggingOptions,
@@ -35,7 +35,6 @@ import {
   namedConfigFileFlag,
 } from "../optionDefinitions";
 import { declarePositionals } from "../util/positionals";
-import { parseSensitiveYaml } from "../sensitiveFile";
 import { warnOnIdentityDivergence } from "../signingIdentityDivergence";
 import {
   IdentityFormatVersionError,
@@ -150,31 +149,9 @@ export function readConfigHints(
   explicit: boolean,
 ): ConfigHints {
   const target = expandTilde(configFile ?? DEFAULT_CONFIG_PATH);
-  let text: string;
-  try {
-    text = fs.readFileSync(target, "utf8");
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      if (explicit) {
-        const missing = messageWithOperatorText`config file ${operatorSuppliedText(
-          target,
-        )} does not exist`;
-        throw keepOperatorSuppliedText(new UsageError(missing.text), missing);
-      }
-      return {};
-    }
-    const message = messageWithOperatorText`config file ${operatorSuppliedText(
-      target,
-    )} could not be read: ${err instanceof Error ? err.message : String(err)}`;
-    throw keepOperatorSuppliedText(new UsageError(message.text), message);
-  }
-  // The YAML parse can echo source bytes (an inline connection credential), so it
-  // routes through the sensitive-file chokepoint, which reports path-only (see
-  // sensitiveFile.ts).
-  const raw = parseSensitiveYaml(
-    text,
-    messageWithOperatorText`config file ${operatorSuppliedText(target)}`,
-  );
+  const raw = readConfigDocument(target, {
+    whenMissing: explicit ? "refuse" : "absent",
+  });
   const root = (raw ?? {}) as Record<string, unknown>;
   const signing = (root["signing"] ?? {}) as Record<string, unknown>;
   const linkageTerms = (root["linkage_terms"] ??

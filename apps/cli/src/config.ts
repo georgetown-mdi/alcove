@@ -55,12 +55,15 @@ export {
 } from "./config/termsUpdate";
 export type { TermsUpdateWrite } from "./config/termsUpdate";
 export {
+  configLinkageSourceFrom,
   csvDelimiterForRun,
   describeConfigSchemaError,
+  errnoClause,
   loadConfigLinkageSource,
   loadConfigProvisionedSFTPConnection,
   loadConfigWebRTCConnection,
   persistProvisionedServerAddress,
+  readConfigDocument,
   readConfigLinkageSource,
 } from "./config/loaders";
 export type {

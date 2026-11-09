@@ -5,10 +5,10 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { sanitizeErrorForDisplay } from "@alcove/core";
 import { operatorSuppliedSpans } from "@alcove/core/testing";
 
-import { loadConfig } from "../../src/commands/exchange";
+import { loadConfig } from "../../src/config/exchangeConfig";
 import { readConfigHints } from "../../src/commands/fingerprint";
 import {
-  readConfigSigningBlock,
+  readVerificationConfig,
   readSignedRecordFile,
 } from "../../src/commands/verifyReceipt";
 import { loadKeyFile } from "../../src/keyFile";
@@ -78,7 +78,7 @@ const LABELLED_READERS: ReadonlyArray<
     "the receipt-verification config reader",
     "alcove.yaml",
     UNPARSEABLE_YAML,
-    (filePath) => readConfigSigningBlock(filePath, true),
+    (filePath) => readVerificationConfig(filePath),
   ],
   [
     "the signed-record reader",
