@@ -2,8 +2,10 @@ import {
   computeFieldCoverage,
   shouldComputeOffThread,
 } from "./nonEmptyAggregate";
+import { attachWorkerFailure } from "./workerEventError";
 
 import type { FieldValueCoverage } from "./nonEmptyAggregate";
+import type { WorkerFailureEvents } from "./workerEventError";
 
 import type { CSVRow, Standardization } from "@alcove/core";
 
@@ -23,10 +25,9 @@ import type { CSVRow, Standardization } from "@alcove/core";
 
 /** The slice of the `Worker` API the controller drives. The real `Worker` is
  * adapted to it in {@link ./nonEmptyAggregateWorkerClient}; a test supplies a fake. */
-export interface AggregateWorker {
+export interface AggregateWorker extends WorkerFailureEvents {
   postMessage: (message: AggregateRequest) => void;
   onmessage: ((event: { data: AggregateResponse }) => void) | null;
-  onerror: ((event: unknown) => void) | null;
   terminate: () => void;
 }
 
@@ -69,7 +70,7 @@ export class NonEmptyRateController {
     }
     const worker = spawnWorker();
     worker.onmessage = (event) => this.onMessage(event.data);
-    worker.onerror = (error) => this.onError(error);
+    attachWorkerFailure(worker, (event) => this.onError(event));
     // Seed the rows once; every later compute posts only the standardization.
     worker.postMessage({ kind: "rows", rawRows });
     this.worker = worker;

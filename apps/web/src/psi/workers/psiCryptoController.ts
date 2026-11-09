@@ -1,6 +1,6 @@
 import { WorkerPsiEngine } from "@alcove/core";
 
-import { errorFromWorkerEvent } from "./workerEventError";
+import { attachWorkerFailure, errorFromWorkerEvent } from "./workerEventError";
 
 import type {
   PsiEngine,
@@ -10,6 +10,7 @@ import type {
   PsiWorkerRequest,
   PsiWorkerResponse,
 } from "@alcove/core";
+import type { WorkerFailureEvents } from "./workerEventError";
 
 /**
  * The browser spawn adapter for core's PSI worker boundary: it wires a Web
@@ -58,7 +59,7 @@ export interface PsiHelperSetupReport {
 
 /** The slice of the dedicated-`Worker` API the host side drives; a unit test
  * supplies a fake. */
-export interface PsiCryptoWorker {
+export interface PsiCryptoWorker extends WorkerFailureEvents {
   postMessage: (
     message: PsiWorkerRequest | PsiKeyPortsMessage | PsiShardSplitMessage,
     transfer?: Array<Transferable>,
@@ -66,8 +67,6 @@ export interface PsiCryptoWorker {
   onmessage:
     | ((event: { data: PsiWorkerResponse | PsiHelperSetupReport }) => void)
     | null;
-  onerror: ((event: unknown) => void) | null;
-  onmessageerror: ((event: unknown) => void) | null;
   terminate: () => void;
 }
 
@@ -148,8 +147,7 @@ export function createBufferingRequestRouter(
  * drives; the browser counterpart of the CLI's `createWorkerThreadHandle`, and
  * the one definition of the host-side event wiring for production and tests.
  * A Web Worker's `terminate()` fires no event, so no teardown guard is needed.
- * `onmessageerror` (a reply that fails structured-clone deserialization) is
- * routed to `onError`, since with no handler the pending call would hang.
+ * Both failure events go to `onError` ({@link attachWorkerFailure}).
  * A helper's setup report goes to `onSetup`, as does a fault, which counts
  * as a failed setup if it comes first. A primary posts no report, so its
  * `onSetup` is called only on a fault.
@@ -172,8 +170,7 @@ export function createPsiCryptoWorkerHandle(
         if ("kind" in message) onSetup?.(message.ready);
         else onMessage(message);
       };
-      worker.onerror = fail(onError);
-      worker.onmessageerror = fail(onError);
+      attachWorkerFailure(worker, fail(onError));
     },
     terminate: () => worker.terminate(),
   };

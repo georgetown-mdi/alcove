@@ -230,14 +230,21 @@ function stdFor(input: string): Standardization {
 class FakeAggregateWorker implements AggregateWorker {
   onmessage: ((event: { data: AggregateResponse }) => void) | null = null;
   onerror: ((event: unknown) => void) | null = null;
+  onmessageerror: ((event: unknown) => void) | null = null;
   readonly received: Array<AggregateRequest> = [];
   terminated = false;
+  // A reply that fails to deserialize fires onmessageerror and never onmessage.
+  replyFailsToDeserialize = false;
   private rows: ReadonlyArray<CSVRow> = [];
 
   postMessage(message: AggregateRequest): void {
     this.received.push(message);
     if (message.kind === "rows") {
       this.rows = message.rawRows;
+      return;
+    }
+    if (this.replyFailsToDeserialize) {
+      queueMicrotask(() => this.onmessageerror?.({ data: null }));
       return;
     }
     const response: AggregateResponse = {
@@ -338,6 +345,21 @@ describe("NonEmptyRateController: off-main-thread dispatch above the threshold",
     // A later compute on the now-failed controller rejects at once rather than posting
     // to the dead worker and hanging on a promise it can never answer (the regression
     // this guards: a one-off worker error otherwise wedged the check in `pending`).
+    await expect(controller.compute(UPPER)).rejects.toThrow(
+      "aggregate worker failed",
+    );
+  });
+
+  test("a reply that fails to deserialize fails the in-flight compute and a later compute rejects", async () => {
+    const fake = new FakeAggregateWorker();
+    const controller = new NonEmptyRateController(
+      rowsOf(NON_EMPTY_WORKER_ROW_THRESHOLD + 1),
+      () => fake,
+    );
+
+    fake.replyFailsToDeserialize = true;
+    await expect(controller.compute(UPPER)).rejects.toEqual({ data: null });
+    expect(fake.terminated).toBe(true);
     await expect(controller.compute(UPPER)).rejects.toThrow(
       "aggregate worker failed",
     );

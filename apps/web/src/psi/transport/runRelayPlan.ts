@@ -6,6 +6,7 @@ import {
 
 import {
   NO_OWN_RELAY,
+  orderedRelayUrls,
   relayForRun,
   webSocketRelaysForRun,
 } from "./ownRelaySetting";
@@ -116,7 +117,7 @@ export async function relayPlanForRun(
     own,
     dependencies,
   );
-  const { turn: listed, websocket: listedWebSocket } = relayUrlsListed(
+  const { turn: listed, websocket: listedWebSocket } = orderedRelayUrls(
     own,
     invitationRelay,
     site,
@@ -204,7 +205,7 @@ export function runListsRelay(
 ): boolean {
   const own = dependencies.readOwn?.() ?? NO_OWN_RELAY;
   const { site } = defaultRelayListed(invitationRelay, own, dependencies);
-  const { turn, websocket } = relayUrlsListed(own, invitationRelay, site);
+  const { turn, websocket } = orderedRelayUrls(own, invitationRelay, site);
   return turn.length + websocket.length > 0;
 }
 
@@ -248,7 +249,7 @@ export function runRelayHosts(
     own,
     dependencies,
   );
-  const listed = relayUrlsListed(own, invitationRelay, site);
+  const listed = orderedRelayUrls(own, invitationRelay, site);
   const siteUrls =
     site === undefined
       ? []
@@ -315,35 +316,6 @@ function defaultRelayListed(
     forRun.kind === "own"
     ? { forRun, site: forRun.relay }
     : { forRun };
-}
-
-// The TURN and the WebSocket relay urls a run lists before its allowed relays
-// apply: the exchange's own, then the invitation's, then `site`'s, each once.
-function relayUrlsListed(
-  own: OwnRelayRead,
-  invitationRelay: RelayUrls | undefined,
-  site: DefaultRelaySetting | undefined,
-): { turn: Array<string>; websocket: Array<string> } {
-  return {
-    turn: [
-      ...new Set([
-        ...(own.kind === "set" ? own.relay.turn : []),
-        ...(invitationRelay?.turn ?? []),
-        ...(site !== undefined ? [site.turnUrl] : []),
-      ]),
-    ],
-    websocket: [
-      ...new Set([
-        ...(own.kind === "set" && own.relay.websocket !== undefined
-          ? [own.relay.websocket]
-          : []),
-        ...(invitationRelay?.websocket !== undefined
-          ? [invitationRelay.websocket]
-          : []),
-        ...(site?.websocketUrl !== undefined ? [site.websocketUrl] : []),
-      ]),
-    ],
-  };
 }
 
 /** Where a run's WebSocket relay urls and their exchange ids come from. */

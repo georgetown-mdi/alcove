@@ -226,9 +226,7 @@ export function seedAdvancedInvite(
       // deduplicating exchange is chosen at the control rather than defaulted to.
       algorithm: terms.algorithm,
       deduplicate: terms.deduplicate,
-      // The default strategy (`cascade`). Ungated -- the control writes it straight
-      // through -- so a fresh draft authors cascade exactly as before the control
-      // existed.
+      // The default strategy (`cascade`).
       linkageStrategy: terms.linkageStrategy,
       metadata,
       ...seededKeysAndCleaning(identity, metadata, rawRows, dateInputFormats),
@@ -1044,7 +1042,6 @@ export function addElement(
   fieldName: string,
 ): AdvancedInviteDraft {
   return updateKeyAt(draft, keyIndex, (key) => {
-    // An element's identifier is its alias if set, else its field name (the same
     // An element's identifier is its alias if set, else its field name (the
     // same `name ?? field` the schema requires unique within a key). A new
     // element starts as a bare field reference, so when that field already

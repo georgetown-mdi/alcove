@@ -6,9 +6,9 @@
  */
 
 import {
-  MAX_JOB_STATUS_RESPONSE_BYTES,
-  readBoundedJson,
-} from "@psi/jobClient/jobApiBody";
+  askUntilAnswered,
+  readJobStatusBody,
+} from "@psi/jobClient/jobStatusAsk";
 import { delayUntilAborted } from "@psi/delayUntilAborted";
 
 /** The console endpoint the log downloads from; the console resolves the
@@ -34,25 +34,19 @@ type JobDiagnosticLogState = "none" | "pending" | "available" | "unanswered";
  * `logAvailable` false alone does not separate a log that is coming from one
  * that never was; `logRequested` does.
  */
-export async function fetchJobLogState(
+export function fetchJobLogState(
   jobId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<JobDiagnosticLogState> {
-  try {
-    const response = await fetchImpl(`/api/jobs/${jobId}`, { method: "GET" });
-    if (!response.ok) return "unanswered";
-    const body: unknown = await readBoundedJson(
-      response,
-      MAX_JOB_STATUS_RESPONSE_BYTES,
-    );
-    if (body === null || typeof body !== "object") return "unanswered";
-    const status = body as { logAvailable?: unknown; logRequested?: unknown };
-    if (status.logAvailable === true) return "available";
-    if (status.logRequested === false) return "none";
-    return status.logRequested === true ? "pending" : "unanswered";
-  } catch {
-    return "unanswered";
-  }
+  return readJobStatusBody<JobDiagnosticLogState>(jobId, fetchImpl, {
+    unanswered: "unanswered",
+    notAnObject: "unanswered",
+    read: (status: { logAvailable?: unknown; logRequested?: unknown }) => {
+      if (status.logAvailable === true) return "available";
+      if (status.logRequested === false) return "none";
+      return status.logRequested === true ? "pending" : "unanswered";
+    },
+  });
 }
 
 /** The gap between availability asks while a run is in progress. */
@@ -97,21 +91,20 @@ export async function watchJobDiagnosticLog(
     delay?: (ms: number, signal: AbortSignal) => Promise<void>;
   } = {},
 ): Promise<JobDiagnosticLogWatchOutcome> {
-  // Read the live abort state through a call so the re-check after the ask is
-  // not narrowed to a constant by the first guard.
-  const aborted = () => signal.aborted;
-  let unanswered = 0;
-  for (;;) {
-    if (aborted()) return "unavailable";
-    const state = await fetchJobLogState(jobId, fetchImpl);
-    if (state === "available") return "available";
-    if (state === "none") return "unavailable";
-    if (state === "pending") {
-      if (settled) return "unavailable";
-      unanswered = 0;
-    } else if (++unanswered >= LOG_AVAILABILITY_UNANSWERED_LIMIT)
+  return askUntilAnswered<JobDiagnosticLogState, JobDiagnosticLogWatchOutcome>({
+    ask: () => fetchJobLogState(jobId, fetchImpl),
+    step: (state) => {
+      if (state === "available") return { end: "available" };
+      if (state === "none") return { end: "unavailable" };
+      if (state === "pending")
+        return settled ? { end: "unavailable" } : "reask";
       return "unanswered";
-    if (aborted()) return "unavailable";
-    await delay(LOG_AVAILABILITY_RETRY_MS, signal);
-  }
+    },
+    stopped: "unavailable",
+    gaveUp: "unanswered",
+    unansweredLimit: LOG_AVAILABILITY_UNANSWERED_LIMIT,
+    retryMs: LOG_AVAILABILITY_RETRY_MS,
+    signal,
+    delay,
+  });
 }

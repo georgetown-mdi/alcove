@@ -117,6 +117,18 @@ export function allowedRelaysSummary(entries: ReadonlyArray<string>): string {
   return `Allowed relays: ${urlList(entries)}.`;
 }
 
+const REGISTRAR_STILL_ENROLLED =
+  "a run still registers each new key at its own relay's registrar " +
+  "whatever the list keeps.";
+
+const PARTNER_AND_STUN_NOT_COVERED =
+  "Your partner's side can still connect through a relay the list leaves " +
+  "out. The list covers relay servers only: the STUN servers a run lists " +
+  "are still contacted.";
+
+const SAVED_AS_RECURRING_KEEPS_LIST =
+  "Saving this exchange as a recurring exchange keeps the list as its own.";
+
 /**
  * What a saved exchange's own allowed relays decide, and what they do not,
  * shown with the list on the exchange's page.
@@ -124,11 +136,7 @@ export function allowedRelaysSummary(entries: ReadonlyArray<string>): string {
 export const EXCHANGE_ALLOWED_RELAYS_SCOPE =
   "This exchange's allowed relays decide which relays its runs connect " +
   "through and enroll at, and which it names in the invitations it " +
-  "creates; a run still registers each new key at its own relay's " +
-  "registrar whatever the list keeps. " +
-  "Your partner's side can still connect through a relay the list leaves " +
-  "out. The list covers relay servers only: the STUN servers a run lists " +
-  "are still contacted.";
+  `creates; ${REGISTRAR_STILL_ENROLLED} ${PARTNER_AND_STUN_NOT_COVERED}`;
 
 /**
  * What an accepted invitation's allowed relays decide, and what they do not:
@@ -137,12 +145,8 @@ export const EXCHANGE_ALLOWED_RELAYS_SCOPE =
  */
 export const ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE =
   "This exchange's allowed relays decide which relays its run connects " +
-  "through and enrolls at; a run still registers each new key at its own " +
-  "relay's registrar whatever the list keeps. " +
-  "Your partner's side can still connect through a relay the list leaves " +
-  "out. The list covers relay servers only: the STUN servers a run lists " +
-  "are still contacted. Saving this exchange as a recurring exchange keeps " +
-  "the list as its own.";
+  `through and enrolls at; ${REGISTRAR_STILL_ENROLLED} ` +
+  `${PARTNER_AND_STUN_NOT_COVERED} ${SAVED_AS_RECURRING_KEEPS_LIST}`;
 
 /**
  * What the allowed relays of an invitation this browser creates decide, and
@@ -152,13 +156,9 @@ export const ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE =
  */
 export const CREATED_INVITATION_ALLOWED_RELAYS_SCOPE =
   "This exchange's allowed relays decide which relays its invitation names, " +
-  "and which relays its run connects through and enrolls at; a run still " +
-  "registers each new key at its own relay's registrar whatever the list " +
-  "keeps. " +
-  "Your partner's side can still connect through a relay the list leaves " +
-  "out. The list covers relay servers only: the STUN servers a run lists " +
-  "are still contacted. Saving this exchange as a recurring exchange keeps " +
-  "the list as its own.";
+  "and which relays its run connects through and enrolls at; " +
+  `${REGISTRAR_STILL_ENROLLED} ${PARTNER_AND_STUN_NOT_COVERED} ` +
+  SAVED_AS_RECURRING_KEEPS_LIST;
 
 /**
  * What a console accept's allowed relays decide, and what they do not: the
@@ -167,11 +167,9 @@ export const CREATED_INVITATION_ALLOWED_RELAYS_SCOPE =
  */
 export const CONSOLE_ACCEPTED_INVITATION_ALLOWED_RELAYS_SCOPE =
   "This exchange's allowed relays decide which relays its run connects " +
-  "through and enrolls at. Your partner's side can still connect through a " +
-  "relay the list leaves out. The list covers relay servers only: the STUN " +
-  "servers a run lists are still contacted. The console writes the list " +
-  "into alcove.yaml as connection.allowed_relays, so a later run of that " +
-  "file uses it too.";
+  `through and enrolls at. ${PARTNER_AND_STUN_NOT_COVERED} The console ` +
+  "writes the list into alcove.yaml as connection.allowed_relays, so a " +
+  "later run of that file uses it too.";
 
 /**
  * The accepted invitation's review notice after Start met Allowed relays
