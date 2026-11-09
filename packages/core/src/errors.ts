@@ -187,16 +187,12 @@ export function statesItsOwnNextStep(
 }
 
 /**
- * Thrown by {@link FileSyncConnection} when the caller has supplied an
- * invalid configuration or attempted an operation that violates usage
- * constraints: wrong directory state, stale handshake files, multiple
- * concurrent sessions sharing a path, or a send timeout. This is the
- * public API contract for the 64-vs-69 exit-code split: callers outside
+ * A failure the operator remedies by changing a configuration, an input, or
+ * how the operation is invoked, rather than by retrying a transport. This is
+ * the public API contract for the 64-vs-69 exit-code split: callers outside
  * `packages/core`, the CLI included, check `instanceof UsageError` to
- * distinguish a configuration problem from a transport failure and exit
- * with 64 (EX_USAGE) rather than 69 (EX_UNAVAILABLE). Future throw sites
- * added to `synchronize()` or `send()` should throw this class rather
- * than a plain `Error` with `{ cause: "usage" }`.
+ * distinguish such a problem from a transport failure and exit with 64
+ * (EX_USAGE) rather than 69 (EX_UNAVAILABLE).
  *
  * `options.cause` is forwarded to `Error`, so a refusal whose detail does
  * not fit the display boundary's per-link cap can hold that detail as a

@@ -713,7 +713,8 @@ export function validateCompatibility(
 
 /**
  * The comparison {@link validateCompatibility} reports, each payload direction
- * kept apart, with the partner held to `baselines` where given.
+ * kept apart, with the partner held to `baselines` where given. Why its
+ * constraints are as the comments below state: docs/notes/terms-comparison.md.
  */
 export function compareTerms(
   local: LinkageTerms,
@@ -740,26 +741,13 @@ export function compareTerms(
   };
   const warnings: CompatibilityMessageFragment[] = [];
 
-  // Both arrays below answer the same threat: a mutually-distrusting
-  // partner controls reference/purpose/column names, and controls them on
-  // the side these messages call "yours" too, since
-  // deriveAcceptedLinkageTerms adopts the inviter's legalAgreement verbatim.
-  //
-  // DELIMITING is applied here, at composition, to every value either list
-  // names (config/compatibilityMessage.ts). ESCAPING stays assigned to one
-  // altitude per route: `errors` becomes an Error message, escaped once by
-  // sanitizeErrorForDisplay where it is shown, so the values inside the
-  // delimiters are the RAW ones; `warnings` is handed to the caller as
-  // display text with no error to hold it, so it is escaped and redacted
-  // here. The CLI escapes each warning again downstream, which stays
-  // unobservable because every value interpolated below is
-  // schema-constrained to a shape the escape does not rewrite. Full
-  // reasoning: docs/spec/DISPLAY_ESCAPE.md, "Display sanitization escape
-  // format".
-  //
-  // The equality CHECKS always compare the RAW values either way -- both
-  // transforms are display-only and the escape is lossy, so comparing
-  // transformed forms could mask a genuine mismatch.
+  // Every value either list names is delimited here
+  // (config/compatibilityMessage.ts); `errors` is escaped once where it is
+  // shown, and `warnings`, returned as display text, is escaped and redacted
+  // here (docs/spec/DISPLAY_ESCAPE.md).
+  // The equality checks compare the RAW values: both transforms are
+  // display-only and the escape is lossy, so comparing transformed forms could
+  // mask a genuine mismatch.
   if (local.algorithm !== partner.algorithm) {
     differ(
       "algorithm",
@@ -811,31 +799,12 @@ export function compareTerms(
     );
   }
 
-  // Compare by canonical form (RFC 8785): two field/key sets are equal iff
-  // their canonical encodings match -- the same encoding hashed into the
-  // exchange-agreement receipt, so equality here means hash-equality there.
-  // The canonical encoder sorts keys, so property-insertion order does not
-  // affect the result; fields are pre-sorted by name (their array order is
-  // not significant), while linkage keys are ordered most-to-least precise
-  // and compared in place.
-  //
-  // No casing fold is applied here: `transform.params` keys are normalized
-  // to camelCase at every parse chokepoint that produces a LinkageTerms, so
-  // both sides reach this comparison in the one camelCase form already.
-  //
-  // canonicalString throws CanonicalEncodingError on a value outside the
-  // reproducible domain -- a partner can reach this via a `transform.params`
-  // JSON integer beyond 2^53. validateCompatibility's contract is to report
-  // problems via `errors`, not to throw, so such a value becomes an error
-  // instead of a crash.
-  //
-  // When canonicalOrError returns null the value could not be encoded, so
-  // the mismatch comparisons below are skipped for that side: an
-  // un-encodable value cannot be compared, and the encoding error already
-  // aborts the exchange.
-  //
-  // `label` is first-party copy composed through the same tagged template;
-  // the encoder's own message is delimited, naming the offending JSON path.
+  // Compared by canonical form (RFC 8785), the encoding the agreed-terms hash
+  // covers, so equal here means hash-equal; fields are sorted by name first,
+  // and keys, ordered by precision, are compared in place. No casing fold: the
+  // parse chokepoints already normalize `transform.params` keys. A value the
+  // encoder refuses becomes an `errors` entry rather than a throw, and the
+  // comparison below is skipped for that side (null).
   const canonicalOrError = (
     value: unknown,
     kind: TermsDifferenceKind,
@@ -964,32 +933,12 @@ export function compareTerms(
     }
   }
 
-  // Payload mirror, LAZY on the receive side. Each of the two directions is
-  // gated on whether the RECEIVING party declared a `payload.receive`
-  // expectation:
-  //
-  // - `receive` DECLARED (present, even if empty) asserts "I expect exactly
-  //   these columns": the partner's `send` must match it byte-for-byte or
-  //   the exchange aborts. An explicit empty `receive: []` is strict BY
-  //   INTENT -- "the partner sends nothing" -- distinct from an absent
-  //   `receive`, as the web consent display shows: a declared-empty receive
-  //   renders as a "(none)" commitment, not lazy.
-  // - `receive` ABSENT means "take whatever I'm given": that direction is
-  //   skipped here. This is what lets the invite/accept flow reconcile
-  //   without the inviter knowing the acceptor's schema. A recurring run then
-  //   fills the absent list from the partner's declared `send`
-  //   (`payloadReceiveFillsOnFirstRun`, runExchange), so the next run is
-  //   strict; a one-off run leaves it absent.
-  //
-  // Laziness relaxes only this cross-party DECLARATION check; it never
-  // widens what a party sends, which each party's own metadata governs
-  // (`isDisclosedToPartner`). The gate is symmetric: each direction keys on the same
-  // receiver's declared `receive`, so the two parties (which call this with
-  // swapped arguments) compute identical verdicts. The equality is
-  // byte-exact and element-wise -- compared per sorted column, NOT by a
-  // delimiter-joined string, so a partner-controlled name containing the
-  // separator cannot make two distinct sets join equal (`["a,b"]` vs
-  // `["a","b"]`) and slip a genuine mismatch past the check.
+  // Payload mirror, lazy on the receive side: a direction is checked only where
+  // its receiving party declared `payload.receive`, even empty; an absent one
+  // compares nothing (docs/spec/EXCHANGE_FILE.md, Absent, empty, present).
+  // Each direction keys on its receiver's declaration, so both parties reach
+  // the same verdict. Compare byte-exact per sorted column, never as a
+  // delimiter-joined string a column name holding the separator could match.
   const sameColumnSet = (a: Array<string>, b: Array<string>): boolean =>
     a.length === b.length && a.every((name, i) => name === b[i]);
 

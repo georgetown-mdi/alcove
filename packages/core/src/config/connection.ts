@@ -333,8 +333,6 @@ const SFTPServerSchema: z.ZodType<ServerAwaitingAddress<SFTPServer>> = z
           "list pins no key and would refuse every connection",
         path: ["hostKeyFingerprint"],
       });
-      // Empty list fully diagnosed above; with no entries the per-entry loop
-      // would be a no-op, so stop here rather than fall through to it.
       return;
     }
     list.forEach((entry, i) => {
@@ -402,8 +400,6 @@ export function generateSharedSecret(): string {
   return toBase64Url(randomBytes(32));
 }
 
-// Named const for the `sharedSecret` field schema so the regex and error
-// message live in one place.
 const sharedSecretSchema = z
   .string()
   .regex(
@@ -785,7 +781,8 @@ interface SharedOptions {
    * giving up. Unset, each transport applies its own default: 3600000 on the
    * file-sync channels, 600000 on `webrtc`. It bounds arrival only; a present
    * partner's silence is {@link inactivityTimeoutMs}. The effective limit is the
-   * minimum of this and the remaining shared-secret lifetime. A positive
+   * minimum of this and the remaining shared-secret lifetime. A zero would end
+   * the rendezvous before the partner could reach it, so it is a positive
    * integer of at most {@link MAX_TIMEOUT_SECONDS} seconds.
    */
   peerTimeoutMs?: number;
@@ -879,19 +876,10 @@ function timerMs(maxMs: number = MAX_TIMER_MS): z.ZodInt {
 }
 
 const sharedOptionsFields = {
-  // positive, not nonnegative: a zero arrival budget would end the rendezvous
-  // before the partner could reach it (the CLI's --peer-timeout already rejects
-  // zero; this closes the same hole on the config/programmatic path). Capped at
-  // the --peer-timeout flag's ceiling.
   peerTimeoutMs: timerMs(MAX_TIMEOUT_SECONDS * 1000).optional(),
-  // positive, not nonnegative: it arms every per-await liveness bound, so a
-  // zero would fire each wait at once and disable the control. The same
-  // ceiling as peerTimeoutMs.
   inactivityTimeoutMs: timerMs(MAX_TIMEOUT_SECONDS * 1000).optional(),
-  // positive for the same reason: zero disables the filedrop connect probe and
-  // ssh2's readyTimeout (armed only when > 0); --connection-timeout already
-  // rejects zero. No schema default, so a config written back from a parse
-  // states the field only where its author did.
+  // No schema default, so a config written back from a parse states the field
+  // only where its author did.
   serverConnectTimeoutMs: timerMs().optional(),
   // nonnegative, not positive: zero is meaningful here -- "connect once, do not
   // reconnect" -- so it stays valid. Capped by MAX_RECONNECT_ATTEMPTS: the
@@ -1132,8 +1120,6 @@ function checkPeerIdTemplate(
 const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
   .object({
     ...sharedOptionsFields,
-    // positive, NOT nonnegative: 0 is a setTimeout(0) hot poll that busy-loops
-    // directory listings (a self-inflicted flood), never a meaningful "no delay".
     pollIntervalMs: timerMs().optional(),
     timestampInFilename: z.boolean().optional(),
     locklessRendezvous: z.boolean().optional(),

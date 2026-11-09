@@ -155,10 +155,11 @@ const CertificateBodyShape = {
 };
 
 /**
- * Field-shape schema for a {@link SigningCertificate}: the signed body plus the
- * base64url self-signature. Exported so a wire frame or record that embeds a
- * certificate (the signed-receipt module) can nest it in its own schema. Shape
- * only -- it does NOT self-verify; a caller that trusts the certificate runs
+ * Field-shape schema for an on-disk {@link SigningCertificate}, the
+ * operator-trusted identity's: the signed body plus the base64url
+ * self-signature, with no length bound on any field. A partner wire frame
+ * parses its certificate with {@link boundedWireCertificateSchema} instead.
+ * Shape only -- it does NOT self-verify; a caller that trusts the certificate runs
  * {@link assertPartnerCertificateTrusted} / {@link verifyPresentedCertificate},
  * which check the self-signature and the fingerprint pin.
  */

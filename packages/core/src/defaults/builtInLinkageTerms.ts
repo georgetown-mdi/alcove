@@ -605,11 +605,9 @@ function explicitFieldType(
 /**
  * The linkage fields a `(metadata, standardization)` pair declares: the
  * single source the web invite editors derive both their pickable field
- * list and the emitted `linkageFields` from, replacing the
- * `getDefaultLinkageTerms(metadata).linkageFields` derivation. That
- * derivation collapses to one field per semantic type, so it cannot
- * express two fields of the same type -- e.g. a maiden and a current name
- * -- bound to different columns; this can.
+ * list and the emitted `linkageFields` from. It can express two fields of
+ * the same type -- e.g. a maiden and a current name -- bound to different
+ * columns.
  *
  * Per present semantic type -- that of a `role: linkage` column in
  * `metadata`, one an explicit transformation declares, and, with no
@@ -636,7 +634,7 @@ function explicitFieldType(
  *   exchange time. A metadata-only pair (no `standardization`) thus
  *   yields exactly one field per present matchable type, and for the
  *   default types alone is byte-identical to the default per-type field
- *   set, so the guided path is unchanged.
+ *   set.
  *
  * A transformation whose `input` is a non-`linkage`
  * (identifier/payload/ignored) or absent column declares no field:

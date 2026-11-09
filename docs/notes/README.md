@@ -71,6 +71,7 @@ stands, from a direction still open to a decision taken and built.
 | [shared-consent-summary.md](shared-consent-summary.md) | Shipped. |
 | [signing-identity-custody.md](signing-identity-custody.md) | Decided and built, by a 3-panelist design panel converging 3-0. |
 | [standing-relay-delivery.md](standing-relay-delivery.md) | Decided, the reference is written, and the first deployment has driven a relayed exchange through it. |
+| [terms-comparison.md](terms-comparison.md) | Decided and built; why the terms comparison compares raw values, canonical forms, and declared payload directions as it does. |
 | [turn-provisioning-governance.md](turn-provisioning-governance.md) | Surveyed, with a recommendation per profile; nothing decided or built, and the configuration shape left to separate work. |
 | [wasm-parallel-evaluation.md](wasm-parallel-evaluation.md) | Both arms measured, and the browser direction decided: Web Worker sharding, with the pthreads/SIMD build declined; the web exchange runs the worker pool for the party creating the request, one worker for the party answering it and on macOS. |
 | [web-server-runtime-role.md](web-server-runtime-role.md) | End state reached for the public deployment: a static site, with the framework's server half removed; the console keeps its server. |
