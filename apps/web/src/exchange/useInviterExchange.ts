@@ -115,6 +115,7 @@ import {
   TERMS_DIFFERENCE_TITLE,
   partnerProtocolRefusalCopy,
   partnerProtocolRefusalMessage,
+  partnerStoppedRespondingCopy,
   tooLargeFailureTitle,
 } from "@psi/managed/managedFailureCopy";
 
@@ -968,6 +969,11 @@ function failureContentFor(
       message: coordinationServerUnreachableMessage(error.server),
       coordinationServerUnreachable: true,
     };
+  // The partner sent nothing for the partner-silence bound during matching.
+  // Core's sentence states the wait, so no report block repeats it.
+  const stoppedResponding = partnerStoppedRespondingCopy(error);
+  if (stoppedResponding !== undefined)
+    return { category, ...stoppedResponding };
   // A failure whose own message states the cause and the next step -- relayed
   // with `recoveryHint` (docs/spec/CLI_EVENTS.md) or raised marked in this
   // browser, such as core's reply-cap fault: "report it; retrying will not

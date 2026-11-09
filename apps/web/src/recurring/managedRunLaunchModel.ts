@@ -48,6 +48,7 @@ import {
   UNEXPLAINED_FAILURE_TITLE,
   partnerProtocolRefusalCopy,
   partnerProtocolRefusalMessage,
+  partnerStoppedRespondingCopy,
   tooLargeFailureTitle,
   tooLargeSetProblem,
 } from "@psi/managed/managedFailureCopy";
@@ -156,7 +157,8 @@ export interface ManagedRunFailure {
   kind:
     | Exclude<ManagedFailureTier, "none">
     | BenignRerunOutcome
-    | "saved-address-refused";
+    | "saved-address-refused"
+    | "partner-stopped-responding";
   /** The surface title. */
   title: string;
   /** The operator-facing message. */
@@ -1040,6 +1042,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   ManagedRunCausePlacement
 > = {
   transport: "attributed",
+  "partner-stopped-responding": "withheld",
   "partner-refused-terms": "attributed",
   "partner-protocol-refusal": "attributed",
   "custody-unreadable": "withheld",
@@ -1104,7 +1107,9 @@ export function withShownCause(
  * partner-influenced. Any other failure is tiered from the record's own
  * bookkeeping: {@link deriveManagedFailureTier} reads the tier and {@link
  * managedRunTierFailure} maps it to copy. `now` and `local` feed that
- * derivation (expiry and the import marker).
+ * derivation (expiry and the import marker). The transport tier of an error
+ * holding core's `partner-stopped-responding` cause takes that cause's copy
+ * ({@link partnerStoppedRespondingCopy}); the record holds it as `transport`.
  *
  * A derived tier reads the record reloaded after the run (`records.afterRun`),
  * since it rests on what THIS run stamped. The no-show rests on what stood
@@ -1221,12 +1226,17 @@ function classifyLaunchState(
     error.nextRunHeals
   )
     return STORAGE_NEXT_RUN_HEALS_FAILURE;
-  return managedRunTierFailure(
-    dataExchangeStarted && attestsNonDisclosure(tier) ? "transport" : tier,
-    afterRun,
-    local,
-    now,
-  );
+  const shownTier =
+    dataExchangeStarted && attestsNonDisclosure(tier) ? "transport" : tier;
+  const stoppedResponding =
+    shownTier === "transport" ? partnerStoppedRespondingCopy(error) : undefined;
+  if (stoppedResponding !== undefined)
+    return {
+      kind: "partner-stopped-responding",
+      ...stoppedResponding,
+      recovery: "retry",
+    };
+  return managedRunTierFailure(shownTier, afterRun, local, now);
 }
 
 /**
