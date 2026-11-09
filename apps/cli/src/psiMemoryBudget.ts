@@ -336,11 +336,31 @@ export function singlePassOutboundPeakBytes(
 }
 
 /**
+ * Resident memory a single-pass sender's own setup holds per element while it
+ * reads and masks the partner's request, in bytes: the largest figure measured
+ * at setups of 2^20 to 2^23 elements, rounded up.
+ */
+export const SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT = 734;
+
+/**
+ * The memory this party's own single-pass setup holds through the read and
+ * masking of the partner's request, in bytes: where it sends, its own value
+ * slots, the most elements its setup can hold, at
+ * {@link SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT}; where it receives, none.
+ */
+export function singlePassOwnSetupBytes(size: SinglePassPartnerSize): number {
+  return size.inboundFrameUse === "decode"
+    ? size.localValueSlots * SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT
+    : 0;
+}
+
+/**
  * What a single-pass run does with the partner's declared size at the terms
  * exchange. When reading the partner's PSI frame, a request with the engine's
- * masking of it, or over WebRTC sending this party's own, can take more
- * memory than is available now
- * ({@link singlePassInboundPeakBytes}, {@link singlePassOutboundPeakBytes}),
+ * masking of it, or over WebRTC sending this party's own, together with the
+ * sender's own setup, can take more memory than is available now
+ * ({@link singlePassInboundPeakBytes}, {@link singlePassOutboundPeakBytes},
+ * {@link singlePassOwnSetupBytes}),
  * the run is a {@link RoundCapacityError}, or, with `allowShortfall`, a
  * warning and the run continues. Every run states the partner's value slots and its worst-case
  * memory and time. `envelopeVersion` is the one the key exchange negotiated,
@@ -362,7 +382,8 @@ export function checkSinglePassPartnerMemory(params: {
     params.envelopeVersion,
   );
   const outboundBytes = singlePassOutboundPeakBytes(size);
-  const needBytes = Math.max(inboundBytes, outboundBytes);
+  const needBytes =
+    Math.max(inboundBytes, outboundBytes) + singlePassOwnSetupBytes(size);
   if (needBytes > availableBytes) {
     const sentence =
       `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +

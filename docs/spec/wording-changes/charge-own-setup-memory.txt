@@ -1,0 +1,24 @@
+- - -> Single-pass sender's own setup, created and held | 734 | none | 14, from 2^20 to 2^23
+- - -> The last row was measured on 2026-11-09 under Node v26.13.0, and is the largest figure measured, not a slope ([The sender's own setup](#the-senders-own-setup)).
+- - -> Where this party sends, the need adds its own setup, held from before the request is read until the reply is sent, at 734 bytes a value slot of its own (`singlePassOwnSetupBytes`, [The sender's own setup](#the-senders-own-setup)).
+- - -> The sender's own setup
+- - -> A single-pass sender masks its own values into a setup (`createServerSetup`) before it reads the partner's request, and holds the setup until it sends its reply.
+- - -> The terms-exchange check adds `734 * slots` bytes for it, `slots` the sender's own value slots, the most elements its setup can hold (`singlePassOwnSetupBytes`, `apps/cli/src/psiMemoryBudget.ts`): the largest figure below, rounded up.
+- - -> Measured 2026-11-09 in the development container (aarch64 Linux, 10 CPUs, 23 GB shared with other work, Node v26.13.0), on the native library, by the method of [The masking of a request](#the-masking-of-a-request), one process a run:
+- - -> **The setup.**
+- - -> The worker created a setup of 1,000 values, then one of `n` distinct values, which the process held.
+- - -> **The figure.**
+- - -> The resident set after three forced collections, less a baseline taken the same way before the setup of `n` was created, with its values already held, over `n`.
+- - -> Setup | Runs | Bytes held per element
+- - -> 1,048,576 elements | 6 | 725.82 to 733.81
+- - -> 2,097,152 elements | 4 | 683.24 to 694.41, and 235.81 in one
+- - -> 4,194,304 elements | 3 | 680.01 to 686.04, and 247.00 in one
+- - -> 8,388,608 elements | 1 | 663.59
+- - -> Most of what the setup holds is memory its creation used and the process kept, which the masking reuses.
+- - -> Masking a 140,000,002-byte request handed over to the worker peaked 4,073,713,664 bytes above the baseline beside a setup of 1,000 values.
+- - -> Beside setups of 2^20, 2^21 and 2^22 elements it peaked 36,818,944, 26,988,544 and 165,183,488 bytes higher, at most 40 bytes an element.
+- - -> The charge adds the held figure in full, so it is above the run's need when the request is large beside the setup.
+- - -> A smaller setup holds more an element: one of 100,000 elements held 91,414,528 bytes, 914 an element, about 18 MB more than the charge.
+- That charge leaves out this party's own setup, held in memory while the request is masked: the masking was measured with a setup of 1,000 values. -> Where this party sends, it adds its own setup at what the setup holds once created, though the masking reuses most of that memory ([The sender's own setup](#the-senders-own-setup)).
+- - -> A sender adds the memory its own setup holds, at a measured figure a value slot of its own ([FILE_SYNC.md, The sender's own setup](FILE_SYNC.md#the-senders-own-setup)).
+- - -> A sender adds its own setup, as over file-sync.
