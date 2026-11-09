@@ -43,7 +43,7 @@ export function ConfirmedActionButton({
   return (
     <>
       {variant === "danger" ? (
-        <Button variant="subtle" color="red" {...trigger} />
+        <Button variant="subtle" color="error" {...trigger} />
       ) : (
         <Button
           variant={variant === "subtle" ? "subtle" : "default"}
@@ -63,7 +63,7 @@ export function ConfirmedActionButton({
             Cancel
           </Button>
           <Button
-            color="red"
+            color="error"
             variant="light"
             onClick={() => {
               setConfirming(false);

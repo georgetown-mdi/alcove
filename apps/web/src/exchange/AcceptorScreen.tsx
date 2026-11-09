@@ -496,14 +496,14 @@ function AcceptorInvitationScreen({
   // acceptance can run at all -- the mirror the schema refuses, which would
   // otherwise abort the launch after the operator had chosen a file.
   const reviewBlock:
-    { title: string; message: string; color: "orange" | "red" } | undefined =
+    { title: string; message: string; color: "warn" | "error" } | undefined =
     unsupported !== undefined
-      ? { ...unsupported, color: "orange" }
+      ? { ...unsupported, color: "warn" }
       : deduplicateRefusal?.scope === "terms"
         ? {
             title: "Cannot accept this invitation",
             message: deduplicateRefusal.message,
-            color: "red",
+            color: "error",
           }
         : undefined;
 
@@ -1441,7 +1441,7 @@ function AcceptorInvitationScreen({
             <h1>Accept an invitation</h1>
             <Alert
               role="alert"
-              color="red"
+              color="error"
               icon={<IconAlertCircle aria-hidden />}
               title="Cannot accept this invitation"
               ref={errorRef}
@@ -1540,7 +1540,7 @@ function AcceptorInvitationScreen({
                 />
                 {allowedRelaysChangedAtStart && (
                   <Alert
-                    color="yellow"
+                    color="warn"
                     icon={<IconAlertCircle aria-hidden />}
                     ref={allowedRelaysChangedRef}
                     tabIndex={-1}
@@ -1716,7 +1716,7 @@ function AcceptorInvitationScreen({
                   </p>
                 </Dropzone>
                 {rejectionMessage !== undefined && (
-                  <Text role="alert" c="red" size="sm" mt="xs">
+                  <Text role="alert" c="error" size="sm" mt="xs">
                     {rejectionMessage}
                   </Text>
                 )}
@@ -1769,7 +1769,7 @@ function AcceptorInvitationScreen({
             )}
             {confirmSharedFolder && (
               <Alert
-                color="blue"
+                color="info"
                 icon={<IconAlertCircle aria-hidden />}
                 title={
                   rendezvous?.split === true
@@ -1841,7 +1841,7 @@ function AcceptorInvitationScreen({
             {fieldErrors.file === true && (
               <Alert
                 role="alert"
-                color="red"
+                color="error"
                 title="Choose a data file"
                 icon={<IconAlertCircle aria-hidden />}
                 mt="md"
@@ -1854,7 +1854,7 @@ function AcceptorInvitationScreen({
             {parseAlert !== undefined && (
               <Alert
                 role="alert"
-                color="red"
+                color="error"
                 title={parseAlert.title}
                 icon={<IconAlertCircle aria-hidden />}
                 mt="md"
@@ -1867,7 +1867,7 @@ function AcceptorInvitationScreen({
             {sanitizedNotice !== undefined && (
               <Alert
                 role="note"
-                color="yellow"
+                color="warn"
                 title={sanitizedNotice.title}
                 icon={<IconAlertCircle aria-hidden />}
                 mt="md"

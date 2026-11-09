@@ -482,7 +482,7 @@
   color: var(--app-ok);
 }
 
-/* The caution treatment, for a state that asks the operator to look into
+/* The warn treatment, for a state that asks the operator to look into
    something rather than reporting a failure; --app-danger is reserved for the
    latter. */
 .statusLineWarn {
@@ -1278,7 +1278,7 @@
   margin: 0.5rem 0;
 }
 
-/* The repeated-miss line on a saved row: the caution color at body weight,
+/* The repeated-miss line on a saved row: the warn color at body weight,
    with only its lead sentence in bold. */
 .savedRowMiss {
   color: var(--app-warn);

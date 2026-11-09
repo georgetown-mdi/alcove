@@ -131,7 +131,7 @@ export function ManagedConnectionSettings({
       {failed && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           title="That could not be saved"
           mt="sm"
           mb="sm"

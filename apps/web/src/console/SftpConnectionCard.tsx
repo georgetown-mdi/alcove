@@ -22,6 +22,7 @@ import { quickExchangeSftpRefusal } from "./quickExchangeSftpRefusal";
 import type { ProbeCeremony } from "./SftpAuthoringForm";
 import type { SftpConnectionFormValues } from "./sftpConnectionForm";
 import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
+import type { StatusColour } from "@theme";
 
 /** Where a saved connection stands for the run this card serves: a quick
  * exchange refuses it, the run needs retain mode back on, or it is ready. */
@@ -29,11 +30,11 @@ type ConnectionStatus = "refused" | "retain-problem" | "ready";
 
 const STATUS_BADGES: Record<
   ConnectionStatus,
-  { color: string; label: string }
+  { color: StatusColour; label: string }
 > = {
-  refused: { color: "red", label: "Needs a change" },
-  "retain-problem": { color: "orange", label: "Needs retain mode" },
-  ready: { color: "green", label: "Ready to try" },
+  refused: { color: "error", label: "Needs a change" },
+  "retain-problem": { color: "warn", label: "Needs retain mode" },
+  ready: { color: "success", label: "Ready to try" },
 };
 
 /**
@@ -141,7 +142,7 @@ export function SftpConnectionCard({
         {directRefusal !== undefined && (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             icon={<IconAlertTriangle aria-hidden />}
             title={directRefusal.title}
           >
@@ -163,7 +164,7 @@ export function SftpConnectionCard({
           <Button size="xs" variant="default" onClick={() => setFormOpen(true)}>
             Edit connection
           </Button>
-          <Button size="xs" variant="subtle" color="red" onClick={onCleared}>
+          <Button size="xs" variant="subtle" color="error" onClick={onCleared}>
             Clear connection
           </Button>
         </Group>

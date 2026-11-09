@@ -313,7 +313,7 @@ function StandardizationCard({
           silentEmpty ? (
             <Text
               span
-              c="red"
+              c="error"
               fw={500}
               aria-hidden
               data-testid="field-card-coverage-warning"
@@ -366,7 +366,12 @@ function StandardizationCard({
           </DisclosureSection>
           {onRemove !== undefined && (
             <Group justify="flex-end">
-              <Button variant="subtle" color="red" size="xs" onClick={onRemove}>
+              <Button
+                variant="subtle"
+                color="error"
+                size="xs"
+                onClick={onRemove}
+              >
                 Remove this field
               </Button>
             </Group>

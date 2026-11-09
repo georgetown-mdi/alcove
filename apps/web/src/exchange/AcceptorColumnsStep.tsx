@@ -339,7 +339,7 @@ export function AcceptorColumnsStep({
           {verdict.kind === "blocked" ? (
             <Alert
               role="presentation"
-              color="red"
+              color="error"
               icon={<IconAlertCircle aria-hidden />}
               title={verdict.title}
             >
@@ -351,7 +351,7 @@ export function AcceptorColumnsStep({
           ) : verdict.kind === "partial" ? (
             <Alert
               role="presentation"
-              color="yellow"
+              color="warn"
               icon={<IconAlertTriangle aria-hidden />}
               title={verdict.title}
             >
@@ -365,7 +365,7 @@ export function AcceptorColumnsStep({
           ) : (
             <Alert
               role="presentation"
-              color="green"
+              color="success"
               icon={<IconCircleCheck aria-hidden />}
               title={verdict.title}
             >
@@ -406,7 +406,7 @@ export function AcceptorColumnsStep({
         {verdict.deadKeyCount > 0 && (
           <Alert
             role="note"
-            color="orange"
+            color="warn"
             icon={<IconAlertTriangle aria-hidden />}
             title={
               verdict.deadKeyCount === 1
@@ -508,7 +508,7 @@ export function AcceptorColumnsStep({
         {declarationConflict !== undefined && (
           <Alert
             role="note"
-            color="blue"
+            color="info"
             icon={<IconInfoCircle aria-hidden />}
             title={declarationConflict.title}
           >
@@ -561,7 +561,7 @@ export function AcceptorColumnsStep({
         {overlongAlert !== undefined && (
           <Alert
             role="note"
-            color="red"
+            color="error"
             icon={<IconAlertCircle aria-hidden />}
             title={overlongAlert.title}
           >
@@ -577,7 +577,7 @@ export function AcceptorColumnsStep({
         {sanitizedNotice !== undefined && (
           <Alert
             role="note"
-            color="yellow"
+            color="warn"
             icon={<IconAlertCircle aria-hidden />}
             title={sanitizedNotice.title}
           >
@@ -593,7 +593,7 @@ export function AcceptorColumnsStep({
         />
 
         {!standardizationValid && (
-          <Text size="xs" c="red" role="alert">
+          <Text size="xs" c="error" role="alert">
             Finish, fix, or remove the highlighted cleaning steps before
             continuing.
           </Text>

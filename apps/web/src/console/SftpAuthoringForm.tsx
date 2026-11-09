@@ -306,7 +306,7 @@ export function SftpAuthoringForm({
       {submitError !== undefined && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           icon={<IconAlertCircle aria-hidden />}
           title="Could not save the connection"
         >
@@ -335,7 +335,7 @@ function PartnerLocatorReview({ locator }: { locator: SftpEndpointLocator }) {
   const address = sanitizeForDisplay(`${locator.host}${port}`);
   return (
     <Alert
-      color="blue"
+      color="info"
       classNames={{ body: styles.wrapLongText }}
       icon={<IconAlertCircle aria-hidden />}
       title="Your partner's SFTP server"
@@ -507,7 +507,7 @@ function CredentialField({
           <Button
             size="compact-xs"
             variant="subtle"
-            color="red"
+            color="error"
             onClick={() => onChange({ source: undefined })}
           >
             Clear
@@ -586,7 +586,7 @@ function CredentialField({
               <Button
                 size="compact-xs"
                 variant="subtle"
-                color="red"
+                color="error"
                 onClick={() => onChange({ source: undefined })}
               >
                 Clear
@@ -847,7 +847,7 @@ function HostKeyProbe({
             {ceremony === "direct" ? (
               <>
                 <Alert
-                  color="orange"
+                  color="warn"
                   icon={<IconAlertCircle aria-hidden />}
                   title="This host key is the only thing protecting your records"
                 >
@@ -927,7 +927,7 @@ function HostKeyProbe({
                   here -- leaving a generic element with no live role, which the
                   stable-region test measures. */}
               <Alert
-                color="red"
+                color="error"
                 role="presentation"
                 icon={<IconAlertCircle aria-hidden />}
                 title="Could not read the fingerprint"

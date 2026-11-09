@@ -35,7 +35,9 @@ before proceeding -- it holds the session rules this command's steps assume.
   other re-attestation the ledger records, which the last row's `head` does not.
 - `[doc-file ...]`: optional paths to documentation relevant to these changes (e.g.
   `docs/spec/FILE_SYNC.md`). These are the remaining tokens in `$ARGUMENTS` after the
-  flags above; call this list DOCS. There may be none.
+  flags above; call this list DOCS. There may be none. A lens round over a diff
+  touching `apps/web/src` adds `docs/STATUS_COLOURS.md`, the status-colour layer
+  map, to DOCS.
 
 A role round's claims are one contract, so `--role` takes exactly one `--target`.
 Several targets under one role invocation is a mis-invocation: stop and say so.

@@ -86,8 +86,8 @@ export function KeepRunningSection({
     report === undefined
       ? undefined
       : readinessReady(report)
-        ? "green"
-        : "yellow";
+        ? "success"
+        : "warn";
 
   return (
     <div className={styles.callout}>

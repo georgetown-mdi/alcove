@@ -709,7 +709,7 @@ export function ReviewCreateSection({
       {inertCoalesce !== undefined && (
         <Alert
           role="note"
-          color="yellow"
+          color="warn"
           icon={<IconAlertTriangle aria-hidden />}
           title="A default value will not be substituted"
           mt="md"

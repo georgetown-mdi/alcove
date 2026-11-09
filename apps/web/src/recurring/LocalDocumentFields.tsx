@@ -130,7 +130,7 @@ export function LocalDocumentFields({
           </p>
         ) : (
           <Alert
-            color="yellow"
+            color="warn"
             title="Check this separator"
             mt="sm"
             role="status"

@@ -56,7 +56,7 @@ function CleanedValue({
         >
           <Badge
             variant="light"
-            color="orange"
+            color="warn"
             role="img"
             tabIndex={0}
             aria-label="Cleaned to an empty value, which still participates in matching"
@@ -67,7 +67,7 @@ function CleanedValue({
       ) : (
         <Badge
           variant="light"
-          color="blue"
+          color="info"
           styles={{ label: { textTransform: "none" } }}
         >
           {sanitizeForDisplay(value)}
@@ -83,7 +83,7 @@ function CleanedValue({
         >
           <Badge
             variant="light"
-            color="yellow"
+            color="warn"
             role="img"
             tabIndex={0}
             aria-label={`Constraint warning: ${violation.detail}`}
@@ -107,7 +107,7 @@ function Outcome({
 }) {
   if (result === null)
     return (
-      <Badge variant="light" color="gray" data-testid="outcome-dropped">
+      <Badge variant="light" color="secondary" data-testid="outcome-dropped">
         dropped
       </Badge>
     );

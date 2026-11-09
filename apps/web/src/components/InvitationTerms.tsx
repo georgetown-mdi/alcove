@@ -1619,7 +1619,7 @@ export function InvitationTerms({
               {acceptorDeduplicate?.refusal !== undefined && (
                 <Alert
                   role="alert"
-                  color="red"
+                  color="error"
                   icon={<IconAlertCircle aria-hidden />}
                   title="These two settings cannot run together"
                   mt="xs"

@@ -590,7 +590,7 @@ function LimitedReachAlert({
     reach === "thisComputer" ? "this computer" : "your local network";
   return (
     <Alert
-      color="yellow"
+      color="warn"
       icon={<IconAlertTriangle aria-hidden />}
       title={
         partnerAcceptsByCli

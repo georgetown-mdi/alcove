@@ -150,7 +150,7 @@ export function CleaningTab({
       {coverageUnavailable && (
         <Alert
           role="note"
-          color="gray"
+          color="secondary"
           icon={<IconAlertCircle aria-hidden />}
           title="Could not check coverage"
           mb="md"

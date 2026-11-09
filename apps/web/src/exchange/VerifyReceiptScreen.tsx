@@ -67,6 +67,7 @@ import type {
 } from "./verifyReceiptModel";
 import type { FileRejection } from "@mantine/dropzone";
 import type { ReactNode } from "react";
+import type { StatusColour } from "@theme";
 
 const log = getLogger("VerifyReceiptScreen");
 
@@ -143,24 +144,16 @@ interface ParsedCertificateState {
  * would otherwise skip the reconstruction in silence is held back instead. */
 function OneCsvWarning() {
   return (
-    <Text role="alert" c="var(--app-caution)" size="sm">
+    <Text role="alert" c="warn" size="sm">
       Supply both the input and the result to open the commitments, or neither.
     </Text>
   );
 }
 
-const TONE_COLOR: Record<VerdictTone, string> = {
-  verified: "green",
-  failed: "red",
-  incomplete: "yellow",
-};
-
-// A verdict row's status text: per-scheme tokens, since no single color clears
-// 4.5:1 on both the light and the dark work column.
-const TONE_TEXT: Record<VerdictTone, string> = {
-  verified: "var(--app-ok)",
-  failed: "var(--app-danger)",
-  incomplete: "var(--app-caution)",
+const TONE_COLOR: Record<VerdictTone, StatusColour> = {
+  verified: "success",
+  failed: "error",
+  incomplete: "warn",
 };
 
 function toneIcon(tone: VerdictTone): ReactNode {
@@ -246,7 +239,7 @@ function JsonDropzone({
         <p className={styles.dropzoneMax}>(Max file size: {JSON_MAX_MB} MB)</p>
       </Dropzone>
       {rejectionMessage !== undefined && (
-        <Text role="alert" c="red" size="sm" mt="xs">
+        <Text role="alert" c="error" size="sm" mt="xs">
           {rejectionMessage}
         </Text>
       )}
@@ -272,7 +265,7 @@ function ParseAlert({ title, message }: { title: string; message: string }) {
   return (
     <Alert
       role="alert"
-      color="red"
+      color="error"
       title={title}
       icon={<IconAlertCircle aria-hidden />}
       ref={ref}
@@ -340,12 +333,12 @@ function TermsInput({
         placeholder="{ ... }"
       />
       {error !== undefined && (
-        <Text role="alert" c="red" size="sm">
+        <Text role="alert" c="error" size="sm">
           {error}
         </Text>
       )}
       {terms !== undefined && error === undefined && (
-        <Text size="xs" c="var(--mantine-color-green-light-color)">
+        <Text size="xs" c="success">
           Loaded.
         </Text>
       )}
@@ -746,7 +739,7 @@ export function VerifyReceiptScreen() {
         {verifyError !== undefined && (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             title="Verification could not run"
             icon={<IconAlertCircle aria-hidden />}
             mt="md"
@@ -814,7 +807,7 @@ export function VerifyReceiptScreen() {
               {signedVerdict.guidance.length > 0 && (
                 <Stack gap={4} mt="sm">
                   {signedVerdict.guidance.map((line) => (
-                    <Text key={line} size="xs" c="var(--app-caution)">
+                    <Text key={line} size="xs" c="warn">
                       {line}
                     </Text>
                   ))}
@@ -1004,7 +997,7 @@ function VerdictCheckRow({ row }: { row: VerdictRow }) {
         <Text span fw={600}>
           {row.label}:
         </Text>{" "}
-        <Text span c={TONE_TEXT[row.tone]}>
+        <Text span c={TONE_COLOR[row.tone]}>
           {row.status}
         </Text>
       </Text>
@@ -1075,7 +1068,7 @@ function JsonOrCsvDropzone({
         <p className={styles.dropzoneMax}>(Max file size: {CSV_MAX_MB} MB)</p>
       </Dropzone>
       {rejectionMessage !== undefined && (
-        <Text role="alert" c="red" size="sm" mt="xs">
+        <Text role="alert" c="error" size="sm" mt="xs">
           {rejectionMessage}
         </Text>
       )}

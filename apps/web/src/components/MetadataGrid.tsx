@@ -241,7 +241,7 @@ export function MetadataGrid({
       {multipleIdentifiers && (
         <Text
           size="sm"
-          c="red"
+          c="error"
           id={conflictErrorId}
           data-testid="identifier-conflict"
         >

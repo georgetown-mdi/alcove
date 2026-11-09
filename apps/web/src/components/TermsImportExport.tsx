@@ -207,7 +207,7 @@ export function TermsImportExport({
       {error !== undefined && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           icon={<IconAlertCircle aria-hidden />}
           title="Could not import these terms"
         >
@@ -219,7 +219,7 @@ export function TermsImportExport({
         // announces the same text.
         <Alert
           role="note"
-          color="yellow"
+          color="warn"
           icon={<IconAlertCircle aria-hidden />}
           title="Some cleaning steps were not loaded"
         >
@@ -227,10 +227,7 @@ export function TermsImportExport({
         </Alert>
       )}
       {imported !== undefined && imported.length === 0 && (
-        // Route through the tuned accessible green (theme.ts STATUS_TEXT.success)
-        // rather than a bare c="green": that resolves to green-9, which is only
-        // 4.37:1 on the white page, under the WCAG 2.1 AA 1.4.3 text floor.
-        <Text size="xs" c="var(--mantine-color-green-light-color)">
+        <Text size="xs" c="success">
           {IMPORT_SUCCESS}
         </Text>
       )}

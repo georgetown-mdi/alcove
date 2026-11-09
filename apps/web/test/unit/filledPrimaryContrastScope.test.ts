@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it, test } from "vitest";
 
 import { DEFAULT_THEME, mergeMantineTheme } from "@mantine/core";
@@ -8,8 +10,10 @@ import { mantineTheme } from "@theme";
 
 import {
   AUDITED_SECONDARY,
+  STATUS_COLOURS,
   isAudited,
   isFilledPrimary,
+  isStatusColour,
   rule,
 } from "../../eslint-rules/filled-primary-contrast-scope.mjs";
 
@@ -102,10 +106,10 @@ describe("filled-primary contrast lint rule", () => {
         code: `import { Button } from "@mantine/core"; <Button variant="default">Reset</Button>;`,
       },
       {
-        code: `import { Button } from "@mantine/core"; <Button variant="subtle" color="red">Remove</Button>;`,
+        code: `import { Button } from "@mantine/core"; <Button variant="subtle" color="error">Remove</Button>;`,
       },
       {
-        code: `import { Button } from "@mantine/core"; <Button variant="light" color="red">Try again</Button>;`,
+        code: `import { Button } from "@mantine/core"; <Button variant="light" color="error">Try again</Button>;`,
       },
       {
         code: `import { ActionIcon } from "@mantine/core"; <ActionIcon variant="subtle">x</ActionIcon>;`,
@@ -122,11 +126,11 @@ describe("filled-primary contrast lint rule", () => {
     invalid: [
       // Explicit color on a filled surface leaves the scope.
       {
-        code: `import { Button } from "@mantine/core"; <Button color="red">Delete</Button>;`,
+        code: `import { Button } from "@mantine/core"; <Button color="error">Delete</Button>;`,
         errors: [{ messageId: "unscoped" }],
       },
       {
-        code: `import { Button } from "@mantine/core"; <Button variant="filled" color="red">Delete</Button>;`,
+        code: `import { Button } from "@mantine/core"; <Button variant="filled" color="error">Delete</Button>;`,
         errors: [{ messageId: "unscoped" }],
       },
       // A variant/color pair outside the audited set.
@@ -140,13 +144,135 @@ describe("filled-primary contrast lint rule", () => {
       },
       // A conditional variant with an unaudited branch.
       {
-        code: `import { Button } from "@mantine/core"; <Button variant={x ? "filled" : "subtle"} color="red">x</Button>;`,
+        code: `import { Button } from "@mantine/core"; <Button variant={x ? "filled" : "subtle"} color="error">x</Button>;`,
         errors: [{ messageId: "unscoped" }],
       },
       // A dynamic, unresolvable variant is not silently passed.
       {
         code: `import { Button } from "@mantine/core"; <Button variant={someVariant}>x</Button>;`,
         errors: [{ messageId: "unscoped" }],
+      },
+    ],
+  });
+});
+
+describe("status colour table", () => {
+  const tokensCss = readFileSync(
+    new URL("../../src/styles/tokens.css", import.meta.url),
+    "utf8",
+  );
+  const lightBlock = /:root\s*\{([^}]*)\}/.exec(tokensCss)?.[1] ?? "";
+  const darkBlock =
+    /:root\[data-mantine-color-scheme="dark"\]\s*\{([^}]*)\}/.exec(
+      tokensCss,
+    )?.[1] ?? "";
+  const tokenValue = (block: string, token: string) =>
+    new RegExp(`${token}:\\s*(#[0-9a-f]{6});`, "i").exec(block)?.[1];
+
+  test("every status token has a light and a dark value in tokens.css", () => {
+    for (const [status, token] of Object.entries(STATUS_COLOURS)) {
+      expect(tokenValue(lightBlock, token), `${status} light`).toBeDefined();
+      expect(tokenValue(darkBlock, token), `${status} dark`).toBeDefined();
+    }
+  });
+
+  test("the theme has one colour per status, painted by its token", () => {
+    for (const [status, token] of Object.entries(STATUS_COLOURS)) {
+      const shades = theme.colors[status];
+      expect(shades, status).toHaveLength(10);
+      expect(new Set(shades)).toEqual(new Set([`var(${token})`]));
+    }
+  });
+
+  test("an Alert with no colour takes a status", () => {
+    const color = theme.components.Alert.defaultProps?.color as string;
+    expect(isStatusColour(color)).toBe(true);
+  });
+
+  test("the audited coloured shapes are status colours", () => {
+    for (const shape of AUDITED_SECONDARY) {
+      if (shape.color !== undefined) {
+        expect(isStatusColour(shape.color), shape.color).toBe(true);
+      }
+    }
+  });
+
+  const ruleTester = new RuleTester({
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+        sourceType: "module",
+      },
+    },
+  });
+
+  ruleTester.run("filled-primary-contrast-scope: status colours", rule, {
+    valid: [
+      {
+        code: `import { Alert } from "@mantine/core"; <Alert color="error" title="x" />;`,
+      },
+      {
+        code: `import { Badge } from "@mantine/core"; <Badge variant="light" color="secondary">x</Badge>;`,
+      },
+      {
+        code: `import { Text } from "@mantine/core"; <Text c="warn">x</Text>;`,
+      },
+      // Mantine's secondary-text name, pointed at the secondary token.
+      {
+        code: `import { Text } from "@mantine/core"; <Text c="dimmed">x</Text>;`,
+      },
+      // No colour: the theme's Alert default is a status.
+      { code: `import { Alert } from "@mantine/core"; <Alert title="x" />;` },
+      // Every branch of a conditional on the table.
+      {
+        code: `import { Alert } from "@mantine/core"; <Alert color={ok ? "success" : "error"} />;`,
+      },
+      // A non-literal colour is held by the StatusColour type, not the rule.
+      {
+        code: `import { Alert } from "@mantine/core"; <Alert color={tone} />;`,
+      },
+      // A same-named component not imported from @mantine/core is out of scope.
+      {
+        code: `import { Alert } from "./local"; <Alert color="red" />;`,
+      },
+    ],
+    invalid: [
+      {
+        code: `import { Alert } from "@mantine/core"; <Alert color="red" title="x" />;`,
+        errors: [{ messageId: "offTable" }],
+      },
+      {
+        code: `import { Badge } from "@mantine/core"; <Badge variant="light" color="teal">x</Badge>;`,
+        errors: [{ messageId: "offTable" }],
+      },
+      {
+        code: `import { Text } from "@mantine/core"; <Text c="red">x</Text>;`,
+        errors: [{ messageId: "offTable" }],
+      },
+      // A token or shade written straight into the prop bypasses the table.
+      {
+        code: `import { Text } from "@mantine/core"; <Text c="var(--app-ok)">x</Text>;`,
+        errors: [{ messageId: "offTable" }],
+      },
+      {
+        code: `import { Text } from "@mantine/core"; <Text c="yellow.8">x</Text>;`,
+        errors: [{ messageId: "offTable" }],
+      },
+      // One off-table branch of a conditional.
+      {
+        code: `import { Alert } from "@mantine/core"; <Alert color={ok ? "success" : "red"} />;`,
+        errors: [{ messageId: "offTable" }],
+      },
+      // An aliased import is still the Mantine component.
+      {
+        code: `import { Alert as Notice } from "@mantine/core"; <Notice color="blue" />;`,
+        errors: [{ messageId: "offTable" }],
+      },
+      // The message points at the layer map.
+      {
+        code: `import { Badge } from "@mantine/core"; <Badge color="gray">x</Badge>;`,
+        errors: [{ message: /docs\/STATUS_COLOURS\.md/ }],
       },
     ],
   });

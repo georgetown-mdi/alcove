@@ -142,7 +142,7 @@ export function ManagedCronExportPanel({
                 {failed && (
                   <Alert
                     role="alert"
-                    color="red"
+                    color="error"
                     title="Could not export the command-line files"
                     mb="sm"
                   >

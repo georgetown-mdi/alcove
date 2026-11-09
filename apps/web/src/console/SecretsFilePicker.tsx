@@ -217,7 +217,7 @@ function renderListing(
   if (listing.kind === "error")
     return (
       <MountStateNotice
-        color="red"
+        color="error"
         title={`Could not read ${names.phrase}`}
         action={refresh}
       >
@@ -233,7 +233,7 @@ function renderListing(
   if (!listing.configured)
     return (
       <MountStateNotice
-        color="blue"
+        color="info"
         title="No separate secrets folder"
         action={refresh}
       >
@@ -292,7 +292,7 @@ function renderListing(
       <Stack gap="sm">
         {breadcrumb}
         <MountStateNotice
-          color="red"
+          color="error"
           title="Could not read this folder"
           action={refresh}
         >
@@ -307,7 +307,7 @@ function renderListing(
       <Stack gap="sm">
         {breadcrumb}
         <MountStateNotice
-          color="blue"
+          color="info"
           title="This folder is empty"
           action={refresh}
         >
@@ -343,7 +343,7 @@ function renderListing(
                 <Table.Td className={styles.mono}>
                   {displayName}{" "}
                   {entry.kind === "dir" && (
-                    <Badge size="xs" color="gray" variant="light">
+                    <Badge size="xs" color="secondary" variant="light">
                       Folder
                     </Badge>
                   )}

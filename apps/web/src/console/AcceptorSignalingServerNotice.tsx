@@ -54,7 +54,7 @@ export function AcceptorSignalingServerNotice({
           addresses, not your data.
         </Text>
         {unencrypted && (
-          <Alert color="yellow" icon={<IconAlertTriangle aria-hidden />}>
+          <Alert color="warn" icon={<IconAlertTriangle aria-hidden />}>
             This console reaches it over ws://, which is not encrypted, because
             you set this server at a ws:// address earlier. Use ws:// only for a
             server on this machine.

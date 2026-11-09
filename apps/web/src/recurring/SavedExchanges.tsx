@@ -368,8 +368,8 @@ function runnableRow(row: SavedExchangeRow): boolean {
  * run schedule where the steps to compare schedules are. A row with no
  * schedule renders nothing.
  *
- * The coordination line takes the caution treatment, matching the yellow Alert
- * the exchange's own surface uses for the same state, rather than the failure
+ * The coordination line takes the warn treatment, matching the warn Alert
+ * the exchange's own surface uses for the same state, rather than the error
  * red (docs/notes/managed-exchange-design.md, "Repeated misses surface, they
  * do not auto-pause"). */
 function ScheduleLines({ row }: { row: SavedExchangeRow }) {
@@ -499,7 +499,7 @@ export function DeleteExchangeButton({
     <>
       <Button
         variant="subtle"
-        color="red"
+        color="error"
         disabled={deleting}
         onClick={() => {
           setDeleteFailed(false);
@@ -560,7 +560,7 @@ export function DeleteExchangeButton({
         {deleteFailed && (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             title="That exchange could not be removed"
             mb="sm"
           >
@@ -573,7 +573,7 @@ export function DeleteExchangeButton({
             Cancel
           </Button>
           <Button
-            color="red"
+            color="error"
             variant="light"
             loading={deleting}
             onClick={confirmDelete}
@@ -748,7 +748,7 @@ function RecoveryListing({
 /** What the import affordance shows when nothing was imported: the alert's color,
  * its heading, and the reason under it. */
 interface ImportFailureAlert {
-  color: "red" | "yellow";
+  color: "error" | "warn";
   title: string;
   reason: string;
 }
@@ -760,18 +760,18 @@ interface ImportFailureAlert {
 function importFailureAlert(error: unknown): ImportFailureAlert {
   if (error instanceof ManagedImportChosenCopyError)
     return {
-      color: "yellow",
+      color: "warn",
       title: CHOSEN_COPY_IMPORT_TITLE,
       reason: chosenCopyImportReason(error.reason, "backup"),
     };
   if (error instanceof ManagedImportAlreadyHeldError)
     return {
-      color: "yellow",
+      color: "warn",
       title: ALREADY_HELD_IMPORT_TITLE,
       reason: alreadyHeldBackupImportReason(error.label, error.stateUnreadable),
     };
   return {
-    color: "red",
+    color: "error",
     title: IMPORT_FAILURE_TITLE,
     reason: importFailureReason(error),
   };
@@ -784,18 +784,18 @@ function importFailureAlert(error: unknown): ImportFailureAlert {
 function pairImportFailureAlert(error: unknown): ImportFailureAlert {
   if (error instanceof ManagedImportChosenCopyError)
     return {
-      color: "yellow",
+      color: "warn",
       title: CHOSEN_COPY_IMPORT_TITLE,
       reason: chosenCopyImportReason(error.reason, "files"),
     };
   if (error instanceof ManagedImportAlreadyHeldError)
     return {
-      color: "yellow",
+      color: "warn",
       title: ALREADY_HELD_IMPORT_TITLE,
       reason: alreadyHeldImportReason(error.label, error.stateUnreadable),
     };
   return {
-    color: "red",
+    color: "error",
     title: IMPORT_FAILURE_TITLE,
     reason: pairImportFailureReason(error),
   };
@@ -915,7 +915,7 @@ interface ImportOutcome {
 /** A refusal under the heading every file refusal takes. */
 function fileRefusal(reason: string): ImportOutcome {
   return {
-    failure: { color: "red", title: IMPORT_FAILURE_TITLE, reason },
+    failure: { color: "error", title: IMPORT_FAILURE_TITLE, reason },
   };
 }
 
@@ -1094,7 +1094,7 @@ function ImportOutcomeAlerts({
   return (
     <>
       {storedCopy !== undefined && (
-        <Alert color="yellow" title={STORED_COPY_IMPORT_TITLE} mb="sm">
+        <Alert color="warn" title={STORED_COPY_IMPORT_TITLE} mb="sm">
           <p className={styles.small}>
             {storedCopyImportReason(storedCopy.copies)}
           </p>
@@ -1125,7 +1125,7 @@ function ImportOutcomeAlerts({
         </Alert>
       )}
       {liveCopy !== undefined && (
-        <Alert color="yellow" title={LIVE_COPY_IMPORT_TITLE} mb="sm">
+        <Alert color="warn" title={LIVE_COPY_IMPORT_TITLE} mb="sm">
           <p className={styles.small}>
             {liveCopyImportReason(liveCopy.copies)}
           </p>
@@ -1156,7 +1156,7 @@ function ImportOutcomeAlerts({
         </Alert>
       )}
       {grantNotice !== undefined && (
-        <Alert color="yellow" title={grantNotice.notice.title} mb="sm">
+        <Alert color="warn" title={grantNotice.notice.title} mb="sm">
           <p className={styles.small}>{grantNotice.notice.lead}</p>
           <ul className={styles.small}>
             {grantNotice.notice.consequences.map((line) => (

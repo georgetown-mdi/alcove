@@ -47,10 +47,10 @@ export function RefreshButton({
 }
 
 /**
- * A mount listing state notice: an informational (`blue`, a stable config state)
- * or fault (`red`, a transient error to retry) alert with a title and body, plus
- * an optional action row (typically a {@link RefreshButton}). Blue names what to
- * set; red says to check the mount and retry -- the wording both pickers share.
+ * A mount listing state notice: an informational (`info`, a stable config state)
+ * or fault (`error`, a transient error to retry) alert with a title and body, plus
+ * an optional action row (typically a {@link RefreshButton}). Info names what to
+ * set; error says to check the mount and retry -- the wording both pickers share.
  */
 export function MountStateNotice({
   color,
@@ -58,7 +58,7 @@ export function MountStateNotice({
   children,
   action,
 }: {
-  color: "blue" | "red";
+  color: "info" | "error";
   title: string;
   children: ReactNode;
   action?: ReactNode;
@@ -116,7 +116,7 @@ export function NoMountedFolderNotice({
 }) {
   return (
     <MountStateNotice
-      color="blue"
+      color="info"
       title="This console was started without a folder"
       action={action}
     >

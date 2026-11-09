@@ -82,7 +82,7 @@ export function DefaultRelayNotice({
             : undefined;
   if (lead === undefined) return null;
   return (
-    <Alert variant="light" color="blue" role="note" mt="md">
+    <Alert variant="light" color="info" role="note" mt="md">
       {lead} {RELAY_OPERATOR_DISCLOSURE}
     </Alert>
   );

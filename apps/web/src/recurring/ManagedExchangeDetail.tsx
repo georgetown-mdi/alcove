@@ -476,7 +476,7 @@ function ConfigurationView({
           {reinviteFailure !== undefined && (
             <Alert
               role="alert"
-              color="red"
+              color="error"
               title={reinviteFailure.title}
               mb="sm"
             >
@@ -708,7 +708,7 @@ function LocalFieldsEditor({
       />
       {scheduleEnabled && (
         <Alert
-          color="blue"
+          color="info"
           title="Where a scheduled run's results go when the folder cannot take them"
           mt="sm"
         >
@@ -717,7 +717,7 @@ function LocalFieldsEditor({
       )}
       {scheduleEnabled && resultSizeWarning !== undefined && (
         <Alert
-          color="yellow"
+          color="warn"
           title="A result on these terms could exceed what this browser keeps"
           mt="sm"
         >
@@ -750,7 +750,7 @@ function LocalFieldsEditor({
       )}
       {cadenceProblem !== undefined && (
         <Alert
-          color="yellow"
+          color="warn"
           title={SECRET_EXPIRES_BETWEEN_RUNS_TITLE}
           mt="sm"
           mb="sm"
@@ -774,7 +774,7 @@ function LocalFieldsEditor({
       {failed && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           title="That could not be saved"
           mt="sm"
           mb="sm"
@@ -1005,18 +1005,13 @@ function WorkingFolderGrantField({
         </p>
       )}
       {failed === "grant" && (
-        <Alert color="yellow" title="That folder was not set" mt="sm" mb="sm">
+        <Alert color="warn" title="That folder was not set" mt="sm" mb="sm">
           Nothing changed: runs keep using whatever they used before. Try
           choosing the folder again.
         </Alert>
       )}
       {failed === "stop-using" && (
-        <Alert
-          color="yellow"
-          title="That folder was not removed"
-          mt="sm"
-          mb="sm"
-        >
+        <Alert color="warn" title="That folder was not removed" mt="sm" mb="sm">
           Nothing changed: runs keep using this folder. Try stopping again.
         </Alert>
       )}
@@ -1089,12 +1084,12 @@ function RunSchedule({ record }: { record: ManagedExchangeRecord }) {
       <p className={styles.calloutLead}>{view.dueLine}</p>
       <p className={styles.small}>{view.cadence}</p>
       {view.coordination !== undefined && (
-        <Alert color="yellow" title={REPEATED_MISS_TITLE} mt="sm" mb="sm">
+        <Alert color="warn" title={REPEATED_MISS_TITLE} mt="sm" mb="sm">
           {view.coordination.prompt}
         </Alert>
       )}
       {view.unchangedInputNote !== undefined && (
-        <Alert color="yellow" title={UNCHANGED_INPUT_TITLE} mt="sm" mb="sm">
+        <Alert color="warn" title={UNCHANGED_INPUT_TITLE} mt="sm" mb="sm">
           {view.unchangedInputNote}
         </Alert>
       )}
@@ -1155,7 +1150,7 @@ function RunHistory({
       )}
       {resultSizeWarning !== undefined && (
         <Alert
-          color="yellow"
+          color="warn"
           title="The next run's results could exceed what this browser keeps"
           mt="sm"
           mb="sm"
@@ -1260,7 +1255,7 @@ export function ParkedResultsView({
         </>
       ) : read.kind === "unavailable" ? (
         <Alert
-          color="blue"
+          color="info"
           title="Whether anything is kept here could not be read right now"
           mt="sm"
         >
@@ -1270,7 +1265,7 @@ export function ParkedResultsView({
           </Button>
         </Alert>
       ) : read.kind === "unreadable" ? (
-        <Alert color="yellow" title="These results cannot be read" mt="sm">
+        <Alert color="warn" title="These results cannot be read" mt="sm">
           {UNREADABLE_PARKED_RESULTS_NOTE}
         </Alert>
       ) : rows.length === 0 ? (
@@ -1349,7 +1344,7 @@ function ClearParkedResultsControl({
       <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
         <Button
           variant="subtle"
-          color="red"
+          color="error"
           disabled={clearing}
           onClick={() => {
             setClearFailed(false);
@@ -1374,7 +1369,7 @@ function ClearParkedResultsControl({
         {clearFailed && (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             title="Nothing was cleared"
             mt="sm"
             mb="sm"
@@ -1387,7 +1382,7 @@ function ClearParkedResultsControl({
             Cancel
           </Button>
           <Button
-            color="red"
+            color="error"
             variant="light"
             loading={clearing}
             onClick={confirmClear}
@@ -1650,7 +1645,7 @@ function UnfiledDisclosureNotice({
       {flagged && <UnrecordedRunAlert onShown={onFlagShown} />}
       {read?.kind === "unreadable" && (
         <Alert
-          color="yellow"
+          color="warn"
           title="A run's record is missing from this accounting"
           mt="sm"
         >
@@ -1667,7 +1662,7 @@ function UnfiledDisclosureNotice({
       )}
       {read?.kind === "stale-page" && (
         <Alert
-          color="yellow"
+          color="warn"
           title="A run's record is missing from this accounting"
           mt="sm"
         >
@@ -1691,7 +1686,7 @@ function UnfiledDisclosureNotice({
       )}
       {rows.length > 0 && (
         <Alert
-          color="yellow"
+          color="warn"
           title={
             rows.length === 1
               ? "A run's record is missing from this accounting"
@@ -1740,7 +1735,7 @@ function UnrecordedRunAlert({ onShown }: { onShown: () => void }) {
   }, [onShown]);
   return (
     <Alert
-      color="yellow"
+      color="warn"
       title="At least one run of this exchange could not be recorded"
       mt="sm"
     >
@@ -1898,7 +1893,7 @@ function UnavailableAccountingNotice({
   onRetryRead: () => void;
 }) {
   return (
-    <Alert color="blue" title="This accounting could not be read right now">
+    <Alert color="info" title="This accounting could not be read right now">
       <p>
         The disclosure records stored for this exchange could not be read from
         this browser&apos;s storage, so they are not shown. This does not mean
@@ -1960,7 +1955,7 @@ function StalePageAccountingNotice({
   return (
     <>
       <Alert
-        color="blue"
+        color="info"
         title="This page is running an older version of Alcove"
       >
         <p>
@@ -2061,7 +2056,11 @@ function UnreadableAccountingRecovery({
 
   return (
     <>
-      <Alert role="alert" color="red" title="This accounting could not be read">
+      <Alert
+        role="alert"
+        color="error"
+        title="This accounting could not be read"
+      >
         <p>
           The disclosure records stored for this exchange could not be read, so
           they are not shown. This does not mean nothing was disclosed. They are
@@ -2111,7 +2110,7 @@ function UnreadableAccountingRecovery({
         )}
         <Button
           variant="subtle"
-          color="red"
+          color="error"
           disabled={resetting}
           onClick={() => {
             setResetFailed(false);
@@ -2158,7 +2157,7 @@ function UnreadableAccountingRecovery({
         {resetFailed && (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             title="That accounting could not be reset"
             mt="sm"
             mb="sm"
@@ -2171,7 +2170,7 @@ function UnreadableAccountingRecovery({
             Cancel
           </Button>
           <Button
-            color="red"
+            color="error"
             variant="light"
             loading={resetting}
             onClick={confirmReset}

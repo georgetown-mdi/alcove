@@ -358,7 +358,7 @@ export function DirectExchangeScreen() {
             {fileRefusal !== undefined && (
               <Alert
                 role="alert"
-                color="red"
+                color="error"
                 icon={<IconAlertCircle aria-hidden />}
                 title={fileRefusal.title}
                 mb="md"
@@ -369,7 +369,7 @@ export function DirectExchangeScreen() {
             {fileNotice !== undefined && (
               <Alert
                 role="note"
-                color="yellow"
+                color="warn"
                 icon={<IconAlertCircle aria-hidden />}
                 title={fileNotice.title}
                 mb="md"

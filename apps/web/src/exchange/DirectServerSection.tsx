@@ -216,7 +216,7 @@ export function DirectServerSection({
         </>
       ) : (
         <Alert
-          color="blue"
+          color="info"
           icon={<IconAlertCircle aria-hidden />}
           title="No shared folder is mounted"
         >
@@ -246,7 +246,7 @@ export function DirectServerSection({
       {splitDirectoryProblem !== undefined && (
         <Alert
           role="alert"
-          color="red"
+          color="error"
           icon={<IconAlertTriangle aria-hidden />}
           title="This connection needs retain mode"
         >

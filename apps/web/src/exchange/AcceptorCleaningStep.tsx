@@ -155,7 +155,7 @@ export function AcceptorCleaningStep({
       {deadKeyCount > 0 && (
         <Alert
           role="note"
-          color="orange"
+          color="warn"
           icon={<IconAlertTriangle aria-hidden />}
           title={
             deadKeyCount === 1
@@ -173,7 +173,7 @@ export function AcceptorCleaningStep({
       {coverageUnavailable && (
         <Alert
           role="note"
-          color="gray"
+          color="secondary"
           icon={<IconAlertCircle aria-hidden />}
           title="Could not check coverage"
           mb="md"

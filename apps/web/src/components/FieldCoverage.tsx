@@ -122,7 +122,7 @@ export function FieldCoverage({
     return (
       <Alert
         role="presentation"
-        color="red"
+        color="error"
         variant="light"
         icon={<IconAlertCircle size={16} aria-hidden />}
         data-testid="coverage-silent-empty"

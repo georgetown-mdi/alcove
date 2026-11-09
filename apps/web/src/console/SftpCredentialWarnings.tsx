@@ -11,7 +11,7 @@ const CREDENTIAL_WARNING_TITLE = "Credential file location";
 
 /**
  * The non-blocking credential warnings for an authored SFTP connection, rendered
- * below the connection summary as a yellow (warning) Alert. The console writes
+ * below the connection summary as a warn Alert. The console writes
  * each warning, and it names a credential field and a directory only -- never a
  * path or a secret. The exchange still runs; the warnings point the operator at
  * a separate read-only secrets mount.
@@ -41,7 +41,7 @@ export function SftpCredentialWarnings({
       </VisuallyHidden>
       {warnings.length > 0 && (
         <Alert
-          color="yellow"
+          color="warn"
           role="presentation"
           classNames={{ body: styles.wrapLongText }}
           icon={<IconAlertTriangle aria-hidden />}

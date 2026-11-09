@@ -49,7 +49,7 @@ export function ColumnChips({
           key={index}
           role="listitem"
           variant="light"
-          color="gray"
+          color="secondary"
           tt="none"
           radius="sm"
           size="md"

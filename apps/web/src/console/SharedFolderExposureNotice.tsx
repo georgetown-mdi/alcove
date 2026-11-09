@@ -32,7 +32,7 @@ export function SharedFolderExposureNotice({
   return (
     <Alert
       role="note"
-      color="yellow"
+      color="warn"
       icon={<IconAlertTriangle aria-hidden />}
       title="The shared folder holds your own files"
       mt="md"

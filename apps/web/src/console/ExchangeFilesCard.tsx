@@ -124,7 +124,7 @@ export function ExchangeFilesCard({
 
         {draft.retainFiles && (
           <Alert
-            color="blue"
+            color="info"
             icon={<IconInfoCircle aria-hidden />}
             title="Both sides must set this"
           >
@@ -224,7 +224,7 @@ export function ExchangeFilesCard({
 
         {draft.writeWithoutRenaming && (
           <Alert
-            color="yellow"
+            color="warn"
             icon={<IconAlertTriangle aria-hidden />}
             title="Only safe on some shared folders"
           >
@@ -235,7 +235,7 @@ export function ExchangeFilesCard({
         {problems.length > 0 && (
           <Alert
             role="alert"
-            color="red"
+            color="error"
             icon={<IconAlertTriangle aria-hidden />}
             title="These settings cannot be used together"
           >

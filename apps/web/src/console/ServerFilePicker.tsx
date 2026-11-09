@@ -323,7 +323,7 @@ function ListingView({
   if (listing.kind === "error")
     return (
       <MountStateNotice
-        color="red"
+        color="error"
         title="Could not list your folder"
         action={refreshButton}
       >
@@ -340,7 +340,7 @@ function ListingView({
   if (!configured)
     return (
       <MountStateNotice
-        color="blue"
+        color="info"
         title="No input folder configured"
         action={refreshButton}
       >
@@ -355,7 +355,7 @@ function ListingView({
   if (!readable)
     return (
       <MountStateNotice
-        color="red"
+        color="error"
         title="Could not read your folder"
         action={refreshButton}
       >
@@ -367,7 +367,7 @@ function ListingView({
   if (files.length === 0)
     return (
       <MountStateNotice
-        color="blue"
+        color="info"
         title="No usable files in your folder"
         action={refreshButton}
       >
@@ -406,7 +406,7 @@ function ListingView({
                   <Table.Td className={styles.mono}>
                     {displayName}{" "}
                     {isCommitted && (
-                      <Badge size="xs" color="green" variant="light">
+                      <Badge size="xs" color="success" variant="light">
                         Selected
                       </Badge>
                     )}
@@ -557,7 +557,7 @@ function ConfirmPanel({
       <Stack gap="sm">
         <Alert
           role="alert"
-          color="red"
+          color="error"
           icon={<IconAlertCircle aria-hidden />}
           title={copy.title}
         >
