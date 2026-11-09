@@ -334,7 +334,25 @@ If the command refuses on a peer conflict, do not use `@cyclonedx/cyclonedx-npm 
 
 Step 8 leaves a draft release for tag `vX.Y.Z` with the stamped launchers. Open it, copy the CHANGELOG section for this version as the release body, attach `alcove-X.Y.Z.cdx.json`, record both Docker image digests from step 8 in the release notes -- the default image's and the FIPS variant's, each beside its tag -- and publish. Publish only once the `dockerhub` job has passed. Each digest is the same on ghcr.io and on Docker Hub, as that job's summary shows, so each is recorded once and names the image at both `ghcr.io/georgetown-mdi/alcove` and `docker.io/gumdi/alcove`. Leave the launcher assets in place: they are the copy an operator downloads. A hotfix on an older release line is published with "Set as the latest release" unticked.
 
-### 11. Reconverge staging after an older-line hotfix
+### 11. Publish the project site
+
+A push to `main` does not update the project site at `data-bridge.org`. Its production deployment changes only when someone runs the "Publish site" workflow, [`site_publish.yaml`](../.github/workflows/site_publish.yaml), so the release's documentation goes live only after this step. Each publish moves the `site-published` tag to the commit it deployed.
+
+1. Review what changed since the last publish, with the staging preview of the site open beside it ([DEPLOYMENT.md](DEPLOYMENT.md#the-project-site)):
+
+   ```sh
+   git fetch origin --tags --force
+   git diff site-published origin/main -- docs site CHANGELOG.md CONTRIBUTING.md LICENSE.md PRIVACY.md SECURITY.md SUPPORT.md
+   ```
+
+   Before the first publish the tag does not exist, so there is nothing to compare against: review the staging preview alone.
+
+2. Run the workflow from `main` with its ref left at `main`: `gh workflow run site_publish.yaml --ref main`, or "Run workflow" on the Actions page.
+3. Check the run: the build job's summary lists the files that changed since the last publish, and the tag job's summary names the commit `site-published` points at.
+
+The same workflow publishes at any other time, for a documentation fix between releases; its ref input takes a branch, a tag, or a commit. Run it only from `main`: a run from another branch builds nothing.
+
+### 12. Reconverge staging after an older-line hotfix
 
 Nothing merges back after a release: `main`'s tip is already a `staging` commit. The one exception is a hotfix on an older release line ([Hotfix Releases](#hotfix-releases)), whose tagged commit is on neither `main` nor `staging`. Once it is released, bring the fix into `staging` with an ordinary pull request, unless `staging` already has it.
 
@@ -344,14 +362,14 @@ A fix to the latest release ships as the next release: take it on `staging` by a
 
 The hotfix flow below is for an older release line only, one whose version is below the highest `vX.Y.Z` tag in the repository, such as the previous major (see [SECURITY.md](../SECURITY.md)). Its fix has to ship without the work `staging` holds beyond that line. If a fix to the latest release affects the previous major as well, that line takes its own hotfix before either is published.
 
-An older-line hotfix never reaches `main`: its tag holds it, and step 11 brings the fix into `staging`.
+An older-line hotfix never reaches `main`: its tag holds it, and step 12 brings the fix into `staging`.
 
 1. Branch from the older line's release tag: `git checkout -b release/vX.Y.Z+1 vX.Y.Z`.
 2. Apply the fix with a minimal, focused commit.
 3. Take steps 2 through 5 on that branch, incrementing only the PATCH component. Everything step 5 runs must pass before the tag.
 4. In place of steps 6 and 7, tag the branch's tip, signed as step 7 signs, and push the tag: `git tag -s vX.Y.Z+1 -m "Alcove vX.Y.Z+1"` and `git push origin vX.Y.Z+1`.
 5. Take steps 8 through 10, leaving "Set as the latest release" unticked in step 10.
-6. Take step 11.
+6. Take step 12. Skip step 11: the site publishes from `main`, which the hotfix does not reach.
 
 **What CI runs on the branch.** The pull-request triggers of the gating workflows (`static_checks.yaml`, `cli_build_and_test.yaml`, `web_build_and_test.yaml`, `codeql.yaml`, `dependency_review.yaml`, `native_alpine.yaml`) name `main` and `staging` as the base, and their push triggers name only `main` or `staging`, so none runs on a `release/` branch that has no pull request into either. Step 5's local run is the gate. The tag push runs `release.yaml` on its `v[0-9]+.[0-9]+.[0-9]+` trigger, with its test job and the scans of step 8 ahead of any publish. Its dry run (step 8) can be dispatched from the branch once the branch is pushed.
 

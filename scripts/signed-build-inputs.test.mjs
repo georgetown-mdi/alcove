@@ -12,6 +12,7 @@ import {
   DEPLOY_WORKFLOW,
   RELEASE_WORKFLOW,
   SITE_DEPLOY_WORKFLOW,
+  SITE_PUBLISH_WORKFLOW,
   isDeployToolCheckout,
 } from "./check-deploy-trigger-graph.mjs";
 import {
@@ -69,6 +70,14 @@ describe("the deployed sites' builds", () => {
       expect(setups[0].with?.cache).toBe(UNCACHED_OFF_PULL_REQUEST);
     },
   );
+
+  it(`${SITE_PUBLISH_WORKFLOW} job build runs the setup action uncached`, () => {
+    const setups = stepsOf(
+      workflowDocument(repoRoot, SITE_PUBLISH_WORKFLOW).jobs.build,
+    ).filter((step) => step.uses === SETUP_ACTION);
+    expect(setups).toHaveLength(1);
+    expect(setups[0].with?.cache).toBe("false");
+  });
 
   // The input only reaches the cache through these conditions, so a cache
   // step that stopped reading it would restore or save whatever the caller
@@ -286,6 +295,7 @@ describe("the deploy tool", () => {
     DEPLOY_WORKFLOW,
     RELEASE_WORKFLOW,
     SITE_DEPLOY_WORKFLOW,
+    SITE_PUBLISH_WORKFLOW,
   ].flatMap((path) =>
     Object.entries(workflowDocument(repoRoot, path).jobs).flatMap(([id, job]) =>
       stepsOf(job)
@@ -337,8 +347,8 @@ describe("the deploy tool", () => {
     expect(blocks[0]["target-branch"]).toBe("staging");
   });
 
-  it("finds the five upload steps", () => {
-    expect(deploySteps).toHaveLength(5);
+  it("finds the six upload steps", () => {
+    expect(deploySteps).toHaveLength(6);
   });
 
   it.each(deploySteps)(

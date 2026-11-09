@@ -1,0 +1,193 @@
+name: Publish site
+
+# Builds the project site from a chosen ref, `main` unless another is named,
+# uploads it as the production deployment of the site's Cloudflare Pages
+# project, and moves the PUBLISHED_TAG tag to the commit it built. Run by hand
+# only; a push uploads nothing but the staging preview (site_deploy.yaml). When
+# to run it and the review before it: docs/RELEASES.md, "Publish the project
+# site". The secrets and the variable it reads: docs/DEPLOYMENT.md, "The
+# project site".
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to publish"
+        type: string
+        required: true
+        default: main
+
+# One publish at a time, and none cancelled mid-upload.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  ARTIFACT_NAME: project-site-${{ github.run_id }}
+  PUBLISHED_TAG: site-published
+
+jobs:
+  build:
+    name: Build the project site
+    # Runs main's copy of this workflow only, the one Production admits.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    outputs:
+      artifactName: ${{ steps.artifact-name.outputs.artifactName }}
+      commit: ${{ steps.commit.outputs.commit }}
+    steps:
+      # The full history and tags, for the comparison with PUBLISHED_TAG.
+      - name: Checkout source code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve the commit
+        id: commit
+        run: |
+          set -euo pipefail
+          commit="$(git rev-parse HEAD)"
+          if ! [[ "${commit}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the checked-out commit is not 40 lowercase hex characters" >&2
+            exit 1
+          fi
+          echo "commit=${commit}" >>"$GITHUB_OUTPUT"
+      # The same comparison docs/RELEASES.md has the publisher review first.
+      - name: List the site changes since the last publish
+        env:
+          COMMIT: ${{ steps.commit.outputs.commit }}
+          REVIEW_PATHS: docs site CHANGELOG.md CONTRIBUTING.md LICENSE.md PRIVACY.md SECURITY.md SUPPORT.md
+        run: |
+          set -euo pipefail
+          read -r -a paths <<<"${REVIEW_PATHS}"
+          {
+            echo "## Site changes since the last publish"
+            echo
+            if published="$(git rev-parse --verify --quiet "refs/tags/${PUBLISHED_TAG}^{commit}")"; then
+              echo "From \`${PUBLISHED_TAG}\` (${published}) to ${COMMIT}:"
+              echo
+              echo '```'
+              git diff --stat "${published}" "${COMMIT}" -- "${paths[@]}"
+              echo '```'
+            else
+              echo "No \`${PUBLISHED_TAG}\` tag exists: this is the first publish."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+      # Uncached: this build is the one deployed, so it installs from the
+      # lockfile rather than a cache entry any run in the repository could
+      # have written.
+      - name: Set up and build core
+        uses: ./.github/actions/setup
+        with:
+          cache: "false"
+      - name: Build the site
+        run: npm run site:build
+      # Hidden files carry .well-known/security.txt.
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: docs/.vitepress/dist
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+      - name: Output artifact name
+        id: artifact-name
+        run: echo "artifactName=${{ env.ARTIFACT_NAME }}" >> "$GITHUB_OUTPUT"
+
+  # The only job of this workflow given the Cloudflare credentials. As in
+  # site_deploy.yaml, it checks out the deploy tool's lockfile alone and runs
+  # no other repository code.
+  deploy:
+    name: Upload to Cloudflare Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: Production
+    # The checkout of the deploy tool's lockfile.
+    permissions:
+      contents: read
+    outputs:
+      siteUrl: ${{ steps.deploy.outputs.deployment-url }}
+    steps:
+      - name: Check out the deploy tool's lockfile
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/wrangler/package.json
+            /.github/wrangler/package-lock.json
+      - name: Install the deploy tool from its lockfile
+        working-directory: .github/wrangler
+        run: npm ci --no-audit --no-fund
+      - name: Download the site
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.artifactName }}
+          path: ${{ runner.temp }}/site
+      # As in site_deploy.yaml: no shell, and no value can add an argument.
+      # The commit is checked as hex in the build job; `main` is the project's
+      # production branch.
+      - name: Deploy
+        id: deploy
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.147.0"
+          workingDirectory: .github/wrangler
+          command: pages deploy ${{ runner.temp }}/site --project-name=${{ vars.CLOUDFLARE_SITE_PAGES_PROJECT }} --branch=main --commit-hash=${{ needs.build.outputs.commit }}
+
+  # The only job of this workflow that writes to the repository. It runs no
+  # repository code: it asks the API to point the tag at the deployed commit.
+  tag:
+    name: Move the published tag
+    needs: [build, deploy]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Point the tag at the published commit
+        env:
+          COMMIT: ${{ needs.build.outputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the build job's commit output is not 40 lowercase hex characters" >&2
+            exit 1
+          fi
+          ref="tags/${PUBLISHED_TAG}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/${ref}" --silent; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/${ref}" \
+              -f sha="${COMMIT}" -F force=true --silent
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/${ref}" -f sha="${COMMIT}" --silent
+          fi
+          echo "\`${PUBLISHED_TAG}\` points at ${COMMIT}." >>"$GITHUB_STEP_SUMMARY"
+
+  # As in site_deploy.yaml: a job of its own, since it runs repository code.
+  check-security-txt:
+    name: Check the served security.txt
+    needs: deploy
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Check the site
+        env:
+          DEPLOYMENT_URL: ${{ needs.deploy.outputs.siteUrl }}
+        run: node scripts/check-served-security-txt.mjs

@@ -364,7 +364,7 @@ export const CHECKS = [
     usesBuild: true,
     expiresOn: "2027-06-30",
     description:
-      "Every repository source the hosted static web build reads matches a push filter of pages_deploy.yaml, so an edit to the deployed site always triggers a deploy, and the upload jobs of that workflow and of site_deploy.yaml are the only jobs holding the deploy credentials and run no repository code.",
+      "Every repository source the hosted static web build reads matches a push filter of pages_deploy.yaml, so an edit to the deployed site always triggers a deploy, and the upload jobs of that workflow, release.yaml, site_deploy.yaml and site_publish.yaml are the only jobs holding the deploy credentials and run no repository code.",
   },
 ];
 

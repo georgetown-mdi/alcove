@@ -3,7 +3,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { SITE_DEPLOY_WORKFLOW } from "./check-deploy-trigger-graph.mjs";
+import {
+  SITE_DEPLOY_WORKFLOW,
+  SITE_PUBLISH_WORKFLOW,
+} from "./check-deploy-trigger-graph.mjs";
 import {
   SECURITY_TXT_PATH,
   securityTxtUrl,
@@ -44,6 +47,11 @@ const SITE_UPLOADS = [
   },
   {
     workflow: SITE_DEPLOY_WORKFLOW,
+    output: "docs/.vitepress/dist",
+    uploads: 1,
+  },
+  {
+    workflow: SITE_PUBLISH_WORKFLOW,
     output: "docs/.vitepress/dist",
     uploads: 1,
   },
@@ -233,7 +241,11 @@ describe("securityTxtUrl", () => {
 describe("each Pages upload", () => {
   const CHECK_COMMAND = "node scripts/check-served-security-txt.mjs";
 
-  it.each([`${WORKFLOW_DIR}/pages_deploy.yaml`, SITE_DEPLOY_WORKFLOW])(
+  it.each([
+    `${WORKFLOW_DIR}/pages_deploy.yaml`,
+    SITE_DEPLOY_WORKFLOW,
+    SITE_PUBLISH_WORKFLOW,
+  ])(
     "in %s is followed by a check of its deployment's security.txt",
     (workflow) => {
       const jobs = Object.entries(workflowDocument(repoRoot, workflow).jobs);
