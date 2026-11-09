@@ -180,6 +180,14 @@ const NO_RELAYED_PATH_ACTION: Readonly<Record<RelayOwner, string>> = {
   site: CHECK_AGAIN_LATER,
 };
 
+// What to add, by whose relay it is, when a TURN relay was not reached and
+// checking again did not change that.
+const NOT_REACHED_FOLLOW_UP: Readonly<Record<RelayOwner, string>> = {
+  own: " If it still fails, check this relay, or remove it from Connection settings.",
+  partner: " If it still fails, ask your partner to check this relay.",
+  site: "",
+};
+
 function lowercaseFirst(sentence: string): string {
   return sentence.charAt(0).toLowerCase() + sentence.slice(1);
 }
@@ -353,10 +361,12 @@ export function exchangeRelayCheckLineShown(
         return doesNotWork(url, "not_reached", {
           summary: `no connection through this relay within ${BOUND_SECONDS}.`,
           meaning:
-            "this computer could not reach it, or the relay refused this " +
-            "exchange; the browser does not report which.",
+            "this computer could not reach it, the relay refused this " +
+            "exchange, or the relay presented a certificate this computer " +
+            "does not trust; the browser does not report which.",
           action:
-            "Check that this computer can reach the relay, then check again.",
+            "Check that this computer can reach the relay, then check again." +
+            NOT_REACHED_FOLLOW_UP[owner],
         });
       case "credential_refused":
         return doesNotWork(url, "credential_refused", {
@@ -462,7 +472,10 @@ export function exchangeRelayCheckVerdict(
   const working = lines.filter((line) => line.works).length;
   if (working === lines.length) return "Every relay works.";
   if (working > 0)
-    return "At least one relay works. Follow the steps below to fix the others.";
+    return (
+      "At least one relay works, so the exchange can connect through it. " +
+      "The steps below fix the others."
+    );
   return (
     "No relay works, so the exchange connects only where a direct " +
     "connection is possible. Follow the steps below, then check again."

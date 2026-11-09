@@ -72,12 +72,41 @@ describe("each outcome's message and remedy", () => {
       cause: "not_reached",
       summary: "no connection through this relay within 30 s.",
       meaning:
-        "this computer could not reach it, or the relay refused this " +
-        "exchange; the browser does not report which.",
-      action: "Check that this computer can reach the relay, then check again.",
+        "this computer could not reach it, the relay refused this " +
+        "exchange, or the relay presented a certificate this computer " +
+        "does not trust; the browser does not report which.",
+      action:
+        "Check that this computer can reach the relay, then check again. " +
+        "If it still fails, check this relay, or remove it from " +
+        "Connection settings.",
     });
     expect(line.action).not.toBe(RELAY_NOT_REACHED_REMEDY);
   });
+
+  test.each([
+    [
+      OWN_TURN,
+      "Check that this computer can reach the relay, then check again. " +
+        "If it still fails, check this relay, or remove it from " +
+        "Connection settings.",
+    ],
+    [
+      INVITED_TURN,
+      "Check that this computer can reach the relay, then check again. " +
+        "If it still fails, ask your partner to check this relay.",
+    ],
+    [
+      DEFAULT_TURN,
+      "Check that this computer can reach the relay, then check again.",
+    ],
+  ])(
+    "a TURN relay not reached at %s ends its step by whose relay it is",
+    (url, action) => {
+      expect(shown({ relay: "turn", url, result: "not_reached" }).action).toBe(
+        action,
+      );
+    },
+  );
 
   test.each([
     [OWN_TURN, "it may need this exchange enrolled first.", REMOVE_OWN],
@@ -628,7 +657,8 @@ describe("the verdict", () => {
   test("says whether every relay works, or at least one", () => {
     expect(exchangeRelayCheckVerdict([works])).toBe("Every relay works.");
     expect(exchangeRelayCheckVerdict([works, refused])).toBe(
-      "At least one relay works. Follow the steps below to fix the others.",
+      "At least one relay works, so the exchange can connect through it. " +
+        "The steps below fix the others.",
     );
   });
 });

@@ -901,7 +901,7 @@ describe("the pending relay key registration", () => {
     expect(line).toContain("no run can register it");
     expect(line).toContain(
       "Enroll the exchange again with the relay-owner token under Relay " +
-        "registration, choosing to replace the key the registrar holds",
+        "registration, ticking Replace the key the relay holds for this exchange",
     );
     expect(line).not.toContain("retries");
   });

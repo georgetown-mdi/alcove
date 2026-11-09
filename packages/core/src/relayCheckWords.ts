@@ -38,28 +38,6 @@ export const OWN_RELAY_REFUSES_UNTIL_ENROLLED =
   "the exchange's shared secret until the exchange's relay key is enrolled " +
   "there with alcove enroll-relay.";
 
-/** What a TURN relay that answered and refused the credential means. */
-export const TURN_RELAY_CREDENTIAL_REFUSED_MEANING =
-  "the relay answered and refused the credential derived from the " +
-  "exchange's shared secret.";
-
-/**
- * What a TURN relay that gave both of the check's connections a relay
- * address, and passed no message between them, means.
- */
-export const TURN_RELAY_NO_RELAYED_PATH_MEANING =
-  "the relay gave each of the check's two connections a relay address, but " +
-  "no message passed between them through it.";
-
-/**
- * What a WebSocket relay that admitted both of the check's sockets, and
- * passed no message between them, means.
- */
-export const WEBSOCKET_RELAY_NO_RELAYED_PATH_MEANING =
-  "the relay admitted this exchange's proof on both of the check's " +
-  "connections and paired them, but no message passed between them through " +
-  "it.";
-
 const WEBSOCKET_RELAY_RETRY = "then run this check again.";
 
 /** What a WebSocket relay that was not reached means. */
