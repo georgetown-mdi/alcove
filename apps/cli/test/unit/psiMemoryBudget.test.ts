@@ -715,7 +715,6 @@ describe("the single-pass partner size at the terms exchange", () => {
       inboundFrameUse: "decode" as const,
       envelopeVersion: CHUNKED_ENVELOPE,
     };
-    // This party's own setup over its 350,000 value slots.
     const ownSetup = 350_000 * SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT;
     const maskedWithoutOwnSetup =
       REQUEST_BYTES +
@@ -747,17 +746,29 @@ describe("the single-pass partner size at the terms exchange", () => {
       expect(() => run(reply, replyNeed - 1)).toThrow(RoundCapacityError);
     });
 
-    it("refuses a request whose masking is over what is available, naming both figures and the override", () => {
+    it("refuses a request whose masking is over what is available, naming both shares, the total and the override", () => {
       expect(() => run(request, decodedOnly)).toThrow(
         "your partner declared 150,000 records, and reading and masking what " +
-          "they send could take up to 4.61 GB of memory, but this machine has " +
+          "they send could take up to 4.35 GB of memory, plus 0.26 GB for " +
+          "your own masked values, 4.61 GB in all, but this machine has " +
           "1.21 GB available now, so the exchange stopped before any value " +
           "was masked and told your partner. Run the exchange on a host with " +
-          "more memory, or ask your partner to split their input into smaller " +
-          "files and run one exchange for each. Pass --allow-memory-shortfall " +
-          "to run anyway; the exchange may then run out of memory partway " +
-          "through, which fails it for both parties.",
+          "more memory, or split your input, or ask your partner to split " +
+          "theirs, into smaller files and run one exchange for each. Pass " +
+          "--allow-memory-shortfall to run anyway; the exchange may then run " +
+          "out of memory partway through, which fails it for both parties.",
       );
+    });
+
+    it("names this party's own share only where it has one", () => {
+      const ownShare =
+        /plus 0\.26 GB for your own masked values, 4\.61 GB in all/;
+      expect(() => run(request, maskedWithoutOwnSetup)).toThrow(ownShare);
+      const reply = { ...request, inboundFrameUse: "stream" as const };
+      expect(() => run(reply, 1)).toThrow(
+        /could take up to 0\.31 GB of memory, but this machine has .*ask your partner to split their input/,
+      );
+      expect(() => run(reply, 1)).not.toThrow(/your own masked values/);
     });
 
     it("warns instead under --allow-memory-shortfall", () => {
@@ -765,9 +776,10 @@ describe("the single-pass partner size at the terms exchange", () => {
       expect(shortfall).toEqual([
         "running with --allow-memory-shortfall: your partner declared " +
           "150,000 records, and reading and masking what they send could " +
-          "take up to 4.61 GB of memory, but this machine has 1.21 GB " +
-          "available now. The exchange may run out of memory partway " +
-          "through, which fails it for both parties.",
+          "take up to 4.35 GB of memory, plus 0.26 GB for your own masked " +
+          "values, 4.61 GB in all, but this machine has 1.21 GB available " +
+          "now. The exchange may run out of memory partway through, which " +
+          "fails it for both parties.",
       ]);
     });
 

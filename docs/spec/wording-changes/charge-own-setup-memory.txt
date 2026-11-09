@@ -20,5 +20,6 @@
 - - -> The charge adds the held figure in full, so it is above the run's need when the request is large beside the setup.
 - - -> A smaller setup holds more an element: one of 100,000 elements held 91,414,528 bytes, 914 an element, about 18 MB more than the charge.
 - That charge leaves out this party's own setup, held in memory while the request is masked: the masking was measured with a setup of 1,000 values. -> Where this party sends, it adds its own setup at what the setup holds once created, though the masking reuses most of that memory ([The sender's own setup](#the-senders-own-setup)).
+- - -> That figure was measured on the native library only; the WebAssembly library, which the CLI falls back to where no native build exists, is charged the same figure unmeasured.
 - - -> A sender adds the memory its own setup holds, at a measured figure a value slot of its own ([FILE_SYNC.md, The sender's own setup](FILE_SYNC.md#the-senders-own-setup)).
 - - -> A sender adds its own setup, as over file-sync.

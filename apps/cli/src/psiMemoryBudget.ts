@@ -382,8 +382,9 @@ export function checkSinglePassPartnerMemory(params: {
     params.envelopeVersion,
   );
   const outboundBytes = singlePassOutboundPeakBytes(size);
-  const needBytes =
-    Math.max(inboundBytes, outboundBytes) + singlePassOwnSetupBytes(size);
+  const partnerShareBytes = Math.max(inboundBytes, outboundBytes);
+  const ownSetupBytes = singlePassOwnSetupBytes(size);
+  const needBytes = partnerShareBytes + ownSetupBytes;
   if (needBytes > availableBytes) {
     const sentence =
       `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +
@@ -396,15 +397,23 @@ export function checkSinglePassPartnerMemory(params: {
             ? "sending your reply"
             : "sending your values"
       } ` +
-      `could take up to ${gigabytes(needBytes)} ` +
-      `of memory, but this machine has ${gigabytes(availableBytes)} available ` +
-      `now`;
+      `could take up to ${gigabytes(partnerShareBytes)} of memory` +
+      (ownSetupBytes > 0
+        ? `, plus ${gigabytes(ownSetupBytes)} for your own masked values, ` +
+          `${gigabytes(needBytes)} in all`
+        : "") +
+      `, but this machine has ${gigabytes(availableBytes)} available now`;
+    const split =
+      ownSetupBytes > 0
+        ? `split your input, or ask your partner to split theirs, into smaller ` +
+          `files and run one exchange for each`
+        : `ask your partner to split their input into smaller files and run ` +
+          `one exchange for each`;
     if (!params.allowShortfall)
       throw new RoundCapacityError(
         `${sentence}, so the exchange stopped before any value was masked and ` +
           `told your partner. Run the exchange on a host with more memory, or ` +
-          `ask your partner to split their input into smaller files and run one ` +
-          `exchange for each. Pass --allow-memory-shortfall to run anyway; the ` +
+          `${split}. Pass --allow-memory-shortfall to run anyway; the ` +
           `exchange may then run out of memory partway through, which fails it ` +
           `for both parties.`,
         "terms-exchange",
