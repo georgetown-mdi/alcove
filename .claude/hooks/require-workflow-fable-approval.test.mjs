@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 const HOOK = fileURLToPath(
   new URL("./require-workflow-fable-approval.mjs", import.meta.url),
@@ -100,11 +103,66 @@ describe("require-workflow-fable-approval hook", () => {
     expect(out).toBe("");
   });
 
-  it("passes through a Workflow call holding no inline script", () => {
-    const out = runHook({
-      tool_name: "Workflow",
-      tool_input: { scriptPath: ".claude/workflows/whatever.mjs" },
+  describe("scriptPath", () => {
+    const dir = mkdtempSync(join(tmpdir(), "workflow-fable-"));
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+    function writeScript(name, text) {
+      const path = join(dir, name);
+      writeFileSync(path, text);
+      return path;
+    }
+
+    it("asks when the named file pins a Fable model", () => {
+      const scriptPath = writeScript(
+        "pinned.mjs",
+        "await agent(p, { model: 'fable' })\n",
+      );
+      assertAsks(
+        runHook({ tool_name: "Workflow", tool_input: { scriptPath } }),
+      );
     });
+
+    it("asks when a relative path resolves against the call's cwd", () => {
+      writeScript(
+        "relative.mjs",
+        "await agent(p, { model: 'claude-fable-5' })",
+      );
+      assertAsks(
+        runHook({
+          tool_name: "Workflow",
+          cwd: dir,
+          tool_input: { scriptPath: "relative.mjs" },
+        }),
+      );
+    });
+
+    it("passes through a file pinning a non-Fable tier", () => {
+      const scriptPath = writeScript(
+        "unpinned.mjs",
+        "await agent(p, { model: 'opus' })\n",
+      );
+      expect(
+        runHook({ tool_name: "Workflow", tool_input: { scriptPath } }),
+      ).toBe("");
+    });
+
+    it("fails open on a path that cannot be read", () => {
+      const missing = join(dir, "missing.mjs");
+      expect(
+        runHook({
+          tool_name: "Workflow",
+          tool_input: { scriptPath: missing },
+        }),
+      ).toBe("");
+      expect(
+        runHook({ tool_name: "Workflow", tool_input: { scriptPath: dir } }),
+      ).toBe("");
+    });
+  });
+
+  it("passes through a Workflow call holding no script", () => {
+    const out = runHook({ tool_name: "Workflow", tool_input: {} });
     expect(out).toBe("");
   });
 

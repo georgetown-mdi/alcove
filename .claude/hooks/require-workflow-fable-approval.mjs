@@ -1,20 +1,22 @@
 #!/usr/bin/env node
-// PreToolUse hook: route a Workflow call whose inline script names Fable to a
+// PreToolUse hook: route a Workflow call whose script names Fable to a
 // user-approval prompt. It is the sibling of require-fable-approval.mjs, which
 // gates the Agent tool; a Workflow script reaches the same tier through its own
 // agent() options, where no top-level tool input holds the model.
 //
-// Detection is textual and literal, over both halves of the call the model can
-// arrive in: the inline `script` and the serialized `args` it reads (a script can
-// pass `model: args.model` and hold the spelling in the args object of the same
-// event). A `model:` key, quoted or bare, assigned a Fable spelling, or a quoted
-// string that is itself a Fable spelling, asks.
+// Detection is textual and literal, over every part of the call the model can
+// arrive in: the inline `script`, the file a `scriptPath` names (read from disk,
+// a relative path against the call's cwd), and the serialized `args` the script
+// reads (a script can pass `model: args.model` and hold the spelling in the args
+// object of the same event). A `model:` key, quoted or bare, assigned a Fable
+// spelling, or a quoted string that is itself a Fable spelling, asks.
 //
 // That is the whole of what a text scan can see, and the limits follow from it --
 // all of them fail OPEN: a model value computed at run time (`model: tier` with
-// the tier derived, `...options`) is invisible here; a `scriptPath` invocation
-// passes a file, not script text; and a resume of an earlier run replays a script
-// this hook never sees. The critical half for committed scripts is the static
+// the tier derived, `...options`) is invisible here; a `scriptPath` file that
+// cannot be read, or that imports a module pinning Fable, shows only its own
+// text; and a resume of an earlier run replays a script this hook never sees.
+// The critical half for committed scripts is the static
 // check (`npm run check:workflow-agent-models`), which fails any agent() call in a
 // fenced js block under .claude/commands/, .claude/agents/, or .claude/skills/, or
 // in a checked-in Workflow script (.claude/scripts/*-workflow.mjs), that does not
@@ -23,13 +25,16 @@
 // script, which no committed-file check can reach.
 //
 // Every path but a positive match exits 0 and allows the call: an unreadable or
-// unparseable event, a tool other than Workflow, a call holding neither script
-// nor args, a script and args with no Fable spelling in them, and any unexpected
-// throw (the outer catch). Fable's real gate for the Agent tool is
+// unparseable event, a tool other than Workflow, a call holding no script text,
+// script file, or args, a script, file and args with no Fable spelling in them,
+// an unreadable `scriptPath`, and any unexpected throw (the outer catch). Fable's real gate for the Agent tool is
 // require-fable-approval.mjs; a false negative here costs an unprompted Workflow
 // spawn, while a hook that wedged every Workflow call would cost far more.
 
-import { eventForTools } from "./lib/event.mjs";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { ask, eventCwd, eventForTools, FABLE_ASK_TAIL } from "./lib/event.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
 export const EXPIRES_ON = "2027-03-31";
@@ -47,20 +52,21 @@ const FABLE_PATTERNS = [
 const ASK_REASON =
   "This Workflow's script requests the Fable tier for one of its agents, which " +
   "needs your approval " +
-  "(`.claude/orchestration/ruleset.md`, Models and spawns). Approve to run it " +
-  "on Fable, or deny and it will be re-issued on a cheaper tier.";
+  FABLE_ASK_TAIL;
 
-function ask(reason) {
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "ask",
-        permissionDecisionReason: reason,
-      },
-    }),
-  );
-  process.exit(0);
+// The text of the file a `scriptPath` names, resolved against the call's cwd, or
+// null when the path is absent or the file cannot be read.
+function scriptFileText(event) {
+  const scriptPath = event?.tool_input?.scriptPath;
+  if (typeof scriptPath !== "string" || scriptPath.length === 0) return null;
+  try {
+    return readFileSync(
+      resolve(eventCwd(event) ?? process.cwd(), scriptPath),
+      "utf8",
+    );
+  } catch {
+    return null;
+  }
 }
 
 function main() {
@@ -71,6 +77,8 @@ function main() {
   const args = event?.tool_input?.args;
   const texts = [];
   if (typeof script === "string" && script.length > 0) texts.push(script);
+  const fileText = scriptFileText(event);
+  if (fileText !== null) texts.push(fileText);
   if (args !== undefined && args !== null) {
     texts.push(typeof args === "string" ? args : JSON.stringify(args));
   }

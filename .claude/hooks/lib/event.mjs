@@ -7,7 +7,7 @@
 // the same reason: two gates read the same field out of the same three
 // deliveries, and a delivery one of them mishandles is one the other does too.
 //
-// Nothing here exits or blocks. What an unreadable event means is the hook's own
+// Nothing here blocks, and only `ask` exits. What an unreadable event means is the hook's own
 // answer -- most allow the call, require-clean-tree-for-review.mjs blocks -- so
 // each states it at the call site. The two unreadable shapes are reported apart
 // for that reason: stdin holding nothing parseable is null and every hook allows
@@ -94,4 +94,29 @@ export function workflowArgs(toolInput) {
 export function eventCwd(event) {
   const cwd = event?.cwd;
   return typeof cwd === "string" && cwd.length > 0 ? cwd : null;
+}
+
+/**
+ * The closing sentence of the approval prompt the two Fable hooks show, after
+ * each hook's own account of what asked for Fable.
+ */
+export const FABLE_ASK_TAIL =
+  "(`.claude/orchestration/ruleset.md`, Models and spawns). Approve to run it " +
+  "on Fable, or deny and it will be re-issued on a cheaper tier.";
+
+/**
+ * Write a PreToolUse "ask" decision with this reason, which makes the harness
+ * prompt the owner, and exit 0.
+ */
+export function ask(reason) {
+  process.stdout.write(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "ask",
+        permissionDecisionReason: reason,
+      },
+    }),
+  );
+  process.exit(0);
 }

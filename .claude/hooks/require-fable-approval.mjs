@@ -25,28 +25,14 @@
 import { join } from "node:path";
 
 import { agentDefinitions } from "./lib/agentDefinitions.mjs";
-import { eventForTools } from "./lib/event.mjs";
+import { ask, eventForTools, FABLE_ASK_TAIL } from "./lib/event.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
 export const EXPIRES_ON = "2027-03-31";
 
 const ASK_REASON =
   "This spawn runs on the Fable tier, which needs your approval " +
-  "(`.claude/orchestration/ruleset.md`, Models and spawns). Approve to run it " +
-  "on Fable, or deny and it will be re-issued on a cheaper tier.";
-
-function ask(reason) {
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "ask",
-        permissionDecisionReason: reason,
-      },
-    }),
-  );
-  process.exit(0);
-}
+  FABLE_ASK_TAIL;
 
 // Return the pinned `model:` value of the .claude/agents/<name>.md whose leading
 // frontmatter names `subagentType`, or null.
