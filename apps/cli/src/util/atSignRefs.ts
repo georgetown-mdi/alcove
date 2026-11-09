@@ -68,8 +68,9 @@ export function resolveAtSignRef(value: string): string {
  * (see docs/EXCHANGE_REFERENCE.md "File references").
  *
  * Credential preservation at persistence sites does NOT use this: it uses
- * {@link resolveConnectionCredentials} so the original `@path` survives to disk
- * and the secret is never inlined into `alcove.yaml`.
+ * {@link readConnectionCredentials} and {@link applyConnectionCredentials} so
+ * the original `@path` survives to disk and the secret is never inlined into
+ * `alcove.yaml`.
  */
 export function resolveAtSignRefs(obj: unknown): unknown {
   if (typeof obj === "string") return resolveAtSignRef(obj);
@@ -117,21 +118,14 @@ function resolveConnectionAtSignRefs(
   const resolved = structuredClone(connection);
   switch (resolved.channel) {
     case "sftp":
-      resolved.server.password = resolveOptionalAtSignRef(
-        resolved.server.password,
-      );
-      resolved.server.privateKey = resolveOptionalAtSignRef(
-        resolved.server.privateKey,
-      );
-      // The passphrase decrypts an encrypted privateKey; it is a credential
-      // companion to it, read live by the SFTP adapter (ssh2 `passphrase`).
-      resolved.server.privateKeyPassphrase = resolveOptionalAtSignRef(
-        resolved.server.privateKeyPassphrase,
-      );
+      for (const field of SFTP_CREDENTIAL_FIELDS)
+        resolved.server[field] = resolveOptionalAtSignRef(
+          resolved.server[field],
+        );
       // The fingerprint is non-secret but supports @-file for operators who
       // manage it alongside other server config in a read-only secrets mount.
       // Only the LOAD resolver handles it: nothing sets the fingerprint via a
-      // CLI flag or connection URL, so resolveConnectionCredentials (the save/
+      // CLI flag or connection URL, so readConnectionCredentials (the save/
       // flag resolver) correctly omits it -- dead code there would never run. A
       // single fingerprint or a list; each entry is resolved independently.
       resolved.server.hostKeyFingerprint = resolveHostKeyFingerprintRefs(
@@ -236,26 +230,42 @@ function resolveProviderOptionsAtSignRefs(connection: {
 }
 
 /**
+ * The SFTP `server` credential fields a CLI flag or connection URL can set, in
+ * the order they are read. The passphrase decrypts an encrypted `privateKey`,
+ * read live by the SFTP adapter (ssh2 `passphrase`).
+ */
+const SFTP_CREDENTIAL_FIELDS = [
+  "password",
+  "privateKey",
+  "privateKeyPassphrase",
+] as const;
+
+type SFTPCredentialField = (typeof SFTP_CREDENTIAL_FIELDS)[number];
+
+/** Each credential field as an internal-error message names it. */
+const SFTP_CREDENTIAL_LABELS: Record<SFTPCredentialField, string> = {
+  password: "password",
+  privateKey: "private key",
+  privateKeyPassphrase: "private key passphrase",
+};
+
+/**
  * The values a connection's `@path` credential references resolve to, read
  * ahead of the connection they are applied to (see
  * {@link readConnectionCredentials}). A field is present exactly when the
  * connection read from had one, so applying the record never invents a
  * credential the connection did not set.
  */
-export interface ResolvedConnectionCredentials {
-  /** The resolved SFTP `server.password`. */
-  password?: string;
-  /** The resolved SFTP `server.privateKey`. */
-  privateKey?: string;
-  /** The resolved SFTP `server.privateKeyPassphrase`. */
-  privateKeyPassphrase?: string;
-}
+export type ResolvedConnectionCredentials = {
+  [field in SFTPCredentialField]?: string;
+};
 
 /**
  * Read the `@path` credential references on a connection without applying them,
  * so every local-file refusal is decided at this call: a missing, unreadable, or
  * empty referenced file is a {@link UsageError} (exit 64) raised here rather
- * than wherever the resolved connection is built.
+ * than wherever the resolved connection is built. A caller connects with
+ * {@link applyConnectionCredentials} over the result.
  *
  * The read is split from the application for a caller whose connection is
  * mutated in between -- `zero-setup`, where `establishHostKeyTrust` pins a
@@ -263,10 +273,19 @@ export interface ResolvedConnectionCredentials {
  * must hold that pin while the original keeps its `@path` for persistence.
  * Reading first is what keeps a run refused over its own credential file from
  * reaching the host-key probe's transport; cloning after the pin is what brings
- * the pin into the live connect. A caller with nothing in between uses
- * {@link resolveConnectionCredentials}, which is the two composed.
+ * the pin into the live connect.
  *
- * A non-SFTP connection has no such credential and yields an empty record.
+ * Only the SFTP `server.password` / `server.privateKey` /
+ * `server.privateKeyPassphrase` fields are read: they are the sole credentials
+ * a CLI flag (`--server-password` / `--server-private-key` /
+ * `--server-private-key-passphrase`) or a connection URL can set on the
+ * persistence paths (`--save`, `invite`/`accept`). The passphrase follows the
+ * same @-file-in / @-path-at-rest handling as the key itself. Other
+ * `@`-eligible fields (HTTP `bearer`, `turn.credential`, `providerOptions`,
+ * ...) are reachable only from a hand-authored config, which
+ * {@link resolveExchangeSpecRefs} resolves at load; a future credential flag
+ * that persists must be added to {@link SFTP_CREDENTIAL_FIELDS}. A non-SFTP
+ * connection has no such credential and yields an empty record.
  */
 export function readConnectionCredentials(
   connection: ConnectionConfig,
@@ -274,14 +293,10 @@ export function readConnectionCredentials(
   if (connection.channel !== "sftp") return {};
   const { server } = connection;
   const credentials: ResolvedConnectionCredentials = {};
-  if (server.password !== undefined)
-    credentials.password = resolveAtSignRef(server.password);
-  if (server.privateKey !== undefined)
-    credentials.privateKey = resolveAtSignRef(server.privateKey);
-  if (server.privateKeyPassphrase !== undefined)
-    credentials.privateKeyPassphrase = resolveAtSignRef(
-      server.privateKeyPassphrase,
-    );
+  for (const field of SFTP_CREDENTIAL_FIELDS) {
+    const value = server[field];
+    if (value !== undefined) credentials[field] = resolveAtSignRef(value);
+  }
   return credentials;
 }
 
@@ -322,43 +337,11 @@ export function applyConnectionCredentials(
   if (connection.channel !== "sftp") return connection;
   const resolved = structuredClone(connection);
   const { server } = resolved;
-  if (server.password !== undefined)
-    server.password = readValueFor(credentials.password, "password");
-  if (server.privateKey !== undefined)
-    server.privateKey = readValueFor(credentials.privateKey, "private key");
-  if (server.privateKeyPassphrase !== undefined)
-    server.privateKeyPassphrase = readValueFor(
-      credentials.privateKeyPassphrase,
-      "private key passphrase",
-    );
+  for (const field of SFTP_CREDENTIAL_FIELDS)
+    if (server[field] !== undefined)
+      server[field] = readValueFor(
+        credentials[field],
+        SFTP_CREDENTIAL_LABELS[field],
+      );
   return resolved;
-}
-
-/**
- * Resolve `@path` credential references on a connection for live use, returning
- * a clone with the SFTP `server.password` / `server.privateKey` /
- * `server.privateKeyPassphrase` fields read from their referenced files. The
- * read and the clone in one step, for a caller that connects with the result
- * straight away; a caller that must settle the local-file refusals earlier than
- * it can build the clone uses {@link readConnectionCredentials} and
- * {@link applyConnectionCredentials} instead.
- *
- * Only those three fields are resolved: they are the sole credentials a CLI flag
- * (`--server-password` / `--server-private-key` /
- * `--server-private-key-passphrase`) or a connection URL can set on the
- * persistence paths (`--save`, `invite`/`accept`). The passphrase is a companion
- * to `privateKey` (an encrypted key needs it to decrypt) and follows the same
- * @-file-in / @-path-at-rest handling as the key itself. Other `@`-eligible
- * fields (HTTP `bearer`, `turn.credential`, `providerOptions`, ...) are reachable
- * only from a hand-authored config, which {@link resolveExchangeSpecRefs}
- * resolves at load; a future credential flag that persists must be added here.
- * Non-SFTP channels have no such credential and pass through unchanged.
- */
-export function resolveConnectionCredentials(
-  connection: ConnectionConfig,
-): ConnectionConfig {
-  return applyConnectionCredentials(
-    connection,
-    readConnectionCredentials(connection),
-  );
 }

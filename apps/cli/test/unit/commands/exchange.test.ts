@@ -57,15 +57,17 @@ import {
 import {
   builder,
   handler,
-  loadConfig,
   parseArgs,
   prepareDataset,
-  warnAndStripInjectedAuthFields,
   shouldWarnTokenExpiring,
   tokenExpiringAdvisory,
   warnThresholdDaysForPolicy,
   EXPIRY_WARN_THRESHOLD_DIVISOR,
 } from "../../../src/commands/exchange";
+import {
+  loadConfig,
+  warnAndStripInjectedAuthFields,
+} from "../../../src/config/exchangeConfig";
 import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
 import { renderConfigTemplate } from "../../../src/configTemplate";
 import { streamOf, ttyStream, withStdin } from "../../stdinStream";

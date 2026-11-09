@@ -50,7 +50,7 @@ assembles the exchange document it persists through the same function. So the
 downloadable file and the browser-persisted record cannot become two shapes of
 one exchange, and the guarantees below hold for both. The output is `snake_case` on disk, the
 convention every hand-authored config follows, and the CLI's `loadConfig`
-(`apps/cli/src/commands/exchange.ts`) reads it through `parseExchangeSpec`
+(`apps/cli/src/config/exchangeConfig.ts`) reads it through `parseExchangeSpec`
 (which `camelizeKeys` then re-validates through the identical schema) with no
 web-aware step.
 

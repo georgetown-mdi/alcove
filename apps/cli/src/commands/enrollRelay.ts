@@ -27,7 +27,7 @@ import { runOrExit, withExitCode } from "../util/exit";
 import { parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptHiddenText } from "../util/prompt";
-import { loadConfig } from "./exchange";
+import { loadConfig } from "../config/exchangeConfig";
 
 export function builder(cmd: Argv): Argv {
   const beforeLogging = declarePositionals(cmd, {

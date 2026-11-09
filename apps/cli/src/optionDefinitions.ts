@@ -778,7 +778,7 @@ export function parseCommonBootstrapArgs(
     serverPort: serverPortFlag(argv),
     serverUsername: singleValue(argv, "server-username") as string | undefined,
     // Credential values are kept verbatim; an `@path` ref is read only
-    // at the live-use boundary (resolveConnectionCredentials in
+    // at the live-use boundary (readConnectionCredentials in
     // runOnlineBootstrap), so a persisted config keeps the `@path`, not the
     // resolved secret.
     serverPassword: singleValue(argv, "server-password") as string | undefined,

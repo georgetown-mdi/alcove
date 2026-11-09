@@ -17,7 +17,7 @@ import {
 } from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 
-import { loadConfig } from "../../../src/commands/exchange";
+import { loadConfig } from "../../../src/config/exchangeConfig";
 import {
   handler as inviteHandler,
   validateInvite,

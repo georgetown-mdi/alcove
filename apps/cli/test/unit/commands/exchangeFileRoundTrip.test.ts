@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { mintExchangeFile, PLACEHOLDER_SSH_USERNAME } from "@alcove/core";
 import type { LinkageTerms } from "@alcove/core";
 
-import { loadConfig } from "../../../src/commands/exchange";
+import { loadConfig } from "../../../src/config/exchangeConfig";
 import { saveKeyFile } from "../../../src/keyFile";
 
 // A 43-char base64url token satisfying the sharedSecret format constraint, so

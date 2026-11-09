@@ -44,8 +44,112 @@ export function configFileRefusal(
   configPath: string,
   rest: string,
 ): UsageError {
-  const message = messageWithOperatorText`config file ${operatorSuppliedText(configPath)} ${rest}`;
+  const message = configFileMessage(configPath, rest);
   return keepOperatorSuppliedText(new UsageError(message.text), message);
+}
+
+function configFileMessage(configPath: string, rest: string) {
+  return messageWithOperatorText`config file ${operatorSuppliedText(configPath)} ${rest}`;
+}
+
+/** An errno code as a read-failure message states it: " (EACCES)", or nothing. */
+export function errnoClause(code: string | undefined): string {
+  return code === undefined ? "" : ` (${code})`;
+}
+
+/**
+ * The refusal for a configuration file that cannot be read, keeping the errno
+ * `code` alone since the fs message repeats the path unmarked. A
+ * {@link UsageError} that a caller wrapping its own class around other
+ * failures can tell from the document refusals.
+ */
+export class ConfigReadError extends UsageError {
+  constructor(
+    message: string,
+    readonly code: string | undefined,
+  ) {
+    super(message);
+  }
+}
+
+/** Read the configuration file at `configPath`, or throw {@link ConfigReadError}. */
+function readConfigText(configPath: string): string {
+  try {
+    return fs.readFileSync(configPath, "utf8");
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    const message = configFileMessage(
+      configPath,
+      `could not be read${errnoClause(code)}`,
+    );
+    throw keepOperatorSuppliedText(
+      new ConfigReadError(message.text, code),
+      message,
+    );
+  }
+}
+
+/**
+ * What a caller that wraps its own error around a failure of
+ * {@link editConfigInPlace} quotes of it: the errno code alone for a read
+ * failure, whose message names the path the wrapper already names.
+ */
+function failureText(err: unknown): string {
+  if (err instanceof ConfigReadError) return err.code ?? "read failed";
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Read the configuration file at `configPath`, apply `edit` to its YAML
+ * document, and write the result back in place: the operator's comments, key
+ * order and formatting survive, and the parse, edit and serialization go
+ * through the sensitive-file chokepoint ({@link editSensitiveYamlDocument}).
+ * Returns the edited text.
+ *
+ * The write is {@link writeFileOwnerOnly}'s: owner-only permissions and an
+ * atomic rename, the same {@link saveConfig} uses. With `write: false`
+ * nothing is written, for a caller that checks or conditions the write
+ * itself and then writes the returned text through {@link writeFileOwnerOnly}.
+ *
+ * Throws if the file cannot be read ({@link ConfigReadError}) or parsed: every
+ * caller edits a file it has just loaded, and a silent failure would leave the
+ * operator believing the change was recorded.
+ */
+export function editConfigInPlace(
+  configPath: string,
+  edit: (doc: Document) => void,
+  options: { write?: boolean } = {},
+): string {
+  const serialized = editSensitiveYamlDocument(
+    readConfigText(configPath),
+    configFileLabel(configPath),
+    edit,
+  );
+  if (options.write !== false) writeFileOwnerOnly(configPath, serialized);
+  return serialized;
+}
+
+/**
+ * Refuse the edit unless the scalar at `keyPath` is `expected`, with
+ * `refusal` given what was found there: the value in quotes, or "absent or
+ * non-scalar".
+ *
+ * `getIn` does not resolve aliases, so an alias-spelled value is treated as a
+ * non-string node and refused even when it would resolve to `expected` -- the
+ * safe direction, and not a form a hand-authored config uses.
+ */
+export function requireScalarAt(
+  configPath: string,
+  doc: Document,
+  keyPath: readonly string[],
+  expected: string,
+  refusal: (found: string) => string,
+): void {
+  const value = doc.getIn(keyPath);
+  if (value === expected) return;
+  const found =
+    typeof value === "string" ? `"${value}"` : "absent or non-scalar";
+  throw configFileRefusal(configPath, refusal(found));
 }
 
 /**
@@ -103,14 +207,7 @@ export function normalizeKeyPathSpelling(
 /**
  * Write (or overwrite) `connection.server.host_key_fingerprint` in an
  * existing `alcove.yaml`, used to persist a host-key pin established
- * interactively on first use. Unlike {@link saveConfig}, this edits the file
- * in place through the YAML document model so the operator's comments, key
- * order, and formatting survive.
- *
- * Rewritten with the same owner-only permissions {@link saveConfig} uses.
- * Throws if the file cannot be read or parsed, since the caller just loaded
- * it and a silent failure would leave the operator believing the pin was
- * saved.
+ * interactively on first use, through {@link editConfigInPlace}.
  *
  * Fails closed on a non-sftp config: a host-key fingerprint is an sftp-only
  * pin, so any other `connection.channel` is rejected with a
@@ -120,59 +217,40 @@ export function persistHostKeyFingerprint(
   configPath: string,
   fingerprint: string,
 ): void {
-  // Parse, edit, and re-serialize through the sensitive-file chokepoint, which
-  // closes the syntax-error, deferred-alias, and warning leak channels in one
-  // place and keeps the live document inside that module (see sensitiveFile.ts).
-  // The document model preserves the operator's comments and key order on this
-  // surgical one-field write.
-  const serialized = editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
-    configFileLabel(configPath),
-    (doc) => {
-      normalizeKeyPathSpelling(configPath, doc, ["connection", "channel"]);
-      normalizeKeyPathSpelling(configPath, doc, [
-        "connection",
-        "server",
-        "host_key_fingerprint",
-      ]);
-      // Read the channel discriminant off the parsed document (not a
-      // schema-loaded spec) and reject anything but sftp before the write.
-      // getIn does not resolve aliases, so an alias-spelled channel is
-      // treated as a non-string node and is rejected even when it would
-      // resolve to sftp -- the safe direction, and not a form a
-      // hand-authored config uses.
-      const channel = doc.getIn(["connection", "channel"]);
-      if (channel !== "sftp") {
-        const found =
-          typeof channel === "string" ? `"${channel}"` : "absent or non-scalar";
-        throw configFileRefusal(
-          configPath,
-          `has a non-sftp connection.channel (${found}); a host-key ` +
-            "fingerprint is an sftp-only pin and must not be written to a " +
-            "non-sftp config.",
-        );
-      }
-      // setIn creates the connection/server path nodes if absent; for an
-      // sftp config loaded by the exchange command they already exist. A
-      // `connection`/`server` that is a scalar or sequence, not a mapping,
-      // makes setIn throw a YAML error, reported here as a UsageError rather
-      // than an opaque library stack trace.
-      try {
-        doc.setIn(
-          ["connection", "server", "host_key_fingerprint"],
-          fingerprint,
-        );
-      } catch (err) {
-        throw configFileRefusal(
-          configPath,
-          "could not be updated to persist the host-key fingerprint " +
-            `(${err instanceof Error ? err.message : String(err)}); ` +
-            "connection.server must be a mapping.",
-        );
-      }
-    },
-  );
-  writeFileOwnerOnly(configPath, serialized);
+  editConfigInPlace(configPath, (doc) => {
+    normalizeKeyPathSpelling(configPath, doc, ["connection", "channel"]);
+    normalizeKeyPathSpelling(configPath, doc, [
+      "connection",
+      "server",
+      "host_key_fingerprint",
+    ]);
+    // Read off the parsed document, not a schema-loaded spec.
+    requireScalarAt(
+      configPath,
+      doc,
+      ["connection", "channel"],
+      "sftp",
+      (found) =>
+        `has a non-sftp connection.channel (${found}); a host-key ` +
+        "fingerprint is an sftp-only pin and must not be written to a " +
+        "non-sftp config.",
+    );
+    // setIn creates the connection/server path nodes if absent; for an
+    // sftp config loaded by the exchange command they already exist. A
+    // `connection`/`server` that is a scalar or sequence, not a mapping,
+    // makes setIn throw a YAML error, reported here as a UsageError rather
+    // than an opaque library stack trace.
+    try {
+      doc.setIn(["connection", "server", "host_key_fingerprint"], fingerprint);
+    } catch (err) {
+      throw configFileRefusal(
+        configPath,
+        "could not be updated to persist the host-key fingerprint " +
+          `(${err instanceof Error ? err.message : String(err)}); ` +
+          "connection.server must be a mapping.",
+      );
+    }
+  });
 }
 
 /**
@@ -239,10 +317,7 @@ const UNRECORDABLE_PIN_REMEDY =
 /**
  * Write `signing.partner_fingerprint` into an existing `alcove.yaml`, used to
  * record the pin an exchange adopted on its first authenticated contact with a
- * partner. Like {@link persistHostKeyFingerprint}, this edits the file in place
- * through the YAML document model so the operator's comments, key order, and
- * formatting survive, and rewrites it with the same owner-only permissions
- * {@link saveConfig} uses.
+ * partner, through {@link editConfigInPlace}.
  *
  * Two refusals stand ahead of the write, both raised as a {@link UsageError}
  * before anything reaches disk. A document whose `signing.mode` is not
@@ -251,8 +326,6 @@ const UNRECORDABLE_PIN_REMEDY =
  * deliberate act, as changing a host-key pin is, so a value already on file is
  * left exactly as it stands.
  *
- * Throws if the file cannot be read or parsed, since the caller just loaded it
- * and a silent failure would leave the operator believing the pin was saved.
  * A read or replace this party's own filesystem refuses -- a mount that turned
  * read-only after {@link assertPartnerFingerprintRecordable} passed -- becomes
  * an {@link OperatorConfigError} naming the adopted fingerprint and the same
@@ -264,20 +337,18 @@ export function persistPartnerFingerprint(
   fingerprint: string,
 ): void {
   try {
-    writeFileOwnerOnly(
-      configPath,
-      partnerFingerprintRecorded(configPath, fingerprint),
+    editConfigInPlace(configPath, (doc) =>
+      recordPartnerFingerprint(configPath, doc, fingerprint),
     );
   } catch (err) {
     // A UsageError (OperatorConfigError included) is already an operator-facing
     // refusal the document edit composed; anything else is the read or the
     // atomic replace, which reaches the operator only here.
-    if (err instanceof UsageError) throw err;
+    if (err instanceof UsageError && !(err instanceof ConfigReadError))
+      throw err;
     const message = messageWithOperatorText`${PARTNER_PIN_UNRECORDED_PREAMBLE}${operatorSuppliedText(
       configPath,
-    )} (${
-      err instanceof Error ? err.message : String(err)
-    }), so the run stops here. The partner's fingerprint is ${fingerprint}; before the next run, either ${PARTNER_FINGERPRINT_REMEDIES}.`;
+    )} (${failureText(err)}), so the run stops here. The partner's fingerprint is ${fingerprint}; before the next run, either ${PARTNER_FINGERPRINT_REMEDIES}.`;
     throw keepOperatorSuppliedText(
       new OperatorConfigError(message.text),
       message,
@@ -290,77 +361,57 @@ const PARTNER_PIN_UNRECORDED_PREAMBLE =
   "the partner's signing certificate was pinned on this first contact, but " +
   "the fingerprint could not be recorded in ";
 
-/** The configuration text {@link persistPartnerFingerprint} writes back: the
- * file at `configPath` with `signing.partner_fingerprint` set to
- * `fingerprint`. */
-function partnerFingerprintRecorded(
+/** The edit {@link persistPartnerFingerprint} makes: `signing.partner_fingerprint`
+ * set to `fingerprint`, behind its two refusals. */
+function recordPartnerFingerprint(
   configPath: string,
+  doc: Document,
   fingerprint: string,
-): string {
-  // Parse, edit, and re-serialize through the sensitive-file chokepoint (see
-  // persistHostKeyFingerprint), preserving the operator's comments and key
-  // order on this surgical one-field write.
-  return editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
-    configFileLabel(configPath),
-    (doc) => {
-      normalizeKeyPathSpelling(configPath, doc, ["signing", "mode"]);
-      normalizeKeyPathSpelling(configPath, doc, [
-        "signing",
-        "partner_fingerprint",
-      ]);
-      // Read the mode off the parsed document (not a schema-loaded spec) and
-      // reject anything but certificate before the write. getIn does not
-      // resolve aliases, so an alias-spelled mode is treated as a non-string
-      // node and is rejected even when it would resolve to certificate -- the
-      // safe direction, and not a form a hand-authored config uses.
-      const mode = doc.getIn(["signing", "mode"]);
-      if (mode !== "certificate") {
-        const found =
-          typeof mode === "string" ? `"${mode}"` : "absent or non-scalar";
-        throw configFileRefusal(
-          configPath,
-          `does not sign receipts with a certificate (signing.mode is ` +
-            `${found}); a partner certificate fingerprint must not be ` +
-            "written to it.",
-        );
-      }
-      const existing = doc.getIn(["signing", "partner_fingerprint"]);
-      if (existing !== undefined && existing !== null)
-        throw configFileRefusal(
-          configPath,
-          "already pins a partner fingerprint; it was left unchanged. " +
-            "Changing a pin is a deliberate act: confirm the partner's " +
-            "fingerprint out-of-band and edit signing.partner_fingerprint " +
-            "yourself.",
-        );
-      // setIn creates the signing path node if absent; for a certificate-mode
-      // config loaded by the exchange command it already exists. A `signing`
-      // that is a scalar or sequence, not a mapping, makes setIn throw a YAML
-      // error, reported here as a UsageError rather than an opaque library
-      // stack trace.
-      try {
-        doc.setIn(["signing", "partner_fingerprint"], fingerprint);
-      } catch (err) {
-        throw configFileRefusal(
-          configPath,
-          "could not be updated to record the partner certificate " +
-            `fingerprint (${err instanceof Error ? err.message : String(err)}); ` +
-            "signing must be a mapping.",
-        );
-      }
-    },
+): void {
+  normalizeKeyPathSpelling(configPath, doc, ["signing", "mode"]);
+  normalizeKeyPathSpelling(configPath, doc, ["signing", "partner_fingerprint"]);
+  // Read off the parsed document, not a schema-loaded spec.
+  requireScalarAt(
+    configPath,
+    doc,
+    ["signing", "mode"],
+    "certificate",
+    (found) =>
+      `does not sign receipts with a certificate (signing.mode is ` +
+      `${found}); a partner certificate fingerprint must not be ` +
+      "written to it.",
   );
+  const existing = doc.getIn(["signing", "partner_fingerprint"]);
+  if (existing !== undefined && existing !== null)
+    throw configFileRefusal(
+      configPath,
+      "already pins a partner fingerprint; it was left unchanged. " +
+        "Changing a pin is a deliberate act: confirm the partner's " +
+        "fingerprint out-of-band and edit signing.partner_fingerprint " +
+        "yourself.",
+    );
+  // setIn creates the signing path node if absent; for a certificate-mode
+  // config loaded by the exchange command it already exists. A `signing`
+  // that is a scalar or sequence, not a mapping, makes setIn throw a YAML
+  // error, reported here as a UsageError rather than an opaque library
+  // stack trace.
+  try {
+    doc.setIn(["signing", "partner_fingerprint"], fingerprint);
+  } catch (err) {
+    throw configFileRefusal(
+      configPath,
+      "could not be updated to record the partner certificate " +
+        `fingerprint (${err instanceof Error ? err.message : String(err)}); ` +
+        "signing must be a mapping.",
+    );
+  }
 }
 
 /**
  * Write `linkage_terms.payload.receive` into an existing `alcove.yaml`: the
  * payload columns a run whose terms left the list unset took from the
- * partner's declared send set, which the next run holds the partner to. Edits
- * the file in place through the YAML document model, as
- * {@link persistPartnerFingerprint} does, removing the note that stated the
- * list unset, and rewrites it with the owner-only permissions
- * {@link saveConfig} uses.
+ * partner's declared send set, which the next run holds the partner to, through
+ * {@link editConfigInPlace}, removing the note that stated the list unset.
  *
  * A document that already states the list, or holds no `linkage_terms`
  * mapping, is refused and left unchanged. Any failure stops the run before a
@@ -374,41 +425,31 @@ export function persistFilledPayloadReceive(
   columns: readonly string[],
 ): void {
   try {
-    const serialized = editSensitiveYamlDocument(
-      fs.readFileSync(configPath, "utf8"),
-      configFileLabel(configPath),
-      (doc) => {
-        normalizeKeyPathSpelling(configPath, doc, [
-          "linkage_terms",
-          "payload",
-          "receive",
-        ]);
-        if (!isMap(doc.get("linkage_terms", true)))
-          throw configFileRefusal(
-            configPath,
-            "holds no linkage_terms mapping.",
-          );
-        const existing = doc.getIn(["linkage_terms", "payload", "receive"]);
-        if (existing !== undefined && existing !== null)
-          throw configFileRefusal(
-            configPath,
-            "already states linkage_terms.payload.receive; it was left " +
-              "unchanged.",
-          );
-        doc.setIn(
-          ["linkage_terms", "payload", "receive"],
-          doc.createNode(columns.map((name) => ({ name }))),
+    editConfigInPlace(configPath, (doc) => {
+      normalizeKeyPathSpelling(configPath, doc, [
+        "linkage_terms",
+        "payload",
+        "receive",
+      ]);
+      if (!isMap(doc.get("linkage_terms", true)))
+        throw configFileRefusal(configPath, "holds no linkage_terms mapping.");
+      const existing = doc.getIn(["linkage_terms", "payload", "receive"]);
+      if (existing !== undefined && existing !== null)
+        throw configFileRefusal(
+          configPath,
+          "already states linkage_terms.payload.receive; it was left " +
+            "unchanged.",
         );
-        removeUnsetPayloadReceiveNote(doc);
-      },
-    );
-    writeFileOwnerOnly(configPath, serialized);
+      doc.setIn(
+        ["linkage_terms", "payload", "receive"],
+        doc.createNode(columns.map((name) => ({ name }))),
+      );
+      removeUnsetPayloadReceiveNote(doc);
+    });
   } catch (err) {
     const message = messageWithOperatorText`the payload columns your partner declares it sends could not be recorded as linkage_terms.payload.receive in ${operatorSuppliedText(
       configPath,
-    )} (${
-      err instanceof Error ? err.message : String(err)
-    }), so the run stopped before any data moved. Make the file writable and run again, or list the columns you expect under linkage_terms.payload.receive yourself.`;
+    )} (${failureText(err)}), so the run stopped before any data moved. Make the file writable and run again, or list the columns you expect under linkage_terms.payload.receive yourself.`;
     throw keepOperatorSuppliedText(
       new OperatorConfigError(message.text),
       message,
@@ -420,9 +461,7 @@ export function persistFilledPayloadReceive(
  * Write `linkage_terms.payload.send` into an existing `alcove.yaml`: the
  * columns an invitation or terms update minted from the configuration states
  * this party sends, from its `metadata`, where the terms left the list unset
- * or named other columns. Edits the file in place through the YAML document
- * model, as {@link persistFilledPayloadReceive} does, and rewrites it with the
- * owner-only permissions {@link saveConfig} uses.
+ * or named other columns, through {@link editConfigInPlace}.
  *
  * @throws when the file cannot be read, parsed, or written, or holds no
  *   `linkage_terms` mapping.
@@ -431,24 +470,19 @@ export function persistStatedPayloadSend(
   configPath: string,
   send: NonNullable<Payload["send"]>,
 ): void {
-  const serialized = editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
-    configFileLabel(configPath),
-    (doc) => {
-      normalizeKeyPathSpelling(configPath, doc, [
-        "linkage_terms",
-        "payload",
-        "send",
-      ]);
-      if (!isMap(doc.get("linkage_terms", true)))
-        throw configFileRefusal(configPath, "holds no linkage_terms mapping.");
-      doc.setIn(
-        ["linkage_terms", "payload", "send"],
-        doc.createNode(send.map((column) => snakeizeKeys(column))),
-      );
-    },
-  );
-  writeFileOwnerOnly(configPath, serialized);
+  editConfigInPlace(configPath, (doc) => {
+    normalizeKeyPathSpelling(configPath, doc, [
+      "linkage_terms",
+      "payload",
+      "send",
+    ]);
+    if (!isMap(doc.get("linkage_terms", true)))
+      throw configFileRefusal(configPath, "holds no linkage_terms mapping.");
+    doc.setIn(
+      ["linkage_terms", "payload", "send"],
+      doc.createNode(send.map((column) => snakeizeKeys(column))),
+    );
+  });
 }
 
 /**
@@ -482,36 +516,20 @@ export function replacedPayloadSendWarning(
  * contradiction before any key or payload moves.
  *
  * Written by both accept-reuse paths (offline, and the online hook's reuse
- * branch), editing the file in place through the YAML document model so the
- * operator's comments, key order, and formatting survive.
+ * branch), through {@link editConfigInPlace}.
  *
  * Takes a plain `boolean`: `deduplicate` is mandatory on the linkage-terms
  * schema, so an acceptance always has a declaration to record and there is
  * no removal to express.
- *
- * Rewritten with the same owner-only permissions {@link saveConfig} uses.
- * Throws if the file cannot be read or parsed, since the caller just
- * reconciled it and a silent failure would leave the operator believing the
- * commitment was refreshed.
  */
 export function persistExpectedPartnerDeduplicate(
   configPath: string,
   declared: boolean,
 ): void {
-  // Parse, edit, and re-serialize through the sensitive-file chokepoint (see
-  // persistHostKeyFingerprint), preserving the operator's comments and key order
-  // on this surgical one-field write.
-  const serialized = editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
-    configFileLabel(configPath),
-    (doc) => {
-      normalizeKeyPathSpelling(configPath, doc, [
-        "expected_partner_deduplicate",
-      ]);
-      doc.setIn(["expected_partner_deduplicate"], declared);
-    },
-  );
-  writeFileOwnerOnly(configPath, serialized);
+  editConfigInPlace(configPath, (doc) => {
+    normalizeKeyPathSpelling(configPath, doc, ["expected_partner_deduplicate"]);
+    doc.setIn(["expected_partner_deduplicate"], declared);
+  });
 }
 
 /**
@@ -529,10 +547,8 @@ export type InvitationRelayRefresh = "set" | "removed" | "absent" | "notWebrtc";
  * not stay in force after the operator was shown this invitation's.
  *
  * `relay === undefined` removes the field. A connection block whose channel
- * is not webrtc holds no relay and is left as it is.
- *
- * Rewritten with the same owner-only permissions {@link saveConfig} uses.
- * Throws if the file cannot be read or parsed, since the caller just read it.
+ * is not webrtc holds no relay and is left as it is. Edited through
+ * {@link editConfigInPlace}, and written only when the field changed.
  */
 export function persistInvitationRelay(
   configPath: string,
@@ -541,9 +557,8 @@ export function persistInvitationRelay(
   // Widened by the assertion: the edit callback assigns it, which control-flow
   // narrowing does not follow.
   let outcome = "notWebrtc" as InvitationRelayRefresh;
-  const serialized = editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
-    configFileLabel(configPath),
+  const serialized = editConfigInPlace(
+    configPath,
     (doc) => {
       normalizeKeyPathSpelling(configPath, doc, ["connection", "channel"]);
       if (doc.getIn(["connection", "channel"]) !== "webrtc") return;
@@ -572,6 +587,7 @@ export function persistInvitationRelay(
         }),
       );
     },
+    { write: false },
   );
   if (outcome === "set" || outcome === "removed")
     writeFileOwnerOnly(configPath, serialized);

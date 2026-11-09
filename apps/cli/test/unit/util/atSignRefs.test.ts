@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 
 import { UsageError, parseExchangeSpec } from "@alcove/core";
 import type {
+  ConnectionConfig,
   ExchangeSpec,
   SFTPConnectionConfig,
   WebRTCConnectionConfig,
@@ -15,7 +16,6 @@ import {
   readConnectionCredentials,
   resolveAtSignRef,
   resolveAtSignRefs,
-  resolveConnectionCredentials,
   resolveExchangeSpecRefs,
 } from "../../../src/util/atSignRefs";
 
@@ -77,7 +77,15 @@ test("an empty (or whitespace-only) @file reference is a UsageError", () => {
   expect(() => resolveAtSignRef(ref)).toThrow(ref);
 });
 
-// --- resolveConnectionCredentials --------------------------------------------
+// --- read then apply ---------------------------------------------------------
+
+/** The connection a caller connects with: its credentials read, then applied. */
+function liveConnection(connection: ConnectionConfig): ConnectionConfig {
+  return applyConnectionCredentials(
+    connection,
+    readConnectionCredentials(connection),
+  );
+}
 
 function sftpConn(
   server: SFTPConnectionConfig["server"],
@@ -85,12 +93,12 @@ function sftpConn(
   return { channel: "sftp", server };
 }
 
-test("resolveConnectionCredentials resolves an @path password and private key", () => {
+test("liveConnection resolves an @path password and private key", () => {
   const pwFile = path.join(dir, "pw");
   const keyFile = path.join(dir, "id_rsa");
   fs.writeFileSync(pwFile, "s3cret\n");
   fs.writeFileSync(keyFile, "KEYDATA\n");
-  const resolved = resolveConnectionCredentials(
+  const resolved = liveConnection(
     sftpConn({
       host: "h",
       password: `@${pwFile}`,
@@ -101,14 +109,14 @@ test("resolveConnectionCredentials resolves an @path password and private key", 
   expect(resolved.server.privateKey).toBe("KEYDATA");
 });
 
-test("resolveConnectionCredentials resolves an @path private-key passphrase", () => {
+test("liveConnection resolves an @path private-key passphrase", () => {
   // The save-path resolver reads the passphrase for live use while the caller
   // persists the original @path (see the no-mutation test below).
   const keyFile = path.join(dir, "id_rsa");
   const passFile = path.join(dir, "phrase");
   fs.writeFileSync(keyFile, "KEYDATA\n");
   fs.writeFileSync(passFile, "PHRASE\n");
-  const resolved = resolveConnectionCredentials(
+  const resolved = liveConnection(
     sftpConn({
       host: "h",
       privateKey: `@${keyFile}`,
@@ -119,7 +127,7 @@ test("resolveConnectionCredentials resolves an @path private-key passphrase", ()
   expect(resolved.server.privateKeyPassphrase).toBe("PHRASE");
 });
 
-test("resolveConnectionCredentials preserves the @path passphrase on its input (survives for persistence)", () => {
+test("liveConnection preserves the @path passphrase on its input (survives for persistence)", () => {
   const keyFile = path.join(dir, "id_rsa2");
   const passFile = path.join(dir, "phrase2");
   fs.writeFileSync(keyFile, "KEYDATA\n");
@@ -129,39 +137,35 @@ test("resolveConnectionCredentials preserves the @path passphrase on its input (
     privateKey: `@${keyFile}`,
     privateKeyPassphrase: `@${passFile}`,
   });
-  const resolved = resolveConnectionCredentials(
-    original,
-  ) as SFTPConnectionConfig;
+  const resolved = liveConnection(original) as SFTPConnectionConfig;
   expect(original.server.privateKeyPassphrase).toBe(`@${passFile}`);
   expect(resolved.server.privateKeyPassphrase).toBe("PHRASE");
 });
 
-test("resolveConnectionCredentials leaves a literal credential unchanged", () => {
-  const resolved = resolveConnectionCredentials(
+test("liveConnection leaves a literal credential unchanged", () => {
+  const resolved = liveConnection(
     sftpConn({ host: "h", password: "literal-pw" }),
   ) as SFTPConnectionConfig;
   expect(resolved.server.password).toBe("literal-pw");
 });
 
-test("resolveConnectionCredentials does not mutate its input (the @path survives for persistence)", () => {
+test("liveConnection does not mutate its input (the @path survives for persistence)", () => {
   const pwFile = path.join(dir, "pw2");
   fs.writeFileSync(pwFile, "s3cret\n");
   const original = sftpConn({ host: "h", password: `@${pwFile}` });
-  const resolved = resolveConnectionCredentials(
-    original,
-  ) as SFTPConnectionConfig;
+  const resolved = liveConnection(original) as SFTPConnectionConfig;
   expect(original.server.password).toBe(`@${pwFile}`);
   expect(resolved.server.password).toBe("s3cret");
 });
 
-test("resolveConnectionCredentials is a no-op on a filedrop connection", () => {
+test("liveConnection is a no-op on a filedrop connection", () => {
   const conn = { channel: "filedrop", path: "/mnt/share" } as const;
-  expect(resolveConnectionCredentials(conn)).toBe(conn);
+  expect(liveConnection(conn)).toBe(conn);
 });
 
-test("resolveConnectionCredentials reports a missing @path file as a UsageError", () => {
+test("liveConnection reports a missing @path file as a UsageError", () => {
   const conn = sftpConn({ host: "h", password: `@${path.join(dir, "gone")}` });
-  expect(() => resolveConnectionCredentials(conn)).toThrow(UsageError);
+  expect(() => liveConnection(conn)).toThrow(UsageError);
 });
 
 // --- readConnectionCredentials / applyConnectionCredentials ------------------

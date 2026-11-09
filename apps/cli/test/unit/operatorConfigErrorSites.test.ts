@@ -311,8 +311,8 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "fixed prose; not even the configured path is quoted.",
   },
   {
-    file: "apps/cli/src/commands/exchange.ts",
-    anchor: "readConfigDocument",
+    file: "apps/cli/src/config/exchangeConfig.ts",
+    anchor: "configReadRefusal",
     raises: "OperatorConfigError",
     interpolates: ["configFile"],
     provenance:
@@ -321,22 +321,24 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "The rest is fixed prose naming the command that writes one.",
   },
   {
-    file: "apps/cli/src/commands/exchange.ts",
-    anchor: "readConfigDocument",
+    file: "apps/cli/src/config/exchangeConfig.ts",
+    anchor: "configReadRefusal",
     raises: "OperatorConfigError",
-    interpolates: ["String(err)", "configFile", "err.message"],
+    interpolates: ["configFile", "errnoClause(failure.code)"],
     provenance:
-      "`configFile` is the operator's own path, as above. `err` is the Node " +
-      "filesystem error of this party's own read of that path: an errno and " +
-      "the local path, holding no byte of the document.",
+      "`configFile` is the operator's own path, as above. `failure.code` is " +
+      "the errno code of the Node filesystem error of this party's own read " +
+      "of that path (readConfigDocument in config/loaders.ts), holding no " +
+      "byte of the document; the fs message, which repeats the path, is not " +
+      "quoted.",
   },
   {
-    file: "apps/cli/src/commands/exchange.ts",
-    anchor: "readConfigDocument",
+    file: "apps/cli/src/config/exchangeConfig.ts",
+    anchor: "configReadRefusal",
     raises: "OperatorConfigError",
-    interpolates: ["configFile", "position"],
+    interpolates: ["at", "configFile"],
     provenance:
-      "`configFile` is the operator's own path, as above. `position` is " +
+      "`configFile` is the operator's own path, as above. `at` is empty or " +
       "the parser's line and column numbers of the operator's own " +
       "configuration and a fixed phrase chosen by its error code " +
       "(describeYamlSyntaxPosition in core's sensitiveFile.ts); the " +
@@ -344,7 +346,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "document reaches the message.",
   },
   {
-    file: "apps/cli/src/commands/exchange.ts",
+    file: "apps/cli/src/config/exchangeConfig.ts",
     anchor: "invalidExchangeSpecError",
     raises: "OperatorConfigError",
     interpolates: ["configFile", "describeConfigSchemaError(err)"],
@@ -376,14 +378,15 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
     file: "apps/cli/src/config/persist.ts",
     anchor: "persistFilledPayloadReceive",
     raises: "OperatorConfigError",
-    interpolates: ["String(err)", "configPath", "err.message"],
+    interpolates: ["configPath", "failureText(err)"],
     provenance:
       "`configPath` is the operator's own path, as above. `err` is the failure " +
-      "of this party's own read, parse, edit or atomic replace of that file: " +
-      "a Node filesystem error over the local path, the sensitive-parse " +
-      "chokepoint's account of the operator's own document, or one of the " +
-      "fixed refusals the edit raises. The partner's column names are written " +
-      "into the document, never into the message.",
+      "of this party's own read, parse, edit or atomic replace of that file, " +
+      "and failureText quotes the errno code alone for a failed read, and " +
+      "otherwise the message of a Node filesystem error over the local path, " +
+      "the sensitive-parse chokepoint's account of the operator's own " +
+      "document, or one of the fixed refusals the edit raises. The partner's " +
+      "column names are written into the document, never into the message.",
   },
   {
     file: "apps/cli/src/onlineBootstrap.ts",
@@ -399,15 +402,16 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
     file: "apps/cli/src/config/persist.ts",
     anchor: "persistPartnerFingerprint",
     raises: "OperatorConfigError",
-    interpolates: ["String(err)", "configPath", "err.message", "fingerprint"],
+    interpolates: ["configPath", "failureText(err)", "fingerprint"],
     provenance:
       "`configPath` is the operator's own path, as above. `fingerprint` is a " +
       "digest THIS party computed over the presented certificate " +
       "(computeCertificateFingerprint in resolvePartnerCertificateOrAbort), so " +
       "it is a base64url hash rather than any byte the partner authored. `err` " +
-      "is the failure of this party's own read or atomic replace -- a Node " +
-      "filesystem error over that same local path -- and both spellings of it " +
-      "are recorded because the conditional's branches are followed.",
+      "is the failure of this party's own read or atomic replace, and " +
+      "failureText quotes the errno code alone for a failed read, and " +
+      "otherwise the message of a Node filesystem error over that same local " +
+      "path.",
   },
   {
     file: "apps/cli/src/termsChange.ts",

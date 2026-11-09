@@ -23,19 +23,95 @@ import {
   snakeizeKey,
 } from "@alcove/core";
 
-import { writeFileOwnerOnly } from "../fileUtils";
-import {
-  parseSensitiveYaml,
-  editSensitiveYamlDocument,
-} from "../sensitiveFile";
+import { parseSensitiveYaml, SensitiveYamlParseError } from "../sensitiveFile";
 
 import {
   configFileLabel,
   configFileRefusal,
+  editConfigInPlace,
+  errnoClause,
   normalizeKeyPathSpelling,
 } from "./persist";
 
 // --- Config reader -----------------------------------------------------------
+
+/**
+ * Why {@link readConfigDocument} returned no document. A read failure keeps
+ * the errno code alone, since the fs message repeats the path unmarked; a
+ * parse failure keeps the chokepoint's refusal, which names the path and the
+ * syntax error's position only.
+ */
+export type ConfigDocumentFailure =
+  | { reason: "missing" }
+  | { reason: "unreadable"; code: string | undefined }
+  | { reason: "unparseable"; error: SensitiveYamlParseError };
+
+/** How {@link readConfigDocument} treats a missing file and each failure. */
+export interface ReadConfigDocumentOptions {
+  /** A path with no file at it yields `undefined` or a refusal. */
+  whenMissing: "absent" | "refuse";
+  /**
+   * The error each failure is raised as. Defaults to
+   * {@link configDocumentRefusal}.
+   */
+  refusal?: (failure: ConfigDocumentFailure) => Error;
+}
+
+/**
+ * Read the configuration file at `configPath` and parse its YAML through the
+ * sensitive-file chokepoint, ahead of any schema: a parse can echo source
+ * bytes (an inline credential), so only {@link parseSensitiveYaml} sees them.
+ *
+ * `undefined` only where no file exists and `whenMissing` is `"absent"`; an
+ * empty document parses to `null`.
+ */
+export function readConfigDocument(
+  configPath: string,
+  options: ReadConfigDocumentOptions,
+): unknown {
+  const refuse = (failure: ConfigDocumentFailure): Error =>
+    (options.refusal ?? configDocumentRefusal(configPath))(failure);
+  let source: string;
+  try {
+    source = fs.readFileSync(configPath, "utf8");
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      if (options.whenMissing === "absent") return undefined;
+      throw refuse({ reason: "missing" });
+    }
+    throw refuse({ reason: "unreadable", code });
+  }
+  try {
+    return parseSensitiveYaml(source, configFileLabel(configPath));
+  } catch (err) {
+    if (!(err instanceof SensitiveYamlParseError)) throw err;
+    throw refuse({ reason: "unparseable", error: err });
+  }
+}
+
+/**
+ * The {@link UsageError} for each {@link ConfigDocumentFailure} of the
+ * configuration at `configPath`, the path marked as the operator's own; a
+ * parse failure is the chokepoint's own refusal.
+ */
+function configDocumentRefusal(
+  configPath: string,
+): (failure: ConfigDocumentFailure) => Error {
+  return (failure) => {
+    switch (failure.reason) {
+      case "missing":
+        return configFileRefusal(configPath, "does not exist");
+      case "unreadable":
+        return configFileRefusal(
+          configPath,
+          `could not be read${errnoClause(failure.code)}`,
+        );
+      case "unparseable":
+        return failure.error;
+    }
+  };
+}
 
 /**
  * The portion of a pre-existing config that `invite` uses as the source for
@@ -228,25 +304,19 @@ export function describeConfigSchemaError(err: unknown): string {
 export function readConfigLinkageSource(
   configPath: string,
 ): ConfigLinkageSourceResult {
-  // Read, then parse through the sensitive-file chokepoint. A read failure
-  // holds only a path and errno (ENOENT means no config, not an error here); a
-  // YAML parse can echo source bytes (an inline credential), so it routes through
-  // parseSensitiveYaml, which reports the path and the syntax error's position
-  // only (see sensitiveFile.ts).
-  let source: string;
-  try {
-    source = fs.readFileSync(configPath, "utf8");
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT")
-      return { status: "no-config-file" };
-    throw configFileRefusal(
-      configPath,
-      "could not be read: " +
-        (err instanceof Error ? err.message : String(err)),
-    );
-  }
-  const raw = parseSensitiveYaml(source, configFileLabel(configPath));
+  const raw = readConfigDocument(configPath, { whenMissing: "absent" });
+  if (raw === undefined) return { status: "no-config-file" };
+  return configLinkageSourceFrom(raw, configPath);
+}
 
+/**
+ * {@link readConfigLinkageSource} over a document already read from
+ * `configPath`, for a caller that reads other fields of the same document.
+ */
+export function configLinkageSourceFrom(
+  raw: unknown,
+  configPath: string,
+): Exclude<ConfigLinkageSourceResult, { status: "no-config-file" }> {
   // A top-level YAML mapping is required. Exclude an array (also
   // `typeof === "object"`) and a scalar explicitly, so a malformed config is
   // reported as such rather than misattributed to a missing `linkage_terms`
@@ -448,17 +518,7 @@ function loadConfigConnectionBlock(
   configPath: string,
   wanted: (block: Record<string, unknown>) => boolean,
 ): ConnectionConfigAwaitingAddress | undefined {
-  let source: string;
-  try {
-    source = fs.readFileSync(configPath, "utf8");
-  } catch (err: unknown) {
-    throw configFileRefusal(
-      configPath,
-      "could not be read: " +
-        (err instanceof Error ? err.message : String(err)),
-    );
-  }
-  const raw = parseSensitiveYaml(source, configFileLabel(configPath));
+  const raw = readConfigDocument(configPath, { whenMissing: "refuse" });
   if (raw === null || typeof raw !== "object" || Array.isArray(raw))
     return undefined;
   const connection = (raw as Record<string, unknown>)["connection"];
@@ -488,43 +548,37 @@ function loadConfigConnectionBlock(
  * them, every other field -- `provision` among them -- and the operator's
  * comments and key order left as they are. A returned fingerprint replaces any
  * pin the file states; a list it replaces takes the comments on its key and
- * entries with it. Rewritten with the same owner-only permissions
- * {@link saveConfig} uses; throws if the file cannot be read, parsed or
- * updated.
+ * entries with it. Written through {@link editConfigInPlace}; throws if the
+ * file cannot be updated.
  */
 export function persistProvisionedServerAddress(
   configPath: string,
   address: ProvisionedServerAddress,
 ): void {
-  const serialized = editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
-    configFileLabel(configPath),
-    (doc) => {
-      const fields: Array<[string, string | number]> = [["host", address.host]];
-      if (address.port !== undefined) fields.push(["port", address.port]);
-      if (address.path !== undefined) fields.push(["path", address.path]);
-      if (address.hostKeyFingerprint !== undefined)
-        fields.push(["host_key_fingerprint", address.hostKeyFingerprint]);
-      for (const [field, value] of fields) {
-        normalizeKeyPathSpelling(configPath, doc, [
-          "connection",
-          "server",
-          field,
-        ]);
-        try {
-          doc.setIn(["connection", "server", field], value);
-        } catch (err) {
-          throw configFileRefusal(
-            configPath,
-            "could not be updated with the created server's address " +
-              `(${err instanceof Error ? err.message : String(err)}); ` +
-              "connection.server must be a mapping.",
-          );
-        }
+  editConfigInPlace(configPath, (doc) => {
+    const fields: Array<[string, string | number]> = [["host", address.host]];
+    if (address.port !== undefined) fields.push(["port", address.port]);
+    if (address.path !== undefined) fields.push(["path", address.path]);
+    if (address.hostKeyFingerprint !== undefined)
+      fields.push(["host_key_fingerprint", address.hostKeyFingerprint]);
+    for (const [field, value] of fields) {
+      normalizeKeyPathSpelling(configPath, doc, [
+        "connection",
+        "server",
+        field,
+      ]);
+      try {
+        doc.setIn(["connection", "server", field], value);
+      } catch (err) {
+        throw configFileRefusal(
+          configPath,
+          "could not be updated with the created server's address " +
+            `(${err instanceof Error ? err.message : String(err)}); ` +
+            "connection.server must be a mapping.",
+        );
       }
-    },
-  );
-  writeFileOwnerOnly(configPath, serialized);
+    }
+  });
 }
 
 /**

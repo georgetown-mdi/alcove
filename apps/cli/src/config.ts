@@ -40,6 +40,7 @@ export type {
 } from "./config/reconcileDiffs";
 export {
   assertPartnerFingerprintRecordable,
+  errnoClause,
   persistExpectedPartnerDeduplicate,
   persistFilledPayloadReceive,
   persistHostKeyFingerprint,
@@ -55,12 +56,14 @@ export {
 } from "./config/termsUpdate";
 export type { TermsUpdateWrite } from "./config/termsUpdate";
 export {
+  configLinkageSourceFrom,
   csvDelimiterForRun,
   describeConfigSchemaError,
   loadConfigLinkageSource,
   loadConfigProvisionedSFTPConnection,
   loadConfigWebRTCConnection,
   persistProvisionedServerAddress,
+  readConfigDocument,
   readConfigLinkageSource,
 } from "./config/loaders";
 export type {

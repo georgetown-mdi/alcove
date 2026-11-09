@@ -24,6 +24,7 @@ import {
   UsageError,
 } from "@alcove/core";
 import type {
+  ConnectionConfig,
   ExchangeBootstrapResult,
   FileDropConnectionConfig,
   LinkageTerms,
@@ -43,7 +44,10 @@ import {
 import { BARE_INVOCATION_SUMMARY } from "../../../src/usageHints";
 import { channelForScheme } from "../../../src/connectionFromUrl";
 import type { ConnectionOverrideOptions } from "../../../src/optionDefinitions";
-import { resolveConnectionCredentials } from "../../../src/util/atSignRefs";
+import {
+  applyConnectionCredentials,
+  readConnectionCredentials,
+} from "../../../src/util/atSignRefs";
 import { redactUrlCredentials } from "@alcove/core";
 import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
 import {
@@ -460,7 +464,15 @@ test("createConnection sftp never produces a config with authentication set", ()
 // --- createConnection: @path credentials are preserved for persistence -------
 // createConnection builds the connection that --save persists, so it must keep
 // an @path credential ref as-is (the secret is read only at the live-use
-// boundary, resolveConnectionCredentials). A literal credential is kept literal.
+// boundary, liveConnection). A literal credential is kept literal.
+
+/** The connection a caller connects with: its credentials read, then applied. */
+function liveConnection(connection: ConnectionConfig): ConnectionConfig {
+  return applyConnectionCredentials(
+    connection,
+    readConnectionCredentials(connection),
+  );
+}
 
 test("createConnection sftp keeps an @path server-password as the reference, not the file contents", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerocred-"));
@@ -473,10 +485,9 @@ test("createConnection sftp keeps an @path server-password as the reference, not
     }) as SFTPConnectionConfig;
     // Persisted form: the @path survives verbatim.
     expect(result.server.password).toBe(`@${pwFile}`);
-    // Live form: resolveConnectionCredentials reads the file.
+    // Live form: liveConnection reads the file.
     expect(
-      (resolveConnectionCredentials(result) as SFTPConnectionConfig).server
-        .password,
+      (liveConnection(result) as SFTPConnectionConfig).server.password,
     ).toBe("s3cret");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -494,8 +505,7 @@ test("createConnection sftp keeps an @path server-private-key as the reference",
     }) as SFTPConnectionConfig;
     expect(result.server.privateKey).toBe(`@${keyFile}`);
     expect(
-      (resolveConnectionCredentials(result) as SFTPConnectionConfig).server
-        .privateKey,
+      (liveConnection(result) as SFTPConnectionConfig).server.privateKey,
     ).toBe("KEYDATA");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -518,7 +528,7 @@ test("createConnection sftp keeps an @path server-private-key-passphrase as the 
     }) as SFTPConnectionConfig;
     expect(result.server.privateKey).toBe(`@${keyFile}`);
     expect(result.server.privateKeyPassphrase).toBe(`@${passFile}`);
-    const live = resolveConnectionCredentials(result) as SFTPConnectionConfig;
+    const live = liveConnection(result) as SFTPConnectionConfig;
     expect(live.server.privateKey).toBe("KEYDATA");
     expect(live.server.privateKeyPassphrase).toBe("unlock-me");
   } finally {
@@ -532,10 +542,9 @@ test("createConnection sftp persists a literal server-password unchanged", () =>
     serverPassword: "literal-pw",
   }) as SFTPConnectionConfig;
   expect(result.server.password).toBe("literal-pw");
-  expect(
-    (resolveConnectionCredentials(result) as SFTPConnectionConfig).server
-      .password,
-  ).toBe("literal-pw");
+  expect((liveConnection(result) as SFTPConnectionConfig).server.password).toBe(
+    "literal-pw",
+  );
 });
 
 // --- handler: repeated single-value flag -------------------------------------

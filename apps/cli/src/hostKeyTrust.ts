@@ -195,10 +195,9 @@ export function assertHostKeyTrustCanBeEstablished(
  * Mutates `connection.server.hostKeyFingerprint` in place on success so the
  * caller's subsequent open() verifies the just-confirmed key, which also
  * catches a key swapped between this probe and that connect. A caller that
- * clones the connection for live use (`resolveConnectionCredentials` or
- * `applyConnectionCredentials`) must invoke this on the ORIGINAL before
- * cloning, so the mutation reaches both the live connect and the persisted
- * config.
+ * clones the connection for live use (`applyConnectionCredentials`) must
+ * invoke this on the ORIGINAL before cloning, so the mutation reaches both the
+ * live connect and the persisted config.
  *
  * @param deps injectable probe/confirm; defaults to the real implementations
  *   (a throwaway probe connection and the stderr y/N prompt). `@internal`.
