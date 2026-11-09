@@ -74,9 +74,9 @@ What the figures decide:
   The partner's first one arms a 120 s silence bound on the transport's parked receive, which each part of a frame that arrives restarts; the end of this party's own phase clears it.
   The whole-frame budget (1 h by default, or `inactivity_timeout_ms`) still runs beside it, so a relay that trickles bytes cannot hold a run open past it.
   Before the bound arms, and after this party's phase ends, the whole-frame budget alone applies; a still-working frame still arriving then restarts it.
-- **A still-working message replaces any unread one.**
+- **Queued still-working frames are dropped from the head of the queue.**
   A party running its own operation does not receive, so the partner's frames would otherwise queue.
-  On each interval, the layer reads and drops still-working frames already queued, picking them out by their wire length before reading.
+  On each interval, the layer reads and drops the still-working frames at the head of the queue, picking them out by their wire length before reading; one behind a data frame waits for the reader, held by the inbound queue's message-count and byte bounds.
   A queued frame of that length that is not one is held and handed to the next read, in order.
   So the inbound queue's count and byte bounds are unchanged, and no operation length reaches them.
 - **Where it is refused.**

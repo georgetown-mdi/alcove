@@ -486,7 +486,7 @@ describe("queued still-working frames", () => {
     ]);
   }
 
-  test("a party not reading drops the partner's queued still-working frames, so they never fill its inbound queue", async () => {
+  test("a party not reading drops the partner's still-working frames queued at the head of its inbound queue", async () => {
     const [localEnd, partnerEnd] = await encryptedPair(4);
     const local = stillWorkingLayer(localEnd, fast);
     const partner = stillWorkingLayer(partnerEnd, fast);

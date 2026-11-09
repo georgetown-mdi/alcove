@@ -103,8 +103,9 @@ const DROPPED = Symbol("dropped still-working frame");
  * any other frame with a `working` key is a `protocol` error, as is a
  * still-working frame after it. The partner's first still-working frame arms
  * the partner-silence bound; the end of this party's PSI phase clears it.
- * Each time the interval passes, still-working frames already queued are read
- * and dropped, so they never fill the inbound queue.
+ * Each time the interval passes, still-working frames at the head of the
+ * inbound queue are read and dropped; one behind a data frame waits for the
+ * reader, held by the queue's message-count and byte bounds.
  */
 export function stillWorkingLayer(
   conn: MessageConnection,
