@@ -1110,6 +1110,27 @@ export function inviterServerJobTransport(
   };
 }
 
+/** The run choices both seats' server-job configs forward to the intent, each
+ * composing no key when absent. */
+export interface ServerJobRunChoices {
+  /** The field delimiter the operator chose at the file step, composed into the
+   * config the console hands the CLI so the run reads the mounted file and writes
+   * its result the way the console profiled it. Absent composes no key, which
+   * reads and writes commas. */
+  csvDelimiter?: string;
+  /** The file-handling choices of the step before the run (the inviter's review
+   * step, the acceptor's confirm-columns step), already resolved through core's
+   * retain-mode implication. Absent when the operator changed nothing, so the
+   * composed config has no `options` block at all. */
+  options?: JobExchangeOptions;
+  /** The same step's per-run diagnostic and recovery choices, forwarded to the
+   * intent unchanged. */
+  runDiagnostics?: RunDiagnosticsIntentFields;
+  /** The same step's receipt-signing and retention choices, forwarded to the
+   * intent unchanged. */
+  receipts?: ReceiptsIntentFields;
+}
+
 /**
  * Assemble the {@link ServerJobExchangeDriverConfig} for a console server-job
  * invite -- a file-drop, SFTP or WebRTC exchange the console runs on this
@@ -1161,21 +1182,6 @@ export function inviterServerJobConfig({
   >;
   inputSource: JobInputSource;
   transport: ServerJobExchangeTransport;
-  /** The field delimiter the operator chose at the file step, composed into the
-   * config the console hands the CLI so the run reads the mounted file and writes
-   * its result the way the console profiled it. Absent composes no key, which
-   * reads and writes commas. */
-  csvDelimiter?: string;
-  /** The review step's file-handling choices, already resolved through core's
-   * retain-mode implication. Absent when the operator changed nothing, so the
-   * composed config has no `options` block at all. */
-  options?: JobExchangeOptions;
-  /** The review step's per-run diagnostic and recovery choices, forwarded to the
-   * intent unchanged. */
-  runDiagnostics?: RunDiagnosticsIntentFields;
-  /** The review step's receipt-signing and retention choices, forwarded to the
-   * intent unchanged. */
-  receipts?: ReceiptsIntentFields;
   /** The enforcement records a loaded configuration stated, forwarded unchanged.
    * Absent for an exchange authored here, which states none. */
   loadedEnforcementRecords?: LoadedEnforcementRecords;
@@ -1187,7 +1193,7 @@ export function inviterServerJobConfig({
   /** Whether the operator converted the opened configuration to the console's
    * own folders and signing identity, forwarded unchanged. */
   mountedConfigurationConverted?: boolean;
-}): ServerJobExchangeDriverConfig {
+} & ServerJobRunChoices): ServerJobExchangeDriverConfig {
   return {
     transport,
     side: "inviter",
@@ -1584,19 +1590,13 @@ export function useInviterExchange({
           minted,
           inputSource,
           transport,
-          ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
-          ...(options !== undefined ? { options } : {}),
-          ...(runDiagnostics !== undefined ? { runDiagnostics } : {}),
-          ...(receipts !== undefined ? { receipts } : {}),
-          ...(loadedEnforcementRecords !== undefined
-            ? { loadedEnforcementRecords }
-            : {}),
-          ...(mountedConfigurationOpened !== undefined
-            ? { mountedConfigurationOpened }
-            : {}),
-          ...(mountedConfigurationConverted !== undefined
-            ? { mountedConfigurationConverted }
-            : {}),
+          csvDelimiter,
+          options,
+          runDiagnostics,
+          receipts,
+          loadedEnforcementRecords,
+          mountedConfigurationOpened,
+          mountedConfigurationConverted,
         }),
         // Persist the created job's id so a reload or hard tab close can re-attach
         // to the console's run, and track it for the deliberate-discard paths.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Alert, Button } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
@@ -7,7 +7,6 @@ import { describeResolvedMatching } from "@alcove/core";
 
 import { dateTimeLabel, invitationUsable } from "@psi/formatting";
 import { OPENED_EXCHANGE_CONTINUES } from "@console/mountedConfiguration";
-import { RecurringHandoff } from "@recurring/RecurringHandoff";
 import { RelayCheckPanel } from "@console/RelayCheckPanel";
 import { TermsChangeRecovery } from "@console/TermsChangeRecovery";
 import styles from "@styles/app.module.css";
@@ -20,29 +19,20 @@ import { invitationReach } from "./invitationReach";
 import { inviterRelayCheckShown } from "./inviterRelayCheckModel";
 
 import {
-  AnotherExchangeFoot,
   BROWSER_RUN_KEEP_OPEN_BODY,
   CopyRow,
-  DonePanel,
   FailureAlert,
   FailureRecoveryButton,
-  RECONNECTING_HEADING,
   ReattachNotice,
-  RunDownloads,
-  RunWarningsAlert,
   SERVER_JOB_KEEP_OPEN_BODY,
   browserListeningBody,
   leftBehindConfirm,
-  recoveredExchangeHeading,
   untakenRecordConfirm,
   useDownloadsLeftBehind,
 } from "./RunSurface";
-import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
+import { RunSectionTail, useRunHeadingFocus } from "./RunSectionTail";
+import { reattachHeading, runReattachView } from "./reattachedRunState";
 import { InviterRelayCheck } from "./InviterRelayCheck";
-import { ReceiptDownload } from "./ReceiptDownload";
-import { RecordDownload } from "./RecordDownload";
-import { StatusPanel } from "./StatusPanel";
-import { reattachedRunState } from "./reattachedRunState";
 import { useBeforeUnloadPrompt } from "./useUnloadGuard";
 import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
@@ -201,9 +191,6 @@ export function InviterExchangeSection({
 }) {
   const phase =
     outputs !== undefined ? "done" : awaitingPartner(run) ? "share" : "running";
-  // The run reached a terminal, which is what the three console-artifact
-  // panels below key on: each states its artifact's standing once the run is
-  // past producing it.
   const settled = phase === "done" || failure !== undefined;
 
   // Where this run's exchange record stands on the console. Asked only once the
@@ -225,22 +212,13 @@ export function InviterExchangeSection({
   // this page's copy.
   const recordOffer = runRecord ?? jobRecordOffer;
 
-  // A busy (409) create at start re-attached this surface to an exchange the
-  // console already held (a second tab, a navigate-away-and-back, or an orphaned
-  // job). It then heads with recovery-style copy and drops the fresh-run share /
-  // keep-open framing, so it never displays as a fresh success -- but the completion
-  // affordances (the results summary and the recurring hand-off) still show, since
-  // those hold however the operator reached completion.
-  const reattachedRun = reattached !== undefined;
-  const reattachState = reattachedRunState({
+  const reattach = runReattachView({
+    reattached,
+    reattaching,
     failed: failure !== undefined,
     hasOutputs: outputs !== undefined,
-    status: reattached ?? "running",
   });
-  // Fresh-run framing (the share block, the keep-open callout, the fresh title) is
-  // suppressed both once re-attached and during the reconnecting interim, so the
-  // fresh block never flashes while the 409 is being resolved.
-  const recovering = reattaching || reattachedRun;
+  const { reattachedRun, reattachState, recovering } = reattach;
 
   // A retry is genuine only while the invitation can still be accepted:
   // re-listening on a lapsed credential cannot succeed, so an expired
@@ -280,44 +258,25 @@ export function InviterExchangeSection({
     !termsApplied &&
     failure.category !== "output";
 
-  // The phase-level focus throughline. The console host moves focus to the h1
-  // when the section mounts; within the section, focus moves again when the
-  // partner connects or a retry clears the alert -- the share block or the
-  // alert (either of which may hold focus, on a copy button or the Try again
-  // button) unmounts, so without this the browser drops focus to <body> --
-  // and at completion, so the results are read. The reconnecting-interim and
-  // recovery swaps run through it too (via the deps) so an orphaned focus lands
-  // on the recovery heading. The recovery moves fire only when focus was
-  // actually orphaned onto <body>, so focus the user placed on a live element is
-  // not stolen; completion always moves it. While a failure is showing, the
-  // alert-focus effect below owns the moment.
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    if (phase === "done") {
-      headingRef.current?.focus();
-      return;
-    }
-    if (failure !== undefined) return;
-    const active = document.activeElement;
-    if (!active || active === document.body) headingRef.current?.focus();
-  }, [phase, failure, reattaching, reattachedRun]);
+  // The console host moves focus to the h1 when the section mounts. Focus
+  // moves again when the partner connects (the share block, which may hold
+  // focus on a copy button, unmounts) and at completion.
+  const headingRef = useRunHeadingFocus({
+    phase,
+    failure,
+    reattaching,
+    reattachedRun,
+  });
 
-  const title = reattachedRun
-    ? recoveredExchangeHeading(reattachState)
-    : reattaching
-      ? RECONNECTING_HEADING
-      : phase === "done"
-        ? "Exchange complete"
-        : phase === "running"
-          ? "Exchange in progress"
-          : continuesOpenedExchange || resumed
-            ? "Waiting for your partner"
-            : "Your invitation is ready";
+  const title =
+    reattachHeading(reattach) ??
+    (phase === "done"
+      ? "Exchange complete"
+      : phase === "running"
+        ? "Exchange in progress"
+        : continuesOpenedExchange || resumed
+          ? "Waiting for your partner"
+          : "Your invitation is ready");
 
   return (
     <>
@@ -525,48 +484,20 @@ export function InviterExchangeSection({
           )}
         </div>
       )}
-      {phase === "done" && (
-        <DonePanel outputs={outputs} finishedAt={run.finishedAt} />
-      )}
-      <RunWarningsAlert warnings={warnings} />
-      <StatusPanel
+      <RunSectionTail
         run={run}
+        outputs={outputs}
+        failure={failure}
+        warnings={warnings}
         done={phase === "done"}
-        halted={failure !== undefined}
+        serverJob={serverJob}
+        jobId={jobId}
+        recordOffer={recordOffer}
+        discardFolder={discardFolder}
+        onDownload={onDownload}
+        leaveConfirm={leftBehindConfirm(leftBehind)}
+        onAbandon={onAbandon}
       />
-      {phase === "done" && outputs !== undefined && (
-        <RunDownloads
-          outputs={outputs}
-          heading="h2"
-          onDownload={serverJob ? undefined : onDownload}
-        />
-      )}
-      <RecordDownload
-        offer={recordOffer}
-        heldBy={serverJob ? "console" : "page"}
-      />
-      {serverJob && jobId !== undefined && (
-        <>
-          <ReceiptDownload jobId={jobId} settled={settled} />
-          <DiagnosticLogPanel jobId={jobId} settled={settled} />
-        </>
-      )}
-      {/* The hand-off is composed at job creation and served for the record's
-          lifetime, so the panel stands from the moment the console holds the
-          job: collapsed while the run is still in flight (graduation is not the
-          job at hand yet), expanded once the run completes and it is. It drops
-          on a failure, whose surface offers its own one way forward. */}
-      {serverJob && jobId !== undefined && failure === undefined && (
-        <RecurringHandoff jobId={jobId} collapsible={phase !== "done"} />
-      )}
-      {(phase === "done" || failure?.category === "output") && (
-        <AnotherExchangeFoot
-          onNavigate={onAbandon}
-          confirmBeforeLeave={serverJob}
-          leaveConfirm={serverJob ? undefined : leftBehindConfirm(leftBehind)}
-          folder={discardFolder}
-        />
-      )}
     </>
   );
 }

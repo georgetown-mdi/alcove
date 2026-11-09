@@ -3,12 +3,12 @@ import { useEffect, useMemo, useRef } from "react";
 import { Alert, VisuallyHidden } from "@mantine/core";
 import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
 
-import { SEMANTIC_TYPE_LABELS } from "@psi/metadataEditing";
 import { isSilentEmpty } from "@psi/workers/nonEmptyAggregate";
 
 import {
   FieldCoverage,
   coverageUnavailableMessage,
+  silentEmptyAnnouncement,
 } from "@components/FieldCoverage";
 import { CleaningErrorBoundary } from "@components/CleaningErrorBoundary";
 import { StandardizationCards } from "@components/StandardizationCards";
@@ -103,34 +103,14 @@ export function AcceptorCleaningStep({
     headingRef.current?.focus();
   }, []);
 
-  const fieldByName = useMemo(
-    () => new Map(declaredFields.map((field) => [field.name, field])),
-    [declaredFields],
+  const silentEmpty = useMemo(
+    () => silentEmptyAnnouncement({ rates, standardization, declaredFields }),
+    [rates, standardization, declaredFields],
   );
-
-  // The safe labels of the fields whose transform drops every row, for the one
-  // editor-wide coverage announcement. Built from the field's semantic-type label
-  // (the partner-controlled `output` is never announced raw), de-duplicated by label
-  // in standardization order so the read is stable.
-  const silentEmptyLabels = useMemo(() => {
-    if (rates === null) return [];
-    const labels = new Set<string>();
-    for (const transformation of standardization) {
-      const rate = rates.get(transformation.output);
-      const field = fieldByName.get(transformation.output);
-      if (rate !== undefined && field !== undefined && isSilentEmpty(rate))
-        labels.add(SEMANTIC_TYPE_LABELS[field.type]);
-    }
-    return [...labels];
-  }, [rates, standardization, fieldByName]);
   const unavailableMessage = coverageUnavailableMessage(coverageRefusedColumns);
   const coverageAnnouncement = coverageUnavailable
     ? unavailableMessage
-    : silentEmptyLabels.length === 0
-      ? ""
-      : `Coverage warning: ${silentEmptyLabels.join(", ")} ${
-          silentEmptyLabels.length === 1 ? "produces" : "produce"
-        } no value for any row and cannot match. Check the cleaning steps.`;
+    : silentEmpty;
 
   return (
     <>

@@ -1,32 +1,20 @@
-import { useEffect, useRef } from "react";
-
 import { describeResolvedMatching } from "@alcove/core";
 
-import { RecurringHandoff } from "@recurring/RecurringHandoff";
 import styles from "@styles/app.module.css";
 
 import {
-  AnotherExchangeFoot,
   BROWSER_RUN_KEEP_OPEN_BODY,
-  DonePanel,
   FailureAlert,
   FailureRecoveryButton,
-  RECONNECTING_HEADING,
   ReattachNotice,
-  RunDownloads,
-  RunWarningsAlert,
   SERVER_JOB_KEEP_OPEN_BODY,
   leftBehindConfirm,
-  recoveredExchangeHeading,
   serverJobPeerWindowBody,
   untakenRecordConfirm,
   useDownloadsLeftBehind,
 } from "./RunSurface";
-import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
-import { ReceiptDownload } from "./ReceiptDownload";
-import { RecordDownload } from "./RecordDownload";
-import { StatusPanel } from "./StatusPanel";
-import { reattachedRunState } from "./reattachedRunState";
+import { RunSectionTail, useRunHeadingFocus } from "./RunSectionTail";
+import { reattachHeading, runReattachView } from "./reattachedRunState";
 import { useBeforeUnloadPrompt } from "./useUnloadGuard";
 import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
@@ -120,9 +108,6 @@ export function AcceptorExchangeSection({
   onAbandon: () => void;
 }) {
   const phase = outputs !== undefined ? "done" : "running";
-  // The run reached a terminal, which is what the three console-artifact
-  // panels below key on: each states its artifact's standing once the run is
-  // past producing it.
   const settled = phase === "done" || failure !== undefined;
 
   // Where this run's exchange record stands on the console -- the one ask that
@@ -142,22 +127,13 @@ export function AcceptorExchangeSection({
   // this page's copy.
   const recordOffer = runRecord ?? jobRecordOffer;
 
-  // A busy (409) create at start re-attached this surface to an exchange the
-  // console already held (a second tab, a navigate-away-and-back, or an orphaned
-  // job). It then heads with recovery-style copy and drops the fresh-run keep-open
-  // framing, so it never displays as a fresh success -- but the completion affordances
-  // (the results summary and the recurring hand-off) still show, since those hold
-  // however the operator reached completion.
-  const reattachedRun = reattached !== undefined;
-  const reattachState = reattachedRunState({
+  const reattach = runReattachView({
+    reattached,
+    reattaching,
     failed: failure !== undefined,
     hasOutputs: outputs !== undefined,
-    status: reattached ?? "running",
   });
-  // Fresh-run framing (the keep-open callout, the fresh title) is suppressed both
-  // once re-attached and during the reconnecting interim, so nothing fresh-run
-  // flashes while the 409 is being resolved.
-  const recovering = reattaching || reattachedRun;
+  const { reattachedRun, reattachState, recovering } = reattach;
 
   const { leftBehind, onDownload } = useDownloadsLeftBehind(outputs);
   useBeforeUnloadPrompt(
@@ -181,43 +157,20 @@ export function AcceptorExchangeSection({
       failure.category === "exchange" ||
       (failure.category === "config" && !columnsCanResolve));
 
-  // The section-level focus throughline. On mount the h1 is focused (this is the
-  // entry move -- the acceptor pressed "Start the exchange", whose button
-  // unmounts, so a keyboard/screen-reader user lands on the run screen rather
-  // than on nothing; the console host does not drive focus for this step). Within
-  // the section focus moves again at completion (so the results are read) and
-  // after a retry clears the alert -- the alert (which may hold focus, on Try
-  // again) unmounts, orphaning focus onto <body>, so it is recovered onto the
-  // heading. The recovery move fires only when focus was actually orphaned;
-  // completion always moves it. While a failure is showing, FailureAlert owns the
-  // moment (focus and completion are mutually exclusive -- a failed run never
-  // reaches `done`).
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      // Entry: FailureAlert takes focus on its own mount when a failure is
-      // already present, so do not fight it.
-      if (failure === undefined) headingRef.current?.focus();
-      return;
-    }
-    if (phase === "done") {
-      headingRef.current?.focus();
-      return;
-    }
-    if (failure !== undefined) return;
-    const active = document.activeElement;
-    if (!active || active === document.body) headingRef.current?.focus();
-  }, [phase, failure, reattaching, reattachedRun]);
+  // The h1 takes focus on mount: the acceptor pressed "Start the exchange",
+  // whose button unmounts, and the console host does not drive focus for this
+  // step, so a keyboard or screen-reader user lands on the run screen.
+  const headingRef = useRunHeadingFocus({
+    phase,
+    failure,
+    reattaching,
+    reattachedRun,
+    focusOnMount: true,
+  });
 
-  const title = reattachedRun
-    ? recoveredExchangeHeading(reattachState)
-    : reattaching
-      ? RECONNECTING_HEADING
-      : phase === "done"
-        ? "Exchange complete"
-        : "Exchange in progress";
+  const title =
+    reattachHeading(reattach) ??
+    (phase === "done" ? "Exchange complete" : "Exchange in progress");
 
   return (
     <>
@@ -299,45 +252,20 @@ export function AcceptorExchangeSection({
           )}
         </div>
       )}
-      {phase === "done" && (
-        <DonePanel outputs={outputs} finishedAt={run.finishedAt} />
-      )}
-      <RunWarningsAlert warnings={runWarnings} />
-      <StatusPanel
+      <RunSectionTail
         run={run}
+        outputs={outputs}
+        failure={failure}
+        warnings={runWarnings}
         done={phase === "done"}
-        halted={failure !== undefined}
+        serverJob={serverJob}
+        jobId={jobId}
+        recordOffer={recordOffer}
+        discardFolder={discardFolder}
+        onDownload={onDownload}
+        leaveConfirm={leftBehindConfirm(leftBehind)}
+        onAbandon={onAbandon}
       />
-      {phase === "done" && outputs !== undefined && (
-        <RunDownloads
-          outputs={outputs}
-          heading="h2"
-          onDownload={serverJob ? undefined : onDownload}
-        />
-      )}
-      <RecordDownload
-        offer={recordOffer}
-        heldBy={serverJob ? "console" : "page"}
-      />
-      {serverJob && jobId !== undefined && (
-        <>
-          <ReceiptDownload jobId={jobId} settled={settled} />
-          <DiagnosticLogPanel jobId={jobId} settled={settled} />
-        </>
-      )}
-      {/* Available from job creation onward, collapsed until the run completes
-          -- the inviter seat's rule, applied identically here. */}
-      {serverJob && jobId !== undefined && failure === undefined && (
-        <RecurringHandoff jobId={jobId} collapsible={phase !== "done"} />
-      )}
-      {(phase === "done" || failure?.category === "output") && (
-        <AnotherExchangeFoot
-          onNavigate={onAbandon}
-          confirmBeforeLeave={serverJob}
-          leaveConfirm={serverJob ? undefined : leftBehindConfirm(leftBehind)}
-          folder={discardFolder}
-        />
-      )}
     </>
   );
 }

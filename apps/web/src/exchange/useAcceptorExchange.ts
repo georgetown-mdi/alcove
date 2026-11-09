@@ -71,6 +71,7 @@ import type {
   ServerJobExchangeDriverConfig,
   ServerJobExchangeTransport,
 } from "@psi/jobClient/serverJobExchangeDriver";
+import type { RunFailure, ServerJobRunChoices } from "./useInviterExchange";
 import type { AcceptedSignalingServer } from "@console/signalingServerModel";
 import type { ExchangeDriver } from "@psi/exchangeDriver";
 import type { ExchangeRun } from "./exchangeRun";
@@ -78,7 +79,6 @@ import type { JobExchangeOptions } from "@jobContract/intentSchemas";
 import type { OwnRelay } from "@psi/transport/ownRelaySetting";
 import type { ReceiptsIntentFields } from "@psi/receiptsModel";
 import type { RunDiagnosticsIntentFields } from "@psi/runDiagnosticsModel";
-import type { RunFailure } from "./useInviterExchange";
 import type { Transport } from "@psi/transportChooser";
 
 const log = getLogger("useAcceptorExchange");
@@ -150,22 +150,7 @@ export function acceptorServerJobConfig({
    * console hands the CLI, so the run the console conducts presents the value
    * the operator consented to. */
   deduplicate: boolean;
-  /** The field delimiter the operator chose at the file step, composed into the
-   * config the console hands the CLI so the run reads the mounted file and writes
-   * its result the way the console profiled it. Absent composes no key, which
-   * reads and writes commas. */
-  csvDelimiter?: string;
-  /** The confirm-columns step's file-handling choices, already resolved through
-   * core's retain-mode implication. Absent when the operator changed nothing, so
-   * the composed config includes no `options` block at all. */
-  options?: JobExchangeOptions;
-  /** The same step's per-run diagnostic and recovery choices, forwarded to the
-   * intent unchanged. */
-  runDiagnostics?: RunDiagnosticsIntentFields;
-  /** The same step's receipt-signing and retention choices, forwarded to the
-   * intent unchanged. */
-  receipts?: ReceiptsIntentFields;
-}): ServerJobExchangeDriverConfig {
+} & ServerJobRunChoices): ServerJobExchangeDriverConfig {
   return {
     transport,
     side: "acceptor",
@@ -633,10 +618,10 @@ export function useAcceptorExchange({
           inputSource: jobInputSource,
           transport,
           deduplicate,
-          ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
-          ...(options !== undefined ? { options } : {}),
-          ...(runDiagnostics !== undefined ? { runDiagnostics } : {}),
-          ...(receipts !== undefined ? { receipts } : {}),
+          csvDelimiter,
+          options,
+          runDiagnostics,
+          receipts,
         }),
         // Persist the created job's id so a reload or hard tab close can re-attach
         // to the console's run, and track it for the deliberate-discard paths.

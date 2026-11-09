@@ -1,3 +1,5 @@
+import type { FileRejection } from "@mantine/dropzone";
+
 /**
  * Maximum size, in bytes, of a file the console intake dropzones accept -- 200 MiB.
  *
@@ -21,6 +23,44 @@
  * than a stale literal.
  */
 export const MAX_CSV_FILE_BYTES = 200 * 1024 ** 2;
+
+const REJECTED_FILE_KINDS = {
+  csv: { wrongType: "not a supported file type", choose: "a CSV file" },
+  json: { wrongType: "not a JSON file", choose: "a .json file" },
+} as const;
+
+/**
+ * What a dropzone says when it refuses a drop, which it otherwise only marks
+ * with a reject icon. The rejection codes go to `log`, never the file's name,
+ * which can itself be sensitive.
+ */
+export function fileRejectionMessage(
+  rejections: ReadonlyArray<FileRejection>,
+  {
+    maxMb,
+    noun,
+    log,
+  }: {
+    /** The dropzone's `maxSize` bound, in MB. */
+    maxMb: number;
+    noun: keyof typeof REJECTED_FILE_KINDS;
+    log: { warn: (...args: Array<unknown>) => void };
+  },
+): string {
+  const codes = new Set(
+    rejections.flatMap((rejection) =>
+      rejection.errors.map((error) => error.code),
+    ),
+  );
+  log.warn(`rejected ${rejections.length} file(s):`, [...codes]);
+  const kind = REJECTED_FILE_KINDS[noun];
+  const reasons: Array<string> = [];
+  if (codes.has("file-too-large"))
+    reasons.push(`larger than the ${maxMb} MB maximum`);
+  if (codes.has("file-invalid-type") || reasons.length === 0)
+    reasons.push(kind.wrongType);
+  return `That file is ${reasons.join(" and ")}. Choose ${kind.choose} under ${maxMb} MB.`;
+}
 
 /**
  * A titled operator-facing alert -- a read failure, an unlinkable/unnameable

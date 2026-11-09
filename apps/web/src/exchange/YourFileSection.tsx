@@ -9,7 +9,10 @@ import {
   CSV_DELIMITER_LOCAL_NOTICE,
   CsvDelimiterField,
 } from "@components/CsvDelimiterField";
-import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
+import {
+  MAX_CSV_FILE_BYTES,
+  fileRejectionMessage,
+} from "@components/csvIntake";
 import { resolveCsvDelimiter } from "@components/csvDelimiterChoice";
 
 import { isConsoleBuild } from "@utils/clientConfig";
@@ -111,25 +114,11 @@ export function YourFileSection({
     if (alert !== undefined) alertRef.current?.focus();
   }, [alert]);
 
-  // The dropzone enforces the size cap and type list itself but only flashes a
-  // reject icon; say why, or a refused drop is a silent no-op. Codes only in the
-  // log -- a rejected file's NAME can itself be sensitive here.
   const [rejectionMessage, setRejectionMessage] = useState<string>();
   const maxMb = MAX_CSV_FILE_BYTES / 1024 ** 2;
   function handleReject(rejections: Array<FileRejection>) {
-    const codes = new Set(
-      rejections.flatMap((rejection) =>
-        rejection.errors.map((error) => error.code),
-      ),
-    );
-    log.warn(`rejected ${rejections.length} file(s):`, [...codes]);
-    const reasons: Array<string> = [];
-    if (codes.has("file-too-large"))
-      reasons.push(`larger than the ${maxMb} MB maximum`);
-    if (codes.has("file-invalid-type") || reasons.length === 0)
-      reasons.push("not a supported file type");
     setRejectionMessage(
-      `That file is ${reasons.join(" and ")}. Choose a CSV file under ${maxMb} MB.`,
+      fileRejectionMessage(rejections, { maxMb, noun: "csv", log }),
     );
   }
 
