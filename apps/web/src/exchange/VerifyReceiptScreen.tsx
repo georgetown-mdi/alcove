@@ -27,9 +27,12 @@ import {
   INITIAL_CSV_DELIMITER_CHOICE,
   resolveCsvDelimiter,
 } from "@components/csvDelimiterChoice";
+import {
+  MAX_CSV_FILE_BYTES,
+  fileRejectionMessage,
+} from "@components/csvIntake";
 import { CsvDelimiterField } from "@components/CsvDelimiterField";
 import { DisclosureSection } from "@components/DisclosureSection";
-import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
 import { importLinkageTermsDocument } from "@psi/linkageTermsIO";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
@@ -94,10 +97,19 @@ const log = getLogger("VerifyReceiptScreen");
 // The sensitive-JSON chokepoint bounds the body too, but the dropzone refuses a
 // pathological file before it is ever read.
 const MAX_JSON_FILE_BYTES = 2 * 1024 ** 2;
-const JSON_MAX_MB = MAX_JSON_FILE_BYTES / 1024 ** 2;
 
-// The re-supplied input/result CSVs share the app-wide browser-memory bound.
-const CSV_MAX_MB = MAX_CSV_FILE_BYTES / 1024 ** 2;
+/** What each of this page's dropzones takes. The re-supplied input and result
+ * CSVs share the app-wide browser-memory bound. */
+const DROPZONE_KINDS = {
+  json: {
+    accept: ["application/json", "text/json"],
+    maxSize: MAX_JSON_FILE_BYTES,
+  },
+  csv: {
+    accept: ["text/plain", "text/csv", "application/vnd.ms-excel"],
+    maxSize: MAX_CSV_FILE_BYTES,
+  },
+} as const;
 
 // What a dropzone shows for the file it holds: its name, and nothing else. The
 // impossible `text` member is the enforcement -- a document's own text is read,
@@ -181,35 +193,29 @@ async function readAndParse<T>(
   return parse(content);
 }
 
-/** A labelled JSON dropzone: a parameterized copy of the console's CSV intake
- * furniture, for a single .json input with a filename-convention hint. */
-function JsonDropzone({
+/** A labelled dropzone for one .json or CSV input with a filename-convention
+ * hint. Kept local rather than the inviter's YourFileSection, which holds a
+ * name field and terms callout this page does not want. */
+function FileDropzone({
+  kind,
   label,
   hint,
-  chosen,
+  chosenName,
   onFile,
 }: {
+  kind: keyof typeof DROPZONE_KINDS;
   label: string;
   hint: string;
-  chosen: ChosenFile | undefined;
+  /** The name of the file the dropzone holds, the one thing it shows of it. */
+  chosenName: string | undefined;
   onFile: (file: File) => void;
 }) {
+  const { accept, maxSize } = DROPZONE_KINDS[kind];
+  const maxMb = maxSize / 1024 ** 2;
   const [rejectionMessage, setRejectionMessage] = useState<string>();
   function handleReject(rejections: Array<FileRejection>) {
-    const codes = new Set(
-      rejections.flatMap((rejection) =>
-        rejection.errors.map((error) => error.code),
-      ),
-    );
-    // Codes only in the log: a rejected file's name can itself be sensitive.
-    log.warn(`rejected ${rejections.length} file(s):`, [...codes]);
-    const reasons: Array<string> = [];
-    if (codes.has("file-too-large"))
-      reasons.push(`larger than the ${JSON_MAX_MB} MB maximum`);
-    if (codes.has("file-invalid-type") || reasons.length === 0)
-      reasons.push("not a JSON file");
     setRejectionMessage(
-      `That file is ${reasons.join(" and ")}. Choose a .json file under ${JSON_MAX_MB} MB.`,
+      fileRejectionMessage(rejections, { maxMb, noun: kind, log }),
     );
   }
   return (
@@ -228,26 +234,26 @@ function JsonDropzone({
           if (file !== undefined) onFile(file);
         }}
         onReject={handleReject}
-        accept={["application/json", "text/json"]}
-        maxSize={MAX_JSON_FILE_BYTES}
+        accept={[...accept]}
+        maxSize={maxSize}
         multiple={false}
         aria-label={label}
       >
         <p>
           <strong>Drag the file here, or select to browse</strong>
         </p>
-        <p className={styles.dropzoneMax}>(Max file size: {JSON_MAX_MB} MB)</p>
+        <p className={styles.dropzoneMax}>(Max file size: {maxMb} MB)</p>
       </Dropzone>
       {rejectionMessage !== undefined && (
         <Text role="alert" c="error" size="sm" mt="xs">
           {rejectionMessage}
         </Text>
       )}
-      {chosen !== undefined && (
+      {chosenName !== undefined && (
         <div className={styles.fileCard}>
           <IconFileText aria-hidden />
           <div className={`${styles.fileName} ${styles.mono}`}>
-            {chosen.name}
+            {chosenName}
           </div>
         </div>
       )}
@@ -690,10 +696,11 @@ export function VerifyReceiptScreen() {
       </p>
 
       <Stack gap="lg" mt="md">
-        <JsonDropzone
+        <FileDropzone
+          kind="json"
           label="Exchange record"
           hint="The shareable record: alcove-record-<time>.json"
-          chosen={record?.file}
+          chosenName={record?.file.name}
           onFile={(file) => void onRecordFile(file)}
         />
         {record?.alert !== undefined && (
@@ -703,10 +710,11 @@ export function VerifyReceiptScreen() {
           />
         )}
 
-        <JsonDropzone
+        <FileDropzone
+          kind="json"
           label="Verification keys"
           hint="The private keys: alcove-record-<time>.keys.json"
-          chosen={keys?.file}
+          chosenName={keys?.file.name}
           onFile={(file) => void onKeysFile(file)}
         />
         {keys?.alert !== undefined && (
@@ -837,16 +845,18 @@ export function VerifyReceiptScreen() {
               and both parties&apos; linkage terms to check the agreed-terms
               hash. Supply the input and result together, or neither.
             </Text>
-            <JsonOrCsvDropzone
+            <FileDropzone
+              kind="csv"
               label="Your input CSV"
               hint="The input file you contributed to this exchange"
-              chosen={inputCsv}
+              chosenName={inputCsv?.name}
               onFile={(file) => onCsvFile(file, setInputCsv)}
             />
-            <JsonOrCsvDropzone
+            <FileDropzone
+              kind="csv"
               label="Your result CSV"
               hint="The result file you retained from this exchange"
-              chosen={resultCsv}
+              chosenName={resultCsv?.name}
               onFile={(file) => onCsvFile(file, setResultCsv)}
             />
             <CsvDelimiterField
@@ -910,10 +920,11 @@ export function VerifyReceiptScreen() {
               your partner&apos;s fingerprint, pinned out-of-band, and load your
               own exported certificate for your side.
             </Text>
-            <JsonDropzone
+            <FileDropzone
+              kind="json"
               label="Signed receipt"
               hint="The receipt both parties signed: alcove-receipt-<time>.json"
-              chosen={signedRecord?.file}
+              chosenName={signedRecord?.file.name}
               onFile={(file) => void onSignedRecordFile(file)}
             />
             {signedRecord?.alert !== undefined && (
@@ -933,10 +944,11 @@ export function VerifyReceiptScreen() {
                 onPinnedFingerprint(event.currentTarget.value)
               }
             />
-            <JsonDropzone
+            <FileDropzone
+              kind="json"
               label="Your exported certificate"
               hint="The public certificate for your side of the exchange. Whoever ran your side with the command-line tool or the console exports it with 'alcove fingerprint --export-certificate' and gives it to you. Not a signing identity file: nothing here signs, so this page never imports or uses a private key."
-              chosen={certificate?.file}
+              chosenName={certificate?.file.name}
               onFile={(file) => void onCertificateFile(file)}
             />
             {certificate?.alert !== undefined && (
@@ -1005,80 +1017,6 @@ function VerdictCheckRow({ row }: { row: VerdictRow }) {
         <Text size="xs" c="dimmed">
           {row.explanation}
         </Text>
-      )}
-    </div>
-  );
-}
-
-/** A CSV dropzone for the re-supply section: the same furniture as the JSON one
- * but accepting the CSV type list. Kept local (not the inviter's YourFileSection,
- * which holds a name field and terms callout this page does not want). */
-function JsonOrCsvDropzone({
-  label,
-  hint,
-  chosen,
-  onFile,
-}: {
-  label: string;
-  hint: string;
-  chosen: File | undefined;
-  onFile: (file: File) => void;
-}) {
-  const [rejectionMessage, setRejectionMessage] = useState<string>();
-  function handleReject(rejections: Array<FileRejection>) {
-    const codes = new Set(
-      rejections.flatMap((rejection) =>
-        rejection.errors.map((error) => error.code),
-      ),
-    );
-    log.warn(`rejected ${rejections.length} file(s):`, [...codes]);
-    const reasons: Array<string> = [];
-    if (codes.has("file-too-large"))
-      reasons.push(`larger than the ${CSV_MAX_MB} MB maximum`);
-    if (codes.has("file-invalid-type") || reasons.length === 0)
-      reasons.push("not a supported file type");
-    setRejectionMessage(
-      `That file is ${reasons.join(" and ")}. Choose a CSV file under ${CSV_MAX_MB} MB.`,
-    );
-  }
-  return (
-    <div>
-      <Text size="sm" fw={600}>
-        {label}
-      </Text>
-      <Text size="xs" c="dimmed" mb={4}>
-        {hint}
-      </Text>
-      <Dropzone
-        className={styles.dropzone}
-        onDrop={(files) => {
-          setRejectionMessage(undefined);
-          const file = files.at(0);
-          if (file !== undefined) onFile(file);
-        }}
-        onReject={handleReject}
-        accept={["text/plain", "text/csv", "application/vnd.ms-excel"]}
-        maxSize={MAX_CSV_FILE_BYTES}
-        multiple={false}
-        aria-label={label}
-      >
-        <p>
-          <strong>Drag the file here, or select to browse</strong>
-        </p>
-        <p className={styles.dropzoneMax}>(Max file size: {CSV_MAX_MB} MB)</p>
-      </Dropzone>
-      {rejectionMessage !== undefined && (
-        <Text role="alert" c="error" size="sm" mt="xs">
-          {rejectionMessage}
-        </Text>
-      )}
-      {chosen !== undefined && (
-        <div className={styles.fileCard}>
-          <IconFileText aria-hidden />
-          <div className={`${styles.fileName} ${styles.mono}`}>
-            {chosen.name}
-          </div>
-        </div>
       )}
     </div>
   );

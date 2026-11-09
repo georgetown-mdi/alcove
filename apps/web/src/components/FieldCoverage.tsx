@@ -1,9 +1,11 @@
 import { Alert, Text } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 
+import { SEMANTIC_TYPE_LABELS } from "@psi/metadataEditing";
 import { isSilentEmpty } from "@psi/workers/nonEmptyAggregate";
 import { refusedColumnsSentence } from "@psi/columnNames";
 
+import type { LinkageField, Standardization } from "@alcove/core";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
 import type { OverlongColumnName } from "@psi/columnNames";
 
@@ -50,6 +52,40 @@ export function coverageUnavailableMessage(
     `run. Your cleaning steps still apply. Shorten the header${plural ? "s" : ""} ` +
     "in your file and choose the file again."
   );
+}
+
+/**
+ * The one editor-wide announcement a cleaning surface makes for the fields
+ * whose cleaning produces no value for any row, which the presentational
+ * {@link FieldCoverage} cards leave to it; empty when there are none or no
+ * coverage yet. It names each field by its semantic-type label, never by its
+ * name, which can come from the partner; labels are de-duplicated in
+ * standardization order so the read is stable.
+ */
+export function silentEmptyAnnouncement({
+  rates,
+  standardization,
+  declaredFields,
+}: {
+  rates: ReadonlyMap<string, FieldValueCoverage> | null;
+  standardization: Standardization;
+  declaredFields: ReadonlyArray<LinkageField>;
+}): string {
+  if (rates === null) return "";
+  const typeByName = new Map(
+    declaredFields.map((field) => [field.name, field.type]),
+  );
+  const labels = new Set<string>();
+  for (const transformation of standardization) {
+    const rate = rates.get(transformation.output);
+    const type = typeByName.get(transformation.output);
+    if (rate !== undefined && type !== undefined && isSilentEmpty(rate))
+      labels.add(SEMANTIC_TYPE_LABELS[type]);
+  }
+  if (labels.size === 0) return "";
+  return `Coverage warning: ${[...labels].join(", ")} ${
+    labels.size === 1 ? "produces" : "produce"
+  } no value for any row and cannot match. Check the cleaning steps.`;
 }
 
 /** Format the share of rows that produce a key. The ends are guarded so the percent

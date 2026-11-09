@@ -45,7 +45,6 @@ import { createManagedExchange } from "@psi/managed/managedExchangeStore";
 import { deleteSftpConnection } from "@psi/jobClient/sftpAuthoringClient";
 import { fetchJobRendezvous } from "@psi/jobClient/workInputClient";
 import { fetchSignalingServer } from "@psi/jobClient/signalingServerClient";
-import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
 import {
   CSV_DELIMITER_LOCAL_NOTICE,
@@ -61,13 +60,16 @@ import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 import {
+  MAX_CSV_FILE_BYTES,
+  fileRejectionMessage,
+} from "@components/csvIntake";
+import {
   coverageProvider,
   useNonEmptyRates,
 } from "@components/useNonEmptyRates";
 import { AllowedRelaysField } from "@components/AllowedRelaysField";
 import { CONSOLE_COVERAGE_PENDING_LABEL } from "@components/FieldCoverage";
 import { InvitationTerms } from "@components/InvitationTerms";
-import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
 
 import {
   ALLOWED_RELAYS_CHANGED_SINCE_CONTINUE,
@@ -192,6 +194,7 @@ import {
 } from "./useAcceptorExchange";
 
 import { useStepHistory } from "./useStepHistory";
+import { useSupersedingCsvRead } from "./useSupersedingCsvRead";
 
 import {
   forgetAcceptedInvitation,
@@ -591,17 +594,7 @@ function AcceptorInvitationScreen({
   // file" button.
   const openFilePicker = useRef<() => void>(null);
 
-  // A parse may be in flight when the surface unmounts; the id lets a stale
-  // resolution fall on the floor and the abort tears the parse worker down.
-  const parseId = useRef(0);
-  const parseAbort = useRef<AbortController | undefined>(undefined);
-  useEffect(
-    () => () => {
-      parseId.current += 1;
-      parseAbort.current?.abort();
-    },
-    [],
-  );
+  const csvRead = useSupersedingCsvRead();
 
   // The acceptor's position is a step plus, on the columns step, its
   // sub-section (confirm vs. the Cleaning tab). Both fold into one opaque token
@@ -682,25 +675,11 @@ function AcceptorInvitationScreen({
     ? APPLIANCE_FILE_ASSURANCE
     : FILE_ASSURANCE_LINE;
 
-  // The dropzone enforces the size cap and type list itself but only flashes a
-  // reject icon; name why. Codes only in the log -- a rejected file's NAME can
-  // itself be sensitive here.
   const maxMb = MAX_CSV_FILE_BYTES / 1024 ** 2;
   function handleReject(rejections: Array<FileRejection>) {
-    const codes = new Set(
-      rejections.flatMap((rejection) =>
-        rejection.errors.map((error) => error.code),
-      ),
-    );
-    log.warn(`rejected ${rejections.length} file(s):`, [...codes]);
-    const reasons: Array<string> = [];
-    if (codes.has("file-too-large"))
-      reasons.push(`larger than the ${maxMb} MB maximum`);
-    if (codes.has("file-invalid-type") || reasons.length === 0)
-      reasons.push("not a supported file type");
     dispatch({
       type: "file-rejected",
-      message: `That file is ${reasons.join(" and ")}. Choose a CSV file under ${maxMb} MB.`,
+      message: fileRejectionMessage(rejections, { maxMb, noun: "csv", log }),
     });
   }
 
@@ -799,28 +778,8 @@ function AcceptorInvitationScreen({
 
     // Narrows `file` for the hosted parse below (the `fileChosen` boolean does not).
     if (file === undefined) return;
-    const id = ++parseId.current;
-    parseAbort.current?.abort();
-    const controller = new AbortController();
-    parseAbort.current = controller;
     dispatch({ type: "parse-started" });
-    try {
-      const result = await loadCSVFileOffMainThread(file, {
-        signal: controller.signal,
-        ...(csvDelimiter !== undefined ? { delimiter: csvDelimiter } : {}),
-      });
-      if (id !== parseId.current) return;
-      const columns = result.meta.fields ?? [];
-      const stripped = result.meta.sanitizedColumnPositions;
-      const emptyPositions = emptyColumnPositions(columns);
-      if (emptyPositions.length > 0) {
-        dispatch({
-          type: "unnameable-columns-refused",
-          positions: stripped,
-          alert: unnameableColumnsAlert(emptyPositions, stripped),
-        });
-        return;
-      }
+    const outcome = await csvRead.read(file, csvDelimiter, (read) => {
       // Store the parsed CSV (not discard it) and seed the columns-step editor from
       // its columns; the verdict and launch payload derive from this state. Commit
       // the gate-checked name and this party's own deduplicate value here, so the
@@ -831,29 +790,37 @@ function AcceptorInvitationScreen({
         name,
         deduplicate,
         csvDelimiter,
-        positions: stripped,
+        positions: read.sanitizedPositions,
         file,
         acquired: {
           fileName: file.name,
           sizeBytes: file.size,
-          columns,
-          rawRows: result.data,
-          rowCount: result.data.length,
+          columns: read.columns,
+          rawRows: read.rows,
+          rowCount: read.rows.length,
         },
       });
       goToStep("columns");
-    } catch (error) {
-      if (id !== parseId.current) return;
+    });
+    if (outcome.kind === "superseded") return;
+    if (outcome.kind === "refused")
+      dispatch({
+        type: "unnameable-columns-refused",
+        positions: outcome.sanitizedPositions,
+        alert: unnameableColumnsAlert(
+          outcome.emptyPositions,
+          outcome.sanitizedPositions,
+        ),
+      });
+    else if (outcome.kind === "failed")
       dispatch({
         type: "parse-failed",
         alert: {
           title: "Could not read your file",
-          message: sanitizeErrorForDisplay(error),
+          message: sanitizeErrorForDisplay(outcome.error),
         },
       });
-    } finally {
-      if (id === parseId.current) dispatch({ type: "parse-finished" });
-    }
+    dispatch({ type: "parse-finished" });
   }
 
   // What the read removed from this file's header, stated on the intake step as

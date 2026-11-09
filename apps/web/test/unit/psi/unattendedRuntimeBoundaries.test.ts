@@ -786,6 +786,7 @@ const ONE_OFF_EXCHANGE_SURFACES = [
   "exchange/DirectRunSection.tsx",
   "exchange/InviterExchangeSection.tsx",
   "exchange/RecoveredExchangePanel.tsx",
+  "exchange/RunSectionTail.tsx",
 ];
 
 describe("writing a run's results into the granted folder", () => {

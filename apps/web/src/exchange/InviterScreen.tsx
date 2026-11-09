@@ -39,7 +39,6 @@ import { fetchJobRendezvous } from "@psi/jobClient/workInputClient";
 import { fetchSftpConnection } from "@psi/jobClient/serverJobExchangeDriver";
 import { fetchSignalingServer } from "@psi/jobClient/signalingServerClient";
 import { invitationLocation } from "@psi/invitationLocation";
-import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
 import { alcoveVersion, isConsoleBuild } from "@utils/clientConfig";
 import { useAppShellUpdateHold } from "@utils/appShellUpdateHold";
@@ -245,6 +244,7 @@ import {
   usePendingInvitationRecord,
 } from "./pendingInvitation";
 import { useStepHistory } from "./useStepHistory";
+import { useSupersedingCsvRead } from "./useSupersedingCsvRead";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type {
@@ -313,6 +313,14 @@ const SPINE_LABELS: Record<InviterSpineStep, string> = {
   columns: "Matching & sharing",
   review: "Review & create",
 };
+
+/** The notice for a browser read whose column-name sanitation changed any
+ * header position; undefined when it changed none. */
+function sanitizedNoticeFor(
+  positions: ReadonlyArray<number>,
+): AlertContent | undefined {
+  return positions.length > 0 ? sanitizedColumnsAlert(positions) : undefined;
+}
 
 /**
  * The alert for a mint that refused this file. The mint re-parses the retained file
@@ -1116,19 +1124,7 @@ export function InviterScreen() {
     dispatch({ type: "editor-applied", editor: next });
   }
 
-  // A parse may still be in flight when the surface unmounts or a newer file
-  // is dropped; the id lets the stale resolution fall on the floor instead of
-  // clobbering current state, and the abort tears the parse worker down so a
-  // discarded read does not run to completion (the FileAcquire pattern).
-  const parseId = useRef(0);
-  const parseAbort = useRef<AbortController | undefined>(undefined);
-  useEffect(
-    () => () => {
-      parseId.current += 1;
-      parseAbort.current?.abort();
-    },
-    [],
-  );
+  const csvRead = useSupersedingCsvRead();
 
   // A console build saves no recurring exchange, so it never shows the note.
   const [forRecurringSetup] = useState(
@@ -1181,42 +1177,18 @@ export function InviterScreen() {
     delimiter: string | undefined,
     seed?: { name: string },
   ) {
-    const id = ++parseId.current;
-    parseAbort.current?.abort();
-    const controller = new AbortController();
-    parseAbort.current = controller;
     // The sample seed has its own inviter name so step 1 lands complete; a
     // real drop keeps whatever the operator typed. Read before the dispatch so
     // the derived editor's identity and the name field agree.
     const identity = seed?.name ?? name;
     dispatch({ type: "read-started", seedName: seed?.name });
-    try {
-      const result = await loadCSVFileOffMainThread(file, {
-        signal: controller.signal,
-        ...(delimiter !== undefined ? { delimiter } : {}),
-      });
-      if (id !== parseId.current) return;
-      const columns = result.meta.fields ?? [];
-      const stripped = result.meta.sanitizedColumnPositions;
-      const emptyPositions = emptyColumnPositions(columns);
-      // The refusal names the columns the removal left unnamed, the notice
-      // every position the read changed; both apply to the same read.
-      const notice =
-        stripped.length > 0 ? sanitizedColumnsAlert(stripped) : undefined;
-      if (emptyPositions.length > 0) {
-        dispatch({
-          type: "read-discarded",
-          alert: unnameableColumnsAlert(emptyPositions, stripped),
-          notice,
-        });
-        return;
-      }
+    const outcome = await csvRead.read(file, delimiter, (read) => {
       const csv: AcquiredCsv = {
         fileName: file.name,
         sizeBytes: file.size,
-        rawRows: result.data,
-        columns,
-        rowCount: result.data.length,
+        rawRows: read.rows,
+        columns: read.columns,
+        rowCount: read.rows.length,
       };
       const seeded = editorFromCsv(identity, csv);
       dispatch({
@@ -1224,22 +1196,32 @@ export function InviterScreen() {
         acquired: csv,
         file,
         editor: seeded,
-        notice,
+        notice: sanitizedNoticeFor(read.sanitizedPositions),
         alert:
           seeded.draft.keys.length === 0 ? unmatchableFileAlert() : undefined,
       });
-    } catch (error) {
-      if (id !== parseId.current) return;
+    });
+    if (outcome.kind === "superseded") return;
+    if (outcome.kind === "refused")
+      // The refusal names the columns the removal left unnamed, the notice
+      // every position the read changed; both apply to the same read.
+      dispatch({
+        type: "read-discarded",
+        alert: unnameableColumnsAlert(
+          outcome.emptyPositions,
+          outcome.sanitizedPositions,
+        ),
+        notice: sanitizedNoticeFor(outcome.sanitizedPositions),
+      });
+    else if (outcome.kind === "failed")
       dispatch({
         type: "read-discarded",
         alert: {
           title: "The file could not be read",
-          message: sanitizeErrorForDisplay(error),
+          message: sanitizeErrorForDisplay(outcome.error),
         },
       });
-    } finally {
-      if (id === parseId.current) dispatch({ type: "read-finished" });
-    }
+    dispatch({ type: "read-finished" });
   }
 
   // Commit a profiled mounted file (the console picker's "Use this file") as
@@ -1333,8 +1315,7 @@ export function InviterScreen() {
   // flight is discarded (its resolution falls on the floor). Nothing about the
   // demo persists.
   function clearSample() {
-    parseId.current += 1;
-    parseAbort.current?.abort();
+    csvRead.discard();
     dispatch({ type: "sample-cleared" });
     goTo("file");
   }

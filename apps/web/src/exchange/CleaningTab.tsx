@@ -3,12 +3,12 @@ import { useMemo } from "react";
 import { Alert, VisuallyHidden } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 
-import { SEMANTIC_TYPE_LABELS } from "@psi/metadataEditing";
 import { isSilentEmpty } from "@psi/workers/nonEmptyAggregate";
 
 import {
   FieldCoverage,
   coverageUnavailableMessage,
+  silentEmptyAnnouncement,
 } from "@components/FieldCoverage";
 import { CleaningErrorBoundary } from "@components/CleaningErrorBoundary";
 import { StandardizationCards } from "@components/StandardizationCards";
@@ -94,34 +94,19 @@ export function CleaningTab({
     .map((transformation) => `${transformation.output}=${transformation.input}`)
     .join(",");
 
-  // The per-card coverage alarm is presentational by contract (FieldCoverage
-  // announces nothing itself); this region makes the one editor-wide
-  // announcement it defers to. Safe type labels, never the partner-controlled
-  // field names.
-  const fieldTypeByName = useMemo(
-    () => new Map(declaredFields.map((field) => [field.name, field.type])),
-    [declaredFields],
+  const silentEmpty = useMemo(
+    () =>
+      silentEmptyAnnouncement({
+        rates,
+        standardization: editor.draft.standardization,
+        declaredFields,
+      }),
+    [rates, editor.draft.standardization, declaredFields],
   );
-  const silentEmptyLabels = useMemo(() => {
-    if (rates === null) return [];
-    const labels = new Set<string>();
-    for (const transformation of editor.draft.standardization) {
-      const rate = rates.get(transformation.output);
-      if (rate !== undefined && isSilentEmpty(rate)) {
-        const type = fieldTypeByName.get(transformation.output);
-        if (type !== undefined) labels.add(SEMANTIC_TYPE_LABELS[type]);
-      }
-    }
-    return [...labels];
-  }, [rates, editor.draft.standardization, fieldTypeByName]);
   const unavailableMessage = coverageUnavailableMessage(coverageRefusedColumns);
   const coverageAnnouncement = coverageUnavailable
     ? unavailableMessage
-    : silentEmptyLabels.length === 0
-      ? ""
-      : `Coverage warning: ${silentEmptyLabels.join(", ")} ${
-          silentEmptyLabels.length === 1 ? "produces" : "produce"
-        } no value for any row and cannot match. Check the cleaning steps.`;
+    : silentEmpty;
   return (
     <>
       <button type="button" className={styles.backlink} onClick={onBack}>

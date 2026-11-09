@@ -1,27 +1,15 @@
-import { useEffect, useRef } from "react";
-
-import { RecurringHandoff } from "@recurring/RecurringHandoff";
 import styles from "@styles/app.module.css";
 
 import {
-  AnotherExchangeFoot,
-  DonePanel,
   FailureAlert,
   FailureRecoveryButton,
-  RECONNECTING_HEADING,
   ReattachNotice,
-  RunDownloads,
-  RunWarningsAlert,
   SERVER_JOB_KEEP_OPEN_BODY,
-  recoveredExchangeHeading,
   untakenRecordConfirm,
 } from "./RunSurface";
-import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
-import { ReceiptDownload } from "./ReceiptDownload";
-import { RecordDownload } from "./RecordDownload";
-import { StatusPanel } from "./StatusPanel";
+import { RunSectionTail, useRunHeadingFocus } from "./RunSectionTail";
+import { reattachHeading, runReattachView } from "./reattachedRunState";
 import { awaitingPartner } from "./exchangeRun";
-import { reattachedRunState } from "./reattachedRunState";
 import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
 
@@ -88,9 +76,6 @@ export function DirectRunSection({
   onAbandon: () => void;
 }) {
   const done = outputs !== undefined;
-  // The run reached a terminal, which is what the three console-artifact
-  // panels below key on: each states its artifact's standing once the run is
-  // past producing it.
   const settled = done || failure !== undefined;
   // Where this run's exchange record stands on the console -- the one ask that
   // both offers the record and decides whether the failure recoveries, each of
@@ -113,54 +98,29 @@ export function DirectRunSection({
     (!retryable || failure.sharedName === true) &&
     failure.category !== "output";
 
-  // A busy (409) create at start re-attached this surface to an exchange the
-  // console already held (a second tab, a navigate-away-and-back, or an orphaned
-  // job). It then heads with recovery-style copy and drops the fresh-run keep-open
-  // framing, so it never displays as a fresh success -- but the completion
-  // affordances (the results summary and the recurring hand-off) still show, since
-  // those hold however the operator reached completion.
-  const reattachedRun = reattached !== undefined;
-  const reattachState = reattachedRunState({
+  const reattach = runReattachView({
+    reattached,
+    reattaching,
     failed: failure !== undefined,
     hasOutputs: outputs !== undefined,
-    status: reattached ?? "running",
   });
-  // Fresh-run framing (the keep-open callout, the fresh title) is suppressed both
-  // once re-attached and during the reconnecting interim, so nothing fresh-run
-  // flashes while the 409 is being resolved.
-  const recovering = reattaching || reattachedRun;
+  const { reattachedRun, reattachState, recovering } = reattach;
 
-  // Move focus to the heading at completion so the results are read, and onto the
-  // recovery heading when the reconnecting/recovery swap orphans focus (the guard
-  // fires only when focus landed on <body>, so a live element the operator placed
-  // it on is not stolen). The failure alert owns focus while a failure shows
-  // (FailureAlert focuses itself). Skipped on mount: the console host already sends
-  // focus to the incoming section's heading.
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    if (done) {
-      headingRef.current?.focus();
-      return;
-    }
-    if (failure !== undefined) return;
-    const active = document.activeElement;
-    if (!active || active === document.body) headingRef.current?.focus();
-  }, [done, failure, reattaching, reattachedRun]);
+  // The console host sends focus to the incoming section's heading on mount.
+  const headingRef = useRunHeadingFocus({
+    phase: done ? "done" : "running",
+    failure,
+    reattaching,
+    reattachedRun,
+  });
 
-  const title = reattachedRun
-    ? recoveredExchangeHeading(reattachState)
-    : reattaching
-      ? RECONNECTING_HEADING
-      : done
-        ? "Exchange complete"
-        : failure !== undefined
-          ? "Exchange stopped"
-          : "Exchange in progress";
+  const title =
+    reattachHeading(reattach) ??
+    (done
+      ? "Exchange complete"
+      : failure !== undefined
+        ? "Exchange stopped"
+        : "Exchange in progress");
 
   return (
     <>
@@ -204,31 +164,18 @@ export function DirectRunSection({
           {awaiting && <p className={styles.small}>{peerWindowBody}</p>}
         </div>
       )}
-      {outputs !== undefined && (
-        <DonePanel outputs={outputs} finishedAt={run.finishedAt} />
-      )}
-      <RunWarningsAlert warnings={warnings} />
-      <StatusPanel run={run} done={done} halted={failure !== undefined} />
-      {outputs !== undefined && <RunDownloads outputs={outputs} heading="h2" />}
-      <RecordDownload offer={recordOffer} />
-      {jobId !== undefined && (
-        <>
-          <ReceiptDownload jobId={jobId} settled={settled} />
-          <DiagnosticLogPanel jobId={jobId} settled={settled} />
-        </>
-      )}
-      {/* Available from job creation onward, collapsed until the run completes
-          -- the inviter seat's rule, applied identically here. */}
-      {jobId !== undefined && failure === undefined && (
-        <RecurringHandoff jobId={jobId} collapsible={!done} />
-      )}
-      {(done || failure?.category === "output") && (
-        <AnotherExchangeFoot
-          onNavigate={onAbandon}
-          confirmBeforeLeave
-          folder={discardFolder}
-        />
-      )}
+      <RunSectionTail
+        run={run}
+        outputs={outputs}
+        failure={failure}
+        warnings={warnings}
+        done={done}
+        serverJob
+        jobId={jobId}
+        recordOffer={recordOffer}
+        discardFolder={discardFolder}
+        onAbandon={onAbandon}
+      />
     </>
   );
 }
