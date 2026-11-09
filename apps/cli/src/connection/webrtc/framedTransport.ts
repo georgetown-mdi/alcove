@@ -66,7 +66,10 @@ export function sendCutError(): ConnectionError {
  * bounded reassembler before anything is delivered.
  */
 export function framedTransport(
-  controls: Pick<TransportControls, "deliver" | "fail" | "finish">,
+  controls: Pick<
+    TransportControls,
+    "deliver" | "fail" | "finish" | "inboundProgress"
+  >,
   transport: FramedTransportHooks,
 ): FramedTransport {
   const encoder = new PeerJsFrameEncoder();
@@ -103,7 +106,10 @@ export function framedTransport(
         controls.fail(asConnectionError(err, "protocol"));
         return;
       }
-      if (outcome.kind === "pending") return;
+      if (outcome.kind === "pending") {
+        controls.inboundProgress();
+        return;
+      }
       if (outcome.kind === "close") {
         transport.onInboundClose();
         // The partner's in-band clean close. `finish` rather than `fail`: the

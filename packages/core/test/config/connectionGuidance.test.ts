@@ -120,8 +120,9 @@ test("a webrtc block shows only the two peer waits, the options it reads", () =>
     `#   inactivity_timeout_ms: ${DEFAULT_PEER_INACTIVITY_TIMEOUT_MS}`,
   );
   expect(raw).toContain(
-    "# Unset, inactivity_timeout_ms is set from both parties' record counts,\n" +
-      `  # at least the ${DEFAULT_PEER_INACTIVITY_TIMEOUT_MS} shown; a value set here replaces it.`,
+    "# During matching, each sign from the partner that it is still working\n" +
+      "  # restarts the inactivity_timeout_ms wait, and the run ends after\n" +
+      "  # 2 minutes with nothing from the partner.",
   );
   // Offering the field would mislead: a webrtc connection does not read it, so
   // the load refuses the file naming the line rather than running as though the

@@ -19,7 +19,13 @@
  * advances or anticipates a write the runner has not made.
  */
 
-import { MAX_WEBRTC_FRAME_BYTES, olderVersionOf } from "@alcove/core";
+import {
+  MAX_WEBRTC_FRAME_BYTES,
+  PARTNER_STOPPED_RESPONDING_REMEDY,
+  failureCauseOf,
+  failureCauseSentence,
+  olderVersionOf,
+} from "@alcove/core";
 import { isConsoleBuild } from "@utils/clientConfig";
 
 import type { OlderVersionSide, TermsDifferenceRefusedBy } from "@alcove/core";
@@ -328,6 +334,26 @@ export const PARTNER_REFUSED_TERMS_REMEDY =
   "choose Make a terms update under Change terms on this exchange's page " +
   "and send it to them to apply, or apply an update they make with theirs, " +
   "then run the exchange again.";
+
+/** The title over a run whose partner sent nothing for the partner-silence
+ * bound during matching; shared by the one-shot exchange and a managed run's
+ * alert. */
+export const PARTNER_STOPPED_RESPONDING_TITLE =
+  "Your partner stopped responding";
+
+/** The copy for a run that failed on core's `partner-stopped-responding`
+ * cause: core's sentence and core's remedy, since no setting changes the bound
+ * it reached. `undefined` for any other failure. */
+export function partnerStoppedRespondingCopy(
+  error: unknown,
+): { title: string; message: string } | undefined {
+  const cause = failureCauseOf(error);
+  if (cause?.kind !== "partner-stopped-responding") return undefined;
+  return {
+    title: PARTNER_STOPPED_RESPONDING_TITLE,
+    message: `${failureCauseSentence(cause)} ${PARTNER_STOPPED_RESPONDING_REMEDY}`,
+  };
+}
 
 /** The title over a run stopped because this party refused what its partner
  * sent as not following the exchange protocol (`isPartnerProtocolRefusal`).

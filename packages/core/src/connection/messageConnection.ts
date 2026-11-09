@@ -2,6 +2,7 @@ import type { Connection } from "../types";
 import { ConnectionError, asConnectionError } from "../errors";
 import { MAX_WEBRTC_FRAME_BYTES } from "./binaryPackBounds";
 import { binaryByteLength } from "./binaryValue";
+import { partnerStoppedRespondingError } from "../failureCause";
 import { MAX_TIMER_MS } from "../utils/promise";
 
 /**
@@ -150,15 +151,26 @@ export interface MessageConnection {
    */
   markLastSentUnread?(): void;
   /**
-   * Optional: raise the inactivity budget that bounds a parked
-   * {@link receive} and each send's hand-off to `minMs` where it is lower,
-   * while the transport's own default is in force. A budget the operator set
-   * is left as set, and the call never lowers one; a receive already parked
-   * waits the raised budget afresh. An exchange calls it once after the terms
-   * exchange with `partnerStepWaitMs`. See docs/spec/WEBRTC_TRANSPORT.md
-   * ("The wait through a partner's PSI step").
+   * Optional: whether the two parties on this connection send each other
+   * still-working frames through the PSI phase (the WebRTC data channel and
+   * the WebSocket relay), or `false` where they do not (file-sync). See
+   * docs/spec/WEBRTC_TRANSPORT.md ("The wait through a partner's PSI step").
    */
-  raiseInactivityTimeout?(minMs: number): void;
+  exchangesStillWorkingFrames?(): boolean;
+  /**
+   * Optional: from this call on, a parked {@link receive} also fails when
+   * `ms` pass with no inbound bytes, each part of a frame that arrives
+   * restarting it; `undefined` clears it. The inactivity budget still bounds
+   * each whole frame beside it. The PSI phase arms it on the partner's first
+   * still-working frame.
+   */
+  armPartnerSilenceBound?(ms: number | undefined): void;
+  /**
+   * Optional: the byte length of the next queued inbound message as the
+   * transport delivered it, or `undefined` while none is queued or the next
+   * is not binary.
+   */
+  nextQueuedMessageBytes?(): number | undefined;
 }
 
 /** The members of {@link MessageConnection} a connection may omit. */
@@ -189,7 +201,9 @@ export const OPTIONAL_CONNECTION_MEMBERS = {
   useEnvelopeVersion: "forward",
   requireBinaryFrames: "forward",
   markLastSentUnread: "forward",
-  raiseInactivityTimeout: "override",
+  exchangesStillWorkingFrames: "forward",
+  armPartnerSilenceBound: "override",
+  nextQueuedMessageBytes: "override",
 } as const satisfies Record<OptionalConnectionMember, "forward" | "override">;
 
 /** The members {@link OPTIONAL_CONNECTION_MEMBERS} marks `"forward"`. */
@@ -202,11 +216,10 @@ export type ForwardedConnectionMember = {
 /**
  * Where the limit a timed-out wait reports came from, as told to a function
  * `inactivityHint`: the operator setting the connection names, whether set or
- * at its default (`"setting"`); a budget the exchange raised from the two
- * parties' record counts (`"record counts"`); or neither, so the message names
- * no setting (`"unnamed"`).
+ * at its default (`"setting"`), or none, so the message names no setting
+ * (`"unnamed"`).
  */
-export type InactivityLimitSource = "setting" | "record counts" | "unnamed";
+export type InactivityLimitSource = "setting" | "unnamed";
 
 /** The transport's interface to push inbound events into the queue. */
 export interface TransportControls {
@@ -242,6 +255,12 @@ export interface TransportControls {
    * way.
    */
   finish: (error: ConnectionError) => void;
+  /**
+   * A part of a message arrived and was kept toward the whole: restarts the
+   * partner-silence bound ({@link MessageConnection.armPartnerSilenceBound})
+   * of a parked {@link MessageConnection.receive}, and nothing else.
+   */
+  inboundProgress: () => void;
   /**
    * How many delivered messages wait in the queue for a
    * {@link MessageConnection.receive}. A transport that reads inbound frames
@@ -460,11 +479,9 @@ export class QueuedMessageConnection
   private readonly capacity: number;
   private readonly builtByteCapacity: number;
   private byteCapacity: number;
-  private inactivityTimeoutMs: number | undefined;
-  // Set by a transport whose budget is its own default rather than one the
-  // operator configured; only then does raiseInactivityTimeout lengthen it.
-  private readonly inactivityTimeoutRaisable: boolean;
-  private inactivityTimeoutRaised = false;
+  private readonly inactivityTimeoutMs: number | undefined;
+  private partnerSilenceBoundMs: number | undefined;
+  private partnerSilenceTimer: ReturnType<typeof setTimeout> | undefined;
   // Transport-supplied clause appended to the peer-silence inactivity error.
   // Kept here (rather than baked into the message) so the generic core layer
   // stays transport-agnostic: a caller that knows the transport supplies
@@ -505,7 +522,6 @@ export class QueuedMessageConnection
       capacity?: number;
       byteCapacity?: number;
       inactivityTimeoutMs?: number;
-      inactivityTimeoutRaisable?: boolean;
       inactivityHint?: string | ((limit: InactivityLimitSource) => string);
       inactivityTimeoutSetting?: string;
     },
@@ -515,8 +531,6 @@ export class QueuedMessageConnection
       options?.byteCapacity ?? DEFAULT_QUEUE_BYTE_CAPACITY;
     this.byteCapacity = this.builtByteCapacity;
     this.inactivityTimeoutMs = options?.inactivityTimeoutMs;
-    this.inactivityTimeoutRaisable =
-      options?.inactivityTimeoutRaisable ?? false;
     this.inactivityHint = options?.inactivityHint;
     this.inactivityTimeoutSetting = options?.inactivityTimeoutSetting;
     this.terminal = new Promise((resolve) => {
@@ -526,6 +540,11 @@ export class QueuedMessageConnection
       deliver: (message, receivedBytes) => this.deliver(message, receivedBytes),
       fail: (error) => this.fail(error),
       finish: (error) => this.finish(error),
+      inboundProgress: () => {
+        if (this.partnerSilenceTimer === undefined) return;
+        this.disarmPartnerSilence();
+        this.armPartnerSilence();
+      },
       queuedMessages: () => this.queue.length,
       receiveWaiting: () => this.waiters.length > 0,
     });
@@ -533,6 +552,7 @@ export class QueuedMessageConnection
   }
 
   private armIdle(): void {
+    this.armPartnerSilence();
     if (this.idleTimer !== undefined || this.waiters.length === 0) return;
     // Effective deadline = min(connection default, head waiter's override).
     // undefined on either side means "no bound from that source"; if both are
@@ -583,26 +603,41 @@ export class QueuedMessageConnection
   // Names a source only for a wait the connection's own limit set, not a
   // shorter per-call override, and only where the operator can set that limit.
   private inactivityLimitSource(ms: number): InactivityLimitSource {
-    if (
-      this.inactivityTimeoutSetting === undefined ||
+    return this.inactivityTimeoutSetting === undefined ||
       ms !== this.inactivityTimeoutMs
-    )
-      return "unnamed";
-    return this.inactivityTimeoutRaised ? "record counts" : "setting";
+      ? "unnamed"
+      : "setting";
   }
 
   private inactivityLimitClause(source: InactivityLimitSource): string {
-    switch (source) {
-      case "setting":
-        return ` (the limit ${this.inactivityTimeoutSetting} sets)`;
-      case "record counts":
-        return " (the wait set from the two parties' record counts)";
-      case "unnamed":
-        return "";
-    }
+    return source === "setting"
+      ? ` (the limit ${this.inactivityTimeoutSetting} sets)`
+      : "";
+  }
+
+  private armPartnerSilence(): void {
+    const ms = this.partnerSilenceBoundMs;
+    if (
+      ms === undefined ||
+      this.partnerSilenceTimer !== undefined ||
+      this.waiters.length === 0
+    )
+      return;
+    this.partnerSilenceTimer = setTimeout(() => {
+      this.partnerSilenceTimer = undefined;
+      const silence = partnerStoppedRespondingError(ms);
+      receiveDeadlineFailures.add(silence);
+      this.fail(silence);
+    }, ms);
+  }
+
+  private disarmPartnerSilence(): void {
+    clearTimeout(this.partnerSilenceTimer);
+    this.partnerSilenceTimer = undefined;
   }
 
   private disarmIdle(): void {
+    this.disarmPartnerSilence();
     if (this.idleTimer !== undefined) {
       clearTimeout(this.idleTimer);
       this.idleTimer = undefined;
@@ -951,22 +986,21 @@ export class QueuedMessageConnection
     this.hooks.markLastSentUnread?.();
   }
 
-  raiseInactivityTimeout(minMs: number): void {
-    const current = this.inactivityTimeoutMs;
-    if (
-      !this.inactivityTimeoutRaisable ||
-      current === undefined ||
-      !Number.isFinite(minMs)
-    )
-      return;
-    const raised = Math.min(Math.ceil(minMs), MAX_TIMER_MS);
-    if (raised <= current) return;
-    this.inactivityTimeoutMs = raised;
-    this.inactivityTimeoutRaised = true;
-    if (this.idleTimer !== undefined) {
-      this.disarmIdle();
-      this.armIdle();
-    }
+  exchangesStillWorkingFrames(): boolean {
+    return this.hooks.exchangesStillWorkingFrames?.() ?? false;
+  }
+
+  armPartnerSilenceBound(ms: number | undefined): void {
+    this.partnerSilenceBoundMs =
+      ms === undefined ? undefined : Math.min(Math.max(1, ms), MAX_TIMER_MS);
+    this.disarmPartnerSilence();
+    this.armPartnerSilence();
+  }
+
+  nextQueuedMessageBytes(): number | undefined {
+    return this.queue.length === 0
+      ? undefined
+      : binaryByteLength(this.queue[0]);
   }
 }
 
@@ -1142,21 +1176,27 @@ export async function receiveParsed<T>(
  * sent on one side are delivered asynchronously to the other; closing one side
  * causes a `transport` {@link ConnectionError} on the other. Intended for
  * tests and local protocol exercises. No inactivity budget applies unless
- * `inactivityTimeoutMs` is given.
+ * `inactivityTimeoutMs` is given, and the two ends exchange still-working
+ * frames only where `stillWorkingFrames` is set.
  */
 export function createMessagePipe(options?: {
   capacity?: number;
   byteCapacity?: number;
   inactivityTimeoutMs?: number;
-  inactivityTimeoutRaisable?: boolean;
+  stillWorkingFrames?: boolean;
 }): [MessageConnection, MessageConnection] {
   const link: { a?: TransportControls; b?: TransportControls } = {};
   const peerClosed = () =>
     new ConnectionError("peer closed the connection", "transport");
+  const stillWorking =
+    options?.stillWorkingFrames === true
+      ? { exchangesStillWorkingFrames: () => true }
+      : {};
 
   const a = new QueuedMessageConnection((controls) => {
     link.a = controls;
     return {
+      ...stillWorking,
       send: (data) => {
         queueMicrotask(() => link.b?.deliver(data, inMemoryMessageBytes(data)));
       },
@@ -1167,6 +1207,7 @@ export function createMessagePipe(options?: {
   const b = new QueuedMessageConnection((controls) => {
     link.b = controls;
     return {
+      ...stillWorking,
       send: (data) => {
         queueMicrotask(() => link.a?.deliver(data, inMemoryMessageBytes(data)));
       },

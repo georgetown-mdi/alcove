@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import {
   ConnectionError,
+  PEERJS_CHUNK_MTU,
   PeerJsFrameEncoder,
   checkWebSocketRelayProof,
   deriveWebSocketRelayProofKey,
@@ -698,26 +699,28 @@ describe("the inbound path", () => {
     expect(socket.closedWith).toBe(4000);
   });
 
-  test("a receive at the default budget waits the budget the exchange raises it to", async () => {
+  test("the parties on a relay exchange still-working frames", async () => {
+    const { mc } = await openStarted();
+    expect(mc.exchangesStillWorkingFrames?.()).toBe(true);
+  });
+
+  test("each chunk of a frame that arrives restarts the partner-silence bound", async () => {
     const { socket, mc } = await openStarted();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
-      mc.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
-      const received = mc.receive();
-      await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000 - 1);
-      for (const datagram of partnerFrames("late")) socket.fromRelay(datagram);
-      await expect(received).resolves.toBe("late");
+      mc.armPartnerSilenceBound?.(120_000);
+      const received = mc.receive().catch((e: unknown) => e);
+      const body = new Uint8Array(3 * PEERJS_CHUNK_MTU).fill(4);
+      const datagrams = partnerFrames({ body });
+      expect(datagrams.length).toBeGreaterThan(2);
+      for (const datagram of datagrams) {
+        await vi.advanceTimersByTimeAsync(100_000);
+        socket.fromRelay(datagram);
+      }
+      expect(await received).toEqual({ body });
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  test("a budget given at open is not raised", async () => {
-    const { mc } = await openStarted({ inactivityTimeoutMs: 30 });
-    mc.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
-    await expect(mc.receive()).rejects.toMatchObject({
-      message: expect.stringMatching(/no message arrived within 30 ms/),
-    });
   });
 
   test("the partner's sentinel drains its final frame and closes cleanly", async () => {

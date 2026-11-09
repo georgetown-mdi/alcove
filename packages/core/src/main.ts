@@ -45,6 +45,7 @@ export {
   failureCauseSentence,
   formatWaitDuration,
   markFailureCause,
+  PARTNER_STOPPED_RESPONDING_REMEDY,
   relayRegistrarUnreachableRemedy,
 } from "./failureCause";
 export type {
@@ -179,11 +180,11 @@ export {
   BROWSER_PSI_SET_MAX_ELEMENTS,
   MAX_PSI_DECODE_ELEMENTS,
 } from "./connection/frameSize";
-// The parked-receive budget an exchange raises its WebRTC or relay connection
-// to once the sizes are agreed. Published for tests outside core: the
-// WebSocket relay's tests hold its idle bound to the budget at the browser's
-// ceiling, and the transports' tests raise to it.
-export { partnerStepWaitMs } from "./connection/partnerStepWait";
+export {
+  OLDER_PARTNER_AT_MATCHING_MESSAGE,
+  PARTNER_SILENCE_BOUND_MS,
+  STILL_WORKING_INTERVAL_MS,
+} from "./exchange/stillWorking";
 // The measured memory an inbound frame takes, which the CLI weighs against the
 // memory its process has before each read and each hand-off to the PSI worker.
 export {

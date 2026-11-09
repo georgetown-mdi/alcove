@@ -6,9 +6,12 @@
 // compile here until bound.
 
 import {
+  PARTNER_STOPPED_RESPONDING_REMEDY,
   failureCauseSentence,
   relayRegistrarUnreachableRemedy,
 } from "@alcove/core";
+
+import { PARTNER_STOPPED_RESPONDING_TITLE } from "@psi/managed/managedFailureCopy";
 
 import {
   CONNECTION_TUNING_HEADING,
@@ -118,6 +121,10 @@ export const CONSOLE_FAILURE_REMEDIES: {
   "relay-registrar-unreachable": (cause) => ({
     title: "The relay registrar could not be reached",
     remedy: relayRegistrarUnreachableRemedy(cause),
+  }),
+  "partner-stopped-responding": () => ({
+    title: PARTNER_STOPPED_RESPONDING_TITLE,
+    remedy: PARTNER_STOPPED_RESPONDING_REMEDY,
   }),
 };
 

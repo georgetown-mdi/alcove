@@ -90,6 +90,9 @@ const SAMPLES: {
       timedOutMs: 15_000,
     },
   ],
+  "partner-stopped-responding": [
+    { kind: "partner-stopped-responding", silentMs: 120_000 },
+  ],
 };
 
 const allSamples: FailureCause[] = Object.values(SAMPLES).flat();
@@ -142,6 +145,9 @@ describe("the failure-cause catalog", () => {
       "The relay registrar at relay.example.org port 8443 closed the connection without answering (ECONNRESET).",
       "The relay registrar at relay.example.org port 8443 did not answer within 15 seconds.",
     ]);
+    expect(failureCauseSentence(SAMPLES["partner-stopped-responding"][0])).toBe(
+      "Your partner stopped responding during matching: nothing arrived from them for 2 minutes.",
+    );
   });
 
   test("the registrar remedy names no setting or file for any class", () => {

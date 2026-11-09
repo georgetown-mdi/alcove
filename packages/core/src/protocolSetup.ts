@@ -67,6 +67,7 @@ import {
 } from "./connection/messageConnection";
 import { boundedWireCertificateSchema } from "./records/signingIdentity";
 import {
+  connectionAndInners,
   decisionOnlyAbortFrame,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   receiveAfterTerms,
@@ -745,7 +746,8 @@ export async function sendTermsAbort(
   abortReasons: string[],
   slot?: ResponderAbortSlot,
 ): Promise<void> {
-  connectionsAborted.add(conn);
+  for (const aborted of connectionAndInners(conn))
+    connectionsAborted.add(aborted);
   try {
     await conn.send(
       slot !== undefined

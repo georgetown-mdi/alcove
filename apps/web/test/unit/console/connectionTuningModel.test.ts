@@ -29,6 +29,7 @@ import {
   FILEDROP_CONNECTION_TUNING,
   LOW_POLL_INTERVAL_ADVISORY,
   SFTP_CONNECTION_TUNING,
+  TIMEOUT_FIELD_ROWS,
   WEBRTC_CONNECTION_TUNING,
   connectionTuningAdvisories,
   connectionTuningOptions,
@@ -39,9 +40,9 @@ import {
   durationUnitChoices,
   ignoreFilesOlderThanDefaultMs,
   inactivityTimeoutDescription,
-  inactivityTimeoutPlaceholder,
   peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
+  timeoutFieldPlaceholder,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
 import { zeroSetupOptionsArgv } from "@jobs/intentArgv";
@@ -680,22 +681,30 @@ describe("the placeholder shows core's own default in the chosen unit", () => {
     },
   );
 
-  test("the quiet-partner field states the webrtc default as at least an hour, from the record counts", () => {
-    expect(inactivityTimeoutPlaceholder(WEBRTC_CONNECTION_TUNING, "m")).toBe(
-      "at least 60",
-    );
+  test("the quiet-partner field states the hour default on every channel, and on webrtc the partner's signs it is still working and the silence bound", () => {
     expect(inactivityTimeoutDescription(WEBRTC_CONNECTION_TUNING)).toContain(
-      "Left blank, it is set from both sides' record counts and is at least an hour.",
+      "each sign from your partner that it is still working restarts this wait, " +
+        "and the run ends after 2 minutes with nothing from them.",
     );
+    for (const capabilities of [
+      WEBRTC_CONNECTION_TUNING,
+      SFTP_CONNECTION_TUNING,
+      FILEDROP_CONNECTION_TUNING,
+    ])
+      expect(
+        timeoutFieldPlaceholder(
+          TIMEOUT_FIELD_ROWS.find((row) => row.field === "inactivityTimeout")!,
+          capabilities,
+          "m",
+        ),
+      ).toBe("60");
     for (const capabilities of [
       SFTP_CONNECTION_TUNING,
       FILEDROP_CONNECTION_TUNING,
-    ]) {
-      expect(inactivityTimeoutPlaceholder(capabilities, "m")).toBe("60");
+    ])
       expect(inactivityTimeoutDescription(capabilities)).not.toContain(
-        "record counts",
+        "still-working",
       );
-    }
   });
 
   // A rounded bare number here would misstate the default, or read "0", a

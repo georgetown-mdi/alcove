@@ -236,48 +236,38 @@ test("a frame the relay forwards directly behind the partner's start is delivere
   expect(socket.binaryType).toBe("arraybuffer");
 });
 
-test("with no inactivity_timeout_ms set, a receive waits the budget the exchange raises it to", async () => {
+test("the parties on a relay exchange still-working frames", async () => {
+  const { connection } = await startedConnection();
+  expect(connection.exchangesStillWorkingFrames?.()).toBe(true);
+});
+
+test("each chunk of a frame that arrives restarts the partner-silence bound", async () => {
   const { connection, socket } = await startedConnection();
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
-    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
-    const received = connection.receive();
-    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000 - 1);
-    socket.binary(packValue({ late: true }));
-    expect(await received).toEqual({ late: true });
+    connection.armPartnerSilenceBound?.(120_000);
+    const received = connection.receive().catch((e: unknown) => e);
+    const body = new Uint8Array(3 * PEERJS_CHUNK_MTU).fill(4);
+    const datagrams = new PeerJsFrameEncoder().encode({ body });
+    expect(datagrams.length).toBeGreaterThan(2);
+    for (const datagram of datagrams) {
+      await vi.advanceTimersByTimeAsync(100_000);
+      socket.binary(datagram);
+    }
+    expect(await received).toEqual({ body });
   } finally {
     vi.useRealTimers();
   }
 });
 
-test("a set inactivity_timeout_ms is not raised", async () => {
+test("a set inactivity_timeout_ms bounds a parked receive", async () => {
   const { connection } = await startedConnection({ inactivityTimeoutMs: 30 });
-  connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
   await expect(connection.receive()).rejects.toThrow(
     "no message arrived within 30 ms (the limit inactivity_timeout_ms sets); " +
       "the partner appears to have gone silent. If the partner or server is " +
       "only slow, run again with a longer --inactivity-timeout, or raise " +
       "that limit under connection.options in the configuration",
   );
-});
-
-test("a raised wait's expiry names the record counts, not the setting", async () => {
-  const { connection } = await startedConnection();
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  try {
-    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
-    const received = connection.receive().catch((e: unknown) => e);
-    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000);
-    const message = ((await received) as Error).message;
-    expect(message).toContain(
-      "no message arrived within 10800000 ms (the wait set from the two " +
-        "parties' record counts)",
-    );
-    expect(message).not.toContain("the limit inactivity_timeout_ms sets");
-    expect(message).toContain("set inactivity_timeout_ms to a longer wait");
-  } finally {
-    vi.useRealTimers();
-  }
 });
 
 test("a frame larger than one chunk crosses as chunk envelopes the reassembler takes", async () => {

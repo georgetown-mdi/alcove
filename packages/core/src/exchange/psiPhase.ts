@@ -10,7 +10,6 @@ import {
   linkViaSinglePassPSI,
 } from "../psi/link.js";
 import { connectionEndReader } from "../connection/messageConnection.js";
-import { partnerStepWaitMs } from "../connection/partnerStepWait.js";
 import { InternalConsistencyError } from "../errors.js";
 import { runsSinglePassLink } from "../linkageTermsPolicy.js";
 import { linkageRounds, roundMatchedKeyName } from "../linkageKeyCondition.js";
@@ -27,7 +26,8 @@ import type {
   LinkageCardinality,
   SinglePassSessionBounds,
 } from "../psi/link.js";
-import type { PsiEngineMode } from "../psi/psiEngine.js";
+import type { PsiEngine, PsiEngineMode } from "../psi/psiEngine.js";
+import type { StillWorkingLayer } from "./stillWorking.js";
 import type { StandardizedKeyIterable } from "../standardization.js";
 import type { AssociationTable } from "../types.js";
 
@@ -47,6 +47,10 @@ export function psiParticipantId(isReceiver: boolean): "client" | "server" {
  * Only the cascade realizes it, since each party counts its own rounds there;
  * a single-pass sender is handed the resolved table and holds no round, and a
  * count-only run has no table. The caller refuses both before the run.
+ *
+ * `stillWorking`, given where the parties exchange still-working frames and
+ * `conn` is its connection, starts sending before the engine is built and
+ * ends on every exit path.
  */
 export async function runPsiPhase(p: {
   conn: MessageConnection;
@@ -60,8 +64,7 @@ export async function runPsiPhase(p: {
   roundsSentInParts: boolean;
   localReceiveCeiling: number;
   partnerReceiveCeiling: number;
-  localValueSlots: number;
-  partnerValueSlots: number;
+  stillWorking?: StillWorkingLayer;
   linkageKeyIterables: StandardizedKeyIterable[];
   linkageTerms: LinkageTerms;
   partnerTerms: LinkageTerms;
@@ -92,8 +95,7 @@ export async function runPsiPhase(p: {
     roundsSentInParts,
     localReceiveCeiling,
     partnerReceiveCeiling,
-    localValueSlots,
-    partnerValueSlots,
+    stillWorking,
     linkageKeyIterables,
     linkageTerms,
     partnerTerms,
@@ -116,17 +118,6 @@ export async function runPsiPhase(p: {
       "the matching key of each pair was asked for on a run that does not " +
         "count its own rounds",
     );
-
-  // Each party waits in silence through the partner's steps, which the agreed
-  // sizes bound; a transport on its own default waits that long.
-  conn.raiseInactivityTimeout?.(
-    partnerStepWaitMs({
-      localValueSlots,
-      partnerValueSlots,
-      localReceiveCeiling,
-      partnerReceiveCeiling,
-    }),
-  );
 
   // A count-only run takes its own rounds whichever strategy its terms declare
   // (docs/spec/PROTOCOL.md, PSI-C). Otherwise single-pass is allowlisted, and
@@ -153,9 +144,18 @@ export async function runPsiPhase(p: {
   const engineMode: PsiEngineMode = countOnly
     ? "count-only-permuted"
     : "identifier-revealing";
-  const engine =
-    psiEngineFactory?.(psiRole, psiId, engineMode) ??
-    new InProcessPsiEngine(psiLibrary, psiRole, psiId, engineMode);
+  // Started before the engine is built, so the partner reads this party's
+  // first still-working frame ahead of any abort a failed start sends.
+  stillWorking?.start();
+  let engine: PsiEngine;
+  try {
+    engine =
+      psiEngineFactory?.(psiRole, psiId, engineMode) ??
+      new InProcessPsiEngine(psiLibrary, psiRole, psiId, engineMode);
+  } catch (err) {
+    await stillWorking?.endPhase();
+    throw err;
+  }
 
   let participant: PSIParticipant | undefined;
   let associationTable: AssociationTable | undefined;
@@ -264,16 +264,21 @@ export async function runPsiPhase(p: {
     // dispose the engine directly -- whether psiEngineFactory spawned a worker or the
     // default in-process engine was built above, it is a live engine here and never
     // orphaned.
-    if (participant !== undefined) participant.dispose();
-    else engine.dispose();
-    // Every round has been read as far as it ever will be, so each one states
-    // the drop and wide-row totals its per-row lines stopped short of. Inside
-    // the finally so a round that reached either sink before the PSI phase
-    // threw still reports it, and after the disposal, which frees key material
-    // and is not to be risked on a diagnostic line. closeRowReporting never
-    // throws, so this teardown's own exception -- the failure the operator
-    // needs -- is never at risk of being replaced by a diagnostic sink's.
-    for (const round of linkageKeyIterables) round.closeRowReporting();
+    try {
+      if (participant !== undefined) participant.dispose();
+      else engine.dispose();
+    } finally {
+      // Every round has been read as far as it ever will be, so each one states
+      // the drop and wide-row totals its per-row lines stopped short of. Inside
+      // the finally so a round that reached either sink before the PSI phase
+      // threw, or whose disposal threw, still reports it, and after the
+      // disposal, which frees key material and is not to be risked on a
+      // diagnostic line. closeRowReporting never throws, so this teardown's own
+      // exception -- the failure the operator needs -- is never at risk of being
+      // replaced by a diagnostic sink's.
+      for (const round of linkageKeyIterables) round.closeRowReporting();
+      await stillWorking?.endPhase();
+    }
   }
 
   return {

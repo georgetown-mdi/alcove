@@ -240,7 +240,7 @@ export const MAX_ABORT_FRAME_AFTER_TERMS_BYTES = Math.max(
  * Whether a raw received frame is an abort decision, read off the `decision`
  * discriminant alone.
  */
-function isPartnerAbortFrame(frame: unknown): boolean {
+export function isPartnerAbortFrame(frame: unknown): boolean {
   return (
     typeof frame === "object" &&
     frame !== null &&
@@ -301,6 +301,45 @@ const FORWARDED_CONNECTION_MEMBERS = [
   ...Object.keys(OPTIONAL_CONNECTION_MEMBERS),
 ];
 
+// Each connection connectionLayer built, mapped to the connection under it.
+const innerOfLayer = new WeakMap<MessageConnection, MessageConnection>();
+
+/**
+ * A layer over `conn` that replaces `members` and forwards every other member
+ * `conn` implements, bound to `conn`. An abort sent on the layer counts as
+ * sent on `conn` ({@link connectionAndInners}).
+ */
+export function connectionLayer(
+  conn: MessageConnection,
+  members: Partial<MessageConnection>,
+): MessageConnection {
+  const forwarded: Record<string, unknown> = {};
+  for (const name of FORWARDED_CONNECTION_MEMBERS) {
+    const member = (conn as unknown as Record<string, unknown>)[name];
+    if (typeof member === "function") forwarded[name] = member.bind(conn);
+  }
+  const layer = {
+    ...(forwarded as unknown as MessageConnection),
+    ...members,
+  };
+  innerOfLayer.set(layer, conn);
+  return layer;
+}
+
+/** `conn`, then each connection under it that {@link connectionLayer} wraps. */
+export function connectionAndInners(
+  conn: MessageConnection,
+): MessageConnection[] {
+  const chain = [conn];
+  for (
+    let inner = innerOfLayer.get(conn);
+    inner !== undefined;
+    inner = innerOfLayer.get(inner)
+  )
+    chain.push(inner);
+  return chain;
+}
+
 /**
  * `conn` with `hook` awaited once, when the first received frame that is not
  * a partner's abort decision arrives, before that frame is returned. Every
@@ -312,13 +351,7 @@ export function afterFirstFrameNotAbort(
   hook: () => void | Promise<void>,
 ): MessageConnection {
   let pending = true;
-  const forwarded: Record<string, unknown> = {};
-  for (const name of FORWARDED_CONNECTION_MEMBERS) {
-    const member = (conn as unknown as Record<string, unknown>)[name];
-    if (typeof member === "function") forwarded[name] = member.bind(conn);
-  }
-  return {
-    ...(forwarded as unknown as MessageConnection),
+  return connectionLayer(conn, {
     receive: async (timeoutMs?: number) => {
       const frame = await conn.receive(timeoutMs);
       if (pending && !isPartnerAbortFrame(frame)) {
@@ -327,7 +360,7 @@ export function afterFirstFrameNotAbort(
       }
       return frame;
     },
-  };
+  });
 }
 
 /**

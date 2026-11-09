@@ -974,12 +974,12 @@ function relayMessageConnection(
           }
           socket.close(RELAY_ABANDON_CLOSE_CODE);
         },
+        exchangesStillWorkingFrames: () => true,
       };
     },
     {
       inactivityTimeoutMs:
         options.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
-      inactivityTimeoutRaisable: options.inactivityTimeoutMs === undefined,
       inactivityHint: inactivityTimeoutGuidance,
       inactivityTimeoutSetting: INACTIVITY_TIMEOUT_KEY,
     },

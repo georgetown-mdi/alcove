@@ -76,6 +76,9 @@ const SAMPLES: {
       timedOutMs: 15_000,
     },
   ],
+  "partner-stopped-responding": [
+    { kind: "partner-stopped-responding", silentMs: 120_000 },
+  ],
 };
 
 /** A relayed failure as the job client builds it off the CLI's event. */

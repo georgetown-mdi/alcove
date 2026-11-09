@@ -772,8 +772,16 @@ export class EncryptedMessageConnection implements Required<
     this.inner.holdInboundQueueBytes?.(minBytes);
   }
 
-  raiseInactivityTimeout(minMs: number): void {
-    this.inner.raiseInactivityTimeout?.(minMs);
+  exchangesStillWorkingFrames(): boolean {
+    return this.inner.exchangesStillWorkingFrames?.() ?? false;
+  }
+
+  armPartnerSilenceBound(ms: number | undefined): void {
+    this.inner.armPartnerSilenceBound?.(ms);
+  }
+
+  nextQueuedMessageBytes(): number | undefined {
+    return this.inner.nextQueuedMessageBytes?.();
   }
 
   outboundWebRtcFrameBound(): number | undefined {

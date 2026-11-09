@@ -1478,22 +1478,27 @@ test("holdInboundQueueBytes reaches the inner connection's queue", async () => {
   await conn.close();
 });
 
-test("raiseInactivityTimeout reaches the inner connection, and is a no-op over one without it", async () => {
+test("the still-working members reach the inner connection, and answer nothing over one without them", async () => {
   const [, rawLocal] = createMessagePipe();
-  const raised: Array<number> = [];
+  const armed: Array<number | undefined> = [];
   const inner: MessageConnection = {
     send: (data) => rawLocal.send(data),
     receive: (timeoutMs) => rawLocal.receive(timeoutMs),
     close: () => rawLocal.close(),
-    raiseInactivityTimeout: (minMs) => raised.push(minMs),
+    exchangesStillWorkingFrames: () => true,
+    armPartnerSilenceBound: (ms) => armed.push(ms),
+    nextQueuedMessageBytes: () => 46,
   };
   const conn = await EncryptedMessageConnection.create(
     inner,
     V1_KEYING,
     "responder",
   );
-  conn.raiseInactivityTimeout(8_439_400);
-  expect(raised).toEqual([8_439_400]);
+  conn.armPartnerSilenceBound(120_000);
+  conn.armPartnerSilenceBound(undefined);
+  expect(armed).toEqual([120_000, undefined]);
+  expect(conn.exchangesStillWorkingFrames()).toBe(true);
+  expect(conn.nextQueuedMessageBytes()).toBe(46);
   await conn.close();
 
   const [, plainLocal] = createMessagePipe();
@@ -1506,7 +1511,9 @@ test("raiseInactivityTimeout reaches the inner connection, and is a no-op over o
     V1_KEYING,
     "responder",
   );
-  expect(() => plain.raiseInactivityTimeout(8_439_400)).not.toThrow();
+  expect(() => plain.armPartnerSilenceBound(120_000)).not.toThrow();
+  expect(plain.exchangesStillWorkingFrames()).toBe(false);
+  expect(plain.nextQueuedMessageBytes()).toBeUndefined();
   await plain.close();
 });
 

@@ -11,6 +11,7 @@ import {
   DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
   INACTIVITY_TIMEOUT_KEY,
 } from "./connection.js";
+import { PARTNER_SILENCE_BOUND_MS } from "../exchange/stillWorking.js";
 import { commentBlock, commentKey } from "./yamlComments.js";
 
 /**
@@ -57,8 +58,9 @@ export const POLL_INTERVAL_LINES = [
 const POLL_INTERVAL_KEY = "poll_interval_ms";
 
 const WEBRTC_INACTIVITY_LINES = [
-  `Unset, ${INACTIVITY_TIMEOUT_KEY} is set from both parties' record counts,`,
-  `at least the ${DEFAULT_PEER_INACTIVITY_TIMEOUT_MS} shown; a value set here replaces it.`,
+  `During matching, each sign from the partner that it is still working`,
+  `restarts the ${INACTIVITY_TIMEOUT_KEY} wait, and the run ends after`,
+  `${PARTNER_SILENCE_BOUND_MS / 60_000} minutes with nothing from the partner.`,
 ];
 
 /**

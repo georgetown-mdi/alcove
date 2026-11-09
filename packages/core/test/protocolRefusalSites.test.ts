@@ -35,6 +35,10 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   // The partner's envelope version byte is not this build's.
   "packages/core/src/connection/fileSyncMessageLoop.ts :: FileSyncMessageLoop.consumeMessage > parseMessage":
     [PARTNER],
+  // The partner's first PSI-phase frame is data or its local-fault abort,
+  // where a still-working frame was due.
+  "packages/core/src/exchange/stillWorking.ts :: stillWorkingLayer > olderPartner":
+    [PARTNER],
   // The partner's payload frame: not arrays, wrong cell shape, lengths that
   // disagree, repeated indices, rows missing.
   "packages/core/src/payloadExchange.ts :: buildOutputTableRows": [

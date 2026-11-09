@@ -34,6 +34,7 @@ import {
   rendererRssBytes,
   startBenchServer,
 } from "./browserRoundMemory.ts";
+import { exposeNodePartnerEngine } from "./nodePartnerEngine.ts";
 import { partyValues } from "./partyValues.ts";
 
 import type {
@@ -356,67 +357,12 @@ async function main(): Promise<void> {
   );
 
   const partnerStepsMs: Record<string, number> = {};
-  const take = (name: string): Uint8Array => {
-    const bytes = sets.get(name);
-    if (!bytes) throw new Error(`the partner's page sent no ${name} set`);
-    sets.delete(name);
-    return bytes;
-  };
-  const partnerValues = (count: number): Array<string> =>
-    partyValues(count, overlap, "node");
-  const partnerOperation = async (
-    operation: string,
-    count: number | undefined,
-  ): Promise<unknown> => {
-    switch (operation) {
-      case "createServerSetup": {
-        const built = await partner.createServerSetup(partnerValues(count!));
-        sets.set("partner-setup", built.setup);
-        sets.set(
-          "partner-permutation",
-          new Uint8Array(Int32Array.from(built.permutation).buffer),
-        );
-        return undefined;
-      }
-      case "createClientRequest":
-        sets.set(
-          "partner-request",
-          await partner.createClientRequest(partnerValues(count!)),
-        );
-        return undefined;
-      case "processClientRequest":
-        sets.set(
-          "partner-response",
-          await partner.processClientRequest(take("partner-input")),
-        );
-        return undefined;
-      case "receiveServerSetup":
-        return partner.receiveServerSetup(take("partner-input"));
-      case "receiveServerSetupPiece":
-        return partner.receiveServerSetupPiece(take("partner-input"));
-      case "completeServerSetup":
-        return partner.completeServerSetup();
-      case "discardServerSetup":
-        return partner.discardServerSetup();
-      case "computeAssociationTable":
-        return partner.computeAssociationTable(take("partner-input"));
-      case "dispose":
-        partner.dispose();
-        return undefined;
-    }
-    throw new Error(`the bench's partner engine has no ${operation}`);
-  };
-  await partnerPage.exposeFunction(
-    "benchPartnerEngine",
-    async (operation: string, count?: number): Promise<unknown> => {
-      const started = performance.now();
-      try {
-        return await partnerOperation(operation, count);
-      } finally {
-        partnerStepsMs[operation] =
-          (partnerStepsMs[operation] ?? 0) + performance.now() - started;
-      }
-    },
+  await exposeNodePartnerEngine(
+    partnerPage,
+    partner,
+    sets,
+    (count) => partyValues(count, overlap, "node"),
+    partnerStepsMs,
   );
 
   // A failure on one side would leave the other waiting on the channel, so

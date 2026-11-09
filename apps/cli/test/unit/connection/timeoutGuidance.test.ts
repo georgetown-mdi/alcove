@@ -47,15 +47,6 @@ test("the guidance names the flag alongside the setting", () => {
     );
 });
 
-test("a wait set from the record counts is replaced by a longer set value, not raised", () => {
-  expect(inactivityTimeoutGuidance("record counts")).toBe(
-    "If the partner or server is only slow, run again with an " +
-      "--inactivity-timeout longer than that wait, or set " +
-      `${INACTIVITY_TIMEOUT_KEY} to a longer wait under connection.options ` +
-      "in the configuration",
-  );
-});
-
 test("the flag the guidance names is the one that sets the setting", () => {
   const parsed = parseCommonBootstrapArgs({
     _: [],

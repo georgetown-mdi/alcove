@@ -381,30 +381,43 @@ test("a second wait on the send window while one is pending throws", async () =>
 
 // --- receive ----------------------------------------------------------------
 
-test("with no inactivity_timeout_ms set, a receive waits the budget the exchange raises it to", async () => {
+test("the parties on a data channel exchange still-working frames", () => {
+  const { session } = harness();
+  expect(webRtcMessageConnection(session).exchangesStillWorkingFrames?.()).toBe(
+    true,
+  );
+});
+
+test("each chunk of a frame that arrives restarts the partner-silence bound", async () => {
   vi.useFakeTimers();
   try {
     const { channel, session } = harness();
     const connection = webRtcMessageConnection(session);
-    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
-    const received = connection.receive();
-    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000 - 1);
-    for (const datagram of new PeerJsFrameEncoder().encode({ step: 3 }))
+    connection.armPartnerSilenceBound?.(120_000);
+    const received = connection.receive().catch((e: unknown) => e);
+    const datagrams = new PeerJsFrameEncoder().encode({
+      body: new Uint8Array(PEERJS_CHUNK_MTU * 3).fill(4),
+    });
+    expect(datagrams.length).toBeGreaterThan(2);
+    for (const datagram of datagrams) {
+      await vi.advanceTimersByTimeAsync(100_000);
       channel.deliver(datagram);
-    expect(await received).toEqual({ step: 3 });
+    }
+    expect(await received).toEqual({
+      body: new Uint8Array(PEERJS_CHUNK_MTU * 3).fill(4),
+    });
   } finally {
     vi.useRealTimers();
   }
 });
 
-test("a set inactivity_timeout_ms is not raised", async () => {
+test("a set inactivity_timeout_ms bounds a parked receive", async () => {
   vi.useFakeTimers();
   try {
     const { session } = harness();
     const connection = webRtcMessageConnection(session, {
       inactivityTimeoutMs: 10_000,
     });
-    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
     const received = connection.receive().catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(((await received) as ConnectionError).message).toBe(
@@ -413,52 +426,6 @@ test("a set inactivity_timeout_ms is not raised", async () => {
         "server is only slow, run again with a longer --inactivity-timeout, " +
         "or raise that limit under connection.options in the configuration",
     );
-  } finally {
-    vi.useRealTimers();
-  }
-});
-
-test("a raised wait's expiry names the record counts and the setting that replaces it", async () => {
-  vi.useFakeTimers();
-  try {
-    const { session } = harness();
-    const connection = webRtcMessageConnection(session);
-    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
-    const received = connection.receive().catch((e: unknown) => e);
-    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000);
-    const message = ((await received) as ConnectionError).message;
-    expect(message).toBe(
-      "no message arrived within 10800000 ms (the wait set from the two " +
-        "parties' record counts); the partner appears to have gone silent. " +
-        "If the partner or server is only slow, run again with an " +
-        "--inactivity-timeout longer than that wait, or set " +
-        "inactivity_timeout_ms to a longer wait under connection.options in " +
-        "the configuration",
-    );
-  } finally {
-    vi.useRealTimers();
-  }
-});
-
-test("a raised wait's send-guard expiry does not credit the setting", async () => {
-  vi.useFakeTimers();
-  try {
-    const { channel, session } = harness();
-    channel.buffers = true;
-    const connection = webRtcMessageConnection(session, {
-      sendWindowBytes: WINDOW,
-    });
-    connection.raiseInactivityTimeout?.(3 * 60 * 60 * 1000);
-    const sending = connection
-      .send({ body: new Uint8Array(PEERJS_CHUNK_MTU * 10) })
-      .catch((e: unknown) => e);
-    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000);
-    const message = ((await sending) as ConnectionError).message;
-    expect(message).toContain(
-      "was not accepted for sending within 10800000 ms (the wait set from " +
-        "the two parties' record counts)",
-    );
-    expect(message).not.toContain("inactivity_timeout_ms");
   } finally {
     vi.useRealTimers();
   }

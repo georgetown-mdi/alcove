@@ -184,6 +184,7 @@ type InstallOptions = {
   maxChunks?: number;
   minChunkResidentBytes?: number;
   maxStringBytes?: number;
+  onChunkKept?: () => void;
 };
 
 function install(conn: FakeChunkedConnection, options?: InstallOptions) {
@@ -239,6 +240,24 @@ describe("boundChunkReassembly: wire-byte, chunk, and partial bounds", () => {
 
     expect(fail).not.toHaveBeenCalled();
     expect(conn.delivered).toHaveLength(2);
+  });
+
+  test("reports each chunk kept toward a frame not yet whole, and none for the chunk that completes it or one refused", () => {
+    const conn = new FakeChunkedConnection();
+    const onChunkKept = vi.fn();
+    const fail = install(conn, { maxFrameBytes: 100, onChunkKept });
+
+    conn._handleChunk(makeChunk(5, 0, 3, 30));
+    conn._handleChunk(makeChunk(5, 1, 3, 30));
+    expect(onChunkKept).toHaveBeenCalledTimes(2);
+    conn._handleChunk(makeChunk(5, 2, 3, 30));
+    expect(onChunkKept).toHaveBeenCalledTimes(2);
+    expect(conn.delivered).toHaveLength(1);
+
+    conn._handleChunk(makeChunk(6, 0, 3, 60));
+    conn._handleChunk(makeChunk(6, 1, 3, 60));
+    expect(fail).toHaveBeenCalledTimes(1);
+    expect(onChunkKept).toHaveBeenCalledTimes(3);
   });
 
   test("bounds the aggregate of concurrent partials by the running total", () => {

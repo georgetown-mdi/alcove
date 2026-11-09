@@ -485,6 +485,12 @@ Each frame is at most `MAX_WEBRTC_FRAME_BYTES`, so the bound is **`DEFAULT_QUEUE
 Both are computed from those constants (`countOnlyRunAheadBytes`), and `messageConnection.test.ts` holds them to the derivation.
 The other runs the set maximum bounds are shorter: a single PSI set is three frames, and a round's association table, its two index lists and their grouping, comes to at most 402,653,232 bytes, which `messageConnection.test.ts` derives from the part bounds and holds below both byte bounds.
 
+**Still-working frames.**
+Through the PSI phase the partner sends a still-working frame at least every 30 s ([WEBRTC_TRANSPORT.md, The wait through a partner's PSI step](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)), and a party running its own operation does not receive them.
+At each interval of its own the party reads and drops the frames at the head of the queue whose received length is a still-working frame's, and stops at the first frame of another length; a frame of that length that is not one is held and read next, in order.
+Still-working frames queued behind a data frame are not drained: they wait until the consumer reads that frame.
+No bound is added or raised for them: each is charged against the count bound, 1024 messages, and the byte bound above like any frame, and a frame past either fails the connection with the inbound-buffer-overflow `protocol` error.
+
 **The single-pass reply in parts.**
 Single-pass message 2 in parts is its setup, response and tail sent back to back, with no receive between ([PROTOCOL.md, Single-pass messages in parts](PROTOCOL.md#single-pass-messages-in-parts)).
 Between two command-line parties no value-slot ceiling bounds it, so it can be longer than the crossing; the reply cap the agreed counts derive bounds it instead.
