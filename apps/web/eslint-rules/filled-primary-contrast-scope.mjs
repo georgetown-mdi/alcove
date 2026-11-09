@@ -10,8 +10,9 @@
  * app's build reads it from its own source tree. An Alert or Badge `color`, and
  * any Mantine component's `c` prop, must name a status (or `dimmed`, Mantine's
  * name for the secondary-text colour, which the theme points at the secondary
- * token). A colour given as a non-literal expression is not judged here: the
- * theme's `StatusColour` type holds it.
+ * token). A colour given as a non-literal expression is not judged here:
+ * `alertRoleFor` and the wrappers that pass a colour to an Alert type it
+ * `StatusColour`, and any other non-literal colour is unchecked.
  *
  * Filled-primary contrast. The theme routes a filled-primary Button / ActionIcon
  * / Checkbox's text and icon color through `--mantine-primary-color-contrast`
