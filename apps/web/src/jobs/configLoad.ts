@@ -66,6 +66,10 @@ import {
 } from "@psi/exchangeDocumentRefusal";
 
 import {
+  CREDENTIAL_FILE_FIELDS,
+  CREDENTIAL_FILE_FIELD_SPELLINGS,
+} from "@jobContract/connectionPathFields";
+import {
   JOB_FILE_NAMES,
   isJobChannel,
   runsInPlace,
@@ -222,9 +226,7 @@ function probeIntentFields(): JobExchangeIntentBase {
  * so a loaded document's own is not held: a run uses the console's, and
  * the hand-off states the document's own unless the operator converted it
  * ({@link signingPathSettings}). */
-const PROBE_SIGNING_PATHS = {
-  identityFile: "/probe/identity.json",
-};
+const PROBE_IDENTITY_FILE = "/probe/identity.json";
 
 /**
  * An sftp composition over one shape of authored connection, as a validated
@@ -247,7 +249,7 @@ function sftpProbeSpec(server: Partial<JobSftpServerEntry>): ExchangeSpec {
       hostKeyFingerprint: PROBE_HOST_KEY_FINGERPRINT,
       ...server,
     },
-    PROBE_SIGNING_PATHS,
+    PROBE_IDENTITY_FILE,
   );
 }
 
@@ -292,7 +294,7 @@ function filedropProbeSpec(split: boolean): ExchangeSpec {
     intent,
     "/probe/rendezvous",
     split ? "/probe/rendezvous-outbound" : undefined,
-    PROBE_SIGNING_PATHS,
+    PROBE_IDENTITY_FILE,
   );
   return parseExchangeSpec(
     parseSensitiveYaml(document, "console composition probe"),
@@ -354,7 +356,7 @@ function documentKeyPaths(value: unknown, parent = ""): Array<string> {
  * rendezvous form it composes. Measured once off the composers themselves, so a
  * field they stop emitting shows up as held rather than in a restated list that
  * would go on claiming it. A setting here is written at the composition's own
- * value, which in a run for the rendezvous folder and the two signing paths is
+ * value, which in a run for the rendezvous folder and the signing path is
  * the console's own resource rather than anything the document stated.
  */
 const COMPOSED_FIELD_PATHS: ReadonlySet<string> = new Set([
@@ -629,15 +631,8 @@ export function credentialFieldsNotAdopted(
   const { connection } = document;
   if (connection.channel !== "sftp") return [];
   const server = connection.server;
-  return (
-    [
-      ["connection.server.password", server.password],
-      ["connection.server.private_key", server.privateKey],
-      ["connection.server.private_key_passphrase", server.privateKeyPassphrase],
-    ] as ReadonlyArray<[string, string | undefined]>
-  )
-    .filter(([, value]) => value !== undefined)
-    .map(([field]) => field)
+  return CREDENTIAL_FILE_FIELDS.filter((field) => server[field] !== undefined)
+    .map((field) => CREDENTIAL_FILE_FIELD_SPELLINGS[field].yamlPath)
     .sort();
 }
 

@@ -72,9 +72,12 @@ function composedConfigFile(pin: string | undefined): string {
   const configPath = path.join(dir, JOB_FILE_NAMES.config);
   fs.writeFileSync(
     configPath,
-    composeConfigDocument(intent, path.join(dir, "rendezvous"), undefined, {
-      identityFile: path.join(dir, ".alcove-signing-identity.json"),
-    }),
+    composeConfigDocument(
+      intent,
+      path.join(dir, "rendezvous"),
+      undefined,
+      path.join(dir, ".alcove-signing-identity.json"),
+    ),
   );
   return configPath;
 }

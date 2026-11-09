@@ -5,11 +5,18 @@ import {
 } from "@alcove/core";
 
 import {
+  CREDENTIAL_FILE_FIELDS,
+  CREDENTIAL_FILE_FIELD_SPELLINGS,
+  FILEDROP_FOLDER_FIELDS,
   HANDOFF_CREDENTIAL_PATH_PLACEHOLDER,
+  HANDOFF_PASSPHRASE_PATH_PLACEHOLDER,
+  composedCredentialFields,
+  credentialFileReference,
+} from "@jobContract/connectionPathFields";
+import {
   HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER,
   HANDOFF_LOG_FILE_NAME,
   HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER,
-  HANDOFF_PASSPHRASE_PATH_PLACEHOLDER,
   HANDOFF_SHARED_DIRECTORY_PLACEHOLDER,
   HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
   bindPathsIn,
@@ -37,11 +44,14 @@ import type {
   JobCreateIntent,
   JobExchangeIntent,
   JobHandBackSigning,
-  JobSigningPaths,
   JobWebrtcExchangeIntent,
   JobZeroSetupIntent,
 } from "@jobContract/intentSchemas";
 
+import type {
+  FiledropConnection,
+  FiledropFolderField,
+} from "@jobContract/connectionPathFields";
 import type {
   HandoffPathsAsRead,
   HandoffSigningSetting,
@@ -124,24 +134,10 @@ function placeholderServerEntry(entry: JobSftpServerEntry): JobSftpServerEntry {
       : {}),
     hostKeyFingerprint: entry.hostKeyFingerprint,
   };
-  if (entry.password !== undefined)
-    sanitized.password = HANDOFF_CREDENTIAL_PATH_PLACEHOLDER;
-  else if (entry.privateKey !== undefined)
-    sanitized.privateKey = HANDOFF_CREDENTIAL_PATH_PLACEHOLDER;
-  if (entry.privateKeyPassphrase !== undefined)
-    sanitized.privateKeyPassphrase = HANDOFF_PASSPHRASE_PATH_PLACEHOLDER;
+  for (const { field } of composedCredentialFields(entry))
+    sanitized[field] = CREDENTIAL_FILE_FIELD_SPELLINGS[field].placeholder;
   return sanitized;
 }
-
-/**
- * The signing path the TEMPLATE names, as against the one the live run
- * used: a placeholder, since the console loads the identity by a container
- * path the operator's host does not have (see
- * {@link HANDOFF_SIGNING_IDENTITY_PLACEHOLDER}).
- */
-const HANDOFF_SIGNING_PATHS: JobSigningPaths = {
-  identityFile: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
-};
 
 /** An exchange whose hand-off states a recomposed `alcove.yaml`. */
 type TemplatedExchangeIntent = Exclude<
@@ -204,11 +200,11 @@ function buildExchangeHandoffTemplate(
  * standardization, and connection fields are byte-for-byte what ran, with
  * only the container paths substituted first (a placeholder-credential
  * server entry on sftp, a placeholder rendezvous path on filedrop, and
- * {@link HANDOFF_SIGNING_PATHS} on both). Recomposing, rather than reading
- * and munging the on-disk file, keeps the container path out by
- * construction. An unconverted opened document's own paths are then put back
- * ({@link withPathsAsRead}); the held settings outside these blocks are merged
- * in by {@link handoffConfigDocument}.
+ * {@link HANDOFF_SIGNING_IDENTITY_PLACEHOLDER} as the signing path on both).
+ * Recomposing, rather than reading and munging the on-disk file, keeps the
+ * container path out by construction. An unconverted opened document's own
+ * paths are then put back ({@link withPathsAsRead}); the held settings outside
+ * these blocks are merged in by {@link handoffConfigDocument}.
  */
 function exchangeHandoffSpec(
   intent: TemplatedExchangeIntent,
@@ -251,19 +247,15 @@ function pathsAsReadIn(handoffSpec: ExchangeSpec): HandoffPathsAsRead {
   const { connection, signing } = handoffSpec;
   const credentialPaths =
     connection.channel === "sftp"
-      ? [
-          connection.server.password,
-          connection.server.privateKey,
-          connection.server.privateKeyPassphrase,
-        ].filter((value) => value !== undefined)
+      ? CREDENTIAL_FILE_FIELDS.map((field) => connection.server[field]).filter(
+          (value) => value !== undefined,
+        )
       : [];
   const folderPaths =
     connection.channel === "filedrop"
-      ? [
-          connection.path,
-          connection.inboundPath,
-          connection.outboundPath,
-        ].filter((value) => value !== undefined)
+      ? FILEDROP_FOLDER_FIELDS.map((field) => connection[field]).filter(
+          (value) => value !== undefined,
+        )
       : [];
   return {
     credential: statedAndNoneIn(credentialPaths, [
@@ -297,12 +289,6 @@ const NO_PATHS_AS_READ: HandoffPathsAsRead = {
   sharedDirectory: false,
   signing: false,
 };
-
-/** A filedrop connection, as core's spec types it. */
-type FiledropConnection = Extract<
-  ExchangeSpec["connection"],
-  { channel: "filedrop" }
->;
 
 /**
  * The composition with the paths an unconverted opened document read put back:
@@ -372,14 +358,10 @@ function withCredentialPathsAsRead(
   read: SftpServer,
 ): SftpServer {
   const server = { ...composed };
-  for (const field of [
-    "password",
-    "privateKey",
-    "privateKeyPassphrase",
-  ] as const) {
-    const readValue = read[field];
-    if (server[field] !== undefined && readValue?.startsWith("@") === true)
-      server[field] = readValue;
+  for (const field of CREDENTIAL_FILE_FIELDS) {
+    const readPath = credentialFileReference(read[field]);
+    if (server[field] !== undefined && readPath !== undefined)
+      server[field] = `@${readPath}`;
   }
   return server;
 }
@@ -395,16 +377,13 @@ function withoutFolderPaths(
 /** The folder form a filedrop connection states, whichever of the two. */
 function folderPathsOf(
   connection: FiledropConnection,
-): Pick<FiledropConnection, "path" | "inboundPath" | "outboundPath"> {
-  return {
-    ...(connection.path !== undefined ? { path: connection.path } : {}),
-    ...(connection.inboundPath !== undefined
-      ? { inboundPath: connection.inboundPath }
-      : {}),
-    ...(connection.outboundPath !== undefined
-      ? { outboundPath: connection.outboundPath }
-      : {}),
-  };
+): Pick<FiledropConnection, FiledropFolderField> {
+  const paths: Pick<FiledropConnection, FiledropFolderField> = {};
+  for (const field of FILEDROP_FOLDER_FIELDS) {
+    const value = connection[field];
+    if (value !== undefined) paths[field] = value;
+  }
+  return paths;
 }
 
 /** The composition the template states, over the placeholder paths above. */
@@ -419,7 +398,7 @@ function composedHandoffSpec(
     return composeSftpConfigSpec(
       intent,
       placeholderServerEntry(serverEntry),
-      HANDOFF_SIGNING_PATHS,
+      HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
     );
   }
   return filedropSplit
@@ -427,13 +406,13 @@ function composedHandoffSpec(
         intent,
         HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER,
         HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER,
-        HANDOFF_SIGNING_PATHS,
+        HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
       )
     : composeFiledropConfigSpec(
         intent,
         HANDOFF_SHARED_DIRECTORY_PLACEHOLDER,
         undefined,
-        HANDOFF_SIGNING_PATHS,
+        HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
       );
 }
 

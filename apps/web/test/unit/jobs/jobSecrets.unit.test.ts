@@ -2,7 +2,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { JOB_SECRETS_DIR_ENV, useJobSecretsDir } from "@jobs/jobSecrets";
+import { JOB_SECRETS_DIR_ENV } from "@jobs/jobEnv";
+import { useJobSecretsDir } from "@jobs/jobSecrets";
 
 // The secrets mount resolver mirrors useJobInputDir and the rendezvous mount's own
 // EXCEPT it has no JOB_DATA_ROOT fallback: an unset variable leaves it unavailable

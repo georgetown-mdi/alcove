@@ -1,3 +1,5 @@
+import { jobDirectory } from "./jobEnv";
+
 /**
  * The resolved job-API configuration read from the environment. The job API is a
  * console feature that runs inside one party's trust boundary. It is
@@ -18,10 +20,6 @@ export interface JobApiConfig {
    * front. Lowercased, empties dropped; empty by default. */
   allowedHosts: ReadonlySet<string>;
 }
-
-/** The environment variable naming the data root the job API creates workdirs
- * under. */
-export const JOB_DATA_ROOT_ENV = "JOB_DATA_ROOT";
 
 /** The environment variable listing extra `Host` hostnames (comma-separated) the
  * job API accepts beyond the loopback literals, for an operator who fronts the
@@ -54,7 +52,7 @@ export function readJobApiConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): JobApiConfig {
   return {
-    dataRoot: (env[JOB_DATA_ROOT_ENV] ?? "").trim(),
+    dataRoot: jobDirectory(env, "dataRoot") ?? "",
     consoleProfile:
       (env[DEPLOYMENT_PROFILE_ENV] ?? "").trim() === CONSOLE_PROFILE,
     allowedHosts: parseAllowedHosts(env[JOB_ALLOWED_HOSTS_ENV] ?? ""),

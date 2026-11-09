@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  CREDENTIAL_FILE_FIELDS,
+  credentialFileReference,
+} from "@jobContract/connectionPathFields";
+
+import type { CredentialFileField } from "@jobContract/connectionPathFields";
 import type { ExchangeSpec } from "@alcove/core";
 import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 
@@ -22,21 +28,18 @@ export function referencedCredentialPaths(
   openedDocument: ExchangeSpec | undefined,
 ): Set<string> {
   const references: Array<string> = [];
-  const addCredential = (value: string | undefined): void => {
-    if (value?.startsWith("@") === true) references.push(value.slice(1));
+  const addCredentials = (
+    server: Pick<JobSftpServerEntry, CredentialFileField>,
+  ): void => {
+    for (const field of CREDENTIAL_FILE_FIELDS) {
+      const reference = credentialFileReference(server[field]);
+      if (reference !== undefined) references.push(reference);
+    }
   };
-  if (authoredServer !== undefined) {
-    addCredential(authoredServer.password);
-    addCredential(authoredServer.privateKey);
-    addCredential(authoredServer.privateKeyPassphrase);
-  }
+  if (authoredServer !== undefined) addCredentials(authoredServer);
   if (openedDocument !== undefined) {
     const { connection, signing } = openedDocument;
-    if (connection.channel === "sftp") {
-      addCredential(connection.server.password);
-      addCredential(connection.server.privateKey);
-      addCredential(connection.server.privateKeyPassphrase);
-    }
+    if (connection.channel === "sftp") addCredentials(connection.server);
     if (signing?.identityFile !== undefined)
       references.push(signing.identityFile);
   }

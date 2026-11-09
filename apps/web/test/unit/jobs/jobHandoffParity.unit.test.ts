@@ -543,7 +543,7 @@ describe("the placeholder invariants hold over every authorable option", () => {
     const live = composeSftpConfigDocument(
       maximalExchangeIntent(),
       testSftpServerEntry(),
-      { identityFile: CONTAINER_SIGNING_IDENTITY },
+      CONTAINER_SIGNING_IDENTITY,
     );
     expect(live).toContain(CONTAINER_SIGNING_IDENTITY);
     expect(live).toContain(CONTAINER_CREDENTIAL_PATH);

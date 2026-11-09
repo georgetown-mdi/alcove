@@ -367,7 +367,7 @@ export const jobSigningIdentityLocationSchema: z.ZodType<JobSigningIdentityLocat
  * The receipt-signing choice: the mode, plus a partner fingerprint pin and an
  * identity location, both admitted only under `certificate`. An absent pin is
  * a first authenticated contact. `identity_file` is not representable; the
- * server supplies it ({@link JobSigningPaths}). Contract:
+ * server supplies it ({@link composedSigning}). Contract:
  * docs/spec/SERVER_JOB_API.md, "The exchange intent".
  */
 export interface JobSigningChoice {
@@ -414,35 +414,26 @@ const jobSigningChoiceSchema: z.ZodType<JobSigningChoice> = z
   );
 
 /**
- * The identity path a composed `signing` block names, supplied by the caller:
- * the console's own path for a live run, or a placeholder for the hand-off
- * template (`handoff.ts`).
- */
-export interface JobSigningPaths {
-  /** Absolute path of the signing identity file the run loads its private key
-   * and certificate from (`signing.identity_file`). */
-  identityFile: string;
-}
-
-/**
  * The `signing` block a validated intent composes: only `certificate` composes
- * one, and an absent pin composes no `partnerFingerprint` key. Throws when a
- * certificate intent has no resolved identity path. Contract:
+ * one, and an absent pin composes no `partnerFingerprint` key. `identityFile`
+ * is the block's `identity_file`, supplied by the caller: the console's own
+ * path for a live run, or a placeholder for the hand-off template
+ * (`handoff.ts`). Throws when a certificate intent has none. Contract:
  * docs/spec/SERVER_JOB_API.md, "Composed CLI configuration".
  */
 export function composedSigning(
   intent: JobExchangeIntent,
-  paths: JobSigningPaths | undefined,
+  identityFile: string | undefined,
 ): SigningConfig | undefined {
   if (intent.signing?.mode !== "certificate") return undefined;
-  if (paths === undefined)
+  if (identityFile === undefined)
     throw new Error(
       "certificate-mode signing reached config composition with no identity " +
         "path resolved",
     );
   return {
     mode: "certificate",
-    identityFile: paths.identityFile,
+    identityFile,
     ...(intent.signing.partnerFingerprint !== undefined
       ? { partnerFingerprint: intent.signing.partnerFingerprint }
       : {}),

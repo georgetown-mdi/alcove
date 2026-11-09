@@ -13,6 +13,9 @@ import {
 
 import {
   CREDENTIAL_FILE_FIELDS,
+  credentialFileReference,
+} from "@jobContract/connectionPathFields";
+import {
   consoleOwnedCredentialField,
   consoleOwnedCredentialMessage,
   consoleOwnedMountPath,
@@ -32,7 +35,7 @@ import type {
   AuthoredSftpServerRequest,
   JobSftpServerEntry,
 } from "@jobContract/sftpConnection";
-import type { CredentialFileField } from "./consoleOwnedFiles";
+import type { CredentialFileField } from "@jobContract/connectionPathFields";
 
 /**
  * The strict allowlist of fields the server block may hold -- stricter than
@@ -569,12 +572,12 @@ function collectCredentialRefWarnings(
 ): Array<string> {
   if (value === undefined) return [];
   const fieldPath = `server.${field}`;
-  if (!value.startsWith("@"))
+  const refPath = credentialFileReference(value);
+  if (refPath === undefined)
     throw new JobApiConfigError(
       `${fieldPath} must be an @-file reference (@/absolute/path); an inline ` +
         "credential value is not accepted",
     );
-  const refPath = value.slice(1);
   if (!path.isAbsolute(refPath))
     throw new JobApiConfigError(
       `${fieldPath} must reference an absolute path after the @`,

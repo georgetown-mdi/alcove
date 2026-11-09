@@ -3,6 +3,10 @@ import { pathToFileURL } from "node:url";
 import { IGNORE_FILES_OLDER_THAN_INFINITE, formatSftpUrl } from "@alcove/core";
 
 import {
+  CREDENTIAL_FILE_FIELD_SPELLINGS,
+  composedCredentialFields,
+} from "@jobContract/connectionPathFields";
+import {
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SFTP_URL_DIRECTORY_REFUSAL,
   zeroSetupSftpCheck,
@@ -97,14 +101,8 @@ export function zeroSetupSftpArgv(
     argv.push(`--outbound-path=${serverEntry.outboundPath}`);
   if (serverEntry.username !== undefined)
     argv.push(`--server-username=${serverEntry.username}`);
-  if (serverEntry.password !== undefined)
-    argv.push(`--server-password=${serverEntry.password}`);
-  else if (serverEntry.privateKey !== undefined)
-    argv.push(`--server-private-key=${serverEntry.privateKey}`);
-  if (serverEntry.privateKeyPassphrase !== undefined)
-    argv.push(
-      `--server-private-key-passphrase=${serverEntry.privateKeyPassphrase}`,
-    );
+  for (const { field, value } of composedCredentialFields(serverEntry))
+    argv.push(`${CREDENTIAL_FILE_FIELD_SPELLINGS[field].flag}=${value}`);
   if (serverEntry.keyboardInteractive === true)
     argv.push("--server-keyboard-interactive");
   argv.push(`--server-host-key-fingerprint=${check.hostKeyFingerprint}`);
