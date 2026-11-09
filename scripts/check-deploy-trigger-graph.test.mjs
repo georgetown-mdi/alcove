@@ -15,6 +15,7 @@ import {
   RELEASE_WORKFLOW,
   REQUIRED_GRAPH_ROOTS,
   SITE_DEPLOY_WORKFLOW,
+  SITE_PUBLISH_WORKFLOW,
   classifyGraph,
   collectGraph,
   compileFilter,
@@ -603,11 +604,26 @@ describe("the deploy-credential rule", () => {
     path: SITE_DEPLOY_WORKFLOW,
     document: { jobs: { build: { steps: [] }, deploy: uploadJob() } },
   });
-  // The three deploy workflows, the staging upload job given as `job`.
+  const publishWorkflow = () => ({
+    path: SITE_PUBLISH_WORKFLOW,
+    document: {
+      jobs: {
+        build: { steps: [] },
+        deploy: uploadJob({ needs: "build" }),
+        tag: {
+          needs: ["build", "deploy"],
+          permissions: { contents: "write" },
+          steps: [{ run: "gh api --method PATCH", env: { GH_TOKEN: "x" } }],
+        },
+      },
+    },
+  });
+  // The four deploy workflows, the staging upload job given as `job`.
   const deployWorkflows = (job = uploadJob()) => [
     deployWorkflow(job),
     releaseWorkflow(),
     siteWorkflow(),
+    publishWorkflow(),
   ];
   const other = (jobs, extra = {}) => ({
     path: ".github/workflows/other.yaml",
@@ -625,6 +641,9 @@ describe("the deploy-credential rule", () => {
   it("refuses a deploy workflow with no upload job", () => {
     const findings = deployCredentialFindings([deployWorkflow()]).join("\n");
     expect(findings).toMatch(/Exactly one job in .*site_deploy\.yaml.*found 0/);
+    expect(findings).toMatch(
+      /Exactly one job in .*site_publish\.yaml.*found 0/,
+    );
     expect(findings).toMatch(/Exactly one job in .*release\.yaml.*found 0/);
   });
 
@@ -636,8 +655,23 @@ describe("the deploy-credential rule", () => {
         deployWorkflow(),
         release,
         siteWorkflow(),
+        publishWorkflow(),
       ]).join("\n"),
     ).toMatch(/Exactly one job in .*release\.yaml.*found 2/);
+  });
+
+  it("refuses a publish tag job that also uploads", () => {
+    const publish = publishWorkflow();
+    publish.document.jobs.tag.environment = "Production";
+    const findings = deployCredentialFindings([
+      deployWorkflow(),
+      releaseWorkflow(),
+      siteWorkflow(),
+      publish,
+    ]).join("\n");
+    expect(findings).toMatch(
+      /Exactly one job in .*site_publish\.yaml.*found 2/,
+    );
   });
 
   it.each([
@@ -742,7 +776,7 @@ describe("the deploy-credential rule", () => {
     const withRelease = (jobs) => {
       const release = releaseWorkflow();
       Object.assign(release.document.jobs, jobs);
-      return [deployWorkflow(), release, siteWorkflow()];
+      return [deployWorkflow(), release, siteWorkflow(), publishWorkflow()];
     };
 
     it("admits the release workflow's dockerhub job with inline run steps", () => {

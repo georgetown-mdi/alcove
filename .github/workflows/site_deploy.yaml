@@ -3,9 +3,9 @@ name: Deploy the Project Site
 # Builds the project site from docs/ (`npm run site:build`, configured in
 # docs/.vitepress/config.mjs) and uploads it to its own Cloudflare Pages
 # project by direct upload, the way pages_deploy.yaml uploads the web app. A
-# pull request builds the site and uploads nothing; a push to main is the
-# production deployment, and a push to staging a preview deployment on the
-# `staging` branch alias. The secrets and the variable it reads:
+# pull request builds the site and uploads nothing; a push to staging uploads a
+# preview deployment on the `staging` branch alias. Production is uploaded only
+# by hand, by site_publish.yaml. The secrets and the variable it reads:
 # docs/DEPLOYMENT.md, "The project site".
 # The two path lists are the same: the sources the site build reads.
 on:
@@ -26,7 +26,7 @@ on:
       - ".github/actions/setup/**"
       - ".github/workflows/site_deploy.yaml"
   push:
-    branches: [main, staging]
+    branches: [staging]
     paths:
       - "docs/**"
       - "CHANGELOG.md"
@@ -93,17 +93,17 @@ jobs:
         run: echo "artifactName=${{ env.ARTIFACT_NAME }}" >> "$GITHUB_OUTPUT"
 
   # The only job of this workflow given the Cloudflare credentials, and it runs
-  # only on a push or a dispatch on main or staging. As in pages_deploy.yaml,
+  # only on a push or a dispatch on staging. As in pages_deploy.yaml,
   # it checks out the deploy tool's lockfile alone and runs no other
   # repository code: it installs wrangler from that lockfile, downloads the
   # site the build job built, and uploads it.
   deploy:
     name: Upload to Cloudflare Pages
     needs: build
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
+    environment: Staging
     # The checkout of the deploy tool's lockfile.
     permissions:
       contents: read
@@ -128,9 +128,8 @@ jobs:
           path: ${{ runner.temp }}/site
       # As in pages_deploy.yaml: wrangler gets the command as arguments with no
       # shell, the project name is a variable only a repository admin sets, the
-      # branch is main or staging under the job's gate, the sha is hex and the
-      # path is the runner's, so none can add an argument. Pinned to the same
-      # commit and wrangler.
+      # branch is staging, the sha is hex and the path is the runner's, so none
+      # can add an argument. Pinned to the same commit and wrangler.
       - name: Deploy
         id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
@@ -139,7 +138,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
           workingDirectory: .github/wrangler
-          command: pages deploy ${{ runner.temp }}/site --project-name=${{ vars.CLOUDFLARE_SITE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+          command: pages deploy ${{ runner.temp }}/site --project-name=${{ vars.CLOUDFLARE_SITE_PAGES_PROJECT }} --branch=staging --commit-hash=${{ github.sha }}
 
   # As in pages_deploy.yaml: a job of its own, since it runs repository code,
   # and no retry.

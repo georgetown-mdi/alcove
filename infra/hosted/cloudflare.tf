@@ -81,9 +81,9 @@ resource "cloudflare_pages_domain" "staging" {
 }
 
 # The project site, built from docs/, in a Pages project of its own so it
-# shares no origin with the web app. Direct upload, as above: site_deploy.yaml
-# uploads each build, a deployment to main is the production one, and one to
-# staging is a preview on that branch's alias.
+# shares no origin with the web app. Direct upload, as above: site_publish.yaml,
+# run by hand, uploads to main, the production deployment, and site_deploy.yaml
+# uploads each push to staging as a preview on that branch's alias.
 resource "cloudflare_pages_project" "site" {
   account_id        = var.cloudflare_account_id
   name              = var.site_pages_project_name

@@ -1,7 +1,8 @@
 // @ts-check
 // The project site, built by VitePress from the Markdown under docs/ and a few
 // files at the repository root, in place: `npm run site:build` writes
-// docs/.vitepress/dist, which site_deploy.yaml uploads to Cloudflare Pages.
+// docs/.vitepress/dist, which site_deploy.yaml (the staging preview) and
+// site_publish.yaml (production) upload to Cloudflare Pages.
 // What the site is and how it deploys: docs/DEPLOYMENT.md, "The project site".
 
 import { existsSync, readdirSync, statSync } from "node:fs";

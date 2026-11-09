@@ -421,9 +421,9 @@ So the deploy tool has a lockfile of its own:
   Each override lifts a transitive package of the pinned wrangler to a release
   with no advisory at moderate or above, and comes out when a wrangler bump
   resolves that release or a later one on its own.
-- Each of the five upload steps (two in `pages_deploy.yaml`, two in
-  `release.yaml`, one in `site_deploy.yaml`) runs in a job that sparse-checks-out
-  those two files alone, runs `npm ci` there, and passes that directory as
+- Each of the six upload steps (two in `pages_deploy.yaml`, two in
+  `release.yaml`, one in `site_deploy.yaml`, one in `site_publish.yaml`) runs in
+  a job that sparse-checks-out those two files alone, runs `npm ci` there, and passes that directory as
   `workingDirectory` with the locked version as `wranglerVersion`.
 - An `npm` block in `.github/dependabot.yml` names that directory, so its
   updates come as Dependabot pull requests against the lockfile.
@@ -431,7 +431,7 @@ So the deploy tool has a lockfile of its own:
 `scripts/signed-build-inputs.test.mjs` holds the steps to the lockfile: it
 fails while a step's `wranglerVersion` differs from the version the lockfile
 installs, so a lockfile bump turns the check red until the same pull request
-moves all five steps.
+moves all six steps.
 The lockfile fixes which package versions install and then run inside the
 upload step, where the token is; it does not review them.
 `npm ci` there runs without `--ignore-scripts`, so the install scripts of the

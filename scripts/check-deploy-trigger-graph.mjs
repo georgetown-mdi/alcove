@@ -55,14 +55,18 @@ export const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
 /** The workflow that redeploys the hosted app's production from a release tag. */
 export const RELEASE_WORKFLOW = `${WORKFLOW_DIR}/release.yaml`;
 
-/** The workflow that uploads the project site built from docs/. */
+/** The workflow that uploads the project site's staging preview. */
 export const SITE_DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/site_deploy.yaml`;
+
+/** The manual workflow that uploads the project site's production deployment. */
+export const SITE_PUBLISH_WORKFLOW = `${WORKFLOW_DIR}/site_publish.yaml`;
 
 /** The workflows each allowed one job holding the deploy credentials. */
 export const CREDENTIAL_WORKFLOWS = [
   DEPLOY_WORKFLOW,
   RELEASE_WORKFLOW,
   SITE_DEPLOY_WORKFLOW,
+  SITE_PUBLISH_WORKFLOW,
 ];
 
 const credentialWorkflowList = `${CREDENTIAL_WORKFLOWS.slice(0, -1).join(", ")} and ${CREDENTIAL_WORKFLOWS.at(-1)}`;

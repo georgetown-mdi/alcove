@@ -3,7 +3,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { SITE_DEPLOY_WORKFLOW } from "./check-deploy-trigger-graph.mjs";
+import {
+  SITE_DEPLOY_WORKFLOW,
+  SITE_PUBLISH_WORKFLOW,
+} from "./check-deploy-trigger-graph.mjs";
 import {
   SECURITY_TXT_PATH,
   securityTxtUrl,
@@ -44,6 +47,11 @@ const SITE_UPLOADS = [
   },
   {
     workflow: SITE_DEPLOY_WORKFLOW,
+    output: "docs/.vitepress/dist",
+    uploads: 1,
+  },
+  {
+    workflow: SITE_PUBLISH_WORKFLOW,
     output: "docs/.vitepress/dist",
     uploads: 1,
   },
@@ -233,7 +241,11 @@ describe("securityTxtUrl", () => {
 describe("each Pages upload", () => {
   const CHECK_COMMAND = "node scripts/check-served-security-txt.mjs";
 
-  it.each([`${WORKFLOW_DIR}/pages_deploy.yaml`, SITE_DEPLOY_WORKFLOW])(
+  it.each([
+    `${WORKFLOW_DIR}/pages_deploy.yaml`,
+    SITE_DEPLOY_WORKFLOW,
+    SITE_PUBLISH_WORKFLOW,
+  ])(
     "in %s is followed by a check of its deployment's security.txt",
     (workflow) => {
       const jobs = Object.entries(workflowDocument(repoRoot, workflow).jobs);
@@ -263,4 +275,37 @@ describe("each Pages upload", () => {
       });
     },
   );
+});
+
+// The publish can deploy a commit older than main's checker, so the check runs
+// main's script against the SECURITY.md of the commit the site was built from.
+describe("the project site publish's security.txt check", () => {
+  const { jobs } = workflowDocument(repoRoot, SITE_PUBLISH_WORKFLOW);
+  const check = jobs["check-security-txt"];
+
+  it("compares against the published commit's SECURITY.md", () => {
+    expect([check.needs].flat()).toEqual(
+      expect.arrayContaining(["build", "deploy"]),
+    );
+    const steps = check.steps;
+    const checkout = steps.find((step) =>
+      (step.uses ?? "").startsWith("actions/checkout@"),
+    );
+    expect(checkout.with.ref).toBeUndefined();
+    expect(checkout.with["fetch-depth"]).toBe(0);
+    const takeIndex = steps.findIndex((step) =>
+      (step.run ?? "").includes("git show"),
+    );
+    expect(steps[takeIndex].env.COMMIT).toBe(
+      "${{ needs.build.outputs.commit }}",
+    );
+    expect(steps[takeIndex].run).toContain(
+      'git show "${COMMIT}:SECURITY.md" >SECURITY.md',
+    );
+    expect(takeIndex).toBeLessThan(
+      steps.findIndex(
+        (step) => step.run === "node scripts/check-served-security-txt.mjs",
+      ),
+    );
+  });
 });
