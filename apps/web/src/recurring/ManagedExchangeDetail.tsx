@@ -5,7 +5,6 @@ import {
   Button,
   Checkbox,
   Loader,
-  Modal,
   TextInput,
   Textarea,
 } from "@mantine/core";
@@ -24,6 +23,7 @@ import {
   workingDirectoryGrantSupported,
 } from "@psi/managed/managedWorkingDirectory";
 
+import { AsyncConfirmButton } from "@components/AsyncConfirmButton";
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { EXCHANGE_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
@@ -36,18 +36,7 @@ import { useHashTarget } from "@components/useHashTarget";
 
 import { dateTimeLabel } from "@psi/formatting";
 
-import {
-  MAX_AGE_DAYS_LABEL,
-  MAX_AGE_FIELD_NAME,
-  MAX_AGE_LABEL,
-} from "@psi/receiptsModel";
-
-import {
-  LABEL_GUIDANCE,
-  MAX_LABEL_LENGTH,
-  MAX_TOKEN_MAX_AGE_DAYS,
-  maxAgeCadenceNote,
-} from "@exchange/manageOfferModel";
+import { maxAgeCadenceNote } from "@exchange/manageOfferModel";
 import styles from "@styles/app.module.css";
 
 import {
@@ -118,6 +107,11 @@ import {
 import { ManagedRunHolderNote } from "./ManagedRunHolderNote";
 import { REINVITE_COMPROMISE_REASON } from "./managedReinviteGate";
 
+import {
+  LocalFieldsSaveFoot,
+  LocalLabelField,
+  MaxAgeFields,
+} from "./LocalFieldsControls";
 import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { KeepRunningSection } from "./KeepRunningSection";
 import { LocalDocumentFields } from "./LocalDocumentFields";
@@ -143,6 +137,7 @@ import type { DisclosureFact } from "./disclosureAccountingModel";
 import type { FormatMigrationError } from "@alcove/core";
 import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
 import type { ManagedRunHolder } from "./managedRunHolder";
+import type { ManagedRunSurfaceHost } from "./useManagedRunSurface";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
 import type { StoredDisclosureAccounting } from "@psi/disclosureAccounting";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
@@ -167,33 +162,40 @@ import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
  */
 export function ManagedExchangeDetail({
   record,
+  host,
   accountingRead,
   unfiledDisclosureRead,
   unrecordedRunFlagged,
   parkedResultsRead,
-  onFileUnfiledDisclosures,
-  onUnrecordedRunFlagShown,
-  onResetAccounting,
-  onRetryAccountingRead,
-  onRetryParkedResultsRead,
-  onClearParkedResults,
-  onSaveLocalFields,
-  onGrantWorkingFolder,
-  onStopUsingWorkingFolder,
   onReinviteToChangeTerms,
-  onTermsChanged,
-  onRelayRegistrationChanged,
+  recordChanged,
   canReinvite,
-  compromiseResponse,
-  runInFlight,
-  runHolder,
   onStopRunAndReinvite,
-  onRunLockRefused,
   onRecheckRunLock,
-  reinviting,
   reinviteFailure,
 }: {
   record: ManagedExchangeRecord;
+  /** The run surface's state and commands these sections take unchanged. Under
+   * a compromise response the terms re-invite is withheld, and a run in flight
+   * holds the terms re-invite and the relay registration writes, which take
+   * the run lock. */
+  host: Pick<
+    ManagedRunSurfaceHost,
+    | "fileUnfiled"
+    | "dropUnrecordedRunFlag"
+    | "resetAccounting"
+    | "retryAccountingRead"
+    | "retryParkedResultsRead"
+    | "clearParked"
+    | "saveLocalFields"
+    | "grantWorkingFolder"
+    | "stopUsingWorkingFolder"
+    | "compromiseResponse"
+    | "runInFlight"
+    | "runHolder"
+    | "runLockRefused"
+    | "reinviting"
+  >;
   /** How reading this exchange's accounting of disclosures turned out;
    * `undefined` while the read is in flight. One classified outcome rather than an
    * accounting beside flags, so a failed read can never render as "nothing was
@@ -215,82 +217,42 @@ export function ManagedExchangeDetail({
    * accounting read is: a store that did not answer must not render as "no run
    * left anything here". */
   parkedResultsRead: ParkedResultsRead | undefined;
-  /** Add the records the unfiled-run note retained to the accounting. Offered
-   * only where a noted run still has a record to add. Rejects where the store
-   * refused it or the accounting is one this build cannot append to; the control
-   * shows the failure and the note stands. */
-  onFileUnfiledDisclosures: () => Promise<void>;
-  /** Fired where the flag's alert has rendered, so the surface that read the
-   * flag drops it only once an operator has been shown it. */
-  onUnrecordedRunFlagShown: () => void;
-  /** Destroy the stored accounting so the exchange can file disclosures again,
-   * leaving the exchange itself untouched. Offered only from the unreadable state,
-   * behind an explicit confirm, and after the export. Rejects on a store failure;
-   * the confirm shows the failure and stays open. */
-  onResetAccounting: () => Promise<void>;
-  /** Read the accounting again, for a read that never reached the store. */
-  onRetryAccountingRead: () => void;
-  /** Read the parked results again, for a read that never reached the store. */
-  onRetryParkedResultsRead: () => void;
-  /** Remove everything this exchange's scheduled runs left in this browser, and
-   * read the store again so the section shows what it actually holds. Rejects on
-   * a store failure; the confirm shows the failure and stays open. */
-  onClearParkedResults: () => Promise<void>;
-  /** Persist an in-place edit to the local fields (label, schedule,
-   * max-token-age policy, and the document's own settings).
-   * Rejects on a store failure; the editor shows the failure and keeps the
-   * form. */
-  onSaveLocalFields: (edits: ManagedExchangeLocalEdits) => Promise<void>;
-  /** Ask the operator for the working folder a run reads its input from and a
-   * scheduled run writes its results into, and persist the grant. MUST reach the picker without an intervening await: the
-   * browser grants a folder only under the operator's own gesture. Resolves
-   * unchanged where they dismissed the picker, and rejects where the grant or its
-   * write failed; the fieldset shows that. */
-  onGrantWorkingFolder: () => Promise<void>;
-  /** Drop the stored grant, leaving no run of this exchange able to read its
-   * input with nobody present. Rejects on a store failure. */
-  onStopUsingWorkingFolder: () => Promise<void>;
   /** Enter the fast re-invite flow -- refresh the partnership with a new secret on
    * the SAME terms (it does not change them; a terms change is a new exchange). The
    * inviter mints a fresh invitation; the acceptor's affordance names asking the
    * partner instead (the caller routes by {@link canReinvite}). */
   onReinviteToChangeTerms: () => void;
-  /** Read the stored exchange again after {@link ManagedTermsUpdate} changed
-   * its terms. */
-  onTermsChanged: () => void;
-  /** Read the stored exchange again after {@link ManagedRelayRegistration}
-   * changed its relay registration. */
-  onRelayRegistrationChanged: () => void;
+  /** Read the stored exchange again after {@link ManagedTermsUpdate} or
+   * {@link ManagedRelayRegistration} wrote it. */
+  recordChanged: () => void;
   /** Whether this party can mint a re-invite (inviter-only); drives the terms
    * re-invite affordance's copy. */
   canReinvite: boolean;
-  /** Whether a compromise response stands on this exchange's record -- the
-   * operator answered a failure gate "something does not add up" (see
-   * {@link ./ManagedRunRecovery.tsx}). The terms re-invite is withheld under one: it
-   * mints a fresh secret on the channel they flagged. */
-  compromiseResponse: boolean;
-  /** Whether a run of this exchange is under way anywhere this browser profile
-   * can see. The terms re-invite and the relay registration writes take the
-   * run lock, so they wait it out. */
-  runInFlight: boolean;
-  /** Where that run is, which picks the reason shown and offers the stop
-   * ({@link ./managedRunHolder.ts}). */
-  runHolder: ManagedRunHolder | undefined;
   /** Stop this window's run still waiting for its partner, then re-invite. */
   onStopRunAndReinvite: () => void;
-  /** Report that a relay registration write found the run lock held. */
-  onRunLockRefused: () => void;
   /** Re-read the run lock now. */
   onRecheckRunLock: () => void;
-  /** Whether a re-invite is in flight, so the terms button shows loading. Shared
-   * with the run surface's own re-invite state (see {@link ./ManagedRunSurface.tsx}),
-   * so an in-flight re-invite displays the same on a healthy exchange as on a failed one. */
-  reinviting: boolean;
   /** The last re-invite attempt's failure, shown beside the terms button;
    * `undefined` where it did not fail. Shared with the run surface's re-invite
    * state. */
   reinviteFailure: ManagedReinviteFailureAlert | undefined;
 }) {
+  const {
+    fileUnfiled,
+    dropUnrecordedRunFlag,
+    resetAccounting,
+    retryAccountingRead,
+    retryParkedResultsRead,
+    clearParked,
+    saveLocalFields,
+    grantWorkingFolder,
+    stopUsingWorkingFolder,
+    compromiseResponse,
+    runInFlight,
+    runHolder,
+    runLockRefused,
+    reinviting,
+  } = host;
   // The last run's own declared counts are what a projection of the next run's
   // result size is drawn from, and they are kept beside what that run left. The
   // warning they raise is shown twice: where the schedule is entered, and in the
@@ -320,8 +282,8 @@ export function ManagedExchangeDetail({
       <ParkedResultsView
         read={parkedResultsRead}
         scheduled={scheduled}
-        onRetryRead={onRetryParkedResultsRead}
-        onClear={onClearParkedResults}
+        onRetryRead={retryParkedResultsRead}
+        onClear={clearParked}
       />
       <ConfigurationView
         record={record}
@@ -335,32 +297,29 @@ export function ManagedExchangeDetail({
         reinviteFailure={reinviteFailure}
       />
       {runnableManagedExchange(record) && (
-        <ManagedTermsUpdate record={record} onChanged={onTermsChanged} />
+        <ManagedTermsUpdate record={record} onChanged={recordChanged} />
       )}
       {runnableManagedExchange(record) &&
         !isConsoleBuild() &&
         record.exchangeFile.connection.channel === "webrtc" && (
-          <ManagedConnectionSettings
-            record={record}
-            onSave={onSaveLocalFields}
-          />
+          <ManagedConnectionSettings record={record} onSave={saveLocalFields} />
         )}
       {runnableManagedExchange(record) && relayRegistrationShown && (
         <ManagedRelayRegistration
           record={record}
           runInFlight={runInFlight}
           runHolder={runHolder}
-          onRunLockRefused={onRunLockRefused}
+          onRunLockRefused={runLockRefused}
           onRecheckRunLock={onRecheckRunLock}
-          onChanged={onRelayRegistrationChanged}
+          onChanged={recordChanged}
         />
       )}
       <LocalFieldsEditor
         record={record}
         resultSizeWarning={resultSizeWarning}
-        onSave={onSaveLocalFields}
-        onGrantWorkingFolder={onGrantWorkingFolder}
-        onStopUsingWorkingFolder={onStopUsingWorkingFolder}
+        onSave={saveLocalFields}
+        onGrantWorkingFolder={grantWorkingFolder}
+        onStopUsingWorkingFolder={stopUsingWorkingFolder}
       />
       <DisclosureAccountingView
         read={accountingRead}
@@ -368,10 +327,10 @@ export function ManagedExchangeDetail({
         unrecordedRunFlagged={unrecordedRunFlagged}
         completedRunOnRecord={completedRunRecorded(record)}
         lastRunMayHaveSent={lastRunMayHaveSentPayload(record)}
-        onFileUnfiled={onFileUnfiledDisclosures}
-        onUnrecordedRunFlagShown={onUnrecordedRunFlagShown}
-        onReset={onResetAccounting}
-        onRetryRead={onRetryAccountingRead}
+        onFileUnfiled={fileUnfiled}
+        onUnrecordedRunFlagShown={dropUnrecordedRunFlag}
+        onReset={resetAccounting}
+        onRetryRead={retryAccountingRead}
       />
     </>
   );
@@ -575,21 +534,11 @@ function LocalFieldsEditor({
   );
   const {
     label,
-    editLabel,
-    maxAgeEnabled,
-    editMaxAgeEnabled,
-    maxAgeDays,
-    editMaxAgeDays,
     markEdited,
-    maxAgeError,
     tokenMaxAgeDays,
     tokenMaxAgeDaysEdit,
     documentEdits,
-    labelValid,
     canSave: localFieldsSavable,
-    saving,
-    saved,
-    failed,
     submit,
   } = draft;
   const [scheduleEnabled, setScheduleEnabled] = useState(
@@ -671,19 +620,7 @@ function LocalFieldsEditor({
         These settings live only in this browser and edit in place, without
         re-inviting your partner or changing the agreed terms.
       </p>
-      <TextInput
-        label="Label"
-        description={LABEL_GUIDANCE}
-        value={label}
-        maxLength={MAX_LABEL_LENGTH}
-        error={
-          labelValid
-            ? undefined
-            : `Keep the label to ${MAX_LABEL_LENGTH} characters or fewer.`
-        }
-        onChange={(event) => editLabel(event.currentTarget.value)}
-        mt="sm"
-      />
+      <LocalLabelField draft={draft} />
       <Checkbox
         label="Run this exchange on an agreed schedule"
         description="Off by default. Enter the cadence and window you agreed on with your partner; each of you enters it on your own machine, and nothing about it is sent anywhere."
@@ -724,27 +661,7 @@ function LocalFieldsEditor({
           {resultSizeWarning}
         </Alert>
       )}
-      <Checkbox
-        label={MAX_AGE_LABEL}
-        checked={maxAgeEnabled}
-        onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
-        mt="sm"
-      />
-      {maxAgeEnabled && (
-        <NamedStepNumberInput
-          label={MAX_AGE_DAYS_LABEL}
-          stepUnit="day"
-          fieldName={MAX_AGE_FIELD_NAME}
-          value={maxAgeDays}
-          min={1}
-          max={MAX_TOKEN_MAX_AGE_DAYS}
-          step={1}
-          allowDecimal={false}
-          error={maxAgeError}
-          onChange={editMaxAgeDays}
-          mt="xs"
-        />
-      )}
+      <MaxAgeFields draft={draft} />
       {cadenceNote !== undefined && (
         <p className={`${styles.small} ${styles.sub}`}>{cadenceNote}</p>
       )}
@@ -771,25 +688,12 @@ function LocalFieldsEditor({
         draft={draft}
         allowedRelaysScope={EXCHANGE_ALLOWED_RELAYS_SCOPE}
       />
-      {failed && (
-        <Alert
-          role="alert"
-          color="error"
-          title="That could not be saved"
-          mt="sm"
-          mb="sm"
-        >
-          These settings were not saved. Nothing changed; try again.
-        </Alert>
-      )}
-      {saved && !failed && (
-        <p className={`${styles.small} ${styles.statusLineOk}`}>
-          Settings saved.
-        </p>
-      )}
-      <Button mt="sm" onClick={save} loading={saving} disabled={!canSave}>
-        Save settings
-      </Button>
+      <LocalFieldsSaveFoot
+        draft={draft}
+        canSave={canSave}
+        savedText="Settings saved."
+        onSave={save}
+      />
     </div>
   );
 }
@@ -1326,72 +1230,28 @@ function ClearParkedResultsControl({
 }: {
   onClear: () => Promise<void>;
 }) {
-  const [confirming, setConfirming] = useState(false);
-  const [clearing, setClearing] = useState(false);
-  const [clearFailed, setClearFailed] = useState(false);
-
-  function confirmClear() {
-    setClearing(true);
-    setClearFailed(false);
-    void onClear()
-      .then(() => setConfirming(false))
-      .catch(() => setClearFailed(true))
-      .finally(() => setClearing(false));
-  }
-
   return (
-    <>
-      <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
-        <Button
-          variant="subtle"
-          color="error"
-          disabled={clearing}
-          onClick={() => {
-            setClearFailed(false);
-            setConfirming(true);
-          }}
+    <AsyncConfirmButton
+      triggerLabel="Clear what is kept here"
+      title="Clear what is kept here"
+      confirmLabel="Clear these results"
+      failureTitle="Nothing was cleared"
+      failureText="What is kept here was not removed. Nothing changed; try again."
+      onConfirm={onClear}
+      placeTrigger={(trigger) => (
+        <div
+          className={`${styles.savedRowActions} ${styles.savedRowActionsBelow}`}
         >
-          Clear what is kept here
-        </Button>
-      </div>
-      <Modal
-        opened={confirming}
-        onClose={() => setConfirming(false)}
-        title="Clear what is kept here"
-        centered
-        transitionProps={{ duration: 0 }}
-      >
-        <p>{CLEAR_PARKED_RESULTS_NOTE}</p>
-        <p className={`${styles.small} ${styles.sub}`}>
-          Download anything you still want before clearing: this browser holds
-          no other copy of results kept here.
-        </p>
-        {clearFailed && (
-          <Alert
-            role="alert"
-            color="error"
-            title="Nothing was cleared"
-            mt="sm"
-            mb="sm"
-          >
-            What is kept here was not removed. Nothing changed; try again.
-          </Alert>
-        )}
-        <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
-          <Button variant="default" onClick={() => setConfirming(false)}>
-            Cancel
-          </Button>
-          <Button
-            color="error"
-            variant="light"
-            loading={clearing}
-            onClick={confirmClear}
-          >
-            Clear these results
-          </Button>
+          {trigger}
         </div>
-      </Modal>
-    </>
+      )}
+    >
+      <p>{CLEAR_PARKED_RESULTS_NOTE}</p>
+      <p className={`${styles.small} ${styles.sub}`}>
+        Download anything you still want before clearing: this browser holds no
+        other copy of results kept here.
+      </p>
+    </AsyncConfirmButton>
   );
 }
 
@@ -1425,15 +1285,10 @@ function factRow(fact: DisclosureFact): ConfigRow {
  * A failed read renders as its own state, never as an empty accounting -- an
  * empty accounting is a claim ("nothing was disclosed") this view must not
  * make on a read it could not perform. The read's own classification picks
- * which state: a value written under an EARLIER record format routes to the
- * export-then-reset recovery ({@link UnreadableAccountingRecovery}); one
- * written under a LATER one routes to the reload notice
- * ({@link StalePageAccountingNotice}); a store that never yielded a value
- * routes to the transient notice ({@link UnavailableAccountingNotice}). Only
- * the first offers anything destructive -- the other two describe a condition
- * outside the stored records, which clearing them would not fix. All three
- * replace the CSV export and the footer's offer of it, since neither can
- * speak for entries this read did not obtain.
+ * which state ({@link UnreadableAccountingRecovery},
+ * {@link StalePageAccountingNotice}, {@link UnavailableAccountingNotice}).
+ * All three replace the CSV export and the footer's offer of it, since none
+ * can speak for entries this read did not obtain.
  *
  * A run that disclosed and whose record never reached the accounting is stated
  * above the entries ({@link UnfiledDisclosureNotice}), and the number of such
@@ -1979,7 +1834,9 @@ function StalePageAccountingNotice({
             for your own files. This app version cannot read that file back or
             check it.
           </p>
-          <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
+          <div
+            className={`${styles.savedRowActions} ${styles.savedRowActionsBelow}`}
+          >
             <Button
               variant="default"
               onClick={() => downloadStoredAccounting(stored)}
@@ -2030,28 +1887,11 @@ function UnreadableAccountingRecovery({
   // writes it after the click and reports nothing back. It drives a prompt to check
   // for the file, never a claim that it is saved.
   const [downloadTaken, setDownloadTaken] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [resetting, setResetting] = useState(false);
-  const [resetFailed, setResetFailed] = useState(false);
 
   function downloadStored() {
     if (stored === undefined) return;
     downloadStoredAccounting(stored);
     setDownloadTaken(true);
-  }
-
-  function confirmReset() {
-    setResetting(true);
-    setResetFailed(false);
-    void onReset()
-      .then(() => setConfirming(false))
-      .catch(() => {
-        // A rejected delete leaves the accounting standing: keep the modal open and
-        // show the failure, so the operator retries rather than believing a
-        // destructive step took that did not.
-        setResetFailed(true);
-      })
-      .finally(() => setResetting(false));
   }
 
   return (
@@ -2098,34 +1938,29 @@ function UnreadableAccountingRecovery({
           cannot read it back or check it.
         </p>
       )}
-      <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
-        {stored !== undefined && !confirming && (
-          // Withdrawn while the confirm is open, which re-offers the same
-          // download: the modal renders over this rather than replacing it, so
-          // leaving both mounted would put two buttons under one accessible name
-          // in the tree a screen reader walks.
-          <Button variant="default" onClick={downloadStored}>
-            Download the stored records (JSON)
-          </Button>
-        )}
-        <Button
-          variant="subtle"
-          color="error"
-          disabled={resetting}
-          onClick={() => {
-            setResetFailed(false);
-            setConfirming(true);
-          }}
-        >
-          Start a fresh accounting
-        </Button>
-      </div>
-      <Modal
-        opened={confirming}
-        onClose={() => setConfirming(false)}
+      <AsyncConfirmButton
+        triggerLabel="Start a fresh accounting"
         title="Start a fresh accounting"
-        centered
-        transitionProps={{ duration: 0 }}
+        confirmLabel="Remove these records"
+        failureTitle="That accounting could not be reset"
+        failureText="The stored records were not removed. Nothing changed; try again."
+        onConfirm={onReset}
+        placeTrigger={(trigger, confirming) => (
+          <div
+            className={`${styles.savedRowActions} ${styles.savedRowActionsBelow}`}
+          >
+            {stored !== undefined && !confirming && (
+              // Withdrawn while the confirm is open, which re-offers the same
+              // download: the modal renders over this rather than replacing it, so
+              // leaving both mounted would put two buttons under one accessible name
+              // in the tree a screen reader walks.
+              <Button variant="default" onClick={downloadStored}>
+                Download the stored records (JSON)
+              </Button>
+            )}
+            {trigger}
+          </div>
+        )}
       >
         <p>
           Remove the disclosure records stored for this exchange? They are
@@ -2154,31 +1989,7 @@ function UnreadableAccountingRecovery({
             even in its stored form.
           </p>
         )}
-        {resetFailed && (
-          <Alert
-            role="alert"
-            color="error"
-            title="That accounting could not be reset"
-            mt="sm"
-            mb="sm"
-          >
-            The stored records were not removed. Nothing changed; try again.
-          </Alert>
-        )}
-        <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
-          <Button variant="default" onClick={() => setConfirming(false)}>
-            Cancel
-          </Button>
-          <Button
-            color="error"
-            variant="light"
-            loading={resetting}
-            onClick={confirmReset}
-          >
-            Remove these records
-          </Button>
-        </div>
-      </Modal>
+      </AsyncConfirmButton>
     </>
   );
 }

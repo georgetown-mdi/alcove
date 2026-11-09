@@ -155,19 +155,24 @@ export interface ManagedRunSurfaceHost {
   resolveStanding: (outcome: ConfirmationReply) => void;
   /** Persist an edit to the record's local fields; rejects when it did not save. */
   saveLocalFields: (edits: ManagedExchangeLocalEdits) => Promise<void>;
-  /** Ask for a working folder and persist the grant. */
+  /** Ask for a working folder and persist the grant. MUST reach the picker
+   * without an intervening await: the browser grants a folder only under the
+   * operator's own gesture. Resolves unchanged where they dismissed the picker,
+   * and rejects where the grant or its write failed. */
   grantWorkingFolder: () => Promise<void>;
-  /** Drop the record's working folder. */
+  /** Drop the record's working folder; rejects on a store failure. */
   stopUsingWorkingFolder: () => Promise<void>;
-  /** File the disclosures the unfiled-run note retained, then re-read. */
+  /** File the disclosures the unfiled-run note retained, then re-read; rejects
+   * where the store refused it or the accounting cannot be appended to. */
   fileUnfiled: () => Promise<void>;
-  /** Delete the accounting this build cannot read, then re-read. */
+  /** Delete the accounting this build cannot read, then re-read; rejects on a
+   * store failure. */
   resetAccounting: () => Promise<void>;
   /** Read the accounting again after a read that never reached the store. */
   retryAccountingRead: () => void;
   /** Read the parked results again after a read that never reached the store. */
   retryParkedResultsRead: () => void;
-  /** Delete the parked results, then re-read. */
+  /** Delete the parked results, then re-read; rejects on a store failure. */
   clearParked: () => Promise<void>;
   /** Drop the store's unrecorded-run flag once its alert has rendered. */
   dropUnrecordedRunFlag: () => void;

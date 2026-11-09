@@ -106,6 +106,7 @@ import type {
   ManagedExchangeSide,
   NewManagedExchange,
 } from "@psi/managed/managedExchangeRecord";
+import type { ComponentProps } from "react";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
 import type { ManagedReinviteFailureAlert } from "@recurring/managedRunRecoveryModel";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
@@ -152,6 +153,47 @@ function record(
   });
 }
 
+type DetailProps = ComponentProps<typeof ManagedExchangeDetail>;
+
+/** The detail sections over `record`, every read settled with nothing in it and
+ * every command a no-op that resolves, but for what a test overrides. */
+function managedDetail({
+  host,
+  ...props
+}: Partial<Omit<DetailProps, "host">> &
+  Pick<DetailProps, "record"> & { host?: Partial<DetailProps["host"]> }) {
+  return createElement(ManagedExchangeDetail, {
+    accountingRead: { kind: "none" },
+    unfiledDisclosureRead: { kind: "none" },
+    unrecordedRunFlagged: false,
+    parkedResultsRead: { kind: "none" },
+    onReinviteToChangeTerms: () => undefined,
+    recordChanged: () => undefined,
+    canReinvite: true,
+    onStopRunAndReinvite: () => undefined,
+    onRecheckRunLock: () => undefined,
+    reinviteFailure: undefined,
+    ...props,
+    host: {
+      fileUnfiled: () => Promise.resolve(),
+      dropUnrecordedRunFlag: () => undefined,
+      resetAccounting: () => Promise.resolve(),
+      retryAccountingRead: () => undefined,
+      retryParkedResultsRead: () => undefined,
+      clearParked: () => Promise.resolve(),
+      saveLocalFields: () => Promise.resolve(),
+      grantWorkingFolder: () => Promise.resolve(),
+      stopUsingWorkingFolder: () => Promise.resolve(),
+      compromiseResponse: false,
+      runInFlight: false,
+      runHolder: undefined,
+      runLockRefused: () => undefined,
+      reinviting: false,
+      ...host,
+    },
+  });
+}
+
 const app = createAppMount();
 
 /** The origin-private-file-system directories a grant test made, removed after
@@ -169,33 +211,8 @@ afterEach(async () => {
 describe("managed exchange detail configuration", () => {
   test("the inviter sees read-only terms with a re-invite affordance, not an edit control", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -237,33 +254,9 @@ describe("managed exchange detail configuration", () => {
 
   test("the acceptor is told different terms mean a new exchange, not shown a mint button", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("acceptor"),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
         canReinvite: false,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -314,33 +307,8 @@ describe("managed exchange detail configuration", () => {
     });
     stored.exchangeFile.linkageTerms.linkageKeys[1].name = hostileName;
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: stored,
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -367,19 +335,8 @@ describe("managed exchange detail configuration", () => {
 
     function render() {
       app.render(
-        createElement(ManagedExchangeDetail, {
+        managedDetail({
           record: record("inviter"),
-          parkedResultsRead: { kind: "none" },
-          accountingRead: { kind: "none" },
-          onResetAccounting: () => Promise.resolve(),
-          onRetryAccountingRead: () => undefined,
-          onRetryParkedResultsRead: () => undefined,
-          onClearParkedResults: () => Promise.resolve(),
-          onGrantWorkingFolder: () => Promise.resolve(),
-          onStopUsingWorkingFolder: () => Promise.resolve(),
-          onSaveLocalFields: () => Promise.resolve(),
-          onTermsChanged: () => undefined,
-          onRelayRegistrationChanged: () => undefined,
           onReinviteToChangeTerms: () => {
             reinviting = true;
             reinviteFailure = undefined;
@@ -390,19 +347,10 @@ describe("managed exchange detail configuration", () => {
               render();
             });
           },
-          canReinvite: true,
-          compromiseResponse: false,
-          runInFlight: false,
-          runHolder: undefined,
-          onStopRunAndReinvite: () => undefined,
-          onRunLockRefused: () => undefined,
-          onRecheckRunLock: () => undefined,
-          reinviting,
           reinviteFailure,
-          unfiledDisclosureRead: { kind: "none" },
-          unrecordedRunFlagged: false,
-          onUnrecordedRunFlagShown: () => undefined,
-          onFileUnfiledDisclosures: () => Promise.resolve(),
+          host: {
+            reinviting,
+          },
         }),
       );
     }
@@ -441,36 +389,14 @@ describe("managed exchange detail local fields", () => {
   test("the label and max-age policy edit in place, calling the save with the edits", async () => {
     const saved: Array<ManagedExchangeLocalEdits> = [];
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: (edits) => {
-          saved.push(edits);
-          return Promise.resolve();
+        host: {
+          saveLocalFields: (edits) => {
+            saved.push(edits);
+            return Promise.resolve();
+          },
         },
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -490,36 +416,11 @@ describe("managed exchange detail local fields", () => {
 
   test("reads back the current derived bound: a lapse date when expires is set", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter", {
           tokenMaxAgeDays: 90,
           expires: "2026-10-01T00:00:00.000Z",
         }),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -536,33 +437,8 @@ describe("managed exchange detail local fields", () => {
 
   test("reads back no age bound when expires is absent", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -590,47 +466,27 @@ describe("managed exchange detail schedule entry", () => {
     const saved: Array<ManagedExchangeLocalEdits> = [];
     const granted: Array<string> = [];
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter", {
           ...(stored !== undefined ? { schedule: stored } : {}),
           ...(folder !== undefined ? { workingDirectoryHandle: folder } : {}),
         }),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => {
-          granted.push("chose");
-          return Promise.resolve();
+        host: {
+          grantWorkingFolder: () => {
+            granted.push("chose");
+            return Promise.resolve();
+          },
+          stopUsingWorkingFolder: () => {
+            granted.push("stopped");
+            return stopUsingRejects === true
+              ? Promise.reject(new Error("store failed"))
+              : Promise.resolve();
+          },
+          saveLocalFields: (edits) => {
+            saved.push(edits);
+            return Promise.resolve();
+          },
         },
-        onStopUsingWorkingFolder: () => {
-          granted.push("stopped");
-          return stopUsingRejects === true
-            ? Promise.reject(new Error("store failed"))
-            : Promise.resolve();
-        },
-        onSaveLocalFields: (edits) => {
-          saved.push(edits);
-          return Promise.resolve();
-        },
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
     return { saved, granted };
@@ -1139,33 +995,11 @@ describe("managed exchange detail local fields against the real store", () => {
     });
 
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: stored,
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: savingTo(stored.id),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
+        host: {
+          saveLocalFields: savingTo(stored.id),
+        },
       }),
     );
     // The form has read the record before the store moves under it.
@@ -1208,33 +1042,11 @@ describe("managed exchange detail local fields against the real store", () => {
     });
 
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: stored,
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: savingTo(stored.id),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
+        host: {
+          saveLocalFields: savingTo(stored.id),
+        },
       }),
     );
     await expect
@@ -1286,36 +1098,11 @@ describe("managed exchange detail run schedule", () => {
     overrides: Partial<NewManagedExchange> = {},
   ) {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter", {
           ...(scheduled !== undefined ? { schedule: scheduled } : {}),
           ...overrides,
         }),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
   }
@@ -1612,33 +1399,11 @@ describe("managed exchange detail document settings", () => {
     onSaveLocalFields: (edits: ManagedExchangeLocalEdits) => Promise<void>,
   ) {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: stored,
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields,
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
+        host: {
+          saveLocalFields: onSaveLocalFields,
+        },
       }),
     );
   }
@@ -2113,35 +1878,13 @@ describe("managed exchange detail document settings", () => {
 describe("managed exchange detail run history", () => {
   test("a window the schedule skipped is named on the page, with no run to account for", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter", {
           lastRun: { at: "2026-07-01T09:00:00.000Z", outcome: "skipped" },
         }),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: true,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
+        host: {
+          compromiseResponse: true,
+        },
       }),
     );
 
@@ -2162,33 +1905,8 @@ describe("managed exchange detail run history", () => {
 describe("managed exchange detail recent runs, partner schedule, and relay section", () => {
   function renderDetail(shown: ManagedExchangeRecord) {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: shown,
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
   }
@@ -2393,7 +2111,7 @@ describe("managed exchange detail recent runs, partner schedule, and relay secti
 describe("managed exchange detail relay registration", () => {
   test("a pending registration is stated once, in the Relay registration section", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: {
           ...record("inviter", {
             relayRegistrationPendingSince: "2026-07-01T09:00:00.000Z",
@@ -2403,31 +2121,6 @@ describe("managed exchange detail relay registration", () => {
             exchangeId: "riverbend-q3",
           },
         },
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -2445,33 +2138,8 @@ describe("managed exchange detail relay registration", () => {
 describe("managed exchange detail accounting of disclosures", () => {
   test("frames each entry as this browser's own unsigned record, never a signed receipt", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -2504,33 +2172,8 @@ describe("managed exchange detail accounting of disclosures", () => {
     // -- the artifact does not contain one -- so an unqualified "it has disclosed
     // nothing" would be treated there as the partnership's whole disclosure history.
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -2576,7 +2219,7 @@ describe("managed exchange detail accounting of disclosures", () => {
       // docs/spec/MANAGED_EXCHANGE_RECORD.md, "When an entry is written"), so an
       // empty accounting is not evidence the payload never left this browser.
       app.render(
-        createElement(ManagedExchangeDetail, {
+        managedDetail({
           record: record("inviter", {
             lastRun: {
               at: "2026-07-01T09:00:00.000Z",
@@ -2584,31 +2227,6 @@ describe("managed exchange detail accounting of disclosures", () => {
               failureKind,
             },
           }),
-          parkedResultsRead: { kind: "none" },
-          accountingRead: { kind: "none" },
-          onResetAccounting: () => Promise.resolve(),
-          onRetryAccountingRead: () => undefined,
-          onRetryParkedResultsRead: () => undefined,
-          onClearParkedResults: () => Promise.resolve(),
-          onGrantWorkingFolder: () => Promise.resolve(),
-          onStopUsingWorkingFolder: () => Promise.resolve(),
-          onSaveLocalFields: () => Promise.resolve(),
-          onTermsChanged: () => undefined,
-          onRelayRegistrationChanged: () => undefined,
-          onReinviteToChangeTerms: () => undefined,
-          canReinvite: true,
-          reinviting: false,
-          reinviteFailure: undefined,
-          compromiseResponse: false,
-          runInFlight: false,
-          runHolder: undefined,
-          onStopRunAndReinvite: () => undefined,
-          onRunLockRefused: () => undefined,
-          onRecheckRunLock: () => undefined,
-          unfiledDisclosureRead: { kind: "none" },
-          unrecordedRunFlagged: false,
-          onUnrecordedRunFlagShown: () => undefined,
-          onFileUnfiledDisclosures: () => Promise.resolve(),
         }),
       );
 
@@ -2658,35 +2276,10 @@ describe("managed exchange detail accounting of disclosures", () => {
     // history still holding the run that filed them. An auditor reads this surface,
     // so the copy must not show a deliberate destruction as "nothing has run".
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter", {
           lastRun: { at: "2026-07-01T09:00:00.000Z", outcome: "succeeded" },
         }),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -2746,33 +2339,9 @@ describe("managed exchange detail accounting of disclosures", () => {
     );
     const [entry] = disclosureEntries(accounting);
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: { kind: "accounting", accounting },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -2812,33 +2381,9 @@ describe("managed exchange detail accounting of disclosures", () => {
     );
     const [entry] = disclosureEntries(accounting);
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: { kind: "accounting", accounting },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -2895,33 +2440,9 @@ describe("managed exchange detail accounting of disclosures", () => {
       }),
     );
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: { kind: "accounting", accounting },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -2955,33 +2476,9 @@ describe("managed exchange detail accounting of disclosures", () => {
 
   test("an accounting that could not be read is never shown as an empty one", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: { kind: "unreadable", stored: undefined },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -3003,33 +2500,9 @@ describe("managed exchange detail accounting of disclosures", () => {
 
   test("an unreadable accounting names the upgrade case and offers no remedy it cannot deliver", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: { kind: "unreadable", stored: undefined },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -3098,36 +2571,12 @@ describe("recovering an accounting this version cannot read", () => {
   test("offers the export before the reset, and names why the reset is needed", async () => {
     const entries = await strandedEntries();
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: {
           kind: "unreadable",
           stored: { version: DISCLOSURE_ACCOUNTING_VERSION, entries },
         },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -3167,36 +2616,12 @@ describe("recovering an accounting this version cannot read", () => {
     const downloads = captureDownloads();
     try {
       app.render(
-        createElement(ManagedExchangeDetail, {
+        managedDetail({
           record: record("inviter"),
-          parkedResultsRead: { kind: "none" },
           accountingRead: {
             kind: "unreadable",
             stored: { version: DISCLOSURE_ACCOUNTING_VERSION, entries },
           },
-          onResetAccounting: () => Promise.resolve(),
-          onRetryAccountingRead: () => undefined,
-          onRetryParkedResultsRead: () => undefined,
-          onClearParkedResults: () => Promise.resolve(),
-          onGrantWorkingFolder: () => Promise.resolve(),
-          onStopUsingWorkingFolder: () => Promise.resolve(),
-          onSaveLocalFields: () => Promise.resolve(),
-          onTermsChanged: () => undefined,
-          onRelayRegistrationChanged: () => undefined,
-          onReinviteToChangeTerms: () => undefined,
-          canReinvite: true,
-          reinviting: false,
-          reinviteFailure: undefined,
-          compromiseResponse: false,
-          runInFlight: false,
-          runHolder: undefined,
-          onStopRunAndReinvite: () => undefined,
-          onRunLockRefused: () => undefined,
-          onRecheckRunLock: () => undefined,
-          unfiledDisclosureRead: { kind: "none" },
-          unrecordedRunFlagged: false,
-          onUnrecordedRunFlagShown: () => undefined,
-          onFileUnfiledDisclosures: () => Promise.resolve(),
         }),
       );
 
@@ -3226,9 +2651,8 @@ describe("recovering an accounting this version cannot read", () => {
   test("the reset destroys nothing until the confirm is taken, and says what it destroys and keeps", async () => {
     const onResetAccounting = vi.fn(() => Promise.resolve());
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: {
           kind: "unreadable",
           stored: {
@@ -3236,29 +2660,9 @@ describe("recovering an accounting this version cannot read", () => {
             entries: await strandedEntries(),
           },
         },
-        onResetAccounting,
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
+        host: {
+          resetAccounting: onResetAccounting,
+        },
       }),
     );
 
@@ -3292,9 +2696,8 @@ describe("recovering an accounting this version cannot read", () => {
 
   test("the confirm's re-offered export leaves one button under that name, not two", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: {
           kind: "unreadable",
           stored: {
@@ -3302,29 +2705,6 @@ describe("recovering an accounting this version cannot read", () => {
             entries: await strandedEntries(),
           },
         },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
     const download = () =>
@@ -3361,9 +2741,8 @@ describe("recovering an accounting this version cannot read", () => {
     const downloads = captureDownloads();
     try {
       app.render(
-        createElement(ManagedExchangeDetail, {
+        managedDetail({
           record: record("inviter"),
-          parkedResultsRead: { kind: "none" },
           accountingRead: {
             kind: "unreadable",
             stored: {
@@ -3371,29 +2750,6 @@ describe("recovering an accounting this version cannot read", () => {
               entries: await strandedEntries(),
             },
           },
-          onResetAccounting: () => Promise.resolve(),
-          onRetryAccountingRead: () => undefined,
-          onRetryParkedResultsRead: () => undefined,
-          onClearParkedResults: () => Promise.resolve(),
-          onGrantWorkingFolder: () => Promise.resolve(),
-          onStopUsingWorkingFolder: () => Promise.resolve(),
-          onSaveLocalFields: () => Promise.resolve(),
-          onTermsChanged: () => undefined,
-          onRelayRegistrationChanged: () => undefined,
-          onReinviteToChangeTerms: () => undefined,
-          canReinvite: true,
-          reinviting: false,
-          reinviteFailure: undefined,
-          compromiseResponse: false,
-          runInFlight: false,
-          runHolder: undefined,
-          onStopRunAndReinvite: () => undefined,
-          onRunLockRefused: () => undefined,
-          onRecheckRunLock: () => undefined,
-          unfiledDisclosureRead: { kind: "none" },
-          unrecordedRunFlagged: false,
-          onUnrecordedRunFlagShown: () => undefined,
-          onFileUnfiledDisclosures: () => Promise.resolve(),
         }),
       );
 
@@ -3426,9 +2782,8 @@ describe("recovering an accounting this version cannot read", () => {
 
   test("a reset that fails keeps the confirm open and says nothing was deleted", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: {
           kind: "unreadable",
           stored: {
@@ -3436,29 +2791,9 @@ describe("recovering an accounting this version cannot read", () => {
             entries: await strandedEntries(),
           },
         },
-        onResetAccounting: () => Promise.reject(new Error("store failed")),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
+        host: {
+          resetAccounting: () => Promise.reject(new Error("store failed")),
+        },
       }),
     );
 
@@ -3479,33 +2814,9 @@ describe("recovering an accounting this version cannot read", () => {
 
   test("an accounting whose stored form is gone too offers the reset and no export", async () => {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: { kind: "unreadable", stored: undefined },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -3532,33 +2843,9 @@ describe("recovering an accounting this version cannot read", () => {
       await disclosureRecord(),
     );
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: { kind: "accounting", accounting },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
       }),
     );
 
@@ -3595,33 +2882,10 @@ describe("why an accounting or its note could not be read", () => {
     unfiledDisclosureRead: UnfiledDisclosureRead,
   ) {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead,
         unfiledDisclosureRead,
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
       }),
     );
   }
@@ -3770,36 +3034,12 @@ describe("an accounting a newer version of the app filed", () => {
   }
 
   const stalePage = (entries: Array<unknown>) =>
-    createElement(ManagedExchangeDetail, {
+    managedDetail({
       record: record("inviter"),
-      parkedResultsRead: { kind: "none" },
       accountingRead: {
         kind: "stale-page",
         stored: { version: DISCLOSURE_ACCOUNTING_VERSION, entries },
       },
-      onResetAccounting: () => Promise.resolve(),
-      onRetryAccountingRead: () => undefined,
-      onRetryParkedResultsRead: () => undefined,
-      onClearParkedResults: () => Promise.resolve(),
-      onGrantWorkingFolder: () => Promise.resolve(),
-      onStopUsingWorkingFolder: () => Promise.resolve(),
-      onSaveLocalFields: () => Promise.resolve(),
-      onTermsChanged: () => undefined,
-      onRelayRegistrationChanged: () => undefined,
-      onReinviteToChangeTerms: () => undefined,
-      canReinvite: true,
-      reinviting: false,
-      reinviteFailure: undefined,
-      compromiseResponse: false,
-      runInFlight: false,
-      runHolder: undefined,
-      onStopRunAndReinvite: () => undefined,
-      onRunLockRefused: () => undefined,
-      onRecheckRunLock: () => undefined,
-      unfiledDisclosureRead: { kind: "none" },
-      unrecordedRunFlagged: false,
-      onUnrecordedRunFlagShown: () => undefined,
-      onFileUnfiledDisclosures: () => Promise.resolve(),
     });
 
   test("names the page as the stale side and asks for a reload", async () => {
@@ -3907,33 +3147,12 @@ describe("an accounting a newer version of the app filed", () => {
  */
 describe("an accounting that could not be read at all", () => {
   const unavailable = (onRetryAccountingRead: () => void) =>
-    createElement(ManagedExchangeDetail, {
+    managedDetail({
       record: record("inviter"),
-      parkedResultsRead: { kind: "none" },
       accountingRead: { kind: "unavailable" },
-      onResetAccounting: () => Promise.resolve(),
-      onRetryAccountingRead,
-      onRetryParkedResultsRead: () => undefined,
-      onClearParkedResults: () => Promise.resolve(),
-      onGrantWorkingFolder: () => Promise.resolve(),
-      onStopUsingWorkingFolder: () => Promise.resolve(),
-      onSaveLocalFields: () => Promise.resolve(),
-      onTermsChanged: () => undefined,
-      onRelayRegistrationChanged: () => undefined,
-      onReinviteToChangeTerms: () => undefined,
-      canReinvite: true,
-      reinviting: false,
-      reinviteFailure: undefined,
-      compromiseResponse: false,
-      runInFlight: false,
-      runHolder: undefined,
-      onStopRunAndReinvite: () => undefined,
-      onRunLockRefused: () => undefined,
-      onRecheckRunLock: () => undefined,
-      unfiledDisclosureRead: { kind: "none" },
-      unrecordedRunFlagged: false,
-      onUnrecordedRunFlagShown: () => undefined,
-      onFileUnfiledDisclosures: () => Promise.resolve(),
+      host: {
+        retryAccountingRead: onRetryAccountingRead,
+      },
     });
 
   test("is treated as transient, and offers nothing destructive", async () => {
@@ -4003,33 +3222,9 @@ describe("an accounting that could not be read at all", () => {
  */
 describe("an accounting read still in flight", () => {
   const inFlight = () =>
-    createElement(ManagedExchangeDetail, {
+    managedDetail({
       record: record("inviter"),
-      parkedResultsRead: { kind: "none" },
       accountingRead: undefined,
-      onResetAccounting: () => Promise.resolve(),
-      onRetryAccountingRead: () => undefined,
-      onRetryParkedResultsRead: () => undefined,
-      onClearParkedResults: () => Promise.resolve(),
-      onGrantWorkingFolder: () => Promise.resolve(),
-      onStopUsingWorkingFolder: () => Promise.resolve(),
-      onSaveLocalFields: () => Promise.resolve(),
-      onTermsChanged: () => undefined,
-      onRelayRegistrationChanged: () => undefined,
-      onReinviteToChangeTerms: () => undefined,
-      canReinvite: true,
-      reinviting: false,
-      reinviteFailure: undefined,
-      compromiseResponse: false,
-      runInFlight: false,
-      runHolder: undefined,
-      onStopRunAndReinvite: () => undefined,
-      onRunLockRefused: () => undefined,
-      onRecheckRunLock: () => undefined,
-      unfiledDisclosureRead: { kind: "none" },
-      unrecordedRunFlagged: false,
-      onUnrecordedRunFlagShown: () => undefined,
-      onFileUnfiledDisclosures: () => Promise.resolve(),
     });
 
   test("says the read is under way and claims nothing about what is stored", async () => {
@@ -4128,33 +3323,13 @@ describe("the results a scheduled run left for this visit", () => {
     } = {},
   ) {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter", schedule ? { schedule: scheduled() } : {}),
         parkedResultsRead,
-        accountingRead: { kind: "none" },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead,
-        onClearParkedResults,
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
+        host: {
+          retryParkedResultsRead: onRetryParkedResultsRead,
+          clearParked: onClearParkedResults,
+        },
       }),
     );
   }
@@ -4495,35 +3670,17 @@ describe("a run whose record never reached the accounting", () => {
     } = {},
   ) {
     app.render(
-      createElement(ManagedExchangeDetail, {
+      managedDetail({
         record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
         accountingRead: overrides.accountingRead ?? { kind: "none" },
         unfiledDisclosureRead,
         unrecordedRunFlagged: overrides.unrecordedRunFlagged ?? false,
-        onUnrecordedRunFlagShown:
-          overrides.onUnrecordedRunFlagShown ?? (() => undefined),
-        onFileUnfiledDisclosures:
-          overrides.onFileUnfiledDisclosures ?? (() => Promise.resolve()),
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
+        host: {
+          dropUnrecordedRunFlag:
+            overrides.onUnrecordedRunFlagShown ?? (() => undefined),
+          fileUnfiled:
+            overrides.onFileUnfiledDisclosures ?? (() => Promise.resolve()),
+        },
       }),
     );
   }

@@ -1,21 +1,15 @@
 import { useMemo, useState } from "react";
 
-import { Alert, Button, Checkbox, NumberInput, TextInput } from "@mantine/core";
+import { Alert, Button } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 
 import { DisclosureSection } from "@components/DisclosureSection";
 import { triggerBlobDownload } from "@components/blobDownload";
 
-import { MAX_AGE_DAYS_LABEL, MAX_AGE_LABEL } from "@psi/receiptsModel";
 import { updateManagedExchangeLocalFields } from "@psi/managed/managedExchangeStore";
 
-import {
-  LABEL_GUIDANCE,
-  MAX_LABEL_LENGTH,
-  MAX_TOKEN_MAX_AGE_DAYS,
-  maxAgeCadenceNote,
-} from "@exchange/manageOfferModel";
 import { AppPage } from "@components/AppPage";
+import { maxAgeCadenceNote } from "@exchange/manageOfferModel";
 import styles from "@styles/app.module.css";
 
 import {
@@ -23,6 +17,11 @@ import {
   invitationRegistrarExportLine,
   managedConfigurationExportState,
 } from "./managedCronExportModel";
+import {
+  LocalFieldsSaveFoot,
+  LocalLabelField,
+  MaxAgeFields,
+} from "./LocalFieldsControls";
 import {
   SIDE_LABELS,
   connectionRows,
@@ -298,20 +297,10 @@ function ConfigurationSettingsEditor({
   );
   const {
     label,
-    editLabel,
-    maxAgeEnabled,
-    editMaxAgeEnabled,
-    maxAgeDays,
-    editMaxAgeDays,
-    maxAgeError,
     tokenMaxAgeDays,
     tokenMaxAgeDaysEdit,
     documentEdits,
-    labelValid,
     canSave,
-    saving,
-    saved,
-    failed,
     submit,
   } = draft;
   const cadenceNote = maxAgeCadenceNote(tokenMaxAgeDays);
@@ -335,61 +324,18 @@ function ConfigurationSettingsEditor({
         The label stays in this browser. The other settings go into the
         configuration you download, and the command-line run applies them.
       </p>
-      <TextInput
-        label="Label"
-        description={LABEL_GUIDANCE}
-        value={label}
-        maxLength={MAX_LABEL_LENGTH}
-        error={
-          labelValid
-            ? undefined
-            : `Keep the label to ${MAX_LABEL_LENGTH} characters or fewer.`
-        }
-        onChange={(event) => editLabel(event.currentTarget.value)}
-        mt="sm"
-      />
-      <Checkbox
-        label={MAX_AGE_LABEL}
-        checked={maxAgeEnabled}
-        onChange={(event) => editMaxAgeEnabled(event.currentTarget.checked)}
-        mt="sm"
-      />
-      {maxAgeEnabled && (
-        <NumberInput
-          label={MAX_AGE_DAYS_LABEL}
-          value={maxAgeDays}
-          min={1}
-          max={MAX_TOKEN_MAX_AGE_DAYS}
-          step={1}
-          allowDecimal={false}
-          error={maxAgeError}
-          onChange={editMaxAgeDays}
-          mt="xs"
-        />
-      )}
+      <LocalLabelField draft={draft} />
+      <MaxAgeFields draft={draft} />
       {cadenceNote !== undefined && (
         <p className={`${styles.small} ${styles.sub}`}>{cadenceNote}</p>
       )}
       <LocalDocumentFields draft={draft} />
-      {failed && (
-        <Alert
-          role="alert"
-          color="error"
-          title="That could not be saved"
-          mt="sm"
-          mb="sm"
-        >
-          These settings were not saved. Nothing changed; try again.
-        </Alert>
-      )}
-      {saved && !failed && (
-        <p className={`${styles.small} ${styles.statusLineOk}`}>
-          Settings saved. Download the configuration again to run with them.
-        </p>
-      )}
-      <Button mt="sm" onClick={save} loading={saving} disabled={!canSave}>
-        Save settings
-      </Button>
+      <LocalFieldsSaveFoot
+        draft={draft}
+        canSave={canSave}
+        savedText="Settings saved. Download the configuration again to run with them."
+        onSave={save}
+      />
     </div>
   );
 }

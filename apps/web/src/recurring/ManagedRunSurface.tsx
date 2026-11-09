@@ -71,13 +71,13 @@ import { managedUnrecordedRunFlagged } from "./managedSurfaceReadsModel";
  * this renders the state it holds.
  */
 export function ManagedRunSurface({ id }: { id: string }) {
+  const host = useManagedRunSurface(id);
   const {
     state: surfaceState,
     runInFlight,
     runLockHeld,
     runHolder,
     recheckRunLock,
-    runLockRefused,
     running,
     liveFailure,
     runCompletion,
@@ -97,19 +97,11 @@ export function ManagedRunSurface({ id }: { id: string }) {
     resolveConfirmation,
     clearStanding,
     resolveStanding,
-    saveLocalFields,
     grantWorkingFolder,
-    stopUsingWorkingFolder,
-    fileUnfiled,
-    resetAccounting,
-    retryAccountingRead,
-    retryParkedResultsRead,
-    clearParked,
-    dropUnrecordedRunFlag,
     settleTermsProposal,
     rereadRecord,
     editConfiguration,
-  } = useManagedRunSurface(id);
+  } = host;
   const {
     load,
     run: runState,
@@ -492,30 +484,16 @@ export function ManagedRunSurface({ id }: { id: string }) {
             />
             <ManagedExchangeDetail
               record={load.record}
+              host={host}
               accountingRead={accountingRead}
               unfiledDisclosureRead={reads.unfiled}
               unrecordedRunFlagged={managedUnrecordedRunFlagged(reads, id)}
               parkedResultsRead={parkedResultsRead}
-              onFileUnfiledDisclosures={fileUnfiled}
-              onUnrecordedRunFlagShown={dropUnrecordedRunFlag}
-              onResetAccounting={resetAccounting}
-              onRetryAccountingRead={retryAccountingRead}
-              onRetryParkedResultsRead={retryParkedResultsRead}
-              onClearParkedResults={clearParked}
-              onSaveLocalFields={saveLocalFields}
-              onGrantWorkingFolder={grantWorkingFolder}
-              onStopUsingWorkingFolder={stopUsingWorkingFolder}
               onReinviteToChangeTerms={() => reinviteNow("detail")}
-              onTermsChanged={rereadRecord}
-              onRelayRegistrationChanged={rereadRecord}
+              recordChanged={rereadRecord}
               canReinvite={canReinviteFromRecord(load.record)}
-              compromiseResponse={compromiseResponse}
-              runInFlight={runInFlight}
-              runHolder={runHolder}
               onStopRunAndReinvite={() => stopRunAndReinvite("detail")}
-              onRunLockRefused={runLockRefused}
               onRecheckRunLock={() => void recheckRunLock()}
-              reinviting={reinviting}
               // The failed alert renders here only when the detail section triggered
               // the mint, so it and the failure-path recovery do not both show it.
               reinviteFailure={managedReinviteFailureAt(recovery, "detail")}

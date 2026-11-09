@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  Alert,
-  Anchor,
-  Button,
-  FileButton,
-  Loader,
-  Modal,
-} from "@mantine/core";
+import { Alert, Anchor, Button, FileButton, Loader } from "@mantine/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 
 import { alertRoleFor } from "@theme";
@@ -38,6 +31,7 @@ import { PASTE_INVITATION_FIELD_ID } from "@psi/invitation";
 import { RECURRING_SETUP_HREF } from "@exchange/recurringSetup";
 
 import { AppPage } from "@components/AppPage";
+import { AsyncConfirmButton } from "@components/AsyncConfirmButton";
 import styles from "@styles/app.module.css";
 
 import {
@@ -90,7 +84,6 @@ import type {
 import type { ManagedBackupImportOptions } from "@psi/managed/managedExchangeStore";
 import type { ManagedFolderBackupLocation } from "@psi/managed/managedBackupState";
 import type { ManagedImportGrantNotice } from "./managedImportGrantNotice";
-import type { ManagedImportResult } from "@psi/managed/managedExchangeImport";
 import type { RecoveryRow } from "./savedExchangesRecovery";
 import type { SavedExchangeRow } from "./savedExchangesModel";
 import type { SavedExchangesLoad } from "./savedExchangesLoad";
@@ -470,119 +463,65 @@ export function DeleteExchangeButton({
   configurationOnly?: boolean;
   onDeleted: () => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteFailed, setDeleteFailed] = useState(false);
   const named = label === "" ? "this exchange" : `"${label}"`;
   const backupNote = removedBackupNote(backedUp, folderBackup);
 
-  function confirmDelete() {
-    setDeleting(true);
-    setDeleteFailed(false);
-    void (async () => {
-      try {
+  return (
+    <AsyncConfirmButton
+      triggerLabel="Remove"
+      title="Remove from this browser"
+      confirmLabel="Remove"
+      failureTitle="That exchange could not be removed"
+      failureText="Removing it from this browser failed. Nothing was removed; try again."
+      onConfirm={async () => {
+        // A rejected delete (transaction abort, quota, a blocked open) leaves
+        // the row standing, so the confirm stays open with the failure.
         await deleteManagedExchange(id);
         onDeleted();
-        setConfirming(false);
-      } catch {
-        // A rejected delete (transaction abort, quota, a blocked open) leaves the
-        // row standing: keep the modal open and report the failure so the operator
-        // can retry rather than the row silently vanishing from confirm.
-        setDeleteFailed(true);
-      } finally {
-        setDeleting(false);
-      }
-    })();
-  }
-
-  return (
-    <>
-      <Button
-        variant="subtle"
-        color="error"
-        disabled={deleting}
-        onClick={() => {
-          setDeleteFailed(false);
-          setConfirming(true);
-        }}
-      >
-        Remove
-      </Button>
-      <Modal
-        opened={confirming}
-        onClose={() => setConfirming(false)}
-        title="Remove from this browser"
-        centered
-        transitionProps={{ duration: 0 }}
-      >
-        {configurationOnly ? (
-          <>
+      }}
+    >
+      {configurationOnly ? (
+        <>
+          <p>
+            Remove {named}? This removes the settings this browser holds for it.
+            It cannot be undone here.
+          </p>
+          <p className={`${styles.small} ${styles.sub}`}>
+            The exchange itself runs from the alcove.yaml and .alcove.key on the
+            machine you run it from. Removing it here changes nothing there, and
+            your partner is not notified.
+          </p>
+        </>
+      ) : (
+        <>
+          {unopenable ? (
             <p>
-              Remove {named}? This removes the settings this browser holds for
-              it. It cannot be undone here.
+              Remove {named}? This removes everything this browser holds for it
+              - the terms, the shared secret, its run history, its accounting of
+              disclosures, and any results a scheduled run left here - in one
+              step. It cannot be undone here. Part of its saved state cannot be
+              read, so its accounting of disclosures cannot be read or exported,
+              and is removed with the exchange.
             </p>
-            <p className={`${styles.small} ${styles.sub}`}>
-              The exchange itself runs from the alcove.yaml and .alcove.key on
-              the machine you run it from. Removing it here changes nothing
-              there, and your partner is not notified.
+          ) : (
+            <p>
+              Remove {named}? This removes everything this browser holds for it
+              - the terms, the shared secret, its run history, its accounting of
+              disclosures, and any results a scheduled run left here for you to
+              download - in one step. It cannot be undone here. Download those
+              results and export the accounting first if you need to keep them.
             </p>
-          </>
-        ) : (
-          <>
-            {unopenable ? (
-              <p>
-                Remove {named}? This removes everything this browser holds for
-                it - the terms, the shared secret, its run history, its
-                accounting of disclosures, and any results a scheduled run left
-                here - in one step. It cannot be undone here. Part of its saved
-                state cannot be read, so its accounting of disclosures cannot be
-                read or exported, and is removed with the exchange.
-              </p>
-            ) : (
-              <p>
-                Remove {named}? This removes everything this browser holds for
-                it - the terms, the shared secret, its run history, its
-                accounting of disclosures, and any results a scheduled run left
-                here for you to download - in one step. It cannot be undone
-                here. Download those results and export the accounting first if
-                you need to keep them.
-              </p>
-            )}
-            <p className={`${styles.small} ${styles.sub}`}>
-              This only removes your copy: your partner is not notified, and
-              their own copy stands until they remove it or you re-invite.
-            </p>
-          </>
-        )}
-        {backupNote !== undefined && (
-          <p className={`${styles.small} ${styles.sub}`}>{backupNote}</p>
-        )}
-        {deleteFailed && (
-          <Alert
-            role="alert"
-            color="error"
-            title="That exchange could not be removed"
-            mb="sm"
-          >
-            Removing it from this browser failed. Nothing was removed; try
-            again.
-          </Alert>
-        )}
-        <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
-          <Button variant="default" onClick={() => setConfirming(false)}>
-            Cancel
-          </Button>
-          <Button
-            color="error"
-            variant="light"
-            loading={deleting}
-            onClick={confirmDelete}
-          >
-            Remove
-          </Button>
-        </div>
-      </Modal>
-    </>
+          )}
+          <p className={`${styles.small} ${styles.sub}`}>
+            This only removes your copy: your partner is not notified, and their
+            own copy stands until they remove it or you re-invite.
+          </p>
+        </>
+      )}
+      {backupNote !== undefined && (
+        <p className={`${styles.small} ${styles.sub}`}>{backupNote}</p>
+      )}
+    </AsyncConfirmButton>
   );
 }
 
@@ -857,13 +796,7 @@ function ImportExchangeFile() {
     answerLiveCopy,
     answerStoredCopy,
     dismiss,
-  } = useImportFile({
-    maxBytes: MAX_IMPORT_FILE_BYTES,
-    oversizeReason: UNREADABLE_IMPORT_REASON,
-    importFile: (source, answer) =>
-      importManagedExchangeFile(source, undefined, answer),
-    failureAlert: importFailureAlert,
-  });
+  } = useImportFile();
 
   return (
     <div className={styles.importSection}>
@@ -892,29 +825,34 @@ function ImportExchangeFile() {
   );
 }
 
-/** What an import control shows once a file has been tried: a notice with the
- * way onward, or the refusal. */
-interface ImportOutcome {
-  grantNotice?: { id: string; notice: ManagedImportGrantNotice };
-  failure?: ImportFailureAlert;
+/** What an import control shows once a file has been tried: nothing, a notice
+ * with the way onward, the refusal, or a question for the operator. */
+type ImportOutcome =
+  | { kind: "none" }
+  | { kind: "grant-notice"; id: string; notice: ManagedImportGrantNotice }
+  | { kind: "failure"; failure: ImportFailureAlert }
   /** The listed exchanges a backup may be a copy of, and the file to replace
    * one of them with, or import beside them all, on the operator's word. */
-  liveCopy?: {
-    copies: ReadonlyArray<ManagedStoredCopy>;
-    file: File;
-  };
+  | {
+      kind: "live-copy";
+      copies: ReadonlyArray<ManagedStoredCopy>;
+      file: File;
+    }
   /** The stored exchanges a pair may belong to, and the two files to take
    * into one of them, or install beside them all, on the operator's word. */
-  storedCopy?: {
-    copies: ReadonlyArray<ManagedStoredCopy>;
-    configurationFile: File;
-    keyFile: File;
-  };
-}
+  | {
+      kind: "stored-copy";
+      copies: ReadonlyArray<ManagedStoredCopy>;
+      configurationFile: File;
+      keyFile: File;
+    };
+
+const NO_IMPORT_OUTCOME: ImportOutcome = { kind: "none" };
 
 /** A refusal under the heading every file refusal takes. */
 function fileRefusal(reason: string): ImportOutcome {
   return {
+    kind: "failure",
     failure: { color: "error", title: IMPORT_FAILURE_TITLE, reason },
   };
 }
@@ -925,27 +863,14 @@ function fileRefusal(reason: string): ImportOutcome {
  * one or adding it beside all of them imports the file again with that
  * answer, and keeping them imports nothing. A pair that may belong to a stored
  * exchange is held the same way until the operator takes it into one, adds it
- * beside them all, or dismisses it. One file goes through `importFile`; a
- * configuration with its key file through {@link importManagedCommandLinePair},
- * whichever control took them. A file over its cap -- `maxBytes` for the one
- * file or the configuration, the key file's own for the key -- is refused with
- * its reason before any file is read. While one import is in flight the
- * control is withheld and a further pick is ignored, so one pick of a pair
- * cannot race a second into installing the same secret twice. */
-function useImportFile({
-  maxBytes,
-  oversizeReason,
-  importFile,
-  failureAlert,
-}: {
-  maxBytes: number;
-  oversizeReason: string;
-  importFile: (
-    source: string,
-    answer?: ManagedBackupImportOptions,
-  ) => Promise<ManagedImportResult>;
-  failureAlert: (error: unknown) => ImportFailureAlert;
-}): {
+ * beside them all, or dismisses it. One file goes through
+ * {@link importManagedExchangeFile}; a configuration with its key file through
+ * {@link importManagedCommandLinePair}. A file over its cap -- the import cap
+ * for the one file or the configuration, the key file's own for the key -- is
+ * refused with its reason before any file is read. While one import is in
+ * flight the control is withheld and a further pick is ignored, so one pick of
+ * a pair cannot race a second into installing the same secret twice. */
+function useImportFile(): {
   onFiles: (files: Array<File>) => void;
   outcome: ImportOutcome;
   importing: boolean;
@@ -954,10 +879,10 @@ function useImportFile({
   dismiss: () => void;
 } {
   const navigate = useNavigate();
-  const [outcome, setOutcome] = useState<ImportOutcome>({});
+  const [outcome, setOutcome] = useState<ImportOutcome>(NO_IMPORT_OUTCOME);
   const [importing, setImporting] = useState(false);
   useAppShellUpdateHold(
-    outcome.liveCopy !== undefined || outcome.storedCopy !== undefined,
+    outcome.kind === "live-copy" || outcome.kind === "stored-copy",
     "file",
   );
   // The state renders the withheld control; the ref refuses a pick that lands
@@ -968,7 +893,7 @@ function useImportFile({
     if (inFlight.current) return;
     const choice = managedImportFileChoice(files);
     if (choice === undefined) return;
-    setOutcome({});
+    setOutcome(NO_IMPORT_OUTCOME);
     if (choice.kind === "refused") {
       setOutcome(fileRefusal(choice.reason));
       return;
@@ -979,8 +904,8 @@ function useImportFile({
     // Cap each file before reading it: every file here is a small operator-held
     // document, so an over-cap one is refused rather than read into memory ahead
     // of the bounded parse.
-    if (primaryFile.size > maxBytes) {
-      setOutcome(fileRefusal(oversizeReason));
+    if (primaryFile.size > MAX_IMPORT_FILE_BYTES) {
+      setOutcome(fileRefusal(UNREADABLE_IMPORT_REASON));
       return;
     }
     if (keyFile !== undefined && keyFile.size > MAX_KEY_FILE_IMPORT_BYTES) {
@@ -997,7 +922,7 @@ function useImportFile({
     pairAnswer: ManagedPairImportOptions = {},
   ) {
     const refused =
-      keyFile === undefined ? failureAlert : pairImportFailureAlert;
+      keyFile === undefined ? importFailureAlert : pairImportFailureAlert;
     inFlight.current = true;
     setImporting(true);
     void (async () => {
@@ -1010,7 +935,7 @@ function useImportFile({
         void requestPersistentStorage();
         const { record, missingGrants, unreadKeyFileFields } =
           keySource === undefined
-            ? await importFile(source, backupAnswer)
+            ? await importManagedExchangeFile(source, undefined, backupAnswer)
             : await importManagedCommandLinePair(
                 source,
                 keySource,
@@ -1024,25 +949,28 @@ function useImportFile({
                 keyFileFields: unreadKeyFileFields,
               });
         if (notice !== undefined) {
-          setOutcome({ grantNotice: { id: record.id, notice } });
+          setOutcome({ kind: "grant-notice", id: record.id, notice });
           return;
         }
         await navigate({ to: "/saved/$id", params: { id: record.id } });
       } catch (error) {
         if (error instanceof ManagedImportLiveCopyError)
-          setOutcome({ liveCopy: { copies: error.copies, file: primaryFile } });
+          setOutcome({
+            kind: "live-copy",
+            copies: error.copies,
+            file: primaryFile,
+          });
         else if (
           error instanceof ManagedImportStoredCopyError &&
           keyFile !== undefined
         )
           setOutcome({
-            storedCopy: {
-              copies: error.copies,
-              configurationFile: primaryFile,
-              keyFile,
-            },
+            kind: "stored-copy",
+            copies: error.copies,
+            configurationFile: primaryFile,
+            keyFile,
           });
-        else setOutcome({ failure: refused(error) });
+        else setOutcome({ kind: "failure", failure: refused(error) });
       } finally {
         inFlight.current = false;
         setImporting(false);
@@ -1051,17 +979,15 @@ function useImportFile({
   }
 
   function answerLiveCopy(answer: ManagedBackupImportOptions) {
-    const { liveCopy } = outcome;
-    if (liveCopy === undefined || inFlight.current) return;
-    setOutcome({});
-    runImport(liveCopy.file, undefined, answer);
+    if (outcome.kind !== "live-copy" || inFlight.current) return;
+    setOutcome(NO_IMPORT_OUTCOME);
+    runImport(outcome.file, undefined, answer);
   }
 
   function answerStoredCopy(answer: ManagedPairImportOptions) {
-    const { storedCopy } = outcome;
-    if (storedCopy === undefined || inFlight.current) return;
-    setOutcome({});
-    runImport(storedCopy.configurationFile, storedCopy.keyFile, {}, answer);
+    if (outcome.kind !== "stored-copy" || inFlight.current) return;
+    setOutcome(NO_IMPORT_OUTCOME);
+    runImport(outcome.configurationFile, outcome.keyFile, {}, answer);
   }
 
   return {
@@ -1070,7 +996,7 @@ function useImportFile({
     importing,
     answerLiveCopy,
     answerStoredCopy,
-    dismiss: () => setOutcome({}),
+    dismiss: () => setOutcome(NO_IMPORT_OUTCOME),
   };
 }
 
@@ -1089,7 +1015,10 @@ function ImportOutcomeAlerts({
   onDismiss: () => void;
 }) {
   const navigate = useNavigate();
-  const { grantNotice, failure, liveCopy, storedCopy } = outcome;
+  const storedCopy = outcome.kind === "stored-copy" ? outcome : undefined;
+  const liveCopy = outcome.kind === "live-copy" ? outcome : undefined;
+  const grantNotice = outcome.kind === "grant-notice" ? outcome : undefined;
+  const failure = outcome.kind === "failure" ? outcome.failure : undefined;
   const liveCopyLabels = liveCopy?.copies.map(({ label }) => label) ?? [];
   return (
     <>

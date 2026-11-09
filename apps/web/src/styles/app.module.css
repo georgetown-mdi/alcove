@@ -1271,6 +1271,11 @@
   flex-shrink: 0;
 }
 
+/* A row of actions set below the content before it, outside a saved row. */
+.savedRowActions.savedRowActionsBelow {
+  margin-top: 1rem;
+}
+
 .savedListActions {
   display: flex;
   flex-wrap: wrap;
