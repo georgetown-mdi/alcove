@@ -656,6 +656,93 @@ describe("slices sized by the lines they match", () => {
     expect(spec.lines).toBe(3 + 40);
   });
 
+  it("reads the changed hunks of a path with a space", () => {
+    const spaced = "apps/cli/src/my dir/frameReader.ts";
+    const { fixture } = baseRepo();
+    fixture.write(spaced, readerSource("a"));
+    fixture.write("docs/spec/READER.md", READER_SPEC);
+    const from = fixture.commit("Add a reader");
+    fixture.write(spaced, readerSource("b", 20));
+    const head = fixture.commit("Change one line");
+    const { dayDir } = daysRoot();
+    const context = WORKING_VALUES.matchContextLines;
+
+    const plan = planDay({
+      cwd: fixture.dir,
+      sha: head,
+      dayDir,
+      prevSha: from,
+      deliveredBy: noBoardRead,
+    });
+
+    const spec = plan.slices.find((slice) => slice.selector === "stale-spec");
+    expect(spec.regions).toEqual({
+      [spaced]: [[20 - context, 20 + context]],
+    });
+  });
+
+  describe("a spec file over the size bound", () => {
+    const CODE = "apps/cli/src/refuse.ts";
+    const SPEC = "docs/spec/SPLIT.md";
+    /** A 130-line spec file whose statements at `lines` name refuseFrame. */
+    const specText = (lines) =>
+      Array.from({ length: 130 }, (_, i) =>
+        lines.includes(i + 1) ? "refuseFrame refuses it." : `Prose ${i}.`,
+      ).join("\n") + "\n";
+    const repo = (lines) => {
+      const { fixture, base } = baseRepo();
+      fixture.write(
+        CODE,
+        [
+          "export function refuseFrame() {",
+          ...Array.from({ length: 18 }, (_, i) => `  const step${i} = 1;`),
+          "}",
+          "",
+        ].join("\n"),
+      );
+      fixture.write(SPEC, specText(lines));
+      return { fixture, base, head: fixture.commit("Add a refusal") };
+    };
+    const plan = ({ fixture, base, head }, maxSliceLines) =>
+      planDay({
+        cwd: fixture.dir,
+        sha: head,
+        dayDir: daysRoot().dayDir,
+        prevSha: base,
+        deliveredBy: noBoardRead,
+        workingValues: { ...WORKING_VALUES, maxSliceLines },
+      });
+
+    it("splits into consecutive parts that each fit, every statement in one", () => {
+      const slices = plan(repo([10, 40, 70, 100]), 30).slices.filter(
+        (slice) => slice.selector === "stale-spec",
+      );
+
+      expect(slices.map((slice) => slice.id)).toEqual([
+        "stale-spec-1.1",
+        "stale-spec-1.2",
+      ]);
+      expect(slices.every((slice) => slice.lines <= 30)).toBe(true);
+      expect(
+        slices.map((slice) => slice.statements.map(({ line }) => line)),
+      ).toEqual([
+        [10, 40],
+        [70, 100],
+      ]);
+      for (const slice of slices) {
+        expect(slice.files).toEqual([SPEC, CODE]);
+        expect(slice.regions).toEqual({ [CODE]: [[1, 6]] });
+        expect(slice.lines).toBe(2 * 11 + 6);
+      }
+    });
+
+    it("stops on a single statement over the bound, naming it", () => {
+      expect(() => plan(repo([10, 40]), 10)).toThrow(
+        `the single statement at ${SPEC}:10`,
+      );
+    });
+  });
+
   it("leaves a file only its strings were read from open to rotation", () => {
     const { fixture, base } = baseRepo();
     fixture.write("apps/cli/src/hot.ts", textOfLines(10, "h1"));

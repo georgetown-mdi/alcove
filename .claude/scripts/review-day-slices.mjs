@@ -51,8 +51,10 @@
 // are the slice's `regions` and follow the path in SLICES.md. A statement that
 // names a code file only by its stem has no such line: it charges the lines the
 // window changed in that file instead, widened the same way, or the whole file
-// when the window has no hunk for it. Every other slice is sized by its files'
-// whole line counts.
+// when the window has no hunk for it. One spec file over the bound is split by
+// statement into consecutive parts (`stale-spec-N.1`, `.2`, ...), each charging
+// its own statements; a single statement over the bound stops the run. Every
+// other slice is sized by its files' whole line counts.
 //
 // Exit 0 written; 1 a slice over `maxSliceLines`, nothing written; 2 usage, an
 // unreadable input, a git error, or a failed board read.
@@ -474,6 +476,8 @@ function addedLines(git, prevSha, sha, paths) {
   const added = new Map();
   if (paths.length === 0) return added;
   const out = git.text([
+    "-c",
+    "core.quotePath=false",
     "--literal-pathspecs",
     "diff",
     "--no-color",
@@ -495,7 +499,9 @@ function addedLines(git, prevSha, sha, paths) {
       inHeader = true;
       current = null;
     } else if (inHeader && line.startsWith("+++ ")) {
-      current = line.startsWith("+++ b/") ? line.slice(6) : null;
+      current = line.startsWith("+++ b/")
+        ? line.slice(6).replace(/\t$/, "")
+        : null;
     } else if (line.startsWith("@@")) {
       inHeader = false;
       nextLine = Number(/^@@ -\S+ \+(\d+)/.exec(line)?.[1] ?? 0);
@@ -516,6 +522,8 @@ function changedHunks(git, prevSha, sha, paths) {
   const hunks = new Map();
   if (paths.length === 0) return hunks;
   const out = git.text([
+    "-c",
+    "core.quotePath=false",
     "--literal-pathspecs",
     "diff",
     "--no-color",
@@ -536,7 +544,9 @@ function changedHunks(git, prevSha, sha, paths) {
       inHeader = true;
       current = null;
     } else if (inHeader && line.startsWith("+++ ")) {
-      current = line.startsWith("+++ b/") ? line.slice(6) : null;
+      current = line.startsWith("+++ b/")
+        ? line.slice(6).replace(/\t$/, "")
+        : null;
     } else if (line.startsWith("@@") && current !== null) {
       inHeader = false;
       const found = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/.exec(line);
@@ -637,13 +647,26 @@ export function mergeRanges(ranges) {
  * inclusive `[start, end]` pairs.
  */
 export function selectedRanges(lines, fileLines, context) {
-  const ranges = [];
-  for (const line of new Set(lines)) {
-    const from = Math.max(1, line - context);
-    const to = Math.min(Math.max(fileLines, line), line + context);
-    if (to >= from) ranges.push([from, to]);
-  }
-  return mergeRanges(ranges);
+  return widenRanges(
+    [...new Set(lines)].map((line) => [line, line]),
+    fileLines,
+    context,
+  );
+}
+
+/**
+ * `ranges` each widened by `context` lines either side, within the file's
+ * `fileLines` (a range ending past it keeps its own end), then merged.
+ */
+export function widenRanges(ranges, fileLines, context) {
+  return mergeRanges(
+    ranges
+      .map(([from, to]) => [
+        Math.max(1, from - context),
+        Math.min(Math.max(fileLines, to), to + context),
+      ])
+      .filter(([from, to]) => to >= from),
+  );
 }
 
 /** How many lines `selectedRanges` selects for the same arguments. */
@@ -662,7 +685,11 @@ export function assertSliceBound(slices, maxLines) {
     over
       .map(
         (slice) =>
-          `slice ${slice.id} (${slice.selector}, lens ${slice.lens ?? "-"}) is ${slice.lines} lines, over the ${maxLines}-line bound: ${slice.files.join(", ")}`,
+          `slice ${slice.id} (${slice.selector}, lens ${slice.lens ?? "-"}) is ${slice.lines} lines, over the ${maxLines}-line bound: ${slice.files.join(", ")}${
+            slice.statements?.length === 1
+              ? ` (the single statement at ${slice.statements[0].path}:${slice.statements[0].line})`
+              : ""
+          }`,
       )
       .join("\n"),
   );
@@ -915,26 +942,28 @@ export function planDay({
     extra = {},
     sizeOf = lineOf,
     groupLines = undefined,
+    refine = (pieces) => pieces,
   ) => {
     ensureLines(files);
     // An owed pass whose text names no tracked file is still a pass to run.
     const pieces =
       files.length > 0
-        ? cutByDirectory(files, sizeOf, maxSliceLines, groupLines)
+        ? refine(cutByDirectory(files, sizeOf, maxSliceLines, groupLines))
         : selector === "owed"
           ? [{ files: [], lines: 0 }]
           : [];
     for (const piece of pieces) {
-      const n = (counters.get(selector) ?? 0) + 1;
-      counters.set(selector, n);
+      if (piece.part === undefined || piece.part === 1)
+        counters.set(selector, (counters.get(selector) ?? 0) + 1);
+      const n = counters.get(selector);
       slices.push({
-        id: `${selector}-${n}`,
+        id: `${selector}-${n}${piece.part === undefined ? "" : `.${piece.part}`}`,
         lens,
         selector,
         files: piece.files,
         lines: piece.lines,
         estimatedCost: lens === null ? meanUnitCost : unitCosts[lens],
-        ...(typeof extra === "function" ? extra(piece.files) : extra),
+        ...(typeof extra === "function" ? extra(piece.files, piece) : extra),
       });
     }
   };
@@ -1172,14 +1201,7 @@ export function planDay({
       const fileLines = lineOf(path);
       const own = hunks.get(path) ?? [];
       if (own.length === 0) return fileLines > 0 ? [[1, fileLines]] : [];
-      return mergeRanges(
-        own
-          .map(([from, to]) => [
-            Math.max(1, from - matchContextLines),
-            Math.min(Math.max(fileLines, to), to + matchContextLines),
-          ])
-          .filter(([from, to]) => to >= from),
-      );
+      return widenRanges(own, fileLines, matchContextLines);
     };
     const codeRegionsOf = (subset) => {
       const linesByPath = new Map();
@@ -1216,10 +1238,10 @@ export function planDay({
       "stale-spec",
       1,
       specFiles,
-      (sliceFiles) => {
-        const subset = statements.filter(({ path }) =>
-          sliceFiles.includes(path),
-        );
+      (sliceFiles, piece) => {
+        const subset =
+          piece.statements ??
+          statements.filter(({ path }) => sliceFiles.includes(path));
         const regions = codeRegionsOf(subset);
         return {
           files: [...sliceFiles, ...regions.keys()],
@@ -1230,6 +1252,33 @@ export function planDay({
       lineOf,
       (group) =>
         staleSize(statements.filter(({ path }) => group.includes(path))),
+      (pieces) =>
+        pieces.flatMap((piece) => {
+          if (piece.lines <= maxSliceLines || piece.files.length !== 1)
+            return [piece];
+          const groups = [];
+          let current = [];
+          for (const statement of statements.filter(
+            ({ path }) => path === piece.files[0],
+          )) {
+            if (
+              current.length > 0 &&
+              staleSize([...current, statement]) > maxSliceLines
+            ) {
+              groups.push(current);
+              current = [];
+            }
+            current.push(statement);
+          }
+          groups.push(current);
+          if (groups.length === 1) return [piece];
+          return groups.map((group, index) => ({
+            files: piece.files,
+            lines: staleSize(group),
+            statements: group,
+            part: index + 1,
+          }));
+        }),
     );
   }
 
