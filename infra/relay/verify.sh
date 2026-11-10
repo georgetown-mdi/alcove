@@ -8,10 +8,12 @@
 # shapes assumed in advance. Fix what a later run gets wrong rather than
 # loosening a probe until it passes.
 #
-# Eight probes, in the order a failure matters:
+# Nine probes, in the order a failure matters:
 #
 #   handshake     a real TLS handshake on 443/tcp, and the certificate the relay
 #                 serves for its own realm
+#   TLS floor     a TLS 1.0 and a TLS 1.1 handshake on 443/tcp, each of which
+#                 the front must refuse
 #   client address
 #                 a STUN Binding through the front, which coturn must answer
 #                 with this client's address rather than a loopback one: the
@@ -192,6 +194,31 @@ else
   report pass "TLS handshake on $REALM:443"
   certificate_report "$HS"
 fi
+
+# --- TLS floor -------------------------------------------------------------------
+# The front takes TLS 1.2 and 1.3 (ssl_protocols in front.conf.tmpl). The client
+# is the relay image's openssl at security level 0, because at its default level
+# OpenSSL 3 sends no TLS 1.0 or 1.1 ClientHello at all ("no protocols
+# available"), which the probe reports as unclear. A
+# refusal is the front's protocol_version alert; a completed handshake prints a
+# "New, TLSv..." line. Measured 2026-11-10 against the front and the pinned
+# coturn image: the alert at ssl_protocols TLSv1.2 TLSv1.3.
+for floor in "1:TLS 1.0" "1_1:TLS 1.1"; do
+  version="${floor%%:*}"
+  label="${floor#*:}"
+  FLOOR="$(bounded 30 "$RUNTIME" run --rm --network host --entrypoint openssl "$IMAGE" \
+    s_client -connect "$CONNECT:443" -servername "$REALM" "-tls$version" -cipher 'DEFAULT:@SECLEVEL=0' \
+    </dev/null 2>&1)"
+  if printf '%s' "$FLOOR" | grep -q 'alert protocol version'; then
+    report pass "the front refused a $label handshake on $REALM:443"
+  elif printf '%s' "$FLOOR" | grep -q '^New, [^(]'; then
+    report fail "the front completed a $label handshake on $REALM:443" \
+      "$(printf '%s' "$FLOOR" | grep -m 1 'Protocol *:' | sed 's/^ *//')"
+  else
+    report unclear "could not ask the front for a $label handshake on $REALM:443" \
+      "$(printf '%s' "$FLOOR" | tr '\n' ' ' | cut -c1-160)"
+  fi
+done
 
 # --- client address -------------------------------------------------------------
 # coturn takes a TURN client's address from the PROXY header the front's TURN

@@ -55,7 +55,9 @@ your own environment:
   passing the client's address to coturn, and a relayed exchange from a
   443-only client are not yet measured there. The pinned coturn taking a
   PROXY v1 header on its `tcp-proxy-port`, and using the header's address
-  as the client's, was driven in Docker on 2026-10-14. Its tests under
+  as the client's, was driven in Docker on 2026-10-14, and
+  [coturn's settings](#coturns-settings) and `verify.sh`'s TLS-floor probe
+  against the front on 2026-11-10. Its tests under
   `scripts/` drive `render-front.sh` and hold the template to coturn's
   listener, not nginx; the registrar's tests drive its PROXY header reader
   with a header written by the test, and `stun-binding.py`'s tests drive it
@@ -159,7 +161,7 @@ when its operator runs `install.sh` from that commit's checkout.
 | path | what it is |
 | --- | --- |
 | `Dockerfile` | The base image pin, and nothing else. One line of instruction: `coturn/coturn` at a tag and its multi-arch index digest. The single home of that digest -- every other file names the locally built `localhost/alcove-relay:installed` tag, so a base move is exactly one edit. Its comment carries the fallback if the community image stops publishing |
-| `turnserver.conf.tmpl` | The hardened coturn configuration, with `__PLACEHOLDER__` values. coturn's one listener is its `tcp-proxy-port`, plain TURN over TCP on loopback, port 5350, behind [the 443 front](#the-443-front), which terminates TLS. It sets `no-tcp-relay`, because the exchange never asks for a TCP relay transport to a peer, and `verify.sh` probes that such an allocation is refused. Tracked; the rendered file is not |
+| `turnserver.conf.tmpl` | The hardened coturn configuration, with `__PLACEHOLDER__` values. coturn's one listener is its `tcp-proxy-port`, plain TURN over TCP on loopback, port 5350, behind [the 443 front](#the-443-front), which terminates TLS. It sets `no-tcp-relay`, because the exchange never asks for a TCP relay transport to a peer, and `verify.sh` probes that such an allocation is refused. What each setting was measured to do is in [coturn's settings](#coturns-settings). Tracked; the rendered file is not |
 | `front.conf.tmpl`, `render-front.sh` | [The 443 front](#the-443-front)'s nginx configuration and the script that writes this host's routes into it. `install.sh` checks the result with `nginx -t` before it writes `/etc/alcove-relay/front.conf` |
 | `front/Dockerfile`, `alcove-relay-front.container`, `alcove-relay-front-docker.service` | The front's nginx image pin, and its unit on a podman host and on a docker host, paired as the relay's two units are. Both run `alcove-relay-front.service` from the tag `install.sh` builds, with the relay's certificate mounted |
 | `stun-binding.py` | One STUN Binding over TLS, printing the client address the server answers with; `verify.sh` runs it through the front and fails on a loopback answer |
@@ -177,12 +179,49 @@ when its operator runs `install.sh` from that commit's checkout.
 | `alcove-relay-websocket.service` | The optional [WebSocket relay](#the-websocket-relay) on `127.0.0.1`, from the host's Node workspace tree, as the relay image's account; `install.sh` fills in that account and the relay's port and starts it only where `relay.env` names the relay |
 | `websocket-pair.py` | Two sockets at the WebSocket relay over TLS, paired under one exchange's key and passing one message and the close; `verify.sh` runs it through the front |
 | `websocket-address-limit.py` | Eight sockets at the WebSocket relay over TLS from one address and one from another, all upgraded, and a ninth from the first, closed unanswered; `verify.sh` runs it through the front to check its bound for each client address |
-| `verify.sh` | Drives a real TURNS handshake, a Binding through the front that coturn must answer with the client's own address rather than a loopback one, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Each name in `ALCOVE_RELAY_FRONT_ROUTES` must answer on 443 with a certificate that verifies for it. Where the host holds a registrar token it also asks the registrar, at its own name on 443 where it has one: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Where `relay.env` names the WebSocket relay it runs `websocket-pair.py` through the front at that name: two sockets pair under a key registered for the run, and one message and the close cross; it then runs `websocket-address-limit.py` through the front from the address it connects from and from `127.0.0.1`. With no name it says it skipped the WebSocket relay. Its exchanges are under the ids `alcove-verify-a`, `-b`, `-registrar`, and `-websocket`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a TLS handshake for the realm through the 443 front, and then a Binding through it to coturn, waiting for a just-(re)started front and coturn behind it to come up; 30 by default |
+| `verify.sh` | Drives a real TURNS handshake, a TLS 1.0 and a TLS 1.1 handshake on 443 that the front must refuse, a Binding through the front that coturn must answer with the client's own address rather than a loopback one, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Each name in `ALCOVE_RELAY_FRONT_ROUTES` must answer on 443 with a certificate that verifies for it. Where the host holds a registrar token it also asks the registrar, at its own name on 443 where it has one: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Where `relay.env` names the WebSocket relay it runs `websocket-pair.py` through the front at that name: two sockets pair under a key registered for the run, and one message and the close cross; it then runs `websocket-address-limit.py` through the front from the address it connects from and from `127.0.0.1`. With no name it says it skipped the WebSocket relay. Its exchanges are under the ids `alcove-verify-a`, `-b`, `-registrar`, and `-websocket`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a TLS handshake for the realm through the 443 front, and then a Binding through it to coturn, waiting for a just-(re)started front and coturn behind it to come up; 30 by default |
 | `mint-credential.sh` | One time-limited credential under the static secret, on a host that holds one: `<expiry>:<name>` as the username, the base64 HMAC-SHA1 of it as the password |
 | `relay.env.example` | The host's one configuration file, copied to `/etc/alcove-relay/relay.env` |
 | `certs/` | ACME DNS-01 renewal: the timer and its unit, the client-neutral `renew.sh`, the deploy hook, and the provider credential's example |
 | `aws/` | The AWS-specific half: instance provisioning, the IMDSv2 external-address helper, the registrar's counts publisher, and the demo box's stop/start scripts |
 | `aws/publish-metrics.sh`, `aws/alcove-relay-metrics.service`, `.timer` | Publishes the registrar's and the WebSocket relay's counts to CloudWatch every 5 minutes outside the host's busy hours, where `relay.env` names a region. See [Monitoring](#monitoring) |
+
+## coturn's settings
+
+Measured 2026-11-10 against the pinned coturn 4.18.0 on a Docker host, not on
+the relay host: the template rendered by `render-config.sh`, coturn started
+with the unit's container flags on a bridge network, and the front from
+`render-front.sh` sharing its network namespace. How the run was set up, and
+the per-session byte counts it measured, are in
+[the deployment record](../../docs/notes/webrtc-relay-deployment.md#per-session-byte-accounting).
+
+- **DTLS.** coturn starts no DTLS listener unless `dtls` is set (its `--help`:
+  "DTLS is not started by default"). coturn rejects a `no-dtls` line, `WARNING Bad
+  configuration format: no-dtls`, so the template sets none. TLS
+  is the front's: coturn holds no certificate and logs that it cannot start a
+  TLS or DTLS listener for want of one.
+- **The admin CLI.** coturn opens no CLI listener unless `cli` is set and
+  `cli-password` is not empty. A `no-cli` line logs `ERROR no-cli
+  option is deprecated, see --cli`, so the template sets none. With the template as it
+  is, the only TCP sockets coturn's account (uid 65534) listens on, read from
+  `/proc/net/tcp` in the running container, are `127.0.0.1:5350`, one per
+  relay thread; it holds no UDP socket until an allocation opens one. With
+  `cli` and `cli-password` added, `127.0.0.1:5766` appears among them; with
+  `cli` alone coturn logs `Empty cli-password, and so telnet cli interface is
+  disabled!` and opens none.
+- **The log file.** `log-file=stdout` takes effect when it is the template's
+  first setting: coturn writes its lines to stdout, which the unit's
+  `journald` log driver sends to the journal, and `/var/tmp` contains only the
+  pid file. coturn also writes a
+  line it logs before reading `log-file` to a file it opens under `/var/tmp`;
+  with `no-dtls` above it, the rejection opened `/var/tmp/turn_1_<date>.log`.
+  A bad line placed after `log-file` opened none, so the template sets it
+  first and `scripts/relay-logging-posture.test.mjs` fails if it is not.
+- **`simple-log`.** It sets how a log file is named and rotated, and with
+  `log-file=stdout` there is no file: removing it changed neither what coturn
+  wrote nor what `/var/tmp` held, so the template does not set it.
+- **The TLS floor** is the front's, below 1.2 refused; see
+  [The 443 front](#the-443-front), TLS for TURN.
 
 ## Per-exchange keys
 
@@ -799,6 +838,13 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   **Dated, 2026-10-14:** TLS for TURN is the front's, at the settings above.
   coturn opens no TLS listener and `turnserver.conf.tmpl` sets no TLS
   option, so nothing coturn does or ignores sets the relay's TLS floor.
+  `verify.sh` asks the front for a TLS 1.0 and a TLS 1.1 handshake and passes
+  only on its `protocol_version` alert. Its client is the relay image's
+  openssl at security level 0, because at its default level OpenSSL 3 sends
+  neither and fails with `no protocols available`, which the probe reports
+  as unclear. Measured 2026-11-10 on a Docker host, against the front and the
+  pinned coturn: both refused (`tlsv1 alert protocol version ... SSL alert
+  number 70`), and 1.2 and 1.3 completed.
 - **Why the server name.** The alternatives weighed against it, a test of the
   first bytes and ALPN, are in
   [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443),

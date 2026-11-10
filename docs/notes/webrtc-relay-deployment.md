@@ -316,7 +316,10 @@ Two operational findings came out of the bring-up.
   reset on teardown, which is why the figures above come from host conntrack
   accounting. At the reference's log settings coturn writes no line for a
   successful allocation at all
-  ([What the relay host keeps](#what-the-relay-host-keeps)).
+  ([What the relay host keeps](#what-the-relay-host-keeps)). The accounting
+  is a configuration setting, not a build option: the pinned image writes a
+  byte count for each session under `verbose`
+  ([Per-session byte accounting](#per-session-byte-accounting)).
 - **One credential username across back-to-back exchanges exhausts the
   allocation quota.** coturn's per-username quota interacts with the roughly
   eight-minute allocation linger a relayed run leaves behind, so reusing a
@@ -601,8 +604,8 @@ signals instead._
 
 ### What the relay host keeps
 
-**coturn.** At the template's settings (`log-file=stdout`, `simple-log`, no
-`verbose`), coturn 4.18.0 writes no line for a successful allocation: not at
+**coturn.** At the template's settings (`log-file=stdout`, no `verbose`),
+coturn 4.18.0 writes no line for a successful allocation: not at
 allocation, during the relay, or at expiry. No line it writes includes a byte
 count or a packet count, and only a socket error names a client's address.
 What it does write:
@@ -632,8 +635,12 @@ What it does write:
   own address.
 
 A quota refusal (error 486, allocation quota reached) writes no line. With
-`log-file=stdout` coturn writes no log file: `/var/tmp` held only the pid file.
-The lines go to the journal through the unit's `journald` log driver.
+`log-file=stdout` as the template's first setting coturn writes no log file:
+`/var/tmp` held only the pid file (measured 2026-11-10). A line coturn logs
+before it reads `log-file` also goes to a file it opens under `/var/tmp`: with
+a `no-dtls` line above `log-file`, its rejection opened
+`/var/tmp/turn_1_<date>.log` (README.md,
+[coturn's settings](../../infra/relay/README.md#coturns-settings)). The lines go to the journal through the unit's `journald` log driver.
 `log-min-level` (debug, info, warning or error) exists and the template does not
 set it. `scripts/relay-logging-posture.test.mjs` holds the template to these
 settings; it cannot see a coturn release change what they write, so a
@@ -685,6 +692,50 @@ restarts.
 `scripts/relay-exchange-keys.test.mjs` holds the format, the outcomes, and the
 absence of any address, key, token or proof in the whole journal across
 registrations, revocations, refusals and a connection error.
+
+### Per-session byte accounting
+
+**It is configuration, not a build option.** The pinned image
+(`coturn/coturn:4.18.0` at the digest in `infra/relay/Dockerfile`) writes each
+session's packet and byte counts once `verbose` is set, and the relay can
+keep running that image as
+[standing-relay-delivery.md](standing-relay-delivery.md) decides.
+The template does not set `verbose`: what else it writes is under What the
+relay host keeps, and turning it on is the decision in
+[Verbose logging for incident response](#verbose-logging-for-incident-response).
+
+Measured 2026-11-10 on a Docker host, not the relay host. The template was
+rendered by `render-config.sh` and coturn started with the unit's container
+flags (`--read-only --tmpfs /var/tmp --cap-drop ALL --cap-add
+NET_BIND_SERVICE`), on a bridge network instead of host networking, behind the
+443 front rendered by `render-front.sh` in the pinned nginx image, sharing
+coturn's network namespace. The log was read with `docker logs`, which contains
+all of coturn's stdout, and `/var/tmp` was listed in the running container. The
+image's `turnutils_uclient` relayed through the front to `turnutils_peer` on
+another container:
+
+```
+turnutils_uclient -t -S -p 443 -u <username> -w <credential> -e <peer> -r 3480 -n 500 -l 1000 -m 1 <relay>
+start_mclient: tot_send_bytes ~ 1000000, tot_recv_bytes ~ 1000000
+```
+
+At the template's settings, in three runs, the sessions wrote nothing but
+`ERROR socket error: Connection reset by peer <client>:<port> (TCP socket,
+session 004000000000000001)` in two and nothing at all in the third. With `verbose`
+appended and the same client, each session ended on a refresh to lifetime 0
+and wrote:
+
+```
+INFO usage: realm=<relay.probe.test>, username=<1794329589:probe>, rp=508, rb=503008, sp=508, sb=502524 (session 009000000000000002)
+INFO peer usage: realm=<relay.probe.test>, username=<1794329589:probe>, rp=500, rb=500000, sp=500, sb=502000 (session 009000000000000002)
+```
+
+`rp` and `rb` are packets and bytes received, `sp` and `sb` sent: the peer
+side's 500 packets and 500,000 bytes are the client's 500 messages of 1,000
+bytes. The client and its teardown were the same in both, so the bring-up's
+missing line came from the log settings, not from how its log was captured or
+how its sessions ended. The lines come at a session's close; what coturn
+reports while a long session is open is unmeasured (below).
 
 ### Retention and who reads it
 

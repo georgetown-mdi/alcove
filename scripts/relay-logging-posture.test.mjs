@@ -12,7 +12,7 @@ const TEMPLATE = resolve(here, "..", "infra/relay/turnserver.conf.tmpl");
 
 const LOGGING =
   /^(log-|syslog|[Vv]erbose$|[Vv]$|prometheus|redis-statsdb|no-stdout-log|new-log-timestamp|simple-log)/;
-const ALLOWED = ["log-file", "simple-log"];
+const ALLOWED = ["log-file"];
 
 const directives = () =>
   readFileSync(TEMPLATE, "utf8")
@@ -25,10 +25,10 @@ const directives = () =>
     });
 
 describe("turnserver.conf.tmpl logging", () => {
-  it("logs to stdout in simple-log form", () => {
-    const names = directives().map(({ name }) => name);
-    expect(names).toContain("simple-log");
-    expect(directives()).toContainEqual({ name: "log-file", value: "stdout" });
+  // coturn 4.18.0 also writes a line it logs before reading log-file to a file
+  // under /var/tmp, so log-file comes before every other setting.
+  it("logs to stdout, set as the first directive", () => {
+    expect(directives()[0]).toEqual({ name: "log-file", value: "stdout" });
   });
 
   it("sets no logging directive beyond the documented ones", () => {

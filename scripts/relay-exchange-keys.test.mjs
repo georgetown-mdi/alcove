@@ -4714,6 +4714,89 @@ describe.skipIf(runningAsRoot)(
   },
 );
 
+describe.skipIf(runningAsRoot)(
+  "verify.sh TLS floor",
+  { timeout: 60000 },
+  () => {
+    // A docker whose openssl runs print `transcript`, the lines the image's
+    // openssl s_client printed against the front on 2026-11-10; every other
+    // run is the fixture host's recording stub.
+    const REFUSED =
+      "error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:../ssl/record/rec_layer_s3.c:918:SSL alert number 70\nNew, (NONE), Cipher is (NONE)";
+    const COMPLETED =
+      "New, TLSv1.0, Cipher is ECDHE-ECDSA-AES256-SHA\nSSL-Session:\n    Protocol  : TLSv1.1";
+    const NOT_SENT =
+      "error:0A0000BF:SSL routines:tls_setup_handshake:no protocols available:../ssl/statem/statem_lib.c:155:\nNew, (NONE), Cipher is (NONE)";
+    const verifyWithFront = (transcript) => {
+      const host = fixtureHost();
+      const stubDir = join(host.root, "floor-stub");
+      mkdirSync(stubDir);
+      const log = join(host.root, "floor-argv.log");
+      writeFileSync(log, "");
+      const body = join(stubDir, "transcript");
+      writeFileSync(body, `${transcript}\n`);
+      writeFileSync(
+        join(stubDir, "docker"),
+        [
+          "#!/bin/bash",
+          'case " $* " in',
+          "  *' --entrypoint openssl '*)",
+          `    printf '%s\\n' "$*" >> '${log}'`,
+          `    cat '${body}'`,
+          "    exit 1 ;;",
+          "esac",
+          `exec '${join(host.root, "docker")}' "$@"`,
+          "",
+        ].join("\n"),
+      );
+      chmodSync(join(stubDir, "docker"), 0o755);
+      const result = host.verify({ PATH: `${stubDir}:${host.env.PATH}` });
+      return {
+        result,
+        runs: readFileSync(log, "utf8").split("\n").filter(Boolean),
+      };
+    };
+
+    it("asks for TLS 1.0 and 1.1 through 443 under the realm's name, with a client that offers them", () => {
+      const { runs } = verifyWithFront(REFUSED);
+      expect(runs).toEqual(
+        ["-tls1", "-tls1_1"].map(
+          (flag) =>
+            `run --rm --network host --entrypoint openssl localhost/alcove-relay:installed s_client -connect 127.0.0.1:443 -servername ${REALM} ${flag} -cipher DEFAULT:@SECLEVEL=0`,
+        ),
+      );
+    });
+
+    it("passes on the front's protocol_version alert", () => {
+      const { result } = verifyWithFront(REFUSED);
+      expect(result.stdout).toContain(
+        `PASS     the front refused a TLS 1.0 handshake on ${REALM}:443`,
+      );
+      expect(result.stdout).toContain(
+        `PASS     the front refused a TLS 1.1 handshake on ${REALM}:443`,
+      );
+    });
+
+    it("fails on a completed handshake, naming the protocol", () => {
+      const { result } = verifyWithFront(COMPLETED);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        `FAIL     the front completed a TLS 1.1 handshake on ${REALM}:443`,
+      );
+      expect(result.stdout).toContain("Protocol  : TLSv1.1");
+    });
+
+    it("is unclear when the client sent no handshake", () => {
+      const { result } = verifyWithFront(NOT_SENT);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        `UNCLEAR  could not ask the front for a TLS 1.0 handshake on ${REALM}:443`,
+      );
+      expect(result.stdout).not.toContain("PASS     the front refused");
+    });
+  },
+);
+
 describe("render-config.sh and the secrets table", () => {
   it("renders the table and no static secret when the host holds none", () => {
     const host = fixtureHost();
