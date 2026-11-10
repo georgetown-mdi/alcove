@@ -304,6 +304,11 @@ export function bootstrapRatio(
       notMeasured: pairNote ?? "a window has no data for this measure",
     };
   }
+  if (baseline === 0) {
+    return {
+      notMeasured: `no ratio, the baseline is 0 (current ${current})`,
+    };
+  }
   const resample = (days) =>
     days.map(() => days[Math.floor(random() * days.length)]);
   const ratios = [];
@@ -355,7 +360,7 @@ function rowSpecs() {
         const pair = [band(i)(b), band(i)(c)];
         return pair.every(Number.isFinite)
           ? pair
-          : [...pair, "no PRs in this size band in one window"];
+          : [...pair, "no PRs in this size band in at least one window"];
       },
     ]),
     [

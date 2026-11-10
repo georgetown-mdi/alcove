@@ -148,6 +148,16 @@ describe("bootstrapRatio", () => {
     expect(r.lo).toBeGreaterThan(1);
     expect(r.moved).toBe(true);
   });
+
+  it("returns not measured, never NaN, when the baseline is 0", () => {
+    const zero = [{ v: 0 }, { v: 0 }, { v: 0 }];
+    const stat = perDay((d) => d.v);
+    const r = bootstrapRatio(zero, zero, (b, c) => [stat(b), stat(c)], {
+      draws: 50,
+      random: random(),
+    });
+    expect(r.notMeasured).toBe("no ratio, the baseline is 0 (current 0)");
+  });
 });
 
 describe("size-mix standardization", () => {
