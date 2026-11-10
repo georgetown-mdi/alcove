@@ -319,6 +319,27 @@ describe("owed passes", () => {
     ]);
   });
 
+  it("says so and runs with no owed passes when the previous FINAL/ has no owed.md", () => {
+    const { fixture, base } = baseRepo();
+    fixture.write("src/a.ts", textOfLines(5, "a"));
+    const head = fixture.commit("One");
+    const { root, dayDir } = daysRoot();
+    previousDay(root, { record: { sha: base, slices: [] } });
+    const day = join(root, "2026-11-06");
+    const note = `Owed passes: ${day} has a FINAL/ directory but no owed.md, so no owed passes were read from it.`;
+
+    const result = runScript(fixture.dir, [head, dayDir]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`${note}\n`);
+    const plan = JSON.parse(readFileSync(join(dayDir, "plan.json"), "utf8"));
+    expect(plan.owedNote).toBe(note);
+    expect(plan.slices.some((slice) => slice.selector === "owed")).toBe(false);
+    expect(readFileSync(join(dayDir, "SLICES.md"), "utf8")).toContain(
+      `${note}\n`,
+    );
+  });
+
   it("resolves backticked paths, stems and directories to tracked files", () => {
     const tracked = ["apps/x/run/prepare.ts", "apps/x/authoring/a.ts", "b.ts"];
     expect(
@@ -416,7 +437,7 @@ describe("plan.json", () => {
         id: "stale-spec-1",
         selector: "stale-spec",
         lens: 1,
-        files: ["docs/spec/FRAMES.md"],
+        files: ["docs/spec/FRAMES.md", "packages/core/src/psi/frameReader.ts"],
       },
     ]);
     const census = plan.slices.find((slice) => slice.id === "census-1");
@@ -426,7 +447,12 @@ describe("plan.json", () => {
     });
     const spec = plan.slices.find((slice) => slice.id === "stale-spec-1");
     expect(spec.statements).toEqual([
-      { path: "docs/spec/FRAMES.md", line: 3, names: ["parseReaderFrame"] },
+      {
+        path: "docs/spec/FRAMES.md",
+        line: 3,
+        names: ["parseReaderFrame"],
+        code: ["packages/core/src/psi/frameReader.ts"],
+      },
     ]);
     const total =
       Math.round(
@@ -515,7 +541,11 @@ describe("slices sized by the lines they match", () => {
     expect(strings.lines).toBe(2 * context + 1);
     const spec = plan.slices.find((slice) => slice.selector === "stale-spec");
     expect(spec.statements.map(({ line }) => line)).toEqual([150, 153]);
-    expect(spec.lines).toBe(2 * context + 1 + 3);
+    const codeLines =
+      fixture.git(["show", `${head}:apps/cli/src/frames.ts`]).split("\n")
+        .length - 1;
+    expect(spec.files).toEqual(["docs/spec/LONG.md", "apps/cli/src/frames.ts"]);
+    expect(spec.lines).toBe(2 * context + 1 + 3 + codeLines);
     expect(readFileSync(join(dayDir, "SLICES.md"), "utf8")).toContain(
       '  - apps/cli/src/frames.ts:100: throw new Error("The frame is over the limit. Send a shorter one.");',
     );

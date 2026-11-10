@@ -12,7 +12,8 @@
 //   `scratch/review-days/<date>/`) whose name sorts before `<dayDir>`'s own and
 //   that holds `FINAL/`. A newer one without `FINAL/`, a day stopped at a failed
 //   precondition, is skipped and named on stdout. With none, the day runs with
-//   no owed passes and nothing skipped.
+//   no owed passes and nothing skipped. A previous day whose `FINAL/` has no
+//   `owed.md` runs with no owed passes, and says so on stdout and in SLICES.md.
 // - The window is `git log --first-parent <prev>..<sha>`, one first-parent
 //   commit per merged pull request. `<prev>` is `--prev <sha>` when given, else
 //   the `sha` of the previous day's `FINAL/record.json`; with neither, the run
@@ -44,7 +45,9 @@
 // selector's set is cut by directory into slices of at most `maxSliceLines`, a
 // small directory joining its neighbour. A user-string or stale-spec slice
 // lists the lines it matched and is sized by them, `matchContextLines` either
-// side of each; every other slice is sized by its files' whole line counts.
+// side of each; a stale-spec slice also lists, and is sized by the whole line
+// count of, each code file its statements name, once. Every other slice is
+// sized by its files' whole line counts.
 //
 // Exit 0 written; 1 a slice over `maxSliceLines`, nothing written; 2 usage, an
 // unreadable input, a git error, or a failed board read.
@@ -526,7 +529,12 @@ export function fitHotThreshold(prCounts, lineOf, target) {
  * A single file over the bound stays a group of its own, for the bound check
  * to refuse.
  */
-export function cutByDirectory(files, lineOf, maxLines) {
+export function cutByDirectory(
+  files,
+  lineOf,
+  maxLines,
+  groupLines = (group) => group.reduce((sum, path) => sum + lineOf(path), 0),
+) {
   const byDirectory = new Map();
   for (const path of [...new Set(files)].sort()) {
     const directory = dirname(path);
@@ -537,22 +545,26 @@ export function cutByDirectory(files, lineOf, maxLines) {
   for (const directory of [...byDirectory.keys()].sort()) {
     let piece = { files: [], lines: 0 };
     for (const path of byDirectory.get(directory)) {
-      const lines = lineOf(path);
-      if (piece.files.length > 0 && piece.lines + lines > maxLines) {
+      if (
+        piece.files.length > 0 &&
+        groupLines([...piece.files, path]) > maxLines
+      ) {
         pieces.push(piece);
         piece = { files: [], lines: 0 };
       }
       piece.files.push(path);
-      piece.lines += lines;
+      piece.lines = groupLines(piece.files);
     }
     pieces.push(piece);
   }
   const joined = [];
   for (const piece of pieces) {
     const last = joined.at(-1);
-    if (last !== undefined && last.lines + piece.lines <= maxLines) {
+    const together =
+      last === undefined ? 0 : groupLines([...last.files, ...piece.files]);
+    if (last !== undefined && together <= maxLines) {
       last.files.push(...piece.files);
-      last.lines += piece.lines;
+      last.lines = together;
     } else joined.push({ files: [...piece.files], lines: piece.lines });
   }
   return joined;
@@ -716,20 +728,25 @@ function dayRecord(day) {
 
 /**
  * The `docs/spec` lines (outside `wording-changes/`) naming a file's stem or
- * exported name as a whole word.
+ * exported name as a whole word, each with the sorted `code` files whose names
+ * it uses.
  */
 export function specStatements(git, sha, files, tracked) {
-  const names = new Set();
+  const names = new Map();
+  const nameFile = (name, path) => {
+    if (!names.has(name)) names.set(name, new Set());
+    names.get(name).add(path);
+  };
   const sources = git.blobs(
     sha,
     files.filter((path) => /\.(ts|tsx|js|mjs|cjs)$/.test(path)),
   );
   for (const path of files) {
     const stem = basename(path).replace(/\..*$/, "");
-    if (isSourcePath(path) && isDistinctiveName(stem)) names.add(stem);
+    if (isSourcePath(path) && isDistinctiveName(stem)) nameFile(stem, path);
     const source = sources.get(path)?.toString("utf8") ?? "";
     for (const [, name] of source.matchAll(EXPORTED_NAME))
-      if (isDistinctiveName(name)) names.add(name);
+      if (isDistinctiveName(name)) nameFile(name, path);
   }
   if (names.size === 0) return [];
   const specPaths = tracked.filter(
@@ -747,7 +764,14 @@ export function specStatements(git, sha, files, tracked) {
           (text.match(/[\w$]+/g) ?? []).filter((word) => names.has(word)),
         );
         if (named.size > 0)
-          statements.push({ path, line: index + 1, names: [...named].sort() });
+          statements.push({
+            path,
+            line: index + 1,
+            names: [...named].sort(),
+            code: [
+              ...new Set([...named].flatMap((name) => [...names.get(name)])),
+            ].sort(),
+          });
       });
   return statements;
 }
@@ -811,12 +835,19 @@ export function planDay({
 
   const slices = [];
   const counters = new Map();
-  const addSlices = (selector, lens, files, extra = {}, sizeOf = lineOf) => {
+  const addSlices = (
+    selector,
+    lens,
+    files,
+    extra = {},
+    sizeOf = lineOf,
+    groupLines = undefined,
+  ) => {
     ensureLines(files);
     // An owed pass whose text names no tracked file is still a pass to run.
     const pieces =
       files.length > 0
-        ? cutByDirectory(files, sizeOf, maxSliceLines)
+        ? cutByDirectory(files, sizeOf, maxSliceLines, groupLines)
         : selector === "owed"
           ? [{ files: [], lines: 0 }]
           : [];
@@ -871,10 +902,12 @@ export function planDay({
   // 1. Owed passes.
   const owedPath =
     previousDay === null ? null : join(previousDay, "FINAL", "owed.md");
-  const owed =
-    owedPath !== null && existsSync(owedPath)
-      ? parseOwed(readFileSync(owedPath, "utf8"))
-      : [];
+  const hasOwedFile = owedPath !== null && existsSync(owedPath);
+  const owedNote =
+    previousDay !== null && !hasOwedFile
+      ? `Owed passes: ${previousDay} has a FINAL/ directory but no owed.md, so no owed passes were read from it.`
+      : null;
+  const owed = hasOwedFile ? parseOwed(readFileSync(owedPath, "utf8")) : [];
   const itemRefs = [
     ...new Set(
       owed.flatMap((pass) =>
@@ -1029,16 +1062,31 @@ export function planDay({
     tracked,
   );
   const specFiles = [...new Set(statements.map(({ path }) => path))];
-  if (specFiles.length > 0)
+  if (specFiles.length > 0) {
+    const specSize = matchedSize(statements);
+    const codeBySpec = new Map();
+    for (const { path, code } of statements) {
+      if (!codeBySpec.has(path)) codeBySpec.set(path, new Set());
+      for (const codePath of code) codeBySpec.get(path).add(codePath);
+    }
+    const codeOf = (group) => [
+      ...new Set(group.flatMap((path) => [...(codeBySpec.get(path) ?? [])])),
+    ];
+    ensureLines(codeOf(specFiles));
     addSlices(
       "stale-spec",
       1,
       specFiles,
       (sliceFiles) => ({
+        files: [...sliceFiles, ...codeOf(sliceFiles).sort()],
         statements: statements.filter(({ path }) => sliceFiles.includes(path)),
       }),
-      matchedSize(statements),
+      specSize,
+      (group) =>
+        group.reduce((sum, path) => sum + specSize(path), 0) +
+        codeOf(group).reduce((sum, path) => sum + lineOf(path), 0),
     );
+  }
 
   // 6. Rotation.
   const lastRead = new Map();
@@ -1106,6 +1154,7 @@ export function planDay({
     prevSha,
     previousDay,
     skippedDays,
+    owedNote,
     window: { from: prevSha, to: sha, commits },
     hotThreshold: hot.threshold,
     hotLines: hot.lines,
@@ -1139,10 +1188,11 @@ export function renderSlices(plan) {
     ...plan.skippedDays.map(
       (day) => `Not the previous day: ${day}, which has no FINAL/ directory.`,
     ),
+    ...(plan.owedNote === null ? [] : [plan.owedNote]),
     plan.hotThreshold === null
       ? "Hot files: none in the window."
       : `Hot files: touched by ${plan.hotThreshold} or more pull requests, ${plan.hotLines} lines (target ${values.hotLineTarget}).`,
-    `Working values, fitted from the 2026-11-06 review pass and re-fitted at each retro: at most ${values.maxSliceLines} lines a slice; a slice costs ${[1, 2, 3, 4].map((lens) => `${money(values.unitCosts[lens])} at lens ${lens}`).join(", ")}.`,
+    `Working values, fitted from the 2026-11-06 review pass and re-fitted at each retro: at most ${values.maxSliceLines} lines a slice; a user-string or stale-spec slice counts ${values.matchContextLines} lines either side of each match; a slice costs ${[1, 2, 3, 4].map((lens) => `${money(values.unitCosts[lens])} at lens ${lens}`).join(", ")}.`,
     `Estimated total: ${money(plan.totalEstimate)} over ${plan.slices.length} slices.`,
     "",
     "Paths are relative to the repository root; read each at the pinned sha (`git show <sha>:<path>`).",
@@ -1247,6 +1297,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
             `not the previous day: ${day}, which has no FINAL/ directory\n`,
         )
         .join("") +
+        (plan.owedNote === null ? "" : `${plan.owedNote}\n`) +
         `wrote ${join(dayDir, "SLICES.md")} and ${join(dayDir, "plan.json")}\n` +
         `${plan.slices.length} slices, ${plan.carried.length} owed passes carried over\n` +
         `estimated total: ${money(plan.totalEstimate)}\n`,
