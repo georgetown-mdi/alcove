@@ -511,7 +511,7 @@ async function runExchangeStage(params: {
       // liveness timers. Falls back to in-process when
       // the bundled worker is absent (dev / tests); see createPsiEngine.
       psiEngineFactory: (role, id, mode) =>
-        createPsiEngine(psiLibrary, role, id, mode, {
+        createPsiEngine(psiLibrary, psiBackend, role, id, mode, {
           heapBytes: psiWorkerHeapBytes,
           frameMemoryCheck: psiFrameMemoryCheck,
         }),

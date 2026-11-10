@@ -4,14 +4,14 @@ import { Worker } from "node:worker_threads";
 
 import { afterEach, expect, test } from "vitest";
 import PSI from "@openmined/psi.js";
-import {
-  WorkerPsiEngine,
-  type PsiEngine,
-  type PsiWorkerInit,
-} from "@alcove/core";
+import { WorkerPsiEngine, type PsiEngine } from "@alcove/core";
 import { ProtocolRefusalError } from "@alcove/core/testing";
 
-import { createWorkerThreadHandle } from "../../src/psiWorkerHost";
+import { loadCliPsiBackend } from "../../src/psiBackend";
+import {
+  createWorkerThreadHandle,
+  psiWorkerInit,
+} from "../../src/psiWorkerHost";
 import { exitCodeForError } from "../../src/util/exit";
 
 // Exercises the CLI PSI crypto offload against the real shipping worker
@@ -35,6 +35,9 @@ if (process.env.ALCOVE_REQUIRE_WORKER_BUILD === "1" && !workerBuilt) {
   );
 }
 const workerTest = test.skipIf(!workerBuilt);
+
+// The library the host selects, which the worker is told to load.
+const { backend: hostBackend } = await loadCliPsiBackend();
 
 // Every worker this file spawns, so a test that fails before its own teardown
 // cannot leak a ref'd worker that would hold the vitest process open (the
@@ -62,7 +65,7 @@ interface SpawnedEngine {
 // Worker is returned so a test can drive its teardown directly; a separate 'error'
 // listener records faults for assertions independent of the handle's own routing.
 function spawnEngine(role: "starter" | "joiner", id: string): SpawnedEngine {
-  const init: PsiWorkerInit = { role, id, mode: "identifier-revealing" };
+  const init = psiWorkerInit(hostBackend, role, id, "identifier-revealing");
   const worker = new Worker(workerEntry, { workerData: init });
   spawned.push(worker);
   const errors: unknown[] = [];

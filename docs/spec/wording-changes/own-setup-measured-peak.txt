@@ -4,10 +4,11 @@
 - Where this party sends, the need adds its own setup, held from before the request is read until the reply is sent, at 734 bytes a value slot of its own (`singlePassOwnSetupBytes`, [The sender's own setup](#the-senders-own-setup)). -> Where this party sends, it also holds its own setup, from before the request is read until the reply is sent, and the need is the larger of the setup's build peak and the need above plus what the setup adds to the masking, each a measured figure a value slot of its own on the PSI library the run loaded (`singlePassOwnSetupBytes`, [The sender's own setup](#the-senders-own-setup)).
 - The terms-exchange check adds `734 * slots` bytes for it, `slots` the sender's own value slots, the most elements its setup can hold (`singlePassOwnSetupBytes`, `apps/cli/src/psiMemoryBudget.ts`): the largest figure below, rounded up. -> The terms-exchange check charges the sender the larger of two figures, `slots` its own value slots, the most elements its setup can hold (`singlePassOwnSetupBytes`, `apps/cli/src/psiMemoryBudget.ts`):
 - - -> **The setup's creation.**
-- - -> `b * slots` bytes, `b` the build peak below: 884 on the native library and 833 on the WebAssembly library.
+- - -> `b * slots` bytes, `b` the build peak below: 884 on the native library and 865 on the WebAssembly library.
 - - -> **The masking beside it.**
-- - -> The request charge plus `m * slots` bytes, `m` the masking increment below: 401 on the native library and 60 on the WebAssembly library.
+- - -> The request charge plus `m * slots` bytes, `m` the masking increment below: 401 on the native library and 132 on the WebAssembly library.
 - - -> Each figure is the largest measured on its library, rounded up, with the native masking increment raised by what swap could hide in it (below), and the check takes the figures of the library the run loaded: the native addon, or the WebAssembly build the CLI falls back to where no native build loads (`loadCliPsiBackend`, `apps/cli/src/psiBackend.ts`).
+- - -> The PSI worker loads that same library and no other, and where it does not load there the worker fails to start and the exchange fails.
 - Measured 2026-11-09 in the development container (aarch64 Linux, 10 CPUs, 23 GB shared with other work, Node v26.13.0), on the native library, by the method of [The masking of a request](#the-masking-of-a-request), one process a run: -> Measured 2026-11-10 in the development container (aarch64 Linux, 10 CPUs, 23 GB shared with other work, Node v26.13.0), by the method of [The masking of a request](#the-masking-of-a-request), one process a run:
 - **The figure.** -> **The build peak.**
 - - -> The process's high-water resident set once the setup was created, less a baseline taken after three forced collections before it was created, with its values already held, over `n`.
@@ -39,9 +40,12 @@
 - The charge adds the held figure in full, so it is above the run's need when the request is large beside the setup. -> The increment therefore grows with the setup against a fixed request, and was measured beside one request size only.
 - - -> The WebAssembly library was measured at 2^20 to 2^22 elements only, where the native increment was at most 166 bytes an element, against 397 at 2^24.
 - - -> On 2026-11-09, 11 earlier native runs at 2^20 to 2^23 elements peaked at 792 to 881 bytes an element in creation.
-- - -> A high-water mark of the resident set does not count pages swapped out, so a run that read the container's swap use before and after is held to one rule, because swap can only lower a reading: a run during which it rose by more than 16 MB is left out of a figure it would lower and never of one it would raise, and a figure that does count, read under such a rise, is raised by what that rise can hide, the rise over the run's element count:
+- - -> A high-water mark of the resident set does not count pages swapped out, so a run measured alone that read the container's swap use before and after is held to one rule, because swap can only lower a reading: a run during which it rose by more than 16 MB is left out of a figure it would lower and never of one it would raise, and a figure that does count, read under such a rise, is raised by what that rise can hide, the rise over the run's element count.
+- - -> A rise shared by runs side by side is no one run's, so each of their readings counts as read, not raised:
 - - -> **The WebAssembly runs.**
-- - -> Swap use did not rise during any of them.
+- - -> The re-measured runs in the table above did not raise swap use.
+- - -> An earlier batch of six runs, up to four at a time while swap use rose by 302 MB, read build peaks of 747.34 to 864.77 and masking increments of 1.11 to 131.50 bytes an element at 2^20 to 2^22.
+- - -> Its runs are not in the table, which holds runs measured alone, and its readings count as read: its 864.77 (2^22) and 131.50 (2^20) set the WebAssembly figures at 865 and 132.
 - - -> **The native runs at 2^20 to 2^23.**
 - - -> Swap use did not rise during the four that read it.
 - - -> The native build peak of 884 comes from a run at 2^20 that did not read it; swap can only lower a reading, so the charge keeps that run's 883.50 as the largest.

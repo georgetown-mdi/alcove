@@ -368,8 +368,8 @@ export const SINGLE_PASS_OWN_SETUP_COST: Readonly<
     maskingIncrementBytesPerElement: 401,
   },
   wasm: {
-    buildPeakBytesPerElement: 833,
-    maskingIncrementBytesPerElement: 60,
+    buildPeakBytesPerElement: 865,
+    maskingIncrementBytesPerElement: 132,
   },
 };
 

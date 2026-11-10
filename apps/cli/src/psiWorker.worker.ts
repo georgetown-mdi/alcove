@@ -8,13 +8,9 @@ import {
   sanitizeErrorForDisplay,
   servePsiWorker,
 } from "@alcove/core";
-import type {
-  PsiWorkerInit,
-  PsiWorkerRequest,
-  PsiWorkerResponse,
-} from "@alcove/core";
+import type { PsiWorkerRequest, PsiWorkerResponse } from "@alcove/core";
 
-import { loadCliPsiBackend } from "./psiBackend";
+import { loadNamedCliPsiBackend, type CliPsiWorkerInit } from "./psiBackend";
 
 // --expose-gc cannot be passed through a worker's execArgv (Node rejects it
 // with ERR_WORKER_INVALID_EXEC_ARGV), and a parent only exposes gc in its
@@ -43,13 +39,13 @@ async function main(): Promise<void> {
     throw new InternalConsistencyError(
       "PSI worker started outside a worker_threads worker",
     );
-  const init = workerData as PsiWorkerInit;
-  const { library, backend } = await loadCliPsiBackend();
+  const init = workerData as CliPsiWorkerInit;
+  const library = await loadNamedCliPsiBackend(init.backend);
   const handle = servePsiWorker(
     library,
     init,
     (response: PsiWorkerResponse) => port.postMessage(response),
-    psiEngineOptionsForBackend(backend),
+    psiEngineOptionsForBackend(init.backend),
   );
   // Messages the host posted while the backend was loading were queued on the port;
   // attaching the listener now drains them in order.

@@ -351,6 +351,7 @@ describe("the limit reaches the thread that runs the engine", () => {
     const worker = startPsiWorkerThread(entry, {
       role: "starter",
       id: "heap-probe",
+      backend: "wasm",
       mode: "identifier-revealing",
     });
     const limit = await new Promise<number>((resolve, reject) => {
@@ -963,7 +964,12 @@ describe("the PSI worker's heap, from the counts", () => {
     fs.writeFileSync(entry, HEAP_REPORTING_WORKER);
     const worker = startPsiWorkerThread(
       entry,
-      { role: "joiner", id: "heap-probe", mode: "identifier-revealing" },
+      {
+        role: "joiner",
+        id: "heap-probe",
+        mode: "identifier-revealing",
+        backend: "wasm",
+      },
       heapBytes,
     );
     const limit = await new Promise<number>((resolve, reject) => {

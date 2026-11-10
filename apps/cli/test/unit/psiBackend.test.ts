@@ -3,9 +3,14 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-import { isNativeUnavailable } from "../../src/psiBackend";
+import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
+
+import {
+  isNativeUnavailable,
+  loadNamedCliPsiBackend,
+} from "../../src/psiBackend";
 
 // Pins the classification the WASM fallback depends on: which native-load errors
 // are the ordinary "no prebuild here" case (resolve null, fall back quietly)
@@ -91,5 +96,67 @@ describe("isNativeUnavailable", () => {
     } finally {
       rmSync(emptyDir, { recursive: true, force: true });
     }
+  });
+});
+
+// The PSI worker loads the library the host's memory check charged, never the
+// one a fallback would pick.
+describe("loadNamedCliPsiBackend", () => {
+  const nativeLibrary = { name: "native" } as unknown as PSILibrary;
+  const wasmLibrary = { name: "wasm" } as unknown as PSILibrary;
+
+  test("returns the library of the backend it is asked for", async () => {
+    const loaders = {
+      loadNative: () => Promise.resolve(nativeLibrary),
+      loadWasm: () => Promise.resolve(wasmLibrary),
+    };
+    await expect(loadNamedCliPsiBackend("native", loaders)).resolves.toBe(
+      nativeLibrary,
+    );
+    await expect(loadNamedCliPsiBackend("wasm", loaders)).resolves.toBe(
+      wasmLibrary,
+    );
+  });
+
+  test("does not load the native addon for a WebAssembly request", async () => {
+    const loadNative = vi.fn(() => Promise.resolve(nativeLibrary));
+    await loadNamedCliPsiBackend("wasm", {
+      loadNative,
+      loadWasm: () => Promise.resolve(wasmLibrary),
+    });
+    expect(loadNative).not.toHaveBeenCalled();
+  });
+
+  test("throws, with no WebAssembly fallback, when the native addon is unavailable", async () => {
+    const loadWasm = vi.fn(() => Promise.resolve(wasmLibrary));
+    await expect(
+      loadNamedCliPsiBackend("native", {
+        loadNative: () => Promise.resolve(null),
+        loadWasm,
+      }),
+    ).rejects.toThrow(/native PSI library.*does not load/);
+    expect(loadWasm).not.toHaveBeenCalled();
+  });
+
+  test("throws when the native addon fails to load", async () => {
+    const loadWasm = vi.fn(() => Promise.resolve(wasmLibrary));
+    await expect(
+      loadNamedCliPsiBackend("native", {
+        loadNative: () =>
+          Promise.reject(
+            Object.assign(new Error("dlopen failed"), {
+              code: "ERR_DLOPEN_FAILED",
+            }),
+          ),
+        loadWasm,
+      }),
+    ).rejects.toThrow("dlopen failed");
+    expect(loadWasm).not.toHaveBeenCalled();
+  });
+
+  test("refuses a backend name it does not know", async () => {
+    await expect(loadNamedCliPsiBackend("other" as "native")).rejects.toThrow(
+      /unknown PSI library/,
+    );
   });
 });

@@ -1,4 +1,8 @@
-import { describe, expect, test, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   INBOUND_FRAME_MEMORY_MULTIPLES,
   WorkerPsiEngine,
@@ -11,6 +15,8 @@ import {
   PSI_WORKER_EXIT_WAIT_NOTICE,
   createWorkerThreadHandle,
   offerExitAtOnceWhilePsiWorkersStop,
+  psiWorkerInit,
+  startPsiWorkerThread,
   stopPsiWorkersBeforeExit,
   trackWorkerPsiEngine,
 } from "../../src/psiWorkerHost";
@@ -433,5 +439,51 @@ describe("the memory check before the worker takes a partner frame", () => {
         (INBOUND_FRAME_MEMORY_MULTIPLES.workerClone +
           INBOUND_FRAME_MEMORY_MULTIPLES.streamedSetup),
     );
+  });
+});
+
+describe("the backend the PSI worker is told to load", () => {
+  let scratch: string | undefined;
+  afterEach(() => {
+    if (scratch !== undefined) rmSync(scratch, { recursive: true });
+    scratch = undefined;
+  });
+
+  test.each(["native", "wasm"] as const)(
+    "the init data states the host's %s backend",
+    (backend) => {
+      expect(
+        psiWorkerInit(backend, "joiner", "run-id", "identifier-revealing"),
+      ).toEqual({
+        role: "joiner",
+        id: "run-id",
+        mode: "identifier-revealing",
+        backend,
+      });
+    },
+  );
+
+  test("the worker receives the init data it was started with", async () => {
+    scratch = mkdtempSync(join(tmpdir(), "alcove-worker-init-"));
+    const entry = join(scratch, "worker.cjs");
+    writeFileSync(
+      entry,
+      `const { parentPort, workerData } = require("node:worker_threads");
+parentPort.postMessage(workerData);
+`,
+    );
+    const init = psiWorkerInit(
+      "native",
+      "starter",
+      "run-id",
+      "count-only-permuted",
+    );
+    const worker = startPsiWorkerThread(entry, init);
+    const received = await new Promise<unknown>((resolve, reject) => {
+      worker.once("message", resolve);
+      worker.once("error", reject);
+    });
+    await worker.terminate();
+    expect(received).toEqual(init);
   });
 });

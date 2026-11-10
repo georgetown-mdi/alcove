@@ -13,13 +13,13 @@ import {
   type PsiEngineMode,
   type PsiFrameHandOff,
   type PsiWorkerHandle,
-  type PsiWorkerInit,
   type PsiWorkerRequest,
   type PsiWorkerResponse,
 } from "@alcove/core";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
-import { raisePsiWorkerHeapLimit } from "./psiMemoryBudget";
+import type { CliPsiWorkerInit } from "./psiBackend";
+import { raisePsiWorkerHeapLimit, type PsiBackend } from "./psiMemoryBudget";
 
 // The host side of the CLI's PSI worker: it spawns the
 // worker_threads worker that runs the masking off the event-loop-owning thread and
@@ -58,7 +58,7 @@ export function psiEngineRunsInWorker(): boolean {
  */
 export function startPsiWorkerThread(
   entry: string,
-  init: PsiWorkerInit,
+  init: CliPsiWorkerInit,
   heapBytes?: number,
 ): Worker {
   raisePsiWorkerHeapLimit(heapBytes);
@@ -77,10 +77,12 @@ export interface PsiWorkerSizing {
  * Build the PSI crypto engine for a CLI exchange. When the bundled worker entry is
  * present (the shipped CLI), the masking runs in a worker_threads worker off the
  * event-loop-owning thread; otherwise it falls back to the in-process engine (dev,
- * tests). `library` backs only that fallback -- the worker loads its own backend.
+ * tests). `library` backs only that fallback; the worker loads `backend`, the
+ * library the caller selected, and fails to start if that one does not load.
  */
 export function createPsiEngine(
   library: PSILibrary,
+  backend: PsiBackend,
   role: "starter" | "joiner",
   id: string,
   mode: PsiEngineMode,
@@ -88,7 +90,7 @@ export function createPsiEngine(
 ): PsiEngine {
   const entry = resolveWorkerEntry();
   if (entry !== undefined)
-    return spawnWorkerPsiEngine(entry, role, id, mode, sizing);
+    return spawnWorkerPsiEngine(entry, backend, role, id, mode, sizing);
   return new InProcessPsiEngine(library, role, id, mode);
 }
 
@@ -306,16 +308,28 @@ const liveWorkers = new Map<
   { exited: Promise<void>; requestInFlight: () => boolean }
 >();
 
+/**
+ * The seed a PSI worker starts with.
+ * @internal
+ */
+export function psiWorkerInit(
+  backend: PsiBackend,
+  role: "starter" | "joiner",
+  id: string,
+  mode: PsiEngineMode,
+): CliPsiWorkerInit {
+  return { role, id, mode, backend };
+}
+
 function spawnWorkerPsiEngine(
   entry: string,
+  backend: PsiBackend,
   role: "starter" | "joiner",
   id: string,
   mode: PsiEngineMode,
   sizing: PsiWorkerSizing,
 ): WorkerPsiEngine {
-  // Typed as the seed the worker reads back, so an added required field is a
-  // compile error here rather than a value the worker silently misses.
-  const init: PsiWorkerInit = { role, id, mode };
+  const init = psiWorkerInit(backend, role, id, mode);
   // The worker exposes gc() for the single-pass memory relief itself, at startup
   // (see psiWorker.worker.ts): --expose-gc cannot be passed through a worker's
   // execArgv (Node rejects it), so nothing gc-related is set here.

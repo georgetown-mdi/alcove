@@ -2,7 +2,11 @@ import PSI from "@openmined/psi.js";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import { loadPsiBackend } from "@alcove/core";
-import type { PsiBackendOptions, PsiBackendSelection } from "@alcove/core";
+import type {
+  PsiBackendOptions,
+  PsiBackendSelection,
+  PsiWorkerInit,
+} from "@alcove/core";
 
 /**
  * Loads the native N-API PSI addon when a prebuild is available for this
@@ -57,4 +61,48 @@ export function loadCliPsiBackend(
     { loadWasm: () => PSI(), loadNative: loadNativePsiAddon },
     { isNode: true, ...options },
   );
+}
+
+/**
+ * What the CLI's PSI worker is started with: core's seed and the backend the
+ * host selected, which the memory check charged and the worker loads.
+ */
+export interface CliPsiWorkerInit extends PsiWorkerInit {
+  readonly backend: PsiBackendSelection["backend"];
+}
+
+/** The loaders {@link loadNamedCliPsiBackend} calls; a test supplies its own. @internal */
+export interface CliPsiBackendLoaders {
+  loadWasm: () => Promise<PSILibrary>;
+  loadNative: () => Promise<PSILibrary | null>;
+}
+
+const CLI_PSI_BACKEND_LOADERS: CliPsiBackendLoaders = {
+  loadWasm: () => PSI(),
+  loadNative: loadNativePsiAddon,
+};
+
+/**
+ * Loads exactly `backend`, with no fallback: the PSI worker's load, so it
+ * masks on the library the host's memory check charged. Throws when the native
+ * addon is requested and does not load.
+ */
+export async function loadNamedCliPsiBackend(
+  backend: PsiBackendSelection["backend"],
+  loaders: CliPsiBackendLoaders = CLI_PSI_BACKEND_LOADERS,
+): Promise<PSILibrary> {
+  switch (backend) {
+    case "wasm":
+      return loaders.loadWasm();
+    case "native": {
+      const native = await loaders.loadNative();
+      if (native === null)
+        throw new Error(
+          "the native PSI library the run selected does not load in the PSI worker",
+        );
+      return native;
+    }
+    default:
+      throw new Error(`unknown PSI library requested: ${String(backend)}`);
+  }
 }
