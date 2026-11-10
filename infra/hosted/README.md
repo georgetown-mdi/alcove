@@ -136,6 +136,13 @@ Planning and applying this root against the live account and zone settles these 
 - **Confirmed:** the zone accepted the `MX` and `TXT` records beside the proxied names (2026-10-26).
 - **Confirmed:** plain HTTP to `www` is redirected to `https://data-bridge.org` in one step, not through `https://www` (2026-10-26).
 
+## Other resources the AWS account keeps
+
+The AWS account that holds the state has resources this root does not manage, created by hand or by AWS. The account owner owns each one below, and each is kept.
+
+- **Budget `alcove-hosted-monthly`:** 33 USD a month, with no filters and no actions. It has three email notifications, for actual spend above 26 USD, actual spend above 30 USD and forecast spend above 33 USD, each sent to the account owner.
+- **Service-linked roles:** AWS creates these for a service on first use, and they cost nothing while standing. `AWSServiceRoleForAutoScaling`, `AWSServiceRoleForElasticBeanstalk`, `AWSServiceRoleForOrganizations`, `AWSServiceRoleForResourceExplorer`, `AWSServiceRoleForSSO` and `AWSServiceRoleForSupport` are kept. None shows a recorded use. The SSO login depends on `AWSServiceRoleForSSO`, and `AWSServiceRoleForSupport` is an account default.
+
 ## Deploying to Cloudflare Pages
 
 The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([hosted-static-build.md](../../docs/notes/hosted-static-build.md)). Two workflows upload that directory to the Pages project by direct upload, each only when every suite in [`web_build_and_test.yaml`](../../.github/workflows/web_build_and_test.yaml) passes:
