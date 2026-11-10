@@ -31,7 +31,7 @@
   ],
   "dependencies": {
     "@alcove/core": "file:../../packages/core",
-    "ws": "^8.22.0"
+    "ws": "^8.22.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
