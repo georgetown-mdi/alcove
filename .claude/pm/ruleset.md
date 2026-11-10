@@ -386,10 +386,12 @@ Every epic has a one-line terminal condition, written `Done is: ...`, naming
 an observable state that ends it. An epic without one never ends: new items
 arrive as fast as old ones close, because nothing defines it as finished.
 
-- A filing that does not advance its epic's line is DECLINED. Say which line it
-  fails to advance and where the concern belongs instead -- a limits line in the
-  governing `docs/spec/` file, a `docs/notes/` amendment, or an append to a
-  standing sweep item.
+- A line places work and says when its epic is finished. It never decides
+  whether work is worth doing. A filing that does not advance its epic's line
+  goes to the epic it fits best, or is left unparented per the placement rule.
+  The owner, docket 2026-11-10: "I'm not woried about ratified Done lines, btw.
+  I want to do what we should actually be doing, not be held by arbitrary
+  limits."
 - An epic with no line gets one at its next filing: draft the line, state it in
   the result, and leave it for the owner to ratify.
 - The line names an end state someone can observe, not an aim. "Done is: the
