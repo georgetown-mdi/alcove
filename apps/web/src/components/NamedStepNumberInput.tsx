@@ -8,7 +8,7 @@ import type { NumberInputHandlers, NumberInputProps } from "@mantine/core";
 
 /** The step buttons' names: "One more day of inactivity", "Five fewer
  * hours of window length". The field name keeps two fields sharing a unit apart. */
-export function stepButtonNames(
+function stepButtonNames(
   step: number,
   stepUnit: string,
   fieldName: string,

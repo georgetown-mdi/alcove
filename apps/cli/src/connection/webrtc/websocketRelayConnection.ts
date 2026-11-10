@@ -105,7 +105,7 @@ export interface WebSocketRelayConnectionOptions {
 }
 
 /** Longest the socket's TCP, TLS and WebSocket handshakes may take. */
-export const RELAY_OPEN_TIMEOUT_MS = 30_000;
+const RELAY_OPEN_TIMEOUT_MS = 30_000;
 
 /**
  * How long a relay that has not started waits before it dials again after a

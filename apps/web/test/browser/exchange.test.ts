@@ -852,7 +852,6 @@ describe("inviter screen", () => {
     expect(radios).toHaveLength(3);
     expect(radios[0].checked).toBe(true);
     expect(radios.every((radio) => !radio.disabled)).toBe(true);
-    expect(document.querySelectorAll(`.${styles.tagRoadmap}`)).toHaveLength(0);
     // The channel-capability rule stays on the chooser fine print.
     await expect
       .element(
@@ -3028,13 +3027,12 @@ describe("inviter screen", () => {
     ) as Element;
     expect(ledger.textContent).toContain("SFTP (command-line tool)");
 
-    // Create seals the terms and routes to the save surface -- no roadmap tag,
-    // and the browser NEVER started a run for a command-line transport.
+    // Create seals the terms and routes to the save surface, and the browser
+    // NEVER started a run for a command-line transport.
     await page.getByRole("button", { name: "Create the invitation" }).click();
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Save your exchange file");
-    expect(document.querySelectorAll(`.${styles.tagRoadmap}`)).toHaveLength(0);
     expect(lifecycleCalls).toHaveLength(0);
     // The save-flow top bar shows the four-step timeline with Save file
     // current.

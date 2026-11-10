@@ -91,7 +91,7 @@ import type { SftpConnectionFormValues } from "./sftpConnectionForm";
  * offers that one disabled, so a configuration naming it shows what it names and
  * blocks the run, rather than reopening as an unsigned exchange.
  */
-export interface LoadedReceiptsChoices {
+interface LoadedReceiptsChoices {
   mode: ReceiptsSigningMode;
   partnerFingerprint: string;
   retentionDisposition: string;
@@ -392,7 +392,7 @@ export const HELD_TERMS_SETTINGS = {
 /** The parts of a loaded document the invitation editor takes once the input
  * file is read: the matching terms, and the column roles and cleaning pipeline
  * the document states for this party's own columns. */
-export interface LoadedEditorTerms {
+interface LoadedEditorTerms {
   linkageTerms: LinkageTerms;
   metadata?: Metadata;
   standardization?: Standardization;

@@ -50,12 +50,12 @@ import {
 } from "../../../src/util/atSignRefs";
 import { redactUrlCredentials } from "@alcove/core";
 import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
+import { runProtocol } from "../../../src/protocol";
+import type { RunProtocolOptions } from "../../../src/protocol";
 import {
   checkRunMemoryBudget,
-  runProtocol,
   warnUndeclaredColumns,
-} from "../../../src/protocol";
-import type { RunProtocolOptions } from "../../../src/protocol";
+} from "../../../src/run/prepare";
 import { captureFd3 } from "../../eventStreamTestSupport";
 import {
   assertHostKeyTrustCanBeEstablished,
@@ -79,14 +79,18 @@ import {
 // Hoisted above the imports by vitest. Only runProtocol is stubbed -- the
 // refusal messages the handler raises are the module's real constants, so an
 // assertion here matches what the operator actually sees, not a copy of it.
+vi.mock("../../../src/protocol", async (importActual) => {
+  const actual = await importActual<typeof import("../../../src/protocol")>();
+  return { ...actual, runProtocol: vi.fn() };
+});
 // The undeclared-columns notice and the memory check stay real, spy-wrapped so
 // the ordering tests below can place them against the host-key step and the
 // first-round count.
-vi.mock("../../../src/protocol", async (importActual) => {
-  const actual = await importActual<typeof import("../../../src/protocol")>();
+vi.mock("../../../src/run/prepare", async (importActual) => {
+  const actual =
+    await importActual<typeof import("../../../src/run/prepare")>();
   return {
     ...actual,
-    runProtocol: vi.fn(),
     warnUndeclaredColumns: vi.fn(actual.warnUndeclaredColumns),
     checkRunMemoryBudget: vi.fn(actual.checkRunMemoryBudget),
   };

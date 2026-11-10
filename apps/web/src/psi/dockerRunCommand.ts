@@ -194,13 +194,12 @@ export function dockerRunArgv(
 /** A folder a working-folder command mounts besides the working folder: a
  * placeholder, mounted at its own path on Linux and macOS, and from
  * `windowsPath` on Windows. */
-export interface WorkingFolderBindPath extends HandoffBindPath {
+interface WorkingFolderBindPath extends HandoffBindPath {
   windowsPath: string;
 }
 
 /** The console's working folder placeholder on Windows. */
-export const WINDOWS_WORKING_FOLDER_PLACEHOLDER =
-  "C:\\path\\to\\your\\working-folder";
+const WINDOWS_WORKING_FOLDER_PLACEHOLDER = "C:\\path\\to\\your\\working-folder";
 
 /** The console's secrets folder placeholder on Windows. */
 export const WINDOWS_SECRETS_FOLDER_PLACEHOLDER =

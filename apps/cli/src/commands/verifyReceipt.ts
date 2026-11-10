@@ -343,11 +343,6 @@ export function readVerificationKeysFile(pathValue: string): VerificationKeys {
   }
 }
 
-// toRetainedResult and deriveOurIdColumn are browser-safe shaping helpers that
-// live in @alcove/core; re-exported here so this command and its tests keep a
-// single import site.
-export { deriveOurIdColumn, toRetainedResult };
-
 // --- Report formatting -------------------------------------------------------
 
 const COMMITMENT_WORD: Record<CommitmentStatus, string> = {

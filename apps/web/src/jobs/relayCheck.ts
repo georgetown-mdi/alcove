@@ -78,7 +78,7 @@ export const RELAY_CHECK_CHILD_BUDGET_MS =
  * the configuration lists, each with its url, `meaning` and `action`. A
  * configuration whose verdict is longer is reported as an `error`.
  */
-export const RELAY_CHECK_STDOUT_CAP = 65_536;
+const RELAY_CHECK_STDOUT_CAP = 65_536;
 
 /** The most checks one verdict is read with. */
 const MAX_RELAY_CHECKS = 256;

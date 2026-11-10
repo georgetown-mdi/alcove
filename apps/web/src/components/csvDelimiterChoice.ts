@@ -24,7 +24,7 @@ export const CSV_DELIMITER_OTHER = "other";
 /** One entry of the delimiter select: the value it stores and the label it shows.
  * The named characters are the four common ones; detection reaches past them, which
  * is what the {@link CSV_DELIMITER_DETECT} entry's own label states. */
-export interface CsvDelimiterOption {
+interface CsvDelimiterOption {
   value: string;
   label: string;
 }

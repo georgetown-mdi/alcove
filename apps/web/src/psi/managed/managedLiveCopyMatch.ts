@@ -37,7 +37,7 @@ function canonicalAgreedTerms(
  * them: `"side"` where the sides differ, `"terms"` where the agreed terms do,
  * and `undefined` where they agree. A stored record with no side (a
  * configuration on a channel that names no role) agrees with nothing. */
-export function agreedTermsAndSideMismatch(
+function agreedTermsAndSideMismatch(
   stored: ManagedExchangeRecord,
   imported: ManagedExchangeRecord,
 ): "side" | "terms" | undefined {

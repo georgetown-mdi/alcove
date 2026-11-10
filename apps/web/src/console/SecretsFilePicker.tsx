@@ -40,7 +40,7 @@ const MOUNT_NAMES: Record<CredentialMount, { root: string; phrase: string }> = {
 
 /** What the credential picker says above a browse of the working folder, which
  * it offers when no separate secrets folder is mounted. */
-export const FOLDER_CREDENTIAL_NOTICE =
+const FOLDER_CREDENTIAL_NOTICE =
   "This console has no separate secrets folder, so choose the file from " +
   "your folder. That works, and the console warns you once the " +
   "connection is saved: Alcove writes exchange files and results into this " +

@@ -46,10 +46,8 @@ export const DEMO_SITE_LINK_REFUSAL =
 
 /**
  * The console start page's relay pointer: where a console sets a relay.
- *
- * @internal exported for testing
  */
-export const CONSOLE_RELAY_POINTER =
+const CONSOLE_RELAY_POINTER =
   "If using peer-to-peer, some workplace networks may block the connection. " +
   "Your IT team can give you a relay server address. To use it, create an " +
   "invitation, choose Over WebRTC, run here on its review step, and choose " +

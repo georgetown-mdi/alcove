@@ -131,7 +131,7 @@ export function jobInputFilePath(resolvedDir: string, name: string): string {
  * -- a console-written name, or a file in the exchange's protocol filename
  * grammar, which a shared-folder exchange on a one-folder console writes beside
  * the inputs -- rather than an input. */
-export function isConsoleOrExchangeFileName(name: string): boolean {
+function isConsoleOrExchangeFileName(name: string): boolean {
   return CONSOLE_WRITTEN_NAMES.has(name) || isProtocolGrammarName(name);
 }
 

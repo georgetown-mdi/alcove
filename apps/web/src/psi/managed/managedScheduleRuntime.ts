@@ -287,7 +287,7 @@ export function browserScheduleTickSeams(
 
 /** The between-visit notification's platform boundary: the store reads, the
  * clock, the operator's opt-in, and the browser's notification API. */
-export function browserBetweenVisitNoticeSeams(): BetweenVisitNoticeSeams {
+function browserBetweenVisitNoticeSeams(): BetweenVisitNoticeSeams {
   return {
     now: () => Date.now(),
     listRecords: listReadableManagedExchanges,

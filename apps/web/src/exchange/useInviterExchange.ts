@@ -332,10 +332,8 @@ function partnerRefusalCopy(
  * The next step for a refusal over a difference in the linkage terms, by
  * seat: the inviter sends a fresh invitation with the agreed terms, and the
  * acceptor asks for one. Each names the control its seat's alert offers.
- *
- * @internal exported for testing
  */
-export const TERMS_DIFFERENCE_REMEDY: Record<ExchangeSeat, string> = {
+const TERMS_DIFFERENCE_REMEDY: Record<ExchangeSeat, string> = {
   inviter:
     "Agree on the terms with your partner, then choose Start over with a fresh " +
     "invitation and send your partner the new invitation.",
@@ -348,10 +346,8 @@ export const TERMS_DIFFERENCE_REMEDY: Record<ExchangeSeat, string> = {
  * The next step after a partner could not save the new secret, by seat: a
  * fresh invitation, sent by the inviter and asked for by the acceptor. Each
  * names the control its seat's alert offers.
- *
- * @internal exported for testing
  */
-export const PARTNER_SECRET_NOT_SAVED_REMEDY: Record<ExchangeSeat, string> = {
+const PARTNER_SECRET_NOT_SAVED_REMEDY: Record<ExchangeSeat, string> = {
   inviter:
     "Choose Start over with a fresh invitation and send your partner the new " +
     "invitation.",
@@ -365,22 +361,18 @@ export const PARTNER_SECRET_NOT_SAVED_REMEDY: Record<ExchangeSeat, string> = {
  * where this side kept none, as a one-shot run does: both still hold the
  * invitation's secret. The inviter sends the new invitation, so the acceptor
  * asks for it.
- *
- * @internal exported for testing
  */
-export const PARTNER_SECRET_NOT_SAVED_UNCHANGED_MESSAGE: Record<
-  ExchangeSeat,
-  string
-> = {
-  inviter:
-    "Your partner could not save the new secret, so the exchange stopped. " +
-    "Nothing changed on this side. " +
-    PARTNER_SECRET_NOT_SAVED_REMEDY.inviter,
-  acceptor:
-    "Your partner could not save the new secret, so the exchange stopped. " +
-    "Nothing changed on this side. " +
-    PARTNER_SECRET_NOT_SAVED_REMEDY.acceptor,
-};
+const PARTNER_SECRET_NOT_SAVED_UNCHANGED_MESSAGE: Record<ExchangeSeat, string> =
+  {
+    inviter:
+      "Your partner could not save the new secret, so the exchange stopped. " +
+      "Nothing changed on this side. " +
+      PARTNER_SECRET_NOT_SAVED_REMEDY.inviter,
+    acceptor:
+      "Your partner could not save the new secret, so the exchange stopped. " +
+      "Nothing changed on this side. " +
+      PARTNER_SECRET_NOT_SAVED_REMEDY.acceptor,
+  };
 
 /** The alert content a refused job create shows: always `config` or the
  * retryable `exchange`. */

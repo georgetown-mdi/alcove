@@ -137,7 +137,7 @@ const UNAVAILABLE_NEXT_STEP: Record<ManagedRelayRegistrationStage, string> = {
  * owner-token re-enrollment, since the key the registrar holds is not one
  * this browser has.
  */
-export function managedRelayRegistrationFailureMessage(
+function managedRelayRegistrationFailureMessage(
   registrar: RelayRegistrar,
   outcome: RelayRegistrationFailure,
   stage: ManagedRelayRegistrationStage,

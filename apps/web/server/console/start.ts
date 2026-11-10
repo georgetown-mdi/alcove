@@ -6,9 +6,9 @@ import {
   warnJobApiProfileMismatch,
   warnJobRendezvousProvisioning,
 } from "@jobs/index";
-import { ConfigManager } from "@utils/serverConfig";
 import { JobApiConfigError } from "@jobs/gate";
 import { jobApiRequestTimeoutMs } from "@jobs/routeSupport";
+import { loadServerConfig } from "@utils/serverConfig";
 import { warnConsoleImage } from "@jobs/consoleImage";
 
 import {
@@ -83,7 +83,7 @@ export async function startConsoleServer(options: {
   staticRoot?: string;
   clientMiddleware?: ClientMiddleware;
 }): Promise<{ server: Server; hooks: ServerCloseHooks; url: string }> {
-  const config = await new ConfigManager().load();
+  const config = loadServerConfig();
   setLogLevel(config.LOG_LEVEL);
   const log = getLogger("console-server");
 

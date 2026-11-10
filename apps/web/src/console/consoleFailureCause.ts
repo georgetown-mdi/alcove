@@ -27,13 +27,13 @@ import type {
 } from "@alcove/core";
 
 /** A catalog cause as the console states it: a title, and its remedy. */
-export interface ConsoleFailureRemedy {
+interface ConsoleFailureRemedy {
   title: string;
   remedy: string;
 }
 
 /** What a remedy needs to know about the run beyond the cause's own facts. */
-export interface ConsoleRunContext {
+interface ConsoleRunContext {
   /** This side set a name for itself under the exchange-files card. */
   readonly thisSideNamed?: boolean;
 }
@@ -99,10 +99,8 @@ const partnerNeverArrived = (
 
 /**
  * The title and remedy for each cause kind.
- *
- * @internal exported for testing
  */
-export const CONSOLE_FAILURE_REMEDIES: {
+const CONSOLE_FAILURE_REMEDIES: {
   readonly [K in FailureCauseKind]: (
     cause: FailureCauseOfKind<K>,
     context: ConsoleRunContext,

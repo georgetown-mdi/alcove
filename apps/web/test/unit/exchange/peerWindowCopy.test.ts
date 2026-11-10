@@ -6,8 +6,6 @@ import {
 } from "@alcove/core";
 
 import {
-  SERVER_JOB_PEER_WINDOW_BODY,
-  SERVER_JOB_WEBRTC_PEER_WINDOW_BODY,
   peerWindowDurationPhrase,
   serverJobPeerWindowBody,
 } from "@exchange/RunSurface";
@@ -22,7 +20,6 @@ describe("serverJobPeerWindowBody", () => {
           "run it again.",
       );
     }
-    expect(SERVER_JOB_PEER_WINDOW_BODY).toBe(serverJobPeerWindowBody("sftp"));
   });
 
   test("states the WebRTC default wait, never the file-sync one", () => {
@@ -33,12 +30,9 @@ describe("serverJobPeerWindowBody", () => {
         "the exchange stops; if it stops, agree on a time with your partner and " +
         "run it again.",
     );
-    expect(SERVER_JOB_WEBRTC_PEER_WINDOW_BODY).toBe(
-      serverJobPeerWindowBody("webrtc"),
-    );
-    expect(SERVER_JOB_WEBRTC_PEER_WINDOW_BODY).toContain("10 minutes");
-    expect(SERVER_JOB_WEBRTC_PEER_WINDOW_BODY).not.toContain("an hour");
-    expect(SERVER_JOB_PEER_WINDOW_BODY).toContain("an hour");
+    expect(serverJobPeerWindowBody("webrtc")).toContain("10 minutes");
+    expect(serverJobPeerWindowBody("webrtc")).not.toContain("an hour");
+    expect(serverJobPeerWindowBody("sftp")).toContain("an hour");
   });
 
   test("states the run's configured peer timeout over the channel default", () => {

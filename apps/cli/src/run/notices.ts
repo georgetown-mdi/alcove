@@ -86,7 +86,7 @@ export const SIGNING_WITHOUT_RECORD_WARNING =
  * The remedy {@link undeclaredColumnsNotice} ends with on a run that read a
  * configuration: the metadata block of that file.
  */
-export const UNDECLARED_COLUMNS_CONFIG_REMEDY =
+const UNDECLARED_COLUMNS_CONFIG_REMEDY =
   "To send one, declare it in the configuration's metadata block with " +
   "is_payload: true; to leave one out without this notice, declare it " +
   "with role: ignored.";
@@ -95,7 +95,7 @@ export const UNDECLARED_COLUMNS_CONFIG_REMEDY =
  * {@link UNDECLARED_COLUMNS_CONFIG_REMEDY} for a run whose metadata has no
  * `role: identifier` column, which also names how to declare one.
  */
-export const UNDECLARED_COLUMNS_NO_IDENTIFIER_REMEDY =
+const UNDECLARED_COLUMNS_NO_IDENTIFIER_REMEDY =
   "To send one, declare it in the configuration's metadata block with " +
   "is_payload: true; to use one as your record identifier, declare it with " +
   "role: identifier and is_payload: false, which keeps it from your partner; " +

@@ -1,6 +1,6 @@
 /** The search parameter the "Set up a recurring exchange" entries add to the
  * invite flow's URL, so the flow can say where saving happens. */
-export const RECURRING_SETUP_PARAM = "recurring";
+const RECURRING_SETUP_PARAM = "recurring";
 
 /** Where the "Set up a recurring exchange" entries go. A full navigation, not
  * the SPA Link: the invite flow reads the parameter from the real URL on

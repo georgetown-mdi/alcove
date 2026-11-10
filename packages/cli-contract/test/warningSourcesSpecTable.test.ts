@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { warningSourceRows } from "../src/specTable.js";
+import { expectSpecTableLists, specTableRows } from "../src/testSupport.js";
 import { WARNING_SOURCES } from "../src/warningSources.js";
 
 const SPEC_PATH = fileURLToPath(
@@ -12,18 +12,12 @@ const SPEC_PATH = fileURLToPath(
 const TABLE_HEADING = "#### Warning sources";
 
 describe("the CLI_EVENTS.md warning-source table", () => {
-  const rows = warningSourceRows(
-    readFileSync(SPEC_PATH, "utf8"),
-    TABLE_HEADING,
-  );
-
   it("lists exactly the values WARNING_SOURCES declares, each once", () => {
-    const listed = rows.map((row) => row.source);
-    expect(new Set(listed).size).toBe(listed.length);
-    expect([...listed].sort()).toEqual([...WARNING_SOURCES].sort());
+    expectSpecTableLists(SPEC_PATH, TABLE_HEADING, WARNING_SOURCES);
   });
 
   it("describes every value it lists", () => {
+    const rows = specTableRows(readFileSync(SPEC_PATH, "utf8"), TABLE_HEADING);
     expect(
       rows
         .filter((row) => row.description.replace(/\|/g, "").trim() === "")

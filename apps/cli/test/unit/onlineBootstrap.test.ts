@@ -88,7 +88,8 @@ import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
 } from "../../src/hostKeyTrust";
-import { preflightRun, runProtocol } from "../../src/protocol";
+import { runProtocol } from "../../src/protocol";
+import { preflightRun } from "../../src/run/prepare";
 import { undeclaredColumnsNotice } from "../../src/run/notices";
 import type { RunProtocolOptions } from "../../src/protocol";
 import { captureFd3 } from "../eventStreamTestSupport";
@@ -104,11 +105,14 @@ import { captureProcessExit, recordProcessExit } from "../exitCapture";
 vi.mock("../../src/protocol", async (importActual) => {
   const actual = await importActual<typeof import("../../src/protocol")>();
   return {
-    preflightRun: vi.fn(actual.preflightRun),
     runProtocol: vi.fn(),
     markNoHealSaveFailure: actual.markNoHealSaveFailure,
     isNoHealSaveFailure: actual.isNoHealSaveFailure,
   };
+});
+vi.mock("../../src/run/prepare", async (importActual) => {
+  const actual = await importActual<typeof import("../../src/run/prepare")>();
+  return { ...actual, preflightRun: vi.fn(actual.preflightRun) };
 });
 
 // The event-stream module stays REAL -- the preflight and the emitter it builds

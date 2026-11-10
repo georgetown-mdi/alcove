@@ -254,7 +254,7 @@ export const ENROLLMENT_FAILED_ACTION =
  * The check line of the enrollment. A failed one is a `warn`: the enrollment
  * serves the relay a run allocates on, whose own line has the consequence.
  */
-export function enrollmentCheckRecord(
+function enrollmentCheckRecord(
   enrollment: RelayCheckEnrollment,
 ): DoctorCheckRecord {
   const { registrar, outcome } = enrollment;
@@ -317,7 +317,7 @@ function notReachedMeaning(
  * candidate came back, the enrollment made before it was asked, if any, and
  * whether the run also dials a WebSocket relay.
  */
-export function relayCheckRecord(
+function relayCheckRecord(
   target: RelayCheckContact,
   relayGathered: boolean,
   boundMs: number = RELAY_CHECK_BOUND_MS,
@@ -401,7 +401,7 @@ const TRUST_THE_NETWORK_CA =
  * given what the relay answered and the enrollment made before it was asked,
  * if any.
  */
-export function webSocketRelayCheckRecord(
+function webSocketRelayCheckRecord(
   relay: RelayCheckWebSocketRelay,
   position: number,
   answer: WebSocketRelayAnswer,

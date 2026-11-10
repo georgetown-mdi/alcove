@@ -702,7 +702,7 @@ export function relayTurnUrls(document: ExchangeSpec): Array<string> {
  * where the own entries state every credential themselves, or there are none,
  * whatever the invitation's relay names.
  */
-export function mintsOwnRelayCredential(document: ExchangeSpec): boolean {
+function mintsOwnRelayCredential(document: ExchangeSpec): boolean {
   const { connection } = document;
   if (connection.channel !== "webrtc") return false;
   return (selectRunRelay(connection).turn ?? []).some(

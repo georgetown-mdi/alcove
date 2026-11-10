@@ -199,7 +199,7 @@ export function overlongColumnsAlert(
  * the length ceiling, the name-class character rule, the non-empty floor, and the
  * block's uniqueness refine.
  */
-export type ColumnNameRefusal =
+type ColumnNameRefusal =
   "too-long" | "control-character" | "unnamed" | "repeated";
 
 /**

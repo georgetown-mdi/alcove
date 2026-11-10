@@ -140,7 +140,7 @@ export type ManagedExchangeSide = "inviter" | "acceptor";
 
 /** The one channel this app conducts an exchange over: a live browser-to-browser
  * connection. A record on any other channel holds a configuration only. */
-export const MANAGED_RUN_CHANNEL = "webrtc";
+const MANAGED_RUN_CHANNEL = "webrtc";
 
 /** A channel a stored document can name that this app does not conduct an
  * exchange over. */
@@ -700,7 +700,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
  * later shape adds is refused by a build that does not know it rather than
  * dropped from the value that build parses -- the reader-rejects-unknown rule
  * held one level down, where the condition's own `response` sits. */
-export const standingResponseSchema: ZodType<ManagedStandingResponse> = z
+const standingResponseSchema: ZodType<ManagedStandingResponse> = z
   .object({
     kind: z.literal("compromise"),
     at: z.iso.datetime(),
@@ -722,7 +722,7 @@ export const standingConditionSchema: ZodType<ManagedStandingCondition> = z
 /** The canonical validator for the record's required `standingCondition` field:
  * a raised condition, or the none form. The artifact validates the raised shape
  * alone, its own field being optional and omitted where none stands. */
-export const standingConditionFieldSchema: ZodType<ManagedStandingConditionField> =
+const standingConditionFieldSchema: ZodType<ManagedStandingConditionField> =
   z.union([
     standingConditionSchema,
     z.object({ kind: z.literal("none") }).strict(),
@@ -800,7 +800,7 @@ export type ManagedExchangeKeyPair = Omit<
 /** The rotation history's validator, for the record and the artifact's key
  * block: the key file's entry shape, at most
  * {@link ROTATION_HISTORY_MAX_ENTRIES} entries. */
-export const rotationHistorySchema: ZodType<Array<RotationHistoryEntry>> =
+const rotationHistorySchema: ZodType<Array<RotationHistoryEntry>> =
   KEY_FILE_FIELD_SCHEMAS.rotationHistory
     .unwrap()
     .max(ROTATION_HISTORY_MAX_ENTRIES);

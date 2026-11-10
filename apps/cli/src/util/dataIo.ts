@@ -142,7 +142,7 @@ function stdoutIsRedirectedFile(): boolean {
  * otherwise hold a finished run open with no one left to receive what it is
  * holding. Each time the reader takes what is buffered starts it again.
  */
-export const STDOUT_RESULT_IDLE_CEILING_MS = 60_000;
+const STDOUT_RESULT_IDLE_CEILING_MS = 60_000;
 
 /**
  * What the run reports when the drain went its whole idle ceiling with nothing

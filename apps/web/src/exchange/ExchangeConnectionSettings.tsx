@@ -53,15 +53,15 @@ export const TURN_FIELD_DESCRIPTION =
   "One per line, for example turns:relay.example.org:443?transport=tcp";
 
 /** The STUN field's description. */
-export const STUN_FIELD_DESCRIPTION =
+const STUN_FIELD_DESCRIPTION =
   "One per line, for example stun:stun.example.org:3478";
 
 /** The WebSocket relay field's description. */
-export const WEBSOCKET_RELAY_FIELD_DESCRIPTION =
+const WEBSOCKET_RELAY_FIELD_DESCRIPTION =
   "For example: wss://relay.example.org/relay";
 
 /** The relay line where no relay is set. */
-export const NO_RELAY_SET = "No relay set.";
+const NO_RELAY_SET = "No relay set.";
 
 /** The relay line where `text` names urls: each of them. */
 export function relaySummary(

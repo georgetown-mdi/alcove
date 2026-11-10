@@ -1,6 +1,6 @@
-import { ConfigManager as BaseConfigManager } from "./configManager.ts";
+import { envSchema } from "env-schema";
 
-import type { JSONSchemaType } from "env-schema";
+import type { EnvSchemaOpt, JSONSchemaType } from "env-schema";
 
 import type { LogLevel } from "loglevel";
 
@@ -24,10 +24,10 @@ const schema: JSONSchemaType<Env> = {
   },
 };
 
-class ConfigManager extends BaseConfigManager<Env> {
-  constructor() {
-    super(schema);
-  }
+/** The server's environment settings, read from the environment at each call. */
+export function loadServerConfig(configOptions: EnvSchemaOpt<Env> = {}): Env {
+  return envSchema({
+    ...configOptions,
+    schema: configOptions.schema ?? schema,
+  });
 }
-
-export { ConfigManager };

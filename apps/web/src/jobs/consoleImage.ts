@@ -20,14 +20,14 @@ const log = getLogger("job-api");
  *
  * Server-side configuration; reaches the browser through `GET /api/jobs/image`.
  */
-export const JOB_IMAGE_REGISTRY_ENV = "JOB_IMAGE_REGISTRY";
+const JOB_IMAGE_REGISTRY_ENV = "JOB_IMAGE_REGISTRY";
 
 /**
  * The digest of the image the launcher runs.
  *
  * Server-side configuration; reaches the browser through `GET /api/jobs/image`.
  */
-export const JOB_IMAGE_DIGEST_ENV = "JOB_IMAGE_DIGEST";
+const JOB_IMAGE_DIGEST_ENV = "JOB_IMAGE_DIGEST";
 
 /** The console's image, read from the environment. A value of the wrong shape
  * is read as unset, and {@link warnConsoleImage} names it at startup. */

@@ -156,7 +156,7 @@ const SIGNING_FINGERPRINT_SHAPE = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
  * comma nor whitespace is in the base64 alphabet a fingerprint is written in, so
  * either separates two entries without ambiguity.
  */
-export function hostKeyFingerprintEntries(value: string): Array<string> {
+function hostKeyFingerprintEntries(value: string): Array<string> {
   return value.split(/[\s,]+/).filter((entry) => entry !== "");
 }
 

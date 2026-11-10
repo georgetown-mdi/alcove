@@ -64,10 +64,7 @@ vi.mock("@alcove/core", async (importActual) => {
   };
 });
 
-vi.mock("../../../src/protocol", async (importActual) => {
-  const actual = await importActual<typeof import("../../../src/protocol")>();
-  return { runProtocol: vi.fn(), preflightRun: vi.fn(actual.preflightRun) };
-});
+vi.mock("../../../src/protocol", () => ({ runProtocol: vi.fn() }));
 
 vi.mock("../../../src/hostKeyTrust", () => ({
   establishHostKeyTrust: vi.fn(),

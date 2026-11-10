@@ -155,7 +155,7 @@ export interface AcquiredExchange extends RunConnection {
 /** The `signal` and stage-reporting hooks an {@link Acquire} uses while it
  * loads/prepares and draws in the peer. Every hook no-ops once `signal`
  * aborts. */
-export interface AcquireContext {
+interface AcquireContext {
   signal: AbortSignal;
   /** Take how the clean close's wait for the peer ended, which the open
    * connection reports once it is closed ({@link CLOSE_OUTCOME_WARNINGS}). */

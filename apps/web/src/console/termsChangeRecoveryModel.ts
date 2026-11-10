@@ -17,8 +17,7 @@ export const TERMS_APPLIED_TEXT =
 
 /** Where a run's proposal is: in the run's own folder, `jobId`, or beside the
  * alcove.yaml in the working folder, for a run that used that file. */
-export type TermsProposalLocation =
-  { jobId: string } | { inWorkingFolder: true };
+type TermsProposalLocation = { jobId: string } | { inWorkingFolder: true };
 
 /**
  * The command applying the proposal a run left to the alcove.yaml in the

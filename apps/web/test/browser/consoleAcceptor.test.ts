@@ -30,10 +30,9 @@ import {
 } from "@exchange/acceptorModel";
 import {
   SERVER_JOB_KEEP_OPEN_BODY,
-  SERVER_JOB_PEER_WINDOW_BODY,
-  SERVER_JOB_WEBRTC_PEER_WINDOW_BODY,
   UNDESCRIBABLE_RECORD_CONFIRM_BODY,
   UNTAKEN_RECORD_CONFIRM_BODY,
+  serverJobPeerWindowBody,
 } from "@exchange/RunSurface";
 import {
   TERMINATED_RECORD_LEAD,
@@ -362,9 +361,9 @@ describe("console acceptor of a webrtc invitation", () => {
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Exchange in progress");
     await expect
-      .element(page.getByText(SERVER_JOB_WEBRTC_PEER_WINDOW_BODY))
+      .element(page.getByText(serverJobPeerWindowBody("webrtc")))
       .toBeInTheDocument();
-    expect(page.getByText(SERVER_JOB_PEER_WINDOW_BODY).query()).toBeNull();
+    expect(page.getByText(serverJobPeerWindowBody("sftp")).query()).toBeNull();
 
     const put = api.captured.find(
       (request) =>

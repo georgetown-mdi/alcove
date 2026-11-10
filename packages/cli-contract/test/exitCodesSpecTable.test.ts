@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { EXIT_CODE_TABLE } from "../src/exitCodes.js";
-import { warningSourceRows } from "../src/specTable.js";
+import { specTableRows } from "../src/testSupport.js";
 
 const DOC_PATH = fileURLToPath(
   new URL("../../../docs/CLI.md", import.meta.url),
@@ -20,7 +20,7 @@ function cellsAfterCode(description: string): Array<string> {
 }
 
 describe("the CLI.md exit-code table", () => {
-  const rows = warningSourceRows(readFileSync(DOC_PATH, "utf8"), TABLE_HEADING);
+  const rows = specTableRows(readFileSync(DOC_PATH, "utf8"), TABLE_HEADING);
 
   it("lists exactly the codes EXIT_CODE_TABLE declares, in its order", () => {
     expect(rows.map((row) => row.source)).toEqual(

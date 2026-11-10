@@ -151,7 +151,7 @@ export interface AdvancedInviteDraft {
  * What {@link AdvancedInviteDraft.heldTermsSettings} holds; field constraints are
  * read from {@link AdvancedInviteDraft.importedLinkageFields} instead.
  */
-export interface HeldTermsSettings {
+interface HeldTermsSettings {
   /** The document's `payload`. */
   payload?: Payload;
 }

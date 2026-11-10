@@ -49,7 +49,7 @@ function assignPositional(argv: Arguments, name: string, value: unknown): void {
  * command` takes; `command` is empty for the quick exchange. It names no
  * argument: one may be a URL holding a password.
  */
-export function surplusPositionalsError(
+function surplusPositionalsError(
   command: string,
   usage: string | readonly string[],
 ): UsageError {

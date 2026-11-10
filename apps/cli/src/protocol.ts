@@ -159,14 +159,6 @@ import {
   type PreparedTransport,
 } from "./run/prepare";
 
-export {
-  checkRunMemoryBudget,
-  emitPrepareRefusal,
-  preflightRun,
-  warnUndeclaredColumns,
-  WEBRTC_RENDEZVOUS_SECRET_REQUIRED,
-} from "./run/prepare";
-
 /**
  * CLI-layer extension of {@link Authentication} that co-locates the path where
  * the rotated shared secret is persisted after each successful key exchange.

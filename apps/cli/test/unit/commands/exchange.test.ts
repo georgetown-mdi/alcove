@@ -47,7 +47,8 @@ import {
   saveSigningIdentity,
 } from "../../../src/signingIdentityFile";
 import { preflightKeyFilePath } from "../../../src/keyFilePreflight";
-import { preflightRun, runProtocol } from "../../../src/protocol";
+import { runProtocol } from "../../../src/protocol";
+import { preflightRun } from "../../../src/run/prepare";
 import { captureFd3 } from "../../eventStreamTestSupport";
 import { pathAsDisplayed } from "../../platformPaths";
 import {
@@ -144,9 +145,11 @@ vi.mock("@alcove/core", async (importActual) => {
 // success, reject = failed exchange) deterministically, without opening a real
 // connection. protocol.test.ts covers the real runProtocol. The local checks
 // the handler runs ahead of it (preflightRun) stay real, spy-wrapped.
-vi.mock("../../../src/protocol", async (importActual) => {
-  const actual = await importActual<typeof import("../../../src/protocol")>();
-  return { runProtocol: vi.fn(), preflightRun: vi.fn(actual.preflightRun) };
+vi.mock("../../../src/protocol", () => ({ runProtocol: vi.fn() }));
+vi.mock("../../../src/run/prepare", async (importActual) => {
+  const actual =
+    await importActual<typeof import("../../../src/run/prepare")>();
+  return { ...actual, preflightRun: vi.fn(actual.preflightRun) };
 });
 
 // First-use host-key trust is a no-op for the filedrop configs the other handler

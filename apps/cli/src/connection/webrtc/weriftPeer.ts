@@ -174,7 +174,7 @@ export const FINAL_ATTEMPT_STRETCH = 1.5;
  * the partner takes to answer, so every offer a partner can take is answered
  * while the attempt is still up.
  */
-export const ATTEMPT_OFFER_QUIET_MS = 30_000;
+const ATTEMPT_OFFER_QUIET_MS = 30_000;
 
 /**
  * How long a re-registration answered `ID-TAKEN` is retried. The broker holds
@@ -182,7 +182,7 @@ export const ATTEMPT_OFFER_QUIET_MS = 30_000;
  * timeout passes, so an attempt that follows one whose network dropped is
  * refused for up to that long; this is that timeout with margin.
  */
-export const ID_TAKEN_RETRY_WINDOW_MS = 120_000;
+const ID_TAKEN_RETRY_WINDOW_MS = 120_000;
 
 /** The first wait before a refused or failed re-registration is tried again; each later wait doubles, up to the maximum below. */
 export const ID_TAKEN_RETRY_FIRST_DELAY_MS = 500;
@@ -514,7 +514,7 @@ export interface AttemptIceServerList {
  * PeerJS API key the vendored broker (and the public PeerJS cloud) serves under,
  * used when the connection names none.
  */
-export const DEFAULT_BROKER_KEY = "peerjs";
+const DEFAULT_BROKER_KEY = "peerjs";
 
 /**
  * The refusal a `server.host` whose shape could move the signaling socket gets.

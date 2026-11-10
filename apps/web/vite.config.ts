@@ -12,9 +12,9 @@ import { playwright } from "@vitest/browser-playwright";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
-import { ConfigManager } from "./src/utils/serverConfig.ts";
 import { DEV_SIGNALING_PORT_ENV } from "./src/utils/devSignalingPort.ts";
 import { defaultRelayConfigProblems } from "./src/utils/defaultRelayConfig.ts";
+import { loadServerConfig } from "./src/utils/serverConfig.ts";
 
 // Type-only imports, erased before either config loader resolves anything.
 import type * as liveWebrtcLeg from "./test/liveWebrtc/legCommands.ts";
@@ -22,8 +22,7 @@ import type * as relayTls from "./test/devServer/relayTls.ts";
 import type { ConfigEnv, Plugin, ProxyOptions } from "vite";
 import type { Vitest } from "vitest/node";
 
-const configManager = new ConfigManager();
-const config = await configManager.load({ dotenv: true });
+const config = loadServerConfig({ dotenv: true });
 
 // Set by a vitest run, and by nothing a dev server or a build does.
 const underVitest = !!process.env.VITEST;

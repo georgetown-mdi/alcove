@@ -1277,10 +1277,8 @@ const INVITATION_PREFLIGHT_MESSAGING: LinkagePreflightMessaging = {
  * delimited ({@link quoteTermsValueList}) and the message is a
  * {@link UsageError}, not an `OperatorConfigError`, whose category promises
  * text of the operator's own.
- *
- * @internal exported for testing
  */
-export function refuseRequestedColumnsTheInputLacks(
+function refuseRequestedColumnsTheInputLacks(
   requestedColumns: ReadonlyArray<string>,
   inputColumns: ReadonlyArray<string>,
 ): void {

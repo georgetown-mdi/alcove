@@ -58,7 +58,7 @@ export const RECEIPT_UNANSWERED_NOTICE =
  * cleaning steps, payload descriptions, and any legal-agreement purpose text
  * (docs/spec/EXCHANGE_RECORD.md, "Receipt privacy properties").
  */
-export const RECEIPT_DOWNLOAD_LABEL =
+const RECEIPT_DOWNLOAD_LABEL =
   "Download signed receipt (holds your partner's linkage terms)";
 
 /**
