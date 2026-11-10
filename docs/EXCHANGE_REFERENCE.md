@@ -197,7 +197,7 @@ Whether to deduplicate the inputs of the party holding these terms. `true` says 
 
 > **Strategies:** many-to-one and many-to-many run under either [linkage strategy](#linkage_termslinkage_strategy), settled at the terms exchange after each party's record count is disclosed and before any linkage-key or payload data moves. Under `single-pass` the receiver resolves the pairing and reports the cluster diagnostic below; its partner receives the pairs alone.
 >
-> **Candidate sets:** a [`split_on`](#fan-out-multi-value-fields) or a [`generate_fuzzy_comparisons`](#element-fields) expansion runs under a both-sided match with either strategy, and its clusters may join records that matched on different values of one key ([the entity closure](spec/PROTOCOL.md#the-many-to-many-entity-closure)). [The built-in rules](#the-built-in-rules) declare both.
+> **Candidate sets:** a [`split_on`](#fan-out-multi-value-fields) or a [`generate_fuzzy_comparisons`](#element-fields) expansion runs under a both-sided match with either strategy, and its clusters may join records that matched on different values of one key ([the entity closure](spec/PROTOCOL.md#the-many-to-many-entity-closure)). [The built-in rules](#the-built-in-rules) declare both. How to author a template that declares both: [Fan-out with `deduplicate`](#fan-out-with-deduplicate).
 >
 > **The result:** the result file holds one row per matched pair under every cardinality. Where both parties group, the pairs resolve into [entity clusters](spec/PROTOCOL.md#the-many-to-many-entity-closure): a cluster formed on one matched value writes `m * n` rows for `m` of your records and `n` of your partner's, and one joined through a record that matched on several values writes one row per pair that matched. No column marks a cluster's boundary; a reader computes clusters from the pairs, and both parties compute the same ones.
 >
@@ -1698,9 +1698,25 @@ The `split_on` function produces `set<string>` instead of a single `string`, so 
 
 **Authoring in the web app and the console**: the cleaning-step menu offers `split_on`, in the invite editor and on the accepting party's Cleaning tab, and the linkage-key editor offers it on a key element. Under a count-only invitation the accepting party's menu does not offer it, and a splitting step in its own cleaning blocks the start. A configuration pasted into the import box, or opened in the console, loads its `standardization` as `alcove exchange` reads it; each field whose cleaning could not be loaded is named with the reason.
 
-**Match resolution**: when several entries from one row match in a key's round, the parties do not communicate to resolve it. Both derive the same record pairing locally: a deterministic rule accepts at most one pair per record, and every record whose candidates matched at all leaves the candidate set for later keys, so a record matches once or not at all ([PROTOCOL.md](spec/PROTOCOL.md#fan-out-matching-multi-value-key-candidates)).
+**Match resolution**: when several entries from one row match in a key's round, the parties do not communicate to resolve it. Both derive the same record pairing locally: a deterministic rule accepts at most one pair per record, and every record whose candidates matched at all leaves the candidate set for later keys, so a record matches once or not at all ([PROTOCOL.md](spec/PROTOCOL.md#fan-out-matching-multi-value-key-candidates)). That is the pairing when neither party sets `deduplicate: true`; where one does, see [Fan-out with `deduplicate`](#fan-out-with-deduplicate).
 
 **Distinction from `generate_fuzzy_comparisons`**: a standardization fan-out says a field has several legitimate canonical values (a hyphenated name and its parts), and several matches from one row may all be meaningful. `generate_fuzzy_comparisons` generates approximate variants of one value to tolerate entry errors, and one match is expected.
+
+#### Fan-out with `deduplicate`
+
+A template whose keys split a value (or expand it with `generate_fuzzy_comparisons`) and whose terms declare [`deduplicate: true`](#linkage_termsdeduplicate) is run as written, under either linkage strategy and every cardinality, so each axis keeps its own rule and the two compose. The composition is in [PROTOCOL.md](spec/PROTOCOL.md#the-per-side-rules); what it yields:
+
+- **One-sided (`true` / `false`):** each of the declaring party's records is paired at most once per key. A record of the other party may be paired with several of them, including records that matched it on different values of its own candidate set. Any record in a candidate pair leaves later keys, paired or not.
+- **Both sides (`true` / `true`):** every candidate pair a key produces is accepted. A record matching on several values joins every group those values reach, so a result group can hold two records of one party that share no value, joined only through the several values of one partner record ([the entity closure](spec/PROTOCOL.md#the-many-to-many-entity-closure)). The result file holds one row per matched pair, and the run's report states the cluster sizes.
+
+To author one:
+
+- Set `deduplicate: true` on a party only where its own file can hold the same individual more than once, and give that party `expects_output: true`. A count-only (`psi-c`) template must declare `deduplicate: false`.
+- Keep the number of values a record can produce on a key small (a splitting element is capped at 20 values). One record with many values can pull a large share of a round into one group, and the protocol sets no ceiling on that.
+- Put a more precise key earlier: the key a group forms on is the most precise one any member matched under, and a later key cannot widen it.
+- Read the cluster report after a first run on a sample. A group holding a large share of either file marks a key that named a household or a shared part of a value rather than a person, and the group's count of distinct values separates a value the records share from one record's several values joining groups.
+
+The invitation's consent display states both halves: the several-values note on each such key, and, where the two parties' `deduplicate` values can both be `true`, that records sharing no matched value are disclosed to both parties as one group. [The built-in rules](#the-built-in-rules) declare both, so a built-in template shows the second sentence wherever the pair can be both-sided.
 
 ### Available functions
 

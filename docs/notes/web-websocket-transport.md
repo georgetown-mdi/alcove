@@ -6,7 +6,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 _Status: the relay path is built and turned on in both applications: the relay proof derivation, the relay service and its deployment, both clients, the wrap on the web side, the relay locator and settings, and the automatic fallback ([WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md), [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay)). The browser SFTP path is design only but for its relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
-What remains open is the spikes S2 and S4, neither of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
+What remains open is the spike S2, which has not run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S4 is held by browser and interop tests rather than a recorded measurement; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
 The browser SFTP spikes ran on 2026-10-29.
 S7 found no off-the-shelf raw relay, of the three tried, that both refuses by `Origin` and holds backpressure in both directions.
 S8's PASS line was met by `@microsoft/dev-tunnels-ssh` with three additions in the spike's own code, and by `ssh2` bundled for the browser only against a server that also offers an ECDSA host key.
@@ -376,6 +376,9 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
 - **S4. The wrap in the browser.**
   `EncryptedMessageConnection` over a browser WebSocket transport, the web side requesting the wrap, a CLI partner.
   PASS: the exchange completes with the correct intersection, and a capture at the relay shows only the handshake frames outside the AEAD envelope, every later frame beginning with the envelope's version byte.
+  **Held by tests, not a recorded measurement.**
+  The capture half runs in `apps/web/test/browser/relayFallback.test.ts`: two browser parties in Chromium with WebRTC blocked complete the exchange over the relay, and the frames the relay forwarded from each party are the handshake and then envelopes, each beginning with the envelope's version byte.
+  The CLI-partner half runs in `apps/web/test/interop/cliWebRelayFallback.test.ts`: a CLI party and a web party with WebRTC blocked complete one exchange over the relay with the expected pairs; it takes no capture.
 - **S5. Close delivery through the relay.**
   The sender's tab or process ended the instant its close resolves, as the WebRTC measurement did ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#the-clean-close)).
   PASS: the peer receives the final frame in every one of ten runs, and the sender's close resolved only on the relayed peer close.
