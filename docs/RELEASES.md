@@ -281,7 +281,7 @@ The default image's base and the builder and QEMU images come from Docker Hub, w
 
 The publish sequence signs each image immediately after its own push, verifies that signature with the same command and the same two `--certificate-` arguments this document publishes under [Verifying a Release](#verifying-a-release), and attests its build provenance, all before the next image is built. A signature the published command cannot verify stops the release there. A failure between the two pushes leaves the default tags moved while the `-fips` tags sit at the previous release, or are absent on the first; everything published is scanned, signed, and attested, but the floating tag pair diverges until the run is repaired. The variant's multi-arch build runs only at release time and in a dry run. The publish job's builds, the scan builds included, read and write no GitHub Actions layer cache, which other runs in the repository can write, so each image is built from the tag's checkout and its pinned bases alone. Recover by re-running the failed publish job once the cause is fixed; it rebuilds both images from the same commit and re-pushes the same tags.
 
-**The hosted web application's production deployment.** The same workflow builds the hosted web application and the demo site from the tag and runs the web suites a `staging` deploy runs. Once the publish job has finished, it uploads both as the production deployment of their Pages projects ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)). A tag the publish job refuses deploys nothing. A push to `main` also deploys production, from `pages_deploy.yaml`, so the next push replaces the tag's deployment.
+**The hosted web application's production deployment.** The same workflow builds the hosted web application and the demo site from the tag and runs the web suites a `staging` deploy runs. Once the publish job has finished, it uploads both as the production deployment of their Pages projects ([infra/hosted/README.md](../infra/hosted/README.md#deploying-to-cloudflare-pages)). A tag the publish job refuses deploys nothing. A push to `main` also deploys production, from `pages_deploy.yaml`, so the next push replaces the tag's deployment.
 
 Right before the upload, a step of the upload job asks GitHub how `main` compares with the tag's commit:
 
@@ -338,7 +338,7 @@ Step 8 leaves a draft release for tag `vX.Y.Z` with the stamped launchers. Open 
 
 A push to `main` does not update the project site at `data-bridge.org`. Its production deployment changes only when someone runs the "Publish site" workflow, [`site_publish.yaml`](../.github/workflows/site_publish.yaml), so the release's documentation goes live only after this step. Each publish moves the `site-published` tag to the commit it deployed.
 
-1. Review what changed since the last publish, with the staging preview of the site open beside it ([DEPLOYMENT.md](DEPLOYMENT.md#the-project-site)):
+1. Review what changed since the last publish, with the staging preview of the site open beside it ([infra/hosted/README.md](../infra/hosted/README.md#the-project-site)):
 
    ```sh
    git fetch origin --tags --force

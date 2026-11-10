@@ -14,7 +14,7 @@ name: Deploy to Cloudflare Pages
 # broker_core_build.yaml: only the signing job holds id-token: write, and only
 # the publishing job holds contents: write.
 # The secrets and variables it reads:
-# docs/DEPLOYMENT.md, "Deploying to Cloudflare Pages".
+# infra/hosted/README.md, "Deploying to Cloudflare Pages".
 on:
   push:
     branches: [main, staging]
@@ -320,7 +320,8 @@ jobs:
       # The demo site, after the site above, so a failed demo upload leaves
       # the site deployed and fails the run. Skipped while the job's
       # environment sets no CLOUDFLARE_DEMO_PAGES_PROJECT, which is set once
-      # the demo project exists (docs/DEPLOYMENT.md, "The demo site").
+      # the demo project exists (infra/hosted/README.md, "The demo site's
+      # upload").
       - name: Download the demo site
         if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
         uses: actions/download-artifact@v8

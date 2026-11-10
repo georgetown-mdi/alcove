@@ -4,14 +4,17 @@ title: "Grounding the Linkage Rules: Bands, Precision Order, and an Evidence Bar
 
 # Grounding the linkage rules: bands, precision order, and an evidence bar
 
-_Status: proposal, pending adoption. This note records the design rationale
-behind the rules in [linkage-rule-catalog.md](linkage-rule-catalog.md): why
-there are two bands, why a rule loosens one element, where the coverage
-condition comes from, how the rules compare with published practice, why they
-run in precision order, what transfers to two-party exact matching, the
-features they need, and the evidence a rule set must show before it ships.
-Nothing here is adopted or shipped; the shipped fields and keys are in
-[default-linkage-rule-set.md](default-linkage-rule-set.md). See
+_Status: adopted in part. The built catalog,
+[linkage-rule-catalog.md](linkage-rule-catalog.md), takes from this note its two
+bands, its evidence standard, its coverage condition, one loosened element per
+rule, and precision order, and the default cleaning drops the fillers listed
+below; the acceptance-evidence bar is proposed and not adopted. This note
+records the design rationale behind the rules in the catalog: why there are two
+bands, why a rule loosens one element, where the coverage condition comes from,
+how the rules compare with published practice, why they run in precision order,
+what transfers to two-party exact matching, the features they need, and the
+evidence a rule set must show before it ships. The shipped fields and keys are
+in [default-linkage-rule-set.md](default-linkage-rule-set.md). See
 [docs/notes/README.md](README.md)._
 
 This is design rationale. Nothing here binds an implementation.
@@ -58,26 +61,15 @@ placing it there. None is offered today.
 
 ### The evidence standard
 
-A rule gets a band when there is evidence for it: a measurement of the rule, a
-measurement of a close relative, or an extrapolation from one that the catalog
-spells out. The band must apply wherever the rule is offered. A rule with no
-such evidence is not offered, and an operator reaches it only through the
-expert key editor.
+The catalog states the standard, the kinds of evidence a band rests on, and the
+maintainer's two exceptions to it
+([The evidence standard](linkage-rule-catalog.md#the-evidence-standard)).
 
 The split between measured and reasoned bands is not the axis that matters
 (reasoning). Every measurement comes from a pool of records unlike the
 operator's, so a measured band is itself an extrapolation to the operator's
 files. What decides whether a rule is offered is whether its band applies
 across the files it will be offered for.
-
-The maintainer makes two exceptions, and the catalog states each: the three
-email rules are placed at 95% while evidence for them is gathered, and rules 31
-to 33, whose band holds only where the files cover few people, are offered at
-95% for any pair of files and marked less certain.
-
-The catalog keeps each band's evidence and reasoning; the screens an operator
-sees name each floor by a label with no percentage
-([Bands](linkage-rule-catalog.md#bands)).
 
 ## Coverage and file size
 
