@@ -8,6 +8,7 @@ import {
   encodeInvitation,
   endpointRequiresRetainedFiles,
   generateSharedSecret,
+  getDefaultLinkageTerms,
 } from "@alcove/core";
 
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
@@ -82,6 +83,22 @@ export const AUTHORED_SFTP_WITH_CREDENTIAL_WARNING = {
   ],
 };
 
+/** A `GET /api/jobs/config` body: an SFTP exchange's alcove.yaml in the
+ * working folder, which a run of the opened configuration continues. */
+export const OPENED_SFTP_CONFIGURATION = {
+  configured: true,
+  present: true,
+  document: {
+    channel: "sftp",
+    server: { host: "sftp.partner.example", username: "county" },
+    linkageTerms: getDefaultLinkageTerms("County Health"),
+  },
+  carriedThrough: [],
+  warnings: [],
+  signingPathSettings: [],
+  folderPathSettings: [],
+};
+
 /** The id the console gives a job the browser creates. */
 export const CREATED_JOB_ID = "job-7";
 
@@ -111,6 +128,10 @@ export interface ConsoleJobApiOptions {
   configStatus?: number;
   /** The job the console's single slot holds, and its status. */
   occupant?: { id: string; status: string };
+  /** Answers to further requests, keyed by method and URL as the client sends
+   * them (`"POST /api/jobs/inputs/samples"`), checked before every other
+   * answer; an unset status is 200. */
+  routes?: Record<string, { status?: number; body?: unknown }>;
 }
 
 /** A request the stubbed job API received. */
@@ -191,6 +212,11 @@ export function stubConsoleJobApi(
   }
 
   function answer(url: string, method: string, body?: string): Response {
+    const route = options.routes?.[`${method} ${url}`];
+    if (route !== undefined)
+      return route.body === undefined
+        ? new Response(null, { status: route.status ?? 200 })
+        : jsonResponse(route.body, route.status ?? 200);
     if (url === "/api/jobs/inputs")
       return options.inputsStatus !== undefined
         ? new Response(null, { status: options.inputsStatus })

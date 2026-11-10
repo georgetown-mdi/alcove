@@ -2,7 +2,7 @@
 
 import { afterEach, expect, test, vi } from "vitest";
 
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import { createElement } from "react";
 
@@ -21,10 +21,11 @@ import {
   typeInto,
 } from "./keyboardOnly";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectAaClean, sweepContrast } from "./contrastSweep";
 import { expectConsole } from "./expectedConsole";
 import { expectStepAccessible } from "./stepChecks";
 
-import type { ConsoleJobApi } from "./consoleStates";
+import type { ConsoleJobApi, ConsoleJobApiOptions } from "./consoleStates";
 
 // The console's quick exchange driven from the keyboard alone (keyboardOnly.ts):
 // a file from the working folder, the agreed server, the confirm step, and the
@@ -59,10 +60,15 @@ afterEach(async () => {
 const TERMS_MISMATCH =
   "linkage terms do not match the partner's inferred terms";
 
-/** Picks the file, passes the agreed server, confirms and runs from the
- * keyboard, then advances the console's run past the wait for the partner. */
-async function runByKeyboard(api: ConsoleJobApi): Promise<void> {
-  app.render(createElement(DirectExchangeScreen));
+/** Picks the working folder's file from the keyboard and lands on the agreed
+ * server step, in `scheme` when one is forced. */
+async function reachAgreedServerByKeyboard(
+  scheme?: "light" | "dark",
+): Promise<void> {
+  app.render(
+    createElement(DirectExchangeScreen),
+    scheme === undefined ? undefined : { forceColorScheme: scheme },
+  );
   await expect
     .element(page.getByText("Choose a file from your folder"))
     .toBeInTheDocument();
@@ -71,8 +77,26 @@ async function runByKeyboard(api: ConsoleJobApi): Promise<void> {
     .element(page.getByRole("heading", { level: 2, name: "Confirm this file" }))
     .toBeInTheDocument();
   await activate(control("button", "Use this file"));
-
   await expectHeadingFocused("The agreed server");
+}
+
+/** The step checks, then the contrast sweep of every text element in
+ * `scheme`. */
+async function expectAgreedServerAccessible(
+  scheme: "light" | "dark",
+  state: string,
+): Promise<void> {
+  await expectStepAccessible(app.container);
+  expectAaClean(sweepContrast(app.container), scheme, {
+    route: "/direct",
+    state,
+  });
+}
+
+/** Picks the file, passes the agreed server, confirms and runs from the
+ * keyboard, then advances the console's run past the wait for the partner. */
+async function runByKeyboard(api: ConsoleJobApi): Promise<void> {
+  await reachAgreedServerByKeyboard();
   await expect.element(page.getByText("Ready to try")).toBeInTheDocument();
   await expectStepAccessible(app.container);
   await activate(control("button", "Continue to confirm and run"));
@@ -125,4 +149,88 @@ test("console quick exchange: a stopped run and its start over, from the keyboar
   await expect.element(startOver).not.toHaveAttribute("aria-haspopup");
   await expectStepAccessible(app.container);
   await tabTo(control("button", "Start over"));
+});
+
+/** The agreed server's states a saved connection or the console's shared
+ * folder puts it in, with the status badge whose contrast each one shows. */
+const AGREED_SERVER_STATES: ReadonlyArray<{
+  state: string;
+  jobApi: ConsoleJobApiOptions;
+  shown: string;
+  badge?: string;
+  filedrop?: boolean;
+}> = [
+  {
+    state: "a split-directory connection with retain mode off",
+    jobApi: {
+      sftp: { ...AUTHORED_SFTP, inboundPath: "/in", outboundPath: "/out" },
+    },
+    shown: "This connection needs retain mode",
+    badge: "Needs retain mode",
+  },
+  {
+    state: "a saved connection a quick exchange refuses",
+    jobApi: {
+      sftp: { ...AUTHORED_SFTP, zeroSetupRefusal: "sftp-url-directory" },
+    },
+    shown: "The saved SFTP connection's remote directory cannot be used",
+    badge: "Needs a change",
+  },
+  {
+    state: "the shared folder is also the working folder",
+    jobApi: {
+      rendezvous: {
+        configured: true,
+        locator: "/rendezvous",
+        folderName: "exchange-with-county",
+        sharesDataRoot: true,
+      },
+    },
+    shown: "The shared folder holds your own files",
+    filedrop: true,
+  },
+];
+
+for (const { state, jobApi, shown, badge, filedrop } of AGREED_SERVER_STATES)
+  for (const scheme of ["light", "dark"] as const)
+    test(`console quick exchange: ${state}, from the keyboard (${scheme})`, async () => {
+      stubConsoleJobApi(jobApi);
+      await reachAgreedServerByKeyboard(scheme);
+      if (filedrop === true) {
+        await tabTo(
+          (focused) =>
+            focused instanceof HTMLInputElement &&
+            focused.type === "radio" &&
+            focused.checked,
+        );
+        await userEvent.keyboard("{ArrowDown}");
+        await expect
+          .element(page.getByLabelText("A shared folder on this console"))
+          .toBeChecked();
+      }
+      await expect.element(page.getByText(shown)).toBeInTheDocument();
+      if (badge !== undefined)
+        await expect
+          .element(page.getByText(badge, { exact: true }))
+          .toBeInTheDocument();
+      await expectAgreedServerAccessible(scheme, state);
+    });
+
+test("console quick exchange: the file-handling card's conflict and notices, from the keyboard", async () => {
+  stubConsoleJobApi({ sftp: AUTHORED_SFTP });
+  await reachAgreedServerByKeyboard();
+  await activate(control("button", /^How files are handled/));
+  await toggle(control("checkbox", "Keep every exchange file"));
+  await expect
+    .element(page.getByText("Both sides must set this"))
+    .toBeInTheDocument();
+  await typeInto(control("combobox", "Timestamped filenames"), "Off");
+  await toggle(control("checkbox", "Write files without renaming them"));
+  await expect
+    .element(page.getByText("Only safe on some shared folders"))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByText("These settings cannot be used together"))
+    .toBeInTheDocument();
+  await expectStepAccessible(app.container);
 });

@@ -86,11 +86,12 @@ export function RelayCheckPanel() {
     case "closed":
     case "opening":
       return (
-        <Stack gap="xs" mt="xs">
+        <Stack gap="xs" mt="xs" className={styles.wrapLongText}>
           <Text size="sm">{RELAY_CHECK_INTRO}</Text>
           <Group>
             <Button
               variant="default"
+              className={styles.wrapLabel}
               loading={state.step === "opening"}
               onClick={() => void open()}
             >
@@ -106,10 +107,14 @@ export function RelayCheckPanel() {
       );
     case "unavailable":
       return (
-        <Stack gap="xs" mt="xs">
+        <Stack gap="xs" mt="xs" className={styles.wrapLongText}>
           <Text size="sm">{relayCheckUnavailableText(state.offer.reason)}</Text>
           <Group>
-            <Button variant="default" onClick={() => void open()}>
+            <Button
+              variant="default"
+              className={styles.wrapLabel}
+              onClick={() => void open()}
+            >
               {RELAY_CHECK_AGAIN_LABEL}
             </Button>
           </Group>
@@ -121,7 +126,7 @@ export function RelayCheckPanel() {
       const { statement } = offer;
       const checking = state.step === "checking";
       return (
-        <Stack gap="xs" mt="xs">
+        <Stack gap="xs" mt="xs" className={styles.wrapLongText}>
           <Text size="sm">{statement.contactedHeading}</Text>
           <HostList hosts={statement.contacted} />
           {statement.notContacted !== undefined && (
@@ -132,12 +137,17 @@ export function RelayCheckPanel() {
           )}
           <Text size="sm">{statement.closing}</Text>
           <Group>
-            <Button loading={checking} onClick={() => void start(offer)}>
+            <Button
+              className={styles.wrapLabel}
+              loading={checking}
+              onClick={() => void start(offer)}
+            >
               {RELAY_CHECK_START_LABEL}
             </Button>
             {!checking && (
               <Button
                 variant="default"
+                className={styles.wrapLabel}
                 onClick={() => setState({ step: "closed", unreadable: false })}
               >
                 {RELAY_CHECK_CANCEL_LABEL}
@@ -155,7 +165,7 @@ export function RelayCheckPanel() {
     case "done": {
       const { outcome } = state;
       return (
-        <Stack gap="xs" mt="xs">
+        <Stack gap="xs" mt="xs" className={styles.wrapLongText}>
           <div role="status">
             {outcome.kind === "verdict" ? (
               <>
@@ -184,7 +194,11 @@ export function RelayCheckPanel() {
             )}
           </div>
           <Group>
-            <Button variant="default" onClick={() => void open()}>
+            <Button
+              variant="default"
+              className={styles.wrapLabel}
+              onClick={() => void open()}
+            >
               {RELAY_CHECK_AGAIN_LABEL}
             </Button>
           </Group>

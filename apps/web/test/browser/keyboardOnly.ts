@@ -30,12 +30,13 @@ const MAX_TAB_PRESSES = 200;
 export const KEYBOARD_JOURNEY_TIMEOUT_MS = 37_000;
 
 /**
- * The test timeout of a console keyboard journey: twice the hosted bound,
- * since a console journey also opens the console's cards and runs the step
- * checks at more steps. Not yet measured under load; correct it from a CI
- * timing as {@link KEYBOARD_JOURNEY_TIMEOUT_MS} was.
+ * The test timeout of a console keyboard journey. On the same CI runs, the
+ * slowest console journey test, the SFTP form's, took up to 2.1 times as long
+ * as the recurring-setup journey (8.4 s against 4.0 s, and 5.4 s against
+ * 3.1 s). Scaling that journey's 24.7 s under load by 2.1 gives 52 s; 78 s is
+ * a 1.5x margin over it.
  */
-export const CONSOLE_JOURNEY_TIMEOUT_MS = 2 * KEYBOARD_JOURNEY_TIMEOUT_MS;
+export const CONSOLE_JOURNEY_TIMEOUT_MS = 78_000;
 
 /** What a target is matched by: an element, or a predicate over the focused
  * element for a target the caller can name but not hold (it may not have

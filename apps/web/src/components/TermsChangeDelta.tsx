@@ -1,5 +1,6 @@
 import { List, Stack, Text } from "@mantine/core";
 
+import styles from "@styles/app.module.css";
 import { termsChangeView } from "@psi/termsChangeView";
 
 import type { TermsDelta } from "@alcove/core";
@@ -18,7 +19,7 @@ export function TermsChangeDelta({
   escaped: boolean;
 }) {
   return (
-    <Stack gap="xs">
+    <Stack gap="xs" className={styles.wrapLongText}>
       {termsChangeView(delta, escaped).map((section) => (
         <div key={section.label}>
           <Text size="sm" fw={500}>

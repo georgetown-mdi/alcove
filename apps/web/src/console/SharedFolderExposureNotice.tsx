@@ -35,6 +35,7 @@ export function SharedFolderExposureNotice({
       color="warn"
       icon={<IconAlertTriangle aria-hidden />}
       title="The shared folder holds your own files"
+      classNames={{ body: styles.wrapLongText }}
       mt="md"
     >
       <Stack gap="xs">

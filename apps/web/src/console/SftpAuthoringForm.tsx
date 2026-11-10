@@ -204,6 +204,7 @@ export function SftpAuthoringForm({
         label="Username"
         description="The account you sign in as on the SFTP server."
         required
+        autoComplete="username"
         classNames={{ input: styles.mono }}
         value={values.username}
         error={fieldError("username")}
@@ -500,7 +501,7 @@ function CredentialField({
       {picked !== undefined && (
         <Group gap="xs" align="center">
           <Text size="sm">Selected:</Text>
-          <span className={styles.mono}>
+          <span className={`${styles.mono} ${styles.wrapLongText}`}>
             {pickedFrom === "folder" ? "your folder" : "secrets"} /{" "}
             {picked.map((segment) => sanitizeForDisplay(segment)).join(" / ")}
           </span>
@@ -599,6 +600,8 @@ function CredentialField({
             label="Paste value"
             description="Discouraged. A pasted secret is written to a file on this console to run the exchange. Prefer a file reference above."
             classNames={{ input: styles.mono }}
+            // Not current-password: the value is the remote server's password
+            // or a private key, never one the browser saved for this console.
             autoComplete="new-password"
             value={pastedValue}
             error={pasteActive ? error : undefined}
@@ -832,7 +835,10 @@ function HostKeyProbe({
               <Text size="sm" fw={500} id={presentedLabelId}>
                 The server presented this fingerprint:
               </Text>
-              <Text size="sm" className={styles.mono}>
+              <Text
+                size="sm"
+                className={`${styles.mono} ${styles.wrapLongText}`}
+              >
                 {state.fingerprint}
               </Text>
               <Text size="sm" c="dimmed">

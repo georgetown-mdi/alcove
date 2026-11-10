@@ -555,13 +555,16 @@
    the alert's voice, so a fragment somebody else chose displays as theirs on screen
    as well as in the accessibility tree. Grows to its content rather than
    scrolling (the field autosizes): the whole capped excerpt is what the operator
-   judges. */
+   judges. A user's text spacing applied after the field measured itself
+   outgrows that height, so the field then scrolls rather than clipping
+   (WCAG 1.4.12). */
 .peerBytes {
   display: block;
   background: var(--app-code-bg);
   color: var(--app-ink);
   resize: none;
   overflow-wrap: anywhere;
+  overflow: auto !important;
 }
 
 /* The block a failure's reported cause is shown in: inside the failure alert
@@ -850,7 +853,14 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  flex-wrap: wrap;
   margin: 0.5rem 0 1rem 0;
+}
+
+/* The copy button keeps its width, so the code block shrinks and scrolls
+   rather than squeezing the button's label out of its box (WCAG 1.4.10). */
+.handoffCodeRow > :global(.mantine-Button-root) {
+  flex-shrink: 0;
 }
 
 .handoffCode {

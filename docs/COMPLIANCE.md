@@ -1,7 +1,7 @@
 ---
 title: "Alcove Compliance"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-08"
+last_reviewed: "2026-11-09"
 ---
 
 # Alcove compliance
@@ -177,7 +177,7 @@ Restricting what an SFTP exchange's SSH transport will negotiate to approved alg
 
 ### Section 508 and accessibility
 
-The command-line tool itself has no graphical interface. Its container image also serves the console, a local browser interface for writing a configuration and running one exchange ([CONSOLE.md](CONSOLE.md)), built from the web application's code. The web application and the console share a self-assessment against WCAG 2.1 Level A and AA, [ACCESSIBILITY.md](ACCESSIBILITY.md), which maps each success criterion to a test, a check, or a written judgment and lists the gaps still open. It is the project's own record, not a third-party evaluation or a conformance claim. A Voluntary Product Accessibility Template (VPAT) is not yet available; it is planned after the 1.0 release, with screen-reader testing (see [ROADMAP.md](ROADMAP.md)).
+The command-line tool runs in a terminal and has no graphical interface of its own. Its container image also serves the console, a local browser interface for writing a configuration and running one exchange ([CONSOLE.md](CONSOLE.md)), built from the web application's code. The web application and the console share a self-assessment against WCAG 2.1 Level A and AA, [ACCESSIBILITY.md](ACCESSIBILITY.md), which maps each success criterion to a test, a check, or a written judgment for the screens of both, including each console card's empty, error, and running states, and lists the gaps still open. The command-line tool's terminal output is outside that self-assessment. It is the project's own record, not a third-party evaluation or a conformance claim, and this document does not determine whether Section 508 applies to a given deployment. A Voluntary Product Accessibility Template (VPAT) is not yet available; it is planned after the 1.0 release, with screen-reader testing (see [ROADMAP.md](ROADMAP.md)).
 
 ### Export control (EAR)
 

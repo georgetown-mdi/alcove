@@ -805,6 +805,7 @@ export function FailureAlert({
       title={failure.title}
       ref={alertRef}
       tabIndex={-1}
+      classNames={{ body: styles.wrapLongText }}
       mb="md"
     >
       <FailureBody failure={failure} />
@@ -1105,6 +1106,7 @@ export function RunWarningsAlert({
               : "The exchange reported warnings"
           }
           role="presentation"
+          classNames={{ body: styles.wrapLongText }}
           mb="md"
         >
           {warnings.map((message, index) => (

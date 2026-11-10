@@ -4,6 +4,7 @@ import { Button, Group, Text } from "@mantine/core";
 
 import { TermsChangeDelta } from "@components/TermsChangeDelta";
 import { applyJobTermsProposal } from "@psi/jobClient/termsProposalClient";
+import styles from "@styles/app.module.css";
 
 import {
   APPLY_TERMS_LABEL,
@@ -90,6 +91,7 @@ export function TermsChangeRecovery({
       {offersApply && state.status !== "applied" && (
         <Group mt="sm">
           <Button
+            className={styles.wrapLabel}
             loading={state.status === "applying"}
             onClick={() => void apply()}
           >
@@ -111,7 +113,7 @@ export function TermsChangeRecovery({
             {TERMS_APPLIED_TEXT}
           </Text>
           <Group mt="sm">
-            <Button onClick={onReviewApplied}>
+            <Button className={styles.wrapLabel} onClick={onReviewApplied}>
               {REVIEW_APPLIED_TERMS_LABEL}
             </Button>
           </Group>

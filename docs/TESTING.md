@@ -484,12 +484,15 @@ others cannot. Which WCAG 2.1 criterion each one is evidence for is mapped in
 - The layout checks (`reflowChecks.ts`) mount every route state at 320 CSS
   pixels wide (`reflow.test.ts`) and under the WCAG text-spacing overrides
   (`textSpacing.test.ts`), and fail on content past the viewport's edge or
-  text an element clips. The keyboard journeys run the same checks on each
-  step they reach, putting the viewport and spacing back after.
+  text an element clips, except a loading button's label, which is hidden on
+  purpose. The keyboard journeys run the same checks on each step they
+  reach, putting the viewport and spacing back after.
 - The console's own cards render only on the console profile, so they have
   their own states and journeys. `consoleStates.ts` holds a state of each route
   the console renders and its cards' empty, error, and running states, with the
-  console's job API stubbed at the fetch boundary.
+  console's job API stubbed at the fetch boundary; the stub's `routes` option
+  answers any other request a state needs, such as a host-key probe, a
+  secrets folder listing, or a relay check.
   `consoleAccessibility.test.ts` runs the step checks on each of them, and fails
   when a declared route has none. The console journeys
   (`keyboardConsoleInviteJourney.test.ts`,
