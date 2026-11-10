@@ -579,24 +579,36 @@ describe("slices sized by the lines they match", () => {
     );
   });
 
-  it("leaves a code file a statement names only by its stem out of the slice", () => {
-    const { fixture, base } = baseRepo();
-    fixture.write(
-      "apps/cli/src/frameReader.ts",
-      "export function readOne() {\n  return 1;\n}\n",
-    );
-    fixture.write(
-      "docs/spec/READER.md",
-      "# Reader\n\nframeReader is described here.\n",
-    );
-    const head = fixture.commit("Add a reader");
+  /** A 40-line reader file whose line `changed` reads differently in `variant`. */
+  const readerSource = (variant, changed = 0) =>
+    [
+      "export function readOne() {",
+      ...Array.from({ length: 38 }, (_, i) =>
+        i + 2 === changed
+          ? `  const changed = "${variant}";`
+          : `  const step${i} = 1;`,
+      ),
+      "}",
+      "",
+    ].join("\n");
+  const READER_SPEC = "# Reader\n\nframeReader is described here.\n";
+  const READER_PATH = "apps/cli/src/frameReader.ts";
+
+  it("charges the lines the window changed in a file a statement names only by its stem", () => {
+    const { fixture } = baseRepo();
+    fixture.write(READER_PATH, readerSource("a"));
+    fixture.write("docs/spec/READER.md", READER_SPEC);
+    const from = fixture.commit("Add a reader");
+    fixture.write(READER_PATH, readerSource("b", 20));
+    const head = fixture.commit("Change one line");
     const { dayDir } = daysRoot();
+    const context = WORKING_VALUES.matchContextLines;
 
     const plan = planDay({
       cwd: fixture.dir,
       sha: head,
       dayDir,
-      prevSha: base,
+      prevSha: from,
       deliveredBy: noBoardRead,
     });
 
@@ -606,14 +618,42 @@ describe("slices sized by the lines they match", () => {
         path: "docs/spec/READER.md",
         line: 3,
         names: ["frameReader"],
-        code: { "apps/cli/src/frameReader.ts": ["frameReader"] },
+        code: { [READER_PATH]: ["frameReader"] },
       },
     ]);
-    expect(spec.files).toEqual(["docs/spec/READER.md"]);
-    expect(spec.regions).toEqual({});
-    const rendered = renderSlices(plan);
-    const specSection = rendered.slice(rendered.indexOf("## stale-spec-1"));
-    expect(specSection).not.toContain("frameReader.ts\n");
+    expect(spec.regions).toEqual({
+      [READER_PATH]: [[20 - context, 20 + context]],
+    });
+    expect(spec.files).toEqual(["docs/spec/READER.md", READER_PATH]);
+    expect(spec.lines).toBe(3 + 2 * context + 1);
+    expect(renderSlices(plan)).toContain(
+      `  - ${READER_PATH}: lines ${20 - context}-${20 + context}\n`,
+    );
+  });
+
+  it("charges the whole file when the window has no hunk for a file named only by its stem", () => {
+    const { fixture } = baseRepo();
+    fixture.write(READER_PATH, readerSource("a"));
+    fixture.write("docs/spec/READER.md", READER_SPEC);
+    const from = fixture.commit("Add a reader");
+    fixture.write(READER_PATH, readerSource("b", 20));
+    fixture.commit("Change one line");
+    fixture.write(READER_PATH, readerSource("a"));
+    const head = fixture.commit("Revert it");
+    const { dayDir } = daysRoot();
+
+    const plan = planDay({
+      cwd: fixture.dir,
+      sha: head,
+      dayDir,
+      prevSha: from,
+      deliveredBy: noBoardRead,
+    });
+
+    const spec = plan.slices.find((slice) => slice.selector === "stale-spec");
+    expect(spec.regions).toEqual({ [READER_PATH]: [[1, 40]] });
+    expect(spec.files).toEqual(["docs/spec/READER.md", READER_PATH]);
+    expect(spec.lines).toBe(3 + 40);
   });
 
   it("leaves a file only its strings were read from open to rotation", () => {

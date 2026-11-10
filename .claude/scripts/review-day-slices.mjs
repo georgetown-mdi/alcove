@@ -48,9 +48,11 @@
 // side of each; a stale-spec slice also lists each code file where a name its
 // statements use occurs, and counts `matchContextLines` either side of each such
 // line, each line once, up to the file's line count. The merged ranges counted
-// are the slice's `regions` and follow the path in SLICES.md; a code file with
-// no such line is left out. Every other slice is sized by its files' whole line
-// counts.
+// are the slice's `regions` and follow the path in SLICES.md. A statement that
+// names a code file only by its stem has no such line: it charges the lines the
+// window changed in that file instead, widened the same way, or the whole file
+// when the window has no hunk for it. Every other slice is sized by its files'
+// whole line counts.
 //
 // Exit 0 written; 1 a slice over `maxSliceLines`, nothing written; 2 usage, an
 // unreadable input, a git error, or a failed board read.
@@ -507,6 +509,48 @@ function addedLines(git, prevSha, sha, paths) {
 }
 
 /**
+ * The line ranges the window's net diff changes, per file, as `[start, end]`
+ * at `sha` (a deletion marks the line it follows), one per hunk.
+ */
+function changedHunks(git, prevSha, sha, paths) {
+  const hunks = new Map();
+  if (paths.length === 0) return hunks;
+  const out = git.text([
+    "--literal-pathspecs",
+    "diff",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-renames",
+    "-U0",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    prevSha,
+    sha,
+    "--",
+    ...paths,
+  ]);
+  let current = null;
+  let inHeader = false;
+  for (const line of out.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      inHeader = true;
+      current = null;
+    } else if (inHeader && line.startsWith("+++ ")) {
+      current = line.startsWith("+++ b/") ? line.slice(6) : null;
+    } else if (line.startsWith("@@") && current !== null) {
+      inHeader = false;
+      const found = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/.exec(line);
+      if (found === null) continue;
+      const start = Math.max(1, Number(found[1]));
+      const count = found[2] === undefined ? 1 : Number(found[2]);
+      if (!hunks.has(current)) hunks.set(current, []);
+      hunks.get(current).push([start, start + Math.max(count, 1) - 1]);
+    }
+  }
+  return hunks;
+}
+
+/**
  * The hot-file threshold: the N whose set of files touched by N or more pull
  * requests comes closest to `target` lines, the larger N on a tie.
  */
@@ -574,39 +618,40 @@ export function cutByDirectory(
   return joined;
 }
 
-/**
- * How many of a file's `fileLines` lines the matches at line numbers `lines`
- * select, each with `context` lines either side, overlaps counted once.
- */
-export function selectedLineCount(lines, fileLines, context) {
-  let count = 0;
-  let coveredTo = 0;
-  for (const line of [...new Set(lines)].sort((a, b) => a - b)) {
-    const from = Math.max(1, line - context, coveredTo + 1);
-    const to = Math.min(Math.max(fileLines, line), line + context);
-    if (to >= from) count += to - from + 1;
-    coveredTo = Math.max(coveredTo, to);
+/** `ranges` sorted, with overlapping or touching ones merged. */
+export function mergeRanges(ranges) {
+  const merged = [];
+  for (const [from, to] of [...ranges].sort((a, b) => a[0] - b[0])) {
+    const last = merged.at(-1);
+    if (last !== undefined && from <= last[1] + 1)
+      last[1] = Math.max(last[1], to);
+    else merged.push([from, to]);
   }
-  return count;
+  return merged;
 }
 
 /**
  * The line ranges the matches at line numbers `lines` select, each with
- * `context` lines either side, clipped to the file's `fileLines`, overlapping
- * or touching ranges merged: 1-based, inclusive `[start, end]` pairs.
+ * `context` lines either side, within the file's `fileLines` (a match past it
+ * keeps its own line), overlapping or touching ranges merged: 1-based,
+ * inclusive `[start, end]` pairs.
  */
 export function selectedRanges(lines, fileLines, context) {
   const ranges = [];
-  for (const line of [...new Set(lines)].sort((a, b) => a - b)) {
+  for (const line of new Set(lines)) {
     const from = Math.max(1, line - context);
-    const to = Math.min(fileLines, line + context);
-    if (to < from) continue;
-    const last = ranges.at(-1);
-    if (last !== undefined && from <= last[1] + 1)
-      last[1] = Math.max(last[1], to);
-    else ranges.push([from, to]);
+    const to = Math.min(Math.max(fileLines, line), line + context);
+    if (to >= from) ranges.push([from, to]);
   }
-  return ranges;
+  return mergeRanges(ranges);
+}
+
+/** How many lines `selectedRanges` selects for the same arguments. */
+export function selectedLineCount(lines, fileLines, context) {
+  return selectedRanges(lines, fileLines, context).reduce(
+    (sum, [from, to]) => sum + to - from + 1,
+    0,
+  );
 }
 
 /** Refuse any slice over `maxLines`, naming each. */
@@ -1113,24 +1158,47 @@ export function planDay({
         });
       occurrences.set(path, found);
     }
+    const linesNamed = (path, named) =>
+      named.flatMap((name) => occurrences.get(path).get(name) ?? []);
+    const stemOnlyPaths = new Set(
+      statements.flatMap(({ code }) =>
+        Object.entries(code)
+          .filter(([path, named]) => linesNamed(path, named).length === 0)
+          .map(([path]) => path),
+      ),
+    );
+    const hunks = changedHunks(git, prevSha, sha, [...stemOnlyPaths]);
+    const changedRanges = (path) => {
+      const fileLines = lineOf(path);
+      const own = hunks.get(path) ?? [];
+      if (own.length === 0) return fileLines > 0 ? [[1, fileLines]] : [];
+      return mergeRanges(
+        own
+          .map(([from, to]) => [
+            Math.max(1, from - matchContextLines),
+            Math.min(Math.max(fileLines, to), to + matchContextLines),
+          ])
+          .filter(([from, to]) => to >= from),
+      );
+    };
     const codeRegionsOf = (subset) => {
       const linesByPath = new Map();
+      const stemOnlyBy = new Set();
       for (const { code } of subset)
         for (const [path, named] of Object.entries(code)) {
           if (!linesByPath.has(path)) linesByPath.set(path, new Set());
-          for (const name of named)
-            for (const line of occurrences.get(path).get(name) ?? [])
-              linesByPath.get(path).add(line);
+          const lines = linesNamed(path, named);
+          if (lines.length === 0) stemOnlyBy.add(path);
+          for (const line of lines) linesByPath.get(path).add(line);
         }
       const regions = new Map();
       for (const [path, lines] of [...linesByPath].sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
-        const ranges = selectedRanges(
-          [...lines],
-          lineOf(path),
-          matchContextLines,
-        );
+        const ranges = mergeRanges([
+          ...selectedRanges([...lines], lineOf(path), matchContextLines),
+          ...(stemOnlyBy.has(path) ? changedRanges(path) : []),
+        ]);
         if (ranges.length > 0) regions.set(path, ranges);
       }
       return regions;
