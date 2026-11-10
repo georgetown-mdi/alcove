@@ -4,7 +4,7 @@ title: "The Three Exchange-File Readers Under the Portable-Configuration Rule"
 
 # The three exchange-file readers under the portable-configuration rule
 
-_Status: rule decided on the maintainer's ruling and specified in [EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#what-a-consumer-does-with-a-setting-it-cannot-honor); the unread-key refusal behind it is built. This note records the audit each reader was measured by, what it found, and the two gaps left open. See [docs/notes/README.md](README.md)._
+_Status: rule decided on the maintainer's ruling and specified in [EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#what-a-consumer-does-with-a-setting-it-cannot-honor); the unread-key refusal behind it is built. This note records the audit each reader was measured by, what it found, and the one gap left open. See [docs/notes/README.md](README.md)._
 
 One schema, three applications. The spec states what a reader owes a setting it
 cannot run; this is what each reader did about it when the rule was written down,
@@ -149,21 +149,27 @@ nested strip, fixed in core above; its bespoke `connection.server` allowlist sta
 since it reads the file's own object and so measures a key in the spelling the
 operator wrote.
 
-## The two gaps left open
-
-**The held-setting notice may not spell a key as the file did.** The rule's
-middle outcome has two halves: hold the setting unchanged, and tell the operator
-this surface will not let them change it. Both are built. The holding half is
-tested in both directions, and the web application's configuration-only page
-tells the operator, naming each setting it keeps without showing or editing it
-and warning separately about each setting that names a file by `@path`
-(`apps/web/src/recurring/managedConfigurationModel.ts`). What stays open is the
-spelling: the page names the settings from the stored record, whose keys the
-parse has camelized, so a key the file wrote in camelCase is named in
-snake_case there rather than as written.
+## The gap left open
 
 **The CLI's refusal cites one issue.** A config failing schema validation reports
 the first issue and a count of the rest, so a document with several dropped keys
 names one of them per load. That is the shape its refusal has always had, and the
 bound on it is deliberate -- an operator's document can fail against a great many
 fields at once.
+
+**The held-setting notice spells a key as the download does.** The rule's
+middle outcome has two halves: hold the setting unchanged, and tell the operator
+this surface will not let them change it. Both are built. The holding half is
+tested in both directions, and the web application's configuration-only page
+tells the operator, naming each setting it keeps without showing or editing it
+and warning separately about each setting that names a file by `@path`
+(`heldSettingsNotice` and `fileReferenceNotice` in
+`apps/web/src/recurring/managedConfigurationModel.ts`).
+
+The notice names each held key as the downloaded alcove.yaml spells it, which
+is snake_case: that download is the file the notice tells the operator to edit,
+and its serializer, `serializeExchangeDocument`, writes every key in snake_case.
+A key the imported file wrote in camelCase is therefore named in snake_case,
+matching the line the operator edits. Naming it as the import spelled it would
+mean storing that spelling on the record, and the name would then disagree with
+the file the edit happens in.
