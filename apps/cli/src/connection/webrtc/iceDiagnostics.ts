@@ -20,7 +20,7 @@ import type { RTCPeerConnection } from "werift";
  * waiting on the other party will fix.
  *
  * Every candidate type on the remote side is a token the exchange partner
- * chose. Driven against werift 0.24.4, a candidate line whose `typ` token is
+ * chose. Driven against werift 0.26.0, a candidate line whose `typ` token is
  * not one werift names is accepted without throwing and then reaches no
  * `getStats` entry at all, so what a report holds is werift's own vocabulary
  * rather than the partner's text (pinned by

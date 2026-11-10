@@ -464,11 +464,13 @@ within the cap in [Budgets](#budgets), and hands every held candidate to the
 ICE agent once the description is applied, without waiting for any of them to
 be applied first, and an inviter sends its answer without waiting for them
 either. A candidate arriving after the description is handed over as it
-arrives, independently of the others. werift takes 10 s to give up on a
-browser's `.local` host candidate that no host answers for
-([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)), so
-waiting on each in turn would delay every candidate behind it, and the
-answer, by that much.
+arrives, independently of the others. werift spends 10 s on the mDNS lookup
+of a browser's `.local` host candidate that no host answers for, and whether
+`addIceCandidate` waits on that lookup depends on the release: 0.26.0's
+settles in about 2 ms, while 0.25.0's waited the whole 10 s
+([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)). Not
+waiting keeps a release that waits on the lookup from delaying every
+candidate behind it, and the answer, by that much.
 
 ## Framing
 
@@ -569,8 +571,9 @@ once:
   Frames go out whole and in the order they were sent, one after another.
 
 All three values are arbitrary working values, raised or lowered on request.
-Why werift needs the window, the measurements behind it, and the re-check on a
-werift bump are in
+The window keeps the send path from depending on how werift handles an
+unpaced burst, which differs between releases; the measurements on each
+release and the re-check on a werift bump are in
 [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-cli-webrtc-peer-werift).
 
 A send waiting on the window ends when the data channel leaves `open`, when the
