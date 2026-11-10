@@ -11,12 +11,11 @@ import { createElement } from "react";
 // bar, intercepting the clicks this walk makes.
 import "@mantine/core/styles.css";
 
-import { encodeInvitation, generateSharedSecret } from "@alcove/core";
-
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
 
 import { createAppMount } from "./renderApp";
+import { encodeAcceptToken } from "./acceptFixtures";
 import { expectConsole } from "./expectedConsole";
 
 import {
@@ -24,8 +23,6 @@ import {
   lifecycleCall,
   lifecycleCalls,
 } from "./moduleMocks";
-
-import type { InvitationToken, LinkageTerms } from "@alcove/core";
 
 // A run seat hosts the live WebRTC exchange itself, so unloading mid-run
 // with nothing asking first would end the session for both parties. The
@@ -52,41 +49,6 @@ vi.mock("@psi/transport/rendezvous", async () =>
 vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
   (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
 );
-
-const acceptorTerms: LinkageTerms = {
-  version: "1.0.0",
-  identity: "County Health Department",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  output: { expectsOutput: true, shareWithPartner: true },
-  deduplicate: false,
-  linkageFields: [
-    { name: "firstName", type: "first_name" },
-    { name: "lastName", type: "last_name" },
-  ],
-  linkageKeys: [
-    { name: "first", elements: [{ field: "firstName" }] },
-    { name: "last", elements: [{ field: "lastName" }] },
-  ],
-};
-
-/** A live WebRTC invitation for the accepting seat to walk. */
-async function encodeAcceptToken(): Promise<string> {
-  const token: InvitationToken = {
-    version: "1",
-    linkageTerms: acceptorTerms,
-    sharedSecret: generateSharedSecret(),
-    expires: new Date(Date.now() + 3600 * 1000).toISOString(),
-    connectionEndpoint: {
-      channel: "webrtc",
-      host: "127.0.0.1",
-      port: 3000,
-      path: "/api/",
-    },
-  };
-  return encodeInvitation(token);
-}
 
 /** Whether the page would ask the operator to confirm leaving: fire the event a
  * tab close, a reload, or a typed URL fires, and read whether anything cancelled
@@ -160,7 +122,9 @@ describe("leaving the page during a live browser exchange", () => {
 
   test("the accepting seat confirms while the run is live, and not once it fails", async () => {
     expectConsole("error", "Error: kex failed");
-    window.location.hash = await encodeAcceptToken();
+    window.location.hash = await encodeAcceptToken({
+      expiresInMs: 3600 * 1000,
+    });
     app.render(createElement(AcceptorScreen));
     await expect
       .element(page.getByText("Invitation from County Health Department"))

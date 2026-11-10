@@ -1,13 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-} from "@psi/managed/managedExchangeRecord";
 import {
   MANAGED_RECOVERY_INITIAL,
   managedCompromiseResponseActive,
@@ -25,11 +17,12 @@ import {
 } from "@recurring/managedRunSurfaceModel";
 import { TERMS_CHANGE_TAKEN_ON_FAILURE } from "@recurring/managedRunLaunchModel";
 
+import { managedRecordFixture as record } from "../../utils/managedRecordFixture";
+
 import type {
   ManagedRecoveryAction,
   ManagedRecoveryState,
 } from "@recurring/managedRunRecoveryModel";
-import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedRunFailure } from "@recurring/managedRunLaunchModel";
 import type { ManagedStandingConditionView } from "@recurring/managedStandingConditionModel";
@@ -67,26 +60,6 @@ const STORAGE_VIEW: ManagedStandingConditionView = {
   message: "Re-invite your partner to reconnect.",
   clearance: "acknowledge",
 };
-
-function record(
-  overrides: Partial<ManagedExchangeRecord> = {},
-): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-    ...overrides,
-  };
-}
 
 function fold(
   actions: ReadonlyArray<ManagedRecoveryAction>,

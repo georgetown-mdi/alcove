@@ -38,6 +38,7 @@ import { isolatedColumnName } from "@components/ColumnName";
 // role/isPayload.
 import { applyDisclosure } from "@psi/metadataEditing";
 
+import { acceptorTerms } from "./acceptFixtures";
 import { createAppMount } from "./renderApp";
 
 import type { LinkageTerms } from "@alcove/core";
@@ -53,26 +54,6 @@ const app = createAppMount();
 afterEach(() => {
   app.unmount();
 });
-
-// Two single-element keys, one per name field, so the file below satisfies both and
-// nothing but the declaration could close the launch.
-const acceptorTerms: LinkageTerms = {
-  version: "1.0.0",
-  identity: "County Health Department",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  output: { expectsOutput: true, shareWithPartner: true },
-  deduplicate: false,
-  linkageFields: [
-    { name: "firstName", type: "first_name" },
-    { name: "lastName", type: "last_name" },
-  ],
-  linkageKeys: [
-    { name: "first", elements: [{ field: "firstName" }] },
-    { name: "last", elements: [{ field: "lastName" }] },
-  ],
-};
 
 // Written as an escape, never as a raw byte, so a test about an invisible character
 // is itself readable: U+202E RIGHT-TO-LEFT OVERRIDE reorders the copy around it

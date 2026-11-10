@@ -1,18 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  generateSharedSecret,
-  getDefaultLinkageTerms,
-  getLogger,
-} from "@alcove/core";
+import { getLogger } from "@alcove/core";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-} from "../../../src/psi/managed/managedExchangeRecord.js";
 import { raiseBetweenVisitNotices } from "../../../src/psi/managed/managedScheduleRuntime.js";
+
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
 
 import type {
   ManagedExchangeRecord,
@@ -66,22 +57,11 @@ function schedule(consecutiveMisses = 0): ManagedExchangeSchedule {
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
 ): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
+  return managedRecordFixture({
     id: ID,
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
     schedule: schedule(),
     ...overrides,
-  };
+  });
 }
 
 function entry(

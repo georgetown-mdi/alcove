@@ -1,17 +1,6 @@
-import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
-
 import { createMessagePipe, exchangeTerms } from "@alcove/core/testing";
 import { describe, expect, test } from "vitest";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-  lastRunSchema,
-  parseManagedExchangeRecord,
-} from "@psi/managed/managedExchangeRecord";
 import {
   PARTNER_REFUSED_TERMS_REMEDY,
   TERMS_DIFFERENCE_PROBLEM,
@@ -30,16 +19,19 @@ import {
   lastRunMayHaveSentPayload,
   runHistoryEntries,
 } from "@recurring/managedDetailModel";
+import {
+  lastRunSchema,
+  parseManagedExchangeRecord,
+} from "@psi/managed/managedExchangeRecord";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { deriveManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import { failureFor } from "@exchange/useInviterExchange";
 import { savedExchangeRow } from "@recurring/savedExchangesModel";
 
-import type {
-  ManagedExchangeLastRun,
-  ManagedExchangeRecord,
-} from "@psi/managed/managedExchangeRecord";
+import { managedRecordFixture as record } from "../../utils/managedRecordFixture";
+
 import type { LinkageTerms } from "@alcove/core";
+import type { ManagedExchangeLastRun } from "@psi/managed/managedExchangeRecord";
 
 // A managed exchange whose partner refused its linkage terms at the terms
 // exchange: the run records a kind of its own, and the live launch, the next
@@ -117,26 +109,6 @@ async function changeNotAccepted(): Promise<Error> {
   )
     throw new Error("expected the responder to decline the change");
   return initiator.reason as Error;
-}
-
-function record(
-  overrides: Partial<ManagedExchangeRecord> = {},
-): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-    ...overrides,
-  };
 }
 
 const stamped: ManagedExchangeLastRun = {

@@ -11,8 +11,6 @@ import { createElement } from "react";
 // bar, intercepting the clicks this walk makes.
 import "@mantine/core/styles.css";
 
-import { encodeInvitation, generateSharedSecret } from "@alcove/core";
-
 import {
   PartnerNoShowError,
   waitForIncomingConnection,
@@ -24,6 +22,7 @@ import { listenAsInviter } from "@psi/transport/rendezvous";
 import { timeOfDayLabel } from "@exchange/exchangeRun";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { encodeAcceptToken } from "./acceptFixtures";
 import { expectConsole } from "./expectedConsole";
 
 import {
@@ -33,7 +32,6 @@ import {
 } from "./moduleMocks";
 
 import type * as WaitForConnectionModule from "@psi/transport/waitForConnection";
-import type { InvitationToken, LinkageTerms } from "@alcove/core";
 
 // The browser seats' waiting, resuming, and leaving: the listening deadline the
 // share screen states, the no-show each seat shows with Keep waiting, the
@@ -70,40 +68,6 @@ const INVITER_CSV =
 
 function inviterFile(content = INVITER_CSV): File {
   return new File([content], "clients.csv", { type: "text/csv" });
-}
-
-const acceptorTerms: LinkageTerms = {
-  version: "1.0.0",
-  identity: "County Health Department",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  output: { expectsOutput: true, shareWithPartner: true },
-  deduplicate: false,
-  linkageFields: [
-    { name: "firstName", type: "first_name" },
-    { name: "lastName", type: "last_name" },
-  ],
-  linkageKeys: [
-    { name: "first", elements: [{ field: "firstName" }] },
-    { name: "last", elements: [{ field: "lastName" }] },
-  ],
-};
-
-async function encodeAcceptToken(): Promise<string> {
-  const token: InvitationToken = {
-    version: "1",
-    linkageTerms: acceptorTerms,
-    sharedSecret: generateSharedSecret(),
-    expires: new Date(Date.now() + 3600 * 1000).toISOString(),
-    connectionEndpoint: {
-      channel: "webrtc",
-      host: "127.0.0.1",
-      port: 3000,
-      path: "/api/",
-    },
-  };
-  return encodeInvitation(token);
 }
 
 /** A matcher for text that holds `text` anywhere. */
@@ -185,7 +149,7 @@ async function createInvitation() {
 
 /** Walk the accepting seat from its invitation link to a launched run. */
 async function launchAccept() {
-  window.location.hash = await encodeAcceptToken();
+  window.location.hash = await encodeAcceptToken({ expiresInMs: 3600 * 1000 });
   app.render(createElement(AcceptorScreen));
   await expect
     .element(page.getByText("Invitation from County Health Department"))

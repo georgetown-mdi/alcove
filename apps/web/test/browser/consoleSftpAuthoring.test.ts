@@ -17,6 +17,7 @@ import { UNREADABLE_HOST_PASTE } from "@console/sftpConnectionForm";
 import styles from "@styles/app.module.css";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { reachReviewCreate as reachSharedReviewCreate } from "./acceptFixtures";
 
 // The console SFTP connection-authoring flow: the operator drives PUT /api/jobs/sftp
 // from a file-reference credential (a secrets-mount locator or a typed @path). This
@@ -242,22 +243,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-/** From an already-mounted screen: fill the name, pick a file, walk to Review. */
-async function reachReviewCreate() {
-  await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
-  await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
-  await page.getByRole("button", { name: "Select clients.csv" }).click();
-  await page.getByRole("button", { name: "Use this file" }).click();
-  await page
-    .getByRole("button", { name: "Continue to matching & sharing" })
-    .click();
-  await page
-    .getByRole("button", { name: "Continue to review & create" })
-    .click();
-  await expect
-    .element(page.getByRole("heading", { level: 1 }))
-    .toMatchTextContent("Review & create");
-}
+const reachReviewCreate = () => reachSharedReviewCreate({ console: true });
 
 /** Open the authoring form and fill the recognizable connection fields. */
 async function openAndFillForm() {

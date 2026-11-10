@@ -25,10 +25,13 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
 import styles from "@styles/app.module.css";
 
+import {
+  acceptorTerms,
+  reachReviewCreate as reachSharedReviewCreate,
+} from "./acceptFixtures";
 import { restoreConnectivity, setConnectivity } from "./connectivity";
 import { createAppMount } from "./renderApp";
 
-import type { LinkageTerms } from "@alcove/core";
 import type { ProfiledJobInput } from "@psi/jobClient/workInputClient";
 
 // The block sits on the control that begins a live run -- the inviter's create,
@@ -59,33 +62,9 @@ afterEach(() => {
   restoreConnectivity();
 });
 
-/** Walk the inviter spine to Review & create, where the create action lives. */
 async function reachReviewCreate() {
   app.render(createElement(InviterScreen));
-  await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
-  await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
-  const fileInput = document.querySelector('input[type="file"]');
-  await userEvent.upload(
-    page.elementLocator(fileInput as HTMLElement),
-    new File(
-      [
-        "client_id,first_name,last_name,dob,program_code\n" +
-          "1,Ann,Lee,01/02/1990,A\n2,Bo,Ray,03/04/1985,B\n",
-      ],
-      "clients.csv",
-      { type: "text/csv" },
-    ),
-  );
-  await expect.element(page.getByText("clients.csv")).toBeInTheDocument();
-  await page
-    .getByRole("button", { name: "Continue to matching & sharing" })
-    .click();
-  await page
-    .getByRole("button", { name: "Continue to review & create" })
-    .click();
-  await expect
-    .element(page.getByRole("heading", { level: 1 }))
-    .toMatchTextContent("Review & create");
+  await reachSharedReviewCreate({ console: false });
 }
 
 /** The create step's blocked-reason line, or the empty string once it is clear. */
@@ -102,26 +81,6 @@ function launchBlockedReason(): string {
       ?.textContent ?? ""
   );
 }
-
-// Two single-element keys, one per name field, so the file below satisfies both
-// and connectivity is the only thing that can close the launch.
-const acceptorTerms: LinkageTerms = {
-  version: "1.0.0",
-  identity: "County Health Department",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  output: { expectsOutput: true, shareWithPartner: true },
-  deduplicate: false,
-  linkageFields: [
-    { name: "firstName", type: "first_name" },
-    { name: "lastName", type: "last_name" },
-  ],
-  linkageKeys: [
-    { name: "first", elements: [{ field: "firstName" }] },
-    { name: "last", elements: [{ field: "lastName" }] },
-  ],
-};
 
 function mountAcceptorColumnsStep() {
   const columns = ["first_name", "last_name"];

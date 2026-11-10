@@ -1,19 +1,10 @@
-import {
-  ConnectionError,
-  generateSharedSecret,
-  getDefaultLinkageTerms,
-} from "@alcove/core";
 import { describe, expect, test } from "vitest";
+import { ConnectionError } from "@alcove/core";
 
 import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeLastRun,
   applyManagedExchangeScheduleAdvance,
-  composeManagedExchangeFile,
   raisedStandingCondition,
 } from "@psi/managed/managedExchangeRecord";
 import {
@@ -29,6 +20,8 @@ import { managedStandingConditionView } from "@recurring/managedStandingConditio
 import { readManagedFailure } from "@psi/managed/managedFailureTiers";
 import { savedExchangeRow } from "@recurring/savedExchangesModel";
 
+import { managedRecordFixture as record } from "../../utils/managedRecordFixture";
+
 import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
@@ -43,23 +36,6 @@ const FAILED_SAVE_AT = "2026-07-14T09:00:00.000Z";
 const SUCCEEDED_AT = "2026-07-21T09:00:00.000Z";
 const AUTH_AT = "2026-07-28T09:00:00.000Z";
 const NOW = Date.parse("2026-07-28T12:00:00.000Z");
-
-function record(): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-  };
-}
 
 function write(
   stored: ManagedExchangeRecord,

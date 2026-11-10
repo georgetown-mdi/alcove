@@ -47,6 +47,7 @@ import { isolatedColumnName } from "@components/ColumnName";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { captureDownloads } from "./captureDownloads";
 import { expectConsole } from "./expectedConsole";
+import { reachReviewCreate as reachSharedReviewCreate } from "./acceptFixtures";
 import { tabTo } from "./keyboardOnly";
 
 import {
@@ -209,35 +210,9 @@ async function createSealedInvitation() {
   await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
 }
 
-// Walk the spine to Review & create WITHOUT creating: name, file, straight
-// through to the review step, ready to choose a transport. Shared by the
-// command-line-transport tests below.
 async function reachReviewCreate() {
   app.render(createElement(InviterScreen));
-  await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
-  await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
-  const fileInput = document.querySelector('input[type="file"]');
-  await userEvent.upload(
-    page.elementLocator(fileInput as HTMLElement),
-    new File(
-      [
-        "client_id,first_name,last_name,dob,program_code\n" +
-          "1,Ann,Lee,01/02/1990,A\n2,Bo,Ray,03/04/1985,B\n",
-      ],
-      "clients.csv",
-      { type: "text/csv" },
-    ),
-  );
-  await expect.element(page.getByText("clients.csv")).toBeInTheDocument();
-  await page
-    .getByRole("button", { name: "Continue to matching & sharing" })
-    .click();
-  await page
-    .getByRole("button", { name: "Continue to review & create" })
-    .click();
-  await expect
-    .element(page.getByRole("heading", { level: 1 }))
-    .toMatchTextContent("Review & create");
+  await reachSharedReviewCreate({ console: false });
 }
 
 // The refusals the mint's transform check raises, built by driving the real

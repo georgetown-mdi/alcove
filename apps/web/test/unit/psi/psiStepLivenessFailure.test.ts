@@ -5,21 +5,12 @@ import {
   PARTNER_STOPPED_RESPONDING_REMEDY,
   PeerAbortError,
   failureCauseSentence,
-  generateSharedSecret,
-  getDefaultLinkageTerms,
   markFailureCause,
   markStatesItsOwnNextStep,
 } from "@alcove/core";
 import { describe, expect, test, vi } from "vitest";
 import { PartnerProtocolRefusalError } from "@alcove/core/testing";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-} from "@psi/managed/managedExchangeRecord";
 import {
   classifyManagedRunFailure,
   managedRunRetryable,
@@ -28,8 +19,9 @@ import { PARTNER_STOPPED_RESPONDING_TITLE } from "@psi/managed/managedFailureCop
 import { failureFor } from "@exchange/useInviterExchange";
 import { rerunFailureLastRun } from "@psi/managed/managedRun";
 
+import { managedRecordFixture as record } from "../../utils/managedRecordFixture";
+
 import type { FailureCause } from "@alcove/core";
-import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 vi.mock("@utils/clientConfig", async (importOriginal) =>
   (await import("../../utils/clientConfigMock")).clientConfigMock(
@@ -81,23 +73,6 @@ const DIFFERENT_VERSIONS_TITLE =
 
 const OLDER_PARTNER_REMEDY =
   "Your partner runs the older version: ask them to update Alcove.";
-
-function record(): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-  };
-}
 
 /** A managed run's live alert for `error`, against the record this run
  * stamped. */
