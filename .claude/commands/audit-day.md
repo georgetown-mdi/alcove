@@ -6,6 +6,7 @@ description: Run a user-journey audit day -- agent testers run the paired web ex
     /audit-day [board 9 item id of a pain-point intake to reproduce]
 
 An audit day runs on the Fridays between retros, when the owner starts one, and never per pull request (owner ruling, 2026-10-30).
+The code-and-doc review day runs the same Friday (`.claude/commands/review-day.md`), its workflows before the trials by default.
 Agents are the testers: no human usability session is run, and no partner is asked to test.
 
 ## First
