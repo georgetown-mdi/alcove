@@ -50,8 +50,9 @@
 //     previous reading's reset time follows a reset, and adds its whole
 //     share. The output says which source a day's share came from. The share
 //     is account-wide: other use in those hours counts too.
-//   - A day's window is the record's `startedAt` to `endedAt` (UTC ISO 8601,
-//     written by .claude/commands/review-day.md) when both are valid instants
+//   - A day's window is the record's `startedAt` to `endedAt` (UTC ISO 8601;
+//     the consolidator writes the first and the session the second, at the
+//     day's summary, .claude/commands/review-day.md) when both are valid instants
 //     in order; otherwise, for a day recorded without them, the first and
 //     last modification time of the day's files. The output says which source
 //     each day's window came from.

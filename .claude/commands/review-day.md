@@ -129,6 +129,6 @@ Write `D/summary.md` and end by printing its path:
 - beside it, the fortnight's agent spend from the kit over the window's dates, and, when a reading of the plan's weekly allowance is available, the day's total as a share of it.
   The owner judges spend that way: "I think of spend in terms of percentages of the weekly token allowance."
 
-Add the same spend figures to `D/FINAL/record.json` as `spend`: `{"day", "fortnight", "weeklyAllowanceShare"}`, the share `null` when no reading was available, so the retro reads them from the record.
+Add the same spend figures to `D/FINAL/record.json` as `spend`: `{"day", "fortnight", "weeklyAllowanceShare"}`, the share `null` when no reading was available, so the retro reads them from the record. In the same write, set `endedAt` to the time `date -u +%Y-%m-%dT%H:%M:%SZ` prints, so the day's window covers filing and this summary.
 
 Leave `D` in place: the items cite it, and the next day reads `FINAL/`.
