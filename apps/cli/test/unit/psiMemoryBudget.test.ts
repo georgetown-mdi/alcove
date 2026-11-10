@@ -801,14 +801,16 @@ describe("the single-pass partner size at the terms exchange", () => {
       },
     );
 
-    // The WebAssembly single runs the library's figures come from, each beside
-    // this request: the setup's elements, then its creation's peak and the
-    // masking's high-water mark beyond the run's baseline, in bytes
-    // (docs/spec/FILE_SYNC.md, "The sender's own setup").
+    // The WebAssembly single runs, and the earlier batch's 2^22 run whose
+    // creation peak sets the build figure, each beside this request: the
+    // setup's elements, then its creation's peak and the masking's high-water
+    // mark beyond the run's baseline, in bytes (docs/spec/FILE_SYNC.md, "The
+    // sender's own setup").
     it.each([
       [2 ** 20, 874_536_960, 4_088_532_992],
       [2 ** 21, 1_639_325_696, 4_163_276_800],
       [2 ** 22, 3_205_406_720, 4_333_965_312],
+      [2 ** 22, 3_627_118_592, 4_283_363_328],
       [2 ** 23, 6_934_630_400, 5_863_034_880],
     ])(
       "charges a WebAssembly setup of %i elements at least its measured peak, in creation and in masking",
