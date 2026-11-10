@@ -1,14 +1,15 @@
 // @ts-check
-// The layout of the guides under docs/guides/: a top bar, the rail of guide
-// pages, the page on its sheet and the page ledger beside it. The menus list
-// the guides and, under About, one link to the documentation; docs/.vitepress/guides.mjs writes the page markup and the
+// The layout of the guides under docs/guides/ and the project pages under
+// site/: a top bar, the rail of pages, the page on its sheet and the page
+// ledger beside it. The menus list those pages and, under About, one link to
+// the documentation; docs/.vitepress/guides.mjs writes the page markup and the
 // ledger's HTML, and config.mjs passes the menu as `themeConfig.guideSections`.
 
 import { Content, useData, useRouter } from "vitepress";
 import { computed, defineComponent, h } from "vue";
 
 /**
- * @typedef {{ title: string, link: string, stem: string }} GuidePage
+ * @typedef {{ title: string, link: string, path: string }} GuidePage
  * @typedef {{ group: string, topNav: boolean, pages: GuidePage[] }} GuideSection
  */
 
@@ -88,7 +89,7 @@ export default defineComponent({
                     {
                       href: page.link,
                       "aria-current":
-                        page.stem === guide.value.stem ? "page" : "false",
+                        page.path === guide.value.path ? "page" : "false",
                     },
                     page.title,
                   ),
@@ -137,7 +138,7 @@ export default defineComponent({
                     "option",
                     {
                       value: page.link,
-                      selected: page.stem === guide.value.stem,
+                      selected: page.path === guide.value.path,
                     },
                     page.title,
                   ),
@@ -166,6 +167,7 @@ export default defineComponent({
           "Alcove is built at Georgetown University's Massive Data Institute.",
         ),
         h("a", { href: "/about" }, "About"),
+        h("a", { href: "/contact" }, "Contact"),
         externalLink(REPOSITORY_URL, "GitHub"),
         externalLink(`${REPOSITORY_URL}/releases`, "Releases"),
         h("a", { href: "/CHANGELOG" }, "Changelog"),
@@ -193,7 +195,7 @@ export default defineComponent({
           h("main", { class: "sheet", id: "guide-main", tabindex: -1 }, [
             picker(),
             h(Content, {
-              class: ["doc", guide.value.stem === "about" ? "about" : ""],
+              class: ["doc", guide.value.pageClass],
             }),
             footer(),
           ]),

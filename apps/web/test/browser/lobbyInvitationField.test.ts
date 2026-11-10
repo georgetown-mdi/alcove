@@ -171,7 +171,7 @@ describe.each([
 
 describe("lobby link to the step-by-step instructions", () => {
   test.each([
-    ["hosted", false, "https://data-bridge.org/"],
+    ["hosted", false, "https://data-bridge.org/instructions"],
     ["console", true, "https://data-bridge.org/console-start"],
   ])(
     "the %s build links its instructions on the project site",
@@ -246,7 +246,7 @@ describe("lobby pointer to the other ways to use Alcove", () => {
     });
     await expect
       .element(link)
-      .toHaveAttribute("href", "https://data-bridge.org/");
+      .toHaveAttribute("href", "https://data-bridge.org/instructions");
     await expect.element(link).toHaveAttribute("target", "_blank");
     await expect.element(link).toHaveAttribute("rel", "noreferrer");
   });
@@ -298,7 +298,7 @@ describe("the site footer", () => {
           "Instructions",
           isConsole
             ? "https://data-bridge.org/console-start"
-            : "https://data-bridge.org/",
+            : "https://data-bridge.org/instructions",
         ],
         ["Privacy", "https://data-bridge.org/PRIVACY"],
         ["Security", "https://data-bridge.org/SECURITY"],

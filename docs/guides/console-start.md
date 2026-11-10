@@ -1,7 +1,7 @@
 ---
 reader: Anyone running one exchange from a screen on their own computer, inviting or invited
 needs: Docker Desktop (or Docker Engine on Linux, or Podman), and a folder for this exchange holding your CSV file
-partner: "[Home](./index.md#your-partner-uses-a-different-app), for which app your partner can use"
+partner: "[Choose a guide](./index.md#your-partner-uses-a-different-app), for which app your partner can use"
 next: "[Invite from the console](./console-invite.md) or [Accept in the console](./console-accept.md)"
 ---
 

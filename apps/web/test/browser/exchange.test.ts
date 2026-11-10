@@ -62,7 +62,7 @@ import type {
 } from "@alcove/core";
 
 // The hosted build's instructions link, written out so a changed target fails.
-const INSTRUCTIONS_HOME_URL = "https://data-bridge.org/";
+const INSTRUCTIONS_HOME_URL = "https://data-bridge.org/instructions";
 
 // The grid's control labels isolate the header they name (the treatment
 // MatchingSharingSection applies), so selectors derive the label from the

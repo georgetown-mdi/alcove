@@ -20,8 +20,9 @@ export const SECURITY_URL = `${PROJECT_SITE_URL}/SECURITY`;
 export const SUPPORT_URL = `${PROJECT_SITE_URL}/SUPPORT`;
 
 /** The step-by-step instructions' home page, which sets out the web app, the
- * console and the command line and links each one's instructions. */
-export const INSTRUCTIONS_URL = `${PROJECT_SITE_URL}/`;
+ * console and the command line and links each one's instructions. The site
+ * redirects /instructions to it. */
+export const INSTRUCTIONS_URL = `${PROJECT_SITE_URL}/instructions`;
 
 /** The step-by-step instructions for starting the console container. */
 export const CONSOLE_INSTRUCTIONS_URL = `${PROJECT_SITE_URL}/console-start`;

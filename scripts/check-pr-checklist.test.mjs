@@ -15,6 +15,7 @@ import {
   titleViolations,
 } from "./check-pr-checklist.mjs";
 import { subjectBudget } from "./lib/squashSubjectBudget.mjs";
+import { workflowDocument } from "./lib/workflows.mjs";
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
 
@@ -601,5 +602,14 @@ describe("the check against the pull request as it stands now", () => {
     );
     expect(workflow).toMatch(/types: \[[^\]]*\bready_for_review\b[^\]]*\]/);
     expect(workflow).toMatch(/^\s+if: .*!github\.event\.pull_request\.draft/m);
+  });
+
+  it("skips a pull request that changes only the project pages", () => {
+    const workflow = workflowDocument(
+      fileURLToPath(new URL("..", import.meta.url)),
+      ".github/workflows/pr_checklist.yaml",
+    );
+    expect(workflow.on.pull_request["paths-ignore"]).toEqual(["site/**"]);
+    expect(workflow.on.pull_request.paths).toBeUndefined();
   });
 });

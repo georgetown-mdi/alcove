@@ -3,7 +3,7 @@
 
 ![Massive Data Institute, Georgetown University](img/mdi-logo.png)
 
-Alcove is built at the [Massive Data Institute](https://mdi.georgetown.edu/) (MDI) at Georgetown University's McCourt School of Public Policy. MDI connects computer science, data science and public policy to research that improves people's lives. Alcove is open source under the [Apache License 2.0](../../LICENSE.md).
+Alcove is built at the [Massive Data Institute](https://mdi.georgetown.edu/) (MDI) at Georgetown University's McCourt School of Public Policy. MDI connects computer science, data science and public policy to research that improves people's lives. Alcove is open source under the [Apache License 2.0](../LICENSE.md).
 
 Alcove grew out of a community of practice to enable bidirectional sharing between California homeless Continuums of Care and Managed Care Organizations spanning twelve counties. It has benefited from critical guidance from our partners at [Homebase](https://www.homebaseccc.org/) and [Connecting for Better Health](https://connectingforbetterhealth.com/). The community of practice's resources are on [its Homebase page](https://www.homebaseccc.org/resource/health-and-homelessness-community-of-practice).
 
@@ -53,7 +53,4 @@ Prior to joining Georgetown, Amy was a senior executive at the U.S. Census Burea
 
 ## Get in touch
 
-- Questions and bug reports: [GitHub issues](https://github.com/georgetown-mdi/alcove/issues)
-- Security reports: see the [security policy](../../SECURITY.md)
-- Contributing to Alcove: see the [contributing guide](../../CONTRIBUTING.md)
-- [Reach out about collaborating](mailto:eric.giannella@georgetown.edu)
+Questions, bug reports, security reports, contributions, and collaboration: see [Contact](contact.md).

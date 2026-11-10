@@ -2,7 +2,7 @@
 reader: Everyone
 ---
 
-# Find the people you have in common. Keep the rest of your records to yourself.
+# Choose a guide
 
 Alcove is open-source software that two organizations each run on their own machine or in their own browser. Choose your app and whether you are inviting or were invited.
 
