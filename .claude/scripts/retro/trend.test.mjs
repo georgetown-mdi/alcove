@@ -408,6 +408,50 @@ describe("trend", () => {
       { row: "review day escape count", value: 37 },
     ]);
   });
+
+  it("prints the review-day reader's counts, and a lens with no landed unit as not measured", () => {
+    const reviewDay = {
+      records: 2,
+      usdPerLandedUnitByLens: { 1: null, 2: 80 },
+      escapes: 1,
+      escapesSecurity: 1,
+      raisedBefore: 1,
+      ownerCalls: 3,
+      itemsFiled: 2,
+      itemsDelivered: 1,
+      fixPrsAmended: null,
+    };
+    const out = trend(windowDays(kit()), windowDays(kit()), reviewDay, opts);
+    const rows = out.rows.filter((r) => r.row.startsWith("review day"));
+    expect(rows).toContainEqual({
+      row: "review day dollars per landed unit, 1",
+      notMeasured: "no landed unit in this lens",
+    });
+    expect(rows).toContainEqual({ row: "review day owner calls", value: 3 });
+    expect(rows).toContainEqual({
+      row: "review day fix PRs amended by a follow-up",
+      notMeasured: "the reader was given no followups.json",
+    });
+  });
+
+  it("keeps the review-day rows not measured when the reader found no record", () => {
+    const reviewDay = {
+      records: 0,
+      usdPerLandedUnitByLens: { 1: null, 2: null, 3: null, 4: null },
+      escapes: 0,
+    };
+    const out = trend(windowDays(kit()), windowDays(kit()), reviewDay, opts);
+    expect(out.rows.filter((r) => r.row.startsWith("review day"))).toEqual(
+      [
+        "review day dollars per landed unit by lens",
+        "review day escape count",
+      ].map((row) => ({
+        row,
+        notMeasured:
+          "the review-day reader found no day's record in the window",
+      })),
+    );
+  });
 });
 
 describe("command line", () => {

@@ -55,11 +55,11 @@ Rules, cited not paraphrased:
 7. Host checks only the owner can make (from the triages): one draft brief filled from the host-handoff template, `$D/FINAL/host-checks.md`.
    With none, write no file.
 8. The ledger, `$D/FINAL/ledger.jsonl`: every finding once, its triage row with its final sort and its outcome (the item draft name or append target, limit, held, declined, or drop).
-9. The record, `$D/FINAL/record.json`, which the next day's slice cutter and the retro read:
+9. The record, `$D/FINAL/record.json`, which the next day's slice cutter and the retro's reader (`.claude/scripts/retro/review-day.mjs`) read:
    - `sha`: `$SHA`; `window`: `{from, to, commits}` from `$D/plan.json`;
    - `slices`: one entry per slice run, `{id, lens, selector, lines, filesReadWhole, cost}`, `filesReadWhole` the repository paths its reviewer's manifest lists as read whole (the cutter skips an unchanged hot file the previous day read whole, and picks rotation from these lists), and `cost` its workflow's cost shared over its slices;
-   - `findings`: one entry per finding, `{id, slice, lens, severity, verdict, behaviourChanging, reachable, raisedBefore, window, sort, outcome}`, `severity` after verification, `window` one of reviewed, partly, untouched by a per-branch round, and `outcome` the item draft name or append target, limit, held, declined, or drop;
-   - `totals`: cost per slice, per finding, per major and per behaviour-changing finding, overall and by lens; owner calls; owed lines read in from the previous day and written out; and `missedByKind`, what per-branch rounds missed, by kind;
+   - `findings`: one entry per finding, `{id, slice, lens, severity, verdict, behaviourChanging, reachable, security, raisedBefore, window, sort, outcome}`, `severity` after verification, `behaviourChanging`, `reachable`, `security` and `raisedBefore` booleans, `window` one of reviewed, partly, untouched by a per-branch round, and `outcome` the item draft name, the append target (`<board>/<itemId>` for an item on the board, the draft name for one filed today), limit, held, declined, or drop;
+   - `totals`: cost per slice, per finding, per major and per behaviour-changing finding, overall and by lens; `ownerCalls`, the count of decisions in `DOCKET.md`; owed lines read in from the previous day and written out; and `missedByKind`, what per-branch rounds missed, by kind;
    - `estimate` and `extra`: the slice cutter's estimate and the same-day extra, from the spawn prompt.
 
    The session adds `spend` after filing.

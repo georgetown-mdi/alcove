@@ -11,8 +11,9 @@
 // Each DIR is one window's kit output: rollups.json, sessions-enriched.json
 // and agents.json from cost.mjs, pr-cost.json from map.mjs, and followups.json
 // when followups.mjs has run over it. --out defaults to trend.json in the
-// current DIR. --review-day is the review-day reader's output,
-// `{ usdPerLandedUnitByLens: { <lens>: number }, escapes: number }`.
+// current DIR. --review-day is review-day.mjs's output: its rows print as not
+// measured when it read no day's record, and a lens with no landed unit
+// (`null`) prints as not measured.
 //
 // Rules:
 //   - A day is a UTC day with spend, a merge or an owner turn. A merged PR
@@ -59,6 +60,15 @@ const NOT_IN_KIT = [
     "audit day's problems found and fixed",
     "no kit input records the audit day",
   ],
+];
+
+const REVIEW_DAY_COUNTS = [
+  ["review day security escape count", "escapesSecurity"],
+  ["review day findings raised before and still true", "raisedBefore"],
+  ["review day owner calls", "ownerCalls"],
+  ["review day items filed", "itemsFiled"],
+  ["review day items delivered", "itemsDelivered"],
+  ["review day fix PRs amended by a follow-up", "fixPrsAmended"],
 ];
 
 /**
@@ -474,25 +484,38 @@ export function trend(baseline, current, reviewDay, { draws, seed }) {
       ...bootstrapRatio(baseline.days, current.days, pair, { draws, random }),
     });
   }
-  if (reviewDay) {
-    for (const [lens, usd] of Object.entries(
-      reviewDay.usdPerLandedUnitByLens,
-    )) {
-      rows.push({
-        row: `review day dollars per landed unit, ${lens}`,
-        value: usd,
-      });
-    }
-    rows.push({ row: "review day escape count", value: reviewDay.escapes });
-  } else {
+  const noReviewDay = !reviewDay
+    ? "no review-day reader output given (--review-day)"
+    : reviewDay.records === 0
+      ? "the review-day reader found no day's record in the window"
+      : null;
+  if (noReviewDay) {
     for (const row of [
       "review day dollars per landed unit by lens",
       "review day escape count",
     ]) {
-      rows.push({
-        row,
-        notMeasured: "no review-day reader output given (--review-day)",
-      });
+      rows.push({ row, notMeasured: noReviewDay });
+    }
+  } else {
+    for (const [lens, usd] of Object.entries(
+      reviewDay.usdPerLandedUnitByLens,
+    )) {
+      const row = `review day dollars per landed unit, ${lens}`;
+      rows.push(
+        usd === null
+          ? { row, notMeasured: "no landed unit in this lens" }
+          : { row, value: usd },
+      );
+    }
+    rows.push({ row: "review day escape count", value: reviewDay.escapes });
+    for (const [row, key] of REVIEW_DAY_COUNTS) {
+      if (key in reviewDay) {
+        rows.push(
+          reviewDay[key] === null
+            ? { row, notMeasured: "the reader was given no followups.json" }
+            : { row, value: reviewDay[key] },
+        );
+      }
     }
   }
   for (const [row, why] of NOT_IN_KIT) rows.push({ row, notMeasured: why });

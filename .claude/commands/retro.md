@@ -32,7 +32,7 @@ Exclude this session and the previous retro's from every process measure.
 
 No judgment here; bare scripts, or one Sonnet spawn where a script is not yet a kit step.
 
-- The kit's four steps over both stores into `D/R1/`, its follow-up step `followups.mjs` into `D/R1/` and into the baseline's directory if it has no `followups.json`, then its trend step `trend.mjs --baseline <the baseline's R1/> --current D/R1/`, with `--review-day` when the review-day reader has written its output (`.claude/scripts/README.md`, `retro/`):
+- The kit's four steps over both stores into `D/R1/`, its follow-up step `followups.mjs` into `D/R1/` and into the baseline's directory if it has no `followups.json`, then the review-day reader `review-day.mjs` over the window's review days into `D/R1/review-day.json`, then its trend step `trend.mjs --baseline <the baseline's R1/> --current D/R1/ --review-day D/R1/review-day.json` (`.claude/scripts/README.md`, `retro/`):
   per-day beside per-PR, the fixed size cuts 65 / 451 / 1,203 changed lines, a bootstrap interval over days on every ratio, and a row called moved only when 1.0 lies outside it.
   Rows: spend per day; merged PRs per day; cost per merged PR, standardized to the baseline's size mix; owner turns per day and per PR; main-session cost per PR; review apparatus plus fix implementers per PR; majors per lens round and the verifier's refuted share; compactions manual and auto, and owner turns on compaction; implementer runs with peak context over 500k; follow-ups per 100 merged PRs, planned and unplanned, leaving out PRs titled Bump and links made only through package manifests or image pins; docket count, owner turns and share; the review day's dollars per unit by lens and its escape count; the audit day's problems found and fixed.
   The step prints a row it cannot measure as not measured with its reason; when the reason is that the baseline's output predates an input, re-run the kit's steps over the baseline window into its directory first.
@@ -89,6 +89,6 @@ A line he would answer "sure" with no reason is a filing, not a decision.
 - Rewrite the retro item to the next anchor: the cut (this retro's end), the baseline (`D/R1/`), the rulings due a reading with their numbers, and any triggered scout still to run.
   Present it as a record; it is a decision only when a real option exists.
 - Price the retro with the kit (`aggregate.mjs --only <this session>`) and append the line to the item: agents by scout, main session, owner turns.
-  The line states the retro's dollars and, beside them, its share of the weekly allowance when the review day's record reports one; otherwise it states the dollars alone and says the share was not reported.
+  The line states the retro's dollars and, beside them, its share of the weekly allowance, from `review-day.mjs --retro-start <this session's start> --retro-end <now> --retro-usd <its dollars>`; when the reader has no reading for the window it states the dollars alone and says so.
 - Delete the retro's temporary directories by literal path.
   Leave `D` in place: the next retro's baseline and the items cite it.
