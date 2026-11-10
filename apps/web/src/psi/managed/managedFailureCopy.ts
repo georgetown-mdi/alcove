@@ -383,17 +383,25 @@ export function partnerStopAtMatchingStartCopy(
   };
 }
 
-/** The copy for a run whose split encryption stopped on a PSI worker that
- * reported no progress ({@link isShardStalled}): core's own sentence, which
- * names the step and the next one. `undefined` for any other failure. */
+/** The title over a run whose split encryption stopped on a PSI worker that
+ * reported no progress ({@link isShardStalled}); shared by the one-shot
+ * exchange and a managed run's live and recorded alerts. */
+export const SHARD_STALLED_TITLE =
+  "Encrypting the data stopped making progress";
+
+/** The message over such a run: core's own sentence, which names the step
+ * and the next one, at the browser's progress timeout. */
+export const SHARD_STALLED_MESSAGE = shardStalledError(
+  BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS,
+).message;
+
+/** The copy for such a run read off the live error. `undefined` for any other
+ * failure. */
 export function shardStalledCopy(
   error: unknown,
 ): { title: string; message: string } | undefined {
   if (!isShardStalled(error)) return undefined;
-  return {
-    title: "Encrypting the data stopped making progress",
-    message: shardStalledError(BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS).message,
-  };
+  return { title: SHARD_STALLED_TITLE, message: SHARD_STALLED_MESSAGE };
 }
 
 /** The title over a run stopped because this party refused what its partner

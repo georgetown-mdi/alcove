@@ -124,6 +124,7 @@ const TIER_EVIDENCE: Record<
     record({ lastRun: failed("partner-stopped-responding") }),
     undefined,
   ],
+  "shard-stalled": [record({ lastRun: failed("shard-stalled") }), undefined],
   "custody-unreadable": [
     record({ lastRun: failed("custody-unreadable") }),
     undefined,

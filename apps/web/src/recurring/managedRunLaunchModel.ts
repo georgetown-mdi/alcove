@@ -12,6 +12,7 @@
 import {
   RoundCapacityError,
   isSetTooLargeError,
+  isShardStalled,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
 
@@ -39,6 +40,8 @@ import {
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
   RECORDED_PARTNER_STOPPED_RESPONDING_MESSAGE,
   REINVITE_IF_RUNS_KEEP_FAILING,
+  SHARD_STALLED_MESSAGE,
+  SHARD_STALLED_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   STORAGE_FAILURE_TITLE,
   TERMS_CHANGE_FAILURE_TITLE,
@@ -52,7 +55,6 @@ import {
   partnerProtocolRefusalMessage,
   partnerStopAtMatchingStartCopy,
   partnerStoppedRespondingCopy,
-  shardStalledCopy,
   tooLargeFailureTitle,
   tooLargeSetProblem,
 } from "@psi/managed/managedFailureCopy";
@@ -162,8 +164,7 @@ export interface ManagedRunFailure {
     | Exclude<ManagedFailureTier, "none">
     | BenignRerunOutcome
     | "saved-address-refused"
-    | "partner-stop-at-matching-start"
-    | "shard-stalled";
+    | "partner-stop-at-matching-start";
   /** The surface title. */
   title: string;
   /** The operator-facing message. */
@@ -662,6 +663,15 @@ const RECORDED_PARTNER_STOPPED_RESPONDING_FAILURE: ManagedRunFailure = {
   recovery: "retry",
 };
 
+/** The state of a run whose split encryption stopped on a PSI worker that
+ * reported no progress, live or recorded: retried in place. */
+const SHARD_STALLED_FAILURE: ManagedRunFailure = {
+  kind: "shard-stalled",
+  title: SHARD_STALLED_TITLE,
+  message: SHARD_STALLED_MESSAGE,
+  recovery: "retry",
+};
+
 /** {@link partnerProtocolRefusalFailure} read back from the record. */
 const RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE = partnerProtocolRefusalFailure(
   {
@@ -885,6 +895,8 @@ export function managedRunTierFailure(
       return RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE;
     case "partner-stopped-responding":
       return RECORDED_PARTNER_STOPPED_RESPONDING_FAILURE;
+    case "shard-stalled":
+      return SHARD_STALLED_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(record.lastRun ?? {});
     case "custody-unreadable":
@@ -1002,6 +1014,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "partner-refused-terms": "alert-copy",
   "partner-protocol-refusal": "none",
   "partner-stopped-responding": "none",
+  "shard-stalled": "none",
   expired: "none",
   input: "none",
   missed: "none",
@@ -1130,7 +1143,8 @@ export function withShownCause(
  * derivation (expiry and the import marker). An error holding core's
  * `partner-stopped-responding` cause takes that cause's copy
  * ({@link partnerStoppedRespondingCopy}), with the wait it reached, and a
- * transport-tier stalled split takes its own ({@link shardStalledCopy}).
+ * stalled split whose record did not take its stamp takes its own
+ * ({@link SHARD_STALLED_FAILURE}).
  *
  * A derived tier reads the record reloaded after the run (`records.afterRun`),
  * since it rests on what THIS run stamped. The no-show rests on what stood
@@ -1268,9 +1282,8 @@ function classifyLaunchState(
       ...stoppedResponding,
       recovery: "retry",
     };
-  const stalled = liveTransport ? shardStalledCopy(error) : undefined;
-  if (stalled !== undefined)
-    return { kind: "shard-stalled", ...stalled, recovery: "retry" };
+  if (shownTier === "transport" && isShardStalled(error))
+    return SHARD_STALLED_FAILURE;
   return managedRunTierFailure(shownTier, afterRun, local, now);
 }
 

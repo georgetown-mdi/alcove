@@ -218,6 +218,8 @@ function tierStatus(
       return `Last run failed (${at}); check with your partner`;
     case "partner-stopped-responding":
       return `Last run stopped: your partner stopped responding (${at}); ask your partner to check their run`;
+    case "shard-stalled":
+      return `Last run stopped: encrypting the data made no progress (${at}); run the exchange again`;
     case "transport":
       return `Last run did not complete (${at})`;
     case "missed":

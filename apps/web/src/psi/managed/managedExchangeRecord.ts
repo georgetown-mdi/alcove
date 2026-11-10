@@ -295,7 +295,9 @@ export type ManagedExchangeRunOutcome =
  * anything, so whoever passes frames between the parties can cause it. A
  * `"partner-stopped-responding"` stop (nothing arrived from the partner for the
  * partner-silence bound during matching) is a connection failure with a known
- * cause, retried as `"transport"` is. */
+ * cause, retried as `"transport"` is, and so is a `"shard-stalled"` stop (a
+ * PSI worker of this browser's split encryption reported no progress for its
+ * timeout). */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"
@@ -310,6 +312,7 @@ export type ManagedExchangeFailureKind =
   | "partner-refused-terms"
   | "partner-protocol-refusal"
   | "partner-stopped-responding"
+  | "shard-stalled"
   | "terms-change"
   | "cancelled";
 
@@ -689,6 +692,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "partner-refused-terms",
       "partner-protocol-refusal",
       "partner-stopped-responding",
+      "shard-stalled",
       "terms-change",
       "cancelled",
     ])

@@ -340,6 +340,7 @@ const FAILURE_KIND_LABELS: Record<
   "partner-protocol-refusal":
     "your partner's data did not follow the exchange protocol",
   "partner-stopped-responding": "your partner stopped responding",
+  "shard-stalled": "encrypting the data made no progress",
   "terms-change": "your partner's terms changed",
   cancelled: "you stopped the run",
 };
@@ -408,8 +409,8 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * `"partner-storage"` (the partner's abort after the terms exchange, which
  * this party may have answered with a set first),
  * `"partner-protocol-refusal"` (this browser's refusal of partner data at any
- * point after the handshake), `"partner-stopped-responding"` (met during
- * matching), `"cancelled"`, and
+ * point after the handshake), `"partner-stopped-responding"` and
+ * `"shard-stalled"` (both met during matching), `"cancelled"`, and
  * a missing kind -- cannot prove it.
  */
 function disclosurePrecedesExchange(lastRun: ManagedExchangeLastRun): boolean {

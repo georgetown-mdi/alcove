@@ -31,6 +31,7 @@ import {
   handshakeRoleForRendezvousRole,
   isPartnerProtocolRefusal,
   isSetTooLargeError,
+  isShardStalled,
   isTrustBoundaryFailure,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
@@ -464,7 +465,8 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * and raise that refusal. A trust-boundary failure
  * ({@link isTrustBoundaryFailure} of {@link classifyFailure}) before the data
  * exchange began records `auth`. A failure holding core's
- * `partner-stopped-responding` cause records `partner-stopped-responding`.
+ * `partner-stopped-responding` cause records `partner-stopped-responding`,
+ * and a stalled split ({@link isShardStalled}) records `shard-stalled`.
  * Everything else -- including any of these once the data exchange began --
  * records `transport`.
  *
@@ -528,6 +530,7 @@ export function rerunFailureLastRun(
     return failedRun(at, "failed", "auth");
   if (failureCauseOf(error)?.kind === "partner-stopped-responding")
     return failedRun(at, "failed", "partner-stopped-responding");
+  if (isShardStalled(error)) return failedRun(at, "failed", "shard-stalled");
   return failedRun(at, "failed", "transport");
 }
 

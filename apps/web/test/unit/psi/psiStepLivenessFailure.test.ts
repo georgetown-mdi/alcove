@@ -326,4 +326,29 @@ describe("a split operation whose PSI worker reported no progress", () => {
       expect(managedRunRetryable(failure)).toBe(true);
     }
   });
+
+  test("a managed run records the stall, and the next visit names it", () => {
+    for (const error of stalledErrors()) {
+      const lastRun = rerunFailureLastRun(error, RUN_AT, false, true);
+      expect(lastRun).toMatchObject({
+        outcome: "failed",
+        failureKind: "shard-stalled",
+      });
+      const stored = { ...record(), lastRun };
+      const failure = managedRunFailureFromRecord(stored, undefined, NOW);
+      expect(failure).toMatchObject({
+        kind: "shard-stalled",
+        title: STALLED_TITLE,
+        message: STALLED_MESSAGE,
+      });
+      expect(managedRunRetryable(failure!)).toBe(true);
+      expect(savedExchangeRow(stored, undefined, NOW).status).toMatch(
+        /^Last run stopped: encrypting the data made no progress \(.+\); run the exchange again$/,
+      );
+      expect(runHistoryEntries(stored)[0]).toMatchObject({
+        outcome: "Failed",
+        failure: "encrypting the data made no progress",
+      });
+    }
+  });
 });
