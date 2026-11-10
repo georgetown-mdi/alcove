@@ -41,7 +41,7 @@ Whether a browser SFTP path exists, and for which application, is a product deci
 Two facts bear on it:
 
 - **The console does not need a proxy to run SFTP.**
-  Its server already opens the socket through the CLI subprocess, and the planned in-process path would also run in the server process, not the tab
+  Its server opens the socket through the CLI as its child process, not in the tab
   ([DESIGN.md](../DESIGN.md#web-console)).
   A proxy there would let the tab be the SSH client instead, which no console workflow needs today, at the cost of the browser SSH client, the wrap on the web side, and a WebSocket route on the console server.
 - **The public web application is the one that lacks a route to an SFTP server.**
