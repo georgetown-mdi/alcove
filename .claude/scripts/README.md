@@ -67,8 +67,8 @@ push:
   hundred GitHub API calls, so it is asked for explicitly:
   `npm run measure:pr-checks -- [runs]`. With no arguments it prints its usage
   rather than starting a run
-- `*-workflow.mjs`, the Workflow script bodies `/review-round`, `/panel`, and
-  `/docket` invoke by absolute path. Each is a script BODY, not a module: the
+- `*-workflow.mjs`, the Workflow script bodies `/review-round`, `/panel`,
+  `/docket`, and the review day invoke by absolute path. Each is a script BODY, not a module: the
   harness injects `args`, `agent`, `parallel`, and `pipeline`, and takes the
   top-level `return` as the run's result. No ES module parser accepts that, so
   eslint ignores them and the test beside each one compiles it into a function
@@ -76,7 +76,13 @@ push:
   their tests), because the harness refuses a script that does; work that
   needs a file or a command runs in a script beside it (`verify-fix-shape.mjs`
   states why). `lib/workflowScriptHarness.mjs` holds the compiling and the
-  argument shapes the three tests share.
+  argument shapes their tests share.
+- `review-day-workflow.mjs`, one workflow of review-day slices: per slice an
+  Opus reviewer, then a verifier (Opus for lens 2, Sonnet otherwise) unless
+  the reviewer found nothing, then one Opus triage over the workflow. Its
+  arguments are `{day, wf, jobs: [{id, lens}]}`, `day` the absolute path of
+  the day's directory; its prompts point each agent at its brief under
+  `.claude/review-day/`.
 - `judgment-call-controversy-workflow.mjs`, the controversy scoring `/docket`
   runs while building its list: one Sonnet gatherer per session lists the judgment
   calls taken since the last docket, two independent Opus lenses judge each one
