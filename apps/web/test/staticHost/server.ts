@@ -46,10 +46,26 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".xml": "application/xml",
 };
 
+/** Where a host started with `collectCspReports` takes the browser's
+ * Content-Security-Policy violation reports. */
+export const CSP_REPORT_PATH = "/__csp-report";
+
+/** How {@link startStaticHost} serves beyond what Pages does. */
+export interface StaticHostOptions {
+  /** Add `report-uri` {@link CSP_REPORT_PATH} to every
+   * `Content-Security-Policy` the host sends, and keep each report posted
+   * there in {@link StaticHost.cspReports}. The policy's other directives are
+   * sent unchanged. */
+  readonly collectCspReports?: boolean;
+}
+
 /** A running static host. */
 export interface StaticHost {
   /** `http://127.0.0.1:<port>`, with no trailing slash. */
   readonly origin: string;
+  /** The violation reports posted to {@link CSP_REPORT_PATH}, each as the
+   * text the browser sent; always empty without `collectCspReports`. */
+  readonly cspReports: ReadonlyArray<string>;
   readonly close: () => Promise<void>;
 }
 
@@ -87,6 +103,7 @@ export function resolveStaticFile(root: string, pathname: string): string {
  */
 export async function startStaticHost(
   outputDirectory: string,
+  options: StaticHostOptions = {},
 ): Promise<StaticHost> {
   const root = resolve(outputDirectory);
   if (!isFile(join(root, "index.html")))
@@ -104,13 +121,29 @@ export async function startStaticHost(
     ? parseHeadersFile(readFileSync(headersPath, "utf8"))
     : [];
 
+  const cspReports: Array<string> = [];
+  const collectCspReports = options.collectCspReports === true;
+
   const server = createServer((request, response) => {
+    const pathname = new URL(request.url ?? "/", "http://static.invalid")
+      .pathname;
+    if (
+      collectCspReports &&
+      request.method === "POST" &&
+      pathname === CSP_REPORT_PATH
+    ) {
+      const chunks: Array<Buffer> = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        cspReports.push(Buffer.concat(chunks).toString("utf8"));
+        response.writeHead(204).end();
+      });
+      return;
+    }
     if (request.method !== "GET" && request.method !== "HEAD") {
       response.writeHead(405, { Allow: "GET, HEAD" }).end();
       return;
     }
-    const pathname = new URL(request.url ?? "/", "http://static.invalid")
-      .pathname;
     let headers: Map<string, string>;
     try {
       headers = headersForPath(rules, pathname);
@@ -128,7 +161,13 @@ export async function startStaticHost(
     );
     response.setHeader("Content-Length", body.length);
     response.setHeader("Cache-Control", DEFAULT_CACHE_CONTROL);
-    for (const [name, value] of headers) response.setHeader(name, value);
+    for (const [name, value] of headers)
+      response.setHeader(
+        name,
+        collectCspReports && name.toLowerCase() === "content-security-policy"
+          ? `${value}; report-uri ${CSP_REPORT_PATH}`
+          : value,
+      );
     response.writeHead(200);
     response.end(request.method === "HEAD" ? undefined : body);
   });
@@ -140,6 +179,7 @@ export async function startStaticHost(
   const { port } = server.address() as AddressInfo;
   return {
     origin: `http://127.0.0.1:${port}`,
+    cspReports,
     close: () =>
       new Promise<void>((resolveClose) => {
         server.closeAllConnections();

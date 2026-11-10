@@ -59,6 +59,7 @@ This changelog is a reader's summary of what Alcove does and how that changes pe
 ### Security
 
 - Recurring CLI exchanges are encrypted end-to-end on the wire with an application-layer AEAD, authenticated with a P-256 key exchange, and SFTP connections verify the server host key fail-closed. See `docs/SECURITY_DESIGN.md`, `docs/spec/CHANNEL_SECURITY.md` and `docs/spec/SFTP_CONNECTION.md`.
+- The web app and the console send a Content-Security-Policy that runs only the app's own scripts, so an injected inline script or a script from another site does not run. See `docs/SECURITY_DESIGN.md`.
 
 ## [0.1.0] - 2026-05-08
 

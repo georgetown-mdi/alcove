@@ -22,7 +22,10 @@ import type { StaticHost } from "../staticHost/server.js";
 const expectedHeaders: Record<string, string> = {
   "referrer-policy": "no-referrer",
   "x-frame-options": "DENY",
-  "content-security-policy": "frame-ancestors 'none'",
+  "content-security-policy":
+    "frame-ancestors 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' " +
+    "'sha256-8ORoeP7ZoOX1k3ePKBnNzdoHYjwUvC86o4oRkUWMb9Y='; " +
+    "object-src 'none'; base-uri 'none'",
   "x-content-type-options": "nosniff",
 };
 

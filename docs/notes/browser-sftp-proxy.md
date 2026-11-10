@@ -195,7 +195,7 @@ The `sftp` connection authenticates with a password or a private key (`SFTPServe
 
 ### Egress and disclosure documents
 
-The planned `connect-src` allowlist would need the proxy origin ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#egress-hardening-and-its-limits)), and the privacy statement's supporting-services list a proxy row ([PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe)).
+The privacy statement's supporting-services list would need a proxy row ([PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe)).
 
 ## The chosen client: dependency check and sizing
 

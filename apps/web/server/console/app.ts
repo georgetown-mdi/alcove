@@ -3,11 +3,11 @@ import { createServer } from "node:http";
 import { getLogger, sanitizeErrorForDisplay } from "@alcove/core";
 import { hardenUpgradeSurface } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
-import { isApiNamespacePath, withApiGuard } from "@utils/apiNamespace";
 import {
-  securityResponseHeaders,
+  developmentSecurityResponseHeaders,
   withSecurityHeaders,
 } from "@utils/securityHeaders";
+import { isApiNamespacePath, withApiGuard } from "@utils/apiNamespace";
 import { jobEmptyResponse } from "@jobs/gate";
 
 import { compileJobRoutes, matchJobRoute } from "./routeTable";
@@ -92,7 +92,7 @@ function isClientRequest(req: IncomingMessage): boolean {
 
 /** Serve one request through `handler`, answering a request the bridge does
  * not carry with {@link notFound}. With `clientMiddleware`, a client request
- * goes to it instead, with the security headers already set. */
+ * goes to it instead, with the development security headers already set. */
 async function serveRequest(
   handler: (request: Request) => Promise<Response>,
   req: IncomingMessage,
@@ -100,7 +100,9 @@ async function serveRequest(
   clientMiddleware: ClientMiddleware | undefined,
 ): Promise<void> {
   if (clientMiddleware !== undefined && isClientRequest(req)) {
-    for (const [name, value] of Object.entries(securityResponseHeaders))
+    for (const [name, value] of Object.entries(
+      developmentSecurityResponseHeaders,
+    ))
       res.setHeader(name, value);
     clientMiddleware(req, res, (error) => {
       if (error !== undefined)

@@ -345,8 +345,9 @@ relies on; the list, and what of it was measured on Pages, is in
 [docs/notes/hosted-static-build.md](notes/hosted-static-build.md#static-host-harness).
 It refuses to start on an output holding `_redirects` or `404.html`, and on
 `_headers` syntax outside that subset. `appShellWarm`,
-`offlineUnvisitedRoute`, `csvWorkerProd`, `securityHeaders`, and the hosted half
-of `apiNamespace` run against it.
+`offlineUnvisitedRoute`, `csvWorkerProd`, `securityHeaders`,
+`contentSecurityPolicyExchange`, and the hosted half of `apiNamespace` run
+against it.
 
 For a dev-server-only run, set `ALCOVE_ALLOW_MISSING_WEB_BUILD=1`:
 the built-server specs report as skipped and the run passes. That is the one

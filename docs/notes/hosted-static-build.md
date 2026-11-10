@@ -40,7 +40,8 @@ The integration suites serve the build through `test/staticHost/`, which emulate
 - serves a path naming a file as that file, `_headers` excepted, and an extensionless path as `<path>.html`;
 - serves any other path as the root `index.html` with status 200;
 - adds the `_headers` rules matching the request path to every response, over Pages' default revalidating `Cache-Control`;
-- refuses to start on an output holding `_redirects` or `404.html`, which change that fallback on Pages, and on `_headers` syntax outside the subset it reads.
+- refuses to start on an output holding `_redirects` or `404.html`, which change that fallback on Pages, and on `_headers` syntax outside the subset it reads;
+- when a suite asks it to collect policy violation reports, which Pages does not do, adds a `report-uri` naming its own report endpoint to each `Content-Security-Policy` it sends and keeps what the browser posts there.
 
 Measured on the Pages emulator (wrangler 4.147.0):
 

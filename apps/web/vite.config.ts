@@ -113,13 +113,16 @@ const playwrightDisabledFeatures = [
   "msEdgeUpdateLaunchServicesPreferredVersion",
 ];
 
-// The one --disable-features switch the browser projects launch with. Chromium
-// keeps only the LAST --disable-features switch on a command line instead of
-// merging duplicates -- measured 2026-09-21 against the chromium playwright
-// 1.62.1 installs, where a switch after Playwright's own put the mDNS
-// obfuscation back on -- so the feature these projects need is composed into
-// Playwright's list rather than passed on a switch of its own.
-const browserDisableFeaturesSwitch = `--disable-features=${[
+/**
+ * The one --disable-features switch the browser projects launch with, and a
+ * suite that launches Chromium itself for a live WebRTC connection. Chromium
+ * keeps only the LAST --disable-features switch on a command line instead of
+ * merging duplicates -- measured 2026-09-21 against the chromium playwright
+ * 1.62.1 installs, where a switch after Playwright's own put the mDNS
+ * obfuscation back on -- so the feature these projects need is composed into
+ * Playwright's list rather than passed on a switch of its own.
+ */
+export const browserDisableFeaturesSwitch = `--disable-features=${[
   ...playwrightDisabledFeatures,
   "WebRtcHideLocalIpsWithMdns",
 ].join(",")}`;

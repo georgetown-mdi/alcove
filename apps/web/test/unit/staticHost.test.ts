@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import {
+  CSP_REPORT_PATH,
   DEFAULT_CACHE_CONTROL,
   resolveStaticFile,
   startStaticHost,
@@ -92,6 +93,42 @@ describe("the static host's file resolution", () => {
     const { headers } = await get("/saved/an-id");
     expect(headers.get("x-test")).toBe("on");
     expect(headers.get("cache-control")).toBe(DEFAULT_CACHE_CONTROL);
+  });
+});
+
+describe("the static host's policy violation reports", () => {
+  const policy = "script-src 'self'";
+
+  beforeEach(() => {
+    write("index.html", "root");
+    write("_headers", `/*\n  Content-Security-Policy: ${policy}\n`);
+  });
+
+  test("adds the report endpoint to the policy and keeps what is posted", async () => {
+    host = await startStaticHost(root, { collectCspReports: true });
+    expect((await get("/")).headers.get("content-security-policy")).toBe(
+      `${policy}; report-uri ${CSP_REPORT_PATH}`,
+    );
+    const posted = await fetch(`${host.origin}${CSP_REPORT_PATH}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/csp-report" },
+      body: '{"csp-report":{}}',
+    });
+    expect(posted.status).toBe(204);
+    expect(host.cspReports).toEqual(['{"csp-report":{}}']);
+  });
+
+  test("sends the policy unchanged and takes no report without the option", async () => {
+    host = await startStaticHost(root);
+    expect((await get("/")).headers.get("content-security-policy")).toBe(
+      policy,
+    );
+    const posted = await fetch(`${host.origin}${CSP_REPORT_PATH}`, {
+      method: "POST",
+      body: "{}",
+    });
+    expect(posted.status).toBe(405);
+    expect(host.cspReports).toEqual([]);
   });
 });
 

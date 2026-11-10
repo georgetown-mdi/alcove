@@ -266,7 +266,12 @@ const REFUSAL: ResponseShape = {
   headers: [
     ["cache-control", "no-store"],
     ["content-length", "0"],
-    ["content-security-policy", "frame-ancestors 'none'"],
+    [
+      "content-security-policy",
+      "frame-ancestors 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' " +
+        "'sha256-8ORoeP7ZoOX1k3ePKBnNzdoHYjwUvC86o4oRkUWMb9Y='; " +
+        "object-src 'none'; base-uri 'none'",
+    ],
     ["referrer-policy", "no-referrer"],
     ["x-content-type-options", "nosniff"],
     ["x-frame-options", "DENY"],

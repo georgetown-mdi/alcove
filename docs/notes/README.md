@@ -43,6 +43,7 @@ a restatement.
 | [connection-per-poll-sftp.md](connection-per-poll-sftp.md) | Connection-per-poll SFTP and reconnects | built |
 | [console-announce-and-focus.md](console-announce-and-focus.md) | Announcing an outcome, and focus | built |
 | [console-signing-identity-custody.md](console-signing-identity-custody.md) | The console's signing-identity custody | built |
+| [content-security-policy.md](content-security-policy.md) | The web app's Content-Security-Policy as measured | built |
 | [core-dist-cache-buildinfo.md](core-dist-cache-buildinfo.md) | Why the core build is non-incremental | built |
 | [cosign-keyless-signing.md](cosign-keyless-signing.md) | Keyless Cosign signing | built |
 | [cross-workspace-test-material.md](cross-workspace-test-material.md) | Where cross-workspace test material lives | built |

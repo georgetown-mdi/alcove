@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-07"
+last_reviewed: "2026-11-10"
 ---
 
 # Alcove security
@@ -403,15 +403,13 @@ The web app's posture is that a managed exchange's secret, terms, and input data
 
 For the app's own code, the property holds by design and review. No first-party path uploads the secret, the terms, or the input file: the input CSV is read in the browser and never sent, and every managed-exchange write lands in origin-isolated browser storage, except the results file a run places in the operator-granted working folder ([Results of a scheduled run at rest](#results-of-a-scheduled-run-at-rest)) and the backup file a scheduled run places there after its rotation. This is a reviewed property of the codebase, upheld by the security review that gates the managed lifecycle, not a browser-enforced one.
 
-Against an injected in-origin script the property is not mechanically enforceable. A planned Content-Security-Policy `connect-src` allowlist (the app origin, the signaling endpoints, the default relay's registrar and WebSocket relay a build names, the WebSocket relays an exchange's Connection settings and an accepted invitation name, and the origin of any relay registrar the operator enrolls a saved exchange at) would govern programmatic non-WebRTC egress (`fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, beacons). Its limits:
+Against an injected in-origin script the property is not mechanically enforceable, and no Content-Security-Policy `connect-src` allowlist ships. Such a list would govern programmatic non-WebRTC egress (`fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, beacons). No version of it is worth shipping:
 
-- Its signaling and WebSocket relay entries cannot be fixed when the app is built, because an accepting browser dials the servers its invitation names and an inviting browser those its exchange's Connection settings name ([WEB_APP.md](WEB_APP.md#connection-settings)); a build-time policy either admits every `wss:` host or refuses those exchanges.
-- No shipped CSP directive can allowlist STUN/TURN hosts or peers, so an in-origin script could open its own peer connection and exfiltrate over a data channel regardless of `connect-src`.
-- Downloads, clipboard writes, and navigations are outside it.
+- **No policy closes the WebRTC route.** No CSP directive governs STUN/TURN hosts or peers, so an in-origin script could open its own peer connection, through any TURN relay, and send data over a data channel whatever `connect-src` says.
+- **A strict list breaks partner-named servers.** An accepting browser dials the coordination server and WebSocket relays its invitation names, and an inviting browser those its exchange's Connection settings name ([WEB_APP.md](WEB_APP.md#connection-settings)); a saved exchange enrolls at the relay registrar its operator chooses. None of these is known when the app is built, so a list fixed then refuses those exchanges.
+- **A permissive list blocks only plain-text hosts.** A list admitting every `https:` and `wss:` host keeps those exchanges working and leaves an injected script every encrypted destination.
 
-The allowlist narrows the injected-script exfiltration surface; it is not a complete barrier, and no first-party runtime guard can be one. The primary control against in-origin script remains preventing injection.
-
-The vendored PSI WASM browser glue (`@openmined/psi.js`'s `psi_wasm_web.js` and `psi_wasm_worker.js`) uses one direct `eval` and two `new Function` sites, Emscripten-generated. Any future `script-src` directive must be verified against the PSI path before shipping: a policy without `'unsafe-eval'` breaks it, as measured on the current artifacts.
+Downloads, clipboard writes, and navigations would be outside any `connect-src` as well. No first-party runtime guard can be a complete barrier to in-origin exfiltration; the primary control against in-origin script remains preventing injection, which [the shipped script policy](#the-shipped-script-policy) narrows.
 
 The no-egress claims [PRIVACY.md](../PRIVACY.md) publishes have one mechanical check against first-party drift, `npm run check:egress-claims`, whose scope is stated in [PRIVACY.md](../PRIVACY.md#the-projects-role). Each allowlist entry records why the literal it admits does not contradict that document: either that it names no host anything contacts (an XML namespace identifier, a documentation link the operator clicks, a dummy base handed to a parser), or that the host is one the supporting-services table already discloses, as the two default public STUN servers are. A JavaScript or TypeScript file is read from the string, template, and JSX-text nodes of a real parse, and an authority names a host when `new URL()` resolves one from it. Every other text format, and any file of that family whose parse fails, is scanned raw, which over-reports rather than reporting a file clean.
 
@@ -429,6 +427,17 @@ The full list is in [the check's design note](notes/repo-check-scripts.md#url-li
 #### The containerized roles
 
 In the headless CLI and the console, what bounds dependency-originated egress is the host's firewall rather than any browser directive. The recipe that restricts the container's outbound access, and its tested verification, are in [DEPLOYMENT.md](DEPLOYMENT.md#restricting-the-containers-outbound-network-access). It is hardening the operator chooses to apply; a deployment that has not applied it has none of it. It works only on Linux with Docker Engine's iptables integration, bounds one container's reach and not the machine's, and is not a substitute for the protocol's protection against the partner's material (see [Channel security](#channel-security)).
+
+#### The shipped script policy
+
+The web app and the console send a Content-Security-Policy with every response that limits which scripts run in the origin ([DEPLOYMENT.md](DEPLOYMENT.md#headers-caching-and-the-fallback-document) lists the headers):
+
+- **`script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'`, plus the hash of one inline script**, the one that sets the color scheme before the first paint. A script from another origin, any other inline script, and an inline event handler do not run.
+- **`object-src 'none'` and `base-uri 'none'`.** No plugin content loads, and no `<base>` element can repoint the app's relative script URLs.
+
+`'unsafe-eval'` is there because the vendored PSI engine's Emscripten glue (`@openmined/psi.js`) builds its WebAssembly bindings with `new Function`, on the page and in the PSI worker; without it no exchange runs. It lets a script already running in the origin turn a string into code. It does not admit an injected `<script>` element, an inline handler, or a script from another host, which are the injection routes the policy closes. Removing it takes a rebuild of the PSI glue without generated functions. `'wasm-unsafe-eval'` adds nothing while `'unsafe-eval'` is present, and keeps WebAssembly compiling once it goes.
+
+The policy is the strictest under which a production build completes an exchange with no violation reported, measured in Chromium. The candidates tried, what the browser reported for each, and what removing `'unsafe-eval'` takes are in [the measurement note](notes/content-security-policy.md). Under `npm run dev:console` the development server sends the policy without `script-src`, since it injects inline scripts of its own; no build serves that variant.
 
 ## Receipt signing identities
 

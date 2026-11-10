@@ -41,6 +41,19 @@ describe("the development client middleware", () => {
     expect(answer.headers["x-content-type-options"]).toBe("nosniff");
   });
 
+  test("a page the middleware serves has the policy without script-src", async () => {
+    const port = await serveClient((_req, res) => {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("<!doctype html>");
+    });
+    const answer = await send(port, { path: "/exchange" });
+    expect(answer.status).toBe(200);
+    expect(answer.headers["content-security-policy"]).toBe(
+      "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+    );
+    expect(answer.headers["x-frame-options"]).toBe("DENY");
+  });
+
   test("a middleware error before the response starts answers 500", async () => {
     const port = await serveClient((_req, _res, next) =>
       next(new Error("transform failed")),
