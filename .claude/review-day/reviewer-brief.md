@@ -21,7 +21,7 @@ Why the day works this way: `docs/notes/review-day.md`.
    Touch nothing else in the clone.
    A probe, if you need one, runs from a `mktemp -d` directory holding a copy (`git -C $R archive $SHA <paths> | tar -x -C <dir>`), never from the checkout.
    Any listener binds loopback only, and that Bash call needs `dangerouslyDisableSandbox: true`.
-   Do not run the repository's test suites; a single test file run from your copy is fine if it decides a finding (a copy has no `node_modules`: symlink `$R/node_modules` into it, for read-only use).
+   Do not run the repository's test suites; a single test file run from your copy is fine if it decides a finding (a copy has no `node_modules`: symlink `$R/node_modules` into it, for read-only use; its workspace links point into the checkout, not your copy, so import your copy's code by path or build it inside the copy, and state which code ran).
 3. Bash is zsh: quote globs, since an unmatched glob is an error.
    `$R:apps` expands as a path modifier: write `${R}`.
 4. The repository is public.

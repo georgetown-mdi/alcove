@@ -30,16 +30,7 @@ Rules, cited not paraphrased:
    One draft per final item in `$D/FINAL/items/<name>.md` per the task template, naming its board, size, files, acceptance criteria with the failing test where behaviour changes, review tier, and what it waits on.
    A security item's body may state the mechanism and records whether the flaw is on `origin/main` and in a tag; its proposed PR and commit wording describes the fix.
 2. The four sorts.
-   Check every triage's sort of each line that adds, removes or changes a control, accepts a stated limit, or proposes a wording or a structural change, against these rules, and decide any line two triages sorted differently:
-   - **Fix**: a spec line, `docs/SECURITY_DESIGN.md` or `CLAUDE.md`, Applications, asks for it, and the recommended option blocks no legitimate use and invents no number.
-     It becomes or joins an item with the recommendation as its approach; the alternatives go.
-   - **Not built**: a control nobody asked for.
-     Recorded in the ledger as declined, its stated limit routed to the item that ships the surface's limits line.
-   - **PR review**: an acceptance of a stated limit, or a wording the owner should read.
-     It becomes an acceptance criterion of the item that ships it, saying the owner reads it in PR review.
-   - **Owner call**: a product, scope or priority call; a bound resting on an invented number that blocks a legitimate use; a step costing the owner's own time; or a trade-off a measurement must decide first.
-     Filed as a Decision item.
-
+   Check every triage's sort of each line that adds, removes or changes a control, accepts a stated limit, or proposes a wording or a structural change, against the four sorts of `.claude/review-day/triage-brief.md`, Do step 3 (Fix, Not built, PR review, Owner call), and decide any line two triages sorted differently.
    A lens-4 structural proposal is never an owner call: with a drafted item it is filed, and without one it is a held structural line in `owed.md` with its trigger.
    Edit the item drafts to match: drop each "waits on" a line that became Fix or PR review; keep a wait, with the options marked, only for an owner call.
    When `$D/M1/MEASURE.md` decided a trade-off, apply its verdict rather than filing the trade-off as an owner call.
@@ -54,11 +45,11 @@ Rules, cited not paraphrased:
    then the Decision items from `DOCKET.md`, one row each with its draft path;
    then the lines not filed, each with its reason (not built, limit, held, dropped).
 6. The owed list, ranked and priced: `$D/FINAL/owed.md`.
-   Merge every triage's `## Owed lines` section, the slice lines of `$D/cut.md`, and what the same-day extra left unread; drop duplicates and any line a slice run today has since read whole.
-   Every line is in the form the slice cutter reads (`.claude/scripts/review-day-slices.mjs`, its header): `- <lens 1-4> | <backticked files or slice id> | <reason> | <blocked by>`.
+   Merge every triage's `## Owed lines` section, the slice lines of `$D/cut.md`, the passes in `$D/plan.json`'s `carried` list (each re-emitted as its `line` field, which is already priced and has no appended reason in parentheses), and what the same-day extra left unread; drop duplicates and any line a slice run today has since read whole.
+   Every line is in the form the slice cutter reads (`.claude/scripts/review-day-slices.mjs`, its header): `- <lens 1-4> | <backticked files> | <reason> | <blocked by>`.
    The cutter reads every line starting `- ` as an owed pass, so no other line in the file starts that way.
    Rank in the next day's order: lines marked `(extra)` that the day did not spend its extra on, then escalations and measurement asks, then census, then the rest in the keep order of `.claude/commands/review-day.md`, Step 2.
-   Price each line at the end of its reason, from the per-lens slice estimates in `$D/SLICES.md`'s working values line.
+   Price each line except a carried one at the end of its reason, from the per-lens slice estimates in `$D/SLICES.md`'s working values line.
    The blocked-by field names an item whose fix edits the line's files: `<board>/<itemId>` for an item already on the board, `draft:<name>` for one filed today, which the session replaces after filing.
    Below the owed lines, under `## Held structural lines`, each held structural line as a numbered line (`1. <line> -- trigger: <trigger>`).
 7. Host checks only the owner can make (from the triages): one draft brief filled from the host-handoff template, `$D/FINAL/host-checks.md`.

@@ -76,7 +76,7 @@ Rules to apply, cited, never paraphrased:
 4. Batches, each with its item file.
 5. Appends: target item and text.
 6. Owner calls, or "None."
-7. Owed lines, under the heading `## Owed lines` and written as plain Markdown, not fenced: one list line each, `- <lens 1-4> | <backticked files or slice id> | <reason> | <- or blocking item>`, and no other line in the section starting `- `.
+7. Owed lines, under the heading `## Owed lines` and written as plain Markdown, not fenced: one list line each, `- <lens 1-4> | <backticked files> | <reason> | <- or blocking item>`, and no other line in the section starting `- `.
    With none, the heading and the line `None.`
 8. Held structural lines, as a numbered list (`1. <line> -- trigger: <trigger>`), or "None."
 9. Host-only checks, or "None."

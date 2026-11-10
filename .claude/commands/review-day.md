@@ -39,6 +39,7 @@ At the first that fails, write `D/summary.md` naming it, and stop.
 - `gh auth status` succeeds.
 - `git fetch origin staging`, then record `SHA`, the output of `git rev-parse origin/staging`.
 - The previous day's `FINAL/record.json`, `FINAL/ledger.jsonl`, `FINAL/filed.md` and `FINAL/owed.md` are readable.
+  A `FINAL/` with no `owed.md` stopped before Step 4 finished: finish that day's Step 4; one with no `filed.md` stopped before Step 5: finish that day's Step 5; then start the new day.
   With no previous day, record that, and the commit the window starts at, which Step 2 passes as `--prev`.
 - `uptime`: the one-minute load is under about eight; otherwise wait and read it again.
 - The newest `scratch/continuation-*.md` is readable, for the container's in-flight branches.
@@ -69,6 +70,7 @@ Invoke the Workflow tool once per workflow, at most four at once, with `scriptPa
 The script runs one Opus reviewer per slice, then a verifier (Opus for lens 2, Sonnet otherwise) for a slice with findings, then one Opus triage per workflow; its tiers and efforts are pinned in the script and not passed.
 Each returns a triage summary of at most about 600 tokens.
 Read nothing else from `D/W*/` in this thread, except one triage's owed-lines block for the extra below.
+The workflow's agents read the briefs and the rule files from this checkout's working tree, not at the pinned sha, so do not move the checkout (no pull, checkout or rebase) while a workflow runs.
 
 As each workflow's notification arrives, add its cost to `D/cut.md`'s `Spend:` line and apply the stop rule (Spend, above) before starting the next.
 

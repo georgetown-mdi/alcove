@@ -6,7 +6,7 @@ title: "The Review Day"
 
 _Status: agent-written design, built as the command and its briefs; a proposal until the owner ratifies it.
 The steps are in [`.claude/commands/review-day.md`](../../.claude/commands/review-day.md), the agents' rules in the briefs under `.claude/review-day/`, the slice cutter in [`.claude/scripts/review-day-slices.mjs`](../../.claude/scripts/review-day-slices.mjs) and the workflow in [`.claude/scripts/review-day-workflow.mjs`](../../.claude/scripts/review-day-workflow.mjs).
-This note gives the reasons and does not restate them.
+This note gives the reasons.
 See [docs/notes/README.md](README.md)._
 
 ## What the day is for
@@ -47,10 +47,10 @@ Measured on the first pass, each figure including reviewer, verifier and the tri
 - Lens 4, simplification: $0.49 per finding, 8 majors in 208, 45 raised before and still true.
   It is the owner's named ask, the pitfalls of agent-driven development, but most of its findings became internal limits or held structural lines.
 - Lens 2, security: $1.66 per finding in the wide slices and $3.12 in the targeted ones, but the targeted ones found the majors.
-- Lens 1, specs against code: $2.29 per finding, no major, 22 of 35 nits.
+- Lens 1, specs against code: $2.29 per finding ($25.22 for the 11 findings of its one single-lens pass, the $8.41 slices below), no major, 22 of 35 nits across every pass that ran the lens.
   Its one real miss class is the specs a diff makes stale, which a per-branch round does not check, so lens 1 reads the statements that name changed code rather than whole specs.
 
-## Why lens 3 never skips
+## Why lens 3 runs first after census
 
 Lens 3 is the cheapest per major, and its findings are the ones a reader outside the project acts on.
 A quiet fortnight or an early stop still runs census (lens 2) and outward text (lens 3): they come first in the keep order after owed passes.
@@ -80,7 +80,8 @@ The day runs the slices the cutter picks, plus at most one same-day extra, and s
 The owner judges spend as a share of the weekly allowance ("I think of spend in terms of percentages of the weekly token allowance."), so the summary states it that way when a reading exists, beside the fortnight's agent spend.
 The retro judges the day by its cost per fix that merged.
 
-Unit costs from the first pass, each including reviewer, verifier and the triage's share:
+Unit costs the first review pass measured, from which the slice cutter's working values started, each including reviewer, verifier and the triage's share.
+The cutter's `WORKING_VALUES` in [`.claude/scripts/review-day-slices.mjs`](../../.claude/scripts/review-day-slices.mjs) holds the current ones, which each retro re-fits:
 
 | Unit | Cost | Basis |
 |---|---|---|
@@ -89,10 +90,9 @@ Unit costs from the first pass, each including reviewer, verifier and the triage
 | Lens-3 slice | $4.97 | 3 slices, $14.92 |
 | Lens-1 slice | $8.41 | 3 slices, $25.22 |
 | Any slice, mean | $7.18 | 48 slices, $344.83 |
-| Consolidation over 14 triages | about $17 | the consolidation brief's own figure |
+| Consolidation over 14 triages | about $17 | the first pass's consolidation agent, 2026-11-06 |
 
 Per finding $0.93, per major $11.49, per behaviour-changing finding $5.75.
-The slice cutter prices its estimate from the per-lens rows.
 
 ## Beside the audit day
 
