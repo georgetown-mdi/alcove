@@ -437,7 +437,7 @@ export function checkSinglePassPartnerMemory(params: {
   const needBytes = Math.max(maskingNeedBytes, ownSetup.buildPeakBytes);
   if (needBytes > availableBytes) {
     const what = buildPeakBinds
-      ? `masking your own values to answer them could take up to ` +
+      ? `masking your own values to answer your partner's request could take up to ` +
         `${gigabytes(ownSetup.buildPeakBytes)} of memory`
       : `${
           outboundBytes <= inboundBytes
@@ -458,8 +458,9 @@ export function checkSinglePassPartnerMemory(params: {
       `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +
       `and ${what}, but this machine has ${gigabytes(availableBytes)} ` +
       `available now`;
-    const split =
-      ownSetup.buildPeakBytes > 0 || outboundBytes > inboundBytes
+    const split = buildPeakBinds
+      ? `split your input into smaller files and run one exchange for each`
+      : ownSetup.buildPeakBytes > 0 || outboundBytes > inboundBytes
         ? `split your input, or ask your partner to split theirs, into smaller ` +
           `files and run one exchange for each`
         : `ask your partner to split their input into smaller files and run ` +

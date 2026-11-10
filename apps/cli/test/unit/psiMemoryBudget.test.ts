@@ -768,12 +768,11 @@ describe("the single-pass partner size at the terms exchange", () => {
     it("names the masking of this party's own values where the build peak is the larger charge", () => {
       expect(() => run(smallRequest, 200_000_000)).toThrow(
         "your partner declared 150,000 records, and masking your own values " +
-          "to answer them could take up to 0.31 GB of memory, but this " +
-          "machine has 0.20 GB available now, so the exchange stopped before " +
-          "any value was masked and told your partner. Run the exchange on a " +
-          "host with more memory, or split your input, or ask your partner " +
-          "to split theirs, into smaller files and run one exchange for " +
-          "each.",
+          "to answer your partner's request could take up to 0.31 GB of " +
+          "memory, but this machine has 0.20 GB available now, so the " +
+          "exchange stopped before any value was masked and told your " +
+          "partner. Run the exchange on a host with more memory, or split " +
+          "your input into smaller files and run one exchange for each.",
       );
     });
 
