@@ -11,6 +11,7 @@ import {
   webRtcMessageSendBytes,
   webRtcSinglePassHandOffBytes,
   type InboundFrameMemoryCheck,
+  type PsiBackendSelection,
   type SinglePassPartnerSize,
 } from "@alcove/core";
 
@@ -339,33 +340,75 @@ export function singlePassOutboundPeakBytes(
       );
 }
 
-/**
- * Resident memory a single-pass sender's own setup holds per element while it
- * reads and masks the partner's request, in bytes: the largest figure measured
- * at setups of 2^20 to 2^23 elements, rounded up.
- */
-export const SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT = 734;
+/** The PSI library a run's engine uses: the native addon or the WebAssembly fallback. */
+export type PsiBackend = PsiBackendSelection["backend"];
+
+/** What a single-pass sender's own setup costs per element on one PSI library, in bytes. */
+export interface SinglePassOwnSetupCost {
+  /** The resident peak of creating the setup, beyond the process before it. */
+  buildPeakBytesPerElement: number;
+  /**
+   * How much higher masking the partner's request peaks beside the setup than
+   * beside a setup of 1,000 values.
+   */
+  maskingIncrementBytesPerElement: number;
+}
 
 /**
- * The memory this party's own single-pass setup holds through the read and
- * masking of the partner's request, in bytes: where it sends, its own value
- * slots, the most elements its setup can hold, at
- * {@link SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT}; where it receives, none.
+ * {@link SinglePassOwnSetupCost} on each library: the largest figure measured,
+ * rounded up, at setups of 2^20 to 2^24 elements on the native library and
+ * 2^20 to 2^22 on the WebAssembly library (docs/spec/FILE_SYNC.md, "The
+ * sender's own setup").
  */
-export function singlePassOwnSetupBytes(size: SinglePassPartnerSize): number {
-  return size.inboundFrameUse === "decode"
-    ? size.localValueSlots * SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT
-    : 0;
+export const SINGLE_PASS_OWN_SETUP_COST: Readonly<
+  Record<PsiBackend, SinglePassOwnSetupCost>
+> = {
+  native: {
+    buildPeakBytesPerElement: 884,
+    maskingIncrementBytesPerElement: 401,
+  },
+  wasm: {
+    buildPeakBytesPerElement: 865,
+    maskingIncrementBytesPerElement: 157,
+  },
+};
+
+/** This party's own single-pass setup's two charges, in bytes. */
+export interface SinglePassOwnSetupBytes {
+  /** Creating the setup, before the partner's request is read. */
+  buildPeakBytes: number;
+  /** What the setup adds to the masking of the partner's request. */
+  maskingIncrementBytes: number;
+}
+
+/**
+ * The memory this party's own single-pass setup takes on `backend`, in bytes:
+ * where it sends, its own value slots, the most elements its setup can hold,
+ * at {@link SINGLE_PASS_OWN_SETUP_COST}; where it receives, none.
+ */
+export function singlePassOwnSetupBytes(
+  size: SinglePassPartnerSize,
+  backend: PsiBackend,
+): SinglePassOwnSetupBytes {
+  if (size.inboundFrameUse !== "decode")
+    return { buildPeakBytes: 0, maskingIncrementBytes: 0 };
+  const cost = SINGLE_PASS_OWN_SETUP_COST[backend];
+  return {
+    buildPeakBytes: size.localValueSlots * cost.buildPeakBytesPerElement,
+    maskingIncrementBytes:
+      size.localValueSlots * cost.maskingIncrementBytesPerElement,
+  };
 }
 
 /**
  * What a single-pass run does with the partner's declared size at the terms
- * exchange. When reading the partner's PSI frame, a request with the engine's
- * masking of it, or over WebRTC sending this party's own, together with the
- * sender's own setup, can take more memory than is available now
- * ({@link singlePassInboundPeakBytes}, {@link singlePassOutboundPeakBytes},
- * {@link singlePassOwnSetupBytes}),
- * the run is a {@link RoundCapacityError}, or, with `allowShortfall`, a
+ * exchange. Reading the partner's PSI frame, a request with the engine's
+ * masking of it, or over WebRTC sending this party's own, is charged
+ * ({@link singlePassInboundPeakBytes}, {@link singlePassOutboundPeakBytes});
+ * where this party sends, that charge plus what its own setup adds to the
+ * masking, or the setup's creation if larger
+ * ({@link singlePassOwnSetupBytes}, on `psiBackend`). A charge over the memory
+ * available now is a {@link RoundCapacityError}, or, with `allowShortfall`, a
  * warning and the run continues. Every run states the partner's value slots and its worst-case
  * memory and time. `envelopeVersion` is the one the key exchange negotiated,
  * or `undefined` on an unencrypted connection.
@@ -374,6 +417,7 @@ export function checkSinglePassPartnerMemory(params: {
   size: SinglePassPartnerSize;
   encrypted: boolean;
   envelopeVersion: number | undefined;
+  psiBackend: PsiBackend;
   allowShortfall: boolean;
   availableBytes: number;
   log: { warn: (message: string) => void };
@@ -387,28 +431,36 @@ export function checkSinglePassPartnerMemory(params: {
   );
   const outboundBytes = singlePassOutboundPeakBytes(size);
   const partnerShareBytes = Math.max(inboundBytes, outboundBytes);
-  const ownSetupBytes = singlePassOwnSetupBytes(size);
-  const needBytes = partnerShareBytes + ownSetupBytes;
+  const ownSetup = singlePassOwnSetupBytes(size, params.psiBackend);
+  const maskingNeedBytes = partnerShareBytes + ownSetup.maskingIncrementBytes;
+  const buildPeakBinds = ownSetup.buildPeakBytes > maskingNeedBytes;
+  const needBytes = Math.max(maskingNeedBytes, ownSetup.buildPeakBytes);
   if (needBytes > availableBytes) {
+    const what = buildPeakBinds
+      ? `masking your own values to answer your partner's request could take up to ` +
+        `${gigabytes(ownSetup.buildPeakBytes)} of memory`
+      : `${
+          outboundBytes <= inboundBytes
+            ? size.inboundFrameUse === "decode"
+              ? "reading and masking what they send"
+              : "reading what they send"
+            : size.inboundFrameUse === "decode"
+              ? "sending your reply"
+              : "sending your values"
+        } ` +
+        `could take up to ${gigabytes(partnerShareBytes)} of memory` +
+        (ownSetup.maskingIncrementBytes > 0
+          ? `, plus ${gigabytes(ownSetup.maskingIncrementBytes)} for your own ` +
+            `masked values, ` +
+            `${gigabytes(roundedToHundredthGigabyte(partnerShareBytes) + roundedToHundredthGigabyte(ownSetup.maskingIncrementBytes))} in all`
+          : "");
     const sentence =
       `your partner declared ${formatCount(size.partnerRecordCount)} records, ` +
-      `and ${
-        outboundBytes <= inboundBytes
-          ? size.inboundFrameUse === "decode"
-            ? "reading and masking what they send"
-            : "reading what they send"
-          : size.inboundFrameUse === "decode"
-            ? "sending your reply"
-            : "sending your values"
-      } ` +
-      `could take up to ${gigabytes(partnerShareBytes)} of memory` +
-      (ownSetupBytes > 0
-        ? `, plus ${gigabytes(ownSetupBytes)} for your own masked values, ` +
-          `${gigabytes(roundedToHundredthGigabyte(partnerShareBytes) + roundedToHundredthGigabyte(ownSetupBytes))} in all`
-        : "") +
-      `, but this machine has ${gigabytes(availableBytes)} available now`;
-    const split =
-      ownSetupBytes > 0 || outboundBytes > inboundBytes
+      `and ${what}, but this machine has ${gigabytes(availableBytes)} ` +
+      `available now`;
+    const split = buildPeakBinds
+      ? `split your input into smaller files and run one exchange for each`
+      : ownSetup.buildPeakBytes > 0 || outboundBytes > inboundBytes
         ? `split your input, or ask your partner to split theirs, into smaller ` +
           `files and run one exchange for each`
         : `ask your partner to split their input into smaller files and run ` +

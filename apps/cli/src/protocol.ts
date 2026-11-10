@@ -117,6 +117,7 @@ import {
   inboundFrameMemoryCheck,
   psiWorkerHeapNeedBytes,
   readMemory,
+  type PsiBackend,
 } from "./psiMemoryBudget";
 import {
   createPsiEngine,
@@ -417,6 +418,7 @@ async function runExchangeStage(params: {
   channel: ProtocolConnectionConfig["channel"];
   prepared: PreparedExchange;
   psiLibrary: Awaited<ReturnType<typeof loadCliPsiBackend>>["library"];
+  psiBackend: PsiBackend;
   verbosity: number;
   saveIntent: boolean | undefined;
   signing: SigningPersist | null;
@@ -443,6 +445,7 @@ async function runExchangeStage(params: {
     channel,
     prepared,
     psiLibrary,
+    psiBackend,
     verbosity,
     saveIntent,
     signing,
@@ -500,7 +503,7 @@ async function runExchangeStage(params: {
       // liveness timers. Falls back to in-process when
       // the bundled worker is absent (dev / tests); see createPsiEngine.
       psiEngineFactory: (role, id, mode) =>
-        createPsiEngine(psiLibrary, role, id, mode, {
+        createPsiEngine(psiLibrary, psiBackend, role, id, mode, {
           heapBytes: psiWorkerHeapBytes,
           frameMemoryCheck: psiFrameMemoryCheck,
         }),
@@ -665,6 +668,7 @@ async function runExchangeStage(params: {
           size,
           encrypted: run.secure !== undefined,
           envelopeVersion: run.secure?.envelopeVersion,
+          psiBackend,
           allowShortfall: allowMemoryShortfall,
           availableBytes: process.availableMemory(),
           log,
@@ -2622,6 +2626,7 @@ export async function runProtocol(
       channel: connection.channel,
       prepared,
       psiLibrary,
+      psiBackend,
       verbosity,
       saveIntent,
       signing,
