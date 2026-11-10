@@ -580,8 +580,7 @@ can tell. The next visit and the notification say to check with the partner
 which version each runs, and that whoever runs the older one updates it. The run
 history states the same uncertain disclosure line as above.
 
-A partner whose run stopped as matching started is a state of its own, since
-nothing shows which party runs the older version, or that either does: the run
+A partner whose run stopped as matching started is a state of its own: the run
 screen, the next visit, and the notification say that the partner's run stopped,
 and to make sure you both run the current version of Alcove, then run the
 exchange again. No retry is offered, and the run history states the same
