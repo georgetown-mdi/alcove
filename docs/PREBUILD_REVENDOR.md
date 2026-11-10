@@ -44,11 +44,15 @@ whichever way the switch is set. Turning verification off is therefore a visible
 `true` -> `false` edit in a tracked file, not a deletion that looks like nothing.
 
 Arming requires the producing workflow to attest the artifact. The fork's
-`native-prebuilds.yml` does: its `package` job runs
-`actions/attest-build-provenance` under `id-token: write` and
-`attestations: write`, ahead of the artifact upload, so a tarball is published
-only once its provenance was signed. A tarball packed by a run older than that
-step has nothing to verify, and its marker stays disarmed.
+`native-prebuilds.yml` does: its `attest` job, which runs only on
+`workflow_dispatch`, checks the tarball against the sha256 the `package` job
+recorded, runs `actions/attest-build-provenance` under `id-token: write` and
+`attestations: write`, and only then uploads it as `openmined-psi-tarball`.
+Every run, a scheduled one included, also uploads the same tarball unattested
+as `packed-tarball` for its validation jobs; that artifact has no provenance
+to verify, so revendor from `openmined-psi-tarball`. A tarball packed by a run
+that predates attestation in that workflow has nothing to verify, and its
+marker stays disarmed.
 
 ## Procedure
 
