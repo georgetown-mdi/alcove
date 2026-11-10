@@ -111,6 +111,10 @@ export interface ConsoleJobApiOptions {
   configStatus?: number;
   /** The job the console's single slot holds, and its status. */
   occupant?: { id: string; status: string };
+  /** Answers to further requests, keyed by method and URL as the client sends
+   * them (`"POST /api/jobs/inputs/samples"`), checked before every other
+   * answer; an unset status is 200. */
+  routes?: Record<string, { status?: number; body?: unknown }>;
 }
 
 /** A request the stubbed job API received. */
@@ -191,6 +195,11 @@ export function stubConsoleJobApi(
   }
 
   function answer(url: string, method: string, body?: string): Response {
+    const route = options.routes?.[`${method} ${url}`];
+    if (route !== undefined)
+      return route.body === undefined
+        ? new Response(null, { status: route.status ?? 200 })
+        : jsonResponse(route.body, route.status ?? 200);
     if (url === "/api/jobs/inputs")
       return options.inputsStatus !== undefined
         ? new Response(null, { status: options.inputsStatus })

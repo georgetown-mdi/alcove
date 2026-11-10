@@ -365,7 +365,7 @@ function renderListing(
                       aria-label={`Use ${displayName}`}
                       onClick={() => actions.onSelect(entry.name)}
                     >
-                      Use this file
+                      Use
                     </Button>
                   )}
                 </Table.Td>

@@ -497,6 +497,7 @@ export function ReceiptsCard({
               color="secondary"
               icon={<IconInfoCircle aria-hidden />}
               title="About your signing identity"
+              classNames={{ body: styles.wrapLongText }}
             >
               <Text size="sm">{regenerationNotice.message}</Text>
               <WorkingFolderCommandLines
@@ -554,6 +555,7 @@ export function ReceiptsCard({
             color="warn"
             icon={<IconAlertTriangle aria-hidden />}
             title="Before you start this run"
+            classNames={{ body: styles.wrapLongText }}
           >
             <ul>
               {warnings.map((advisory) => (
@@ -576,6 +578,7 @@ export function ReceiptsCard({
             color="info"
             icon={<IconInfoCircle aria-hidden />}
             title="Where your signing key and receipt are kept"
+            classNames={{ body: styles.wrapLongText }}
           >
             <ul>
               {notices.map((advisory) => (

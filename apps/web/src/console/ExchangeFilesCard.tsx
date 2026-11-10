@@ -11,6 +11,7 @@ import {
 import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 
 import { MAX_PEER_ID_LENGTH } from "@jobContract/intentSchemas";
+import styles from "@styles/app.module.css";
 
 import { DisclosureSection } from "../components/DisclosureSection";
 
@@ -127,6 +128,7 @@ export function ExchangeFilesCard({
             color="info"
             icon={<IconInfoCircle aria-hidden />}
             title="Both sides must set this"
+            classNames={{ body: styles.wrapLongText }}
           >
             {RETAIN_MODE_BILATERAL_NOTICE}
           </Alert>
@@ -238,6 +240,7 @@ export function ExchangeFilesCard({
             color="error"
             icon={<IconAlertTriangle aria-hidden />}
             title="These settings cannot be used together"
+            classNames={{ body: styles.wrapLongText }}
           >
             <ul>
               {problems.map((problem) => (

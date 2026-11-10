@@ -1105,6 +1105,7 @@ export function RunWarningsAlert({
               : "The exchange reported warnings"
           }
           role="presentation"
+          classNames={{ body: styles.wrapLongText }}
           mb="md"
         >
           {warnings.map((message, index) => (
