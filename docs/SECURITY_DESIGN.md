@@ -405,7 +405,7 @@ For the app's own code, the property holds by design and review. No first-party 
 
 Against an injected in-origin script the property is not mechanically enforceable, and no Content-Security-Policy `connect-src` allowlist ships. Such a list would govern programmatic non-WebRTC egress (`fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, beacons). No version of it is worth shipping:
 
-- **No policy closes the WebRTC route.** No CSP directive governs STUN/TURN hosts or peers, so an in-origin script could open its own peer connection, through any TURN relay, and send data over a data channel whatever `connect-src` says.
+- **No usable policy closes the WebRTC route.** No CSP directive can allowlist STUN/TURN hosts or peers, and blocking WebRTC outright would stop the app's own exchanges, so an in-origin script could open its own peer connection, through any TURN relay, and send data over a data channel whatever `connect-src` says.
 - **A strict list breaks partner-named servers.** An accepting browser dials the coordination server and WebSocket relays its invitation names, and an inviting browser those its exchange's Connection settings name ([WEB_APP.md](WEB_APP.md#connection-settings)); a saved exchange enrolls at the relay registrar its operator chooses. None of these is known when the app is built, so a list fixed then refuses those exchanges.
 - **A permissive list blocks only plain-text hosts.** A list admitting every `https:` and `wss:` host keeps those exchanges working and leaves an injected script every encrypted destination.
 

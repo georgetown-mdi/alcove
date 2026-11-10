@@ -1,13 +1,18 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 
 import { chromium } from "playwright";
 
+import { CSV_WORKER_FILE_BYTE_THRESHOLD } from "@psi/workers/csvParseController";
+import { NON_EMPTY_WORKER_ROW_THRESHOLD } from "@psi/workers/nonEmptyAggregate";
 import { contentSecurityPolicy } from "@utils/securityHeaders";
 
 import { CSP_REPORT_PATH, startStaticHost } from "../staticHost/server.js";
 import { browserDisableFeaturesSwitch } from "../../vite.config.ts";
+import { serviceWorkerStringArray } from "../utils/serviceWorkerHarness";
 import { startStandaloneBroker } from "../utils/standaloneBroker.ts";
 
 import { hasHostedBuild, hostedOutput, webRoot } from "./prodServer.js";
@@ -18,11 +23,12 @@ import type { StaticHost } from "../staticHost/server.js";
 
 // The hosted production build, served with the Content-Security-Policy its
 // `_headers` sends, runs a whole exchange between two browser parties in real
-// Chromium, and the browser reports no violation of that policy from either
-// page or any worker they start. The host adds only a report endpoint to the
-// policy. The inviter names a standalone broker under Connection settings, so
-// the build's own coordination server is never dialled. Rebuild
-// (`npm run build -w apps/web`) before re-running; CI always rebuilds first.
+// Chromium, loads every route document, and starts each of its three workers,
+// and the browser reports no violation of that policy from any page or worker.
+// The host adds only a report endpoint to the policy. The inviter names a
+// standalone broker under Connection settings, so the build's own coordination
+// server is never dialled. Rebuild (`npm run build -w apps/web`) before
+// re-running; CI always rebuilds first.
 
 const SETUP_TIMEOUT_MS = 60_000;
 // The bundle fetch, a CSV parse, and the invitation mint.
@@ -43,6 +49,34 @@ const inviterFile = resolve(webRoot, "../../test_data/fake_data_1.csv");
 const acceptorFile = resolve(webRoot, "../../test_data/fake_data_2.csv");
 
 const POLICY_MESSAGE = /Content[- ]Security[- ]Policy/i;
+
+/** Every route document the build writes, a record id in place of the
+ * parameter route's placeholder, and a path only the fallback answers. */
+const routeDocuments = [
+  ...serviceWorkerStringArray("SHELL_ROUTES").map((route) =>
+    route.replace(/\/_$/, "/abc123"),
+  ),
+  "/not-a-route/deeper",
+];
+
+const OFF_THREAD_CSV_NAME = "off-thread.csv";
+
+/** Write the smallest CSV that both parses off the page (one byte over
+ * CSV_WORKER_FILE_BYTE_THRESHOLD) and has its coverage swept off the page
+ * (over NON_EMPTY_WORKER_ROW_THRESHOLD rows), and return its path. */
+function writeOffThreadCsv(dir: string): string {
+  const header = "ssn,first_name,last_name,dob\n";
+  const row = "123456789,Alice,Smith,1990-01-02\n";
+  const rows = Math.max(
+    Math.ceil(
+      (CSV_WORKER_FILE_BYTE_THRESHOLD + 1 - header.length) / row.length,
+    ),
+    NON_EMPTY_WORKER_ROW_THRESHOLD + 1,
+  );
+  const path = join(dir, OFF_THREAD_CSV_NAME);
+  writeFileSync(path, header + row.repeat(rows));
+  return path;
+}
 
 /** Record every browser message naming the policy, from `page` and from each
  * worker it starts. */
@@ -109,6 +143,7 @@ describe.skipIf(!hasHostedBuild)(
         if (host === undefined || broker === undefined || browser === undefined)
           throw new Error("setup did not finish");
         const base = host.origin;
+        const reportsBefore = host.cspReports.length;
         const messages: Array<string> = [];
 
         const document = await fetch(`${base}/exchange`);
@@ -199,7 +234,7 @@ describe.skipIf(!hasHostedBuild)(
           throw new Error(
             `${error instanceof Error ? error.message : String(error)}\n` +
               `policy violations reported: ${JSON.stringify(
-                [...host.cspReports, ...messages],
+                [...host.cspReports.slice(reportsBefore), ...messages],
                 null,
                 2,
               )}`,
@@ -210,10 +245,71 @@ describe.skipIf(!hasHostedBuild)(
           await acceptorContext.close();
         }
 
-        expect(host.cspReports).toEqual([]);
+        expect(host.cspReports.slice(reportsBefore)).toEqual([]);
         expect(messages).toEqual([]);
       },
       SETUP_TIMEOUT_MS + LOAD_TIMEOUT_MS * 6 + EXCHANGE_TIMEOUT_MS * 2,
+    );
+
+    test(
+      "loads every route document and starts the CSV workers with no policy violation reported",
+      async () => {
+        if (host === undefined || browser === undefined)
+          throw new Error("setup did not finish");
+        const reportsBefore = host.cspReports.length;
+        const messages: Array<string> = [];
+        const workerUrls: Array<string> = [];
+        const context = await browser.newContext();
+        const tempDir = mkdtempSync(join(tmpdir(), "alcove-csp-workers-"));
+        try {
+          const page = await context.newPage();
+          recordPolicyMessages(page, "visitor", messages);
+          page.on("worker", (worker) => workerUrls.push(worker.url()));
+          for (const route of routeDocuments) {
+            await page.goto(`${host.origin}${route}`, {
+              waitUntil: "load",
+              timeout: LOAD_TIMEOUT_MS,
+            });
+            await page.locator("h1").first().waitFor({
+              timeout: LOAD_TIMEOUT_MS,
+            });
+          }
+
+          await page.goto(`${host.origin}/exchange`, {
+            waitUntil: "load",
+            timeout: LOAD_TIMEOUT_MS,
+          });
+          await chooseFile(page, "Your data file", writeOffThreadCsv(tempDir));
+          await page
+            .getByText(OFF_THREAD_CSV_NAME)
+            .first()
+            .waitFor({ timeout: LOAD_TIMEOUT_MS });
+          await page
+            .getByLabel("Your name")
+            .fill("Worker Check", { timeout: ACTION_TIMEOUT_MS });
+          await page
+            .getByRole("button", { name: "Continue to matching & sharing" })
+            .click({ timeout: STEP_TIMEOUT_MS });
+          await vi.waitFor(
+            () => {
+              for (const name of [
+                "csvParse.worker",
+                "nonEmptyAggregate.worker",
+              ])
+                expect(workerUrls.some((url) => url.includes(name))).toBe(true);
+            },
+            { timeout: LOAD_TIMEOUT_MS, interval: 200 },
+          );
+          await page.waitForTimeout(REPORT_SETTLE_MS);
+        } finally {
+          await context.close();
+          rmSync(tempDir, { recursive: true, force: true });
+        }
+
+        expect(host.cspReports.slice(reportsBefore)).toEqual([]);
+        expect(messages).toEqual([]);
+      },
+      LOAD_TIMEOUT_MS * (routeDocuments.length * 2 + 6) + HYDRATION_TIMEOUT_MS,
     );
   },
 );

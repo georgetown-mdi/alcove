@@ -11,15 +11,12 @@ A `connect-src` allowlist was weighed and set aside; the reasons are in [SECURIT
 
 ## The shipped policy
 
-```text
-frame-ancestors 'none';
-script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-8ORoeP7ZoOX1k3ePKBnNzdoHYjwUvC86o4oRkUWMb9Y=';
-object-src 'none';
-base-uri 'none'
-```
+- `frame-ancestors 'none'`
+- `script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'` and one `sha256-` hash source, which admits the inline color-scheme script every document's head holds (`apps/web/src/utils/colorSchemeScript.ts`)
+- `object-src 'none'`
+- `base-uri 'none'`
 
-Sent as one header line; it is stated once, in `apps/web/src/utils/securityHeaders.ts`.
-The hash is that of the color-scheme script every document's head holds (`apps/web/src/utils/colorSchemeScript.ts`).
+The value, hash included, is stated once, in `apps/web/src/utils/securityHeaders.ts`.
 What each directive does and why `'unsafe-eval'` is there: [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#the-shipped-script-policy).
 
 ## How it was measured
@@ -76,5 +73,5 @@ No worker is created from a `blob:` URL: the three workers load from `/assets/`,
 ## The checks that hold it
 
 - `apps/web/test/unit/utils/securityHeaders.test.ts` pins the policy and recomputes the hash from the script's source.
-- `apps/web/test/integration/contentSecurityPolicyExchange.test.ts` runs the exchange above against the built site and fails on any report or console message naming the policy.
+- `apps/web/test/integration/contentSecurityPolicyExchange.test.ts` runs the exchange and the sweep above against the built site, choosing a generated CSV just large enough to start the CSV-parse and non-empty-aggregate workers, and fails on any report or console message naming the policy.
 - `apps/web/test/integration/securityHeaders.test.ts` and `apiNamespace.test.ts` hold the header on the wire from the static host and the console server.
