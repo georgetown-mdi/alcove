@@ -32,14 +32,14 @@ Exclude this session and the previous retro's from every process measure.
 
 No judgment here; bare scripts, or one Sonnet spawn where a script is not yet a kit step.
 
-- The kit's four steps over both stores into `D/R1/` (`.claude/scripts/README.md`, `retro/`), then the trend table against the baseline:
+- The kit's four steps over both stores into `D/R1/`, its follow-up step `followups.mjs` into `D/R1/` and into the baseline's directory if it has no `followups.json`, then its trend step `trend.mjs --baseline <the baseline's R1/> --current D/R1/`, with `--review-day` when the review-day reader has written its output (`.claude/scripts/README.md`, `retro/`):
   per-day beside per-PR, the fixed size cuts 65 / 451 / 1,203 changed lines, a bootstrap interval over days on every ratio, and a row called moved only when 1.0 lies outside it.
   Rows: spend per day; merged PRs per day; cost per merged PR, standardized to the baseline's size mix; owner turns per day and per PR; main-session cost per PR; review apparatus plus fix implementers per PR; majors per lens round and the verifier's refuted share; compactions manual and auto, and owner turns on compaction; implementer runs with peak context over 500k; follow-ups per 100 merged PRs, planned and unplanned, leaving out PRs titled Bump and links made only through package manifests or image pins; docket count, owner turns and share; the review day's dollars per unit by lens and its escape count; the audit day's problems found and fixed.
-  Until the kit has a trend step, scout A (Step 3) builds the table from the 2026-11-06 retro's scripts: `scratch/retro-review-2026-11-06/R2/`, `scratch/retro-review-2026-11-06/S7/compare.mjs` and `scratch/retro-review-2026-11-06/F1/`.
+  The step prints a row it cannot measure as not measured with its reason; when the reason is that the baseline's output predates an input, re-run the kit's steps over the baseline window into its directory first.
 - `node scripts/check-expiry-dates.mjs --expiring-before <the retro after this one>`: each entry it lists is a renewal or a deletion, per its header, filed below.
 - The ledger quartiles against the thresholds `review-round.md` quotes: a re-fit is filed only when a quartile moved more than 20%.
-- Parked triggers: the retro re-tests them itself.
-  On each of boards 9 and 10, every trigger `node .claude/scripts/list-issues.mjs --parked <N>` lists is answered, and each answer is acted on as `.claude/pm/ruleset.md`, Task template, states.
+- Parked triggers: the shortlist's listing step re-tests each trigger a command answers.
+  Run `node .claude/scripts/parked-triggers.mjs 9 10` once; each trigger it prints as cannot answer is rewritten, and each fired one is unparked, in the filing below.
 - Agent-memory notes written or changed since the cut, in the container store and the host folder: each is a repository rule, an owner preference or a host-local fact.
   A rule names the repo file that binds its reader and is moved there, as `CLAUDE.md`, Boards and PM, requires; the store keeps only owner preferences and host-local facts.
 - Commands, skills, hooks and scripts added since the cut, and their uses in the transcripts; one with no real use in two retros is proposed for retirement.
@@ -53,7 +53,6 @@ read-only outside `D/<id>/`; full coverage where a script can do it and a stated
 Spawn them in one message, each with a literal model and a cost cap on the agent; hold a spawn while the load average is above about eight.
 
 - A, rulings and the trend table (Opus, cap $6): for each ruling of the previous retro that states a number, met, missed or inconclusive, read by mechanism and within the fixed size cuts, never by the aggregate alone; each moved row of the trend table with its cause named or marked unexplained.
-  Until the kit has a trend step, A first builds the table from the scripts Step 2 names.
 - B, owner turns (Opus, cap $8): every owner turn in both stores, classified; first a 20-item re-label of the baseline's labelled corrections, agreement reported; each correction cluster counted against the baseline its rule was written for; the docket's count, turns and rulings that differed from the recommendation.
   A rule whose cluster did not shrink is named for revision or deletion.
 - C, landings (Sonnet, cap $4): each item the previous retro filed, its delivering PR and each criterion against the tree, met, partly or not.

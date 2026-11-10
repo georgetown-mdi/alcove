@@ -87,6 +87,48 @@ function input(extra = {}) {
   };
 }
 
+describe("implementer peak context", () => {
+  it("reports an implementer run whose peak passed 500k and not one under it", () => {
+    const out = analyze(
+      input({
+        agents: [
+          agent({
+            id: "agent-over",
+            agentType: "implementer",
+            desc: "Build stage 2",
+            peakCtx: 859000,
+            callsOver300k: 300,
+            callsOver500k: 220,
+            cost: 50,
+          }),
+          agent({
+            id: "agent-under",
+            agentType: "implementer",
+            peakCtx: 499999,
+          }),
+          agent({
+            id: "agent-reviewer",
+            agentType: "ux-reviewer",
+            peakCtx: 700000,
+          }),
+        ],
+      }),
+    );
+    expect(out.implementers.peakOver500k).toEqual([
+      {
+        session: "s1",
+        id: "agent-over",
+        desc: "Build stage 2",
+        peakCtx: 859000,
+        callsOver300k: 300,
+        callsOver500k: 220,
+        calls: 10,
+        usd: 50,
+      },
+    ]);
+  });
+});
+
 describe("analyze", () => {
   it("measures the review apparatus and the implementers", () => {
     const out = analyze(input());

@@ -9,6 +9,8 @@ push:
   `lib/stubbedBoardRun.mjs` runs one of them as a child process against the
   GraphQL stand-in in `lib/graphqlFetchStub.mjs`, so a suite asserts its exit
   code and output offline
+- `parked-triggers.mjs`, run by the shortlist's listing step: it re-tests
+  each parked item's trigger a board read or command answers
 - `find-rulings.mjs`, run before a Decision item is filed or docketed: it
   searches both boards in every status, the docs and rules at
   `origin/staging`, the staging log, and `scratch/` for a standing owner
@@ -103,12 +105,14 @@ push:
   with `pricing.json` (list rates, whose source and date its `_source`
   states) into spend by model, store, component and day; `map.mjs` attributes
   that spend to the window's pull requests; `analyze.mjs` measures the review
-  apparatus, implementers and session length over it. Every input -- store
+  apparatus, implementers and session length over it; `followups.mjs` finds
+  the window's follow-up PRs from git blame; `trend.mjs` compares the window
+  with a baseline window's output, row by row. Every input -- store
   paths, window bounds, PR range, output directory -- is an argument, and
   each script states its own in its header. The transcript parsing rules are
   in `aggregate.mjs`'s header, each with a synthetic fixture in
   `aggregate.test.mjs` built by `transcriptFixtures.mjs`. One window, two
-  stores:
+  stores, compared with a baseline directory the same steps wrote:
 
   ```sh
   node .claude/scripts/retro/aggregate.mjs --store <a> --cut <iso> --end <iso> \
@@ -117,6 +121,9 @@ push:
   node .claude/scripts/retro/cost.mjs --out-dir <dir> <dir>/<a>.json <dir>/<b>.json
   node .claude/scripts/retro/map.mjs --dir <dir> --prs <prs.json> --pr-range <lo-hi>
   node .claude/scripts/retro/analyze.mjs --dir <dir>
+  node .claude/scripts/retro/followups.mjs --repo . --ref origin/staging \
+    --pr-range <lo-hi> --prs <bodies.json> --dir <dir>
+  node .claude/scripts/retro/trend.mjs --baseline <baseline dir> --current <dir>
   ```
 
   `analyze.mjs --call-index` reads a per-store table whose shape its header

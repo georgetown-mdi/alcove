@@ -41,6 +41,16 @@
 //   - An owner turn is a main-session user entry that is not a tool result,
 //     sidechain or meta entry, classified by `ownerKind`; `userTurns` counts
 //     the typed, command and interrupt kinds.
+//   - A slash command typed with arguments is logged twice, as the command
+//     entry and as typed text starting with the command's name. The second of
+//     such a pair within 3 s is kind `command-twin`, so the pair counts once.
+//   - A window call's context (input plus cache reads and writes) sets the
+//     file's `ctxPeak` and counts toward `callsOver300k` and `callsOver500k`.
+//   - A `compact_boundary` system entry counts in `compactByDay` under its
+//     `compactMetadata.trigger` (`manual`, `auto`, else `unknown`). Its
+//     `ownerTurns` are the owner turns on compaction: each `/compact...`
+//     command, and the first owner turn after a boundary when it is a command
+//     (the resume).
 //   - A tool result's text is classified as a denial by `classifyDenial`.
 //   - A PR mention is `PR N`, `pull/N` or `#N`, four digits, in user text that
 //     is not a tool result.
@@ -63,6 +73,8 @@ const USAGE =
   "         [--exclude SESSION]... [--only SESSION]... (--root DIR | PROJECT_DIR)...\n";
 
 const USAGE_FIELDS = ["in", "out", "cacheRead", "cache5m", "cache1h"];
+
+const TWIN_MS = 3000;
 
 /**
  * Parse the aggregate step's arguments. Returns `{ ok: true, options }` or
@@ -238,7 +250,15 @@ export function ownerKind(txt, e) {
 }
 
 async function scanFile(file, rec, isSub, run) {
-  const state = { rec, isSub, run, seenMsg: new Map(), firstPrompt: null };
+  const state = {
+    rec,
+    isSub,
+    run,
+    seenMsg: new Map(),
+    firstPrompt: null,
+    lastOwner: null,
+    afterCompact: false,
+  };
   for await (const lines of fileLineBatches(file)) {
     for (const line of lines) scanLine(line, state);
   }
@@ -273,6 +293,12 @@ function scanLine(line, state) {
     rec.branches[e.gitBranch] = (rec.branches[e.gitBranch] || 0) + 1;
   }
   if (e.type === "summary" || e.isCompactSummary) rec.compactions++;
+  if (e.type === "system" && e.subtype === "compact_boundary" && inWin) {
+    const trigger = e.compactMetadata?.trigger;
+    const k = trigger === "manual" || trigger === "auto" ? trigger : "unknown";
+    compactDay(rec, e.timestamp)[k]++;
+    state.afterCompact = true;
+  }
   if (e.isApiErrorMessage) rec.apiErrors++;
   const side = isSub ? false : !!e.isSidechain;
   if (isSub && state.firstPrompt === null && e.type === "user" && e.message) {
@@ -281,8 +307,38 @@ function scanLine(line, state) {
   if (e.type === "assistant" && e.message) {
     scanAssistant(e, rec, side, inWin, seenMsg, run);
   } else if (e.type === "user" && e.message && inWin) {
-    scanUser(e, rec, side, isSub, run);
+    scanUser(e, state, side);
   }
+}
+
+function compactDay(rec, ts) {
+  const day = ts.slice(0, 10);
+  return (
+    rec.compactByDay[day] ||
+    (rec.compactByDay[day] = { manual: 0, auto: 0, unknown: 0, ownerTurns: 0 })
+  );
+}
+
+const commandNameOf = (txt) => {
+  const m = txt.match(/<command-name>([^<]+)<\/command-name>/);
+  if (!m) return null;
+  const name = m[1].trim();
+  return name.startsWith("/") ? name : "/" + name;
+};
+
+// One entry of a pair is the command, the other typed text that starts with
+// the command's name as a whole word.
+function isCommandTwin(prev, cur) {
+  if (cur.ms - prev.ms >= TWIN_MS) return false;
+  const [cmd, typed] =
+    prev.kind === "command" && cur.kind === "typed"
+      ? [prev, cur]
+      : prev.kind === "typed" && cur.kind === "command"
+        ? [cur, prev]
+        : [];
+  if (!cmd?.name) return false;
+  const text = typed.txt.trimStart();
+  return text.startsWith(cmd.name) && !/\S/.test(text.charAt(cmd.name.length));
 }
 
 function scanAssistant(e, rec, side, inWin, seenMsg, run) {
@@ -299,6 +355,10 @@ function scanAssistant(e, rec, side, inWin, seenMsg, run) {
     const dup = run.globalSeen.has(gkey);
     run.globalSeen.add(gkey);
     if (inWin) {
+      const ctx = v.in + v.cacheRead + v.cache5m + v.cache1h;
+      if (ctx > rec.ctxPeak) rec.ctxPeak = ctx;
+      if (ctx > 300000) rec.callsOver300k++;
+      if (ctx > 500000) rec.callsOver500k++;
       counted.buckets.push(side ? rec.usageSidechainWin : rec.usageWin);
       if (dup) counted.buckets.push(rec.dupWin);
       const day = e.timestamp.slice(0, 10);
@@ -340,7 +400,8 @@ function scanAssistant(e, rec, side, inWin, seenMsg, run) {
   }
 }
 
-function scanUser(e, rec, side, isSub, run) {
+function scanUser(e, state, side) {
+  const { rec, isSub, run } = state;
   const c = e.message.content;
   const isToolResult =
     Array.isArray(c) && c.some((b) => b && b.type === "tool_result");
@@ -370,16 +431,32 @@ function scanUser(e, rec, side, isSub, run) {
       }
     }
   } else if (!side && !isSub && !e.isMeta) {
-    const k = ownerKind(txt, e);
+    let k = ownerKind(txt, e);
+    const name = k === "command" ? commandNameOf(txt) : null;
+    if (k === "command" || k === "typed") {
+      const cur = { kind: k, ms: Date.parse(e.timestamp), txt, name };
+      if (state.lastOwner && isCommandTwin(state.lastOwner, cur)) {
+        k = "command-twin";
+        state.lastOwner = null;
+      } else {
+        state.lastOwner = cur;
+      }
+    }
     const day = e.timestamp.slice(0, 10);
     const d = rec.ownerByDay[day] || (rec.ownerByDay[day] = {});
     d[k] = (d[k] || 0) + 1;
     if (k === "typed" || k === "command" || k === "interrupt") rec.userTurns++;
     if (k === "interrupt") rec.interrupts++;
     const cmd = txt.match(/<command-name>([^<]+)<\/command-name>/);
-    if (cmd) {
-      const name = cmd[1].trim();
-      rec.commands[name] = (rec.commands[name] || 0) + 1;
+    if (k === "command" && cmd) {
+      const raw = cmd[1].trim();
+      rec.commands[raw] = (rec.commands[raw] || 0) + 1;
+    }
+    if (k === "command" && name?.startsWith("/compact")) {
+      compactDay(rec, e.timestamp).ownerTurns++;
+    } else if (state.afterCompact && (k === "typed" || k === "command")) {
+      if (k === "command") compactDay(rec, e.timestamp).ownerTurns++;
+      state.afterCompact = false;
     }
   }
   if (!isToolResult) {
@@ -409,6 +486,10 @@ function newRec(id, kind, projectDir) {
     interrupts: 0,
     streamRepeatsChanged: 0,
     compactions: 0,
+    compactByDay: {},
+    ctxPeak: 0,
+    callsOver300k: 0,
+    callsOver500k: 0,
     apiErrors: 0,
     toolErrors: 0,
     parseErrors: 0,

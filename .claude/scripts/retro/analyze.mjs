@@ -3,9 +3,10 @@
 // Step 4 of the retro spend kit: measures over the files cost.mjs and map.mjs
 // wrote to --dir -- the review apparatus (review-round lens and role agents,
 // direct role subagents, panel, fix implementers), implementer runs and cost
-// by model, main sessions over and up to 150 calls, owner turns per day and
-// store, the top sessions, method D cost by PR size band, and the harness tax
-// of reading CLAUDE.md from cache on every call. Writes analysis.json to --dir.
+// by model and the runs whose peak context passed 500k, main sessions over and
+// up to 150 calls, owner turns per day and store, the top sessions, method D
+// cost by PR size band, and the harness tax of reading CLAUDE.md from cache on
+// every call. Writes analysis.json to --dir.
 //
 // Usage:
 //   node analyze.mjs --dir DIR [--pricing FILE] [--call-index FILE]...
@@ -66,29 +67,38 @@ const quantile = (arr, p) => {
   return a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : null;
 };
 
-function review(agents, grand) {
-  const lr = agents.filter(
-    (a) => a.kind === "workflow-agent" && REVIEW_ROUND_WF_NAMES.has(a.wfName),
+const isReviewRoundAgent = (a) =>
+  a.kind === "workflow-agent" && REVIEW_ROUND_WF_NAMES.has(a.wfName);
+const isDirectRoleAgent = (a) =>
+  a.kind === "subagent" &&
+  ["security-reviewer", "adversarial-verifier", "ux-reviewer"].includes(
+    a.agentType,
   );
+const isFixImplementer = (a) =>
+  a.agentType === "implementer" &&
+  /fix|address|finding|round|narrow|contest/i.test(a.desc);
+
+/**
+ * Whether an agents.json row is part of the review apparatus (a review-round
+ * agent or a direct role subagent) or a fix implementer.
+ */
+export const isApparatusOrFix = (a) =>
+  isReviewRoundAgent(a) || isDirectRoleAgent(a) || isFixImplementer(a);
+
+/** An implementer run's peak context past which it is reported. */
+export const PEAK_CTX_REPORTED = 500000;
+
+function review(agents, grand) {
+  const lr = agents.filter(isReviewRoundAgent);
   const role = lr.filter(
     (a) =>
       a.agentType === "security-reviewer" ||
       a.agentType === "adversarial-verifier",
   );
   const lens = lr.filter((a) => !role.includes(a));
-  const directRole = agents.filter(
-    (a) =>
-      a.kind === "subagent" &&
-      ["security-reviewer", "adversarial-verifier", "ux-reviewer"].includes(
-        a.agentType,
-      ),
-  );
+  const directRole = agents.filter(isDirectRoleAgent);
   const panel = agents.filter((a) => a.wfName === "panel");
-  const reviewFix = agents.filter(
-    (a) =>
-      a.agentType === "implementer" &&
-      /fix|address|finding|round|narrow|contest/i.test(a.desc),
-  );
+  const reviewFix = agents.filter(isFixImplementer);
   const lrRuns = new Set(lr.map((a) => a.session + "/" + a.wf));
   const roleRuns = new Set(role.map((a) => a.session + "/" + a.wf));
   const costs = (list) => sum(list.map((a) => a.cost));
@@ -159,6 +169,18 @@ function implementers(agents, sessions, reviewFix, grand) {
       n: reviewFix.length,
       usd: r2(sum(reviewFix.map((a) => a.cost))),
     },
+    peakOver500k: imp
+      .filter((a) => a.peakCtx > PEAK_CTX_REPORTED)
+      .map((a) => ({
+        session: a.session.slice(0, 8),
+        id: a.id,
+        desc: a.desc,
+        peakCtx: a.peakCtx,
+        callsOver300k: a.callsOver300k,
+        callsOver500k: a.callsOver500k,
+        calls: a.calls,
+        usd: a.cost,
+      })),
   };
   const opus55 = imp.filter((a) => a.model === "claude-opus-5-5");
   out.opus55FirstTs = opus55.map((a) => a.firstTs).sort()[0] || null;
