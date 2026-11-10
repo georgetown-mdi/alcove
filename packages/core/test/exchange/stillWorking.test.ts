@@ -199,6 +199,20 @@ describe("sending", () => {
     expect(sent).toHaveLength(4);
   });
 
+  test("every still-working frame a party sends is exactly the bare frame, with no progress figure", async () => {
+    vi.useFakeTimers();
+    const { conn, sent } = recordingConnection();
+    const layer = layerOver(conn);
+
+    layer.start();
+    await vi.advanceTimersByTimeAsync(3 * STILL_WORKING_INTERVAL_MS);
+    expect(sent).toHaveLength(4);
+    expect(sent.map((frame) => JSON.stringify(frame))).toStrictEqual(
+      Array(4).fill('{"working":true}'),
+    );
+    await layer.endPhase();
+  });
+
   test("a party sends no still-working frame once its PSI phase ends", async () => {
     vi.useFakeTimers();
     const { conn, sent } = recordingConnection();
@@ -434,6 +448,7 @@ describe("still-working frames outside the PSI phase", () => {
   test.each([
     ["a false flag", { working: false }],
     ["an added key", { working: true, round: 1 }],
+    ["an added key beside a figure", { working: true, percent: 57, round: 1 }],
   ])(
     "a still-working frame with %s is a protocol error",
     async (_label, frame) => {
@@ -464,6 +479,75 @@ describe("still-working frames outside the PSI phase", () => {
       },
     };
     await expect(receiveAfterTerms(local, schema)).rejects.toThrow();
+  });
+});
+
+describe("the progress figure on a received still-working frame", () => {
+  const keying = {
+    sessionKey: new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>,
+    negotiated: { kex: 3, protocol: 1, envelope: SINGLE_CALL_ENVELOPE_VERSION },
+  };
+
+  // The in-memory pipe hands the partner's object over as is; the encrypted
+  // pair puts it through JSON, which writes NaN as null.
+  const transports: Array<
+    [string, () => Promise<[MessageConnection, MessageConnection]>]
+  > = [
+    [
+      "an in-memory pipe",
+      () => Promise.resolve(createMessagePipe({ stillWorkingFrames: true })),
+    ],
+    [
+      "an encrypted connection",
+      async () => {
+        const [rawA, rawB] = createMessagePipe({ stillWorkingFrames: true });
+        return Promise.all([
+          EncryptedMessageConnection.create(rawA, keying, "initiator"),
+          EncryptedMessageConnection.create(rawB, keying, "responder"),
+        ]);
+      },
+    ],
+  ];
+
+  describe.each(transports)("over %s", (_label, pairOf) => {
+    test.each([
+      ["no figure", STILL_WORKING_FRAME],
+      ["a figure of 0", { working: true, percent: 0 }],
+      ["a figure of 57", { working: true, percent: 57 }],
+      ["a figure of 100", { working: true, percent: 100 }],
+      ["the figure first", { percent: 57, working: true }],
+    ])("a still-working frame with %s is dropped", async (_case, frame) => {
+      const [local, partner] = await pairOf();
+      const layer = layerOver(local);
+      await partner.send(frame);
+      await partner.send({ round: 1 });
+      expect(await layer.conn.receive()).toStrictEqual({ round: 1 });
+    });
+
+    test.each([
+      ["a figure of -1", { working: true, percent: -1 }],
+      ["a figure of 101", { working: true, percent: 101 }],
+      ["a figure of 4.5", { working: true, percent: 4.5 }],
+      ["a figure of the string 42", { working: true, percent: "42" }],
+      ["a figure of null", { working: true, percent: null }],
+      ["a figure of true", { working: true, percent: true }],
+      ["a figure of NaN", { working: true, percent: Number.NaN }],
+      ["a figure of an object", { working: true, percent: {} }],
+      ["a false flag and a figure", { working: false, percent: 57 }],
+    ])(
+      "a still-working frame with %s is a protocol error",
+      async (_case, frame) => {
+        const [local, partner] = await pairOf();
+        const layer = layerOver(local);
+        await partner.send(STILL_WORKING_FRAME);
+        await partner.send(frame);
+        const refused = await layer.conn
+          .receive()
+          .catch((error: unknown) => error);
+        expect(refused).toBeInstanceOf(ConnectionError);
+        expect((refused as ConnectionError).kind).toBe("protocol");
+      },
+    );
   });
 });
 
@@ -561,6 +645,39 @@ describe("queued still-working frames", () => {
 
     await Promise.all([local.endPhase(), partner.endPhase()]);
   });
+
+  test.each([
+    ["no figure", STILL_WORKING_FRAME, 16],
+    ["a one-digit figure", { working: true, percent: 0 }, 28],
+    ["a two-digit figure", { working: true, percent: 57 }, 29],
+    ["a three-digit figure", { working: true, percent: 100 }, 30],
+  ])(
+    "a party not reading drops a queued still-working frame with %s and holds the data frame of its length behind it",
+    async (_case, frame, frameBytes) => {
+      expect(JSON.stringify(frame)).toHaveLength(frameBytes);
+      const [localEnd, partnerEnd] = await encryptedPair(64);
+      const local = stillWorkingLayer(localEnd, fast);
+      if (local === undefined) throw new Error();
+      // `{"x":""}` is 8 bytes, the padding brings it to the frame's length.
+      const sameLength = { x: "a".repeat(frameBytes - 8) };
+      expect(JSON.stringify(sameLength)).toHaveLength(frameBytes);
+
+      await partnerEnd.send(frame);
+      await partnerEnd.send(sameLength);
+      await partnerEnd.send(frame);
+      const reads = vi.spyOn(localEnd, "receive");
+      local.start();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(reads).toHaveBeenCalledTimes(2);
+      expect(localEnd.nextQueuedMessageBytes?.()).toBe(
+        frameBytes + (localEnd.outboundFrameOverheadBytes?.(frameBytes) ?? 0),
+      );
+      expect(await local.conn.receive()).toStrictEqual(sameLength);
+
+      await local.endPhase();
+    },
+  );
 });
 
 describe("a forged, replayed or altered still-working envelope", () => {
@@ -648,22 +765,23 @@ describe("a forged, replayed or altered still-working envelope", () => {
     expect(armed).not.toHaveBeenCalled();
   });
 
-  test("a genuine still-working envelope with a flipped tag byte is refused as a security error and leaves the silence bound unarmed", async () => {
-    const { rawPartner, local, partner, armed } = await encryptedPair();
-    const layer = layerOver(local);
-    const genuine = await envelopeOf(
-      rawPartner,
-      partner,
-      STILL_WORKING_FRAME,
-      false,
-    );
-    const altered = new Uint8Array(genuine);
-    altered[altered.length - 1] ^= 1;
-    await rawPartner.send(altered);
+  test.each([
+    ["no figure", STILL_WORKING_FRAME],
+    ["a figure", { working: true, percent: 57 }],
+  ])(
+    "a genuine still-working envelope with %s and a flipped tag byte is refused as a security error and leaves the silence bound unarmed",
+    async (_case, frame) => {
+      const { rawPartner, local, partner, armed } = await encryptedPair();
+      const layer = layerOver(local);
+      const genuine = await envelopeOf(rawPartner, partner, frame, false);
+      const altered = new Uint8Array(genuine);
+      altered[altered.length - 1] ^= 1;
+      await rawPartner.send(altered);
 
-    expectSecurityRefusal(await refusalOf(layer));
-    expect(armed).not.toHaveBeenCalled();
-  });
+      expectSecurityRefusal(await refusalOf(layer));
+      expect(armed).not.toHaveBeenCalled();
+    },
+  );
 
   test.each(["forged", "altered"] as const)(
     "the drain holds a %s envelope it reads and raises it as a security error at the next receive",

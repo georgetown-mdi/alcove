@@ -60,7 +60,7 @@ What the figures decide:
 ## The design as built
 
 - **The message.**
-  A still-working frame: the JSON object `{"working":true}`, exactly that, sent inside the encrypted stream like every frame after the key exchange.
+  A still-working frame: a JSON object with `working` set to `true` and an optional integer `percent` from 0 to 100 ([PROTOCOL.md](../spec/PROTOCOL.md#the-still-working-frame)); this build sends the bare `{"working":true}`. It travels inside the encrypted stream like every frame after the key exchange.
 - **Which connections send it.**
   An optional connection member, `exchangesStillWorkingFrames`, which the CLI and web data-channel and WebSocket relay connections state and the encryption layer forwards.
   A file-sync connection states none, so no still-working frame is sent there, and one that arrives fails the awaited frame's parse as a `protocol` error.
@@ -76,8 +76,8 @@ What the figures decide:
   Before the bound arms, and after this party's phase ends, the whole-frame budget alone applies; a still-working frame still arriving then restarts it.
 - **Queued still-working frames are dropped from the head of the queue.**
   A party running its own operation does not receive, so the partner's frames would otherwise queue.
-  On each interval, the layer reads and drops the still-working frames at the head of the queue, picking them out by their wire length before reading; one behind a data frame waits for the reader, charged against the inbound queue's message-count and byte bounds.
-  A queued frame of that length that is not one is held and handed to the next read, in order.
+  On each interval, the layer reads and drops the still-working frames at the head of the queue, picking them out by their four wire lengths before reading; one behind a data frame waits for the reader, charged against the inbound queue's message-count and byte bounds.
+  A queued frame of one of those lengths that is not one is held and handed to the next read, in order.
   So the inbound queue's count and byte bounds are unchanged, and no operation length reaches them.
 - **Where it is refused.**
   A still-working frame is dropped from the layer's start until this party reads the partner's first other frame after its own phase ended.
@@ -145,9 +145,10 @@ Its claims to verify:
 - **The relay cannot hold a run open.**
   Chunk activity restarts only the 120 s bound; the whole-frame budget still ends a run whose relay trickles bytes.
 - **Nothing partner-written reaches a display or a log.**
-  The frame has one fixed shape, any other is refused, and no field of it is shown.
-- **The frame discloses nothing new.**
-  It has a fixed size and no count; a relay sees a small frame every 30 s, which shows the PSI phase's bounds that the frame sizes already show ([PROTOCOL.md](../spec/PROTOCOL.md), "What a relay sees").
+  The frame has one shape, `working: true` and an optional integer `percent` from 0 to 100; any other is refused, and no field of it is shown.
+- **The frame discloses little new.**
+  A relay sees a small frame every 30 s, which shows the PSI phase's bounds that the frame sizes already show ([PROTOCOL.md](../spec/PROTOCOL.md), "What a relay sees").
+  The frame is not padded, so it is one of four lengths: from a sender that states a progress figure, the length shows whether its crypto operation is in flight and when the figure reaches 10 and 100 ([PROTOCOL.md](../spec/PROTOCOL.md#the-still-working-frame), "The still-working frame").
 - **The resource bounds hold.**
   Queued still-working frames are drained each interval, every existing receive bound stands, and the partner cannot choose the interval or the bound.
 

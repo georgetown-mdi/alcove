@@ -487,7 +487,7 @@ The other runs the set maximum bounds are shorter: a single PSI set is three fra
 
 **Still-working frames.**
 Through the PSI phase the partner sends a still-working frame at least every 30 s ([WEBRTC_TRANSPORT.md, The wait through a partner's PSI step](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)), and a party running its own operation does not receive them.
-At each interval of its own the party reads and drops the frames at the head of the queue whose received length is a still-working frame's, and stops at the first frame of another length; a frame of that length that is not one is held and read next, in order.
+At each interval of its own the party reads and drops the frames at the head of the queue whose received length is one of a still-working frame's four lengths ([PROTOCOL.md, The still-working frame](PROTOCOL.md#the-still-working-frame)), and stops at the first frame of another length; a frame of one of those lengths that is not a still-working frame is held and read next, in order.
 Still-working frames queued behind a data frame are not drained: they wait until the consumer reads that frame.
 No bound is added or raised for them: each is charged against the count bound, 1024 messages, and the byte bound above like any frame, and a frame past either fails the connection with the inbound-buffer-overflow `protocol` error.
 
