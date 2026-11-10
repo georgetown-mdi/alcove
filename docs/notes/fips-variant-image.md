@@ -609,7 +609,7 @@ when it files a bump; the digest freeze pins the base either way.
 The variant installs far more OS packages than the default image, is larger
 than the Alpine image on both architectures, and has more packages with a
 GPL-3.0 or LGPL-3.0 term; the counts and sizes, measured on the shipped build at
-the pins above except the x86_64 image size, which dates from an earlier base, are in
+the pins above, are in
 [CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-fips-reference-builds-inventory).
 The v3 terms are the samba client stack that the default image already pays
 for, plus a GPLv3 base userland Alpine's busybox and musl do not have (`bash`,
