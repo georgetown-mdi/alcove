@@ -60,7 +60,7 @@ What the figures decide:
 ## The design as built
 
 - **The message.**
-  A still-working frame: the JSON object `{"working":true}`, exactly that, sent inside the encrypted stream like every frame after the key exchange.
+  A still-working frame: a JSON object with `working` set to `true` and an optional integer `percent` from 0 to 100 ([PROTOCOL.md](../spec/PROTOCOL.md#the-still-working-frame)); this build sends the bare `{"working":true}`. It travels inside the encrypted stream like every frame after the key exchange.
 - **Which connections send it.**
   An optional connection member, `exchangesStillWorkingFrames`, which the CLI and web data-channel and WebSocket relay connections state and the encryption layer forwards.
   A file-sync connection states none, so no still-working frame is sent there, and one that arrives fails the awaited frame's parse as a `protocol` error.
@@ -76,8 +76,8 @@ What the figures decide:
   Before the bound arms, and after this party's phase ends, the whole-frame budget alone applies; a still-working frame still arriving then restarts it.
 - **Queued still-working frames are dropped from the head of the queue.**
   A party running its own operation does not receive, so the partner's frames would otherwise queue.
-  On each interval, the layer reads and drops the still-working frames at the head of the queue, picking them out by their wire length before reading; one behind a data frame waits for the reader, charged against the inbound queue's message-count and byte bounds.
-  A queued frame of that length that is not one is held and handed to the next read, in order.
+  On each interval, the layer reads and drops the still-working frames at the head of the queue, picking them out by their four wire lengths before reading; one behind a data frame waits for the reader, charged against the inbound queue's message-count and byte bounds.
+  A queued frame of one of those lengths that is not one is held and handed to the next read, in order.
   So the inbound queue's count and byte bounds are unchanged, and no operation length reaches them.
 - **Where it is refused.**
   A still-working frame is dropped from the layer's start until this party reads the partner's first other frame after its own phase ended.
