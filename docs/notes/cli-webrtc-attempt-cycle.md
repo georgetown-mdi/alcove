@@ -127,9 +127,6 @@ offer-following without rebuilding anything in place.
   registration and, when relayed, one relay allocation until it expires. The
   offer-following it replaced was held to a minimum interval; the parties'
   agreement is what bounds it now.
-- A broker socket that drops mid-attempt still ends the whole wait, as before;
-  the attempt cycle could start the next attempt instead, which was not in
-  this change's scope.
 - An offer delivered to an attempt in its last milliseconds is lost without an
   `EXPIRE`, since the id is registered again within about 40 ms. A CLI
   acceptor's unreported-offer re-send (30 s) recovers it; a browser
