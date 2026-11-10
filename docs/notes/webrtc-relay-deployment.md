@@ -290,8 +290,12 @@ and a solved naming problem.
 
 Per-exchange credentials carry the isolation that matters. A TURN credential
 minted per exchange with a short expiry, over a per-deployment static secret,
-was measured on both classes; it bounds what a leaked credential is worth to the
-length of one exchange rather than to the life of the deployment.
+was measured on both classes. Its expiry bounds the window in which a leaked
+credential can open an allocation, which coturn 4.18.0 refuses once the expiry
+has passed; an allocation opened within that window lasts as long as its
+holder refreshes it, within the relay's quotas ([Quotas against one
+exchange](#quotas-against-one-exchange)), since coturn accepts the refreshes
+under the expired credential ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)).
 
 Ephemeral provisioning stays worth revisiting for one case this run did not
 need: a deployment that must hold no address between exchanges. If it is
