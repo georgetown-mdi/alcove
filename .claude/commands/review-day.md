@@ -16,7 +16,7 @@ Why the day is shaped as it is: `docs/notes/review-day.md`.
    This is not an orchestration session, so of that ruleset only the spawn cap and the load guard (Models and spawns) bind the day, and the audit day shares them.
    Its Session lifecycle does not apply: no continuation brief, no docket or follow-ups trigger.
 2. Run in a Claude Code session on the host, from the repository root.
-   The dev container's session shares this clone and is live: every agent reads at the pinned commit through `git show <sha>:<path>`, and nothing here edits the checkout.
+   The dev container's session shares this clone and is live: every agent reads the code under review at the pinned commit through `git show <sha>:<path>`, and nothing here edits the checkout.
    The day writes the board and `scratch/`, never the tree.
 3. The rules that bind the day's agents are in the briefs under `.claude/review-day/`; this session passes their paths and reads none of them.
 
@@ -39,7 +39,7 @@ At the first that fails, write `D/summary.md` naming it, and stop.
 - `gh auth status` succeeds.
 - `git fetch origin staging`, then record `SHA`, the output of `git rev-parse origin/staging`.
 - The previous day's `FINAL/record.json`, `FINAL/ledger.jsonl`, `FINAL/filed.md` and `FINAL/owed.md` are readable.
-  A `FINAL/` with no `owed.md` stopped before Step 4 finished: finish that day's Step 4; one with no `filed.md` stopped before Step 5: finish that day's Step 5; then start the new day.
+  A `FINAL/` with no `owed.md` stopped before Step 4 finished, and one with no `filed.md` stopped before Step 5: the summary names that remedy for the owner (finish that day's Step 4 or Step 5, then start the new day), and this session stops.
   With no previous day, record that, and the commit the window starts at, which Step 2 passes as `--prev`.
 - `uptime`: the one-minute load is under about eight; otherwise wait and read it again.
 - The newest `scratch/continuation-*.md` is readable, for the container's in-flight branches.
@@ -70,7 +70,7 @@ Invoke the Workflow tool once per workflow, at most four at once, with `scriptPa
 The script runs one Opus reviewer per slice, then a verifier (Opus for lens 2, Sonnet otherwise) for a slice with findings, then one Opus triage per workflow; its tiers and efforts are pinned in the script and not passed.
 Each returns a triage summary of at most about 600 tokens.
 Read nothing else from `D/W*/` in this thread, except one triage's owed-lines block for the extra below.
-The workflow's agents read the briefs and the rule files from this checkout's working tree, not at the pinned sha, so do not move the checkout (no pull, checkout or rebase) while a workflow runs.
+The briefs and the rule files they cite are read from this checkout's working tree, not at the pinned sha, for the whole day (Steps 3 and 4 included): a session sharing the clone that moves it mid-day changes what the later agents follow, and the summary says so when the checkout's HEAD moved during the day.
 
 As each workflow's notification arrives, add its cost to `D/cut.md`'s `Spend:` line and apply the stop rule (Spend, above) before starting the next.
 

@@ -45,7 +45,7 @@ Rules, cited not paraphrased:
    then the Decision items from `DOCKET.md`, one row each with its draft path;
    then the lines not filed, each with its reason (not built, limit, held, dropped).
 6. The owed list, ranked and priced: `$D/FINAL/owed.md`.
-   Merge every triage's `## Owed lines` section, the slice lines of `$D/cut.md`, the passes in `$D/plan.json`'s `carried` list (each re-emitted as its `line` field, which is already priced and has no appended reason in parentheses), and what the same-day extra left unread; drop duplicates and any line a slice run today has since read whole.
+   Merge every triage's `## Owed lines` section, the slice lines of `$D/cut.md`, the passes in `$D/plan.json`'s `carried` list (each re-emitted as `- ` followed by its `line` field, which is already priced and has no appended reason in parentheses), and what the same-day extra left unread; drop duplicates and any line a slice run today has since read whole.
    Every line is in the form the slice cutter reads (`.claude/scripts/review-day-slices.mjs`, its header): `- <lens 1-4> | <backticked files> | <reason> | <blocked by>`.
    The cutter reads every line starting `- ` as an owed pass, so no other line in the file starts that way.
    Rank in the next day's order: lines marked `(extra)` that the day did not spend its extra on, then escalations and measurement asks, then census, then the rest in the keep order of `.claude/commands/review-day.md`, Step 2.
