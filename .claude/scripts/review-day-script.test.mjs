@@ -226,11 +226,18 @@ describe.each(SHAPES)("review-day run ($shape args)", ({ deliver }) => {
     const [verifier] = spawnsOf(spawned, "verify");
     const [triager] = spawnsOf(spawned, "triage");
     expect(reviewer.prompt).toContain(".claude/review-day/reviewer-brief.md");
+    expect(reviewer.prompt).toContain(
+      `git -C ${DAY} rev-parse --show-toplevel`,
+    );
     expect(reviewer.prompt).toContain(`${DAY}/SLICES.md`);
     expect(reviewer.prompt).toContain(`${W}/S1.md`);
     expect(verifier.prompt).toContain(".claude/review-day/verifier-brief.md");
+    expect(verifier.prompt).toContain(
+      `git -C ${DAY} rev-parse --show-toplevel`,
+    );
     expect(verifier.prompt).toContain(`${W}/S1.verify.md`);
     expect(triager.prompt).toContain(".claude/review-day/triage-brief.md");
+    expect(triager.prompt).toContain(`git -C ${DAY} rev-parse --show-toplevel`);
     expect(triager.prompt).toContain(W);
     for (const { prompt } of spawned) {
       expect(prompt).toContain(`The day directory is ${DAY}`);

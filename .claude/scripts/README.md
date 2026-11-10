@@ -70,14 +70,13 @@ push:
 - `*-workflow.mjs`, the Workflow script bodies `/review-round`, `/panel`,
   `/docket`, and the review day invoke by absolute path. Each is a script
   BODY, not a module: the harness injects `args`, `agent`, `parallel`, and
-  `pipeline`, and takes the
-  top-level `return` as the run's result. No ES module parser accepts that, so
-  eslint ignores them and the test beside each one compiles it into a function
-  to drive it. The workflow scripts import and require nothing (asserted by
-  their tests), because the harness refuses a script that does; work that
-  needs a file or a command runs in a script beside it (`verify-fix-shape.mjs`
-  states why). `lib/workflowScriptHarness.mjs` holds the compiling and the
-  argument shapes their tests share.
+  `pipeline`, and takes the top-level `return` as the run's result. No ES module
+  parser accepts that, so eslint ignores them and the test beside each one
+  compiles it into a function to drive it. The workflow scripts import and
+  require nothing (asserted by their tests), because the harness refuses a
+  script that does; work that needs a file or a command runs in a script beside
+  it (`verify-fix-shape.mjs` states why). `lib/workflowScriptHarness.mjs` holds
+  the compiling and the argument shapes their tests share.
 - `review-day-workflow.mjs`, one workflow of review-day slices: per slice an
   Opus reviewer, then a verifier (Opus for lens 2, Sonnet otherwise) unless
   the reviewer found nothing, then one Opus triage over the workflow. Its
