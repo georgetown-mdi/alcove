@@ -1,9 +1,31 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, test } from "vitest";
 
 import {
+  COLOR_SCHEME_SCRIPT_HASH_SOURCE,
   securityResponseHeaders,
   withSecurityHeaders,
 } from "@utils/securityHeaders";
+import { colorSchemeScriptSource } from "@utils/colorSchemeScript";
+
+// The shipped policy, written out so a change to any directive shows here. Why
+// each source is in script-src: docs/SECURITY_DESIGN.md, The shipped script
+// policy.
+const SHIPPED_POLICY =
+  "frame-ancestors 'none'; " +
+  "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' " +
+  "'sha256-8ORoeP7ZoOX1k3ePKBnNzdoHYjwUvC86o4oRkUWMb9Y='; " +
+  "object-src 'none'; base-uri 'none'";
+
+describe("the Content-Security-Policy", () => {
+  test("admits the inline color-scheme script by its hash", () => {
+    const digest = createHash("sha256")
+      .update(colorSchemeScriptSource, "utf8")
+      .digest("base64");
+    expect(COLOR_SCHEME_SCRIPT_HASH_SOURCE).toBe(`'sha256-${digest}'`);
+  });
+});
 
 // withSecurityHeaders is the boundary the console server
 // (server/console/app.ts) wraps every response in. The integration suite proves
@@ -22,7 +44,7 @@ describe("withSecurityHeaders", () => {
     expect(hardened.headers.get("Referrer-Policy")).toBe("no-referrer");
     expect(hardened.headers.get("X-Frame-Options")).toBe("DENY");
     expect(hardened.headers.get("Content-Security-Policy")).toBe(
-      "frame-ancestors 'none'",
+      SHIPPED_POLICY,
     );
     expect(hardened.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });

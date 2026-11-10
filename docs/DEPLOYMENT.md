@@ -292,6 +292,7 @@ The build writes a `_headers` file with four security headers under `/*` and the
 | ------ | ------ |
 | `Referrer-Policy: no-referrer` | Keeps the invitation token out of the `Referer` header on older clients; the token rides in the URL fragment |
 | `X-Frame-Options: DENY` and Content-Security-Policy `frame-ancestors 'none'` | Deny framing, for legacy and modern clients |
+| Content-Security-Policy `script-src`, `object-src 'none'` and `base-uri 'none'` | Run only the app's own scripts and its one inline script, load no plugin content, and allow no `<base>` element; why `script-src` admits `'unsafe-eval'`: [SECURITY_DESIGN.md](SECURITY_DESIGN.md#the-shipped-script-policy) |
 | `X-Content-Type-Options: nosniff` | Stops MIME-sniffing away from a declared `Content-Type` |
 
 `Strict-Transport-Security` is not among them. On the names Cloudflare proxies (the production, staging, demo and project sites) it comes from the zone's HSTS setting ([infra/hosted/README.md](../infra/hosted/README.md#custom-domains-and-zone-settings)). The coordination server, relay, WebSocket relay and registrar names are DNS-only, and their TLS fronts send no HSTS header. Two limits of Pages, measured on the deployment:
