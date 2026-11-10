@@ -6,11 +6,15 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import {
   ACCOUNT_WIDE,
+  BoardReadError,
+  daySpend,
   deliveredBy,
   parseArgs,
   parseFiled,
+  readBoard,
   readDays,
   reviewDayReport,
+  spendInWindow,
   weeklyShare,
 } from "./review-day.mjs";
 import { tempDir } from "./transcriptFixtures.mjs";
@@ -200,6 +204,67 @@ describe("weeklyShare", () => {
   it("is null with no reading in the window", () => {
     expect(weeklyShare([at(-1, 40, reset1)], START, END)).toBeNull();
   });
+
+  it("is null with no reading at or before the window's start", () => {
+    expect(
+      weeklyShare([{ t: 5, weeklyUsedPercent: 40, resetsAt: 1e12 }], 0, 10),
+    ).toBeNull();
+  });
+
+  it("says no reading covers the start, not that the window has none", () => {
+    const readings = [at(1, 40, reset1)];
+    expect(spendInWindow(9, readings, "log", START, END)).toEqual({
+      usd: 9,
+      weeklySharePct: null,
+      shareNote:
+        "no weekly-allowance reading covers the window's start; dollars alone",
+    });
+    expect(
+      spendInWindow(9, [at(-1, 40, reset1)], "log", START, END).shareNote,
+    ).toBe("no weekly-allowance reading in the window; dollars alone");
+  });
+});
+
+describe("a day's share", () => {
+  const reset = Date.parse("2026-11-20T12:00:00Z") / 1000;
+  const readings = [
+    { t: START - HOUR, weeklyUsedPercent: 50, resetsAt: reset },
+    { t: START + HOUR, weeklyUsedPercent: 58, resetsAt: reset },
+  ];
+  const win = [START, END];
+
+  it("is the record's own share when that is a number, ignoring the log", () => {
+    const rec = { spend: { weeklyAllowanceShare: 4 } };
+    expect(daySpend(120, rec, readings, "log", ...win)).toEqual({
+      usd: 120,
+      weeklySharePct: 4,
+      shareNote: `from the record; ${ACCOUNT_WIDE}`,
+      shareFrom: "the record",
+    });
+    expect(daySpend(120, rec, null, "log", ...win).weeklySharePct).toBe(4);
+    expect(
+      daySpend(
+        120,
+        { spend: { weeklyAllowanceShare: 0 } },
+        readings,
+        "log",
+        ...win,
+      ).weeklySharePct,
+    ).toBe(0);
+  });
+
+  it("falls back to the log over the file times when the record's is null or absent", () => {
+    for (const spend of [{ weeklyAllowanceShare: null }, {}, undefined]) {
+      expect(daySpend(120, { spend }, readings, "log", ...win)).toMatchObject({
+        weeklySharePct: 8,
+        shareFrom: "the usage log over the file times",
+        shareNote: `from the usage log over the file times; ${ACCOUNT_WIDE}`,
+      });
+    }
+    expect(
+      daySpend(120, { spend: {} }, null, "log", ...win).shareFrom,
+    ).toBeNull();
+  });
 });
 
 describe("parsers", () => {
@@ -229,6 +294,53 @@ describe("parsers", () => {
     ).toBe(false);
     expect(parseArgs(["--days", "d", "--out", "o", "--cut", "11-20"]).ok).toBe(
       false,
+    );
+  });
+
+  it("takes the retro's window alone, and --days and --out only together", () => {
+    const retro = [
+      "--retro-start",
+      "2026-11-20T09:00:00Z",
+      "--retro-end",
+      "2026-11-20T17:00:00Z",
+    ];
+    const alone = parseArgs([...retro, "--retro-usd", "3"]);
+    expect(alone.ok).toBe(true);
+    expect(alone.options).toMatchObject({ days: null, out: null });
+    expect(parseArgs(["--days", "d", ...retro])).toMatchObject({
+      ok: false,
+      message: "--out is required with --days",
+    });
+    expect(parseArgs(["--out", "o", ...retro])).toMatchObject({
+      ok: false,
+      message: "--days is required with --out",
+    });
+    expect(parseArgs([...retro, "--board", "b"]).ok).toBe(false);
+    expect(parseArgs([]).ok).toBe(false);
+  });
+});
+
+describe("readBoard", () => {
+  it("reads the bodies a runner returns", () => {
+    const run = () => JSON.stringify([{ id: "1", body: "text" }]);
+    expect([...readBoard(["10/1"], run)]).toEqual([["10/1", "text"]]);
+  });
+
+  it("names the board and --board FILE when a read fails, on one line", () => {
+    const run = () => {
+      throw Object.assign(new Error("Command failed"), {
+        stderr: "gh: could not resolve host\nmore detail\n",
+      });
+    };
+    let thrown;
+    try {
+      readBoard(["10/1"], run);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(BoardReadError);
+    expect(thrown.message).toBe(
+      "could not read board 10 (gh: could not resolve host); pass --board FILE to use a saved board instead",
     );
   });
 });
@@ -304,8 +416,53 @@ describe("command line", () => {
     const { stdout, written } = run(log);
     expect(written.days[0].spend.weeklySharePct).toBe(10);
     expect(stdout).toContain(
-      `spend $120, 10% of the weekly allowance (${ACCOUNT_WIDE})`,
+      `spend $120, 10% of the weekly allowance (from the usage log over the file times; ${ACCOUNT_WIDE})`,
+    );
+    expect(written.days[0].spend.shareFrom).toBe(
+      "the usage log over the file times",
     );
     expect(written.retro.weeklySharePct).toBe(10);
+  });
+
+  it("prints only the retro's spend line when given no --days or --out", () => {
+    const logDir = tempDir();
+    dirs.push(logDir);
+    const result = spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        "--retro-start",
+        new Date(START).toISOString(),
+        "--retro-end",
+        new Date(END).toISOString(),
+        "--retro-usd",
+        "15",
+        "--usage",
+        path.join(logDir, "missing.jsonl"),
+      ],
+      { encoding: "utf8" },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(
+      /^retro spend \$15 \(no usage log at .*; dollars alone\)\n$/,
+    );
+    expect(fs.readdirSync(logDir)).toEqual([]);
+  });
+
+  it("stops with one line naming --board when the board cannot be read", () => {
+    const days = writeDays();
+    const emptyPath = tempDir();
+    dirs.push(emptyPath);
+    const out = path.join(days, "review-day.json");
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, "--days", days, "--out", out],
+      { encoding: "utf8", env: { PATH: emptyPath } },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(
+      /^could not read board 10 \(.*\); pass --board FILE to use a saved board instead\n$/,
+    );
+    expect(fs.existsSync(out)).toBe(false);
   });
 });

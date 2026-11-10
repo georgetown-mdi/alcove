@@ -9,16 +9,22 @@
 //   node review-day.mjs --days DIR --out FILE [--cut DATE] [--end DATE]
 //     [--board FILE] [--pr-cost FILE] [--followups FILE] [--usage FILE]
 //     [--retro-start ISO --retro-end ISO [--retro-usd N]]
+//   node review-day.mjs --retro-start ISO --retro-end ISO [--retro-usd N]
+//     [--usage FILE]
 //
 // --days holds one directory per day, `<date>/FINAL/` as
 // .claude/commands/review-day.md writes it; --cut and --end keep the days
-// named cut <= date < end. --board is a JSON object of `<board>/<itemId>` to
-// item body; without it the bodies are read through fetch-issues.mjs.
+// named cut <= date < end. --days and --out are given together. --board is a
+// JSON object of `<board>/<itemId>` to item body; without it the bodies are
+// read through fetch-issues.mjs, and a failure to read them stops the run
+// with a line naming --board.
 // --pr-cost is map.mjs's pr-cost.json, --followups followups.mjs's
 // followups.json. --usage is the weekly-allowance log, default
 // ~/.claude/usage-readings.jsonl, one JSON line per reading:
 // `{t, weeklyUsedPercent, resetsAt, session}`. --retro-start and --retro-end
-// bound the retro's own session, priced at --retro-usd.
+// bound the retro's own session, priced at --retro-usd. Given with neither
+// --days nor --out, they print only the retro's spend line: no board is read
+// and no file is written.
 //
 // Rules:
 //   - A finding's item is its `outcome` when that is `<board>/<itemId>`, else
@@ -36,12 +42,15 @@
 //     are the lens's day cost plus its units' fix share, over its units.
 //   - Escapes are findings in code a per-branch round reviewed (`window`
 //     reviewed); the fix pipeline's lag is findings with `raisedBefore`.
-//   - A day's window is the first and last modification time of its files.
-//     Its spend as a share of the weekly allowance is the sum of the changes
-//     between the last reading at or before the window's start and each
-//     reading inside it. A reading at or after the previous reading's reset
-//     time follows a reset, and adds its whole share. The share is
-//     account-wide: other use in those hours counts too.
+//   - A day's spend as a share of the weekly allowance is the record's
+//     `spend.weeklyAllowanceShare` when that is a number. Otherwise the
+//     day's window is the first and last modification time of its files, and
+//     the share is the sum of the changes between the last reading at or
+//     before the window's start and each reading inside it; with no reading
+//     at or before the start there is no share. A reading at or after the
+//     previous reading's reset time follows a reset, and adds its whole
+//     share. The output says which source a day's share came from. The share
+//     is account-wide: other use in those hours counts too.
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -61,7 +70,9 @@ import {
 const USAGE =
   "Usage: node review-day.mjs --days DIR --out FILE [--cut DATE] [--end DATE]\n" +
   "         [--board FILE] [--pr-cost FILE] [--followups FILE] [--usage FILE]\n" +
-  "         [--retro-start ISO --retro-end ISO [--retro-usd N]]\n";
+  "         [--retro-start ISO --retro-end ISO [--retro-usd N]]\n" +
+  "       node review-day.mjs --retro-start ISO --retro-end ISO [--retro-usd N]\n" +
+  "         [--usage FILE]\n";
 
 const LENSES = ["1", "2", "3", "4"];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,7 +104,6 @@ export function parseArgs(argv) {
       "--retro-end",
       "--retro-usd",
     ],
-    required: ["--days", "--out"],
   });
   if (!parsed.ok) return parsed;
   if (parsed.positionals.length) {
@@ -124,11 +134,39 @@ export function parseArgs(argv) {
   } else if (v["--retro-usd"] !== undefined) {
     return { ok: false, message: "--retro-usd needs --retro-start" };
   }
+  const hasDays = "--days" in v;
+  const hasOut = "--out" in v;
+  if (hasDays !== hasOut) {
+    return {
+      ok: false,
+      message: `${hasDays ? "--out" : "--days"} is required with ${hasDays ? "--days" : "--out"}`,
+    };
+  }
+  if (!hasDays) {
+    if (retro === null) {
+      return {
+        ok: false,
+        message:
+          "--days and --out are required, or --retro-start and --retro-end alone",
+      };
+    }
+    for (const flag of [
+      "--cut",
+      "--end",
+      "--board",
+      "--pr-cost",
+      "--followups",
+    ]) {
+      if (flag in v) {
+        return { ok: false, message: `${flag} needs --days and --out` };
+      }
+    }
+  }
   return {
     ok: true,
     options: {
-      days: v["--days"],
-      out: v["--out"],
+      days: v["--days"] ?? null,
+      out: v["--out"] ?? null,
       cut: v["--cut"] ?? null,
       end: v["--end"] ?? null,
       board: v["--board"] ?? null,
@@ -175,13 +213,15 @@ export function readUsageLog(file) {
 
 /**
  * The weekly-allowance share, in percentage points, used between `from` and
- * `to` (epoch ms), by the rule in the header; null with no reading inside.
+ * `to` (epoch ms), by the rule in the header; null with no reading inside or
+ * none at or before `from`.
  */
 export function weeklyShare(readings, from, to) {
   const inside = readings.filter((r) => r.t > from && r.t <= to);
   if (!inside.length) return null;
   const before = readings.filter((r) => r.t <= from).at(-1);
-  const seq = before ? [before, ...inside] : inside;
+  if (!before) return null;
+  const seq = [before, ...inside];
   let share = 0;
   for (let i = 1; i < seq.length; i++) {
     const prev = seq[i - 1];
@@ -196,7 +236,8 @@ export function weeklyShare(readings, from, to) {
 
 /**
  * The spend of a window: `{ usd, weeklySharePct, shareNote }`, the share null
- * and `shareNote` saying why when the log is missing or has no reading inside.
+ * and `shareNote` saying why when the log is missing, has no reading inside, or
+ * has none at or before the window's start.
  */
 export function spendInWindow(usd, readings, usagePath, from, to) {
   if (readings === null) {
@@ -207,13 +248,45 @@ export function spendInWindow(usd, readings, usagePath, from, to) {
     };
   }
   const share = weeklyShare(readings, from, to);
-  return share === null
-    ? {
-        usd,
-        weeklySharePct: null,
-        shareNote: "no weekly-allowance reading in the window; dollars alone",
-      }
-    : { usd, weeklySharePct: share, shareNote: ACCOUNT_WIDE };
+  if (share !== null) {
+    return { usd, weeklySharePct: share, shareNote: ACCOUNT_WIDE };
+  }
+  const covered = readings.some((r) => r.t <= from);
+  return {
+    usd,
+    weeklySharePct: null,
+    shareNote: covered
+      ? "no weekly-allowance reading in the window; dollars alone"
+      : "no weekly-allowance reading covers the window's start; dollars alone",
+  };
+}
+
+const SHARE_FROM_RECORD = "the record";
+const SHARE_FROM_LOG = "the usage log over the file times";
+
+/**
+ * A review day's spend: the record's own share when it is a number, else the
+ * usage log's over the day's file times. `shareFrom` names the source of a
+ * share, null when there is none.
+ */
+export function daySpend(usd, record, readings, usagePath, from, to) {
+  const recorded = record.spend?.weeklyAllowanceShare;
+  if (Number.isFinite(recorded)) {
+    return {
+      usd,
+      weeklySharePct: recorded,
+      shareNote: `from ${SHARE_FROM_RECORD}; ${ACCOUNT_WIDE}`,
+      shareFrom: SHARE_FROM_RECORD,
+    };
+  }
+  const s = spendInWindow(usd, readings, usagePath, from, to);
+  return s.weeklySharePct === null
+    ? { ...s, shareFrom: null }
+    : {
+        ...s,
+        shareNote: `from ${SHARE_FROM_LOG}; ${s.shareNote}`,
+        shareFrom: SHARE_FROM_LOG,
+      };
 }
 
 /**
@@ -470,7 +543,14 @@ export function reviewDayReport({
       day: r.d.day,
       ...measures([r]),
       spend: {
-        ...spendInWindow(r2(r.usd), readings, usagePath, r.d.from, r.d.to),
+        ...daySpend(
+          r2(r.usd),
+          r.d.record,
+          readings,
+          usagePath,
+          r.d.from,
+          r.d.to,
+        ),
         usdFrom: r.usdFrom,
         from: new Date(r.d.from).toISOString(),
         to: new Date(r.d.to).toISOString(),
@@ -493,8 +573,15 @@ export function reviewDayReport({
   };
 }
 
-/** Item bodies by `<board>/<itemId>`, read through fetch-issues.mjs. */
-export function readBoard(refs) {
+/** The board could not be read; the message is the one line to print. */
+export class BoardReadError extends Error {}
+
+/**
+ * Item bodies by `<board>/<itemId>`, read through fetch-issues.mjs; `run` is
+ * the process runner, execFileSync's signature. Throws a BoardReadError when
+ * a read fails.
+ */
+export function readBoard(refs, run = execFileSync) {
   const byBoard = new Map();
   for (const ref of refs) {
     const [board, id] = ref.split("/");
@@ -503,15 +590,24 @@ export function readBoard(refs) {
   }
   const bodies = new Map();
   for (const [board, ids] of byBoard) {
-    const out = execFileSync(
-      process.execPath,
-      [FETCH_ISSUES, "--json", board, ...ids],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-    );
-    for (const item of JSON.parse(out)) {
-      if (item.type !== "missing" && typeof item.body === "string") {
-        bodies.set(`${board}/${item.id}`, item.body);
+    try {
+      const out = run(
+        process.execPath,
+        [FETCH_ISSUES, "--json", board, ...ids],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      );
+      for (const item of JSON.parse(out)) {
+        if (item.type !== "missing" && typeof item.body === "string") {
+          bodies.set(`${board}/${item.id}`, item.body);
+        }
       }
+    } catch (err) {
+      const cause = String(err?.stderr || err?.message || err)
+        .trim()
+        .split("\n")[0];
+      throw new BoardReadError(
+        `could not read board ${board} (${cause}); pass --board FILE to use a saved board instead`,
+      );
     }
   }
   return bodies;
@@ -557,10 +653,28 @@ async function main(argv) {
   const parsed = parseArgs(argv);
   if (!parsed.ok) throw new UsageError(parsed.message);
   const { options } = parsed;
+  if (options.days === null) {
+    const spend = spendInWindow(
+      options.retro.usd,
+      readUsageLog(options.usage),
+      options.usage,
+      options.retro.from,
+      options.retro.to,
+    );
+    console.log(`retro spend ${fmtSpend(spend)}`);
+    return;
+  }
   const { days, skipped } = readDays(options.days, options.cut, options.end);
-  const bodies = options.board
-    ? new Map(Object.entries(readJson(options.board)))
-    : readBoard(itemsNamed(days));
+  let bodies;
+  try {
+    bodies = options.board
+      ? new Map(Object.entries(readJson(options.board)))
+      : readBoard(itemsNamed(days));
+  } catch (err) {
+    if (!(err instanceof BoardReadError)) throw err;
+    process.stderr.write(`${err.message}\n`);
+    process.exit(1);
+  }
   const out = reviewDayReport({
     days,
     skipped,
