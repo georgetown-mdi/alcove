@@ -6,7 +6,7 @@
 - - -> **The setup's creation.**
 - - -> `b * slots` bytes, `b` the build peak below: 884 on the native library and 865 on the WebAssembly library.
 - - -> **The masking beside it.**
-- - -> The request charge plus `m * slots` bytes, `m` the masking increment below: 401 on the native library and 132 on the WebAssembly library.
+- - -> The request charge plus `m * slots` bytes, `m` the masking increment below: 401 on the native library and 157 on the WebAssembly library.
 - - -> Each figure is the largest measured on its library, rounded up, with the native masking increment raised by what swap could hide in it (below), and the check takes the figures of the library the run loaded: the native addon, or the WebAssembly build the CLI falls back to where no native build loads (`loadCliPsiBackend`, `apps/cli/src/psiBackend.ts`).
 - - -> The PSI worker loads that same library and no other, and where it does not load there the worker fails to start and the exchange fails.
 - Measured 2026-11-09 in the development container (aarch64 Linux, 10 CPUs, 23 GB shared with other work, Node v26.13.0), on the native library, by the method of [The masking of a request](#the-masking-of-a-request), one process a run: -> Measured 2026-11-10 in the development container (aarch64 Linux, 10 CPUs, 23 GB shared with other work, Node v26.13.0), by the method of [The masking of a request](#the-masking-of-a-request), one process a run:
@@ -44,17 +44,19 @@
 - - -> A rise shared by runs side by side is no one run's, so each of their readings counts as read, not raised:
 - - -> **The WebAssembly runs.**
 - - -> The re-measured runs in the table above did not raise swap use.
-- - -> An earlier batch of six runs, up to four at a time while swap use rose by 302 MB, read build peaks of 747.34 to 864.77 and masking increments of 1.11 to 131.50 bytes an element at 2^20 to 2^22.
-- - -> Its runs are not in the table, which holds runs measured alone, and its readings count as read: its 864.77 (2^22) and 131.50 (2^20) set the WebAssembly figures at 865 and 132.
+- - -> An earlier batch of six runs, up to four at a time while swap use rose by 302 MB, read build peaks of 747.34 to 864.77 bytes an element at 2^20 to 2^22.
+- - -> Its two runs beside 1,000 values peaked above the table's, so its masking increments are taken less the lower of the table's two, 4,104,970,240 bytes, the lowest run beside 1,000 values on this library: up to 156.46 bytes an element, at 2^20.
+- - -> Its runs are not in the table, which holds runs measured alone, and its readings count as read: its 864.77 (2^22) and 156.46 (2^20) set the WebAssembly figures at 865 and 157.
 - - -> **The native runs at 2^20 to 2^23.**
 - - -> Swap use did not rise during the four that read it.
 - - -> The native build peak of 884 comes from a run at 2^20 that did not read it; swap can only lower a reading, so the charge keeps that run's 883.50 as the largest.
 - - -> **The native runs at 2^24.**
 - - -> Of the first two, the second, its build peak 763.40 and its masking increment 397.15 bytes an element, raised swap use by 53 MB, with free memory down to 0.3 GB and 6.2 GB still available to reclaim.
-- - -> Of the other two, the first rose by 68 MB, with pages it held swapped out (held 317.71 bytes an element, against about 625 in the other 2^24 runs), and is left out of the figures it would lower; its build peak 789.89 and masking increment 88.05, raised by the 4.1 bytes an element its rise can hide, stay below both charges, and its re-run, the last 2^24 row, rose again, by 53,724 kB.
+- - -> Of the other two, the first rose by 65 MB, with pages it held swapped out (held 317.71 bytes an element, against about 625 in the other 2^24 runs), and is left out of the figures it would lower; its build peak 789.89 and masking increment 88.05, raised by the 4.1 bytes an element its rise can hide, stay below both charges, and its re-run, the last 2^24 row, rose again, by 53,724 kB.
 - - -> Both runs that rose by about 53 MB count, each raised by what its rise can hide, up to 3.3 bytes an element: 397.15 to 400.5 and 394.12 to 397.4.
 - - -> The native masking increment is the larger, rounded up to 401.
-- A smaller setup holds more an element: one of 100,000 elements held 91,414,528 bytes, 914 an element, about 18 MB more than the charge. -> A smaller setup costs more an element: one of 100,000 elements peaked at 103,055,360 bytes in creation on the native library, 1,031 an element, about 15 MB more than the charge.
+- A smaller setup holds more an element: one of 100,000 elements held 91,414,528 bytes, 914 an element, about 18 MB more than the charge. -> -
+- - -> A smaller setup costs more an element: one of 100,000 elements peaked at 103,055,360 bytes in creation on the native library, 1,031 an element, about 15 MB more than the charge, and at 98,664,448 bytes on the WebAssembly library, 987 an element, about 12 MB more than its charge.
 - Where this party sends, it adds its own setup at what the setup holds once created, though the masking reuses most of that memory ([The sender's own setup](#the-senders-own-setup)). -> Where this party sends, it charges its own setup at the larger of the setup's build peak and the request charge plus what the setup adds to the masking, each measured beside one request size only, and on the WebAssembly library at setups of up to 2^22 elements only ([The sender's own setup](#the-senders-own-setup)).
 - That figure was measured on the native library only; the WebAssembly library, which the CLI falls back to where no native build exists, is charged the same figure unmeasured. -> -
 - A sender adds the memory its own setup holds, at a measured figure a value slot of its own ([FILE_SYNC.md, The sender's own setup](FILE_SYNC.md#the-senders-own-setup)). -> A sender's need is the larger of its own setup's build peak and that figure plus what the setup adds to the masking, each at a measured figure a value slot of its own ([FILE_SYNC.md, The sender's own setup](FILE_SYNC.md#the-senders-own-setup)).
