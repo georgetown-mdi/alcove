@@ -18,8 +18,11 @@ import type { Server, Socket as TcpSocket } from "node:net";
  * from this table (`packages/core/src/config/connection.ts`).
  *
  * Each form is measured against a loopback relay that listens on UDP and TCP
- * at one port and answers nothing: a kept entry contacts it over the transport
- * the form names, and a refused one leaves the peer with no relay to contact.
+ * at one port and answers nothing: a kept entry contacts it first over the
+ * transport the form names (TCP for `turns:`, UDP for a `turn:` url naming
+ * none), and a refused one leaves the peer with no relay to contact. A TCP
+ * entry contacts it over TCP alone; a UDP entry is tried again over TCP once
+ * its UDP attempt gives up, a few seconds in.
  * A refused form falls back to werift's built-in Google STUN default, so the
  * table runs with the resolver intercepted, as the sibling transport suite
  * does for the same case (transport.test.ts), and no packet leaves the machine.
@@ -34,8 +37,9 @@ const UNREACHABLE_TURN = {
 /**
  * How long the whole TRANSPORT_FORMS table may take. Its forms gather at
  * once rather than one after another, so this is a run of werift's own
- * timer for an ICE server that never answers, six or seven seconds, with room
- * for the slowest machine that runs it.
+ * timers for an ICE server that never answers, about thirteen seconds for a
+ * UDP entry tried over both transports, with room for the slowest machine that
+ * runs it.
  */
 const TRANSPORT_TABLE_TIMEOUT_MS = 90_000;
 
@@ -75,10 +79,12 @@ async function withResolverIntercepted<T>(
   }
 }
 
-/** A loopback relay on one port, UDP and TCP, that records being contacted and answers nothing. */
+type RelayTransport = "tcp" | "udp";
+
+/** A loopback relay on one port, UDP and TCP, that records the transports it was first contacted over, in order, and answers nothing. */
 interface SilentRelay {
   readonly port: number;
-  contacted(): boolean;
+  contactedOver(): RelayTransport[];
   stop(): Promise<void>;
 }
 
@@ -105,10 +111,13 @@ async function bindUdp(socket: UdpSocket, port: number): Promise<void> {
 
 async function startSilentRelay(): Promise<SilentRelay> {
   for (let attempt = 0; ; attempt += 1) {
-    let contacted = false;
+    const contacted: RelayTransport[] = [];
+    const contact = (over: RelayTransport): void => {
+      if (!contacted.includes(over)) contacted.push(over);
+    };
     const connections = new Set<TcpSocket>();
     const tcp = createServer((connection) => {
-      contacted = true;
+      contact("tcp");
       connections.add(connection);
       connection.on("error", () => {
         // The peer's close resets a connection this relay never answered.
@@ -116,7 +125,7 @@ async function startSilentRelay(): Promise<SilentRelay> {
     });
     const udp = createSocket("udp4");
     udp.on("message", () => {
-      contacted = true;
+      contact("udp");
     });
     const port = await listenTcp(tcp, 0);
     try {
@@ -129,7 +138,7 @@ async function startSilentRelay(): Promise<SilentRelay> {
     }
     return {
       port,
-      contacted: () => contacted,
+      contactedOver: () => [...contacted],
       stop: async () => {
         for (const connection of connections) connection.destroy();
         await Promise.all([
@@ -141,11 +150,11 @@ async function startSilentRelay(): Promise<SilentRelay> {
   }
 }
 
-/** Whether a relay-only probe against `url`, its port moved to `relay`'s, contacts that relay. */
-async function contactsRelay(
+/** The transports a relay-only probe against `url`, its port moved to `relay`'s, contacts that relay over. */
+async function transportsContacted(
   url: string,
   relay: SilentRelay,
-): Promise<boolean> {
+): Promise<RelayTransport[]> {
   const peer = new RTCPeerConnection({
     iceServers: [
       {
@@ -161,24 +170,51 @@ async function contactsRelay(
     while (peer.iceGatheringState !== "complete") {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    return relay.contacted();
+    return relay.contactedOver();
   } finally {
     await peer.close();
   }
 }
 
-/** A TURN url's `transport` parameter, and whether werift keeps the entry. */
-const TRANSPORT_FORMS: Array<{ url: string; kept: boolean }> = [
-  { url: "turn:127.0.0.1:3478", kept: true },
-  { url: "turn:127.0.0.1:3478?transport=tcp", kept: true },
-  { url: "turn:127.0.0.1:3478?transport=udp", kept: true },
-  { url: "turn:127.0.0.1:3478?transport=tcp&foo=bar", kept: true },
-  { url: "turn:127.0.0.1:3478?foo=bar", kept: true },
-  { url: "turn:127.0.0.1:3478?Transport=tcp", kept: true },
-  { url: "turn:127.0.0.1:3478?transport=tcp&transport=udp", kept: true },
-  { url: "turns:127.0.0.1:5349", kept: true },
-  { url: "turns:127.0.0.1:5349?transport=tcp", kept: true },
-  { url: "turns:127.0.0.1:5349?transport=tcp&transport=udp", kept: true },
+/**
+ * A TURN url's `transport` parameter, whether werift keeps the entry, and the
+ * transports a kept entry contacts its silent relay over, in order.
+ */
+const TRANSPORT_FORMS: Array<{
+  url: string;
+  kept: boolean;
+  contacts?: RelayTransport[];
+}> = [
+  { url: "turn:127.0.0.1:3478", kept: true, contacts: ["udp", "tcp"] },
+  { url: "turn:127.0.0.1:3478?transport=tcp", kept: true, contacts: ["tcp"] },
+  {
+    url: "turn:127.0.0.1:3478?transport=udp",
+    kept: true,
+    contacts: ["udp", "tcp"],
+  },
+  {
+    url: "turn:127.0.0.1:3478?transport=tcp&foo=bar",
+    kept: true,
+    contacts: ["tcp"],
+  },
+  { url: "turn:127.0.0.1:3478?foo=bar", kept: true, contacts: ["udp", "tcp"] },
+  {
+    url: "turn:127.0.0.1:3478?Transport=tcp",
+    kept: true,
+    contacts: ["udp", "tcp"],
+  },
+  {
+    url: "turn:127.0.0.1:3478?transport=tcp&transport=udp",
+    kept: true,
+    contacts: ["tcp"],
+  },
+  { url: "turns:127.0.0.1:5349", kept: true, contacts: ["tcp"] },
+  { url: "turns:127.0.0.1:5349?transport=tcp", kept: true, contacts: ["tcp"] },
+  {
+    url: "turns:127.0.0.1:5349?transport=tcp&transport=udp",
+    kept: true,
+    contacts: ["tcp"],
+  },
   { url: "turn:127.0.0.1:3478?transport=UDP", kept: false },
   { url: "turn:127.0.0.1:3478?transport=TCP", kept: false },
   { url: "turn:127.0.0.1:3478?transport=quic", kept: false },
@@ -190,8 +226,8 @@ const TRANSPORT_FORMS: Array<{ url: string; kept: boolean }> = [
   { url: "turns:127.0.0.1:5349?transport=TCP", kept: false },
 ];
 
-/** Whether each form of TRANSPORT_FORMS contacted its relay, keyed by its url. */
-const contactedPerForm = new Map<string, boolean>();
+/** The transports each form of TRANSPORT_FORMS contacted its relay over, keyed by its url. */
+const contactedPerForm = new Map<string, RelayTransport[]>();
 
 /**
  * Every form of TRANSPORT_FORMS gathers in one window, before the arms below
@@ -206,12 +242,12 @@ beforeAll(async () => {
     const contacted = await withResolverIntercepted(() =>
       Promise.all(
         TRANSPORT_FORMS.map(({ url }, index) =>
-          contactsRelay(url, relays[index]!),
+          transportsContacted(url, relays[index]!),
         ),
       ),
     );
     TRANSPORT_FORMS.forEach(({ url }, index) => {
-      contactedPerForm.set(url, contacted[index] ?? false);
+      contactedPerForm.set(url, contacted[index] ?? []);
     });
   } finally {
     await Promise.all(relays.map((relay) => relay.stop()));
@@ -220,12 +256,12 @@ beforeAll(async () => {
 
 test.each(TRANSPORT_FORMS)(
   'werift keeps the entry "$url": $kept',
-  ({ url, kept }) => {
+  ({ url, kept, contacts }) => {
     expect(
       contactedPerForm.get(url),
       `nothing was recorded for ${url}`,
     ).toBeDefined();
-    expect(contactedPerForm.get(url)).toBe(kept);
+    expect(contactedPerForm.get(url)).toEqual(kept ? contacts : []);
   },
 );
 
