@@ -72,6 +72,7 @@ import { MetadataGrid } from "@components/MetadataGrid";
 
 import { applyDisclosure } from "@psi/metadataEditing";
 
+import { acceptorTerms, encodeAcceptToken } from "./acceptFixtures";
 import { removeOwnRelay, setOwnRelay } from "./connectionSettings";
 import { createAppMount } from "./renderApp";
 import { expandFieldCards } from "./fieldCards";
@@ -226,26 +227,6 @@ function preparedWith(
   });
 }
 
-// Two single-element keys, one per name field, plus a payload the inviter sends
-// and a legal agreement, so the terms render every tier and the ledger every row.
-const acceptorTerms: LinkageTerms = {
-  version: "1.0.0",
-  identity: "County Health Department",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  output: { expectsOutput: true, shareWithPartner: true },
-  deduplicate: false,
-  linkageFields: [
-    { name: "firstName", type: "first_name" },
-    { name: "lastName", type: "last_name" },
-  ],
-  linkageKeys: [
-    { name: "first", elements: [{ field: "firstName" }] },
-    { name: "last", elements: [{ field: "lastName" }] },
-  ],
-};
-
 // A key whose first name matches its single-character deletions: a candidate
 // set with no split.
 const FUZZY_NAME_KEY: LinkageTerms["linkageKeys"][number] = {
@@ -255,23 +236,6 @@ const FUZZY_NAME_KEY: LinkageTerms["linkageKeys"][number] = {
     { field: "lastName" },
   ],
 };
-
-async function encodeAcceptToken(
-  linkageTerms: LinkageTerms = acceptorTerms,
-): Promise<string> {
-  const token: InvitationToken = {
-    version: "1",
-    linkageTerms,
-    sharedSecret: generateSharedSecret(),
-    connectionEndpoint: {
-      channel: "webrtc",
-      host: "127.0.0.1",
-      port: 3000,
-      path: "/api/",
-    },
-  };
-  return encodeInvitation(token);
-}
 
 // A token holding a future expiry and a declared payload send (the columns the
 // inviter will send the acceptor, so the settled ledger's received row names
@@ -883,7 +847,7 @@ describe("acceptor screen: consent-step legal-agreement display", () => {
   };
 
   async function reachConsentWith(terms: LinkageTerms) {
-    window.location.hash = await encodeAcceptToken(terms);
+    window.location.hash = await encodeAcceptToken({ linkageTerms: terms });
     app.render(createElement(AcceptorScreen));
     await expect
       .element(page.getByText("Invitation from County Health Department"))
@@ -3136,7 +3100,7 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
   // The terms-review step, where this party's own side is authored beside what
   // the invitation declares for the inviting party's.
   async function reachReview(linkageTerms: LinkageTerms) {
-    window.location.hash = await encodeAcceptToken(linkageTerms);
+    window.location.hash = await encodeAcceptToken({ linkageTerms });
     app.render(createElement(AcceptorScreen));
     await expect
       .element(page.getByText("Invitation from County Health Department"))

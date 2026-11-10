@@ -4,18 +4,13 @@ import {
   PSI_SET_REFUSED_ABORT_REASON,
   PeerAbortError,
   generateSharedSecret,
-  getDefaultLinkageTerms,
 } from "@alcove/core";
 import { describe, expect, test } from "vitest";
 
 import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   applyManagedExchangeLastRun,
   applyManagedExchangeReinviteRotation,
-  composeManagedExchangeFile,
   lastRunSchema,
   raisedStandingCondition,
   runnableManagedExchangeOrRefuse,
@@ -54,6 +49,8 @@ import { failureFor } from "@exchange/useInviterExchange";
 import { managedStandingConditionView } from "@recurring/managedStandingConditionModel";
 import { savedExchangeRow } from "@recurring/savedExchangesModel";
 
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
+
 import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
@@ -78,22 +75,11 @@ const notSaved = (keptNextSecret = true) =>
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
 ): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
+  return managedRecordFixture({
     side: "acceptor",
-    sharedSecret: generateSharedSecret(),
     previousSharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
     ...overrides,
-  };
+  });
 }
 
 const stamped: ManagedExchangeLastRun = {

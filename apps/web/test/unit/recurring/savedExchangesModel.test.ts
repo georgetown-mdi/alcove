@@ -1,10 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
+import { getDefaultLinkageTerms } from "@alcove/core";
 
 import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
   NO_STANDING_CONDITION,
   applyManagedExchangeLastRun,
   composeManagedExchangeFile,
@@ -15,6 +12,8 @@ import {
   savedExchangeRow,
   savedExchangeRows,
 } from "@recurring/savedExchangesModel";
+
+import { managedRecordFixture as record } from "../../utils/managedRecordFixture";
 
 import type {
   ManagedExchangeRecord,
@@ -29,26 +28,6 @@ import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 // neutrally here.
 
 const NOW = Date.parse("2026-07-14T12:00:00.000Z");
-
-function record(
-  overrides: Partial<ManagedExchangeRecord> = {},
-): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-    ...overrides,
-  };
-}
 
 describe("savedExchangeRow", () => {
   test("names the side and a never-run status", () => {

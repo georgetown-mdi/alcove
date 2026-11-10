@@ -1,13 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-} from "@psi/managed/managedExchangeRecord";
 import {
   composeConfirmationMessage,
   composeManagedFailureConfirmation,
@@ -15,6 +7,8 @@ import {
 } from "@psi/managed/managedFailureConfirmation";
 
 import { dateTimeLabel } from "@psi/formatting";
+
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -26,26 +20,14 @@ import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
 ): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
+  return managedRecordFixture({
     lastRun: {
       at: "2026-07-14T09:00:00.000Z",
       outcome: "failed",
       failureKind: "auth",
     },
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
     ...overrides,
-  };
+  });
 }
 
 describe("composeConfirmationMessage", () => {

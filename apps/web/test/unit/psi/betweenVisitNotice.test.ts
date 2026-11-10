@@ -1,17 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
+import { getDefaultLinkageTerms } from "@alcove/core";
 
 import {
   COMPROMISE_ACKNOWLEDGE_LABEL,
   DOES_NOT_ADD_UP_OPTION,
 } from "@psi/managed/managedFailureConfirmation";
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-} from "@psi/managed/managedExchangeRecord";
 import {
   REPEATED_MISS_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
@@ -20,6 +13,8 @@ import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { dateTimeLabel } from "@psi/formatting";
 
 import { managedRunTierFailure } from "@recurring/managedRunLaunchModel";
+
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
 
 import type {
   ManagedExchangeLastRun,
@@ -53,22 +48,11 @@ function schedule(
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
 ): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
+  return managedRecordFixture({
     id: "riverbend",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
     schedule: schedule(),
     ...overrides,
-  };
+  });
 }
 
 function failed(

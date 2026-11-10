@@ -16,17 +16,13 @@ import {
   JobIntentColumnNameError,
 } from "@psi/jobClient/serverJobExchangeDriver";
 import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-  safeParseManagedExchangeRecord,
-} from "@psi/managed/managedExchangeRecord";
-import {
   MAX_STANDARDIZATION_STEPS,
   jobCreateIntentSchema,
 } from "@jobContract/intentSchemas";
+import {
+  composeManagedExchangeFile,
+  safeParseManagedExchangeRecord,
+} from "@psi/managed/managedExchangeRecord";
 import {
   consoleJobColumnRefusalAlert,
   overlongCoverageColumns,
@@ -34,6 +30,8 @@ import {
   savedExchangeColumnRefusalAlert,
 } from "@psi/columnNames";
 import { failureFor } from "@exchange/useInviterExchange";
+
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
 
 import type {
   Metadata,
@@ -95,17 +93,10 @@ function storedRecord(columns: Metadata): unknown {
     linkageTerms,
     metadata: metadata(),
   });
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
+  return managedRecordFixture({
     id: "3f1a1a2e-0000-4000-8000-000000000001",
-    label: "Riverbend quarterly",
     exchangeFile: { ...exchangeFile, metadata: columns },
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-  };
+  });
 }
 
 /** The alert the recurring-exchange save shows for `columns`, or undefined when

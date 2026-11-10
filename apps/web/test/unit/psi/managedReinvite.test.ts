@@ -9,19 +9,15 @@ import {
 } from "@alcove/core";
 
 import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
+  ManagedSignalingEndpointRefusedError,
+  beginManagedRendezvous,
+} from "@psi/managed/managedRendezvous";
+import {
   applyManagedExchangeLocalEdits,
   applyManagedExchangeReinviteRotation,
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
-import {
-  ManagedSignalingEndpointRefusedError,
-  beginManagedRendezvous,
-} from "@psi/managed/managedRendezvous";
 import {
   canReinviteFromRecord,
   composeManagedReinvite,
@@ -33,6 +29,8 @@ import {
 } from "@psi/managed/managedReinviteDriver";
 import { NoSignalingAddressError } from "@psi/invitation";
 import { reinviteLocation } from "@psi/invitationLocation";
+
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
 
 import type { InvitationToken, WebRTCEndpoint } from "@alcove/core";
 import type {
@@ -96,26 +94,21 @@ const SAVED_SERVER = {
 function inviterRecord(
   overrides: Partial<ManagedExchangeRecord> = {},
 ): RunnableManagedExchangeRecord {
-  return runnableManagedExchangeOrRefuse({
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: {
-        channel: "webrtc",
-        host: "saved-signaling.example.org",
-        port: 9999,
-        path: "/signal/",
-      },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+  return runnableManagedExchangeOrRefuse(
+    managedRecordFixture({
+      exchangeFile: composeManagedExchangeFile({
+        connection: {
+          channel: "webrtc",
+          host: "saved-signaling.example.org",
+          port: 9999,
+          path: "/signal/",
+        },
+        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+      }),
+      sharedSecret: STORED_SECRET,
+      ...overrides,
     }),
-    side: "inviter",
-    sharedSecret: STORED_SECRET,
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-    ...overrides,
-  });
+  );
 }
 
 const seams = {

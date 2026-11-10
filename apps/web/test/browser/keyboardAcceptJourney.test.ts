@@ -90,6 +90,8 @@ vi.mock("@psi/managed/managedExchangeExport", async (importOriginal) => ({
     }),
 }));
 
+// Kept apart from the shared acceptor terms: built on the default terms, so it
+// carries today's date and no version, which the shared fixed-date terms do not.
 const acceptorTerms: LinkageTerms = {
   ...getDefaultLinkageTerms("County Health Department"),
   linkageStrategy: "cascade",

@@ -12,7 +12,6 @@ import "@mantine/core/styles.css";
 
 import {
   MAX_NAME_LENGTH,
-  encodeInvitation,
   generateSharedSecret,
   getDefaultLinkageTerms,
 } from "@alcove/core";
@@ -29,8 +28,7 @@ import { createAppMount } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
 
 import { lifecycleCall, lifecycleCalls } from "./moduleMocks";
-
-import type { InvitationToken, LinkageTerms } from "@alcove/core";
+import { encodeAcceptToken } from "./acceptFixtures";
 
 // The recurring-save offer's refusal disables its own deposit, so it must not
 // outlive the exchange it was about. Each seat keeps one component instance
@@ -125,41 +123,6 @@ async function mintOverOverlongHeader() {
   await expect
     .element(page.getByRole("heading", { level: 1 }))
     .toMatchTextContent("Your invitation is ready");
-}
-
-/** The invitation the acceptor seat walks: a webrtc endpoint, since the offer is
- * webrtc-only, over two keys the file below satisfies. */
-const acceptorTerms: LinkageTerms = {
-  version: "1.0.0",
-  identity: "County Health Department",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  output: { expectsOutput: true, shareWithPartner: true },
-  deduplicate: false,
-  linkageFields: [
-    { name: "firstName", type: "first_name" },
-    { name: "lastName", type: "last_name" },
-  ],
-  linkageKeys: [
-    { name: "first", elements: [{ field: "firstName" }] },
-    { name: "last", elements: [{ field: "lastName" }] },
-  ],
-};
-
-async function encodeAcceptToken(): Promise<string> {
-  const token: InvitationToken = {
-    version: "1",
-    linkageTerms: acceptorTerms,
-    sharedSecret: generateSharedSecret(),
-    connectionEndpoint: {
-      channel: "webrtc",
-      host: "127.0.0.1",
-      port: 3000,
-      path: "/api/",
-    },
-  };
-  return encodeInvitation(token);
 }
 
 /** Walk the acceptor's spine to a launched exchange over a file whose last

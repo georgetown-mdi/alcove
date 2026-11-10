@@ -1,9 +1,4 @@
-import {
-  ConnectionError,
-  TermsChangeRefusedError,
-  generateSharedSecret,
-  getDefaultLinkageTerms,
-} from "@alcove/core";
+import { ConnectionError, TermsChangeRefusedError } from "@alcove/core";
 
 import {
   PROTOCOL_VERSION,
@@ -13,15 +8,6 @@ import {
 } from "@alcove/core/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-  lastRunSchema,
-  parseManagedExchangeRecord,
-} from "@psi/managed/managedExchangeRecord";
 import {
   PARTNER_PROTOCOL_REFUSAL_TITLE,
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
@@ -39,16 +25,19 @@ import {
   lastRunMayHaveSentPayload,
   runHistoryEntries,
 } from "@recurring/managedDetailModel";
+import {
+  lastRunSchema,
+  parseManagedExchangeRecord,
+} from "@psi/managed/managedExchangeRecord";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { deriveManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import { failureFor } from "@exchange/useInviterExchange";
 import { savedExchangeRow } from "@recurring/savedExchangesModel";
 
+import { managedRecordFixture as record } from "../../utils/managedRecordFixture";
+
 import type { LinkageTerms, OlderVersionSide } from "@alcove/core";
-import type {
-  ManagedExchangeLastRun,
-  ManagedExchangeRecord,
-} from "@psi/managed/managedExchangeRecord";
+import type { ManagedExchangeLastRun } from "@psi/managed/managedExchangeRecord";
 
 const build = vi.hoisted(() => ({ console: false }));
 
@@ -121,26 +110,6 @@ async function refusals(): Promise<Array<[string, Error]>> {
     ],
     ["a terms message", await termsMessageRefusal()],
   ];
-}
-
-function record(
-  overrides: Partial<ManagedExchangeRecord> = {},
-): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-    ...overrides,
-  };
 }
 
 const stamped: ManagedExchangeLastRun = {

@@ -7,22 +7,11 @@ import {
   PeerAbortError,
   encodeInvitation,
   generateSharedSecret,
-  getDefaultLinkageTerms,
   getLogger,
   markStatesItsOwnNextStep,
 } from "@alcove/core";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  applyManagedExchangeLocalEdits,
-  applyManagedExchangeReinviteRotation,
-  composeManagedExchangeFile,
-  runnableManagedExchangeOrRefuse,
-} from "@psi/managed/managedExchangeRecord";
 import {
   ManagedExchangeExpiredError,
   benignRerunOutcome,
@@ -45,12 +34,19 @@ import {
   managedWindowRunStage,
   stopWaitingManagedWindowRun,
 } from "@psi/managed/managedWindowRuns";
+import {
+  applyManagedExchangeLocalEdits,
+  applyManagedExchangeReinviteRotation,
+  runnableManagedExchangeOrRefuse,
+} from "@psi/managed/managedExchangeRecord";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { PartnerSecretNotSavedError } from "@psi/partnerSecretNotSaved";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
 import { composeManagedReinvite } from "@psi/managed/managedReinvite";
+
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -112,21 +108,7 @@ const HELD_SECRET = generateSharedSecret();
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
 ): ManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "record-under-test",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: generateSharedSecret(),
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-    ...overrides,
-  };
+  return managedRecordFixture({ id: "record-under-test", ...overrides });
 }
 
 /** A data exchange that stores `nextSecret` through the run's rotation write,

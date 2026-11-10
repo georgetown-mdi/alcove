@@ -29,8 +29,9 @@ import { createAppMount } from "./renderApp";
 import { setOwnRelay } from "./connectionSettings";
 
 import { lifecycleCall, lifecycleCalls } from "./moduleMocks";
+import { acceptorTerms } from "./acceptFixtures";
 
-import type { InvitationToken, LinkageTerms } from "@alcove/core";
+import type { InvitationToken } from "@alcove/core";
 
 // Saving a completed one-shot exchange as a recurring one hands it off to a
 // managed record. The record's secret is the one the completed run's handshake
@@ -100,24 +101,6 @@ async function saveAndReadRecord() {
   const [record] = await listManagedExchanges();
   return record;
 }
-
-const acceptorTerms: LinkageTerms = {
-  version: "1.0.0",
-  identity: "County Health Department",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  output: { expectsOutput: true, shareWithPartner: true },
-  deduplicate: false,
-  linkageFields: [
-    { name: "firstName", type: "first_name" },
-    { name: "lastName", type: "last_name" },
-  ],
-  linkageKeys: [
-    { name: "first", elements: [{ field: "firstName" }] },
-    { name: "last", elements: [{ field: "lastName" }] },
-  ],
-};
 
 describe("the managed record a one-shot hand-off deposits", () => {
   test("the inviter's record holds the run's rotated secret, not the invitation's", async () => {

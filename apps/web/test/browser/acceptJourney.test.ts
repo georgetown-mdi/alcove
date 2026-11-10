@@ -23,13 +23,10 @@ import { minimalPreparedExchange } from "@alcove/core/testing";
 import { WAITING_STAGE_ID, stagesFor } from "@exchange/exchangeRun";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 
+import { acceptorTerms } from "./acceptFixtures";
 import { createAppMount } from "./renderApp";
 
-import type {
-  InvitationToken,
-  LinkageTerms,
-  PreparedExchange,
-} from "@alcove/core";
+import type { InvitationToken, PreparedExchange } from "@alcove/core";
 
 // Mounts the acceptor route tree and drives it end to end through the UI a
 // user touches (file select, consent action, Start), checking the handoff
@@ -101,24 +98,6 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) => {
     });
   });
 });
-
-const acceptorTerms: LinkageTerms = {
-  version: "1.0.0",
-  identity: "County Health Department",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  output: { expectsOutput: true, shareWithPartner: true },
-  deduplicate: false,
-  linkageFields: [
-    { name: "firstName", type: "first_name" },
-    { name: "lastName", type: "last_name" },
-  ],
-  linkageKeys: [
-    { name: "first", elements: [{ field: "firstName" }] },
-    { name: "last", elements: [{ field: "lastName" }] },
-  ],
-};
 
 async function encodeRunToken(): Promise<string> {
   const token: InvitationToken = {

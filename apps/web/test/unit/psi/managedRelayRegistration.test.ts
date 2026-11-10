@@ -10,20 +10,6 @@ import { relayRegistrarAuthorization } from "@alcove/core/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  ManagedRelayRegistrarStaleError,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  applyManagedExchangeReinviteRotation,
-  applyManagedExchangeRelayRegistrar,
-  applyManagedExchangeRelayRegistrationConfirmed,
-  applyManagedExchangeRotation,
-  composeManagedExchangeFile,
-  parseManagedExchangeRecord,
-  runnableManagedExchangeOrRefuse,
-} from "@psi/managed/managedExchangeRecord";
-import {
   MANAGED_RELAY_REENROLLMENT_STEP,
   ManagedRelayRegistrationError,
   enrollManagedRelayRegistrar,
@@ -37,12 +23,24 @@ import {
   stopManagedRelayRegistration,
 } from "@psi/managed/managedRelayRegistration";
 import {
+  ManagedRelayRegistrarStaleError,
+  applyManagedExchangeReinviteRotation,
+  applyManagedExchangeRelayRegistrar,
+  applyManagedExchangeRelayRegistrationConfirmed,
+  applyManagedExchangeRotation,
+  composeManagedExchangeFile,
+  parseManagedExchangeRecord,
+  runnableManagedExchangeOrRefuse,
+} from "@psi/managed/managedExchangeRecord";
+import {
   benignRerunOutcome,
   rerunFailureLastRun,
   runManagedRerun,
 } from "@psi/managed/managedRun";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { persistManagedExchangeRotation } from "@psi/managed/managedExchangeStore";
+
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
 
 import type {
   ManagedExchangeRecord,
@@ -103,21 +101,9 @@ function record(
   overrides: Partial<ManagedExchangeRecord> = {},
 ): RunnableManagedExchangeRecord {
   return runnableManagedExchangeOrRefuse(
-    parseManagedExchangeRecord({
-      schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-      id: "record-under-test",
-      label: "Riverbend quarterly",
-      exchangeFile: composeManagedExchangeFile({
-        connection: { channel: "webrtc", host: "signaling.example.org" },
-        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-      }),
-      side: "inviter",
-      sharedSecret: generateSharedSecret(),
-      standingCondition: NO_STANDING_CONDITION,
-      heldAppUpdate: NO_HELD_APP_UPDATE,
-      defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-      ...overrides,
-    }),
+    parseManagedExchangeRecord(
+      managedRecordFixture({ id: "record-under-test", ...overrides }),
+    ),
   );
 }
 

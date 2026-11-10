@@ -52,6 +52,7 @@ import {
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { captureDownloads } from "./captureDownloads";
 import { expectConsole } from "./expectedConsole";
+import { reachReviewCreate as reachSharedReviewCreate } from "./acceptFixtures";
 
 import type { CapturedDownload } from "./captureDownloads";
 import type { JobHandoff } from "@jobContract/jobHandoff";
@@ -446,28 +447,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-/** From an already-mounted screen: fill the name, pick and confirm a file from the
- * mounted directory (the two-stage commit), then walk to Review & create. */
-async function reachReviewCreate() {
-  await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
-  await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
-  await page.getByRole("button", { name: "Select clients.csv" }).click();
-  await page.getByRole("button", { name: "Use this file" }).click();
-  await expect
-    .element(
-      page.getByRole("button", { name: "Continue to matching & sharing" }),
-    )
-    .toBeEnabled();
-  await page
-    .getByRole("button", { name: "Continue to matching & sharing" })
-    .click();
-  await page
-    .getByRole("button", { name: "Continue to review & create" })
-    .click();
-  await expect
-    .element(page.getByRole("heading", { level: 1 }))
-    .toMatchTextContent("Review & create");
-}
+const reachReviewCreate = () => reachSharedReviewCreate({ console: true });
 
 /** Open the file-handling card on Review & create. Its accessible name holds the
  * collapsed summary, so match on the label rather than the whole name. */

@@ -1,19 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { getDefaultLinkageTerms } from "@alcove/core";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-} from "@psi/managed/managedExchangeRecord";
 import {
   MANAGED_LOAD_INITIAL,
   classifyManagedRecordRead,
   managedLoadFailed,
   managedLoadReducer,
 } from "@recurring/managedRunLoadModel";
+import { runnableManagedExchangeOrRefuse } from "@psi/managed/managedExchangeRecord";
+
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
 
 import type {
   ManagedExchangeRecord,
@@ -27,20 +22,9 @@ import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
 function runnableRecord(sharedSecret: string): RunnableManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret,
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-  };
+  return runnableManagedExchangeOrRefuse(
+    managedRecordFixture({ sharedSecret }),
+  );
 }
 
 const RECORD = runnableRecord("loaded-secret");

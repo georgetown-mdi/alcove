@@ -1,13 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { displayText, getDefaultLinkageTerms } from "@alcove/core";
+import { displayText } from "@alcove/core";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_DEFAULT_RELAY_REFUSAL,
-  NO_HELD_APP_UPDATE,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-} from "@psi/managed/managedExchangeRecord";
 import {
   MANAGED_RUN_INITIAL,
   MANAGED_RUN_SURFACE_INITIAL,
@@ -25,6 +18,9 @@ import { MANAGED_RECOVERY_INITIAL } from "@recurring/managedRunRecoveryModel";
 import { MANAGED_STORE_READS_INITIAL } from "@recurring/managedSurfaceReadsModel";
 import { TERMS_CHANGE_TAKEN_ON_FAILURE } from "@recurring/managedRunLaunchModel";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
+import { runnableManagedExchangeOrRefuse } from "@psi/managed/managedExchangeRecord";
+
+import { managedRecordFixture } from "../../utils/managedRecordFixture";
 
 import type {
   ManagedLoadState,
@@ -45,20 +41,9 @@ import type { RunOutputs } from "@psi/runOutputs";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 function runnableRecord(sharedSecret: string): RunnableManagedExchangeRecord {
-  return {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret,
-    standingCondition: NO_STANDING_CONDITION,
-    heldAppUpdate: NO_HELD_APP_UPDATE,
-    defaultRelayRefusal: NO_DEFAULT_RELAY_REFUSAL,
-  };
+  return runnableManagedExchangeOrRefuse(
+    managedRecordFixture({ sharedSecret }),
+  );
 }
 
 const RUNNABLE_LOAD: ManagedLoadState & ManagedRunnableLoad = {
