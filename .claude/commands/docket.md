@@ -139,7 +139,10 @@ record -- `scratch/docket-<date -I>/rulings.md` and the continuation
 brief -- then present the next item. A
 question the owner asks is not a ruling: answer it, say the decision is still
 open, and end the turn; record a ruling only when the owner's words pick an
-option. A blocker's ruling is acted on when given, from that record, as the
+option. A premise he sets for an answer ("ignore X", "assume Y") is framing,
+not a ruling: answer under it and record nothing, and when unsure which a
+statement is, treat it as framing and ask which it was. A blocker's ruling is
+acted on when given, from that record, as the
 ruleset says of a mid-day docket (`.claude/orchestration/ruleset.md`, Session
 lifecycle); an end-of-run ruling starts no work. When no item is left, say so
 in one line, and write the state the session was in before the docket back to
