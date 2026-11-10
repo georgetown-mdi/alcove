@@ -203,6 +203,33 @@ describe("retest", () => {
     ]);
   });
 
+  it("answers the other items when one board read throws", async () => {
+    const d = deps({ statuses: { "9/5": "Done" } });
+    const read = d.readStatus;
+    d.readStatus = async (board, ids) => {
+      if (board === 7) throw new Error("no such board");
+      return read(board, ids);
+    };
+    d.listParked = async () => [
+      {
+        id: 1,
+        title: "Bad",
+        parkedUntil: "board 7 item 1 is Done (2026-10-24)",
+      },
+      {
+        id: 2,
+        title: "Good",
+        parkedUntil: "board 9 item 5 is Done (2026-10-24)",
+      },
+    ];
+    const rows = await retest([9], d);
+    expect(rows.map((r) => [r.id, r.verdict])).toEqual([
+      [1, "cannot answer"],
+      [2, "fired"],
+    ]);
+    expect(rows[0].detail).toContain("no such board");
+  });
+
   it("prints its usage when run with no args", () => {
     const run = spawnSync(process.execPath, [SCRIPT], { encoding: "utf8" });
     expect(run.status).toBe(2);

@@ -178,6 +178,30 @@ describe("size-mix standardization", () => {
     expect(b).toBeCloseTo(20, 5);
     expect(c).toBeCloseTo(20, 5);
   });
+
+  it("leaves out a band the current window lacks and names it", () => {
+    const base = windowDays(
+      kit({
+        prsPerDay: () => [
+          [50, 10],
+          [2000, 30],
+        ],
+      }),
+    ).days;
+    const cur = windowDays(kit({ prsPerDay: () => [[2000, 60]] })).days;
+    const [b, c, note] = standardizedCost(base, cur);
+    expect(b).toBeCloseTo(30, 5);
+    expect(c).toBeCloseTo(60, 5);
+    expect(note).toContain("<=65 lines");
+    const r = bootstrapRatio(base, cur, standardizedCost, {
+      draws: 200,
+      random: seededRandom(1),
+    });
+    expect(r.ratio).toBeCloseTo(2, 5);
+    expect(r.lo).toBeCloseTo(2, 5);
+    expect(r.hi).toBeCloseTo(2, 5);
+    expect(r.note).toBe(note);
+  });
 });
 
 describe("windowDays", () => {

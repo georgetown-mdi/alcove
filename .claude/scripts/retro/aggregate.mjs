@@ -42,8 +42,10 @@
 //     sidechain or meta entry, classified by `ownerKind`; `userTurns` counts
 //     the typed, command and interrupt kinds.
 //   - A slash command typed with arguments is logged twice, as the command
-//     entry and as typed text starting with the command's name. The second of
-//     such a pair within 3 s is kind `command-twin`, so the pair counts once.
+//     entry and as typed text starting with the command's name, in either
+//     order. The second of such a pair within 3 s is kind `command-twin`, so
+//     the pair counts once. The command entry alone feeds `commands` and the
+//     compaction bookkeeping, whichever half comes first.
 //   - A window call's context (input plus cache reads and writes) sets the
 //     file's `ctxPeak` and counts toward `callsOver300k` and `callsOver500k`.
 //   - A `compact_boundary` system entry counts in `compactByDay` under its
@@ -432,11 +434,20 @@ function scanUser(e, state, side) {
     }
   } else if (!side && !isSub && !e.isMeta) {
     let k = ownerKind(txt, e);
-    const name = k === "command" ? commandNameOf(txt) : null;
-    if (k === "command" || k === "typed") {
-      const cur = { kind: k, ms: Date.parse(e.timestamp), txt, name };
+    const isCommand = k === "command";
+    const name = isCommand ? commandNameOf(txt) : null;
+    let twinOf = null;
+    if (isCommand || k === "typed") {
+      const cur = {
+        kind: k,
+        ms: Date.parse(e.timestamp),
+        txt,
+        name,
+        clearedCompact: false,
+      };
       if (state.lastOwner && isCommandTwin(state.lastOwner, cur)) {
         k = "command-twin";
+        twinOf = state.lastOwner;
         state.lastOwner = null;
       } else {
         state.lastOwner = cur;
@@ -448,15 +459,17 @@ function scanUser(e, state, side) {
     if (k === "typed" || k === "command" || k === "interrupt") rec.userTurns++;
     if (k === "interrupt") rec.interrupts++;
     const cmd = txt.match(/<command-name>([^<]+)<\/command-name>/);
-    if (k === "command" && cmd) {
+    if (isCommand && cmd) {
       const raw = cmd[1].trim();
       rec.commands[raw] = (rec.commands[raw] || 0) + 1;
     }
-    if (k === "command" && name?.startsWith("/compact")) {
+    if (twinOf?.clearedCompact) state.afterCompact = true;
+    if (isCommand && name?.startsWith("/compact")) {
       compactDay(rec, e.timestamp).ownerTurns++;
-    } else if (state.afterCompact && (k === "typed" || k === "command")) {
-      if (k === "command") compactDay(rec, e.timestamp).ownerTurns++;
+    } else if (state.afterCompact && (k === "typed" || isCommand)) {
+      if (isCommand) compactDay(rec, e.timestamp).ownerTurns++;
       state.afterCompact = false;
+      if (k === "typed") state.lastOwner.clearedCompact = true;
     }
   }
   if (!isToolResult) {

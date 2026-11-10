@@ -118,6 +118,13 @@ const sizeBand = (size) => {
   return i < 0 ? SIZE_CUTS.length : i;
 };
 
+const bandRange = (i) =>
+  i === 0
+    ? `<=${SIZE_CUTS[0]} lines`
+    : i === SIZE_CUTS.length
+      ? `>${SIZE_CUTS.at(-1)} lines`
+      : `${SIZE_CUTS[i - 1] + 1}-${SIZE_CUTS[i]} lines`;
+
 function newDay() {
   return {
     spend: 0,
@@ -223,7 +230,9 @@ export const ratioOfSums =
 /**
  * Method D cost per merged PR in each window, standardized to the baseline's
  * size mix: each window's band means weighted by the baseline's band shares.
- * Returns `[baseline, current]`.
+ * A band either window has no PR in is left out of both, the weights
+ * renormalized over the bands both hold. Returns `[baseline, current, note]`,
+ * where `note` names the left-out bands that held PRs in the other window.
  */
 export function standardizedCost(baseDays, curDays) {
   const bands = (days) =>
@@ -233,15 +242,22 @@ export function standardizedCost(baseDays, curDays) {
     }));
   const base = bands(baseDays);
   const cur = bands(curDays);
-  const n = total(base, (b) => b.n);
+  const shared = base.map((b, i) => b.n > 0 && cur[i].n > 0);
+  const n = base.reduce((t, b, i) => t + (shared[i] ? b.n : 0), 0);
   let vb = 0;
   let vc = 0;
   base.forEach((b, i) => {
-    if (!b.n) return;
+    if (!shared[i]) return;
     vb += (b.n / n) * (b.usd / b.n);
     vc += (b.n / n) * (cur[i].usd / cur[i].n);
   });
-  return [vb, vc];
+  const left = [...base.keys()].filter(
+    (i) => !shared[i] && base[i].n + cur[i].n > 0,
+  );
+  const note = left.length
+    ? `left out, absent from one window: ${left.map(bandRange).join("; ")}`
+    : undefined;
+  return n > 0 ? [vb, vc, note] : [NaN, NaN, note];
 }
 
 const quantile = (sorted, p) =>
@@ -249,8 +265,9 @@ const quantile = (sorted, p) =>
 
 /**
  * Compare two windows' days under `pair`, which maps `(baseDays, curDays)` to
- * `[baseline, current]`. Returns the point values, their ratio, its bootstrap
- * interval over days and whether the row moved.
+ * `[baseline, current]` or `[baseline, current, note]`. Returns the point
+ * values, their ratio, its bootstrap interval over days, whether the row moved
+ * and the pair's note on the full windows, if any.
  */
 export function bootstrapRatio(
   baseDays,
@@ -258,7 +275,7 @@ export function bootstrapRatio(
   pair,
   { draws = 2000, random },
 ) {
-  const [baseline, current] = pair(baseDays, curDays);
+  const [baseline, current, note] = pair(baseDays, curDays);
   const resample = (days) =>
     days.map(() => days[Math.floor(random() * days.length)]);
   const ratios = [];
@@ -277,6 +294,7 @@ export function bootstrapRatio(
     lo,
     hi,
     moved: lo !== null && (lo > 1 || hi < 1),
+    ...(note ? { note } : {}),
   };
 }
 
@@ -288,13 +306,7 @@ function rowSpecs() {
       (d) => d.bands[i].usd,
       (d) => d.bands[i].n,
     );
-  const lo = [0, ...SIZE_CUTS.map((c) => c + 1)];
-  const bandName = (i) =>
-    i === 0
-      ? `method D cost per merged PR, <=${SIZE_CUTS[0]} lines`
-      : i === SIZE_CUTS.length
-        ? `method D cost per merged PR, >${SIZE_CUTS.at(-1)} lines`
-        : `method D cost per merged PR, ${lo[i]}-${SIZE_CUTS[i]} lines`;
+  const bandName = (i) => `method D cost per merged PR, ${bandRange(i)}`;
   const merged = (d) => d.merged;
   return [
     ["spend per day", [], both(perDay((d) => d.spend))],
@@ -450,7 +462,8 @@ export function formatTable(rows) {
       if (r.notMeasured) return `${r.row}: not measured (${r.notMeasured})`;
       if ("value" in r) return `${r.row}: ${fmt(r.value)}`;
       const moved = r.moved ? "  MOVED" : "";
-      return `${r.row}: ${fmt(r.baseline)} -> ${fmt(r.current)}, ratio ${fmt(r.ratio)} [${fmt(r.lo)}, ${fmt(r.hi)}]${moved}`;
+      const note = r.note ? ` (${r.note})` : "";
+      return `${r.row}: ${fmt(r.baseline)} -> ${fmt(r.current)}, ratio ${fmt(r.ratio)} [${fmt(r.lo)}, ${fmt(r.hi)}]${moved}${note}`;
     })
     .join("\n");
 }

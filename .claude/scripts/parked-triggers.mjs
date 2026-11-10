@@ -96,7 +96,12 @@ export async function answerTrigger(trigger, deps) {
   const board = BOARD_TRIGGER.exec(trigger);
   if (board) {
     const ids = board[2].split(/,? and |, /).map(Number);
-    const status = await deps.readStatus(Number(board[1]), ids);
+    let status;
+    try {
+      status = await deps.readStatus(Number(board[1]), ids);
+    } catch (err) {
+      return cannot(`could not read board ${board[1]}: ${err.message ?? err}`);
+    }
     const unread = ids.filter((id) => !status.get(id));
     if (unread.length)
       return cannot(`could not read item ${unread.join(", ")}`);

@@ -545,6 +545,42 @@ describe("owner turns", () => {
       "/orchestrate": 1,
     });
   });
+
+  it("books a typed-first twin's command and compaction turn once", async () => {
+    const command = (ts, name) =>
+      user(ts, [
+        { type: "text", text: `<command-name>${name}</command-name>` },
+      ]);
+    const boundary = (ts) => ({
+      type: "system",
+      subtype: "compact_boundary",
+      timestamp: ts,
+      uuid: `boundary-${ts}`,
+      compactMetadata: { trigger: "manual", preTokens: 300000 },
+    });
+    const result = await aggregateSessions({
+      [S1]: {
+        main: [
+          user("2026-01-11T10:00:00.000Z", "/compact"),
+          command("2026-01-11T10:00:01.000Z", "/compact"),
+          boundary("2026-01-11T10:00:30.000Z"),
+          user("2026-01-11T10:01:00.000Z", "/retro now"),
+          command("2026-01-11T10:01:01.000Z", "/retro"),
+          user("2026-01-11T10:02:00.000Z", "Carry on."),
+        ],
+      },
+    });
+    const session = sessionOf(result, S1);
+    expect(session.ownerByDay).toEqual({
+      "2026-01-11": { typed: 3, "command-twin": 2 },
+    });
+    expect(session.userTurns).toBe(3);
+    expect(session.commands).toEqual({ "/compact": 1, "/retro": 1 });
+    expect(session.compactByDay["2026-01-11"]).toMatchObject({
+      manual: 1,
+      ownerTurns: 2,
+    });
+  });
 });
 
 describe("peak context", () => {
