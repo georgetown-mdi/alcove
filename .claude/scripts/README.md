@@ -106,8 +106,10 @@ push:
   states) into spend by model, store, component and day; `map.mjs` attributes
   that spend to the window's pull requests; `analyze.mjs` measures the review
   apparatus, implementers and session length over it; `followups.mjs` finds
-  the window's follow-up PRs from git blame; `trend.mjs` compares the window
-  with a baseline window's output, row by row. Every input -- store
+  the window's follow-up PRs from git blame; `review-day.mjs` joins the
+  review days' records to the board's `Delivered by:` lines and those PR
+  costs, with each day's share of the weekly allowance; `trend.mjs` compares
+  the window with a baseline window's output, row by row. Every input -- store
   paths, window bounds, PR range, output directory -- is an argument, and
   each script states its own in its header. The transcript parsing rules are
   in `aggregate.mjs`'s header, each with a synthetic fixture in
@@ -123,7 +125,11 @@ push:
   node .claude/scripts/retro/analyze.mjs --dir <dir>
   node .claude/scripts/retro/followups.mjs --repo . --ref origin/staging \
     --pr-range <lo-hi> --prs <bodies.json> --dir <dir>
-  node .claude/scripts/retro/trend.mjs --baseline <baseline dir> --current <dir>
+  node .claude/scripts/retro/review-day.mjs --days <review days dir> \
+    --cut <date> --end <date> --pr-cost <dir>/pr-cost.json \
+    --followups <dir>/followups.json --out <dir>/review-day.json
+  node .claude/scripts/retro/trend.mjs --baseline <baseline dir> --current <dir> \
+    --review-day <dir>/review-day.json
   ```
 
   `analyze.mjs --call-index` reads a per-store table whose shape its header
