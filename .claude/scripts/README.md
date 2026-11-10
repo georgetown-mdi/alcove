@@ -68,8 +68,9 @@ push:
   `npm run measure:pr-checks -- [runs]`. With no arguments it prints its usage
   rather than starting a run
 - `*-workflow.mjs`, the Workflow script bodies `/review-round`, `/panel`,
-  `/docket`, and the review day invoke by absolute path. Each is a script BODY, not a module: the
-  harness injects `args`, `agent`, `parallel`, and `pipeline`, and takes the
+  `/docket`, and the review day invoke by absolute path. Each is a script
+  BODY, not a module: the harness injects `args`, `agent`, `parallel`, and
+  `pipeline`, and takes the
   top-level `return` as the run's result. No ES module parser accepts that, so
   eslint ignores them and the test beside each one compiles it into a function
   to drive it. The workflow scripts import and require nothing (asserted by

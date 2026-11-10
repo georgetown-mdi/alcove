@@ -167,7 +167,7 @@ describe.each(SHAPES)("review-day run ($shape args)", ({ deliver }) => {
       narrowed: 0,
       refuted: 0,
       unverifiable: 0,
-      blocked: "no findings",
+      blocked: "",
     });
   });
 
@@ -280,7 +280,7 @@ describe.each(SHAPES)("review-day run ($shape args)", ({ deliver }) => {
             narrowed: 0,
             refuted: 0,
             unverifiable: 0,
-            blocked: "no findings",
+            blocked: "",
           },
         },
       ],

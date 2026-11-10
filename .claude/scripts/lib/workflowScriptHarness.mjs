@@ -1,7 +1,8 @@
 // What the Workflow-script suites (panel-script.test.mjs,
 // review-round-script.test.mjs, judgment-call-controversy-script.test.mjs,
-// review-day-script.test.mjs) share: the compiled script under test, the two shapes the harness delivers
-// arguments in, and the deliveries that resolve no named argument.
+// review-day-script.test.mjs) share: the compiled script under test, the two
+// shapes the harness delivers arguments in, and the deliveries that resolve no
+// named argument.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

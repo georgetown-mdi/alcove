@@ -155,12 +155,12 @@ const requiredKeysClause = (schema) =>
   `Your structured result must have every one of these top-level keys: ${schema.required.map((key) => `\`${key}\``).join(", ")}.`;
 
 const reviewPrompt = (job) =>
-  `Review day, slice ${job.id}, lens ${job.lens}. The day directory is ${day}. Read ${BRIEFS}/reviewer-brief.md in the repository (its Shared section in full, then Lens ${job.lens}) and the ${job.id} entry in ${day}/SLICES.md, and follow them. Finding prefix: ${job.id}. Write your one output file to ${W}/${job.id}.md. Run every command in the foreground. Return your file path, the total number of findings, the number at major or above, and anything that blocked you (empty string if nothing).
+  `Review day, slice ${job.id}, lens ${job.lens}. The day directory is ${day}. Read ${BRIEFS}/reviewer-brief.md in the checkout that holds ${day} (its root is what git -C ${day} rev-parse --show-toplevel prints), its Shared section in full, then Lens ${job.lens}, and the ${job.id} entry in ${day}/SLICES.md, and follow them. Finding prefix: ${job.id}. Write your one output file to ${W}/${job.id}.md. Run every command in the foreground. Return your file path, the total number of findings, the number at major or above, and anything that blocked you (empty string if nothing).
 
 ${requiredKeysClause(REVIEW_SCHEMA)}`;
 
 const verifyPrompt = (job) =>
-  `Review day: verify the findings in ${W}/${job.id}.md, raised under lens ${job.lens}. The day directory is ${day}. Read ${BRIEFS}/verifier-brief.md in the repository first and follow it. Write your one output file to ${W}/${job.id}.verify.md. Run every command in the foreground. Return your file path, the count of each verdict, and anything that blocked you (empty string if nothing).
+  `Review day: verify the findings in ${W}/${job.id}.md, raised under lens ${job.lens}. The day directory is ${day}. Read ${BRIEFS}/verifier-brief.md in the checkout that holds ${day} (its root is what git -C ${day} rev-parse --show-toplevel prints) first and follow it. Write your one output file to ${W}/${job.id}.verify.md. Run every command in the foreground. Return your file path, the count of each verdict, and anything that blocked you (empty string if nothing).
 
 ${requiredKeysClause(VERIFY_SCHEMA)}`;
 
@@ -174,7 +174,8 @@ const review = (job) =>
   });
 
 // A slice whose reviewer returned nothing has no findings file to verify, and
-// one with no findings has nothing to verify; neither seats a verifier.
+// one with no findings has nothing to verify; neither seats a verifier. The
+// second gets an empty verdict with no file, the first null.
 const verify = (reviewed, job) => {
   if (!reviewed) return null;
   if (reviewed.total === 0) {
@@ -184,7 +185,7 @@ const verify = (reviewed, job) => {
       narrowed: 0,
       refuted: 0,
       unverifiable: 0,
-      blocked: "no findings",
+      blocked: "",
     };
   }
   return job.lens === 2
@@ -226,7 +227,7 @@ const slices = jobs.map((job) => {
 
 const sliceList = jobs.map((job) => `${job.id} (lens ${job.lens})`).join(", ");
 const triage = await agent(
-  `Triage workflow ${wf} of the review day. The day directory is ${day}; $W = ${W}. Slices: ${sliceList}. Findings files are $W/<slice>.md and verdict files $W/<slice>.verify.md (a slice with no findings has no verdict file). Read ${BRIEFS}/triage-brief.md in the repository and follow it. Run every command in the foreground. Return the TRIAGE.md path and a summary of at most about 600 tokens.
+  `Triage workflow ${wf} of the review day. The day directory is ${day}; $W = ${W}. Slices: ${sliceList}. Findings files are $W/<slice>.md and verdict files $W/<slice>.verify.md (a slice with no findings has no verdict file). Read ${BRIEFS}/triage-brief.md in the checkout that holds ${day} (its root is what git -C ${day} rev-parse --show-toplevel prints) and follow it. Run every command in the foreground. Return the TRIAGE.md path and a summary of at most about 600 tokens.
 
 ${requiredKeysClause(TRIAGE_SCHEMA)}`,
   {
