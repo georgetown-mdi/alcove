@@ -857,9 +857,8 @@
   margin: 0.5rem 0 1rem 0;
 }
 
-/* A row too narrow for the block and the copy button puts the button on a
-   line of its own rather than squeezing its label out of its box (WCAG
-   1.4.10). */
+/* The copy button keeps its width, so the code block shrinks and scrolls
+   rather than squeezing the button's label out of its box (WCAG 1.4.10). */
 .handoffCodeRow > :global(.mantine-Button-root) {
   flex-shrink: 0;
 }
