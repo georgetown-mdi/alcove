@@ -742,7 +742,7 @@ describe("the single-pass partner size at the terms exchange", () => {
     });
 
     it("charges a large request at the request charge plus the setup's masking increment", () => {
-      expect(ownIncrement).toBe(138_250_000);
+      expect(ownIncrement).toBe(139_300_000);
       expect(ownSetupCharges("native").buildPeak).toBeLessThan(masked);
       expect(() => run(request, maskedWithoutOwnSetup)).toThrow(
         RoundCapacityError,
