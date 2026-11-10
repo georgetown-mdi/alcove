@@ -451,7 +451,7 @@ describe("plan.json", () => {
         path: "docs/spec/FRAMES.md",
         line: 3,
         names: ["parseReaderFrame"],
-        code: ["packages/core/src/psi/frameReader.ts"],
+        code: { "packages/core/src/psi/frameReader.ts": ["parseReaderFrame"] },
       },
     ]);
     const total =
@@ -501,7 +501,9 @@ describe("slices sized by the lines they match", () => {
     const source = (message) =>
       [
         "export function refuseLongFrame(frame) {",
-        ...Array.from({ length: 98 }, (_, i) => `  const step${i} = frame;`),
+        ...Array.from({ length: 98 }, (_, i) =>
+          i === 48 ? "  refuseLongFrame(frame);" : `  const step${i} = frame;`,
+        ),
         `  throw new Error("${message}");`,
         ...Array.from({ length: 100 }, (_, i) => `  const tail${i} = frame;`),
         "}",
@@ -544,8 +546,10 @@ describe("slices sized by the lines they match", () => {
     const codeLines =
       fixture.git(["show", `${head}:apps/cli/src/frames.ts`]).split("\n")
         .length - 1;
+    const codeRegions = selectedLineCount([1, 50], codeLines, context);
+    expect(codeRegions).toBeLessThan(codeLines);
     expect(spec.files).toEqual(["docs/spec/LONG.md", "apps/cli/src/frames.ts"]);
-    expect(spec.lines).toBe(2 * context + 1 + 3 + codeLines);
+    expect(spec.lines).toBe(2 * context + 1 + 3 + codeRegions);
     expect(readFileSync(join(dayDir, "SLICES.md"), "utf8")).toContain(
       '  - apps/cli/src/frames.ts:100: throw new Error("The frame is over the limit. Send a shorter one.");',
     );

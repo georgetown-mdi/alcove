@@ -45,9 +45,10 @@
 // selector's set is cut by directory into slices of at most `maxSliceLines`, a
 // small directory joining its neighbour. A user-string or stale-spec slice
 // lists the lines it matched and is sized by them, `matchContextLines` either
-// side of each; a stale-spec slice also lists, and is sized by the whole line
-// count of, each code file its statements name, once. Every other slice is
-// sized by its files' whole line counts.
+// side of each; a stale-spec slice also lists each code file its statements
+// name, and counts `matchContextLines` either side of each line in it where
+// such a name occurs, each line once, up to the file's line count. Every other
+// slice is sized by its files' whole line counts.
 //
 // Exit 0 written; 1 a slice over `maxSliceLines`, nothing written; 2 usage, an
 // unreadable input, a git error, or a failed board read.
@@ -728,8 +729,8 @@ function dayRecord(day) {
 
 /**
  * The `docs/spec` lines (outside `wording-changes/`) naming a file's stem or
- * exported name as a whole word, each with the sorted `code` files whose names
- * it uses.
+ * exported name as a whole word, each with `code`: the files whose names it
+ * uses, each mapped to the sorted names it uses from that file.
  */
 export function specStatements(git, sha, files, tracked) {
   const names = new Map();
@@ -754,6 +755,13 @@ export function specStatements(git, sha, files, tracked) {
       path.startsWith("docs/spec/") &&
       !path.startsWith("docs/spec/wording-changes/"),
   );
+  const codeNamed = (named) => {
+    const code = {};
+    for (const name of [...named].sort())
+      for (const path of [...names.get(name)].sort())
+        (code[path] ??= []).push(name);
+    return code;
+  };
   const statements = [];
   for (const [path, blob] of git.blobs(sha, specPaths))
     blob
@@ -768,9 +776,7 @@ export function specStatements(git, sha, files, tracked) {
             path,
             line: index + 1,
             names: [...named].sort(),
-            code: [
-              ...new Set([...named].flatMap((name) => [...names.get(name)])),
-            ].sort(),
+            code: codeNamed(named),
           });
       });
   return statements;
@@ -1063,28 +1069,67 @@ export function planDay({
   );
   const specFiles = [...new Set(statements.map(({ path }) => path))];
   if (specFiles.length > 0) {
-    const specSize = matchedSize(statements);
-    const codeBySpec = new Map();
-    for (const { path, code } of statements) {
-      if (!codeBySpec.has(path)) codeBySpec.set(path, new Set());
-      for (const codePath of code) codeBySpec.get(path).add(codePath);
+    const wantedNames = new Map();
+    for (const { code } of statements)
+      for (const [path, named] of Object.entries(code)) {
+        if (!wantedNames.has(path)) wantedNames.set(path, new Set());
+        for (const name of named) wantedNames.get(path).add(name);
+      }
+    ensureLines([...wantedNames.keys()]);
+    const occurrences = new Map();
+    for (const [path, blob] of git.blobs(sha, [...wantedNames.keys()])) {
+      const found = new Map();
+      blob
+        .toString("utf8")
+        .split("\n")
+        .forEach((text, index) => {
+          for (const word of new Set(text.match(/[\w$]+/g) ?? []))
+            if (wantedNames.get(path).has(word)) {
+              if (!found.has(word)) found.set(word, []);
+              found.get(word).push(index + 1);
+            }
+        });
+      occurrences.set(path, found);
     }
-    const codeOf = (group) => [
-      ...new Set(group.flatMap((path) => [...(codeBySpec.get(path) ?? [])])),
-    ];
-    ensureLines(codeOf(specFiles));
+    const codeLinesOf = (subset) => {
+      const byPath = new Map();
+      for (const { code } of subset)
+        for (const [path, named] of Object.entries(code)) {
+          if (!byPath.has(path)) byPath.set(path, new Set());
+          for (const name of named)
+            for (const line of occurrences.get(path).get(name) ?? [])
+              byPath.get(path).add(line);
+        }
+      return byPath;
+    };
+    const staleSize = (subset) => {
+      const specSize = matchedSize(subset);
+      let total = 0;
+      for (const path of new Set(subset.map((s) => s.path)))
+        total += specSize(path);
+      for (const [path, lines] of codeLinesOf(subset))
+        total += Math.min(
+          lineOf(path),
+          selectedLineCount([...lines], lineOf(path), matchContextLines),
+        );
+      return total;
+    };
     addSlices(
       "stale-spec",
       1,
       specFiles,
-      (sliceFiles) => ({
-        files: [...sliceFiles, ...codeOf(sliceFiles).sort()],
-        statements: statements.filter(({ path }) => sliceFiles.includes(path)),
-      }),
-      specSize,
+      (sliceFiles) => {
+        const subset = statements.filter(({ path }) =>
+          sliceFiles.includes(path),
+        );
+        return {
+          files: [...sliceFiles, ...[...codeLinesOf(subset).keys()].sort()],
+          statements: subset,
+        };
+      },
+      lineOf,
       (group) =>
-        group.reduce((sum, path) => sum + specSize(path), 0) +
-        codeOf(group).reduce((sum, path) => sum + lineOf(path), 0),
+        staleSize(statements.filter(({ path }) => group.includes(path))),
     );
   }
 
