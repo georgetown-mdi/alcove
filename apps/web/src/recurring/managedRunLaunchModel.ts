@@ -34,8 +34,10 @@ import {
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
+  PARTNER_STOPPED_RESPONDING_TITLE,
   RAN_ELSEWHERE_IMPORT_REMEDY,
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
+  RECORDED_PARTNER_STOPPED_RESPONDING_MESSAGE,
   REINVITE_IF_RUNS_KEEP_FAILING,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   STORAGE_FAILURE_TITLE,
@@ -48,7 +50,9 @@ import {
   UNEXPLAINED_FAILURE_TITLE,
   partnerProtocolRefusalCopy,
   partnerProtocolRefusalMessage,
+  partnerStopAtMatchingStartCopy,
   partnerStoppedRespondingCopy,
+  shardStalledCopy,
   tooLargeFailureTitle,
   tooLargeSetProblem,
 } from "@psi/managed/managedFailureCopy";
@@ -158,7 +162,8 @@ export interface ManagedRunFailure {
     | Exclude<ManagedFailureTier, "none">
     | BenignRerunOutcome
     | "saved-address-refused"
-    | "partner-stopped-responding";
+    | "partner-stop-at-matching-start"
+    | "shard-stalled";
   /** The surface title. */
   title: string;
   /** The operator-facing message. */
@@ -647,6 +652,16 @@ function partnerProtocolRefusalFailure(copy: {
   };
 }
 
+/** The recorded state of a run whose partner sent nothing for the
+ * partner-silence bound during matching: the live alert's copy, retried in
+ * place. */
+const RECORDED_PARTNER_STOPPED_RESPONDING_FAILURE: ManagedRunFailure = {
+  kind: "partner-stopped-responding",
+  title: PARTNER_STOPPED_RESPONDING_TITLE,
+  message: RECORDED_PARTNER_STOPPED_RESPONDING_MESSAGE,
+  recovery: "retry",
+};
+
 /** {@link partnerProtocolRefusalFailure} read back from the record. */
 const RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE = partnerProtocolRefusalFailure(
   {
@@ -868,6 +883,8 @@ export function managedRunTierFailure(
       return PARTNER_REFUSED_TERMS_FAILURE;
     case "partner-protocol-refusal":
       return RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE;
+    case "partner-stopped-responding":
+      return RECORDED_PARTNER_STOPPED_RESPONDING_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(record.lastRun ?? {});
     case "custody-unreadable":
@@ -984,6 +1001,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "partner-storage": "none",
   "partner-refused-terms": "alert-copy",
   "partner-protocol-refusal": "none",
+  "partner-stopped-responding": "none",
   expired: "none",
   input: "none",
   missed: "none",
@@ -1043,6 +1061,8 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
 > = {
   transport: "attributed",
   "partner-stopped-responding": "withheld",
+  "partner-stop-at-matching-start": "withheld",
+  "shard-stalled": "withheld",
   "partner-refused-terms": "attributed",
   "partner-protocol-refusal": "attributed",
   "custody-unreadable": "withheld",
@@ -1107,9 +1127,10 @@ export function withShownCause(
  * partner-influenced. Any other failure is tiered from the record's own
  * bookkeeping: {@link deriveManagedFailureTier} reads the tier and {@link
  * managedRunTierFailure} maps it to copy. `now` and `local` feed that
- * derivation (expiry and the import marker). The transport tier of an error
- * holding core's `partner-stopped-responding` cause takes that cause's copy
- * ({@link partnerStoppedRespondingCopy}); the record holds it as `transport`.
+ * derivation (expiry and the import marker). An error holding core's
+ * `partner-stopped-responding` cause takes that cause's copy
+ * ({@link partnerStoppedRespondingCopy}), with the wait it reached, and a
+ * transport-tier stalled split takes its own ({@link shardStalledCopy}).
  *
  * A derived tier reads the record reloaded after the run (`records.afterRun`),
  * since it rests on what THIS run stamped. The no-show rests on what stood
@@ -1202,8 +1223,16 @@ function classifyLaunchState(
       return partnerStorageFailure(records.afterRun, now);
     case "partner-refused-terms":
       return PARTNER_REFUSED_TERMS_FAILURE;
-    case "partner-protocol-refusal":
+    case "partner-protocol-refusal": {
+      const stopAtMatchingStart = partnerStopAtMatchingStartCopy(error);
+      if (stopAtMatchingStart !== undefined)
+        return {
+          kind: "partner-stop-at-matching-start",
+          ...stopAtMatchingStart,
+          recovery: "ask-partner",
+        };
       return partnerProtocolRefusalFailure(partnerProtocolRefusalCopy(error));
+    }
     case "relay-registration":
       return relayRegistrationFailure(error);
     case undefined:
@@ -1228,14 +1257,20 @@ function classifyLaunchState(
     return STORAGE_NEXT_RUN_HEALS_FAILURE;
   const shownTier =
     dataExchangeStarted && attestsNonDisclosure(tier) ? "transport" : tier;
-  const stoppedResponding =
-    shownTier === "transport" ? partnerStoppedRespondingCopy(error) : undefined;
+  const liveTransport =
+    shownTier === "transport" || shownTier === "partner-stopped-responding";
+  const stoppedResponding = liveTransport
+    ? partnerStoppedRespondingCopy(error)
+    : undefined;
   if (stoppedResponding !== undefined)
     return {
       kind: "partner-stopped-responding",
       ...stoppedResponding,
       recovery: "retry",
     };
+  const stalled = liveTransport ? shardStalledCopy(error) : undefined;
+  if (stalled !== undefined)
+    return { kind: "shard-stalled", ...stalled, recovery: "retry" };
   return managedRunTierFailure(shownTier, afterRun, local, now);
 }
 

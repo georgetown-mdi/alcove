@@ -21,12 +21,19 @@
 
 import {
   MAX_WEBRTC_FRAME_BYTES,
+  PARTNER_SILENCE_BOUND_MS,
+  PARTNER_STOPPED_AT_MATCHING_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   failureCauseOf,
   failureCauseSentence,
+  isPartnerStopAtMatchingStart,
+  isShardStalled,
   olderVersionOf,
+  shardStalledError,
 } from "@alcove/core";
 import { isConsoleBuild } from "@utils/clientConfig";
+
+import { BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS } from "../workers/psiShardPolicy";
 
 import type { OlderVersionSide, TermsDifferenceRefusedBy } from "@alcove/core";
 
@@ -352,6 +359,40 @@ export function partnerStoppedRespondingCopy(
   return {
     title: PARTNER_STOPPED_RESPONDING_TITLE,
     message: `${failureCauseSentence(cause)} ${PARTNER_STOPPED_RESPONDING_REMEDY}`,
+  };
+}
+
+/** The message over a recorded run that stopped on core's
+ * `partner-stopped-responding` cause: the record holds no wait, and the run
+ * waited the partner-silence bound. */
+export const RECORDED_PARTNER_STOPPED_RESPONDING_MESSAGE = `${failureCauseSentence(
+  { kind: "partner-stopped-responding", silentMs: PARTNER_SILENCE_BOUND_MS },
+)} ${PARTNER_STOPPED_RESPONDING_REMEDY}`;
+
+/** The copy for a run refused because its partner's first message of
+ * matching was its local-fault abort ({@link isPartnerStopAtMatchingStart}),
+ * which names no party as the one to update. `undefined` for any other
+ * failure. */
+export function partnerStopAtMatchingStartCopy(
+  error: unknown,
+): { title: string; message: string } | undefined {
+  if (!isPartnerStopAtMatchingStart(error)) return undefined;
+  return {
+    title: "Matching could not start",
+    message: `Your partner's run stopped. ${PARTNER_STOPPED_AT_MATCHING_REMEDY}`,
+  };
+}
+
+/** The copy for a run whose split encryption stopped on a PSI worker that
+ * reported no progress ({@link isShardStalled}): core's own sentence, which
+ * names the step and the next one. `undefined` for any other failure. */
+export function shardStalledCopy(
+  error: unknown,
+): { title: string; message: string } | undefined {
+  if (!isShardStalled(error)) return undefined;
+  return {
+    title: "Encrypting the data stopped making progress",
+    message: shardStalledError(BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS).message,
   };
 }
 

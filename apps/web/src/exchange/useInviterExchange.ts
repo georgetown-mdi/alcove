@@ -115,7 +115,9 @@ import {
   TERMS_DIFFERENCE_TITLE,
   partnerProtocolRefusalCopy,
   partnerProtocolRefusalMessage,
+  partnerStopAtMatchingStartCopy,
   partnerStoppedRespondingCopy,
+  shardStalledCopy,
   tooLargeFailureTitle,
 } from "@psi/managed/managedFailureCopy";
 
@@ -776,6 +778,15 @@ function failureContentFor(
       settingsCannotResolve: true,
       ...reportedCauseFields(sanitizedFailureMessage(error)),
     };
+  // A partner whose run stopped as matching started, on an earlier build or
+  // not: the copy states the whole refusal, so no block repeats it.
+  const stopAtMatchingStart = partnerStopAtMatchingStartCopy(error);
+  if (stopAtMatchingStart !== undefined)
+    return {
+      category: "config",
+      ...stopAtMatchingStart,
+      settingsCannotResolve: true,
+    };
   // What was refused is shown in the labelled block; why no retry is offered:
   // PARTNER_PROTOCOL_REFUSAL_TITLE.
   if (isPartnerProtocolRefusal(error)) {
@@ -974,6 +985,10 @@ function failureContentFor(
   const stoppedResponding = partnerStoppedRespondingCopy(error);
   if (stoppedResponding !== undefined)
     return { category, ...stoppedResponding };
+  // A PSI worker of a split operation reported no progress: a fault on this
+  // device, which the connection copy below would misname.
+  const stalled = shardStalledCopy(error);
+  if (stalled !== undefined) return { category, ...stalled };
   // A failure whose own message states the cause and the next step -- relayed
   // with `recoveryHint` (docs/spec/CLI_EVENTS.md) or raised marked in this
   // browser, such as core's reply-cap fault: "report it; retrying will not

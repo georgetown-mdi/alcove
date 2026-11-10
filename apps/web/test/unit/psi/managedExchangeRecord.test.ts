@@ -3678,6 +3678,7 @@ describe("the rotation-in-flight marker", () => {
     "partner-storage": true,
     "partner-refused-terms": false,
     "partner-protocol-refusal": false,
+    "partner-stopped-responding": false,
     "terms-change": true,
     cancelled: false,
   } satisfies Record<ManagedExchangeFailureKind, boolean>;

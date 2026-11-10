@@ -39,13 +39,29 @@ export const STILL_WORKING_FRAME: { readonly working: true } = Object.freeze({
 const STILL_WORKING_FRAME_BYTES = JSON.stringify(STILL_WORKING_FRAME).length;
 
 /**
- * The refusal of a partner whose first frame of the PSI phase is not a
- * still-working frame, or is its local-fault abort: an older build reads this
- * party's first still-working frame as a protocol error.
+ * The refusal of a partner whose first frame of the PSI phase is data: a
+ * partner on this build sends a still-working frame first.
  */
 export const OLDER_PARTNER_AT_MATCHING_MESSAGE =
   "Matching could not start, most likely because your partner runs an " +
   "older version of Alcove. Ask them to update Alcove, then run again.";
+
+/**
+ * What to do after a partner's first frame of the PSI phase was its
+ * local-fault abort. An older build sends one after reading this party's first
+ * still-working frame as a protocol error, and a partner on this build sends
+ * one when its run faults before its first still-working frame, so the step
+ * names no party as the one to update.
+ */
+export const PARTNER_STOPPED_AT_MATCHING_REMEDY =
+  "Make sure you both run the current version of Alcove, then run the " +
+  "exchange again.";
+
+/** The refusal of a partner whose first frame of the PSI phase is its
+ * local-fault abort ({@link PARTNER_STOPPED_AT_MATCHING_REMEDY}). */
+export const PARTNER_STOPPED_AT_MATCHING_MESSAGE =
+  "Matching could not start because your partner's run stopped. " +
+  PARTNER_STOPPED_AT_MATCHING_REMEDY;
 
 function hasWorkingKey(frame: unknown): boolean {
   return (
@@ -153,16 +169,13 @@ export function stillWorkingLayer(
     restartTimer();
   };
 
-  const olderPartner = (cause?: PeerAbortError): PartnerProtocolRefusalError =>
-    markStatesItsOwnNextStep(
-      new PartnerProtocolRefusalError(OLDER_PARTNER_AT_MATCHING_MESSAGE, {
-        olderVersion: "partner",
-        ...(cause === undefined ? {} : { cause }),
-      }),
-    );
-
-  const refuseOlderPartner = (frame: unknown): void => {
-    if (!isPartnerAbortFrame(frame)) throw olderPartner();
+  const refuseFirstFrame = (frame: unknown): void => {
+    if (!isPartnerAbortFrame(frame))
+      throw markStatesItsOwnNextStep(
+        new PartnerProtocolRefusalError(OLDER_PARTNER_AT_MATCHING_MESSAGE, {
+          olderVersion: "partner",
+        }),
+      );
     try {
       throwIfPartnerAbort(frame);
     } catch (abort) {
@@ -170,7 +183,11 @@ export function stillWorkingLayer(
         abort instanceof PeerAbortError &&
         abort.partnerReason === LOCAL_FAULT_ABORT_REASON
       )
-        throw olderPartner(abort);
+        throw markStatesItsOwnNextStep(
+          new PartnerProtocolRefusalError(PARTNER_STOPPED_AT_MATCHING_MESSAGE, {
+            cause: abort,
+          }),
+        );
     }
   };
 
@@ -198,7 +215,7 @@ export function stillWorkingLayer(
       );
     if (!partnerFrameSeen) {
       partnerFrameSeen = true;
-      refuseOlderPartner(frame);
+      refuseFirstFrame(frame);
     }
     if (phaseEnded) windowOpen = false;
     return frame;

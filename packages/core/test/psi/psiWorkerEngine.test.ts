@@ -18,9 +18,12 @@ import {
   ConnectionError,
   PartnerProtocolRefusalError,
   ProtocolRefusalError,
+  ShardStalledError,
 } from "../../src/errors";
+import { shardStalledError } from "../../src/psi/shardedPsiEngine";
 import {
   WorkerPsiEngine,
+  servePsiEngine,
   servePsiWorker,
   type PsiWorkerHandle,
   type PsiWorkerResponse,
@@ -112,7 +115,29 @@ describe("the refusal discriminant of a failed worker reply", () => {
     const engine = repliesWith({ error: "boom" });
     const refused = await rejection(engine.createServerSetup(["a"]));
     expect(refused).not.toBeInstanceOf(ProtocolRefusalError);
+    expect(refused).not.toBeInstanceOf(ShardStalledError);
   });
+});
+
+test("a stalled split raised in the worker reaches the host as one, with its message", async () => {
+  const stalled = shardStalledError(60_000);
+  let deliver: (response: PsiWorkerResponse) => void = () => {};
+  const dispatch = servePsiEngine(
+    {
+      createServerSetup: () => Promise.reject(stalled),
+    } as unknown as PsiEngine,
+    (response) => deliver(structuredClone(response)),
+  );
+  const engine = new WorkerPsiEngine({
+    postMessage: (request) => dispatch(structuredClone(request)),
+    setHandlers: ({ onMessage }) => {
+      deliver = onMessage;
+    },
+    terminate: () => {},
+  });
+  const refused = await rejection(engine.createServerSetup(["a"]));
+  expect(refused).toBeInstanceOf(ShardStalledError);
+  expect(refused?.message).toBe(stalled.message);
 });
 
 function workerParticipant(

@@ -27,6 +27,7 @@ import {
   RoundCapacityError,
   TermsChangeRefusedError,
   classifyFailure,
+  failureCauseOf,
   handshakeRoleForRendezvousRole,
   isPartnerProtocolRefusal,
   isSetTooLargeError,
@@ -462,8 +463,10 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * `partner-protocol-refusal`: a stopped run's teardown can cut a frame short
  * and raise that refusal. A trust-boundary failure
  * ({@link isTrustBoundaryFailure} of {@link classifyFailure}) before the data
- * exchange began records `auth`. Everything else -- including any of these
- * once the data exchange began -- records `transport`.
+ * exchange began records `auth`. A failure holding core's
+ * `partner-stopped-responding` cause records `partner-stopped-responding`.
+ * Everything else -- including any of these once the data exchange began --
+ * records `transport`.
  *
  * `terms-shortfall`, `auth`, and `missed` require `!dataExchangeStarted`: each
  * tells the operator nothing left this device. Every outcome here is `failed`
@@ -523,6 +526,8 @@ export function rerunFailureLastRun(
     return failedRun(at, "failed", "partner-protocol-refusal");
   if (isTrustBoundaryFailure(classifyFailure(error)) && !dataExchangeStarted)
     return failedRun(at, "failed", "auth");
+  if (failureCauseOf(error)?.kind === "partner-stopped-responding")
+    return failedRun(at, "failed", "partner-stopped-responding");
   return failedRun(at, "failed", "transport");
 }
 

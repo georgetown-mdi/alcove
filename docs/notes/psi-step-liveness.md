@@ -123,9 +123,9 @@ The first partner frame a party reads in its PSI phase must be a still-working f
 
 An earlier build sends none.
 It either sends its first PSI frame, or reads this build's first still-working frame as the frame it awaits, fails with a `protocol` error, and sends its local-fault abort.
-This build refuses either first frame with "Matching could not start, most likely because your partner runs an older version of Alcove. Ask them to update Alcove, then run again.", marked as the partner on the older version, which the web app shows as its different-versions copy.
+This build refuses a first frame that is data with "Matching could not start, most likely because your partner runs an older version of Alcove. Ask them to update Alcove, then run again.", marked as the partner on the older version, which the web app shows as its different-versions copy.
+A partner on this build whose run faults before its first still-working frame also sends its local-fault abort, so that first frame names no party as older: "Matching could not start because your partner's run stopped. Make sure you both run the current version of Alcove, then run the exchange again."
 Any other abort reaches the phase unchanged.
-A stated limit: a newer partner whose run faults before its first still-working frame is reported the same way.
 
 ### The standing relay's idle limit
 

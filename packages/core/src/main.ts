@@ -61,6 +61,8 @@ export {
   firstLinkBehindTransportWraps,
   isPartnerNextSecretStoreFailure,
   isPartnerProtocolRefusal,
+  isPartnerStopAtMatchingStart,
+  isShardStalled,
   isTrustBoundaryFailure,
   olderVersionOf,
 } from "./failureClass";
@@ -183,6 +185,8 @@ export {
 export {
   OLDER_PARTNER_AT_MATCHING_MESSAGE,
   PARTNER_SILENCE_BOUND_MS,
+  PARTNER_STOPPED_AT_MATCHING_MESSAGE,
+  PARTNER_STOPPED_AT_MATCHING_REMEDY,
   STILL_WORKING_INTERVAL_MS,
 } from "./exchange/stillWorking";
 // The measured memory an inbound frame takes, which the CLI weighs against the

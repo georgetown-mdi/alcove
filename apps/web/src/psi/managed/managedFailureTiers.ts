@@ -59,6 +59,8 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"imported"` -- an import since the last success, read beside a
  *   failed-closed handshake or a no-show after the import (the newest copy,
  *   or re-invite).
+ * - `"partner-stopped-responding"` -- nothing arrived from the partner for the
+ *   partner-silence bound during matching (ask the partner, then retry).
  * - `"transport"` -- a connection drop that is not a failed-closed handshake, or a
  *   cancelled run (retry).
  * - `"unexplained"` -- a failed-closed (`auth`) handshake with no benign
@@ -81,6 +83,7 @@ export type ManagedFailureTier =
   | "storage"
   | "partial-rotation"
   | "imported"
+  | "partner-stopped-responding"
   | "transport"
   | "unexplained"
   | "none";
@@ -312,6 +315,8 @@ function recordedFailureTier(
   if (lastRun.failureKind === "auth" && importedSinceLastSuccess(local))
     return "imported";
 
+  if (lastRun.failureKind === "partner-stopped-responding")
+    return "partner-stopped-responding";
   if (lastRun.failureKind === "transport") return "transport";
 
   if (lastRun.failureKind === "cancelled") return "transport";

@@ -240,6 +240,7 @@ test.each(MODES)(
         error: new PsiOperationStoppedError().message,
         libraryFailure: false,
         stopped: true,
+        shardStalled: false,
       },
     ]);
   },

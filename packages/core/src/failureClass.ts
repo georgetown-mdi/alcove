@@ -9,10 +9,14 @@ import {
   PartnerProtocolRefusalError,
   PeerAbortError,
   ProtocolRefusalError,
+  ShardStalledError,
   UsageError,
 } from "./errors";
 import type { OlderVersionSide } from "./errors";
-import { NEXT_SECRET_STORE_FAILED_ABORT_REASON } from "./partnerAbortFrame";
+import {
+  LOCAL_FAULT_ABORT_REASON,
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+} from "./partnerAbortFrame";
 import { ReceiptVerificationError } from "./records/signedReceipt";
 import { MAX_ERROR_CAUSE_DEPTH } from "./utils/sanitizeErrorForDisplay";
 
@@ -130,6 +134,29 @@ export function olderVersionOf(err: unknown): OlderVersionSide | undefined {
   return link instanceof PartnerProtocolRefusalError
     ? link.olderVersion
     : undefined;
+}
+
+/**
+ * Whether `err` is the refusal of a partner whose first frame of the PSI phase
+ * was its local-fault abort (`exchange/stillWorking.ts`): a partner on an
+ * earlier build, or one on this build whose run faulted before its first
+ * still-working frame, which this party cannot tell apart.
+ */
+export function isPartnerStopAtMatchingStart(err: unknown): boolean {
+  const link = firstLinkBehindTransportWraps(err);
+  return (
+    link instanceof PartnerProtocolRefusalError &&
+    link.cause instanceof PeerAbortError &&
+    link.cause.partnerReason === LOCAL_FAULT_ABORT_REASON
+  );
+}
+
+/**
+ * Whether `err` is a split PSI operation that stopped on a part reporting no
+ * progress ({@link ShardStalledError}).
+ */
+export function isShardStalled(err: unknown): boolean {
+  return firstLinkBehindTransportWraps(err) instanceof ShardStalledError;
 }
 
 /**

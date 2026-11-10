@@ -1849,6 +1849,8 @@ describe("the launch error a classified state shows", () => {
     imported: "withheld",
     unexplained: "withheld",
     "partner-stopped-responding": "withheld",
+    "partner-stop-at-matching-start": "withheld",
+    "shard-stalled": "withheld",
   };
 
   /** The text a withholding state's error is written with: a phrase no copy

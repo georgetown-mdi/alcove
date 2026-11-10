@@ -120,6 +120,10 @@ const TIER_EVIDENCE: Record<
     record({ lastRun: failed("partner-protocol-refusal") }),
     undefined,
   ],
+  "partner-stopped-responding": [
+    record({ lastRun: failed("partner-stopped-responding") }),
+    undefined,
+  ],
   "custody-unreadable": [
     record({ lastRun: failed("custody-unreadable") }),
     undefined,

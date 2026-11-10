@@ -216,6 +216,8 @@ function tierStatus(
       return "Restored from a backup or key file; import your newest copy or re-invite";
     case "unexplained":
       return `Last run failed (${at}); check with your partner`;
+    case "partner-stopped-responding":
+      return `Last run stopped: your partner stopped responding (${at}); ask your partner to check their run`;
     case "transport":
       return `Last run did not complete (${at})`;
     case "missed":
