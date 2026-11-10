@@ -145,9 +145,10 @@ Its claims to verify:
 - **The relay cannot hold a run open.**
   Chunk activity restarts only the 120 s bound; the whole-frame budget still ends a run whose relay trickles bytes.
 - **Nothing partner-written reaches a display or a log.**
-  The frame has one fixed shape, any other is refused, and no field of it is shown.
-- **The frame discloses nothing new.**
-  It has a fixed size and no count; a relay sees a small frame every 30 s, which shows the PSI phase's bounds that the frame sizes already show ([PROTOCOL.md](../spec/PROTOCOL.md), "What a relay sees").
+  The frame has one shape, `working: true` and an optional integer `percent` from 0 to 100; any other is refused, and no field of it is shown.
+- **The frame discloses little new.**
+  A relay sees a small frame every 30 s, which shows the PSI phase's bounds that the frame sizes already show ([PROTOCOL.md](../spec/PROTOCOL.md), "What a relay sees").
+  The frame is not padded, so it is one of four lengths: from a sender that states a progress figure, the length shows whether its crypto operation is in flight and when the figure reaches 10 and 100 ([PROTOCOL.md](../spec/PROTOCOL.md#the-still-working-frame), "The still-working frame").
 - **The resource bounds hold.**
   Queued still-working frames are drained each interval, every existing receive bound stands, and the partner cannot choose the interval or the bound.
 

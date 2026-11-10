@@ -31,12 +31,25 @@ export const STILL_WORKING_INTERVAL_MS = 30_000;
  */
 export const PARTNER_SILENCE_BOUND_MS = 120_000;
 
-/** The still-working frame, which states nothing but its presence. */
+/** The still-working frame this build sends, which states nothing but its presence. */
 export const STILL_WORKING_FRAME: { readonly working: true } = Object.freeze({
   working: true,
 });
 
-const STILL_WORKING_FRAME_BYTES = JSON.stringify(STILL_WORKING_FRAME).length;
+const STILL_WORKING_FRAME_KEYS: ReadonlySet<string> = new Set([
+  "working",
+  "percent",
+]);
+
+// The plaintext lengths of the still-working frames the parse admits, as
+// JSON.stringify encodes them: no figure, and a figure of one, two and three
+// digits.
+const STILL_WORKING_FRAME_BYTES: ReadonlyArray<number> = [
+  STILL_WORKING_FRAME,
+  { ...STILL_WORKING_FRAME, percent: 0 },
+  { ...STILL_WORKING_FRAME, percent: 10 },
+  { ...STILL_WORKING_FRAME, percent: 100 },
+].map((frame) => JSON.stringify(frame).length);
 
 /**
  * The refusal of a partner whose first frame of the PSI phase is data: a
@@ -72,13 +85,39 @@ function hasWorkingKey(frame: unknown): boolean {
   );
 }
 
-/** Whether `frame` is exactly {@link STILL_WORKING_FRAME}. */
+/** A still-working frame as received: the partner's progress figure, if it sent one. */
+interface ReceivedStillWorkingFrame {
+  readonly percent: number | undefined;
+}
+
+/**
+ * `frame` read as a still-working frame, or `undefined` when it is not one:
+ * its keys are `working` and optionally `percent`, `working` is `true`, and
+ * `percent`, when present, is an integer from 0 to 100.
+ */
+function parseStillWorkingFrame(
+  frame: unknown,
+): ReceivedStillWorkingFrame | undefined {
+  if (!hasWorkingKey(frame)) return undefined;
+  const fields = frame as { working: unknown; percent?: unknown };
+  if (
+    fields.working !== true ||
+    Object.keys(fields).some((key) => !STILL_WORKING_FRAME_KEYS.has(key))
+  )
+    return undefined;
+  if (!Object.hasOwn(fields, "percent")) return { percent: undefined };
+  const { percent } = fields;
+  return typeof percent === "number" &&
+    Number.isInteger(percent) &&
+    percent >= 0 &&
+    percent <= 100
+    ? { percent }
+    : undefined;
+}
+
+/** Whether `frame` is a still-working frame ({@link parseStillWorkingFrame}). */
 export function isStillWorkingFrame(frame: unknown): boolean {
-  return (
-    hasWorkingKey(frame) &&
-    Object.keys(frame as object).length === 1 &&
-    (frame as { working: unknown }).working === true
-  );
+  return parseStillWorkingFrame(frame) !== undefined;
 }
 
 /** The timing a {@link StillWorkingLayer} runs on; a test shortens it. */
@@ -200,7 +239,7 @@ export function stillWorkingLayer(
         );
       return frame;
     }
-    if (isStillWorkingFrame(frame)) {
+    if (parseStillWorkingFrame(frame) !== undefined) {
       partnerFrameSeen = true;
       if (!boundArmed && !phaseEnded) {
         boundArmed = true;
@@ -222,14 +261,18 @@ export function stillWorkingLayer(
   };
 
   const drainQueued = async (): Promise<void> => {
-    const wireBytes =
-      STILL_WORKING_FRAME_BYTES +
-      (conn.outboundFrameOverheadBytes?.(STILL_WORKING_FRAME_BYTES) ?? 0);
+    const wireBytes = new Set(
+      STILL_WORKING_FRAME_BYTES.map(
+        (frameBytes) =>
+          frameBytes + (conn.outboundFrameOverheadBytes?.(frameBytes) ?? 0),
+      ),
+    );
+    const nextIsStillWorkingLength = (): boolean => {
+      const next = conn.nextQueuedMessageBytes?.();
+      return next !== undefined && wireBytes.has(next);
+    };
     try {
-      while (
-        held === undefined &&
-        conn.nextQueuedMessageBytes?.() === wireBytes
-      ) {
+      while (held === undefined && nextIsStillWorkingLength()) {
         const frame = admit(await conn.receive());
         if (frame !== DROPPED) held = { frame };
       }
