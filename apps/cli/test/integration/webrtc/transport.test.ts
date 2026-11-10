@@ -328,20 +328,23 @@ test("a 200,000-record frame crosses the channel whole", async () => {
   expect(sha256(packValue(received))).toBe(sha256(packed));
 }, 180_000);
 
-test("a configured iceServers list is the list the peer connection is built with", async () => {
+test("a configured iceServers list reaches the peer connection cut to its first STUN url and first TURN url", async () => {
   // `getConfiguration()` echoes its input, so this asserts PASS-THROUGH -- that
-  // a configured list reaches werift unchanged -- not suppression of the
-  // built-in default, which no readable API can show.
+  // the configured list reaches werift as the run cut it -- not suppression of
+  // the built-in default, which no readable API can show.
   const sharedSecret = generateSharedSecret();
   const refusingUrl = (stunServer.iceServers[0] as { urls: string }).urls;
+  const firstTurn = {
+    urls: "turn:127.0.0.1:3480?transport=tcp",
+    username: "alcove",
+    credential: "not-a-real-credential",
+  };
   const configured = [
-    { urls: [refusingUrl, refusingUrl] },
-    {
-      urls: "turn:127.0.0.1:3480?transport=tcp",
-      username: "alcove",
-      credential: "not-a-real-credential",
-    },
+    { urls: [refusingUrl, "stun:127.0.0.1:3481"] },
+    firstTurn,
+    { ...firstTurn, urls: "turn:127.0.0.1:3482?transport=tcp" },
   ];
+  const handed = [{ urls: [refusingUrl] }, firstTurn];
   const seen: Array<unknown> = [];
   const attempt = openWebRtcMessageConnection({
     location: location(),
@@ -362,8 +365,8 @@ test("a configured iceServers list is the list the peer connection is built with
   // No partner is listening, so the rendezvous times out; the configuration was
   // already captured on the way in.
   await expect(attempt).rejects.toThrow(ConnectionError);
-  expect(seen[0]).toEqual(configured);
-  expect(seen[1]).toEqual(configured);
+  expect(seen[0]).toEqual(handed);
+  expect(seen[1]).toEqual(handed);
 }, 60_000);
 
 /**

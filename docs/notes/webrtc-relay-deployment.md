@@ -840,7 +840,7 @@ change to the drop-in.
 | Whether the account's real cost matches the computed figure | reading Cost Explorer a day later, once its lag has passed |
 | The managed vendor's own charge | the vendor's bill, which never appears on this account |
 | The standing broker on 443, and across a reboot, repeated crashes and memory pressure | the broker on 443 through [the 443 front](#one-listener-on-443), and an instance reboot, a repeatedly killed broker and an exchange under memory pressure, each observed on the standing deployment ([Does the coordination server leave the web app's deployment](#does-the-coordination-server-leave-the-web-apps-deployment)) |
-| A relayed exchange longer than `max-allocate-lifetime` | a relayed run past 600 s, which shows whether werift and the browser refresh their allocations; every relayed run measured here took seconds |
+| A relayed exchange longer than `max-allocate-lifetime` | a browser's relayed run past 600 s, which shows whether the browser refreshes its allocation; every relayed run measured here took seconds. werift's refreshes, past the relay's stale nonce, were measured against a local coturn 4.18.0 for 1,620 s ([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#the-behavioural-assumptions)) |
 | Whether coturn reports usage or metrics mid-session for a long or high-volume allocation | one relayed session longer than `max-allocate-lifetime`, with its usage and `/metrics` read while it is open; the host run's sessions were short |
 | Published rates | a credential with pricing-API access; no rate behind any figure here was confirmed from AWS's own API |
 
