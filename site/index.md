@@ -18,7 +18,7 @@ Alcove performs privacy-preserving record linkage with a cryptographic protocol 
 - **In your browser**, with nothing to install.
   Your file is read and matched inside the browser and never uploaded to our servers.
 - **On your own machine**, from a guided screen that sets up and runs one exchange, so you can try one with test data first.
-- **From the command line**, for exchanges that recur on a schedule and for IT teams fitting linkage into a data pipeline.
+- **From the command line**, for IT teams fitting linkage into a data pipeline.
 
 You and your partner do not have to choose the same one.
 To start, [choose a guide](../docs/guides/index.md).

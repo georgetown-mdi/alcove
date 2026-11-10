@@ -5,7 +5,7 @@ Alcove is maintained by a small team at Georgetown University's Massive Data Ins
 ## Questions and bug reports
 
 Open a [GitHub issue](https://github.com/georgetown-mdi/alcove/issues).
-Tag a question with the `question` label, and put "evaluation" in the title of a question about evaluating Alcove for your agency.
+Put "evaluation" in the title of a question about evaluating Alcove for your agency.
 [Getting support](../SUPPORT.md) lists what to include in a bug report.
 There is no discussion forum or mailing list.
 
