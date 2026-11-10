@@ -427,6 +427,11 @@ export function keyFileStateStep(
  * states:
  * - `rotation-mark`: recording the key exchange as in flight, before it began.
  * - `first-store`: the initiator's save of the next secret, which comes first.
+ *   A directory flush that fails after the rename leaves the next secret in
+ *   this side's key file beside the secret the run used, which the next run
+ *   heals where it can (`nextRunCanHeal`); the authentication-failure
+ *   fallback, and over WebRTC the next run's no-show remedy, cover a state it
+ *   cannot.
  * - `responder-store`: the responder's save, where its initiator kept the
  *   secret this run used, so the next run heals.
  * - `responder-store-no-heal`: the responder's save, where it cannot heal.
