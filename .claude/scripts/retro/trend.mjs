@@ -20,10 +20,12 @@
 //   - Each ratio is current over baseline. Its interval is the 2.5% and 97.5%
 //     quantiles over --draws (default 2000) draws, each resampling both
 //     windows' days with replacement (seeded by --seed); a draw with no finite
-//     ratio is dropped. A row is moved only when 1.0 lies outside its interval.
+//     ratio is dropped and the row's note counts the dropped draws. A row is
+//     moved only when 1.0 lies outside its interval.
 //   - Size bands are the fixed cuts 65 / 451 / 1,203 changed lines.
 //   - Cost per merged PR is method D (`costD`), each window's band means
-//     weighted by the baseline's band shares.
+//     weighted by the baseline's band shares. The bands both windows hold are
+//     fixed once from the full windows and used by every draw.
 //   - A row whose input a window lacks, and every row no kit output measures,
 //     prints as not measured with its reason, never as zero.
 
@@ -231,19 +233,20 @@ export const ratioOfSums =
  * Method D cost per merged PR in each window, standardized to the baseline's
  * size mix: each window's band means weighted by the baseline's band shares.
  * A band either window has no PR in is left out of both, the weights
- * renormalized over the bands both hold. Returns `[baseline, current, note]`,
- * where `note` names the left-out bands that held PRs in the other window.
+ * renormalized over the bands both hold. `fixed`, from `sharedBands`, pins the
+ * band set; a window lacking a PR in a fixed band gives `[NaN, NaN]`. Returns
+ * `[baseline, current, note]`, where `note` names the left-out bands that held
+ * PRs in the other window, or says why nothing is measured.
  */
-export function standardizedCost(baseDays, curDays) {
-  const bands = (days) =>
-    SIZE_CUTS.concat(0).map((_, i) => ({
-      n: total(days, (d) => d.bands[i].n),
-      usd: total(days, (d) => d.bands[i].usd),
-    }));
-  const base = bands(baseDays);
-  const cur = bands(curDays);
-  const shared = base.map((b, i) => b.n > 0 && cur[i].n > 0);
+export function standardizedCost(baseDays, curDays, fixed) {
+  const base = bandTotals(baseDays);
+  const cur = bandTotals(curDays);
+  const shared = fixed ?? sharedBands(baseDays, curDays);
+  if (shared.some((s, i) => s && !(base[i].n > 0 && cur[i].n > 0))) {
+    return [NaN, NaN];
+  }
   const n = base.reduce((t, b, i) => t + (shared[i] ? b.n : 0), 0);
+  if (n === 0) return [NaN, NaN, NO_SHARED_BAND];
   let vb = 0;
   let vc = 0;
   base.forEach((b, i) => {
@@ -257,17 +260,36 @@ export function standardizedCost(baseDays, curDays) {
   const note = left.length
     ? `left out, absent from one window: ${left.map(bandRange).join("; ")}`
     : undefined;
-  return n > 0 ? [vb, vc, note] : [NaN, NaN, note];
+  return [vb, vc, note];
 }
+
+const NO_SHARED_BAND = "no size band holds PRs in both windows";
+
+const bandTotals = (days) =>
+  SIZE_CUTS.concat(0).map((_, i) => ({
+    n: total(days, (d) => d.bands[i].n),
+    usd: total(days, (d) => d.bands[i].usd),
+  }));
+
+/** The size bands that hold PRs in both windows, as a mask by band. */
+export function sharedBands(baseDays, curDays) {
+  const cur = bandTotals(curDays);
+  return bandTotals(baseDays).map((b, i) => b.n > 0 && cur[i].n > 0);
+}
+
+standardizedCost.fix = sharedBands;
 
 const quantile = (sorted, p) =>
   sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
 
 /**
  * Compare two windows' days under `pair`, which maps `(baseDays, curDays)` to
- * `[baseline, current]` or `[baseline, current, note]`. Returns the point
- * values, their ratio, its bootstrap interval over days, whether the row moved
- * and the pair's note on the full windows, if any.
+ * `[baseline, current]` or `[baseline, current, note]`. A pair with a `fix`
+ * function has `fix(baseDays, curDays)` computed once on the full windows and
+ * passed to every draw as its third argument. Returns the point values, their
+ * ratio, its bootstrap interval over days, whether the row moved and the pair's
+ * note on the full windows with the count of dropped draws, if any. When a
+ * point value is not finite, returns `{ notMeasured }` with the pair's note.
  */
 export function bootstrapRatio(
   baseDays,
@@ -275,18 +297,31 @@ export function bootstrapRatio(
   pair,
   { draws = 2000, random },
 ) {
-  const [baseline, current, note] = pair(baseDays, curDays);
+  const fixed = pair.fix?.(baseDays, curDays);
+  const [baseline, current, pairNote] = pair(baseDays, curDays, fixed);
+  if (!Number.isFinite(baseline) || !Number.isFinite(current)) {
+    return {
+      notMeasured: pairNote ?? "a window has no data for this measure",
+    };
+  }
   const resample = (days) =>
     days.map(() => days[Math.floor(random() * days.length)]);
   const ratios = [];
   for (let i = 0; i < draws; i++) {
-    const [b, c] = pair(resample(baseDays), resample(curDays));
+    const [b, c] = pair(resample(baseDays), resample(curDays), fixed);
     const r = c / b;
     if (Number.isFinite(r)) ratios.push(r);
   }
   ratios.sort((x, y) => x - y);
   const lo = ratios.length ? quantile(ratios, 0.025) : null;
   const hi = ratios.length ? quantile(ratios, 0.975) : null;
+  const dropped = draws - ratios.length;
+  const note = [
+    pairNote,
+    dropped && `${dropped} of ${draws} draws dropped, no finite ratio`,
+  ]
+    .filter(Boolean)
+    .join("; ");
   return {
     baseline,
     current,
@@ -313,7 +348,16 @@ function rowSpecs() {
     ["spend per merged PR", [], both(ratioOfSums((d) => d.spend, merged))],
     ["merged PRs per day", [], both(perDay(merged))],
     ["cost per merged PR, baseline size mix", [], standardizedCost],
-    ...SIZE_CUTS.concat(0).map((_, i) => [bandName(i), [], both(band(i))]),
+    ...SIZE_CUTS.concat(0).map((_, i) => [
+      bandName(i),
+      [],
+      (b, c) => {
+        const pair = [band(i)(b), band(i)(c)];
+        return pair.every(Number.isFinite)
+          ? pair
+          : [...pair, "no PRs in this size band in one window"];
+      },
+    ]),
     [
       "owner turns per day",
       ["sessionFields"],

@@ -7,9 +7,11 @@ import { afterAll, describe, expect, it } from "vitest";
 import { tempDir } from "./transcriptFixtures.mjs";
 import {
   bootstrapRatio,
+  formatTable,
   parseArgs,
   perDay,
   seededRandom,
+  sharedBands,
   standardizedCost,
   trend,
   windowDays,
@@ -202,6 +204,54 @@ describe("size-mix standardization", () => {
     expect(r.hi).toBeCloseTo(2, 5);
     expect(r.note).toBe(note);
   });
+
+  it("fixes the band set from the full windows and counts the draws that lack a fixed band", () => {
+    // The large band holds one baseline PR, on the first day only, so many
+    // resampled baselines lack it. Each band's current mean is $20 small, $30
+    // large against $10 and $30: a draw over both bands has a ratio under 2,
+    // and a draw that re-picked the bands without the large one would read 2.
+    const base = windowDays(
+      kit({
+        prsPerDay: (i) =>
+          i === 0
+            ? [
+                [50, 10],
+                [2000, 30],
+              ]
+            : [[50, 10]],
+      }),
+    ).days;
+    const cur = windowDays(
+      kit({
+        prsPerDay: () => [
+          [50, 20],
+          [2000, 30],
+        ],
+      }),
+    ).days;
+    expect(sharedBands(base, cur)).toEqual([true, false, false, true]);
+    const draws = 400;
+    const r = bootstrapRatio(base, cur, standardizedCost, {
+      draws,
+      random: seededRandom(5),
+    });
+    const dropped = Number(r.note.match(/^(\d+) of 400 draws dropped/)[1]);
+    expect(dropped).toBeGreaterThan(0);
+    expect(dropped).toBeLessThan(draws);
+    expect(r.hi).toBeLessThan(1.9);
+  });
+
+  it("returns not measured, never NaN, when no size band holds PRs in both windows", () => {
+    const base = windowDays(kit({ prsPerDay: () => [[50, 10]] })).days;
+    const cur = windowDays(kit({ prsPerDay: () => [[2000, 30]] })).days;
+    const r = bootstrapRatio(base, cur, standardizedCost, {
+      draws: 50,
+      random: seededRandom(1),
+    });
+    expect(r).toEqual({
+      notMeasured: "no size band holds PRs in both windows",
+    });
+  });
 });
 
 describe("windowDays", () => {
@@ -309,6 +359,26 @@ describe("trend", () => {
     });
     for (const r of out.rows)
       expect("notMeasured" in r || "value" in r || "ratio" in r).toBe(true);
+  });
+
+  it("prints the size rows as not measured when no size band holds PRs in both windows", () => {
+    const out = trend(
+      windowDays(kit({ prsPerDay: () => [[50, 10]] })),
+      windowDays(kit({ first: 11, prsPerDay: () => [[2000, 30]] })),
+      null,
+      opts,
+    );
+    const row = (name) => out.rows.find((r) => r.row === name);
+    expect(row("cost per merged PR, baseline size mix")).toEqual({
+      row: "cost per merged PR, baseline size mix",
+      notMeasured: "no size band holds PRs in both windows",
+    });
+    expect(
+      row("method D cost per merged PR, <=65 lines").notMeasured,
+    ).toContain("no PRs in this size band");
+    const sizeRows = out.rows.filter((r) => /size mix|method D/.test(r.row));
+    expect(sizeRows).toHaveLength(5);
+    expect(formatTable(sizeRows)).not.toContain("NaN");
   });
 
   it("prints the review day's dollars per landed unit by lens and its escape count when given", () => {
