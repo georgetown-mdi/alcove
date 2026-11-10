@@ -14,7 +14,9 @@ import {
   owedFiles,
   parseOwed,
   planDay,
+  renderSlices,
   selectedLineCount,
+  selectedRanges,
 } from "./review-day-slices.mjs";
 
 // The selectors run real git over repositories built here; the board read
@@ -454,6 +456,9 @@ describe("plan.json", () => {
         code: { "packages/core/src/psi/frameReader.ts": ["parseReaderFrame"] },
       },
     ]);
+    expect(spec.regions).toEqual({
+      "packages/core/src/psi/frameReader.ts": [[1, 3]],
+    });
     const total =
       Math.round(
         plan.slices.reduce((sum, slice) => sum + slice.estimatedCost, 0) * 100,
@@ -494,6 +499,14 @@ describe("slices sized by the lines they match", () => {
     expect(selectedLineCount([10, 12, 10], 100, 5)).toBe(13);
     expect(selectedLineCount([2, 99], 100, 5)).toBe(7 + 7);
     expect(selectedLineCount([], 100, 5)).toBe(0);
+    expect(selectedRanges([10, 12, 30, 41], 100, 5)).toEqual([
+      [5, 17],
+      [25, 46],
+    ]);
+    expect(selectedRanges([2, 99], 100, 5)).toEqual([
+      [1, 7],
+      [94, 100],
+    ]);
   });
 
   it("sizes user-string and stale-spec slices by their matches and lists each string", () => {
@@ -550,9 +563,57 @@ describe("slices sized by the lines they match", () => {
     expect(codeRegions).toBeLessThan(codeLines);
     expect(spec.files).toEqual(["docs/spec/LONG.md", "apps/cli/src/frames.ts"]);
     expect(spec.lines).toBe(2 * context + 1 + 3 + codeRegions);
-    expect(readFileSync(join(dayDir, "SLICES.md"), "utf8")).toContain(
+    expect(spec.regions).toEqual({
+      "apps/cli/src/frames.ts": [
+        [1, 1 + context],
+        [50 - context, 50 + context],
+      ],
+    });
+    const slicesText = readFileSync(join(dayDir, "SLICES.md"), "utf8");
+    expect(slicesText).toContain(
+      `  - apps/cli/src/frames.ts: lines 1-${1 + context}, ${50 - context}-${50 + context}\n`,
+    );
+    expect(slicesText).toContain("  - docs/spec/LONG.md\n");
+    expect(slicesText).toContain(
       '  - apps/cli/src/frames.ts:100: throw new Error("The frame is over the limit. Send a shorter one.");',
     );
+  });
+
+  it("leaves a code file a statement names only by its stem out of the slice", () => {
+    const { fixture, base } = baseRepo();
+    fixture.write(
+      "apps/cli/src/frameReader.ts",
+      "export function readOne() {\n  return 1;\n}\n",
+    );
+    fixture.write(
+      "docs/spec/READER.md",
+      "# Reader\n\nframeReader is described here.\n",
+    );
+    const head = fixture.commit("Add a reader");
+    const { dayDir } = daysRoot();
+
+    const plan = planDay({
+      cwd: fixture.dir,
+      sha: head,
+      dayDir,
+      prevSha: base,
+      deliveredBy: noBoardRead,
+    });
+
+    const spec = plan.slices.find((slice) => slice.selector === "stale-spec");
+    expect(spec.statements).toEqual([
+      {
+        path: "docs/spec/READER.md",
+        line: 3,
+        names: ["frameReader"],
+        code: { "apps/cli/src/frameReader.ts": ["frameReader"] },
+      },
+    ]);
+    expect(spec.files).toEqual(["docs/spec/READER.md"]);
+    expect(spec.regions).toEqual({});
+    const rendered = renderSlices(plan);
+    const specSection = rendered.slice(rendered.indexOf("## stale-spec-1"));
+    expect(specSection).not.toContain("frameReader.ts\n");
   });
 
   it("leaves a file only its strings were read from open to rotation", () => {

@@ -45,10 +45,12 @@
 // selector's set is cut by directory into slices of at most `maxSliceLines`, a
 // small directory joining its neighbour. A user-string or stale-spec slice
 // lists the lines it matched and is sized by them, `matchContextLines` either
-// side of each; a stale-spec slice also lists each code file its statements
-// name, and counts `matchContextLines` either side of each line in it where
-// such a name occurs, each line once, up to the file's line count. Every other
-// slice is sized by its files' whole line counts.
+// side of each; a stale-spec slice also lists each code file where a name its
+// statements use occurs, and counts `matchContextLines` either side of each such
+// line, each line once, up to the file's line count. The merged ranges counted
+// are the slice's `regions` and follow the path in SLICES.md; a code file with
+// no such line is left out. Every other slice is sized by its files' whole line
+// counts.
 //
 // Exit 0 written; 1 a slice over `maxSliceLines`, nothing written; 2 usage, an
 // unreadable input, a git error, or a failed board read.
@@ -587,6 +589,25 @@ export function selectedLineCount(lines, fileLines, context) {
   return count;
 }
 
+/**
+ * The line ranges the matches at line numbers `lines` select, each with
+ * `context` lines either side, clipped to the file's `fileLines`, overlapping
+ * or touching ranges merged: 1-based, inclusive `[start, end]` pairs.
+ */
+export function selectedRanges(lines, fileLines, context) {
+  const ranges = [];
+  for (const line of [...new Set(lines)].sort((a, b) => a - b)) {
+    const from = Math.max(1, line - context);
+    const to = Math.min(fileLines, line + context);
+    if (to < from) continue;
+    const last = ranges.at(-1);
+    if (last !== undefined && from <= last[1] + 1)
+      last[1] = Math.max(last[1], to);
+    else ranges.push([from, to]);
+  }
+  return ranges;
+}
+
 /** Refuse any slice over `maxLines`, naming each. */
 export function assertSliceBound(slices, maxLines) {
   const over = slices.filter((slice) => slice.lines > maxLines);
@@ -1091,27 +1112,35 @@ export function planDay({
         });
       occurrences.set(path, found);
     }
-    const codeLinesOf = (subset) => {
-      const byPath = new Map();
+    const codeRegionsOf = (subset) => {
+      const linesByPath = new Map();
       for (const { code } of subset)
         for (const [path, named] of Object.entries(code)) {
-          if (!byPath.has(path)) byPath.set(path, new Set());
+          if (!linesByPath.has(path)) linesByPath.set(path, new Set());
           for (const name of named)
             for (const line of occurrences.get(path).get(name) ?? [])
-              byPath.get(path).add(line);
+              linesByPath.get(path).add(line);
         }
-      return byPath;
+      const regions = new Map();
+      for (const [path, lines] of [...linesByPath].sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        const ranges = selectedRanges(
+          [...lines],
+          lineOf(path),
+          matchContextLines,
+        );
+        if (ranges.length > 0) regions.set(path, ranges);
+      }
+      return regions;
     };
     const staleSize = (subset) => {
       const specSize = matchedSize(subset);
       let total = 0;
       for (const path of new Set(subset.map((s) => s.path)))
         total += specSize(path);
-      for (const [path, lines] of codeLinesOf(subset))
-        total += Math.min(
-          lineOf(path),
-          selectedLineCount([...lines], lineOf(path), matchContextLines),
-        );
+      for (const ranges of codeRegionsOf(subset).values())
+        for (const [from, to] of ranges) total += to - from + 1;
       return total;
     };
     addSlices(
@@ -1122,8 +1151,10 @@ export function planDay({
         const subset = statements.filter(({ path }) =>
           sliceFiles.includes(path),
         );
+        const regions = codeRegionsOf(subset);
         return {
-          files: [...sliceFiles, ...[...codeLinesOf(subset).keys()].sort()],
+          files: [...sliceFiles, ...regions.keys()],
+          regions: Object.fromEntries(regions),
           statements: subset,
         };
       },
@@ -1257,10 +1288,12 @@ export function renderSlices(plan) {
       );
     if (slice.kind !== undefined) out.push(`- Text: ${slice.kind}.`);
     out.push(slice.files.length === 0 ? "- Paths: none resolved." : "- Paths:");
-    for (const path of slice.files)
+    for (const path of slice.files) {
+      const ranges = slice.regions?.[path];
       out.push(
-        `  - ${path}${slice.kinds?.[path] ? ` (${slice.kinds[path].join(", ")})` : ""}`,
+        `  - ${path}${slice.kinds?.[path] ? ` (${slice.kinds[path].join(", ")})` : ""}${ranges ? `: lines ${ranges.map(([from, to]) => (from === to ? `${from}` : `${from}-${to}`)).join(", ")}` : ""}`,
       );
+    }
     if (slice.statements !== undefined) {
       out.push("- Statements:");
       const byPath = new Map();
