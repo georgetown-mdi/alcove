@@ -357,7 +357,7 @@ export interface SinglePassOwnSetupCost {
 /**
  * {@link SinglePassOwnSetupCost} on each library: the largest figure measured,
  * rounded up, at setups of 2^20 to 2^24 elements on the native library and
- * 2^20 to 2^22 on the WebAssembly library (docs/spec/FILE_SYNC.md, "The
+ * 2^20 to 2^23 on the WebAssembly library (docs/spec/FILE_SYNC.md, "The
  * sender's own setup").
  */
 export const SINGLE_PASS_OWN_SETUP_COST: Readonly<
@@ -368,8 +368,8 @@ export const SINGLE_PASS_OWN_SETUP_COST: Readonly<
     maskingIncrementBytesPerElement: 401,
   },
   wasm: {
-    buildPeakBytesPerElement: 865,
-    maskingIncrementBytesPerElement: 157,
+    buildPeakBytesPerElement: 835,
+    maskingIncrementBytesPerElement: 210,
   },
 };
 

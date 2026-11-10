@@ -36,7 +36,9 @@ import {
   SINGLE_PASS_MAIN_HEAP_BYTES_PER_VALUE,
   SINGLE_PASS_MAIN_HEAP_FIXED_BYTES,
   SINGLE_PASS_OWN_SETUP_COST,
+  singlePassInboundPeakBytes,
   singlePassMainHeapNeedBytes,
+  singlePassOwnSetupBytes,
   type MemoryReadings,
   type PsiBackend,
 } from "../../src/psiMemoryBudget";
@@ -796,6 +798,49 @@ describe("the single-pass partner size at the terms exchange", () => {
             RoundCapacityError,
           );
         }
+      },
+    );
+
+    // The WebAssembly single runs the library's figures come from, each beside
+    // this request: the setup's elements, then its creation's peak and the
+    // masking's high-water mark beyond the run's baseline, in bytes
+    // (docs/spec/FILE_SYNC.md, "The sender's own setup").
+    it.each([
+      [2 ** 20, 874_536_960, 4_088_532_992],
+      [2 ** 21, 1_639_325_696, 4_163_276_800],
+      [2 ** 22, 3_205_406_720, 4_333_965_312],
+      [2 ** 23, 6_934_630_400, 5_863_034_880],
+    ])(
+      "charges a WebAssembly setup of %i elements at least its measured peak, in creation and in masking",
+      (elements, buildPeak, maskingPeak) => {
+        const size = {
+          partnerValueSlots: 4_000_000,
+          localValueSlots: elements,
+          partnerRecordCount: 4_000_000,
+          irreducibleReplyBytes: 0,
+          inboundFrameBytes: REQUEST_BYTES,
+          inboundFrameUse: "decode" as const,
+        };
+        const ownSetup = singlePassOwnSetupBytes(size, "wasm");
+        expect(ownSetup.buildPeakBytes).toBeGreaterThanOrEqual(buildPeak);
+        expect(
+          singlePassInboundPeakBytes(size, true, CHUNKED_ENVELOPE) +
+            ownSetup.maskingIncrementBytes,
+        ).toBeGreaterThanOrEqual(maskingPeak);
+        const check = (availableBytes: number) =>
+          checkSinglePassPartnerMemory({
+            size,
+            encrypted: true,
+            envelopeVersion: CHUNKED_ENVELOPE,
+            psiBackend: "wasm",
+            allowShortfall: false,
+            availableBytes,
+            log: { warn: () => {} },
+            onShortfallWarning: () => {},
+          });
+        expect(() => check(Math.max(buildPeak, maskingPeak) - 1)).toThrow(
+          RoundCapacityError,
+        );
       },
     );
 
