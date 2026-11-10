@@ -35,9 +35,10 @@ import {
   readMemory,
   SINGLE_PASS_MAIN_HEAP_BYTES_PER_VALUE,
   SINGLE_PASS_MAIN_HEAP_FIXED_BYTES,
-  SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT,
+  SINGLE_PASS_OWN_SETUP_COST,
   singlePassMainHeapNeedBytes,
   type MemoryReadings,
+  type PsiBackend,
 } from "../../src/psiMemoryBudget";
 import { startPsiWorkerThread } from "../../src/psiWorkerHost";
 
@@ -434,6 +435,15 @@ worker.once("message", (limit) => {
 });
 
 describe("the single-pass partner size at the terms exchange", () => {
+  const OWN_SLOTS = 350_000;
+  const ownSetupCharges = (psiBackend: PsiBackend) => ({
+    buildPeak:
+      OWN_SLOTS *
+      SINGLE_PASS_OWN_SETUP_COST[psiBackend].buildPeakBytesPerElement,
+    maskingIncrement:
+      OWN_SLOTS *
+      SINGLE_PASS_OWN_SETUP_COST[psiBackend].maskingIncrementBytesPerElement,
+  });
   const run = (
     params: {
       irreducibleReplyBytes?: number;
@@ -441,6 +451,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       inboundFrameUse?: InboundPsiFrameUse;
       encrypted?: boolean;
       envelopeVersion?: number;
+      psiBackend?: PsiBackend;
       webRtc?: {
         partBytes: number;
         outboundFrameBytes: number;
@@ -455,7 +466,7 @@ describe("the single-pass partner size at the terms exchange", () => {
     checkSinglePassPartnerMemory({
       size: {
         partnerValueSlots: 10_500_000,
-        localValueSlots: 350_000,
+        localValueSlots: OWN_SLOTS,
         partnerRecordCount: 150_000,
         irreducibleReplyBytes: params.irreducibleReplyBytes ?? 0,
         inboundFrameBytes: params.inboundFrameBytes ?? 0,
@@ -464,6 +475,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       },
       encrypted: params.encrypted ?? true,
       envelopeVersion: params.envelopeVersion,
+      psiBackend: params.psiBackend ?? "native",
       allowShortfall,
       availableBytes,
       log: { warn: (message) => lines.push(message) },
@@ -495,8 +507,8 @@ describe("the single-pass partner size at the terms exchange", () => {
 
   // A reply read with its decryption under each envelope version, a reply
   // read without it and handed to the worker, and a request the worker
-  // decodes and masks, beside this party's own setup of 350,000 value slots,
-  // 256,900,000 bytes. Version 1 opens a frame in one call, at four times its
+  // decodes and masks, with what this party's own setup of 350,000 value slots
+  // adds to the masking. Version 1 opens a frame in one call, at four times its
   // size; version 2 one chunk at a time, at its size and the 101,023,744 bytes
   // the chunked open peaked at, as the file-sync read gate charges it. At 40 MB
   // the read is the larger charge, and at 100 MB under version 2 the hand-off
@@ -558,7 +570,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       SINGLE_CALL_ENVELOPE,
-      3_366_900_000,
+      3_110_000_000 + ownSetupCharges("native").maskingIncrement,
     ],
     [
       "a 100 MB encrypted request under envelope version 2",
@@ -566,7 +578,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       "decode",
       true,
       CHUNKED_ENVELOPE,
-      3_366_900_000,
+      3_110_000_000 + ownSetupCharges("native").maskingIncrement,
     ],
   ] as const)(
     "weighs %s the counts allow at the measured multiples",
@@ -715,27 +727,77 @@ describe("the single-pass partner size at the terms exchange", () => {
       inboundFrameUse: "decode" as const,
       envelopeVersion: CHUNKED_ENVELOPE,
     };
-    const ownSetup = 350_000 * SINGLE_PASS_OWN_SETUP_BYTES_PER_ELEMENT;
+    const ownIncrement = ownSetupCharges("native").maskingIncrement;
     const maskedWithoutOwnSetup =
       REQUEST_BYTES +
       REQUEST_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.handedOverRequest;
-    const masked = maskedWithoutOwnSetup + ownSetup;
+    const masked = maskedWithoutOwnSetup + ownIncrement;
     // The request and its decoding alone, which the masking is above.
     const decodedOnly =
       REQUEST_BYTES * (1 + INBOUND_FRAME_MEMORY_MULTIPLES.psiDecode);
 
-    it("proceeds when the masking and this party's own setup fit what is available", () => {
+    it("proceeds when the masking and what this party's own setup adds fit what is available", () => {
       const { shortfall } = run(request, masked);
       expect(shortfall).toEqual([]);
     });
 
-    it("refuses a run whose masking fits but not with this party's own setup", () => {
-      expect(ownSetup).toBe(256_900_000);
+    it("charges a large request at the request charge plus the setup's masking increment", () => {
+      expect(ownIncrement).toBe(139_300_000);
+      expect(ownSetupCharges("native").buildPeak).toBeLessThan(masked);
       expect(() => run(request, maskedWithoutOwnSetup)).toThrow(
         RoundCapacityError,
       );
       expect(() => run(request, masked - 1)).toThrow(RoundCapacityError);
     });
+
+    // A partner of 10,000 values a side sends a request of 350,002 bytes,
+    // whose read under envelope version 2 is the larger charge: the frame and
+    // the 101,023,744 bytes the chunked open peaked at.
+    const smallRequest = { ...request, inboundFrameBytes: 350_002 };
+    const smallRequestCharge = 350_002 + 101_023_744;
+
+    it("charges a small partner set at the setup's build peak", () => {
+      const buildPeak = ownSetupCharges("native").buildPeak;
+      expect(buildPeak).toBe(309_400_000);
+      expect(() => run(smallRequest, buildPeak)).not.toThrow();
+      expect(() => run(smallRequest, buildPeak - 1)).toThrow(
+        RoundCapacityError,
+      );
+    });
+
+    it("names the masking of this party's own values where the build peak is the larger charge", () => {
+      expect(() => run(smallRequest, 200_000_000)).toThrow(
+        "your partner declared 150,000 records, and masking your own values " +
+          "to answer them could take up to 0.31 GB of memory, but this " +
+          "machine has 0.20 GB available now, so the exchange stopped before " +
+          "any value was masked and told your partner. Run the exchange on a " +
+          "host with more memory, or split your input, or ask your partner " +
+          "to split theirs, into smaller files and run one exchange for " +
+          "each.",
+      );
+    });
+
+    it.each(["native", "wasm"] as const)(
+      "charges a small partner set at the build peak and a large one at the request plus the increment, on the %s library's figures",
+      (psiBackend) => {
+        const { buildPeak, maskingIncrement } = ownSetupCharges(psiBackend);
+        expect(buildPeak).toBeGreaterThan(
+          smallRequestCharge + maskingIncrement,
+        );
+        expect(maskedWithoutOwnSetup + maskingIncrement).toBeGreaterThan(
+          buildPeak,
+        );
+        for (const [size, need] of [
+          [smallRequest, buildPeak],
+          [request, maskedWithoutOwnSetup + maskingIncrement],
+        ] as const) {
+          expect(() => run({ ...size, psiBackend }, need)).not.toThrow();
+          expect(() => run({ ...size, psiBackend }, need - 1)).toThrow(
+            RoundCapacityError,
+          );
+        }
+      },
+    );
 
     it("charges no own setup where this party receives", () => {
       const reply = { ...request, inboundFrameUse: "stream" as const };
@@ -749,8 +811,8 @@ describe("the single-pass partner size at the terms exchange", () => {
     it("refuses a request whose masking is over what is available, naming both shares, the total and the override", () => {
       expect(() => run(request, decodedOnly)).toThrow(
         "your partner declared 150,000 records, and reading and masking what " +
-          "they send could take up to 4.35 GB of memory, plus 0.26 GB for " +
-          "your own masked values, 4.61 GB in all, but this machine has " +
+          "they send could take up to 4.35 GB of memory, plus 0.14 GB for " +
+          "your own masked values, 4.49 GB in all, but this machine has " +
           "1.21 GB available now, so the exchange stopped before any value " +
           "was masked and told your partner. Run the exchange on a host with " +
           "more memory, or split your input, or ask your partner to split " +
@@ -762,7 +824,7 @@ describe("the single-pass partner size at the terms exchange", () => {
 
     it("names this party's own share only where it has one", () => {
       const ownShare =
-        /plus 0\.26 GB for your own masked values, 4\.61 GB in all/;
+        /plus 0\.14 GB for your own masked values, 4\.49 GB in all/;
       expect(() => run(request, maskedWithoutOwnSetup)).toThrow(ownShare);
       const reply = { ...request, inboundFrameUse: "stream" as const };
       expect(() => run(reply, 1)).toThrow(
@@ -776,8 +838,8 @@ describe("the single-pass partner size at the terms exchange", () => {
       expect(shortfall).toEqual([
         "running with --allow-memory-shortfall: your partner declared " +
           "150,000 records, and reading and masking what they send could " +
-          "take up to 4.35 GB of memory, plus 0.26 GB for your own masked " +
-          "values, 4.61 GB in all, but this machine has 1.21 GB available " +
+          "take up to 4.35 GB of memory, plus 0.14 GB for your own masked " +
+          "values, 4.49 GB in all, but this machine has 1.21 GB available " +
           "now. The exchange may run out of memory partway through, which " +
           "fails it for both parties.",
       ]);
@@ -795,7 +857,7 @@ describe("the single-pass partner size at the terms exchange", () => {
       const copied =
         REQUEST_BYTES +
         REQUEST_BYTES * INBOUND_FRAME_MEMORY_MULTIPLES.copiedRequest +
-        ownSetup;
+        ownIncrement;
       expect(() => run(overWebRtc, copied)).not.toThrow();
       expect(() => run(overWebRtc, copied - 1)).toThrow(RoundCapacityError);
     });
