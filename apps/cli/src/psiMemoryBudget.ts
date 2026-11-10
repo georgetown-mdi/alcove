@@ -365,7 +365,7 @@ export const SINGLE_PASS_OWN_SETUP_COST: Readonly<
 > = {
   native: {
     buildPeakBytesPerElement: 884,
-    maskingIncrementBytesPerElement: 398,
+    maskingIncrementBytesPerElement: 401,
   },
   wasm: {
     buildPeakBytesPerElement: 833,
