@@ -4,7 +4,7 @@ The owner's standing principles for weighing a decision: a docket item, a review
 
 ## How a recommendation argues
 
-A recommendation argues from the product, the user's experience and sound security. A rule, invented or measured, never outranks those harder-to-measure principles, and a recommendation that rests on a rule alone says so and asks the owner. The principles below are held the same way: a recommendation names any it runs against, but argues from cost and benefit to users and the product, never from a principle's name.
+A recommendation argues from the product, the user's experience and sound security. A rule, invented or measured, never outranks those harder-to-measure principles, and the wording of an epic's Done line is such a rule: it never outranks what users and the product need. A recommendation that rests on a rule alone says so and asks the owner. The principles below are held the same way: a recommendation names any it runs against, but argues from cost and benefit to users and the product, never from a principle's name.
 
 ## The principles
 
