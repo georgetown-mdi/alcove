@@ -94,6 +94,18 @@ describe("createBrowserExchangeDriver", () => {
     );
   });
 
+  test("forwards the partner's progress slot", async () => {
+    const onPartnerProgress = vi.fn();
+
+    await createBrowserExchangeDriver(driverConfig()).run(
+      driverEvents({ onPartnerProgress }),
+    );
+
+    expect(mockedRunLifecycle).toHaveBeenCalledWith(
+      expect.objectContaining({ onPartnerProgress }),
+    );
+  });
+
   test("runs for a consumer that offers no warning surface", async () => {
     // onWarning is optional on the contract; a consumer without one leaves the
     // lifecycle nothing to raise a notice through rather than a hole to trip on.

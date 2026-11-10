@@ -30,6 +30,7 @@ import {
   INTERNAL_FAULT_EXIT_CODE,
   PERSISTENCE_LOSS_EXIT_CODE,
   failureCauseStreamField,
+  isProgressPercent,
   toStreamCount,
 } from "@alcove/cli-contract";
 import type {
@@ -38,6 +39,7 @@ import type {
   ErrorPhase,
   ExchangeErrorCategory,
   MetricsEvent,
+  PartnerProgressEvent,
   ResultEvent,
   StageEndEvent,
   StageEvent,
@@ -140,6 +142,21 @@ export function buildStageEndEvent(
     // as the stage event's id.
     id: redactAndSanitizeForDisplay(id),
     durationMs: toStreamCount(durationMs),
+  };
+}
+
+/**
+ * Build a partner-progress event. The figure is the partner's, so it is
+ * checked again here: anything but an integer from 0 to 100 is dropped,
+ * leaving the event that clears the figure.
+ */
+export function buildPartnerProgressEvent(
+  percent: number | undefined,
+): PartnerProgressEvent {
+  return {
+    v: EVENT_STREAM_VERSION,
+    type: "partnerProgress",
+    ...(isProgressPercent(percent) && { percent }),
   };
 }
 
@@ -505,6 +522,8 @@ export interface EventStreamEmitter {
   stages(stages: ExchangeStageDefinition[]): void;
   stage(id: string, label: string): void;
   stageEnd(id: string, durationMs: number): void;
+  /** The partner's progress figure, or `undefined` to clear it. */
+  partnerProgress(percent: number | undefined): void;
   warning(source: WarningSource, message: string): void;
   payloadReceiveTaken(
     message: Displayable,
@@ -550,6 +569,8 @@ function createEventStreamEmitter(
     stage: (id, label) => writer.emit(buildStageEvent(id, label)),
     stageEnd: (id, durationMs) =>
       writer.emit(buildStageEndEvent(id, durationMs)),
+    partnerProgress: (percent) =>
+      writer.emit(buildPartnerProgressEvent(percent)),
     warning: (source, message) =>
       writer.emit(buildWarningEvent(source, message)),
     payloadReceiveTaken: (message, shownColumns, columnCount) =>

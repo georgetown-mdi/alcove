@@ -4,6 +4,7 @@ import styles from "@styles/app.module.css";
 
 import {
   currentStageLabel,
+  partnerProgressLabel,
   progressPercent,
   psiProgressLabel,
   stageIsKnown,
@@ -55,7 +56,8 @@ export function StatusPanel({
   const percent = progressPercent(run);
   const lastVisit = run.visits[run.visits.length - 1];
   const elapsedClock = useElapsedClock(run);
-  const progress = psiProgressLabel(run, elapsedClock);
+  const progress =
+    psiProgressLabel(run, elapsedClock) ?? partnerProgressLabel(run);
   // runExchange emits stage ids from the same prepared exchange the tree was built
   // from, or from the single-pass set the run model labels, so anything else is a
   // desync bug. This is a development-only signal, not a guarantee: a production
@@ -82,9 +84,9 @@ export function StatusPanel({
         </span>
       </p>
       {progress !== undefined && !done && !halted && (
-        // Outside the live region above: this line restates its figures every
-        // second, and a region announcing it would talk over everything else a
-        // screen reader is reading. The stage label it sits under is announced,
+        // Outside the live region above: this line restates its figures up to
+        // every second, and a region announcing it would talk over everything
+        // else a screen reader is reading. The stage label it sits under is announced,
         // and it is read on demand like any other text.
         <p className={styles.psiProgress}>{progress}</p>
       )}

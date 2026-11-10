@@ -253,6 +253,42 @@ describe("createServerJobExchangeDriver event mapping", () => {
     ]);
   });
 
+  test("a partnerProgress event reaches onPartnerProgress, and one with no figure clears it", async () => {
+    const { client } = scriptedClient([
+      { v: 1, type: "partnerProgress", percent: 40 },
+      { v: 1, type: "partnerProgress" },
+      result(true),
+    ]);
+    const driver = createServerJobExchangeDriver(driverConfig(), client);
+    const onPartnerProgress = vi.fn();
+
+    await driver.run({
+      ...driverEvents(new AbortController().signal),
+      onPartnerProgress,
+    });
+
+    expect(onPartnerProgress.mock.calls).toEqual([[40], [undefined]]);
+  });
+
+  test.each([101, -1, 4.5, "42", null])(
+    "a relayed figure of %s never reaches onPartnerProgress",
+    async (percent) => {
+      const { client } = scriptedClient([
+        { v: 1, type: "partnerProgress", percent },
+        result(true),
+      ]);
+      const driver = createServerJobExchangeDriver(driverConfig(), client);
+      const onPartnerProgress = vi.fn();
+
+      await driver.run({
+        ...driverEvents(new AbortController().signal),
+        onPartnerProgress,
+      });
+
+      expect(onPartnerProgress.mock.calls).toEqual([[undefined]]);
+    },
+  );
+
   test("a written result maps to onResult with the console result url", async () => {
     const { client } = scriptedClient([result(true)]);
     const driver = createServerJobExchangeDriver(driverConfig(), client);

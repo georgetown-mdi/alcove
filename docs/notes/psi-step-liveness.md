@@ -145,7 +145,7 @@ Its claims to verify:
 - **The relay cannot hold a run open.**
   Chunk activity restarts only the 120 s bound; the whole-frame budget still ends a run whose relay trickles bytes.
 - **Nothing partner-written reaches a display or a log.**
-  The frame has one shape, `working: true` and an optional integer `percent` from 0 to 100; any other is refused, and no field of it is shown.
+  The frame has one shape, `working: true` and an optional integer `percent` from 0 to 100; any other is refused, and only the figure is shown, as a number the display composes into its own text ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step), "Showing the partner's figure").
 - **The frame discloses little new.**
   A relay sees a small frame every 30 s, which shows the PSI phase's bounds that the frame sizes already show ([PROTOCOL.md](../spec/PROTOCOL.md), "What a relay sees").
   The frame is not padded, so it is one of four lengths: from a sender that states a progress figure, the length shows whether its crypto operation is in flight and when the figure reaches 10 and 100 ([PROTOCOL.md](../spec/PROTOCOL.md#the-still-working-frame), "The still-working frame").
@@ -156,5 +156,4 @@ Its claims to verify:
 
 Each is a separate proposal for the maintainer to scope or defer:
 
-- A progress figure on the still-working frame, so the waiting user sees how far the partner's step is.
 - The local stall check (`BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS`) on the one-worker browser path and the CLI, which would end a run whose worker hangs without an error while its page keeps sending.

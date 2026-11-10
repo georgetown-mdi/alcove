@@ -6,6 +6,7 @@ import { isExchangeBusyError, reattachOnBusy } from "./reattachOnBusy";
 import {
   runWithCompletion,
   runWithMatching,
+  runWithPartnerProgress,
   runWithPsiProgress,
   runWithStage,
   runWithStages,
@@ -101,6 +102,8 @@ export function buildRunEvents({
       setRun((current) => runWithMatching(current, matching)),
     onPsiProgress: (progress) =>
       setRun((current) => runWithPsiProgress(current, progress, new Date())),
+    onPartnerProgress: (percent) =>
+      setRun((current) => runWithPartnerProgress(current, percent)),
     onError: ({ category, error, record }) => {
       // Dev-gated: the raw Error object's message/cause can embed partner-/
       // server-controlled bytes, so a production console holds none of it,

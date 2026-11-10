@@ -16,6 +16,7 @@ import {
 } from "../partnerAbortFrame.js";
 
 import type { MessageConnection } from "../connection/messageConnection.js";
+import type { PsiProgressReporter } from "../psi/participant.js";
 
 /**
  * How long a party in its PSI phase lets pass since it last sent a frame
@@ -31,7 +32,14 @@ export const STILL_WORKING_INTERVAL_MS = 30_000;
  */
 export const PARTNER_SILENCE_BOUND_MS = 120_000;
 
-/** The still-working frame this build sends, which states nothing but its presence. */
+/**
+ * The least time between two deliveries of a partner's progress figure to the
+ * app, whatever rate the partner sends at. A working value: half the
+ * interval, so a partner sending one frame per interval is never held back.
+ */
+export const PARTNER_PROGRESS_MIN_GAP_MS = 15_000;
+
+/** The still-working frame with no progress figure, which states nothing but its presence. */
 export const STILL_WORKING_FRAME: { readonly working: true } = Object.freeze({
   working: true,
 });
@@ -107,17 +115,53 @@ function parseStillWorkingFrame(
     return undefined;
   if (!Object.hasOwn(fields, "percent")) return { percent: undefined };
   const { percent } = fields;
-  return typeof percent === "number" &&
-    Number.isInteger(percent) &&
-    percent >= 0 &&
-    percent <= 100
-    ? { percent }
-    : undefined;
+  return isPercent(percent) ? { percent } : undefined;
+}
+
+/** Whether `value` is a progress figure: an integer from 0 to 100. */
+function isPercent(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 100
+  );
 }
 
 /** Whether `frame` is a still-working frame ({@link parseStillWorkingFrame}). */
 export function isStillWorkingFrame(frame: unknown): boolean {
   return parseStillWorkingFrame(frame) !== undefined;
+}
+
+/** This party's progress through its current crypto operation, read at each send. */
+export interface OperationPercentTracker {
+  /** Takes one PSI progress report. Never throws. */
+  readonly report: PsiProgressReporter;
+  /** The whole percent of the operation in flight done, rounded down, or `undefined` when none is. */
+  readonly percent: () => number | undefined;
+}
+
+/**
+ * A tracker of this party's current crypto operation: 0 when it starts, the
+ * share of its elements processed as it moves, and none once it settles.
+ * The count of the first round's values is not a crypto operation.
+ */
+export function operationPercentTracker(): OperationPercentTracker {
+  let percent: number | undefined;
+  return {
+    report: ({ operation, state, elements, processed }) => {
+      if (operation === "countFirstRoundValues") return;
+      if (state === "started") percent = 0;
+      else if (state === "progress") {
+        const share = Math.floor((100 * (processed ?? 0)) / elements);
+        percent =
+          elements > 0 && Number.isFinite(share)
+            ? Math.min(100, Math.max(0, share))
+            : 0;
+      } else percent = undefined;
+    },
+    percent: () => percent,
+  };
 }
 
 /** The timing a {@link StillWorkingLayer} runs on; a test shortens it. */
@@ -127,14 +171,24 @@ export interface StillWorkingTiming {
 }
 
 /**
+ * Takes the partner's progress through its current crypto operation, an
+ * integer from 0 to 100, or `undefined` to clear the figure shown.
+ */
+export type PartnerProgressReporter = (percent: number | undefined) => void;
+
+/**
  * The layer one party's PSI phase, and the steps after it, send and receive
  * through on a connection whose parties exchange still-working frames.
  */
 export interface StillWorkingLayer {
   /** The connection the PSI phase and the steps after it use. */
   readonly conn: MessageConnection;
-  /** Sends a still-working frame now, then whenever the interval passes with nothing sent. */
-  start(): void;
+  /**
+   * Sends a still-working frame now, with no progress figure, then whenever
+   * the interval passes with nothing sent, stating `ownPercent`'s figure when
+   * it returns one.
+   */
+  start(ownPercent?: () => number | undefined): void;
   /**
    * Ends this party's PSI phase: stops sending, waits for a still-working
    * send in flight, and clears the partner-silence bound. Never rejects.
@@ -161,6 +215,11 @@ const DROPPED = Symbol("dropped still-working frame");
  * Each time the interval passes, still-working frames at the head of the
  * inbound queue are read and dropped; one behind a data frame waits for the
  * reader, charged against the queue's message-count and byte bounds.
+ *
+ * The partner's progress figure reaches `onPartnerProgress` only while the
+ * reader waits in a receive, at most once per {@link
+ * PARTNER_PROGRESS_MIN_GAP_MS}; a frame without a figure, a data frame, and
+ * the end of the receive clear a figure delivered.
  */
 export function stillWorkingLayer(
   conn: MessageConnection,
@@ -168,9 +227,14 @@ export function stillWorkingLayer(
     intervalMs: STILL_WORKING_INTERVAL_MS,
     silenceBoundMs: PARTNER_SILENCE_BOUND_MS,
   },
+  onPartnerProgress?: PartnerProgressReporter,
 ): StillWorkingLayer | undefined {
   if (conn.exchangesStillWorkingFrames?.() !== true) return undefined;
 
+  let ownPercent: (() => number | undefined) | undefined;
+  let partnerPercent: number | undefined;
+  let shownPercent: number | undefined;
+  let lastShownAt: number | undefined;
   let sending = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let sendQueue: Promise<void> = Promise.resolve();
@@ -200,12 +264,53 @@ export function stillWorkingLayer(
     timer = sending ? setTimeout(tick, timing.intervalMs) : undefined;
   };
 
-  const sendStillWorking = (): void => {
-    enqueue(STILL_WORKING_FRAME).catch(() => {
+  const readOwnPercent = (): number | undefined => {
+    try {
+      const percent = ownPercent?.();
+      return isPercent(percent) ? percent : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const sendStillWorking = (percent: number | undefined): void => {
+    enqueue(
+      percent === undefined
+        ? STILL_WORKING_FRAME
+        : { ...STILL_WORKING_FRAME, percent },
+    ).catch(() => {
       sending = false;
       clearTimeout(timer);
     });
     restartTimer();
+  };
+
+  const deliverPartnerProgress = (percent: number | undefined): void => {
+    shownPercent = percent;
+    try {
+      onPartnerProgress?.(percent);
+    } catch {
+      // A display fault does not end the wait.
+    }
+  };
+
+  const showPartnerProgress = (): void => {
+    if (!consumerReceiving || partnerPercent === shownPercent) return;
+    if (partnerPercent === undefined) {
+      deliverPartnerProgress(undefined);
+      return;
+    }
+    const now = Date.now();
+    const sinceShown =
+      lastShownAt === undefined ? undefined : now - lastShownAt;
+    if (
+      sinceShown !== undefined &&
+      sinceShown >= 0 &&
+      sinceShown < PARTNER_PROGRESS_MIN_GAP_MS
+    )
+      return;
+    lastShownAt = now;
+    deliverPartnerProgress(partnerPercent);
   };
 
   const refuseFirstFrame = (frame: unknown): void => {
@@ -239,12 +344,15 @@ export function stillWorkingLayer(
         );
       return frame;
     }
-    if (parseStillWorkingFrame(frame) !== undefined) {
+    const stillWorking = parseStillWorkingFrame(frame);
+    if (stillWorking !== undefined) {
       partnerFrameSeen = true;
       if (!boundArmed && !phaseEnded) {
         boundArmed = true;
         conn.armPartnerSilenceBound?.(timing.silenceBoundMs);
       }
+      partnerPercent = stillWorking.percent;
+      showPartnerProgress();
       return DROPPED;
     }
     if (hasWorkingKey(frame))
@@ -252,6 +360,7 @@ export function stillWorkingLayer(
         "the partner sent a malformed still-working frame",
         "protocol",
       );
+    partnerPercent = undefined;
     if (!partnerFrameSeen) {
       partnerFrameSeen = true;
       refuseFirstFrame(frame);
@@ -288,7 +397,7 @@ export function stillWorkingLayer(
       receiving = drainQueued().finally(() => {
         receiving = undefined;
       });
-    sendStillWorking();
+    sendStillWorking(readOwnPercent());
   };
 
   const receive = async (timeoutMs?: number): Promise<unknown> => {
@@ -302,12 +411,16 @@ export function stillWorkingLayer(
         if (phaseEnded) windowOpen = false;
         return taken.frame;
       }
+      // A figure drained while this party computed is shown only if the
+      // receive waits; a frame already queued brings a newer one or ends it.
+      if (conn.nextQueuedMessageBytes?.() === undefined) showPartnerProgress();
       for (;;) {
         const frame = admit(await conn.receive(timeoutMs));
         if (frame !== DROPPED) return frame;
       }
     } finally {
       consumerReceiving = false;
+      if (shownPercent !== undefined) deliverPartnerProgress(undefined);
     }
   };
 
@@ -327,9 +440,10 @@ export function stillWorkingLayer(
 
   return {
     conn: layered,
-    start: () => {
+    start: (readPercent) => {
+      ownPercent = readPercent;
       sending = true;
-      sendStillWorking();
+      sendStillWorking(undefined);
     },
     endPhase: async () => {
       phaseEnded = true;

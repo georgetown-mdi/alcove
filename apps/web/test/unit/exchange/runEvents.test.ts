@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ProcessState } from "@alcove/core";
 
-import { initialRun, psiProgressLabel } from "@exchange/exchangeRun";
+import {
+  initialRun,
+  partnerProgressLabel,
+  psiProgressLabel,
+} from "@exchange/exchangeRun";
 import { JobApiRequestError } from "@psi/jobClient/serverJobExchangeDriver";
 import { buildRunEvents } from "@exchange/runEvents";
 
@@ -184,6 +188,17 @@ describe("buildRunEvents", () => {
     });
 
     expect(psiProgressLabel(state.run, new Date())).toBeUndefined();
+  });
+
+  test("folds the partner's figure, and its clear, onto the run model", () => {
+    const { state, events } = seat();
+
+    events.onPartnerProgress?.(40);
+    expect(partnerProgressLabel(state.run)).toBe(
+      "Your partner is matching records: 40% done",
+    );
+    events.onPartnerProgress?.(undefined);
+    expect(partnerProgressLabel(state.run)).toBeUndefined();
   });
 
   test("the first-round count's line counts records", () => {

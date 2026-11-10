@@ -15,6 +15,7 @@ import { runsSinglePassLink } from "../linkageTermsPolicy.js";
 import { linkageRounds, roundMatchedKeyName } from "../linkageKeyCondition.js";
 import { getLogger } from "../utils/logger.js";
 import { sanitizeErrorForDisplay } from "../utils/sanitizeErrorForDisplay.js";
+import { operationPercentTracker } from "./stillWorking.js";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
@@ -145,8 +146,20 @@ export async function runPsiPhase(p: {
     ? "count-only-permuted"
     : "identifier-revealing";
   // Started before the engine is built, so the partner reads this party's
-  // first still-working frame ahead of any abort a failed start sends.
-  stillWorking?.start();
+  // first still-working frame ahead of any abort a failed start sends. The
+  // participant reports progress only to a reporter it is given, so the
+  // tracker that feeds the still-working frames is given even where the
+  // caller renders nothing.
+  const ownPercent =
+    stillWorking === undefined ? undefined : operationPercentTracker();
+  const reportPsiProgress: RunExchangeOptions["onPsiProgress"] =
+    ownPercent === undefined
+      ? onPsiProgress
+      : (progress) => {
+          ownPercent.report(progress);
+          onPsiProgress?.(progress);
+        };
+  stillWorking?.start(ownPercent?.percent);
   let engine: PsiEngine;
   try {
     engine =
@@ -169,7 +182,7 @@ export async function runPsiPhase(p: {
       { role: psiRole, verbose: verbosity },
       elementBounds,
       engine,
-      onPsiProgress,
+      reportPsiProgress,
       roundsSentInParts
         ? { local: localReceiveCeiling, partner: partnerReceiveCeiling }
         : undefined,

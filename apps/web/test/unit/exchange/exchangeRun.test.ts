@@ -15,10 +15,12 @@ import {
   awaitingPartner,
   currentStageLabel,
   initialRun,
+  partnerProgressLabel,
   progressPercent,
   psiProgressLabel,
   runWithCompletion,
   runWithFailure,
+  runWithPartnerProgress,
   runWithPsiProgress,
   runWithStage,
   runWithStages,
@@ -732,5 +734,63 @@ describe("PSI progress", () => {
     expect(psiProgressLabel(second, secondsLater(32))).toBe(
       "Encrypting your partner's data: 990 values, 2s elapsed",
     );
+  });
+});
+
+describe("the partner's progress", () => {
+  const at = new Date(2026, 6, 8, 14, 30, 0);
+  const waiting = (): ExchangeRun =>
+    runWithStage(
+      runWithStages(initialRun(), stagesFor(preparedWith("single-pass", 3))),
+      SINGLE_PASS_STAGE_IDS.encryptingPartnerData,
+      at,
+    );
+
+  test("a figure is stated, and a clear removes it", () => {
+    const shown = runWithPartnerProgress(waiting(), 40);
+    expect(partnerProgressLabel(shown)).toBe(
+      "Your partner is matching records: 40% done",
+    );
+    expect(
+      partnerProgressLabel(runWithPartnerProgress(shown, undefined)),
+    ).toBeUndefined();
+  });
+
+  test("an unchanged figure, or a clear with none shown, leaves the run untouched", () => {
+    const shown = runWithPartnerProgress(waiting(), 40);
+    expect(runWithPartnerProgress(shown, 40)).toBe(shown);
+    const run = waiting();
+    expect(runWithPartnerProgress(run, undefined)).toBe(run);
+  });
+
+  test.each([101, -1, 4.5, Number.NaN, "42" as unknown as number])(
+    "a figure of %s clears the figure rather than being stated",
+    (percent) => {
+      const run = runWithPartnerProgress(
+        runWithPartnerProgress(waiting(), 40),
+        percent,
+      );
+      expect(run.partnerPercent).toBeUndefined();
+      expect(partnerProgressLabel(run)).toBeUndefined();
+      expect(
+        partnerProgressLabel({ ...waiting(), partnerPercent: percent }),
+      ).toBeUndefined();
+    },
+  );
+
+  test("this party's own operation, a stage change, completion and failure each take the figure off", () => {
+    const shown = runWithPartnerProgress(waiting(), 40);
+    const running = runWithPsiProgress(
+      shown,
+      { operation: "createServerSetup", elements: 10, state: "started" },
+      at,
+    );
+    expect(partnerProgressLabel(running)).toBeUndefined();
+    expect(
+      runWithStage(shown, SINGLE_PASS_STAGE_IDS.identifyingSharedValues, at)
+        .partnerPercent,
+    ).toBeUndefined();
+    expect(runWithCompletion(shown, at).partnerPercent).toBeUndefined();
+    expect(runWithFailure(shown).partnerPercent).toBeUndefined();
   });
 });

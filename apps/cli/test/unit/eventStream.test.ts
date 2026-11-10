@@ -42,6 +42,7 @@ import {
   buildMetricsEvent,
   buildResultEvent,
   buildStageEndEvent,
+  buildPartnerProgressEvent,
   buildStageEvent,
   buildStagesEvent,
   buildWarningEvent,
@@ -131,6 +132,14 @@ function validateEvent(event: unknown): event is StreamEvent {
           typeof event[k] === "number" &&
           Number.isInteger(event[k] as number) &&
           (event[k] as number) >= 0,
+      );
+    case "partnerProgress":
+      return (
+        event.percent === undefined ||
+        (typeof event.percent === "number" &&
+          Number.isInteger(event.percent) &&
+          event.percent >= 0 &&
+          event.percent <= 100)
       );
     case "result":
       return (
@@ -470,6 +479,25 @@ test("a stageEnd event pairs an id with a whole-millisecond duration", () => {
   expect(event.id).toBe("stage 2 / 2");
   expect(event.durationMs).toBe(512);
 });
+
+test("a partnerProgress event states the partner's figure, and none to clear it", () => {
+  const event = buildPartnerProgressEvent(40);
+  expect(validateEvent(event)).toBe(true);
+  expect(event).toStrictEqual({ v: 1, type: "partnerProgress", percent: 40 });
+  expect(buildPartnerProgressEvent(undefined)).toStrictEqual({
+    v: 1,
+    type: "partnerProgress",
+  });
+});
+
+test.each([101, -1, 4.5, Number.NaN, "42" as unknown as number])(
+  "a partnerProgress event drops a figure of %s",
+  (percent) => {
+    const event = buildPartnerProgressEvent(percent);
+    expect(validateEvent(event)).toBe(true);
+    expect(event).toStrictEqual({ v: 1, type: "partnerProgress" });
+  },
+);
 
 test("sanitizes a hostile stageEnd id (partner-authored linkage-key name)", () => {
   const event = buildStageEndEvent(RLO_INJECTION, 10);

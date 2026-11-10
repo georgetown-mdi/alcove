@@ -12,6 +12,7 @@ import {
 import {
   UNREADABLE_EVENT,
   isEventType,
+  isProgressPercent,
   unknownEventNotice,
 } from "@alcove/cli-contract";
 
@@ -1572,6 +1573,7 @@ async function consumeJobStream(
     onResult,
     onError,
     onWarning,
+    onPartnerProgress,
   }: ExchangeDriverEvents<RunOutputs>,
 ): Promise<void> {
   // Read the live abort state through a call so the re-checks across each
@@ -1611,6 +1613,13 @@ async function consumeJobStream(
             message.length > 0
           )
             onWarning(message);
+          break;
+        }
+        case "partnerProgress": {
+          // The partner's figure, checked again here: anything but an integer
+          // from 0 to 100 clears the figure rather than reaching the screen.
+          const percent = event.percent;
+          onPartnerProgress?.(isProgressPercent(percent) ? percent : undefined);
           break;
         }
         case "result": {

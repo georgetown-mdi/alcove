@@ -119,6 +119,24 @@ describe("validateAndSanitizeEvent enforces the v1 vocabulary and sanitizes", ()
     expect(event?.durationMs).toBe(1234);
   });
 
+  test("relays a partnerProgress event's figure as the integer it is", () => {
+    expect(
+      validateAndSanitizeEvent({ v: 1, type: "partnerProgress", percent: 40 }),
+    ).toStrictEqual({ v: 1, type: "partnerProgress", percent: 40 });
+    expect(
+      validateAndSanitizeEvent({ v: 1, type: "partnerProgress" }),
+    ).toStrictEqual({ v: 1, type: "partnerProgress" });
+  });
+
+  test.each([101, -1, 4.5, "42", null, { n: 1 }])(
+    "drops a partnerProgress figure of %s and relays the clear",
+    (percent) => {
+      expect(
+        validateAndSanitizeEvent({ v: 1, type: "partnerProgress", percent }),
+      ).toStrictEqual({ v: 1, type: "partnerProgress" });
+    },
+  );
+
   test("accepts a metrics event (recognized, not degraded)", () => {
     const event = validateAndSanitizeEvent({
       v: 1,

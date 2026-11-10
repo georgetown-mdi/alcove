@@ -366,6 +366,7 @@ function recordingEmitter(): {
     stages: unexpected,
     stage: unexpected,
     stageEnd: unexpected,
+    partnerProgress: unexpected,
     warning: unexpected,
     payloadReceiveTaken: (message, shownColumns, columnCount) =>
       emitted.push(

@@ -184,11 +184,13 @@ export {
 } from "./connection/frameSize";
 export {
   OLDER_PARTNER_AT_MATCHING_MESSAGE,
+  PARTNER_PROGRESS_MIN_GAP_MS,
   PARTNER_SILENCE_BOUND_MS,
   PARTNER_STOPPED_AT_MATCHING_MESSAGE,
   PARTNER_STOPPED_AT_MATCHING_REMEDY,
   STILL_WORKING_INTERVAL_MS,
 } from "./exchange/stillWorking";
+export type { PartnerProgressReporter } from "./exchange/stillWorking";
 // The measured memory an inbound frame takes, which the CLI weighs against the
 // memory its process has before each read and each hand-off to the PSI worker.
 export {
