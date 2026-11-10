@@ -196,13 +196,13 @@ the per-session byte counts it measured, are in
 [the deployment record](../../docs/notes/webrtc-relay-deployment.md#per-session-byte-accounting).
 
 - **DTLS.** coturn starts no DTLS listener unless `dtls` is set (its `--help`:
-  "DTLS is not started by default"). The template's former `no-dtls` line was
-  rejected, `WARNING Bad configuration format: no-dtls`, and is removed. TLS
+  "DTLS is not started by default"). coturn rejects a `no-dtls` line, `WARNING Bad
+  configuration format: no-dtls`, so the template sets none. TLS
   is the front's: coturn holds no certificate and logs that it cannot start a
   TLS or DTLS listener for want of one.
 - **The admin CLI.** coturn opens no CLI listener unless `cli` is set and
-  `cli-password` is not empty. The former `no-cli` line logged `ERROR no-cli
-  option is deprecated, see --cli`, and is removed. With the template as it
+  `cli-password` is not empty. A `no-cli` line logs `ERROR no-cli
+  option is deprecated, see --cli`, so the template sets none. With the template as it
   is, the only TCP sockets coturn's account (uid 65534) listens on, read from
   `/proc/net/tcp` in the running container, are `127.0.0.1:5350`, one per
   relay thread; it holds no UDP socket until an allocation opens one. With
@@ -219,7 +219,7 @@ the per-session byte counts it measured, are in
   first and `scripts/relay-logging-posture.test.mjs` fails if it is not.
 - **`simple-log`.** It sets how a log file is named and rotated, and with
   `log-file=stdout` there is no file: removing it changed neither what coturn
-  wrote nor what `/var/tmp` held, so it is removed.
+  wrote nor what `/var/tmp` held, so the template does not set it.
 - **The TLS floor** is the front's, below 1.2 refused; see
   [The 443 front](#the-443-front), TLS for TURN.
 
@@ -844,8 +844,7 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   neither and fails with `no protocols available`, which the probe reports
   as unclear. Measured 2026-11-10 on a Docker host, against the front and the
   pinned coturn: both refused (`tlsv1 alert protocol version ... SSL alert
-  number 70`), 1.2 and 1.3 completed, and with `TLSv1 TLSv1.1` added to
-  `ssl_protocols` the probe failed on the completed handshakes.
+  number 70`), and 1.2 and 1.3 completed.
 - **Why the server name.** The alternatives weighed against it, a test of the
   first bytes and ALPN, are in
   [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443),

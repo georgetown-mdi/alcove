@@ -199,11 +199,10 @@ fi
 # The front takes TLS 1.2 and 1.3 (ssl_protocols in front.conf.tmpl). The client
 # is the relay image's openssl at security level 0, because at its default level
 # OpenSSL 3 sends no TLS 1.0 or 1.1 ClientHello at all ("no protocols
-# available"), which would look like a refusal without asking the front. A
+# available"), which the probe reports as unclear. A
 # refusal is the front's protocol_version alert; a completed handshake prints a
 # "New, TLSv..." line. Measured 2026-11-10 against the front and the pinned
-# coturn image: the alert at ssl_protocols TLSv1.2 TLSv1.3, and the handshake
-# with TLSv1 and TLSv1.1 added.
+# coturn image: the alert at ssl_protocols TLSv1.2 TLSv1.3.
 for floor in "1:TLS 1.0" "1_1:TLS 1.1"; do
   version="${floor%%:*}"
   label="${floor#*:}"
@@ -212,7 +211,7 @@ for floor in "1:TLS 1.0" "1_1:TLS 1.1"; do
     </dev/null 2>&1)"
   if printf '%s' "$FLOOR" | grep -q 'alert protocol version'; then
     report pass "the front refused a $label handshake on $REALM:443"
-  elif printf '%s' "$FLOOR" | grep -q '^New, TLSv'; then
+  elif printf '%s' "$FLOOR" | grep -q '^New, [^(]'; then
     report fail "the front completed a $label handshake on $REALM:443" \
       "$(printf '%s' "$FLOOR" | grep -m 1 'Protocol *:' | sed 's/^ *//')"
   else

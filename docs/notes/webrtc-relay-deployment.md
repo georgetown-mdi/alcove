@@ -638,7 +638,7 @@ A quota refusal (error 486, allocation quota reached) writes no line. With
 `log-file=stdout` as the template's first setting coturn writes no log file:
 `/var/tmp` held only the pid file (measured 2026-11-10). A line coturn logs
 before it reads `log-file` also goes to a file it opens under `/var/tmp`: with
-the template's former `no-dtls` line above `log-file`, its rejection opened
+a `no-dtls` line above `log-file`, its rejection opened
 `/var/tmp/turn_1_<date>.log` (README.md,
 [coturn's settings](../../infra/relay/README.md#coturns-settings)). The lines go to the journal through the unit's `journald` log driver.
 `log-min-level` (debug, info, warning or error) exists and the template does not
