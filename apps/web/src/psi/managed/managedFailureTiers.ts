@@ -101,9 +101,7 @@ export function importedSinceLastSuccess(
  * `lastRun`, so a later run has passed without clearing it. A marker set after
  * the stamp belongs to a run still in flight or the interrupted run itself.
  */
-export function rotationInFlightBeforeLastRun(
-  record: ManagedExchangeRecord,
-): boolean {
+function rotationInFlightBeforeLastRun(record: ManagedExchangeRecord): boolean {
   const since = record.rotationInFlightSince;
   const lastRun = record.lastRun;
   if (since === undefined || lastRun === undefined) return false;
@@ -115,7 +113,7 @@ export function rotationInFlightBeforeLastRun(
  * has followed: a restored copy's no-show then reads as a possibly stale
  * copy. An entry the import itself brought in from the file is not after it.
  */
-export function importedBeforeLastRun(
+function importedBeforeLastRun(
   record: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,
 ): boolean {

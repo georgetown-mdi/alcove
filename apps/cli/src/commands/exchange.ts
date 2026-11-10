@@ -93,12 +93,12 @@ import {
 } from "./linkagePreflight";
 import { warnOnValueConstraints } from "./valueConstraintWarnings";
 import {
-  preflightRun,
   runProtocol,
   type AuthPersist,
   type ProtocolConnectionConfig,
   type SigningPersist,
 } from "../protocol";
+import { preflightRun } from "../run/prepare";
 import type { SigningConfig } from "@alcove/core";
 
 export function builder(cmd: Argv): Argv {

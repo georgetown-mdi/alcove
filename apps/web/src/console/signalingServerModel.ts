@@ -300,7 +300,7 @@ export function ownRelayEnrollmentNotice(
 }
 
 /** Who can reach `server`, judged from its host as an invitation link is. */
-export function signalingServerReach(
+function signalingServerReach(
   server: SignalingServerProjection,
 ): InvitationReach {
   return invitationReach(`https://${server.host}/`);

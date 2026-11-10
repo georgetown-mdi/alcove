@@ -91,13 +91,12 @@ import {
   withDeduplicate,
   withLinkageStrategy,
 } from "../onlineBootstrap";
+import { runProtocol, type ProtocolConnectionConfig } from "../protocol";
 import {
-  runProtocol,
   checkRunMemoryBudget,
   emitPrepareRefusal,
   WEBRTC_RENDEZVOUS_SECRET_REQUIRED,
-  type ProtocolConnectionConfig,
-} from "../protocol";
+} from "../run/prepare";
 import {
   assertNoProvisionConflicts,
   provisionConfigAndKey,

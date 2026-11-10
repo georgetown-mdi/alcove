@@ -63,7 +63,7 @@ import type {
  */
 
 /** The `version` the client reports, matching the pinned browser `peerjs`. */
-export const PEERJS_CLIENT_VERSION = "1.5.5";
+const PEERJS_CLIENT_VERSION = "1.5.5";
 
 /**
  * Heartbeat cadence, matching `PEER_PING_INTERVAL_MS` in the web app's
@@ -71,7 +71,7 @@ export const PEERJS_CLIENT_VERSION = "1.5.5";
  * of this cadence, so a client that beats slower than the web's PeerJS client
  * would be cut by a broker tuned for it.
  */
-export const BROKER_HEARTBEAT_INTERVAL_MS = 5_000;
+const BROKER_HEARTBEAT_INTERVAL_MS = 5_000;
 
 /**
  * Longest a registration may take before it is abandoned. Generous for a

@@ -93,11 +93,11 @@ export function MountLoading({ message }: { message: string }) {
 
 /** The console documentation's section on starting the container with a folder
  * mounted. */
-export const RUNNING_THE_CONTAINER_URL = `${PROJECT_SITE_URL}/docs/CONSOLE#running-the-container`;
+const RUNNING_THE_CONTAINER_URL = `${PROJECT_SITE_URL}/docs/CONSOLE#running-the-container`;
 
 /** The one-folder start command the notice below shows, with the folder left
  * for the operator to fill in. */
-export const SINGLE_FOLDER_RUN_COMMAND =
+const SINGLE_FOLDER_RUN_COMMAND =
   "docker run --rm -p 127.0.0.1:3000:3000 -v <your folder>:/work " +
   "--env JOB_DATA_ROOT=/work docker.io/gumdi/alcove serve";
 

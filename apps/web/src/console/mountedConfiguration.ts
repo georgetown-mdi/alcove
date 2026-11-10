@@ -47,13 +47,10 @@ import type { WorkingFolderCommandLines } from "@psi/dockerRunCommand";
  * the working folder, relay settings included.
  */
 
-/** The channel a configuration the console can open runs over. */
-export type LoadedChannel = LoadedAuthoringState["channel"];
-
 /** A conducted channel this console can be left with nothing to run over: a
  * shared folder needs its own mount, while SFTP is always offered, since
  * the operator authors its connection in the console. */
-export type UnofferedChannel = Extract<JobChannel, "filedrop">;
+type UnofferedChannel = Extract<JobChannel, "filedrop">;
 
 /** What the load control shows. */
 export type MountedConfigurationState =
@@ -483,7 +480,7 @@ export const CONVERT_CONFIGURATION_LABEL = "Use the console's paths";
 
 /** The paths a conversion of the open configuration replaces, as the file
  * spells them: none for a state that is not an open configuration. */
-export function pathsConversionReplaces(
+function pathsConversionReplaces(
   state: MountedConfigurationState,
 ): Array<string> {
   if (state.status !== "opened") return [];
@@ -842,9 +839,7 @@ function nameList(fields: ReadonlyArray<string>): string {
  * as the file spells them, for the carry-through notice. Each is composed back
  * into the run's own configuration all the same.
  */
-export function recordsWithNoControl(
-  loaded: LoadedAuthoringState,
-): Array<string> {
+function recordsWithNoControl(loaded: LoadedAuthoringState): Array<string> {
   return RECORDS_WITH_NO_CONTROL.filter(
     ([key]) => loaded.records[key] !== undefined,
   ).map(([, field]) => field);

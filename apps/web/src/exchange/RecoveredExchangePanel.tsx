@@ -20,7 +20,7 @@ import {
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 import { fetchJobFolder } from "@psi/jobClient/jobFolder";
 
-import { RecurringHandoff } from "@recurring/RecurringHandoff";
+import { RecurringHandoff } from "@console/RecurringHandoff";
 import styles from "@styles/app.module.css";
 
 import {
@@ -129,8 +129,7 @@ export const DISCARD_CONFIRM_BODY =
   "you need first.";
 
 /** The heading over a folder a restart left behind. */
-export const LEFTOVER_FOLDER_HEADING =
-  "Files from an exchange before a restart";
+const LEFTOVER_FOLDER_HEADING = "Files from an exchange before a restart";
 
 /**
  * A folder an exchange this browser started left behind when the console

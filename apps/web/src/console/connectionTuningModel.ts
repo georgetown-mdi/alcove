@@ -49,16 +49,12 @@ const UNIT_MS: Record<DurationUnit, number> = {
 };
 
 /** The units the poll-interval field offers, sub-second included. */
-export const POLL_INTERVAL_UNITS: ReadonlyArray<DurationUnit> = [
-  "ms",
-  "s",
-  "m",
-];
+const POLL_INTERVAL_UNITS: ReadonlyArray<DurationUnit> = ["ms", "s", "m"];
 
 /** The units the timeout fields offer. Milliseconds are absent by design: a
  * coarse duration flag cannot state one, so a zero-setup run could not hold
  * the value the operator authored. */
-export const TIMEOUT_UNITS: ReadonlyArray<DurationUnit> = ["s", "m", "h"];
+const TIMEOUT_UNITS: ReadonlyArray<DurationUnit> = ["s", "m", "h"];
 
 const COARSEST_FIRST: ReadonlyArray<DurationUnit> = ["h", "m", "s", "ms"];
 
@@ -152,11 +148,11 @@ const TIMEOUT_FIELD_NAMES = [
 ] as const;
 
 /** One of {@link TIMEOUT_FIELD_NAMES}. */
-export type TimeoutFieldName = (typeof TIMEOUT_FIELD_NAMES)[number];
+type TimeoutFieldName = (typeof TIMEOUT_FIELD_NAMES)[number];
 
 /** Everything the model, the card and the configuration loader need to know
  * about one timeout field. */
-export interface TimeoutFieldRow {
+interface TimeoutFieldRow {
   /** The draft field the row describes. */
   field: TimeoutFieldName;
   /** The job intent option, and the opened configuration's, it states. */

@@ -77,12 +77,12 @@ import { openInputSource } from "./util/dataIo";
 import { singleValue } from "./util/flags";
 import {
   isNoHealSaveFailure,
-  preflightRun,
   runProtocol,
   type AuthPersist,
   type ProtocolConnectionConfig,
   type RunProtocolResult,
 } from "./protocol";
+import { preflightRun } from "./run/prepare";
 import {
   channelForScheme,
   type RunnableConnectionConfig,

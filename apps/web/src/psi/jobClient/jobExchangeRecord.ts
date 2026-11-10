@@ -69,8 +69,7 @@ export type JobExchangeRecordOffer =
 
 /** What one ask answered: an offer, or `not-settled` while the run's child has
  * not exited, which {@link askJobExchangeRecordOffer} re-asks. */
-export type JobExchangeRecordAnswer =
-  JobExchangeRecordOffer | { kind: "not-settled" };
+type JobExchangeRecordAnswer = JobExchangeRecordOffer | { kind: "not-settled" };
 
 /** The status-body fields this reader looks at, unknown until read. */
 interface JobStatusFields {

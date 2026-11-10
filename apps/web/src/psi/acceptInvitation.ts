@@ -169,7 +169,7 @@ export function acceptorMaySetDeduplicate(linkageTerms: LinkageTerms): boolean {
  * accepting operator clears its own side, so it renders beside that control; a
  * `terms` refusal remains whatever this party sets, so it blocks the accept.
  */
-export interface AcceptorDeduplicateRefusal {
+interface AcceptorDeduplicateRefusal {
   scope: "pair" | "terms";
   message: string;
 }

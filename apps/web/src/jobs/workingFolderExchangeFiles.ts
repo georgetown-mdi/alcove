@@ -156,7 +156,7 @@ export function createWorkingFolderExchangeFiles(
  * file within its size bound is at the name, read without following a link,
  * else undefined.
  */
-export function readWorkingFolderExchangeFiles(dataRoot: string): {
+function readWorkingFolderExchangeFiles(dataRoot: string): {
   config: Buffer | undefined;
   key: Buffer | undefined;
 } {

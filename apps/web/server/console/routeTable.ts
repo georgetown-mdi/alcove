@@ -67,7 +67,7 @@ type PathSegment =
   { kind: "static"; value: string } | { kind: "param"; name: string };
 
 /** A route compiled for matching. */
-export interface CompiledJobRoute {
+interface CompiledJobRoute {
   segments: ReadonlyArray<PathSegment>;
   handlers: JobRouteHandlers;
 }

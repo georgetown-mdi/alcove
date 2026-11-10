@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { RecurringHandoff } from "@recurring/RecurringHandoff";
+import { RecurringHandoff } from "@console/RecurringHandoff";
 
 import {
   AnotherExchangeFoot,

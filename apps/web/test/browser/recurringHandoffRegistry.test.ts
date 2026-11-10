@@ -8,7 +8,7 @@ import { createElement } from "react";
 
 import "@mantine/core/styles.css";
 
-import { RecurringHandoff } from "@recurring/RecurringHandoff";
+import { RecurringHandoff } from "@console/RecurringHandoff";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 

@@ -155,7 +155,7 @@ export function useJobManager(
  * observed ({@link JobManager.shutdown}); resolves at once when the API was never
  * enabled.
  */
-export function shutdownJobManager(): Promise<void> {
+function shutdownJobManager(): Promise<void> {
   return globalThis.jobManagerInstance?.shutdown() ?? Promise.resolve();
 }
 

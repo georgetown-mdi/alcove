@@ -123,7 +123,7 @@ export const TERMS_CHANGE_FAILURE_TITLE =
   "Your partner's linkage terms changed";
 
 /** The bound one WebRTC message holds, as the too-large copy states it. */
-export const WEBRTC_MESSAGE_BOUND_LABEL = `${(
+const WEBRTC_MESSAGE_BOUND_LABEL = `${(
   MAX_WEBRTC_FRAME_BYTES /
   (1024 * 1024)
 ).toString()} MiB`;

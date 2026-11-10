@@ -590,7 +590,7 @@ Driven against Node 26.7, that is a constructor parameter property, an `enum` (`
 modifiers that erase, such as `private`, `readonly`, `abstract` and `declare`, load.
 That list is for a reader; what the check enforces is the measurement.
 The refusal is a parse error in the module holding the construct, so it fires anywhere in the config's import graph,
-and the graph reaches app source (`src/utils/serverConfig.ts` to `src/utils/configManager.ts`) that nothing else holds to erasable syntax.
+and the graph reaches app source (`src/utils/serverConfig.ts`) that nothing else holds to erasable syntax.
 Typecheck, lint and a bundling `vite build` all run a real TypeScript transform and do not see it.
 
 The Dockerfile builder stage copies apps/web's config, `src/`, `server/` and `public/` and no test tree,

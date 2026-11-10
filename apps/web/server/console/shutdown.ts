@@ -9,7 +9,7 @@ const log = getLogger("console-server");
 export const DEFAULT_SHUTDOWN_TIMEOUT_MS = 30_000;
 
 /** The environment variable that overrides {@link DEFAULT_SHUTDOWN_TIMEOUT_MS}. */
-export const SHUTDOWN_TIMEOUT_ENV = "SHUTDOWN_TIMEOUT_MS";
+const SHUTDOWN_TIMEOUT_ENV = "SHUTDOWN_TIMEOUT_MS";
 
 /** The signals that start a graceful shutdown. */
 const SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM"] as const;

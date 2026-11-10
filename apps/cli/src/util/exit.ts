@@ -53,7 +53,7 @@ export const INTERNAL_FAULT_NEXT_STEP =
  * `undefined`. Such a fault's message already states its step, so adding
  * this one would give the operator two.
  */
-export function internalFaultNextStep(err: unknown): string | undefined {
+function internalFaultNextStep(err: unknown): string | undefined {
   if (classifyFailure(err) !== "internal-fault") return undefined;
   return statesItsOwnNextStep(err) ? undefined : INTERNAL_FAULT_NEXT_STEP;
 }
@@ -73,7 +73,7 @@ export const PARTNER_REFUSED_NEXT_STEP =
  * and nothing in its cause chain states its own next step;
  * otherwise `undefined`, for the reason {@link internalFaultNextStep} gives.
  */
-export function partnerRefusalNextStep(err: unknown): string | undefined {
+function partnerRefusalNextStep(err: unknown): string | undefined {
   const failureClass = classifyFailure(err);
   if (
     failureClass !== "partner-refused" &&

@@ -8,7 +8,7 @@ import { UsageError } from "@alcove/core";
 // drift onto the command line one at a time and take the password with them.
 
 /** The SMB dialects the setup script offers to pin. */
-export const SMB_DIALECTS = ["SMB3", "SMB2", "NT1"] as const;
+const SMB_DIALECTS = ["SMB3", "SMB2", "NT1"] as const;
 
 /** A pinned dialect, or `""` to let client and server negotiate. */
 export type SmbDialect = (typeof SMB_DIALECTS)[number] | "";

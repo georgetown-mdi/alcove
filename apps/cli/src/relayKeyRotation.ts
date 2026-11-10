@@ -32,10 +32,7 @@ import {
 } from "./relayRegistrar";
 import { renderFailureForOperator, withExitCode } from "./util/exit";
 
-export {
-  registerRelayKey,
-  RELAY_REGISTRATION_RETRY_DELAYS_MS,
-} from "@alcove/core";
+export { registerRelayKey } from "@alcove/core";
 export type { RelayRegistrationEnvironment } from "@alcove/core";
 
 /** The step every lost-key outcome names. */

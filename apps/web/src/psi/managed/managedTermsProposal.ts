@@ -101,7 +101,7 @@ export function managedTermsProposalDelta(
 }
 
 /** Keep `change`, which an unattended run refused, for the next visit. */
-export async function keepManagedTermsProposal(
+async function keepManagedTermsProposal(
   id: string,
   change: TermsChange,
   at: Date,

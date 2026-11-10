@@ -273,7 +273,6 @@ const serverOnlySrcFiles = [
   "src/jobs/**/*.{ts,tsx}",
   "src/utils/apiNamespace.ts",
   "src/utils/colorSchemeScript.ts",
-  "src/utils/configManager.ts",
   "src/utils/securityHeaders.ts",
   "src/utils/serverConfig.ts",
 ];

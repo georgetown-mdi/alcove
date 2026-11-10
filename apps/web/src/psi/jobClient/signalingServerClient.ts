@@ -97,7 +97,7 @@ export async function fetchSignalingServer(
  * - `superseded`: a `409`; a later change took effect first.
  * - `error`: anything else, or a malformed success body.
  */
-export type PutSignalingServerResult =
+type PutSignalingServerResult =
   | { kind: "ok"; server: SignalingServerProjection }
   | { kind: "refused"; message: string }
   | { kind: "superseded" }
@@ -121,7 +121,7 @@ export class AcceptedSignalingServerUnsetError extends Error {
 
 /** The relay a `PUT` sets beside the address: an accepted invitation's, or
  * the one the operator set for this console's own invitations. */
-export type SignalingServerRelay =
+type SignalingServerRelay =
   { invitationRelay: RelayLocator } | { ownRelay: JobOwnRelay };
 
 /** Set the coordination server from the address the operator typed, with

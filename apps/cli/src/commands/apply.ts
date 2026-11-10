@@ -78,7 +78,7 @@ const APPLY_CONSENT_REMEDY =
   "answer, or pass --consent-to-terms to consent to them in advance for an " +
   "unattended run.";
 
-export const APPLY_NEEDS_TERMINAL =
+const APPLY_NEEDS_TERMINAL =
   "apply asks you to confirm the update's terms, and standard input is not " +
   `a terminal to ask at, so nothing was changed. ${APPLY_CONSENT_REMEDY}`;
 

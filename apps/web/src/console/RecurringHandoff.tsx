@@ -25,14 +25,14 @@ import {
   bindPathsCaveat,
   handoffInputName,
   runLines,
-} from "./scheduledRunCommand";
-import { PodmanLines } from "./PodmanLines";
-import { RunCommandLines } from "./RunCommandLines";
+} from "@recurring/scheduledRunCommand";
+import { PodmanLines } from "@recurring/PodmanLines";
+import { RunCommandLines } from "@recurring/RunCommandLines";
 
 import type { ImageRegistry } from "@utils/alcoveImage";
 import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
-import type { ShownRunLines } from "./scheduledRunCommand";
+import type { ShownRunLines } from "@recurring/scheduledRunCommand";
 
 /** The full CLI reference the panel points at for the recurring-run details. */
 const RECURRING_EXCHANGE_DOC_URL = `${PROJECT_SITE_URL}/docs/CLI#recurring-exchange`;

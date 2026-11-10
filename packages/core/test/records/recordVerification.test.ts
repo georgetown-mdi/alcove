@@ -6,6 +6,7 @@ import { buildExchangeRecord } from "../../src/records/exchangeRecord";
 import { buildOutputTable, preparePayload } from "../../src/payloadExchange";
 import { loadCSVFile } from "../../src/file";
 import {
+  deriveOurIdColumn,
   reconstructCommittedData,
   recordAlterationIsTheOnlyExplanation,
   reproductionMismatchCauses,
@@ -909,5 +910,48 @@ describe("reproductionMismatchCauses", () => {
     const { record, keys } = await buildExchangeRecord(baseInputs);
     const report = await verifyExchangeRecord(record, keys);
     expect(reproductionMismatchCauses(report)).toEqual([]);
+  });
+});
+
+describe("deriveOurIdColumn", () => {
+  test("returns the first header when the input has that column (identifier)", () => {
+    expect(
+      deriveOurIdColumn(
+        ["pid", "partner_row", "note"],
+        new Set(["pid", "dose"]),
+      ),
+    ).toBe("pid");
+  });
+
+  test("returns undefined when the first header is not an input column (row index)", () => {
+    expect(
+      deriveOurIdColumn(["your_row", "partner_row"], new Set(["dose"])),
+    ).toBeUndefined();
+  });
+
+  test("reads a result an earlier version headed with row_id the same way", () => {
+    expect(
+      deriveOurIdColumn(["pid", "row_id", "note"], new Set(["pid", "dose"])),
+    ).toBe("pid");
+    expect(
+      deriveOurIdColumn(["row_id", "their_row_id"], new Set(["dose"])),
+    ).toBeUndefined();
+  });
+});
+
+describe("toRetainedResult", () => {
+  test("converts header-keyed rows into positional headers and rows", () => {
+    const result = toRetainedResult({
+      meta: { fields: ["pid", "partner_row", "note"] },
+      data: [
+        { pid: "P0", partner_row: "2", note: "x" },
+        { pid: "P2", partner_row: "0", note: "" },
+      ],
+    });
+    expect(result.headers).toEqual(["pid", "partner_row", "note"]);
+    expect(result.rows).toEqual([
+      ["P0", "2", "x"],
+      ["P2", "0", ""],
+    ]);
   });
 });

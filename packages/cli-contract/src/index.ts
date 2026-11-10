@@ -6,6 +6,5 @@
 export * from "./events.js";
 export * from "./exitCodes.js";
 export * from "./failureCauses.js";
-export * from "./specTable.js";
 export * from "./unknownEventNotice.js";
 export * from "./warningSources.js";

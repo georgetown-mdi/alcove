@@ -48,7 +48,6 @@ import {
 
 import {
   builder,
-  deriveOurIdColumn,
   formatSignedRecordReport,
   formatVerificationReport,
   handler,
@@ -62,7 +61,6 @@ import {
   MAX_AGREED_TERMS_FILE_BYTES,
   RESULT_FROM_ANOTHER_RUN_HEADLINE,
   SEND_SET_UNKNOWN_WARNING,
-  toRetainedResult,
 } from "../../../src/commands/verifyReceipt";
 import { worseReceiptVerdictExitCode } from "../../../src/util/exit";
 import { mainThreadHeapNeedBytes } from "../../../src/inputHeapCheck";
@@ -997,49 +995,6 @@ describe("the config's signing block", () => {
     );
     expect(() => pinIn(path)).toThrow(UsageError);
     expect(() => pinIn(path)).toThrow(/not a certificate fingerprint/);
-  });
-});
-
-describe("deriveOurIdColumn", () => {
-  test("returns the first header when the input has that column (identifier)", () => {
-    expect(
-      deriveOurIdColumn(
-        ["pid", "partner_row", "note"],
-        new Set(["pid", "dose"]),
-      ),
-    ).toBe("pid");
-  });
-
-  test("returns undefined when the first header is not an input column (row index)", () => {
-    expect(
-      deriveOurIdColumn(["your_row", "partner_row"], new Set(["dose"])),
-    ).toBeUndefined();
-  });
-
-  test("reads a result an earlier version headed with row_id the same way", () => {
-    expect(
-      deriveOurIdColumn(["pid", "row_id", "note"], new Set(["pid", "dose"])),
-    ).toBe("pid");
-    expect(
-      deriveOurIdColumn(["row_id", "their_row_id"], new Set(["dose"])),
-    ).toBeUndefined();
-  });
-});
-
-describe("toRetainedResult", () => {
-  test("converts header-keyed rows into positional headers and rows", () => {
-    const result = toRetainedResult({
-      meta: { fields: ["pid", "partner_row", "note"] },
-      data: [
-        { pid: "P0", partner_row: "2", note: "x" },
-        { pid: "P2", partner_row: "0", note: "" },
-      ],
-    });
-    expect(result.headers).toEqual(["pid", "partner_row", "note"]);
-    expect(result.rows).toEqual([
-      ["P0", "2", "x"],
-      ["P2", "0", ""],
-    ]);
   });
 });
 

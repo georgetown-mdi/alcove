@@ -29,7 +29,7 @@ import type { ZodError } from "zod";
  * hand-edited file with one mistake names it; a file off the schema wholesale
  * would otherwise list every field of it in one message.
  */
-export const MAX_REFUSED_FIELDS_NAMED = 5;
+const MAX_REFUSED_FIELDS_NAMED = 5;
 
 /** One field name joined onto the path of the block holding it. */
 function joinFieldPath(parent: string, field: string): string {
@@ -83,7 +83,7 @@ export function documentValueAt(
  * file does not hold (`Mystery-Key` renders as `_mystery-_key`). A cut path
  * drops it, for the reason the cut has.
  */
-export function documentFieldPath(
+function documentFieldPath(
   path: ReadonlyArray<PropertyKey>,
   writtenKey?: string,
 ): string {

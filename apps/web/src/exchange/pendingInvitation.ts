@@ -182,7 +182,7 @@ const releasing = new Map<string, Promise<unknown>>();
 
 /** How long a claim found held waits before it asks once more: a reloaded
  * tab's old document can still hold the lock while the new one asks. */
-export const CLAIM_RETRY_MS = 300;
+const CLAIM_RETRY_MS = 300;
 
 function lockManager(): LockManager | undefined {
   try {

@@ -124,13 +124,6 @@ export function serverJobPeerWindowBody(
   );
 }
 
-/** The peer-window body of an SFTP or shared-folder run at the default wait. */
-export const SERVER_JOB_PEER_WINDOW_BODY = serverJobPeerWindowBody("sftp");
-
-/** The peer-window body of a WebRTC run at the default wait. */
-export const SERVER_JOB_WEBRTC_PEER_WINDOW_BODY =
-  serverJobPeerWindowBody("webrtc");
-
 const PREVIEW_EDGE_CHARS = 8;
 const COPY_STATUS_CLEAR_MS = 2000;
 
@@ -484,11 +477,7 @@ function CountOnlyResultInset({
  * picks between them here rather than reporting either as the other. A `matched`
  * run has a download to offer and never reaches this inset.
  */
-export function NoResultFileInset({
-  outputs,
-}: {
-  outputs: NoResultFileOutputs;
-}) {
+function NoResultFileInset({ outputs }: { outputs: NoResultFileOutputs }) {
   return outputs.kind === "withheld" ? (
     <WithheldResultInset />
   ) : (

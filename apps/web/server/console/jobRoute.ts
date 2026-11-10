@@ -6,7 +6,7 @@ export type JobRouteMethod = (typeof JOB_ROUTE_METHODS)[number];
 
 /** What a job route handler receives: the request and its path parameters,
  * each decoded once. */
-export interface JobRouteContext {
+interface JobRouteContext {
   request: Request;
   params: Record<string, string>;
 }

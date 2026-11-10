@@ -158,7 +158,7 @@ export function composeSftpConfigSpec(
  * a later run of the file in the working folder lists the same relays. Every
  * other block is composed as on the sftp path.
  */
-export function composeWebrtcConfigSpec(
+function composeWebrtcConfigSpec(
   intent: JobWebrtcExchangeIntent,
   signalingServer: AuthoredSignalingServer,
   identityFile?: string,
