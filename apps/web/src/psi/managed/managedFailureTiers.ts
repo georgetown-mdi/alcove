@@ -47,6 +47,9 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"partner-protocol-refusal"` -- this party refused what the partner sent
  *   as not following the exchange protocol (the two parties compare their
  *   versions of Alcove).
+ * - `"partner-stop-at-matching-start"` -- the partner's first message of
+ *   matching was its local-fault abort (both run the current version, then
+ *   run again).
  * - `"missed"` -- the partner never arrived within the wait (the next window, or
  *   run again once the partner is ready).
  * - `"custody-unreadable"` -- the stored record could not be
@@ -80,6 +83,7 @@ export type ManagedFailureTier =
   | "partner-storage"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
+  | "partner-stop-at-matching-start"
   | "custody-unreadable"
   | "missed"
   | "storage"
@@ -310,6 +314,8 @@ function recordedFailureTier(
     return "partner-refused-terms";
   if (lastRun.failureKind === "partner-protocol-refusal")
     return "partner-protocol-refusal";
+  if (lastRun.failureKind === "partner-stop-at-matching-start")
+    return "partner-stop-at-matching-start";
   if (lastRun.failureKind === "custody-unreadable") return "custody-unreadable";
   if (lastRun.failureKind === "storage") return "storage";
 

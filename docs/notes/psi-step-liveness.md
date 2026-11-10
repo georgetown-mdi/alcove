@@ -83,7 +83,7 @@ What the figures decide:
   A still-working frame is dropped from the layer's start until this party reads the partner's first other frame after its own phase ended.
   Outside that window, or with any other shape that has a `working` key, it is a `protocol` error.
 - **The failure.**
-  Reaching the 120 s bound ends the run with a new cause in core's catalog, `partner-stopped-responding` ([failure-cause-catalog.md](failure-cause-catalog.md)), with the remedy to ask the partner to check their run and start again.
+  Reaching the 120 s bound ends the run with a new cause in core's catalog, `partner-stopped-responding` ([failure-cause-catalog.md](failure-cause-catalog.md)), with the remedy to ask the partner to check their run, then run the exchange again.
 - **What retired.**
   `partnerStepWaitMs`, its raise in the PSI phase, and `raiseInactivityTimeout`.
   No send's hand-off waits through a partner step: only file-sync holds off reading, so the hand-off keeps the whole-frame budget.

@@ -369,25 +369,31 @@ export const RECORDED_PARTNER_STOPPED_RESPONDING_MESSAGE = `${failureCauseSenten
   { kind: "partner-stopped-responding", silentMs: PARTNER_SILENCE_BOUND_MS },
 )} ${PARTNER_STOPPED_RESPONDING_REMEDY}`;
 
-/** The copy for a run refused because its partner's first message of
- * matching was its local-fault abort ({@link isPartnerStopAtMatchingStart}),
- * which names no party as the one to update. `undefined` for any other
+/** The title over a run refused because its partner's first message of
+ * matching was its local-fault abort ({@link isPartnerStopAtMatchingStart});
+ * shared by the one-shot exchange, a managed run's live and recorded alerts,
+ * and the between-visit notification. */
+export const PARTNER_STOP_AT_MATCHING_START_TITLE = "Matching could not start";
+
+/** The message over such a run, which names no party as the one to update. */
+export const PARTNER_STOP_AT_MATCHING_START_MESSAGE = `Your partner's run stopped. ${PARTNER_STOPPED_AT_MATCHING_REMEDY}`;
+
+/** The copy for such a run read off the live error. `undefined` for any other
  * failure. */
 export function partnerStopAtMatchingStartCopy(
   error: unknown,
 ): { title: string; message: string } | undefined {
   if (!isPartnerStopAtMatchingStart(error)) return undefined;
   return {
-    title: "Matching could not start",
-    message: `Your partner's run stopped. ${PARTNER_STOPPED_AT_MATCHING_REMEDY}`,
+    title: PARTNER_STOP_AT_MATCHING_START_TITLE,
+    message: PARTNER_STOP_AT_MATCHING_START_MESSAGE,
   };
 }
 
 /** The title over a run whose split encryption stopped on a PSI worker that
  * reported no progress ({@link isShardStalled}); shared by the one-shot
  * exchange and a managed run's live and recorded alerts. */
-export const SHARD_STALLED_TITLE =
-  "Encrypting the data stopped making progress";
+export const SHARD_STALLED_TITLE = "Encrypting the data made no progress";
 
 /** The message over such a run: core's own sentence, which names the step
  * and the next one, at the browser's progress timeout. */

@@ -29,6 +29,7 @@ import {
 } from "@recurring/managedRunLaunchModel";
 import { BROWSER_PSI_SHARD_PROGRESS_TIMEOUT_MS } from "@psi/workers/psiShardPolicy";
 import { PARTNER_STOPPED_RESPONDING_TITLE } from "@psi/managed/managedFailureCopy";
+import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { failureFor } from "@exchange/useInviterExchange";
 import { rerunFailureLastRun } from "@psi/managed/managedRun";
 import { runHistoryEntries } from "@recurring/managedDetailModel";
@@ -110,7 +111,7 @@ function stalledErrors(): Array<Error> {
   ];
 }
 
-const STALLED_TITLE = "Encrypting the data stopped making progress";
+const STALLED_TITLE = "Encrypting the data made no progress";
 
 const STALLED_MESSAGE =
   "Encrypting the data made no progress for 33 minutes. Run the exchange " +
@@ -208,7 +209,7 @@ describe("a partner that stopped responding during matching", () => {
     }
   });
 
-  test("a record holding a transport failure reads as the transport state", () => {
+  test("a record holding a transport failure displays as the transport state", () => {
     const stored = {
       ...record(),
       lastRun: rerunFailureLastRun(
@@ -277,7 +278,7 @@ describe("a partner whose run stopped as matching started", () => {
     },
   );
 
-  test("a managed run's live alert names no party as older, and records a protocol refusal", () => {
+  test("a managed run's live alert names no party as older", () => {
     for (const error of stopAtMatchingStartErrors()) {
       const failure = managedLive(error);
       expect(failure).toMatchObject({
@@ -287,10 +288,63 @@ describe("a partner whose run stopped as matching started", () => {
         recovery: "ask-partner",
       });
       expect(failure.reportedCause).toBeUndefined();
-      expect(rerunFailureLastRun(error, RUN_AT, false, true)).toMatchObject({
-        failureKind: "partner-protocol-refusal",
+    }
+  });
+
+  test("a managed run records the stop, and every later surface names it without asking for an update", () => {
+    for (const error of stopAtMatchingStartErrors()) {
+      const lastRun = rerunFailureLastRun(error, RUN_AT, false, true);
+      expect(lastRun).toMatchObject({
+        outcome: "failed",
+        failureKind: "partner-stop-at-matching-start",
+      });
+      const stored = { ...record(), lastRun };
+      const failure = managedRunFailureFromRecord(stored, undefined, NOW);
+      expect(failure).toMatchObject({
+        kind: "partner-stop-at-matching-start",
+        title: STOP_AT_MATCHING_START_TITLE,
+        message: STOP_AT_MATCHING_START_MESSAGE,
+        recovery: "ask-partner",
+      });
+      expect(managedRunRetryable(failure!)).toBe(false);
+      expect(
+        betweenVisitNotice({
+          record: stored,
+          local: undefined,
+          caughtUpMisses: 0,
+          disposition: "failed",
+          now: NOW,
+        }),
+      ).toMatchObject({
+        kind: "partner-stop-at-matching-start",
+        title: STOP_AT_MATCHING_START_TITLE,
+        body:
+          "Riverbend quarterly stopped because your partner's run stopped. " +
+          "Make sure you both run the current version of Alcove, then run " +
+          "the exchange again.",
+      });
+      expect(savedExchangeRow(stored, undefined, NOW).status).toMatch(
+        /^Last run stopped: your partner's run stopped \(.+\); make sure you both run the current version of Alcove$/,
+      );
+      expect(runHistoryEntries(stored)[0]).toMatchObject({
+        outcome: "Failed",
+        failure: "your partner's run stopped",
       });
     }
+  });
+
+  test("a record an earlier build stamped as a protocol refusal keeps that state", () => {
+    const stored = {
+      ...record(),
+      lastRun: {
+        at: "2026-07-14T09:00:00.000Z",
+        outcome: "failed" as const,
+        failureKind: "partner-protocol-refusal" as const,
+      },
+    };
+    expect(managedRunFailureFromRecord(stored, undefined, NOW)?.kind).toBe(
+      "partner-protocol-refusal",
+    );
   });
 });
 

@@ -293,6 +293,10 @@ export type ManagedExchangeRunOutcome =
  * from the version hello on, after sets of this party's may have moved, and is
  * benign too; a version refusal comes before the key exchange authenticates
  * anything, so whoever passes frames between the parties can cause it. A
+ * `"partner-stop-at-matching-start"` stop (the partner's first message of
+ * matching was its local-fault abort) is met at the start of matching, after
+ * sets of this party's may have moved; its remedy is the two parties running
+ * the current version, then running the exchange again. A
  * `"partner-stopped-responding"` stop (nothing arrived from the partner for the
  * partner-silence bound during matching) is a connection failure with a known
  * cause, retried as `"transport"` is, and so is a `"shard-stalled"` stop (a
@@ -311,6 +315,7 @@ export type ManagedExchangeFailureKind =
   | "partner-storage"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
+  | "partner-stop-at-matching-start"
   | "partner-stopped-responding"
   | "shard-stalled"
   | "terms-change"
@@ -691,6 +696,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "partner-storage",
       "partner-refused-terms",
       "partner-protocol-refusal",
+      "partner-stop-at-matching-start",
       "partner-stopped-responding",
       "shard-stalled",
       "terms-change",

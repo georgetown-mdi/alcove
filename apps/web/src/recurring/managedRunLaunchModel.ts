@@ -11,6 +11,7 @@
 
 import {
   RoundCapacityError,
+  isPartnerStopAtMatchingStart,
   isSetTooLargeError,
   isShardStalled,
   sanitizeErrorForDisplay,
@@ -36,6 +37,8 @@ import {
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
   PARTNER_STOPPED_RESPONDING_TITLE,
+  PARTNER_STOP_AT_MATCHING_START_MESSAGE,
+  PARTNER_STOP_AT_MATCHING_START_TITLE,
   RAN_ELSEWHERE_IMPORT_REMEDY,
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
   RECORDED_PARTNER_STOPPED_RESPONDING_MESSAGE,
@@ -53,7 +56,6 @@ import {
   UNEXPLAINED_FAILURE_TITLE,
   partnerProtocolRefusalCopy,
   partnerProtocolRefusalMessage,
-  partnerStopAtMatchingStartCopy,
   partnerStoppedRespondingCopy,
   tooLargeFailureTitle,
   tooLargeSetProblem,
@@ -163,8 +165,7 @@ export interface ManagedRunFailure {
   kind:
     | Exclude<ManagedFailureTier, "none">
     | BenignRerunOutcome
-    | "saved-address-refused"
-    | "partner-stop-at-matching-start";
+    | "saved-address-refused";
   /** The surface title. */
   title: string;
   /** The operator-facing message. */
@@ -672,6 +673,16 @@ const SHARD_STALLED_FAILURE: ManagedRunFailure = {
   recovery: "retry",
 };
 
+/** The state of a run refused because its partner's first message of matching
+ * was its local-fault abort, live or recorded: settled with the partner, as
+ * the protocol refusal it is raised as. */
+const PARTNER_STOP_AT_MATCHING_START_FAILURE: ManagedRunFailure = {
+  kind: "partner-stop-at-matching-start",
+  title: PARTNER_STOP_AT_MATCHING_START_TITLE,
+  message: PARTNER_STOP_AT_MATCHING_START_MESSAGE,
+  recovery: "ask-partner",
+};
+
 /** {@link partnerProtocolRefusalFailure} read back from the record. */
 const RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE = partnerProtocolRefusalFailure(
   {
@@ -893,6 +904,8 @@ export function managedRunTierFailure(
       return PARTNER_REFUSED_TERMS_FAILURE;
     case "partner-protocol-refusal":
       return RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE;
+    case "partner-stop-at-matching-start":
+      return PARTNER_STOP_AT_MATCHING_START_FAILURE;
     case "partner-stopped-responding":
       return RECORDED_PARTNER_STOPPED_RESPONDING_FAILURE;
     case "shard-stalled":
@@ -1013,6 +1026,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "partner-storage": "none",
   "partner-refused-terms": "alert-copy",
   "partner-protocol-refusal": "none",
+  "partner-stop-at-matching-start": "none",
   "partner-stopped-responding": "none",
   "shard-stalled": "none",
   expired: "none",
@@ -1237,16 +1251,10 @@ function classifyLaunchState(
       return partnerStorageFailure(records.afterRun, now);
     case "partner-refused-terms":
       return PARTNER_REFUSED_TERMS_FAILURE;
-    case "partner-protocol-refusal": {
-      const stopAtMatchingStart = partnerStopAtMatchingStartCopy(error);
-      if (stopAtMatchingStart !== undefined)
-        return {
-          kind: "partner-stop-at-matching-start",
-          ...stopAtMatchingStart,
-          recovery: "ask-partner",
-        };
+    case "partner-protocol-refusal":
+      if (isPartnerStopAtMatchingStart(error))
+        return PARTNER_STOP_AT_MATCHING_START_FAILURE;
       return partnerProtocolRefusalFailure(partnerProtocolRefusalCopy(error));
-    }
     case "relay-registration":
       return relayRegistrationFailure(error);
     case undefined:

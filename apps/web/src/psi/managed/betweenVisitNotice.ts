@@ -19,6 +19,8 @@
  * ({@link ./managedScheduleRuntime.ts} holds the comparison).
  */
 
+import { PARTNER_STOPPED_AT_MATCHING_REMEDY } from "@alcove/core";
+
 import { dateTimeLabel } from "../formatting";
 
 import { partnerStorageReach, readManagedFailure } from "./managedFailureTiers";
@@ -45,6 +47,7 @@ import {
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
+  PARTNER_STOP_AT_MATCHING_START_TITLE,
   RAN_ELSEWHERE_IMPORT_REMEDY,
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
   REPEATED_MISS_TITLE,
@@ -88,6 +91,7 @@ export type BetweenVisitNoticeKind =
   | "partner-storage"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
+  | "partner-stop-at-matching-start"
   | "terms-change"
   | "unexplained";
 
@@ -147,6 +151,7 @@ const NOTICE_TITLES: Record<
   "partner-storage": PARTNER_SECRET_NOT_SAVED_TITLE,
   "partner-refused-terms": TERMS_DIFFERENCE_TITLE,
   "partner-protocol-refusal": PARTNER_PROTOCOL_REFUSAL_TITLE,
+  "partner-stop-at-matching-start": PARTNER_STOP_AT_MATCHING_START_TITLE,
   unexplained: UNEXPLAINED_FAILURE_TITLE,
 };
 
@@ -162,6 +167,7 @@ const NOTIFIED_FAILURE_TIERS: ReadonlySet<ManagedFailureTier> = new Set([
   "partner-storage",
   "partner-refused-terms",
   "partner-protocol-refusal",
+  "partner-stop-at-matching-start",
   "unexplained",
 ]);
 
@@ -425,6 +431,13 @@ function failureNotice(
         `every later window stops the same way. ` +
         RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
       tag: noticeTag(record.id, "partner-protocol-refusal"),
+    };
+  if (tier === "partner-stop-at-matching-start")
+    return {
+      kind: "partner-stop-at-matching-start",
+      title: NOTICE_TITLES["partner-stop-at-matching-start"],
+      body: `${name} stopped because your partner's run stopped. ${PARTNER_STOPPED_AT_MATCHING_REMEDY}`,
+      tag: noticeTag(record.id, "partner-stop-at-matching-start"),
     };
   if (tier === "too-large") {
     const reading: TooLargeReading = record.lastRun ?? {};

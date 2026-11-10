@@ -206,6 +206,8 @@ function tierStatus(
       return `Last run stopped: your partner's run refused your linkage terms (${at}); agree on the terms through a terms update`;
     case "partner-protocol-refusal":
       return `Last run stopped: your partner's data did not follow the exchange protocol (${at}); check your Alcove versions with your partner`;
+    case "partner-stop-at-matching-start":
+      return `Last run stopped: your partner's run stopped (${at}); make sure you both run the current version of Alcove`;
     case "custody-unreadable":
       return `Last run stopped before connecting (${at}); part of its stored copy could not be read`;
     case "storage":
