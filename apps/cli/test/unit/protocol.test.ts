@@ -6926,11 +6926,20 @@ test("SIGINT logs recovery message when tokenRotated=true", async () => {
       timeout: 5_000,
     });
 
-    expect(
-      mockState.warnings.some((m) =>
-        m.includes("shared secret was already rotated and saved"),
-      ),
-    ).toBe(true);
+    // Both saved: the initiator cannot tell whether its partner did, and the
+    // responder can. Each states the failure site's wording.
+    const saved =
+      "The shared secret was already rotated and saved before the exchange " +
+      "was interrupted.";
+    expect(mockState.warnings).toEqual(
+      expect.arrayContaining([
+        `${saved} Retry the exchange with the same key file; if ` +
+          "authentication fails on retry, ask your partner for a new " +
+          "invitation.",
+        `${saved} Your partner saved it too, so retry the exchange with the ` +
+          "same key file.",
+      ]),
+    );
   } finally {
     exitSpy.mockRestore();
     rejectA?.(new Error("test cleanup"));

@@ -243,6 +243,7 @@ export {
   UnknownStandardizationFunctionError,
 } from "./errors.js";
 export { FAILURE_CAUSE_KINDS } from "./failureCause.js";
+export { REPRESENTATIVE_FAILURE_CAUSES } from "./failureCauseSamples.js";
 export { PSIParticipant } from "./psi/participant.js";
 export type { AssociationTable } from "./types.js";
 export type { FrameStructureRefusal } from "./connection/binaryPackBounds.js";

@@ -159,7 +159,7 @@ You should see: `exchange complete: 10 records matched, result written to` the r
 
 - **Your partner never arrives:** after 1 hour (10 minutes on WebRTC) the run exits 69 and says your partner did not arrive. The key file is unchanged; run again.
 - **The server refuses your password or key:** after 3 retries the run exits 69 with `All configured authentication methods failed`. Fix the credential; running again unchanged does not help.
-- **The run is interrupted:** it may print `Retry with the same key file; if authentication fails on retry, ask your partner for a new invitation.` Either way, run again with the same key file.
+- **The run is interrupted:** it may print `Retry the exchange with the same key file; if authentication fails on retry, ask your partner for a new invitation.` Either way, run again with the same key file.
 - **Any other failure** prints the error and the next step, and exits with a code from [Exit codes](./cli-schedule.md#exit-codes).
 
 More detail: [Everything the terms display can show](../CLI.md#what-the-display-shows-in-order), [Every connection setting by channel](../EXCHANGE_REFERENCE.md#connection-blocks-by-channel).

@@ -1,7 +1,15 @@
 import { describe, expect, test } from "vitest";
 
-import { PeerAbortError, failureCauseSentence } from "@alcove/core";
-import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
+import {
+  PARTNER_REFUSED_EXIT_CODE,
+  failureCauseStreamField,
+} from "@alcove/cli-contract";
+import {
+  PeerAbortError,
+  failureCauseFromUntrusted,
+  failureCauseSentence,
+} from "@alcove/core";
+import { REPRESENTATIVE_FAILURE_CAUSES } from "@alcove/core/testing";
 
 import {
   CONNECTION_TUNING_HEADING,
@@ -117,6 +125,26 @@ describe("a console run that failed on a catalog cause", () => {
     expect(failure.title).not.toBe("Exchange failed");
     expect(failure.retry).toBe("offered");
   });
+
+  // The CLI's suite drives the same causes (runEndingRemedy.test.ts) and holds
+  // its message to core's sentence first, so the two state the cause alike.
+  test.each(Object.values(REPRESENTATIVE_FAILURE_CAUSES))(
+    "the representative $kind, read off the CLI's event, leads with core's sentence",
+    (cause) => {
+      const streamed = failureCauseFromUntrusted(
+        JSON.parse(JSON.stringify(failureCauseStreamField(cause))),
+      );
+      expect(streamed).toEqual(cause);
+      const failure = failureFor(
+        "exchange",
+        relayed("the CLI's text", { failureCause: streamed, exitCode: 69 }),
+        { channel: "filedrop" },
+      );
+      expect(
+        failure.message.startsWith(`${failureCauseSentence(cause)} `),
+      ).toBe(true);
+    },
+  );
 
   test("a partner that never arrived names the console's wait control, not the flag", () => {
     const failure = failureFor(
