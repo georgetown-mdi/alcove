@@ -757,9 +757,10 @@ describe("the partner's progress figure, shown to this party", () => {
     expect(localEnd.nextQueuedMessageBytes?.()).toBeUndefined();
     expect(shown).toStrictEqual([]);
 
+    // The receive shows the figure once the drain's decrypt settles, which
+    // runs in WebCrypto's thread pool where no timer advance reaches it.
     const received = layer.conn.receive();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(shown).toStrictEqual([40]);
+    await vi.waitFor(() => expect(shown).toStrictEqual([40]));
     await partnerEnd.send({ round: 1 });
     expect(await received).toStrictEqual({ round: 1 });
     expect(shown).toStrictEqual([40, undefined]);

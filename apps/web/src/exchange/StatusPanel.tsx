@@ -56,8 +56,9 @@ export function StatusPanel({
   const percent = progressPercent(run);
   const lastVisit = run.visits[run.visits.length - 1];
   const elapsedClock = useElapsedClock(run);
-  const progress =
-    psiProgressLabel(run, elapsedClock) ?? partnerProgressLabel(run);
+  const ownProgress = psiProgressLabel(run, elapsedClock);
+  const partnerProgress = partnerProgressLabel(run);
+  const live = !done && !halted;
   // runExchange emits stage ids from the same prepared exchange the tree was built
   // from, or from the single-pass set the run model labels, so anything else is a
   // desync bug. This is a development-only signal, not a guarantee: a production
@@ -83,12 +84,19 @@ export function StatusPanel({
           {currentStageLabel(run)}
         </span>
       </p>
-      {progress !== undefined && !done && !halted && (
-        // Outside the live region above: this line restates its figures up to
-        // every second, and a region announcing it would talk over everything
-        // else a screen reader is reading. The stage label it sits under is announced,
-        // and it is read on demand like any other text.
-        <p className={styles.psiProgress}>{progress}</p>
+      {ownProgress !== undefined && live && (
+        // Not a live region: this line's elapsed clock changes every second,
+        // and announcing it would talk over everything else a screen reader is
+        // reading. It is read on demand like any other text.
+        <p className={styles.psiProgress}>{ownProgress}</p>
+      )}
+      {live && (
+        // Mounted for the whole live run, empty with no figure, because a
+        // region mounted together with its text is often not announced. Its
+        // text changes only when the partner's figure does.
+        <p className={styles.psiProgress} role="status" aria-atomic="true">
+          {partnerProgress ?? ""}
+        </p>
       )}
       <div
         className={

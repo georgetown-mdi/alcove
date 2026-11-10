@@ -195,7 +195,7 @@ describe("buildRunEvents", () => {
 
     events.onPartnerProgress?.(40);
     expect(partnerProgressLabel(state.run)).toBe(
-      "Your partner is matching records: 40% done",
+      "Waiting for your partner: their current calculation is 40% done",
     );
     events.onPartnerProgress?.(undefined);
     expect(partnerProgressLabel(state.run)).toBeUndefined();

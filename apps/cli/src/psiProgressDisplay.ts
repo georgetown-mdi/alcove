@@ -186,7 +186,9 @@ export function psiStatusText(
 
 /** The live line's text while this party waits on a partner `percent` through its crypto operation. */
 export function partnerWaitingText(percent: number): string {
-  return `waiting for your partner: their matching step is ${percent}% done`;
+  return percent === 0
+    ? "waiting for your partner: their current calculation has started"
+    : `waiting for your partner: their current calculation is ${percent}% done`;
 }
 
 /**
@@ -230,6 +232,7 @@ export function createPsiProgressDisplay(
   let partnerPercent: number | undefined;
   let ticker: ReturnType<typeof setInterval> | undefined;
   let drawn = false;
+  let closed = false;
 
   const stopTicker = (): void => {
     if (ticker === undefined) return;
@@ -280,6 +283,7 @@ export function createPsiProgressDisplay(
 
   return {
     report(progress: PsiProgress): void {
+      if (closed) return;
       if (progress.state === "started") {
         running = {
           operation: progress.operation,
@@ -306,6 +310,7 @@ export function createPsiProgressDisplay(
       startTickerIfDrawing();
     },
     partnerProgress(percent: number | undefined): void {
+      if (closed) return;
       partnerPercent = isProgressPercent(percent) ? percent : undefined;
       if (running !== undefined) return;
       if (partnerPercent === undefined) {
@@ -317,6 +322,7 @@ export function createPsiProgressDisplay(
       startTickerIfDrawing();
     },
     close(): void {
+      closed = true;
       running = undefined;
       partnerPercent = undefined;
       stopTicker();

@@ -749,11 +749,17 @@ describe("the partner's progress", () => {
   test("a figure is stated, and a clear removes it", () => {
     const shown = runWithPartnerProgress(waiting(), 40);
     expect(partnerProgressLabel(shown)).toBe(
-      "Your partner is matching records: 40% done",
+      "Waiting for your partner: their current calculation is 40% done",
     );
     expect(
       partnerProgressLabel(runWithPartnerProgress(shown, undefined)),
     ).toBeUndefined();
+  });
+
+  test("a figure of 0 reads as a calculation that has started", () => {
+    expect(partnerProgressLabel(runWithPartnerProgress(waiting(), 0))).toBe(
+      "Waiting for your partner: their current calculation has started",
+    );
   });
 
   test("an unchanged figure, or a clear with none shown, leaves the run untouched", () => {

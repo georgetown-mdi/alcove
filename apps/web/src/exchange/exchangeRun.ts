@@ -512,7 +512,9 @@ export function partnerProgressLabel(run: ExchangeRun): string | undefined {
   if (run.psiOperation !== undefined) return undefined;
   const percent = run.partnerPercent;
   if (!isProgressPercent(percent)) return undefined;
-  return `Your partner is matching records: ${percent}% done`;
+  return percent === 0
+    ? "Waiting for your partner: their current calculation has started"
+    : `Waiting for your partner: their current calculation is ${percent}% done`;
 }
 
 /** A history row's completion time, e.g. `2:43 PM`. */

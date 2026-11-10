@@ -1380,8 +1380,9 @@ On a large dataset one matching operation can run for minutes with nothing sent 
 
 - **One line per completed operation**, on every run: an operation that takes at least a second logs a line when it finishes, stating the values it covered, how long it took, and the rate. It is an ordinary log line, so it follows `--log-file` and `--log-level`.
 - **One line redrawn each second** while an operation runs, naming it, its value count, and its elapsed time. It is shown only when stderr is a terminal, no `--log-file` is given, `TERM` is not `dumb`, and the run is at the default `--log-level info` without `-v`. To turn it off -- for a screen reader, or a terminal that prints the cursor escapes -- give `--log-file` or set `TERM=dumb`.
+- **While you wait for your partner** on a WebRTC run, the same live line shows how far your partner's current calculation has got, for example `waiting for your partner: their current calculation is 40% done`, or `waiting for your partner: their current calculation has started` before the first figure. The figure moves in steps of about 20, starts again for each calculation, and is not shown while your partner sends data. It appears under the same conditions as the line above and is never logged.
 
-Under `psi-c`, a line's figure is the values the round masks, not the matches. Neither line states a percentage: the PSI library reports nothing until the operation returns.
+Under `psi-c`, a line's figure is the values the round masks, not the matches.
 
 ### Machine-readable event stream
 

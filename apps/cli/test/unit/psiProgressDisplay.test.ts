@@ -630,7 +630,7 @@ test("the live line states the partner's figure while this party waits, is put b
 
     display.partnerProgress(40);
     expect(draws).toStrictEqual([
-      "waiting for your partner: their matching step is 40% done",
+      "waiting for your partner: their current calculation is 40% done",
     ]);
 
     clearBeforeLogLine?.();
@@ -690,6 +690,37 @@ test.each([101, -1, 4.5, "42" as unknown as number])(
     display.close();
   },
 );
+
+test("a partner figure of 0 reads as a calculation that has started", () => {
+  const { line, draws } = recordingStatusLine();
+  const display = createPsiProgressDisplay({
+    milestone: () => {},
+    statusLine: line,
+  });
+  display.partnerProgress(0);
+  expect(draws).toStrictEqual([
+    "waiting for your partner: their current calculation has started",
+  ]);
+  display.close();
+});
+
+test("a partner figure after close draws nothing", () => {
+  vi.useFakeTimers();
+  try {
+    const { line, draws } = recordingStatusLine();
+    const display = createPsiProgressDisplay({
+      milestone: () => {},
+      statusLine: line,
+      tickMs: 1000,
+    });
+    display.close();
+    display.partnerProgress(40);
+    vi.advanceTimersByTime(5000);
+    expect(draws).toStrictEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 test("a display with no status line logs nothing for the partner's figure", () => {
   const milestones: Array<string> = [];

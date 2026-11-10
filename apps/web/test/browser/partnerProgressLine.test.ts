@@ -23,9 +23,9 @@ import { createAppMount, flushPendingUpdates } from "./renderApp";
 import type { ExchangeRun } from "@exchange/exchangeRun";
 
 // What the operator reads while waiting on a partner's crypto operation: the
-// partner's figure under the stage label, outside the announced region, gone
-// once this party's own operation or the end of the run takes the panel, and
-// never anything but an integer from 0 to 100.
+// partner's figure under the stage label, in its own status region apart from
+// the stage label's, gone once this party's own operation or the end of the
+// run takes the panel, and never anything but an integer from 0 to 100.
 
 const app = createAppMount();
 
@@ -34,7 +34,7 @@ afterEach(async () => {
   app.unmount();
 });
 
-const FIGURE_TEXT = "Your partner is matching records";
+const FIGURE_TEXT = "their current calculation";
 
 function waitingRun(): ExchangeRun {
   return runWithStage(
@@ -56,21 +56,48 @@ async function mountedText(
   });
 }
 
-test("a waiting party reads the partner's figure, outside the announced region", async () => {
+test("a waiting party reads the partner's figure in its own status region", async () => {
   const text = await mountedText(runWithPartnerProgress(waitingRun(), 40));
 
-  expect(text).toContain("Your partner is matching records: 40% done");
-  const announced = app.container.querySelector("[aria-live]");
-  expect(announced?.textContent).not.toContain(FIGURE_TEXT);
+  expect(text).toContain(
+    "Waiting for your partner: their current calculation is 40% done",
+  );
+  const stageLabel = app.container.querySelector("[aria-live]");
+  expect(stageLabel?.textContent).not.toContain(FIGURE_TEXT);
+  const status = app.container.querySelector('[role="status"]');
+  expect(status?.getAttribute("aria-atomic")).toBe("true");
+  expect(status?.textContent).toBe(
+    "Waiting for your partner: their current calculation is 40% done",
+  );
 });
 
-test("the figure is gone once cleared", async () => {
+test("a figure of 0 reads as a calculation that has started", async () => {
+  await mountedText(runWithPartnerProgress(waitingRun(), 0));
+
+  expect(app.container.querySelector('[role="status"]')?.textContent).toBe(
+    "Waiting for your partner: their current calculation has started",
+  );
+});
+
+test("the figure is gone once cleared, and its status region stays mounted", async () => {
   const cleared = runWithPartnerProgress(
     runWithPartnerProgress(waitingRun(), 40),
     undefined,
   );
 
   expect(await mountedText(cleared)).not.toContain(FIGURE_TEXT);
+  expect(app.container.querySelector('[role="status"]')?.textContent).toBe("");
+});
+
+test("this party's own line is not a status region", async () => {
+  const running = runWithPsiProgress(
+    waitingRun(),
+    { operation: "processClientRequest", elements: 1204, state: "started" },
+    new Date(),
+  );
+
+  expect(await mountedText(running)).toContain("1,204 values");
+  expect(app.container.querySelector('[role="status"]')?.textContent).toBe("");
 });
 
 test("this party's own operation takes the line over the partner's figure", async () => {
