@@ -1,7 +1,7 @@
 # Review day: consolidation brief
 
 You consolidate one review day's triages into the files the filing consult and the next day read.
-Your spawn prompt names the repository `$R`, the day directory `$D`, each workflow and its cost, the slice cutter's estimate, and whether the day spent its one same-day extra.
+Your spawn prompt names the repository `$R`, the day directory `$D`, each workflow and its cost, the day's start, the slice cutter's estimate, and whether the day spent its one same-day extra.
 `$SHA` is the `Pinned sha: <sha>.` line at the head of `$D/SLICES.md`; read code, if a triage leaves a question open, with `git -C $R show $SHA:<path>`.
 
 Write only under `$D/FINAL/`.
@@ -60,7 +60,8 @@ Rules, cited not paraphrased:
    - `slices`: one entry per slice run, `{id, lens, selector, lines, filesReadWhole, cost}`, `filesReadWhole` the repository paths its reviewer's manifest lists as read whole (the cutter skips an unchanged hot file the previous day read whole, and picks rotation from these lists), and `cost` its workflow's cost shared over its slices;
    - `findings`: one entry per finding, `{id, slice, lens, severity, verdict, behaviourChanging, reachable, security, raisedBefore, window, sort, outcome}`, `severity` after verification, `behaviourChanging`, `reachable`, `security` and `raisedBefore` booleans, `window` one of reviewed, partly, untouched by a per-branch round, and `outcome` the item draft name, the append target (`<board>/<itemId>` for an item on the board, the draft name for one filed today), limit, held, declined, or drop;
    - `totals`: cost per slice, per finding, per major and per behaviour-changing finding, overall and by lens; `ownerCalls`, the count of decisions in `DOCKET.md`; owed lines read in from the previous day and written out; and `missedByKind`, what per-branch rounds missed, by kind;
-   - `estimate` and `extra`: the slice cutter's estimate and the same-day extra, from the spawn prompt.
+   - `estimate` and `extra`: the slice cutter's estimate and the same-day extra, from the spawn prompt;
+   - `startedAt` and `endedAt`: the day's window as UTC ISO 8601 instants (`2026-11-20T09:00:00Z`), `startedAt` the spawn prompt's day start and `endedAt` the time `date -u +%Y-%m-%dT%H:%M:%SZ` prints when you write the record, which the retro reader prices the day's weekly-allowance share over.
 
    The session adds `spend` after filing.
 10. `$D/FINAL/RECORD.md`: the same data as prose, for a reader: per lens and per workflow, findings raised, verdicts, severity after verification, behaviour-changing, reachable, raised before and still true, reviewed against untouched; cost per workflow and per finding; what the per-branch rounds missed, by kind; and which value units can be counted only once the fixes merge.

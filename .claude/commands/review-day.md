@@ -35,6 +35,7 @@ The retro judges the day by its cost per fix that merged.
 
 Record each result in `D/preconditions.md`.
 At the first that fails, write `D/summary.md` naming it, and stop.
+Open the file with the day's start, `Started: <date -u +%Y-%m-%dT%H:%M:%SZ>`, taken before any check runs.
 
 - `gh auth status` succeeds.
 - `git fetch origin staging`, then record `SHA`, the output of `git rev-parse origin/staging`.
@@ -86,7 +87,7 @@ Anything further is an owed line for the next day.
 ## Step 4 -- Consolidate
 
 Spawn one `general-purpose` agent with `model: "opus"` and `effort: "high"`:
-"Read `<repo>/.claude/review-day/consolidate-brief.md` and follow it. Repository: `<repo>`. Day directory: `<absolute D>`. Workflows: <each `wf` and its cost from the task notifications>. Slice cutter's estimate: <from `D/cut.md`>. Same-day extra: <none, or the workflow or `M1` it spent, and its cost>."
+"Read `<repo>/.claude/review-day/consolidate-brief.md` and follow it. Repository: `<repo>`. Day directory: `<absolute D>`. Workflows: <each `wf` and its cost from the task notifications>. Day started: <the `Started:` value in `D/preconditions.md`>. Slice cutter's estimate: <from `D/cut.md`>. Same-day extra: <none, or the workflow or `M1` it spent, and its cost>."
 
 It writes `D/FINAL/`: `items/*.md`, `FILING.md`, `DOCKET.md` (owner calls only, absent when none), `RECORD.md`, `record.json`, `ledger.jsonl`, `owed.md`, and `host-checks.md` when a triage named a check only the host can make.
 

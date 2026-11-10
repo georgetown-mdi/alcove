@@ -93,7 +93,7 @@ const FOLLOWUPS = {
   ],
 };
 
-function writeDays() {
+function writeDays(recordExtra = {}) {
   const root = tempDir();
   dirs.push(root);
   const final = path.join(root, "2026-11-20", "FINAL");
@@ -104,7 +104,7 @@ function writeDays() {
     fs.utimesSync(file, ms / 1000, ms / 1000);
   };
   write("filed.md", FILED, START);
-  write("record.json", JSON.stringify(record()), END);
+  write("record.json", JSON.stringify({ ...record(), ...recordExtra }), END);
   fs.mkdirSync(path.join(root, "2026-11-27"));
   return root;
 }
@@ -123,6 +123,42 @@ function report(extra = {}) {
     ...extra,
   });
 }
+
+describe("a day's window", () => {
+  const recorded = {
+    startedAt: new Date(START - 2 * HOUR).toISOString(),
+    endedAt: new Date(END + 3 * HOUR).toISOString(),
+  };
+
+  it("is the record's startedAt to endedAt when both are present, whatever the file times", () => {
+    const { days } = readDays(writeDays(recorded), null, null);
+    expect(days[0]).toMatchObject({
+      from: START - 2 * HOUR,
+      to: END + 3 * HOUR,
+      windowFrom: "the record",
+    });
+  });
+
+  it("is the first and last file modification time when the record has no window", () => {
+    const { days } = readDays(writeDays(), null, null);
+    expect(days[0]).toMatchObject({
+      from: START,
+      to: END,
+      windowFrom: "file modification times",
+    });
+  });
+
+  it("falls back to the file times when the record's window is incomplete, malformed or reversed", () => {
+    for (const extra of [
+      { startedAt: recorded.startedAt },
+      { startedAt: "yesterday", endedAt: recorded.endedAt },
+      { startedAt: recorded.endedAt, endedAt: recorded.startedAt },
+    ]) {
+      const { days } = readDays(writeDays(extra), null, null);
+      expect(days[0].windowFrom).toBe("file modification times");
+    }
+  });
+});
 
 describe("the value-unit join", () => {
   it("counts a delivered item's findings, not an undelivered one's or a finding with no item", () => {
@@ -253,12 +289,12 @@ describe("a day's share", () => {
     ).toBe(0);
   });
 
-  it("falls back to the log over the file times when the record's is null or absent", () => {
+  it("falls back to the log over the day's window when the record's is null or absent", () => {
     for (const spend of [{ weeklyAllowanceShare: null }, {}, undefined]) {
       expect(daySpend(120, { spend }, readings, "log", ...win)).toMatchObject({
         weeklySharePct: 8,
-        shareFrom: "the usage log over the file times",
-        shareNote: `from the usage log over the file times; ${ACCOUNT_WIDE}`,
+        shareFrom: "the usage log over the day's window",
+        shareNote: `from the usage log over the day's window; ${ACCOUNT_WIDE}`,
       });
     }
     expect(
@@ -346,8 +382,8 @@ describe("readBoard", () => {
 });
 
 describe("command line", () => {
-  function run(usage) {
-    const days = writeDays();
+  function run(usage, recordExtra = {}) {
+    const days = writeDays(recordExtra);
     const board = path.join(days, "board.json");
     fs.writeFileSync(board, JSON.stringify(BOARD));
     const out = path.join(days, "review-day.json");
@@ -392,6 +428,30 @@ describe("command line", () => {
     expect(stdout).toContain("no --pr-cost given");
   });
 
+  it("prints the window and which source it came from", () => {
+    const logDir = tempDir();
+    dirs.push(logDir);
+    const usage = path.join(logDir, "missing.jsonl");
+    const from = new Date(START - HOUR).toISOString();
+    const to = new Date(END + HOUR).toISOString();
+    const recorded = run(usage, { startedAt: from, endedAt: to });
+    expect(recorded.stdout).toContain(
+      `  window ${from} to ${to}, from the record`,
+    );
+    expect(recorded.written.days[0].spend).toMatchObject({
+      from,
+      to,
+      windowFrom: "the record",
+    });
+    const files = run(usage);
+    expect(files.stdout).toContain(
+      `  window ${new Date(START).toISOString()} to ${new Date(END).toISOString()}, from file modification times`,
+    );
+    expect(files.written.days[0].spend.windowFrom).toBe(
+      "file modification times",
+    );
+  });
+
   it("prints the share beside the dollars, stating it is account-wide", () => {
     const logDir = tempDir();
     dirs.push(logDir);
@@ -416,10 +476,10 @@ describe("command line", () => {
     const { stdout, written } = run(log);
     expect(written.days[0].spend.weeklySharePct).toBe(10);
     expect(stdout).toContain(
-      `spend $120, 10% of the weekly allowance (from the usage log over the file times; ${ACCOUNT_WIDE})`,
+      `spend $120, 10% of the weekly allowance (from the usage log over the day's window; ${ACCOUNT_WIDE})`,
     );
     expect(written.days[0].spend.shareFrom).toBe(
-      "the usage log over the file times",
+      "the usage log over the day's window",
     );
     expect(written.retro.weeklySharePct).toBe(10);
   });

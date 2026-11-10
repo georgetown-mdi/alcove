@@ -44,13 +44,17 @@
 //     reviewed); the fix pipeline's lag is findings with `raisedBefore`.
 //   - A day's spend as a share of the weekly allowance is the record's
 //     `spend.weeklyAllowanceShare` when that is a number. Otherwise the
-//     day's window is the first and last modification time of its files, and
-//     the share is the sum of the changes between the last reading at or
+//     share is the sum of the changes between the last reading at or
 //     before the window's start and each reading inside it; with no reading
 //     at or before the start there is no share. A reading at or after the
 //     previous reading's reset time follows a reset, and adds its whole
 //     share. The output says which source a day's share came from. The share
 //     is account-wide: other use in those hours counts too.
+//   - A day's window is the record's `startedAt` to `endedAt` (UTC ISO 8601,
+//     written by .claude/commands/review-day.md) when both are valid instants
+//     in order; otherwise, for a day recorded without them, the first and
+//     last modification time of the day's files. The output says which source
+//     each day's window came from.
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -262,11 +266,13 @@ export function spendInWindow(usd, readings, usagePath, from, to) {
 }
 
 const SHARE_FROM_RECORD = "the record";
-const SHARE_FROM_LOG = "the usage log over the file times";
+const SHARE_FROM_LOG = "the usage log over the day's window";
+const WINDOW_FROM_RECORD = "the record";
+const WINDOW_FROM_FILES = "file modification times";
 
 /**
  * A review day's spend: the record's own share when it is a number, else the
- * usage log's over the day's file times. `shareFrom` names the source of a
+ * usage log's over the day's window. `shareFrom` names the source of a
  * share, null when there is none.
  */
 export function daySpend(usd, record, readings, usagePath, from, to) {
@@ -322,8 +328,28 @@ function walkMtimes(dir, out = []) {
 }
 
 /**
+ * A day's window, `{ from, to, windowFrom }` in epoch ms: the record's
+ * `startedAt` to `endedAt` when both are valid instants in order, else the
+ * first to last modification time of the files in `dir`.
+ */
+export function dayWindow(record, dir) {
+  const from = parseInstant(String(record.startedAt ?? ""));
+  const to = parseInstant(String(record.endedAt ?? ""));
+  if (from !== null && to !== null && from <= to) {
+    return { from, to, windowFrom: WINDOW_FROM_RECORD };
+  }
+  const mtimes = walkMtimes(dir);
+  return {
+    from: Math.min(...mtimes),
+    to: Math.max(...mtimes),
+    windowFrom: WINDOW_FROM_FILES,
+  };
+}
+
+/**
  * The days under `daysDir` named within [cut, end), each `{ day, record,
- * filed, from, to }`, with `skipped`, the days in range with no record.
+ * filed, from, to, windowFrom }`, with `skipped`, the days in range with no
+ * record.
  */
 export function readDays(daysDir, cut, end) {
   const days = [];
@@ -339,15 +365,14 @@ export function readDays(daysDir, cut, end) {
       continue;
     }
     const filedFile = path.join(dir, "FINAL", "filed.md");
-    const mtimes = walkMtimes(dir);
+    const record = readJson(recordFile);
     days.push({
       day,
-      record: readJson(recordFile),
+      record,
       filed: fs.existsSync(filedFile)
         ? parseFiled(fs.readFileSync(filedFile, "utf8"))
         : new Map(),
-      from: Math.min(...mtimes),
-      to: Math.max(...mtimes),
+      ...dayWindow(record, dir),
     });
   }
   return { days, skipped };
@@ -554,6 +579,7 @@ export function reviewDayReport({
         usdFrom: r.usdFrom,
         from: new Date(r.d.from).toISOString(),
         to: new Date(r.d.to).toISOString(),
+        windowFrom: r.d.windowFrom,
       },
     })),
     retro: retro
@@ -641,7 +667,11 @@ export function formatReport(out) {
     `${fmtFollowups(m)}; ${fmtLenses(m)}`;
   const lines = [];
   for (const d of out.days) {
-    lines.push(line(d.day, d), `  spend ${fmtSpend(d.spend)}`);
+    lines.push(
+      line(d.day, d),
+      `  window ${d.spend.from} to ${d.spend.to}, from ${d.spend.windowFrom}`,
+      `  spend ${fmtSpend(d.spend)}`,
+    );
   }
   lines.push(line(`window, ${out.records} days`, out));
   if (out.retro) lines.push(`retro spend ${fmtSpend(out.retro)}`);
