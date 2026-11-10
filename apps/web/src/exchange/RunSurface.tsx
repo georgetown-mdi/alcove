@@ -805,6 +805,7 @@ export function FailureAlert({
       title={failure.title}
       ref={alertRef}
       tabIndex={-1}
+      classNames={{ body: styles.wrapLongText }}
       mb="md"
     >
       <FailureBody failure={failure} />

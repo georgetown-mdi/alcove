@@ -853,7 +853,15 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  flex-wrap: wrap;
   margin: 0.5rem 0 1rem 0;
+}
+
+/* A row too narrow for the block and the copy button puts the button on a
+   line of its own rather than squeezing its label out of its box (WCAG
+   1.4.10). */
+.handoffCodeRow > :global(.mantine-Button-root) {
+  flex-shrink: 0;
 }
 
 .handoffCode {

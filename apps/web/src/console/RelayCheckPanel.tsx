@@ -110,7 +110,11 @@ export function RelayCheckPanel() {
         <Stack gap="xs" mt="xs" className={styles.wrapLongText}>
           <Text size="sm">{relayCheckUnavailableText(state.offer.reason)}</Text>
           <Group>
-            <Button variant="default" onClick={() => void open()}>
+            <Button
+              variant="default"
+              className={styles.wrapLabel}
+              onClick={() => void open()}
+            >
               {RELAY_CHECK_AGAIN_LABEL}
             </Button>
           </Group>
@@ -143,6 +147,7 @@ export function RelayCheckPanel() {
             {!checking && (
               <Button
                 variant="default"
+                className={styles.wrapLabel}
                 onClick={() => setState({ step: "closed", unreadable: false })}
               >
                 {RELAY_CHECK_CANCEL_LABEL}
@@ -189,7 +194,11 @@ export function RelayCheckPanel() {
             )}
           </div>
           <Group>
-            <Button variant="default" onClick={() => void open()}>
+            <Button
+              variant="default"
+              className={styles.wrapLabel}
+              onClick={() => void open()}
+            >
               {RELAY_CHECK_AGAIN_LABEL}
             </Button>
           </Group>

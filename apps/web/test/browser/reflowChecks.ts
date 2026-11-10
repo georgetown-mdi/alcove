@@ -75,8 +75,12 @@ export function lostContent(root: Element): Array<string> {
           `spans ${Math.round(rect.left)} to ${Math.round(rect.right)} px`,
         ),
       );
+    // A loading button slides its label, made transparent, out of its box
+    // and shows a spinner in its place; the label is measured in the
+    // button's idle state.
     if (
       clips(element) &&
+      !element.hasAttribute("data-loading") &&
       element.textContent.trim() !== "" &&
       (element.scrollHeight > element.clientHeight + 1 ||
         element.scrollWidth > element.clientWidth + 1)

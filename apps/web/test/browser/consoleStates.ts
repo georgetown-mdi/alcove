@@ -8,6 +8,7 @@ import {
   encodeInvitation,
   endpointRequiresRetainedFiles,
   generateSharedSecret,
+  getDefaultLinkageTerms,
 } from "@alcove/core";
 
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
@@ -80,6 +81,22 @@ export const AUTHORED_SFTP_WITH_CREDENTIAL_WARNING = {
       "<that folder>:/secrets:ro --env JOB_SECRETS_DIR=/secrets to docker " +
       "run), and choose the file there.",
   ],
+};
+
+/** A `GET /api/jobs/config` body: an SFTP exchange's alcove.yaml in the
+ * working folder, which a run of the opened configuration continues. */
+export const OPENED_SFTP_CONFIGURATION = {
+  configured: true,
+  present: true,
+  document: {
+    channel: "sftp",
+    server: { host: "sftp.partner.example", username: "county" },
+    linkageTerms: getDefaultLinkageTerms("County Health"),
+  },
+  carriedThrough: [],
+  warnings: [],
+  signingPathSettings: [],
+  folderPathSettings: [],
 };
 
 /** The id the console gives a job the browser creates. */

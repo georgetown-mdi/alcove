@@ -8,22 +8,35 @@ import { createElement } from "react";
 
 import "@mantine/core/styles.css";
 
-import { getDefaultLinkageTerms } from "@alcove/core";
-
 import {
+  APPLY_TERMS_LABEL,
+  TERMS_APPLIED_TEXT,
+  termsApplyOutcomeMessage,
+} from "@console/termsChangeRecoveryModel";
+import {
+  OPEN_CONFIGURATION_LABEL,
+  START_OPENED_EXCHANGE_LABEL,
+} from "@console/mountedConfiguration";
+import {
+  RELAY_CHECK_AGAIN_LABEL,
   RELAY_CHECK_OPEN_LABEL,
+  RELAY_CHECK_RUNNING,
   RELAY_CHECK_START_LABEL,
+  RELAY_CHECK_UNREADABLE,
+  relayCheckOutcomeText,
+  relayCheckUnavailableText,
 } from "@console/relayCheckModel";
 import { InviterScreen } from "@exchange/InviterScreen";
 import { Lobby } from "@exchange/Lobby";
-import { OPEN_CONFIGURATION_LABEL } from "@console/mountedConfiguration";
 import { SAMPLE_FILES_ADDED } from "@console/ConsoleSampleData";
+import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobContract/mountBrowsePurpose";
 import { SWEEP_CONTROL_LABEL } from "@psi/runDiagnosticsModel";
 
 import {
   AUTHORED_SFTP,
   AUTHORED_SFTP_WITH_CREDENTIAL_WARNING,
   CREATED_JOB_ID,
+  OPENED_SFTP_CONFIGURATION,
   stubConsoleJobApi,
 } from "./consoleStates";
 import {
@@ -36,6 +49,7 @@ import {
   typeInto,
 } from "./keyboardOnly";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectAaClean, sweepContrast } from "./contrastSweep";
 import { expectConsole } from "./expectedConsole";
 import { expectStepAccessible } from "./stepChecks";
 
@@ -172,6 +186,50 @@ const HOST_KEY_WARNING =
 
 const SAMPLE_FILES_CONTROL = "Add sample files to my folder";
 
+/** The partner's changed terms a run stops on, with the proposal written. */
+const TERMS_CHANGE = {
+  proposalWritten: true,
+  received: {
+    added: ["program_enrollment_start_date_county_reported"],
+    removed: [],
+  },
+  partnerDeduplicate: { expected: false, presented: true },
+  otherTerms: ["legal agreement"],
+};
+
+/** What the console's apply of a run's proposal answers, and what the run
+ * step then says. */
+const TERMS_APPLY_OUTCOMES: ReadonlyArray<{
+  outcome: string;
+  answer: { status?: number; body?: unknown };
+  shown: string;
+}> = [
+  {
+    outcome: "written",
+    answer: { body: { status: "applied" } },
+    shown: TERMS_APPLIED_TEXT,
+  },
+  {
+    outcome: "refused",
+    answer: { body: { status: "run-terms-differ" } },
+    shown: termsApplyOutcomeMessage("run-terms-differ", {
+      jobId: CREATED_JOB_ID,
+    }).message,
+  },
+];
+
+const SIGNING_IDENTITY_FILE = "alcove-signing-identity-county-health.pem";
+
+/** The receipts card's two notices a signed run draws before it starts. */
+async function expectReceiptNotices(): Promise<void> {
+  await expect
+    .element(page.getByText("Before you start this run"))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByText("Where your signing key and receipt are kept"))
+    .toBeInTheDocument();
+}
+
 /** Renders the invite screen and waits for the working folder's listing. */
 async function renderFileStep(): Promise<void> {
   app.render(createElement(InviterScreen));
@@ -180,14 +238,61 @@ async function renderFileStep(): Promise<void> {
     .toBeInTheDocument();
 }
 
+/** The step checks, then the contrast sweep of every text element in
+ * `scheme`. */
+async function expectStepClean(
+  scheme: "light" | "dark",
+  state: string,
+): Promise<void> {
+  await expectStepAccessible(app.container);
+  expectAaClean(sweepContrast(app.container), scheme, {
+    route: "/exchange",
+    state,
+  });
+}
+
+/** Holds the stubbed answer to a `"METHOD url"` request until the returned
+ * function is called, so the state the page shows while it waits stays up. */
+function holdRequest(key: string): () => void {
+  const answer = globalThis.fetch;
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vi.stubGlobal(
+    "fetch",
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (`${init?.method ?? "GET"} ${String(input)}` === key) await released;
+      return answer(input, init);
+    },
+  );
+  return release;
+}
+
 /** Picks the working folder's file from the keyboard, through its confirm
- * stage, and walks to Review & create. */
-async function reachReviewByKeyboard(): Promise<void> {
-  app.render(createElement(InviterScreen));
+ * stage, and walks to Review & create, in `scheme` when one is forced. With
+ * `openConfiguration`, opens the working folder's alcove.yaml first. */
+async function reachReviewByKeyboard({
+  scheme,
+  openConfiguration = false,
+}: {
+  scheme?: "light" | "dark";
+  openConfiguration?: boolean;
+} = {}): Promise<void> {
+  app.render(
+    createElement(InviterScreen),
+    scheme === undefined ? undefined : { forceColorScheme: scheme },
+  );
   await expect
     .element(page.getByText("Choose a file from your folder"))
     .toBeInTheDocument();
   await expectStepAccessible(app.container);
+  if (openConfiguration) {
+    await activate(control("button", OPEN_CONFIGURATION_LABEL));
+    await expect
+      .element(page.getByText("Configuration opened").first())
+      .toBeInTheDocument();
+  }
 
   await typeInto(control("textbox", "Your name or agency"), "Dana Okafor");
   await activate(control("button", "Select clients.csv"));
@@ -254,6 +359,31 @@ async function runByKeyboard(api: ConsoleJobApi): Promise<void> {
     .element(page.getByRole("heading", { level: 1 }))
     .toMatchTextContent("Exchange in progress");
   await expectStepAccessible(app.container);
+}
+
+/** Opens the working folder's configuration, starts its run from Review &
+ * create from the keyboard, and stops the run on the partner's changed
+ * terms. */
+async function runOpenedConfigurationByKeyboard(
+  api: ConsoleJobApi,
+  scheme: "light" | "dark",
+): Promise<void> {
+  await reachReviewByKeyboard({ scheme, openConfiguration: true });
+  await activate(control("button", START_OPENED_EXCHANGE_LABEL));
+  await vi.waitFor(() => expect(api.createdJobStreaming()).toBe(true));
+  api.emitEvent({ v: 1, type: "stage", id: "confirming protocol" });
+  await expect
+    .element(page.getByRole("heading", { level: 1 }))
+    .toMatchTextContent("Exchange in progress");
+  api.setJobStatus("failed");
+  api.emitEvent({
+    v: 1,
+    type: "error",
+    category: "config",
+    message: TERMS_MISMATCH,
+    termsChange: TERMS_CHANGE,
+  });
+  api.closeEvents();
 }
 
 test("console invite: working-folder file, review, invitation, run and result, from the keyboard", async () => {
@@ -355,15 +485,7 @@ test("console invite: a run stopped on the partner's changed terms, from the key
     type: "error",
     category: "config",
     message: TERMS_MISMATCH,
-    termsChange: {
-      proposalWritten: true,
-      received: {
-        added: ["program_enrollment_start_date_county_reported"],
-        removed: [],
-      },
-      partnerDeduplicate: { expected: false, presented: true },
-      otherTerms: ["legal agreement"],
-    },
+    termsChange: TERMS_CHANGE,
   });
   api.closeEvents();
   await expect
@@ -578,16 +700,13 @@ test("console invite: a coordination server address the console refuses, from th
   await expectStepAccessible(app.container);
 });
 
-test("console invite: a failed WebRTC run and the relay check, from the keyboard", async () => {
-  expectConsole("error", `RelayedSelfExplainingError: ${STALL_MESSAGE}`);
-  const api = stubConsoleJobApi({
-    webrtcSet: SIGNALING_SERVER,
-    routes: {
-      "GET /api/jobs/relay-check": { body: RELAY_CHECK_OFFER },
-      "POST /api/jobs/relay-check": { body: RELAY_CHECK_VERDICT },
-    },
-  });
-  await reachReviewByKeyboard();
+/** Creates a WebRTC invitation from the keyboard and fails its run on a
+ * stall, where the relay check is offered beside the retry. */
+async function failWebrtcRunByKeyboard(
+  api: ConsoleJobApi,
+  scheme?: "light" | "dark",
+): Promise<void> {
+  await reachReviewByKeyboard({ scheme });
   await chooseWebrtcByKeyboard();
   await setCoordinationServerByKeyboard();
   await expect
@@ -600,7 +719,6 @@ test("console invite: a failed WebRTC run and the relay check, from the keyboard
   await expect
     .element(page.getByRole("heading", { level: 1 }))
     .toMatchTextContent("Exchange in progress");
-
   api.setJobStatus("failed");
   api.emitEvent({
     v: 1,
@@ -611,46 +729,174 @@ test("console invite: a failed WebRTC run and the relay check, from the keyboard
   });
   api.closeEvents();
   await expect
-    .element(page.getByRole("button", { name: RELAY_CHECK_OPEN_LABEL }))
+    .element(page.getByRole("button", { name: "Try again" }))
     .toBeInTheDocument();
-  await expectStepAccessible(app.container);
+}
 
-  await activate(control("button", RELAY_CHECK_OPEN_LABEL));
-  await expect
-    .element(page.getByRole("button", { name: RELAY_CHECK_START_LABEL }))
-    .toBeInTheDocument();
-  await expectStepAccessible(app.container);
+for (const scheme of ["light", "dark"] as const) {
+  test(`console invite: a relay check the working folder's files rule out, from the keyboard (${scheme})`, async () => {
+    expectConsole("error", `RelayedSelfExplainingError: ${STALL_MESSAGE}`);
+    const api = stubConsoleJobApi({
+      webrtcSet: SIGNALING_SERVER,
+      routes: {
+        "GET /api/jobs/relay-check": {
+          body: { status: "unavailable", reason: "key-file" },
+        },
+      },
+    });
+    await failWebrtcRunByKeyboard(api, scheme);
+    await expect
+      .element(page.getByText(relayCheckUnavailableText("key-file")))
+      .toBeInTheDocument();
+    await expectStepClean(scheme, "the relay check is unavailable");
+    await tabTo(control("button", RELAY_CHECK_AGAIN_LABEL));
+  });
 
-  await activate(control("button", RELAY_CHECK_START_LABEL));
-  await expect.element(page.getByText(/What to do:/)).toBeInTheDocument();
-  await expectStepAccessible(app.container);
-});
+  test(`console invite: a relay check whose files cannot be read, from the keyboard (${scheme})`, async () => {
+    expectConsole("error", `RelayedSelfExplainingError: ${STALL_MESSAGE}`);
+    const api = stubConsoleJobApi({
+      webrtcSet: SIGNALING_SERVER,
+      routes: { "GET /api/jobs/relay-check": { status: 500 } },
+    });
+    await failWebrtcRunByKeyboard(api, scheme);
+    await activate(control("button", RELAY_CHECK_OPEN_LABEL));
+    await expect
+      .element(page.getByText(RELAY_CHECK_UNREADABLE))
+      .toBeInTheDocument();
+    await expectStepClean(scheme, "the relay check's files cannot be read");
+  });
 
-test("console invite: a signed receipt's setup and its command lines, from the keyboard", async () => {
-  stubConsoleJobApi({ sftp: AUTHORED_SFTP });
-  await reachReviewByKeyboard();
-  await activate(control("button", /^Receipts and record keeping/));
-  await typeInto(control("combobox", "What this exchange produces"), "Signed");
-  await expect
-    .element(page.getByText("About your signing identity"))
-    .toBeInTheDocument();
-  await expectStepAccessible(app.container);
-});
+  test(`console invite: a relay check running, then ended without a verdict, from the keyboard (${scheme})`, async () => {
+    expectConsole("error", `RelayedSelfExplainingError: ${STALL_MESSAGE}`);
+    const api = stubConsoleJobApi({
+      webrtcSet: SIGNALING_SERVER,
+      routes: {
+        "GET /api/jobs/relay-check": { body: RELAY_CHECK_OFFER },
+        "POST /api/jobs/relay-check": {
+          body: { status: "configuration-changed" },
+        },
+      },
+    });
+    await failWebrtcRunByKeyboard(api, scheme);
+    const release = holdRequest("POST /api/jobs/relay-check");
+    await activate(control("button", RELAY_CHECK_OPEN_LABEL));
+    await activate(control("button", RELAY_CHECK_START_LABEL));
+    await expect
+      .element(page.getByText(RELAY_CHECK_RUNNING))
+      .toBeInTheDocument();
+    await expectStepClean(scheme, "the relay check is running");
+
+    release();
+    const ended = relayCheckOutcomeText({ kind: "configuration-changed" });
+    await expect.element(page.getByText(ended)).toBeInTheDocument();
+    await expectStepClean(scheme, "the relay check ended without a verdict");
+  });
+
+  test(`console invite: a failed WebRTC run and the relay check, from the keyboard (${scheme})`, async () => {
+    expectConsole("error", `RelayedSelfExplainingError: ${STALL_MESSAGE}`);
+    const api = stubConsoleJobApi({
+      webrtcSet: SIGNALING_SERVER,
+      routes: {
+        "GET /api/jobs/relay-check": { body: RELAY_CHECK_OFFER },
+        "POST /api/jobs/relay-check": { body: RELAY_CHECK_VERDICT },
+      },
+    });
+    await failWebrtcRunByKeyboard(api, scheme);
+    await expect
+      .element(page.getByRole("button", { name: RELAY_CHECK_OPEN_LABEL }))
+      .toBeInTheDocument();
+    await expectStepClean(scheme, "the relay check offered");
+
+    await activate(control("button", RELAY_CHECK_OPEN_LABEL));
+    await expect
+      .element(page.getByRole("button", { name: RELAY_CHECK_START_LABEL }))
+      .toBeInTheDocument();
+    await expectStepClean(scheme, "the hosts the relay check contacts");
+
+    await activate(control("button", RELAY_CHECK_START_LABEL));
+    await expect.element(page.getByText(/What to do:/)).toBeInTheDocument();
+    await expectStepClean(scheme, "the relay check's verdict");
+  });
+
+  test(`console invite: a signed receipt's setup, its notices and command lines, from the keyboard (${scheme})`, async () => {
+    stubConsoleJobApi({ sftp: AUTHORED_SFTP });
+    await reachReviewByKeyboard({ scheme });
+    await activate(control("button", /^Receipts and record keeping/));
+    await typeInto(
+      control("combobox", "What this exchange produces"),
+      "Signed",
+    );
+    await expect
+      .element(page.getByText("About your signing identity"))
+      .toBeInTheDocument();
+    await expectReceiptNotices();
+    await expectStepClean(scheme, "a signed receipt's setup");
+  });
+
+  test(`console invite: a signed receipt's identity picked from the secrets folder, from the keyboard (${scheme})`, async () => {
+    stubConsoleJobApi({
+      sftp: AUTHORED_SFTP,
+      routes: {
+        [`GET /api/jobs/mounts/secrets/entries?purpose=${SIGNING_IDENTITY_BROWSE_PURPOSE}`]:
+          {
+            body: {
+              configured: true,
+              entries: [{ name: SIGNING_IDENTITY_FILE, kind: "file" }],
+            },
+          },
+      },
+    });
+    await reachReviewByKeyboard({ scheme });
+    await activate(control("button", /^Receipts and record keeping/));
+    await typeInto(
+      control("combobox", "What this exchange produces"),
+      "Signed",
+    );
+    await activate(control("button", "Choose a file from the secrets folder"));
+    await activate(control("button", `Use ${SIGNING_IDENTITY_FILE}`));
+    await expect
+      .element(page.getByRole("button", { name: "Choose a different file" }))
+      .toBeInTheDocument();
+    await expectReceiptNotices();
+    await expect
+      .element(
+        page
+          .getByRole("button", {
+            name: "Copy command creating your signing identity",
+            exact: true,
+          })
+          .first(),
+      )
+      .toBeInTheDocument();
+    await expectStepClean(scheme, "a signed receipt's identity picked");
+  });
+
+  for (const { outcome, answer, shown } of TERMS_APPLY_OUTCOMES)
+    test(`console invite: a run of the opened configuration stopped on changed terms, and their apply ${outcome}, from the keyboard (${scheme})`, async () => {
+      expectConsole("error", `RelayedTerminalError: ${TERMS_MISMATCH}`);
+      const api = stubConsoleJobApi({
+        sftp: AUTHORED_SFTP,
+        config: OPENED_SFTP_CONFIGURATION,
+        routes: { [`POST /api/jobs/${CREATED_JOB_ID}/apply-terms`]: answer },
+      });
+      await runOpenedConfigurationByKeyboard(api, scheme);
+      await expect
+        .element(page.getByRole("button", { name: APPLY_TERMS_LABEL }))
+        .toBeInTheDocument();
+      await expectStepClean(scheme, "a run stopped on changed terms");
+
+      await activate(control("button", APPLY_TERMS_LABEL));
+      await expect.element(page.getByText(shown)).toBeInTheDocument();
+      await expectStepClean(scheme, `the terms apply ${outcome}`);
+    });
+}
 
 test("console invite: the working folder's configuration, opened with its notices, from the keyboard", async () => {
   stubConsoleJobApi({
     config: {
-      configured: true,
-      present: true,
-      document: {
-        channel: "sftp",
-        server: { host: "sftp.partner.example", username: "county" },
-        linkageTerms: getDefaultLinkageTerms("County Health"),
-      },
+      ...OPENED_SFTP_CONFIGURATION,
       carriedThrough: ["added_setting"],
       warnings: ["connection.server.password"],
-      signingPathSettings: [],
-      folderPathSettings: [],
     },
   });
   app.render(createElement(InviterScreen));
