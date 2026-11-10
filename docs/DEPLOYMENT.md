@@ -278,59 +278,11 @@ The controls belong in front of the standalone broker. Behind a load balancer, n
 
 The project runs a public deployment of the web application at `psi.data-bridge.org`, suitable for real exchanges and operated on a best-effort basis with no uptime commitment; [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md#responsibility-split-hosted-web-application) states what operating it takes on. Its `staging` builds are served at `staging.data-bridge.org`, and [the demo site](#the-demo-site) at `demo.data-bridge.org`. An agency deploying the web application itself serves the same static build from a host of its own and owns every setting described here.
 
-- **The site** is served by a Cloudflare Pages project with no Git source: GitHub Actions builds it and uploads each build. The Pages project, its custom domains, and the zone settings below are declared in the [OpenTofu root](../infra/hosted/README.md), which the maintainer applies from outside the container and nothing in the repository runs.
+- **The site** is served by a Cloudflare Pages project with no Git source: GitHub Actions builds it and uploads each build. The Pages project, its custom domains, and the zone settings are declared in the [OpenTofu root](../infra/hosted/README.md), which the maintainer applies from outside the container and nothing in the repository runs.
 - **The coordination server, the TURN relay and the WebSocket relay are outside Cloudflare.** `signal.data-bridge.org`, `turn.data-bridge.org` and `relay.data-bridge.org` are DNS-only records in the zone, pointing at one host the project runs, which runs the broker, its nginx TLS front, the relay (coturn) and the WebSocket relay.
 - **One listener on port 443, the relay's 443 front, routes each connection by the server name it asks for:** to the broker's front unopened; to coturn, terminating the TURN client's TLS itself and passing coturn the client's address; or to the WebSocket relay at `relay.data-bridge.org`, terminating the TLS itself and passing the relay no client address ([infra/relay/README.md](../infra/relay/README.md#the-websocket-relay)). The broker's front also answers on 8443.
 - **The units and configuration** for the broker and its front are in [`infra/broker/`](../infra/broker/README.md), and the relay's in [`infra/relay/`](../infra/relay/README.md).
-
-### Deploying to Cloudflare Pages
-
-The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([notes/hosted-static-build.md](notes/hosted-static-build.md)). Two workflows upload that directory to the Pages project by direct upload, each only when every suite in [`web_build_and_test.yaml`](../.github/workflows/web_build_and_test.yaml) passes:
-
-- **Production, from a push to `main`:** [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) uploads on a push to `main` that changes a deploy-affecting source, and on a manual dispatch on `main`, so a change to the site goes out without a release. It uploads only once a signed manifest of the build exists ([RELEASES.md](RELEASES.md#the-manifest-of-a-main-deploy)). The trigger, path filter and gate are described in the workflow file.
-- **Production, from a release tag:** [`release.yaml`](../.github/workflows/release.yaml) builds the site from the pushed `vX.Y.Z` tag and uploads it once the release images are published, so a tag the release refuses deploys nothing ([RELEASES.md](RELEASES.md#8-build-and-publish-the-container-image-ci)). It redeploys production from the tag's commit only for a tag on the newest release line, so a hotfix on an older line deploys nothing ([RELEASES.md](RELEASES.md#hotfix-releases)), and only while `main` holds no commit the tag's commit lacks, so a release run that ends after a newer push to `main` has deployed leaves that build in place ([RELEASES.md](RELEASES.md#8-build-and-publish-the-container-image-ci)); the next push to `main` replaces it.
-- **Staging preview:** `pages_deploy.yaml` uploads on a push to `staging` that changes a deploy-affecting source, and on a manual dispatch on `staging`.
-
-What each build shows and how each upload runs:
-
-- **Version shown:** a deployment from a release tag shows the product version of the tag in its footer, `Version X.Y.Z`, and its commands name that release's image. A build from a push to `main` or `staging` shows the short commit hash instead, `Commit 1a2b3c4`, and its commands name the `latest` image ([RELEASES.md](RELEASES.md#versioning)).
-- **Build and artifact:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name, and fails when it is unset. The same job builds [the demo site](#the-demo-site) as a second artifact. Off a pull request it installs from the lockfile and builds core itself rather than restoring either from the Actions cache, and it reports each artifact's id and a SHA-256 over its files.
-- **Upload:** a job of its own in each workflow. It checks out only the deploy tool's `package.json` and lockfile (`.github/wrangler/`) and installs wrangler from them with `npm ci`, downloads each artifact by the id the build reported, stops if its files do not match the build's digest, and runs `wrangler pages deploy`. A deployment to the project's production branch, `main`, is the production deployment, whether it comes from a push to `main` or a release tag; one to `staging` is a preview, served on the project's `staging` branch alias (`staging.<project>.pages.dev`). The same job then uploads the demo site's artifact to the demo project. These two jobs and the project site's two upload jobs ([The project site](#the-project-site)) are the only jobs in any workflow that hold the deploy credentials, and none runs repository code other than the locked deploy tool.
-- **Post-deploy check:** a later job, holding no credentials, fetches `/.well-known/security.txt` from each deployment the upload made, at the deployment's own `pages.dev` address, and fails the run unless the file is served as `text/plain` with the contacts `SECURITY.md` names (`scripts/check-served-security-txt.mjs`).
-- **Environment rule:** under Settings -> Environments, give `Staging` a deployment branch rule allowing only `staging`, and give `Production` one allowing the `main` branch, for the project site and the hosted app, and tags matching `v*.*.*`, for the release upload.
-
-It reads two secrets and six variables. The release upload and the upload from a push to `main` run in the GitHub environment `Production`, and the upload from a push to `staging` in `Staging`, so the two secrets and the two Pages project names are set on each of those environments. `VITE_SIGNALING_SERVER_URL` and the default relay variables are read by the gate's builds, which run in no environment, so they are repository variables, under Settings -> Secrets and variables -> Actions.
-
-| Name | Kind | Set on | What it is |
-| ---- | ---- | ------ | ---------- |
-| `CLOUDFLARE_API_TOKEN` | Secret | Environments `Production` and `Staging` | An API token scoped to Account -> Cloudflare Pages -> Edit on the one account, and nothing else. The grant is account-wide, so `Staging`'s token can deploy production too, without a signed manifest: the environment rule keeps a staging job from `Production`'s token, not from production. After a token incident, rotate the token on both environments |
-| `CLOUDFLARE_ACCOUNT_ID` | Secret | Environments `Production` and `Staging` | The Cloudflare account the project is in |
-| `CLOUDFLARE_PAGES_PROJECT` | Variable | Environments `Production` and `Staging` | The Pages project's name |
-| `CLOUDFLARE_DEMO_PAGES_PROJECT` | Variable | Environments `Production` and `Staging` | The demo site's Pages project's name; unset, the job skips the demo site's upload |
-| `VITE_SIGNALING_SERVER_URL` | Variable | Repository | The peer-coordination broker's `wss:` address, built into the site and the demo site |
-| `VITE_DEFAULT_RELAY_TURN_URL` | Variable | Repository | The project relay's TURN url, `turns:turn.data-bridge.org:443?transport=tcp`, built into the site and the demo site as [the default relay](#the-default-relay); unset, neither names one |
-| `VITE_DEFAULT_RELAY_REGISTRAR_URL` | Variable | Repository | That relay's registrar, `https://registrar.data-bridge.org`; set with the variable above or not at all |
-| `VITE_DEFAULT_RELAY_WEBSOCKET_URL` | Variable | Repository | That relay host's WebSocket relay, `wss://relay.data-bridge.org/relay`, built into the site and the demo site; set only beside the two above |
-
-The site's build sets no `VITE_DEFAULT_RELAY_MODE`, so production and staging offer the project's relay switched off ([The default relay](#the-default-relay)). The demo site's build sets `VITE_DEFAULT_RELAY_MODE=on` in the workflow, not as a repository variable ([The demo site](#the-demo-site)).
-
-### Custom domains and zone settings
-
-Both public names are custom domains of the Pages project, each a proxied DNS record in the Cloudflare zone: the production name points at the project's `pages.dev` name, and the staging name at the `staging` branch alias. The demo site's name is a custom domain of the demo site's project in the same way, its record pointing at that project's `pages.dev` name. Public TLS terminates on a Cloudflare-managed edge certificate for the zone. The zone settings the root declares:
-
-| Setting | Value |
-| ------- | ----- |
-| SSL/TLS mode | `Full (strict)` |
-| Always Use HTTPS | On, so plain HTTP to any of these names is answered `301` at the edge |
-| HSTS | On, `max-age=15552000`, without `includeSubDomains` and without preload |
-
-The root also declares the zone's own records:
-
-- **`www.data-bridge.org`** serves no site: the edge answers every request on it with a `301` to the same path and query on `https://data-bridge.org`, the project site.
-- **No mail.** No name in the zone sends or receives mail. Each name that answers with an address has a null MX (RFC 7505) and SPF `v=spf1 -all`, and DMARC `p=reject` at `_dmarc.data-bridge.org` covers every name, with no report address.
-- **CAA** records limit certificate issuance to the authorities that issue for the zone's names: Cloudflare's edge and Pages certificates, and Let's Encrypt for the relay host ([infra/hosted/README.md](../infra/hosted/README.md#certificate-authorities)).
-- **DNSSEC** is on, with the DS record at the registry ([infra/hosted/README.md](../infra/hosted/README.md#dnssec)).
-- **`/.well-known/security.txt`** (RFC 9116) is served by the web application's build, on the two public names and the demo site's, and by the project site's build at the apex. It names the reporting routes [SECURITY.md](../SECURITY.md#reporting-a-vulnerability) names, and its `Expires` date is renewed by hand: `scripts/security-txt.test.mjs` fails 45 days before it. Each deploy checks the file it served ([Deploying to Cloudflare Pages](#deploying-to-cloudflare-pages)).
+- **How each site is deployed** -- the upload workflows, the GitHub environments, secrets and variables they read, the zone settings, and the project site -- is the maintainer's runbook in [infra/hosted/README.md](../infra/hosted/README.md#deploying-to-cloudflare-pages).
 
 ### Headers, caching, and the fallback document
 
@@ -342,7 +294,7 @@ The build writes a `_headers` file with four security headers under `/*` and the
 | `X-Frame-Options: DENY` and Content-Security-Policy `frame-ancestors 'none'` | Deny framing, for legacy and modern clients |
 | `X-Content-Type-Options: nosniff` | Stops MIME-sniffing away from a declared `Content-Type` |
 
-`Strict-Transport-Security` is not among them. On the names Cloudflare proxies (the production, staging, demo and project sites) it comes from the zone's HSTS setting above. The coordination server, relay, WebSocket relay and registrar names are DNS-only, and their TLS fronts send no HSTS header. Two limits of Pages, measured on the deployment:
+`Strict-Transport-Security` is not among them. On the names Cloudflare proxies (the production, staging, demo and project sites) it comes from the zone's HSTS setting ([infra/hosted/README.md](../infra/hosted/README.md#custom-domains-and-zone-settings)). The coordination server, relay, WebSocket relay and registrar names are DNS-only, and their TLS fronts send no HSTS header. Two limits of Pages, measured on the deployment:
 
 - **Every response includes `access-control-allow-origin: *`.** Pages adds it, and `_headers` does not remove it. The site serves public static files and no response depends on a credential. On the project's `pages.dev` names, Pages also adds `x-robots-tag: noindex`; it does not add it on the custom domains.
 - **A missing `/assets/` file answers with the root document,** with status 200 and the `/assets/*` rule's one-year `immutable` `Cache-Control`. Asset names contain a content hash, so a URL that misses never becomes valid later, and the service worker refuses to cache a response whose content type is not the asset's ([notes/hosted-static-build.md](notes/hosted-static-build.md#the-host-configuration-file)).
@@ -353,31 +305,10 @@ Each log the project's hosted deployment keeps, its fields, and how long it is k
 
 ### The demo site
 
-The demo site, at `demo.data-bridge.org`, is a second deployment of the web application, in a Cloudflare Pages project of its own, declared in the same [OpenTofu root](../infra/hosted/README.md).
+The demo site, at `demo.data-bridge.org`, is a second deployment of the web application, in a Cloudflare Pages project of its own, declared in the same [OpenTofu root](../infra/hosted/README.md) and uploaded beside the site ([infra/hosted/README.md](../infra/hosted/README.md#the-demo-sites-upload)).
 
 - **What its build sets:** `VITE_SIGNALING_SERVER_URL`, `VITE_DEFAULT_RELAY_TURN_URL`, `VITE_DEFAULT_RELAY_REGISTRAR_URL` and `VITE_DEFAULT_RELAY_WEBSOCKET_URL` from the same repository variables as the site's build, so its invitations and its `/alcove.json` name the same coordination server as production and it names the project's relay as [the default relay](#the-default-relay). It sets `VITE_DEFAULT_RELAY_MODE=on`, so every browser exchange on it uses that relay.
 - **Where data can flow by default:** a browser exchange on the demo site uses the project's coordination server and Google's STUN server, lists the project's TURN relay, enrolls at its registrar, and connects to the project's WebSocket relay; the pages come from Cloudflare. [PRIVACY.md](../PRIVACY.md#hosted-web-application) states what each of those services can observe.
-- **When it deploys:** the deploy gate's packaging job builds it beside the site, and the upload job uploads it after the site's own upload. A push to `main` is the demo project's production deployment, served at `demo.data-bridge.org`, and a release tag on the newest release line redeploys it from the tag's commit until the next push to `main`; a push to `staging` is a preview on the demo project's `staging` branch alias, `staging.<demo project>.pages.dev`, which no custom domain names.
-- **What a failed upload does:** the site's own upload has already finished, so the site stays deployed and the run fails.
-- **Turning the upload on:** the upload job skips the demo site's steps while its environment sets no `CLOUDFLARE_DEMO_PAGES_PROJECT`. Set it on both environments only after the demo project exists ([infra/hosted/README.md](../infra/hosted/README.md#adopting-the-live-resources)).
-
-## The project site
-
-The project site, at `data-bridge.org`, publishes the Markdown under `docs/` and `site/` and the repository's top-level changelog, contributing guide, license, privacy statement, security policy, and support page. [VitePress](https://vitepress.dev/) builds it, configured by `docs/.vitepress/config.mjs`, and a Cloudflare Pages project of its own serves it, declared in the same [OpenTofu root](../infra/hosted/README.md).
-
-- **Two sections:**
-  - **Project pages and guides:** the project pages under `site/` (home, who it is for, about, and contact) and the step-by-step guides under `docs/guides/` are served at the site root: the home page at `/`, the guides' home page at `/guides`, and every other page at `/<file name without .md>`. They share a layout of their own (`docs/.vitepress/theme/GuideLayout.mjs`) whose menus list these pages and, under About, one link to the documentation. The project pages state no versions, channel or command names, or feature comparison: those stay in the guides and the reference documentation, which the pages link to.
-  - **Reference documentation:** every other page, served at its repository path in VitePress's default theme, with its own navigation and links back to the home page and the guides. The overview, `docs/index.md`, is at `/docs/overview`.
-- **Fonts:** the guides' fonts are npm packages (`@fontsource-variable/*`) bundled into the site.
-- **Building it:** `npm run site:build` writes `docs/.vitepress/dist/`, and `npm run site:dev` serves the site locally. A relative link to a page the site publishes becomes that page's address, and one to any other file in the repository points at the file on GitHub. The build fails on a relative link to a Markdown page that does not exist; `npm run linkcheck` checks every other relative link and each `#anchor`.
-- **Staging preview:** [`site_deploy.yaml`](../.github/workflows/site_deploy.yaml) builds the site on a pull request into `main` or `staging` and on a push to `staging` that changes a source the build reads. It uploads the build of the push, or of a manual dispatch on `staging`, as a preview on the site project's `staging` branch alias. A push to `main` builds and uploads nothing.
-- **Pull requests that change only `site/`:** they skip the PR checklist check ([`pr_checklist.yaml`](../.github/workflows/pr_checklist.yaml)).
-- **Production, published by hand:** the "Publish site" workflow, [`site_publish.yaml`](../.github/workflows/site_publish.yaml), builds the site from a ref chosen when it is run, `main` unless another is named, and uploads it as the production deployment. It then moves the `site-published` tag to the commit it built. It fails unless dispatched from `main`, and unless the chosen commit is on `main` or `staging`. When to run it, and the review of the changes since the last publish: [RELEASES.md](RELEASES.md#11-publish-the-project-site).
-- **Build:** the push, dispatch and publish builds install from the lockfile rather than restoring from the Actions cache.
-- **Upload:** a job of its own in each workflow. Like the web application's, it installs wrangler from the locked deploy tool with `npm ci` and runs `wrangler pages deploy`; unlike it, the job downloads the build's artifact by name and does not check it against a digest. It has the same post-deploy check, and uses the same environments and secrets: the preview runs in `Staging` and the publish in `Production`. It also reads `CLOUDFLARE_SITE_PAGES_PROJECT`, the site project's name, a variable set on both environments.
-- **The tag:** the publish moves `site-published` in a later job, the only job in either workflow with write access to the repository. That job holds no deploy credential and runs no repository code: it sets the tag through the GitHub API.
-- **Headers:** the build writes no `_headers` file, so Pages serves the site with its default headers and the zone settings above.
-- **Redirects:** the build's `_redirects` file (`docs/.vitepress/public/_redirects`) sends `/instructions` to `/guides` and `/instructions/<page>` to `/<page>`.
 
 ## Diagnosing web connection failures
 

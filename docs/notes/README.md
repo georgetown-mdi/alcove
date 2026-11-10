@@ -8,80 +8,92 @@ stands, from a direction still open to a decision taken and built.
 
 ## Index
 
-| Note | Status |
-| ---- | ------ |
-| [abort-marker-retryable-class.md](abort-marker-retryable-class.md) | Design only, not built; waits on an observed base rate. The classless default is final. |
-| [agent-hooks-and-scripts.md](agent-hooks-and-scripts.md) | Decided and built; the rationale and stated limits behind the agent hooks and session scripts whose headers state only their contract. |
-| [app-shell-service-worker.md](app-shell-service-worker.md) | Decided and built. |
-| [backup-import-per-exchange-guard.md](backup-import-per-exchange-guard.md) | Decided on the maintainer's ruling and built. |
-| [bound-transformed-value.md](bound-transformed-value.md) | Decided and built, by a 3-panelist design panel. |
-| [broker-runtime-closure.md](broker-runtime-closure.md) | Decided and built. |
-| [browser-sftp-proxy.md](browser-sftp-proxy.md) | Design; the proxy is built as the first-party SFTP relay after S7 found no off-the-shelf relay that passes, and the browser client is not built. `@microsoft/dev-tunnels-ssh` is chosen after S8, conditional on a dependency check and a sizing: its licence check passes and its maintenance check does not, and the client is sized. |
-| [cascade-fan-out.md](cascade-fan-out.md) | Resolved; the realization ships, under `linkage_strategy: cascade` as under `single-pass`. |
-| [chunked-aead-envelope.md](chunked-aead-envelope.md) | Decided and built; the measurements behind the chunk size and the single shape, and a 2 GiB frame's run. |
-| [claude-md-spawn-cost.md](claude-md-spawn-cost.md) | Decided and built; what each spawn type receives, the orchestrator-only share under two partitions, and the split taken against it. |
-| [cli-webrtc-attempt-cycle.md](cli-webrtc-attempt-cycle.md) | Decided on the maintainer's ruling and built, after a real-broker measurement. |
-| [cli-webrtc-stack.md](cli-webrtc-stack.md) | Decided and built. |
-| [cloudflare-turn-sizing.md](cloudflare-turn-sizing.md) | Measured; cost per GB unmeasured, and nothing decided or built. |
-| [column-name-display.md](column-name-display.md) | Decided and built; why the operator's own column names are isolated rather than escaped, and what isolation leaves open. |
-| [comment-history-narration-check.md](comment-history-narration-check.md) | Decided and built; the corpus measurement and the false-positive rate behind the check's phrase list. |
-| [connect-timeout-prior-art.md](connect-timeout-prior-art.md) | Decided and built; what curl and OpenSSH bound, measured, and the three decisions taken on it. |
-| [connection-error-kind-taxonomy.md](connection-error-kind-taxonomy.md) | Decided and built; each classification records the condition that would reopen it. |
-| [connection-per-poll-sftp.md](connection-per-poll-sftp.md) | Shipped. |
-| [console-announce-and-focus.md](console-announce-and-focus.md) | Decided and built, by a 3-panelist design panel deciding 2-1. |
-| [console-signing-identity-custody.md](console-signing-identity-custody.md) | Decided on the maintainer's ruling; the refusal and the identity-location option are both built. |
-| [core-dist-cache-buildinfo.md](core-dist-cache-buildinfo.md) | Decided and built; supersedes an earlier cache-side decision. |
-| [cosign-keyless-signing.md](cosign-keyless-signing.md) | Decided and built. |
-| [cross-workspace-test-material.md](cross-workspace-test-material.md) | Decided and built. |
-| [deduplicate-matching-semantics.md](deduplicate-matching-semantics.md) | Specified, and run end to end: the one-sided cardinalities under both linkage strategies, the both-sided one under `cascade`. |
-| [default-linkage-rule-set.md](default-linkage-rule-set.md) | Decided and built. |
-| [failure-cause-catalog.md](failure-cause-catalog.md) | Decided and built. |
-| [fan-out-matching-resolution.md](fan-out-matching-resolution.md) | Built under both linkage strategies; the cascade's own realization landed after the note was written. |
-| [file-sync-rendezvous-structure.md](file-sync-rendezvous-structure.md) | Built; agent-written, a proposal until ratified. |
-| [fips-provider-surface.md](fips-provider-surface.md) | Measurement, plus two decisions taken on it; whether to pursue a FIPS claim at all remains open. |
-| [fips-variant-image.md](fips-variant-image.md) | Decided, built, and published. |
-| [folded-column-name-lookup.md](folded-column-name-lookup.md) | Decided on the maintainer's ruling and built; the options weighed and what the fold changes for a configuration with no `metadata` block. |
-| [hash-keyed-value-lookup.md](hash-keyed-value-lookup.md) | Decided and built; the three lookup keys measured at 2^24 and why the hash was taken. |
-| [hosted-environment-opentofu.md](hosted-environment-opentofu.md) | Decided and applied; the resources it held no longer exist. |
-| [key-establishment-fips-boundary.md](key-establishment-fips-boundary.md) | Decided and implemented; the post-quantum hybrid and dual signing wait on three runtimes, measured 2026-10-28. |
-| [linkage-rule-catalog.md](linkage-rule-catalog.md) | Built; every rule is a built-in linkage key, each with its precision band and evidence. |
-| [linkage-rule-grounding.md](linkage-rule-grounding.md) | Proposal, pending adoption -- nothing here is adopted or shipped. |
-| [lockless-rendezvous-barrier.md](lockless-rendezvous-barrier.md) | Weighed and set aside; the shipped symmetric barrier stands. |
-| [managed-exchange-design.md](managed-exchange-design.md) | Decided and built; the grace window is proposed in rotation-hardening.md and not built. |
-| [one-sided-disclosure.md](one-sided-disclosure.md) | Resolved - shipped as the opt-in `single-pass` linkage strategy (the cascade stays the default). |
-| [one-sided-fuzzy-expansion.md](one-sided-fuzzy-expansion.md) | Decided, built, and applied. |
-| [operator-message-control-characters.md](operator-message-control-characters.md) | Decided and built. |
-| [output-directory-removal-lock.md](output-directory-removal-lock.md) | Measurement backing the retry's wall-clock budget. |
-| [payload-as-agreed-terms.md](payload-as-agreed-terms.md) | Decided on the maintainer's ruling, after a 3-panelist design panel; not built. |
-| [portable-configuration-readers.md](portable-configuration-readers.md) | Rule decided and specified, the unread-key refusal built; the audit of each reader and the two gaps it leaves open. |
-| [prebuild-provenance.md](prebuild-provenance.md) | Decided, built, and armed against a fork that attests. |
-| [psi-c-count-only.md](psi-c-count-only.md) | Directed by the maintainer's rulings; built over every agreed key. Missing-field conditions, `single-pass` and candidate sets are admitted; a split in a party's own cleaning stays refused. |
-| [psi-run-to-run-determinism.md](psi-run-to-run-determinism.md) | Examined and measured; nothing decided or built. |
-| [psi-step-liveness.md](psi-step-liveness.md) | Decided on the maintainer's rulings and built; the interval and the silence bound are working values until measured in a real browser. |
-| [rebase-reattestation.md](rebase-reattestation.md) | Decided on the maintainer's ruling and built; the fourth mechanical re-attestation path and the limits it accepts. |
-| [receipt-run-binding.md](receipt-run-binding.md) | Resolved - built. |
-| [receipt-signing-fips-boundary.md](receipt-signing-fips-boundary.md) | Decided. |
-| [record-durability-point.md](record-durability-point.md) | Resolved - built. |
-| [rename-to-alcove.md](rename-to-alcove.md) | Decided on the maintainer's rulings and built. |
-| [repo-check-scripts.md](repo-check-scripts.md) | Decided and built; the rationale and stated limits behind the repository check scripts whose headers state only their contract. |
-| [reported-failure-cause.md](reported-failure-cause.md) | Decided on the maintainer's ruling and built; the two shapes declined, and what the block holds apart that escaping does not. |
-| [rotation-hardening.md](rotation-hardening.md) | Design only, not built; proposed for ratification, with two choices left open. |
-| [rule-set-citation-verdict.md](rule-set-citation-verdict.md) | Resolved - built, then withdrawn on the maintainer's ruling removing the citation. |
-| [sftp-adapter-state-machine.md](sftp-adapter-state-machine.md) | Shipped. |
-| [shared-consent-summary.md](shared-consent-summary.md) | Shipped. |
-| [signing-identity-custody.md](signing-identity-custody.md) | Decided and built, by a 3-panelist design panel converging 3-0. |
-| [standing-relay-delivery.md](standing-relay-delivery.md) | Decided, the reference is written, and the first deployment has driven a relayed exchange through it. |
-| [terms-comparison.md](terms-comparison.md) | Decided and built; why the terms comparison compares raw values, canonical forms, and declared payload directions as it does. |
-| [turn-provisioning-governance.md](turn-provisioning-governance.md) | Surveyed, with a recommendation per profile; nothing decided or built, and the configuration shape left to separate work. |
-| [wasm-parallel-evaluation.md](wasm-parallel-evaluation.md) | Both arms measured, and the browser direction decided: Web Worker sharding, with the pthreads/SIMD build declined; the web exchange runs the worker pool for the party creating the request, one worker for the party answering it and on macOS. |
-| [web-server-runtime-role.md](web-server-runtime-role.md) | End state reached for the public deployment: a static site, with the framework's server half removed; the console keeps its server. |
-| [web-websocket-transport.md](web-websocket-transport.md) | The WebSocket relay for networks that stop TURN is built and turned on in both applications; the browser SFTP path is design only but for its first-party relay. The seven forks are ruled, and spikes S2 and S4 have not run. |
-| [webrtc-frame-structure-envelope.md](webrtc-frame-structure-envelope.md) | Decided and built, by a 3-panelist design panel converging 3-0 on the retirement and 2-1 on the ceiling. |
-| [webrtc-memory-measurements.md](webrtc-memory-measurements.md) | Measurement history; the current figures are in the spec. |
-| [webrtc-outbound-packer.md](webrtc-outbound-packer.md) | Decided and built, by a 3-panelist design panel deciding 2-1; the measured ceiling it removes and the one it leaves. |
-| [webrtc-relay-deployment.md](webrtc-relay-deployment.md) | Measured, with a recommendation and a proposed epic; the recommendation is now deployed and verified against the standing relay. |
+The Status column is one word from a fixed set:
 
-Each note states its full status at its own top; this table is a pointer, not a restatement.
+- **open** - a direction or question not yet decided, or decided only in part.
+- **decided** - the decision is taken and not built.
+- **built** - the decision is taken and built, in whole or for the part the
+  note's status line names.
+- **withdrawn** - weighed and set aside, or built and then removed.
+- **measured** - a measurement record; any decision taken on it is recorded
+  where it applies.
+
+Each note states its full status at its own top; this table is a pointer, not
+a restatement.
+
+| Note | Subject | Status |
+| ---- | ------- | ------ |
+| [abort-marker-retryable-class.md](abort-marker-retryable-class.md) | A retryable class in the file-sync abort marker | open |
+| [agent-hooks-and-scripts.md](agent-hooks-and-scripts.md) | Why the agent hooks and session scripts have their shape | built |
+| [app-shell-service-worker.md](app-shell-service-worker.md) | The app-shell service worker's caching | built |
+| [backup-import-per-exchange-guard.md](backup-import-per-exchange-guard.md) | A per-exchange guard on the backup import | built |
+| [bound-transformed-value.md](bound-transformed-value.md) | A bound on the value a transform produces | built |
+| [broker-runtime-closure.md](broker-runtime-closure.md) | The signaling broker's runtime closure | built |
+| [browser-sftp-proxy.md](browser-sftp-proxy.md) | The browser SFTP path and its proxy | open |
+| [cascade-fan-out.md](cascade-fan-out.md) | Fan-out under the cascade strategy | built |
+| [chunked-aead-envelope.md](chunked-aead-envelope.md) | The chunked AEAD envelope's measurements | built |
+| [claude-md-spawn-cost.md](claude-md-spawn-cost.md) | CLAUDE.md's per-spawn cost and its split | built |
+| [cli-webrtc-attempt-cycle.md](cli-webrtc-attempt-cycle.md) | The CLI's WebRTC partner wait in bounded attempts | built |
+| [cli-webrtc-stack.md](cli-webrtc-stack.md) | The CLI's WebRTC library | built |
+| [cloudflare-turn-sizing.md](cloudflare-turn-sizing.md) | One relayed run through Cloudflare TURN | measured |
+| [column-name-display.md](column-name-display.md) | Showing the operator's own column names | built |
+| [comment-history-narration-check.md](comment-history-narration-check.md) | The comment history narration check | built |
+| [connect-timeout-prior-art.md](connect-timeout-prior-art.md) | What a connect timeout bounds | built |
+| [connection-error-kind-taxonomy.md](connection-error-kind-taxonomy.md) | The `ConnectionErrorKind` taxonomy | built |
+| [connection-per-poll-sftp.md](connection-per-poll-sftp.md) | Connection-per-poll SFTP and reconnects | built |
+| [console-announce-and-focus.md](console-announce-and-focus.md) | Announcing an outcome, and focus | built |
+| [console-signing-identity-custody.md](console-signing-identity-custody.md) | The console's signing-identity custody | built |
+| [core-dist-cache-buildinfo.md](core-dist-cache-buildinfo.md) | Why the core build is non-incremental | built |
+| [cosign-keyless-signing.md](cosign-keyless-signing.md) | Keyless Cosign signing | built |
+| [cross-workspace-test-material.md](cross-workspace-test-material.md) | Where cross-workspace test material lives | built |
+| [deduplicate-matching-semantics.md](deduplicate-matching-semantics.md) | Deduplicating matching semantics | built |
+| [default-linkage-rule-set.md](default-linkage-rule-set.md) | The built-in linkage rules and their provenance | built |
+| [failure-cause-catalog.md](failure-cause-catalog.md) | A failure's cause sentence from core | built |
+| [fan-out-matching-resolution.md](fan-out-matching-resolution.md) | Fan-out matching resolution | built |
+| [file-sync-rendezvous-structure.md](file-sync-rendezvous-structure.md) | File-sync rendezvous and poll structure | built |
+| [fips-provider-surface.md](fips-provider-surface.md) | A FIPS provider in the shipped image | measured |
+| [fips-variant-image.md](fips-variant-image.md) | The FIPS variant container image | built |
+| [folded-column-name-lookup.md](folded-column-name-lookup.md) | Folding column names before the key lookup | built |
+| [hash-keyed-value-lookup.md](hash-keyed-value-lookup.md) | Keying per-record value lookups by hash | built |
+| [hosted-environment-opentofu.md](hosted-environment-opentofu.md) | The hosted environment's inbound rules in OpenTofu | withdrawn |
+| [hosted-static-build.md](hosted-static-build.md) | The hosted static build | built |
+| [key-establishment-fips-boundary.md](key-establishment-fips-boundary.md) | Key establishment and the FIPS 140-3 boundary | built |
+| [linkage-rule-catalog.md](linkage-rule-catalog.md) | The linkage rules and their precision bands | built |
+| [linkage-rule-grounding.md](linkage-rule-grounding.md) | The rationale behind the linkage rules | built |
+| [lockless-rendezvous-barrier.md](lockless-rendezvous-barrier.md) | An asymmetric rendezvous barrier | withdrawn |
+| [managed-exchange-design.md](managed-exchange-design.md) | The recurring web exchange's design | built |
+| [one-sided-disclosure.md](one-sided-disclosure.md) | One-sided linkage disclosure | built |
+| [one-sided-fuzzy-expansion.md](one-sided-fuzzy-expansion.md) | Which party expands fuzzy variants | built |
+| [operator-message-control-characters.md](operator-message-control-characters.md) | Control characters in an operator-facing message | built |
+| [output-directory-removal-lock.md](output-directory-removal-lock.md) | The write lock on a failed write's removal | measured |
+| [payload-as-agreed-terms.md](payload-as-agreed-terms.md) | The payload column set as agreed terms | built |
+| [portable-configuration-readers.md](portable-configuration-readers.md) | The exchange-file readers under the portable-configuration rule | built |
+| [prebuild-provenance.md](prebuild-provenance.md) | Provenance of the vendored prebuilds | built |
+| [psi-c-count-only.md](psi-c-count-only.md) | Count-only linkage | built |
+| [psi-run-to-run-determinism.md](psi-run-to-run-determinism.md) | A psi result changing between runs | built |
+| [psi-step-liveness.md](psi-step-liveness.md) | Liveness through a partner's PSI step | built |
+| [rebase-reattestation.md](rebase-reattestation.md) | Re-attesting a review across a rebase | built |
+| [receipt-run-binding.md](receipt-run-binding.md) | Binding a signed receipt to one run | built |
+| [receipt-signing-fips-boundary.md](receipt-signing-fips-boundary.md) | Receipt signing and the FIPS 140-3 boundary | decided |
+| [record-durability-point.md](record-durability-point.md) | When a disclosure record is owed | built |
+| [rename-to-alcove.md](rename-to-alcove.md) | The rename to Alcove | built |
+| [repo-check-scripts.md](repo-check-scripts.md) | Why the repository check scripts have their shape | built |
+| [reported-failure-cause.md](reported-failure-cause.md) | Showing a failed exchange's reported cause | built |
+| [rotation-hardening.md](rotation-hardening.md) | Stale copies and one-sided rotations | built |
+| [rule-set-citation-verdict.md](rule-set-citation-verdict.md) | A false rule-set citation in the acceptor's record | withdrawn |
+| [sftp-adapter-state-machine.md](sftp-adapter-state-machine.md) | The SFTP adapter's state machines | built |
+| [shared-consent-summary.md](shared-consent-summary.md) | One consent summary for two surfaces | built |
+| [signing-identity-custody.md](signing-identity-custody.md) | Resolving the signing identity like a credential | built |
+| [standing-relay-delivery.md](standing-relay-delivery.md) | How the standing relay is delivered | built |
+| [terms-comparison.md](terms-comparison.md) | Comparing the two parties' linkage terms | built |
+| [turn-provisioning-governance.md](turn-provisioning-governance.md) | TURN provisioning against partners' governance | open |
+| [wasm-parallel-evaluation.md](wasm-parallel-evaluation.md) | Parallelizing the WebAssembly PSI backend | built |
+| [web-server-runtime-role.md](web-server-runtime-role.md) | The web server's runtime role | built |
+| [web-websocket-transport.md](web-websocket-transport.md) | The WebSocket relay and the browser SFTP path | built |
+| [webrtc-frame-structure-envelope.md](webrtc-frame-structure-envelope.md) | The WebRTC inbound frame envelope | built |
+| [webrtc-memory-measurements.md](webrtc-memory-measurements.md) | WebRTC party memory | measured |
+| [webrtc-outbound-packer.md](webrtc-outbound-packer.md) | Encoding outbound WebRTC frames without recursion | built |
+| [webrtc-relay-deployment.md](webrtc-relay-deployment.md) | The WebRTC relay and its deployment shape | measured |
 
 The maturity ladder:
 

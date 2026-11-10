@@ -4,7 +4,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 # The web application's WebSocket transport path: a relay for networks that stop TURN, and the browser SFTP proxy
 
-_Status: the relay path is built and turned on in both applications: the relay proof derivation, the relay service and its deployment, both clients, the wrap on the web side, the relay locator and settings, and the automatic fallback ([Implementation items implied, not filed](#implementation-items-implied-not-filed)). The browser SFTP path is design only but for its relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)).
+_Status: the relay path is built and turned on in both applications: the relay proof derivation, the relay service and its deployment, both clients, the wrap on the web side, the relay locator and settings, and the automatic fallback ([WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md), [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay)). The browser SFTP path is design only but for its relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
 What remains open is the spikes S2 and S4, neither of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
 The browser SFTP spikes ran on 2026-10-29.
@@ -534,37 +534,10 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
 
   Harness: `node run.mjs --candidate devtunnels --ed25519-patch --bytes 8388608`; `--candidate ssh2 --host-keys ed25519+ecdsa`; `--wrong-pin` for the refused host key; `--origin <other origin>` for S7's refusal from the page; and `node node-ssh2-agent.mjs inner` for the Node agent.
 
-### Implementation items implied, not filed
+### What the browser SFTP path still needs
 
-The front on 443 and the broker's route on it are already built. Its open measurements, the registrar behind it and a relayed exchange from a 443-only client ([S2](#the-spikes)), are a prerequisite of this path.
+Re-scoped from the earlier note's list; its relay is built ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)):
 
-Relay path, in order:
-
-- **Relay proof derivation and spec row** -- the derived key and its label in core, with vectors, beside the registrar proof in PROTOCOL.md.
-  Built: `packages/core/src/websocketRelayProof.ts`, specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof).
-- **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
-  Built: `packages/websocket-relay`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md).
-- **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front should a per-address quota be added, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
-  Built, and installed on the project's host on 2026-10-19: [infra/relay/README.md, The WebSocket relay](../../infra/relay/README.md#the-websocket-relay); the client's address is not passed on.
-- **Browser WebSocket transport** -- a `MessageConnection` over a browser WebSocket with the shared reassembler and the pacing window.
-  Built: `apps/web/src/psi/transport/websocketRelayConnection.ts`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md#the-web-applications-client).
-- **CLI WebSocket transport** -- the same over `ws`, with the connection-block entry and the per-party setting.
-  Built: `apps/cli/src/connection/webrtc/websocketRelayConnection.ts`, specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md#the-command-line-client).
-- **The wrap on the web side** -- request it on the relay transport, apply the decorator when negotiated, keep the WebRTC refusal.
-  Built differently: the web wraps every WebRTC exchange too, and `authenticateExchange` (`apps/web/src/psi/authenticateExchange.ts`) requests and applies the wrap on whichever connection a run opened, a relay connection included ([CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it)).
-- **Relay locator and settings** -- the `wss` url on the invitation locator, the Relay settings page, and the CLI's connection block, selected per kind.
-  Built: the locator's `websocket` url ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)), the WebSocket relay field under an exchange's Connection settings on the hosted build (`apps/web/src/exchange/ExchangeConnectionSettings.tsx`), a build's default WebSocket relay (`VITE_DEFAULT_RELAY_WEBSOCKET_URL`), and the per-kind listing under the allowed relays (`selectRunRelay` in `packages/core/src/relayCredential.ts`, `webSocketRelaysForRun` in `apps/web/src/psi/transport/ownRelaySetting.ts`).
-- **Automatic fallback** -- the start frame, the parked relay socket during the WebRTC rendezvous, and the hand-over.
-  Built: the race both applications run (`packages/core/src/connection/relayFallback.ts`) over each client's parked socket and each run's relay list, specified in [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay).
-- **Disclosure documents** -- PRIVACY and SHARED_RESPONSIBILITY rows, the SECURITY_DESIGN channel-security paragraph, the wrap table row and its "no such transport exists" sentence in CHANNEL_SECURITY, COMMUNICATION's supporting services, DEPLOYMENT, CLI.md, the planned `connect-src` allowlist ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#egress-hardening-and-its-limits)).
-  Built: the WebSocket relay is in [PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe), [SHARED_RESPONSIBILITY.md](../SHARED_RESPONSIBILITY.md), [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security) and [COMMUNICATION.md](../COMMUNICATION.md#websocket-relay).
-- **Tests** -- relay unit tests with the shared refusal fixtures, a relayed exchange in the browser suite, a CLI-to-browser relayed run in the interop suite ([TESTING.md](../TESTING.md#cross-runtime-interop-suite)), and a stress-tier run at the largest size.
-  Built: the relay's unit tests, which present core's shared refused proofs (`packages/core/src/websocketRelayProofFixtures.ts`) in a hello (`packages/websocket-relay/test/proofFixtures.test.ts`), the browser suite's relayed exchange and unused relay sockets (`apps/web/test/browser/relayFallback.test.ts`), the interop suite's relayed run with WebRTC blocked (`apps/web/test/interop/cliWebRelayFallback.test.ts`), the live WebRTC leg's CLI-to-browser run with WebRTC open, whose relay sockets close unused (`apps/web/test/liveWebrtc/relayUnused.test.ts`), and the stress tier's relay round (`apps/cli/test/stress/websocketRelayRound.stress.test.ts`), measured in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md#measured-round-at-the-largest-exchange-size).
-
-Browser SFTP path, after the relay path, re-scoped from the earlier note's list:
-
-- **Raw relay reference configuration**, operator-run, with the `Origin` check, in the DEPLOYMENT section that names the proxy.
-  Built first-party, since no relay S7 tried passed every check: `packages/sftp-relay` and its image, specified in [SFTP_RELAY.md](../spec/SFTP_RELAY.md), with the reference configuration in [DEPLOYMENT.md](../DEPLOYMENT.md#websocket-to-tcp-proxy).
 - **Browser SSH client** with an external WebCrypto signer, as a new security-relevant dependency under the dependency policy.
 - **Browser file transport client** implementing `FileTransportClient` (`packages/core/src/connection/fileSyncConnection.ts`) with browser counterparts of the CLI adapter's liveness, listing and frame-size bounds.
 - **Host-key pin and first use** in the browser, with reconciliation as on the CLI.

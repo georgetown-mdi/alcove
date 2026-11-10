@@ -5,7 +5,7 @@ name: Publish site
 # project, and moves the PUBLISHED_TAG tag to the commit it built. Run by hand
 # only; a push uploads nothing but the staging preview (site_deploy.yaml). When
 # to run it and the review before it: docs/RELEASES.md, "Publish the project
-# site". The secrets and the variable it reads: docs/DEPLOYMENT.md, "The
+# site". The secrets and the variable it reads: infra/hosted/README.md, "The
 # project site".
 on:
   workflow_dispatch:

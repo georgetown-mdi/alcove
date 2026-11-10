@@ -6,7 +6,7 @@ name: Deploy the Project Site
 # pull request builds the site and uploads nothing; a push to staging uploads a
 # preview deployment on the `staging` branch alias. Production is uploaded only
 # by hand, by site_publish.yaml. The secrets and the variable it reads:
-# docs/DEPLOYMENT.md, "The project site".
+# infra/hosted/README.md, "The project site".
 # The two path lists are the same: the sources the site build reads.
 on:
   pull_request:
