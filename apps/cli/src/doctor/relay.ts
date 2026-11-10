@@ -11,7 +11,7 @@ import {
   relayCheckHeadline,
   relayCheckPlan as relayCheckHostPlan,
   selectRunRelay,
-  TURN_RELAY_NOT_REACHED_MEANING,
+  turnRelayNotReachedMeaning,
   turnUrlTransport,
   UsageError,
   WEBSOCKET_RELAY_LINE_BELOW,
@@ -28,6 +28,7 @@ import type {
   RelayCheckPlan as RelayCheckHostPlan,
   RelayCheckWebSocketRelay,
   RelayCredential,
+  RelayTransport,
   RunRelayConnection,
   RunTurnServer,
   WebRTCConnectionConfig,
@@ -295,21 +296,21 @@ function registrarNotContactedRecord(plan: RelayCheckPlan): DoctorCheckRecord {
   });
 }
 
-const NOT_REACHED_MEANING = TURN_RELAY_NOT_REACHED_MEANING;
-
 function notReachedMeaning(
   server: RunTurnServer,
+  transport: RelayTransport,
   enrollment: RelayCheckEnrollment | undefined,
 ): string {
-  if (server.credential !== undefined) return NOT_REACHED_MEANING;
+  const meaning = turnRelayNotReachedMeaning(transport);
+  if (server.credential !== undefined) return meaning;
   if (enrollment !== undefined)
     return enrollment.outcome.kind === "enrolled"
-      ? NOT_REACHED_MEANING
-      : `${NOT_REACHED_MEANING} The likely cause is the failed enrollment ` +
+      ? meaning
+      : `${meaning} The likely cause is the failed enrollment ` +
           `above: ${RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR}`;
   if (server.source === "invitation")
-    return `${NOT_REACHED_MEANING} ${INVITATION_RELAY_REFUSES_UNTIL_ENROLLED}`;
-  return `${NOT_REACHED_MEANING} ${OWN_RELAY_REFUSES_UNTIL_ENROLLED}`;
+    return `${meaning} ${INVITATION_RELAY_REFUSES_UNTIL_ENROLLED}`;
+  return `${meaning} ${OWN_RELAY_REFUSES_UNTIL_ENROLLED}`;
 }
 
 /**
@@ -332,7 +333,7 @@ export function relayCheckRecord(
     {
       id,
       status: "fail",
-      meaning: notReachedMeaning(server, enrollment),
+      meaning: notReachedMeaning(server, transport, enrollment),
       action: dialsWebSocketRelay
         ? `${RELAY_NOT_REACHED_REMEDY} ${WEBSOCKET_RELAY_LINE_BELOW}`
         : RELAY_NOT_REACHED_REMEDY,

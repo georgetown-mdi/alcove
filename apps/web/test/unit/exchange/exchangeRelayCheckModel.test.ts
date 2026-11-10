@@ -83,6 +83,22 @@ describe("each outcome's message and remedy", () => {
     expect(line.action).not.toBe(RELAY_NOT_REACHED_REMEDY);
   });
 
+  test("a plain turn: relay not reached does not name a certificate; a turns: relay does", () => {
+    const plain = shown({
+      relay: "turn",
+      url: INVITED_TURN,
+      result: "not_reached",
+    });
+    const tls = shown({ relay: "turn", url: OWN_TURN, result: "not_reached" });
+    if (plain.works || tls.works) throw new Error("expected a failing line");
+    expect(plain.meaning).toBe(
+      "this computer could not reach it, or the relay refused this " +
+        "exchange; the browser does not report which.",
+    );
+    expect(plain.meaning).not.toContain("certificate");
+    expect(tls.meaning).toContain("certificate this computer does not trust");
+  });
+
   test.each([
     [
       OWN_TURN,

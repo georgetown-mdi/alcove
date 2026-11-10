@@ -840,6 +840,32 @@ test("a relay that has not answered when the bound expires is reported not reach
   });
 });
 
+test("a turn: relay not reached does not name a certificate, and a turns: relay does", async () => {
+  writeConfig(webrtcConnection({ turn: [{ url: OWN_TURN }] }));
+  const plain = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: () => undefined,
+    gather: scriptedGathering({ [OWN_TURN]: false }, []),
+  });
+  writeConfig(webrtcConnection({ turn: [{ url: INVITATION_TURN }] }));
+  const tls = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: () => undefined,
+    gather: scriptedGathering({ [INVITATION_TURN]: false }, []),
+  });
+
+  expect(checkFor(plain, OWN_TURN).meaning).toContain(
+    "nothing on this host reached this relay, or the relay refused the " +
+      "credential; the reason is not reported",
+  );
+  expect(checkFor(plain, OWN_TURN).meaning).not.toContain("certificate");
+  expect(checkFor(tls, INVITATION_TURN).meaning).toContain(
+    "or it presented a certificate this host does not trust",
+  );
+});
+
 test("a gather that rejects ends the check with its error and aborts its signal", async () => {
   const signals: Array<AbortSignal> = [];
   const plan = relayCheckPlan(
