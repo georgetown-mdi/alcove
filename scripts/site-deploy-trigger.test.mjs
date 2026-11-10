@@ -3,7 +3,10 @@ import { dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import siteConfig, { ROOT_PAGES } from "../docs/.vitepress/config.mjs";
+import siteConfig, {
+  ROOT_PAGES,
+  SOURCE_DIRECTORIES,
+} from "../docs/.vitepress/config.mjs";
 import {
   DEPLOY_ACTION,
   SITE_DEPLOY_WORKFLOW,
@@ -36,8 +39,13 @@ describe("the project site's path filters", () => {
     expect(workflow.on.pull_request.paths).toEqual(pushPaths);
   });
 
-  it("list docs/, every published root page and the workflow itself", () => {
-    for (const path of ["docs/**", ...ROOT_PAGES, SITE_DEPLOY_WORKFLOW]) {
+  it("list docs/, site/, every published root page and the workflow itself", () => {
+    expect(SOURCE_DIRECTORIES).toEqual(["docs", "site"]);
+    for (const path of [
+      ...SOURCE_DIRECTORIES.map((dir) => `${dir}/**`),
+      ...ROOT_PAGES,
+      SITE_DEPLOY_WORKFLOW,
+    ]) {
       expect(pushPaths).toContain(path);
     }
   });
@@ -221,7 +229,7 @@ describe("the project site's publish", () => {
     const reviewPaths = compare.env.REVIEW_PATHS.split(" ");
 
     it("covers docs/, site/ and every published root page", () => {
-      expect(reviewPaths).toEqual(["docs", "site", ...ROOT_PAGES]);
+      expect(reviewPaths).toEqual([...SOURCE_DIRECTORIES, ...ROOT_PAGES]);
     });
 
     it("is the command docs/RELEASES.md gives", () => {
@@ -245,6 +253,33 @@ describe("the project site's Pages project", () => {
       .map(({ path }) => path)
       .sort();
     expect(uploaders).toEqual([SITE_DEPLOY_WORKFLOW, SITE_PUBLISH_WORKFLOW]);
+  });
+});
+
+// The project pages under site/ open the site: the home page at its root, and
+// the guides' home page beside them at /guides.
+describe("the project site's addresses", () => {
+  it("serves the project pages at the root and the guides' home at /guides", () => {
+    expect(siteConfig.rewrites).toMatchObject({
+      "site/index.md": "index.md",
+      "site/about.md": "about.md",
+      "site/who-it-is-for.md": "who-it-is-for.md",
+      "site/contact.md": "contact.md",
+      "docs/guides/index.md": "guides.md",
+    });
+    const addresses = Object.values(siteConfig.rewrites);
+    expect(new Set(addresses).size).toBe(addresses.length);
+  });
+
+  it("lists every project page in the guide menu", () => {
+    const listed = siteConfig.themeConfig.guideSections.flatMap((section) =>
+      section.pages.map((page) => page.path),
+    );
+    const sitePages = Object.keys(siteConfig.rewrites).filter((path) =>
+      path.startsWith("site/"),
+    );
+    expect(sitePages.length).toBeGreaterThan(0);
+    for (const path of sitePages) expect(listed).toContain(path);
   });
 });
 

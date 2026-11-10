@@ -28,7 +28,8 @@ Alcove is organized as an npm workspaces monorepo. The workspaces and the suppor
 | `packages/testkit/` | Test-only material shared by more than one workspace's test tree (`@alcove/testkit`), consumed as raw TypeScript with no build step; what qualifies and why: [docs/TESTING.md](docs/TESTING.md#shared-test-material) and [docs/notes/cross-workspace-test-material.md](docs/notes/cross-workspace-test-material.md) |
 | `apps/cli/`      | Node.js CLI (`alcove`), built with Rollup, distributed as a Docker image                  |
 | `apps/web/`      | React web app, built for hosting as a static site (`dist/hosted/`) and for the console; mounts no broker, and its browser parties dial the one above |
-| `docs/`          | Documentation, three tiers: `docs/` overview (conceptual/operational), `docs/spec/` technical, `docs/notes/` design records. `docs/.vitepress/` configures the [project site](docs/DEPLOYMENT.md#the-project-site) built from them |
+| `docs/`          | Documentation, three tiers: `docs/` overview (conceptual/operational), `docs/spec/` technical, `docs/notes/` design records. `docs/.vitepress/` configures the [project site](docs/DEPLOYMENT.md#the-project-site) built from them and `site/` |
+| `site/`          | The project site's own pages: home, who it is for, about, and contact |
 | `scripts/`       | [Repository checks CI runs](scripts/README.md) (doc links, PR checklist, claim and drift guards) with their tests |
 | `support/`       | [Field guides](support/README.md) for the environment around Alcove -- Windows, Docker, agency networks -- plus the FIPS measurement harness |
 | `lib/`           | The vendored `@openmined/psi.js` tarball and its checksum                                  |

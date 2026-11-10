@@ -17,11 +17,16 @@ name: PR Checklist
 # marked ready, so `ready_for_review` runs it then. This workflow is not a
 # required check (GATING_WORKFLOWS in scripts/check-merge-gate-identities.mjs),
 # so the skip holds no merge pending.
+#
+# A pull request that changes only the project pages under site/ skips it too:
+# those pages are reviewed at publication, by the compare in docs/RELEASES.md.
 
 on:
   pull_request:
     branches: [main, staging]
     types: [opened, edited, reopened, synchronize, ready_for_review]
+    paths-ignore:
+      - "site/**"
 
 # Cancel a superseded run when a newer commit or body edit lands on the same PR.
 concurrency:

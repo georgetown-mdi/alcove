@@ -1,6 +1,6 @@
 // @ts-check
-// The project site, built by VitePress from the Markdown under docs/ and a few
-// files at the repository root, in place: `npm run site:build` writes
+// The project site, built by VitePress from the Markdown under docs/ and site/
+// and a few files at the repository root, in place: `npm run site:build` writes
 // docs/.vitepress/dist, which site_deploy.yaml (the staging preview) and
 // site_publish.yaml (production) upload to Cloudflare Pages.
 // What the site is and how it deploys: docs/DEPLOYMENT.md, "The project site".
@@ -13,7 +13,6 @@ import { slugify } from "../../scripts/lib/markdownHeadings.mjs";
 import {
   GUIDE_INCLUDES,
   GUIDE_SECTIONS,
-  GUIDES_DIR,
   guideMarkdown,
   guidePageData,
   guideRewrites,
@@ -24,10 +23,14 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const REPOSITORY_URL = "https://github.com/georgetown-mdi/alcove";
 const WEB_APP_URL = "https://psi.data-bridge.org/";
 
-// The repository-root documents the site publishes beside docs/. Every other
-// root entry is excluded, so a new top-level file or directory stays off the
-// site until it is named here and in site_deploy.yaml's path filters, which
-// scripts/site-deploy-trigger.test.mjs holds.
+// The repository-root directories the site publishes: the documentation and
+// the project pages.
+export const SOURCE_DIRECTORIES = ["docs", "site"];
+
+// The repository-root documents the site publishes beside those directories.
+// Every other root entry is excluded, so a new top-level file or directory
+// stays off the site until it is named here and in site_deploy.yaml's path
+// filters, which scripts/site-deploy-trigger.test.mjs holds.
 export const ROOT_PAGES = [
   "CHANGELOG.md",
   "CONTRIBUTING.md",
@@ -38,13 +41,17 @@ export const ROOT_PAGES = [
 ];
 
 const srcExclude = readdirSync(repoRoot, { withFileTypes: true })
-  .filter((entry) => entry.name !== "docs" && !ROOT_PAGES.includes(entry.name))
+  .filter(
+    (entry) =>
+      !SOURCE_DIRECTORIES.includes(entry.name) &&
+      !ROOT_PAGES.includes(entry.name),
+  )
   .map((entry) => (entry.isDirectory() ? `${entry.name}/**` : entry.name))
   .concat(["**/node_modules/**", "docs/.vitepress/**", GUIDE_INCLUDES]);
 
-// The guides are served at the site root, the overview beside the
-// documentation index, and each directory's README at the directory's own
-// address.
+// The project pages and the guides are served at the site root, the overview
+// beside the documentation index, and each directory's README at the
+// directory's own address.
 const REWRITES = {
   ...guideRewrites(),
   "docs/index.md": "docs/overview.md",
@@ -59,7 +66,8 @@ const toPosix = (path) => path.split(sep).join(posix.sep);
 function isSitePage(path) {
   return (
     path.endsWith(".md") &&
-    (ROOT_PAGES.includes(path) || path.startsWith("docs/")) &&
+    (ROOT_PAGES.includes(path) ||
+      SOURCE_DIRECTORIES.some((dir) => path.startsWith(`${dir}/`))) &&
     existsSync(resolve(repoRoot, path))
   );
 }
@@ -213,10 +221,12 @@ export default {
   themeConfig: {
     search: { provider: "local" },
     // The reference pages' title leads to the documentation index; the nav's
-    // Guides entry is their one link to the guides.
+    // Home and Guides entries are their links to the project pages and the
+    // guides.
     logoLink: "/docs/",
     nav: [
-      { text: "Guides", link: "/" },
+      { text: "Home", link: "/" },
+      { text: "Guides", link: "/guides" },
       { text: "Changelog", link: "/CHANGELOG" },
       { text: "Security", link: "/SECURITY" },
       { text: "Web app", link: WEB_APP_URL },
@@ -224,14 +234,15 @@ export default {
     socialLinks: [{ icon: "github", link: REPOSITORY_URL }],
     repositoryUrl: REPOSITORY_URL,
     webAppUrl: WEB_APP_URL,
-    // The guides' own menu, drawn by theme/GuideLayout.mjs.
+    // The menu of the guides and the project pages, drawn by
+    // theme/GuideLayout.mjs.
     guideSections: GUIDE_SECTIONS.map(({ group, topNav = true, pages }) => ({
       group,
       topNav,
-      pages: pages.map(([stem, title]) => ({
-        stem,
+      pages: pages.map(([path, title]) => ({
+        path,
         title,
-        link: page(title, `${GUIDES_DIR}${stem}.md`).link,
+        link: page(title, path).link,
       })),
     })),
     sidebar: [

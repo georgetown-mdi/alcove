@@ -1,11 +1,12 @@
 // @ts-check
-// The markup the guides under docs/guides/ are written in, rendered for the
-// project site: a `::: tabs <group>` switcher with `== <name>` pane lines, step
-// headings (`### N. <text>`) drawn as a timeline with the acting party's mark,
-// `Screen:`, `You should see:` and `More detail:` paragraphs, the choice and
-// "What you get" tables, the page ledger built from the front matter, the home
-// page's landing and the About page's person rows. Only pages under
-// docs/guides/ are touched; every other page renders as before.
+// The markup the guides under docs/guides/ and the project pages under site/
+// are written in, rendered for the project site: a `::: tabs <group>` switcher
+// with `== <name>` pane lines, step headings (`### N. <text>`) drawn as a
+// timeline with the acting party's mark, `Screen:`, `You should see:` and
+// `More detail:` paragraphs, the choice and "What you get" tables, the page
+// ledger built from the front matter, the home page's landing, the guides'
+// chooser and the About page's person rows. Only pages under those two
+// directories are touched; every other page renders in the default theme.
 
 import { readdirSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
@@ -17,75 +18,116 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const GUIDES_DIR = "docs/guides/";
 
 /**
+ * The directory of the project pages -- home, who it is for, about and
+ * contact -- relative to the repository root.
+ */
+export const SITE_DIR = "site/";
+
+/**
  * The files in GUIDES_DIR that are text the guides include
  * (`<!--@include: ./_name.md#region-->`), not pages.
  */
 export const GUIDE_INCLUDES = `${GUIDES_DIR}_*.md`;
 const isGuideInclude = (name) => name.startsWith("_");
-const HOME = `${GUIDES_DIR}index.md`;
-const ABOUT = `${GUIDES_DIR}about.md`;
+const HOME = `${SITE_DIR}index.md`;
+const GUIDES_HOME = `${GUIDES_DIR}index.md`;
+const ABOUT = `${SITE_DIR}about.md`;
+
+/** The address the guides' home page is served at, without the leading `/`. */
+const GUIDES_HOME_ADDRESS = "guides.md";
+
+const guide = (stem) => `${GUIDES_DIR}${stem}.md`;
+const sitePage = (stem) => `${SITE_DIR}${stem}.md`;
 
 /**
- * The guides' menu: each group's pages in order, by file stem and title. A
- * group with `topNav: false` is left out of the top bar.
+ * The menu: each group's pages in order, by repository path and title. A group
+ * with `topNav: false` is left out of the top bar.
  */
 export const GUIDE_SECTIONS = [
   {
     group: "Start",
     topNav: false,
     pages: [
-      ["index", "Home"],
-      ["agree-on-terms", "Agree on terms"],
+      [HOME, "Home"],
+      [GUIDES_HOME, "Choose a guide"],
+      [guide("agree-on-terms"), "Agree on terms"],
     ],
   },
   {
     group: "Web app",
     pages: [
-      ["web-invite", "Invite with the web app"],
-      ["web-accept", "Accept with the web app"],
-      ["web-schedule", "Run it on a schedule"],
+      [guide("web-invite"), "Invite with the web app"],
+      [guide("web-accept"), "Accept with the web app"],
+      [guide("web-schedule"), "Run it on a schedule"],
     ],
   },
   {
     group: "Console",
     pages: [
-      ["console-start", "Start the console"],
-      ["console-invite", "Invite from the console"],
-      ["console-accept", "Accept in the console"],
-      ["console-schedule", "Move it to a schedule"],
+      [guide("console-start"), "Start the console"],
+      [guide("console-invite"), "Invite from the console"],
+      [guide("console-accept"), "Accept in the console"],
+      [guide("console-schedule"), "Move it to a schedule"],
     ],
   },
   {
     group: "Command line",
     pages: [
-      ["cli-install", "Install and run"],
-      ["cli-invite", "Invite a partner"],
-      ["cli-accept", "Accept an invitation"],
-      ["cli-schedule", "Schedule it"],
-      ["cli-other", "Other ways to exchange"],
+      [guide("cli-install"), "Install and run"],
+      [guide("cli-invite"), "Invite a partner"],
+      [guide("cli-accept"), "Accept an invitation"],
+      [guide("cli-schedule"), "Schedule it"],
+      [guide("cli-other"), "Other ways to exchange"],
     ],
   },
-  { group: "About", pages: [["about", "About"]] },
+  {
+    group: "About",
+    pages: [
+      [ABOUT, "About"],
+      [sitePage("who-it-is-for"), "Who it is for"],
+      [sitePage("contact"), "Contact"],
+    ],
+  },
 ];
 
+/** The Markdown pages directly in a directory, relative to the repository root. */
+function pagesIn(dir) {
+  return readdirSync(resolve(repoRoot, dir))
+    .filter((name) => name.endsWith(".md") && !isGuideInclude(name))
+    .map((name) => ({ path: `${dir}${name}`, name }));
+}
+
 /**
- * Each guide is served at the site root under its file stem, the home page at
- * the root itself: a VitePress rewrite for every Markdown page in GUIDES_DIR.
+ * Each guide and each project page is served at the site root under its file
+ * stem, the home page at the root itself and the guides' home page at
+ * `/guides`: a VitePress rewrite for every Markdown page in GUIDES_DIR and
+ * SITE_DIR. Two pages given one address throw.
  * @returns {Record<string, string>}
  */
 export function guideRewrites() {
-  return Object.fromEntries(
-    readdirSync(resolve(repoRoot, GUIDES_DIR))
-      .filter((name) => name.endsWith(".md") && !isGuideInclude(name))
-      .map((name) => [`${GUIDES_DIR}${name}`, name]),
+  const rewrites = Object.fromEntries(
+    [...pagesIn(GUIDES_DIR), ...pagesIn(SITE_DIR)].map(({ path, name }) => [
+      path,
+      path === GUIDES_HOME ? GUIDES_HOME_ADDRESS : name,
+    ]),
   );
+  const byAddress = new Map();
+  for (const [path, address] of Object.entries(rewrites)) {
+    const other = byAddress.get(address);
+    if (other) {
+      throw new Error(
+        `${other} and ${path} would both be served at /${address.replace(/\.md$/, "")}. Rename one of them.`,
+      );
+    }
+    byAddress.set(address, path);
+  }
+  return rewrites;
 }
 
-/** The menu group a guide is listed under, if any. */
+/** The menu group a page is listed under, if any. */
 function groupOf(path) {
-  const stem = path.slice(GUIDES_DIR.length).replace(/\.md$/, "");
   return GUIDE_SECTIONS.find((section) =>
-    section.pages.some(([page]) => page === stem),
+    section.pages.some(([page]) => page === path),
   )?.group;
 }
 
@@ -122,8 +164,14 @@ function pagePath(env) {
     : undefined;
 }
 
+/** Whether a repository-relative path is a page drawn in the guide layout. */
+function isGuideLayoutPage(path) {
+  return path.startsWith(GUIDES_DIR) || path.startsWith(SITE_DIR);
+}
+
 function isGuide(env) {
-  return pagePath(env)?.startsWith(GUIDES_DIR) ?? false;
+  const path = pagePath(env);
+  return path !== undefined && isGuideLayoutPage(path);
 }
 
 /** The plain text of an inline token, without its emphasis markup. */
@@ -250,9 +298,9 @@ function markParagraphs(state) {
 
 // Every table is wrapped so it scrolls on its own. One headed `Option` or
 // `Default option` is a choice table, its `Usual:` row marked; one headed
-// `File` is a "What you get" table, its private rows marked. The home page's
-// first table is the chooser.
-function markTables(state, isHome) {
+// `File` is a "What you get" table, its private rows marked. The guides' home
+// page's first table is the chooser.
+function markTables(state, isGuidesHome) {
   const { tokens } = state;
   const wraps = [];
   for (let index = 0; index < tokens.length; index++) {
@@ -276,7 +324,7 @@ function markTables(state, isHome) {
           : undefined;
     const classes = ["guide-table"];
     if (kind) classes.push(`guide-${kind}`);
-    if (isHome && wraps.length === 0) classes.push("guide-chooser");
+    if (isGuidesHome && wraps.length === 0) classes.push("guide-chooser");
     wraps.push({ open: index, close, classes });
     if (!kind) continue;
     let rowCells = [];
@@ -492,7 +540,7 @@ function aboutLayout(state) {
   state.tokens = out;
 }
 
-// The figure beside the home page's chooser: two files, the rows they share
+// The figure beside the home page's title: two files, the rows they share
 // joined through the encrypted comparison between them.
 function figureSvg() {
   const rowsLeft = [92, 70, 104, 58, 84, 76];
@@ -580,7 +628,7 @@ function ledgerHtml(state, md, group) {
 // Above the title, the page's group; the paragraph under the title is its
 // lede, and below that the ledger, shown there only on a narrow screen. The
 // ledger's HTML is kept in the front matter for the layout's ledger column.
-// The home page's title, lede and chooser sit beside the figure instead.
+// The home page's title and lede sit beside the figure instead.
 function insertHeader(state, md, path) {
   const { tokens } = state;
   const title = tokens.findIndex(
@@ -594,12 +642,7 @@ function insertHeader(state, md, path) {
     after += 3;
   }
   if (path === HOME) {
-    const tableClose = tokens.findIndex(
-      (token, index) =>
-        index > title && token.type === "table_close" && token.level === 0,
-    );
-    const end = tableClose === -1 ? after : tableClose + 2;
-    tokens.splice(end, 0, htmlBlock(state, `</div>\n${figureSvg()}\n</div>\n`));
+    tokens.splice(after, 0, htmlBlock(state, `</div>\n${figureSvg()}\n</div>\n`));
     tokens.splice(
       title,
       0,
@@ -657,7 +700,7 @@ export function guideMarkdown(md) {
     if (state.inlineMode || !isGuide(state.env)) return;
     const path = pagePath(state.env) ?? "";
     markParagraphs(state);
-    markTables(state, path === HOME);
+    markTables(state, path === GUIDES_HOME);
     wrapSteps(state);
     if (path === ABOUT) aboutLayout(state);
     insertHeader(state, md, path);
@@ -665,19 +708,19 @@ export function guideMarkdown(md) {
 }
 
 /**
- * Page data for a guide: the `guide` front-matter entry the guide layout is
- * drawn from, holding the page's group and its ledger. The `next` row is the
- * guide's own and shown in its ledger.
+ * Page data for a page in the guide layout: the `guide` front-matter entry the
+ * layout is drawn from, holding the page's path, group, class and ledger. The
+ * `next` row is the guide's own and shown in its ledger.
  */
 export function guidePageData(pageData) {
   const source = pageData.filePath ?? pageData.relativePath;
-  if (!source.startsWith(GUIDES_DIR)) return;
+  if (!isGuideLayoutPage(source)) return;
   const { guideLedger, ...frontmatter } = pageData.frontmatter;
   delete frontmatter.next;
-  const stem = source.slice(GUIDES_DIR.length).replace(/\.md$/, "");
   frontmatter.guide = {
-    stem,
+    path: source,
     group: groupOf(source) ?? "",
+    pageClass: source === ABOUT ? "about" : "",
     ledger: typeof guideLedger === "string" ? guideLedger : "",
   };
   pageData.frontmatter = frontmatter;
