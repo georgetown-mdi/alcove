@@ -8,7 +8,7 @@ _Status: proposal, agent-written; nothing is moved, and the layout waits on the
 maintainer's ruling. It weighs where the project site's pages, guides and
 build configuration live, against the repository documentation the site also
 renders. What the site is and how it deploys:
-[DEPLOYMENT.md](../DEPLOYMENT.md#the-project-site)._
+[infra/hosted/README.md](../../infra/hosted/README.md#the-project-site)._
 
 Every count below was measured at `origin/staging` 837cde344 on 2026-11-10.
 
@@ -90,7 +90,7 @@ driven here.
     `docs/`. Its test uses about 15 fixture paths.
 - **Docs:**
   - `CONTRIBUTING.md` (the layout table, `site:build`).
-  - `docs/DEPLOYMENT.md` (The project site).
+  - `infra/hosted/README.md` (The project site).
   - `docs/RELEASES.md` step 11, whose compare command the test holds to
     `REVIEW_PATHS`.
   - `docs/README.md` (the Guides heading).
