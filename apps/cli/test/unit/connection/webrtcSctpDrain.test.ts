@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 
+import { ConnectionError } from "@alcove/core";
+
 import {
+  assertSctpDrainSupported,
   sctpOutboundAcknowledged,
   sctpOutboundTransmitted,
 } from "../../../src/connection/webrtc/weriftPeer";
@@ -91,3 +94,50 @@ test.each([
     expect(sctpOutboundTransmitted(peer)).toBe(true);
   },
 );
+
+// --- channel-open assertion: the queue shape ----------------------------------
+
+const ABSENT = Symbol("absent");
+
+function queuesPeer(outboundQueue: unknown, sentQueue: unknown) {
+  const association: Record<string, unknown> = {};
+  if (outboundQueue !== ABSENT) association.outboundQueue = outboundQueue;
+  if (sentQueue !== ABSENT) association.sentQueue = sentQueue;
+  return fakePeer({ sctp: association });
+}
+
+const UNREADABLE_QUEUES: ReadonlyArray<[string, unknown]> = [
+  ["absent", ABSENT],
+  ["null", null],
+  ["a string", "not an array"],
+  ["an object with no length", {}],
+  ["an object with a non-numeric length", { length: "0" }],
+];
+
+test.each(UNREADABLE_QUEUES)(
+  "assertSctpDrainSupported throws when outboundQueue is %s",
+  (_label, bad) => {
+    expect(() => assertSctpDrainSupported(queuesPeer(bad, []))).toThrow(
+      ConnectionError,
+    );
+  },
+);
+
+test.each(UNREADABLE_QUEUES)(
+  "assertSctpDrainSupported throws when sentQueue is %s",
+  (_label, bad) => {
+    expect(() => assertSctpDrainSupported(queuesPeer([], bad))).toThrow(
+      ConnectionError,
+    );
+  },
+);
+
+test("assertSctpDrainSupported accepts two arrays", () => {
+  expect(() => assertSctpDrainSupported(queuesPeer([], []))).not.toThrow();
+});
+
+test("assertSctpDrainSupported accepts two objects with a numeric length", () => {
+  expect(() =>
+    assertSctpDrainSupported(queuesPeer({ length: 0 }, { length: 0 })),
+  ).not.toThrow();
+});
