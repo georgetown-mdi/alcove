@@ -316,7 +316,20 @@ export interface WebRtcPeerSession {
  * the checklist: docs/spec/DEPENDENCY_PINS.md.
  */
 interface SctpDrainInternals {
-  sctp: { sctp: { outboundQueue: Array<unknown>; sentQueue: Array<unknown> } };
+  sctp: { sctp: { outboundQueue: SctpQueue; sentQueue: SctpQueue } };
+}
+
+/** A werift SCTP queue: an array before 0.26.0, a `FifoQueue` from it. */
+interface SctpQueue {
+  readonly length: number;
+}
+
+function isSctpQueue(queue: unknown): queue is SctpQueue {
+  return (
+    typeof queue === "object" &&
+    queue !== null &&
+    typeof (queue as { length?: unknown }).length === "number"
+  );
 }
 
 /** Read the association's queues, or `undefined` if they are not as expected. */
@@ -327,8 +340,7 @@ function sctpQueues(
     ?.sctp;
   if (association === undefined) return undefined;
   const { outboundQueue, sentQueue } = association;
-  if (!Array.isArray(outboundQueue) || !Array.isArray(sentQueue))
-    return undefined;
+  if (!isSctpQueue(outboundQueue) || !isSctpQueue(sentQueue)) return undefined;
   return { outbound: outboundQueue.length, sent: sentQueue.length };
 }
 

@@ -32,6 +32,35 @@ test("a chunk sent but not yet acknowledged is transmitted but not acknowledged"
   expect(sctpOutboundTransmitted(peer)).toBe(true);
 });
 
+/** A stand-in for werift's `FifoQueue`: not an array, with a `length` getter. */
+function fifoQueue(length: number): { readonly length: number } {
+  return {
+    get length() {
+      return length;
+    },
+  };
+}
+
+test("non-array queues with a length are read by that length", () => {
+  const drained = fakePeer({
+    sctp: { outboundQueue: fifoQueue(0), sentQueue: fifoQueue(0) },
+  });
+  expect(sctpOutboundAcknowledged(drained)).toBe(true);
+  expect(sctpOutboundTransmitted(drained)).toBe(true);
+
+  const unacknowledged = fakePeer({
+    sctp: { outboundQueue: fifoQueue(0), sentQueue: fifoQueue(2) },
+  });
+  expect(sctpOutboundAcknowledged(unacknowledged)).toBe(false);
+  expect(sctpOutboundTransmitted(unacknowledged)).toBe(true);
+
+  const untransmitted = fakePeer({
+    sctp: { outboundQueue: fifoQueue(1), sentQueue: fifoQueue(0) },
+  });
+  expect(sctpOutboundAcknowledged(untransmitted)).toBe(false);
+  expect(sctpOutboundTransmitted(untransmitted)).toBe(false);
+});
+
 // --- queues unreadable: the stated fallback -----------------------------------
 //
 // `assertSctpDrainSupported` only confirms the queues are readable at channel
@@ -50,10 +79,15 @@ test("a missing inner sctp association is treated as fully acknowledged and tran
   expect(sctpOutboundTransmitted(peer)).toBe(true);
 });
 
-test("a queue field reshaped away from an array is treated as fully acknowledged and transmitted", () => {
-  const peer = fakePeer({
-    sctp: { outboundQueue: "not an array", sentQueue: [] },
-  });
-  expect(sctpOutboundAcknowledged(peer)).toBe(true);
-  expect(sctpOutboundTransmitted(peer)).toBe(true);
-});
+test.each([
+  ["a string", "a string has a length"],
+  ["an object with no length", {}],
+  ["an object with a non-numeric length", { length: "0" }],
+])(
+  "a queue field that is %s is treated as fully acknowledged and transmitted",
+  (_label, outboundQueue) => {
+    const peer = fakePeer({ sctp: { outboundQueue, sentQueue: [] } });
+    expect(sctpOutboundAcknowledged(peer)).toBe(true);
+    expect(sctpOutboundTransmitted(peer)).toBe(true);
+  },
+);
