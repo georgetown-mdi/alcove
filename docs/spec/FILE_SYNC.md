@@ -501,7 +501,7 @@ Measured 2026-09-30 in the development container: aarch64 Linux, 10 CPUs, 23 GB 
 | Setup decoded and held | 378 | 45 MB | 6, from 2^20 to 2^24 |
 | Worker V8 heap, joiner full round | 709 | 298 MB | 3 |
 | Single-pass sender's own setup, its creation's peak | 884 | none | 7, from 2^20 to 2^24 |
-| Single-pass sender's own setup, what it adds to masking a 140,000,002-byte request | 398 | none | 7, from 2^20 to 2^24 |
+| Single-pass sender's own setup, what it adds to masking a 140,000,002-byte request | 395 | none | 7, from 2^20 to 2^24 |
 
 The last two rows were measured on 2026-11-10 under Node v26.13.0, and each is the largest figure measured, not a slope ([The sender's own setup](#the-senders-own-setup), which also gives the WebAssembly library's figures).
 
@@ -651,8 +651,8 @@ On each library the largest figure is at the smallest of these requests, 35,000,
 
 A single-pass sender masks its own values into a setup (`createServerSetup`) before it reads the partner's request, and holds the setup until it sends its reply. The terms-exchange check charges the sender the larger of two figures, `slots` its own value slots, the most elements its setup can hold (`singlePassOwnSetupBytes`, `apps/cli/src/psiMemoryBudget.ts`):
 
-- **The setup's creation.** `b * slots` bytes, `b` the build peak below: 884 on the native library and 865 on the WebAssembly library.
-- **The masking beside it.** The request charge plus `m * slots` bytes, `m` the masking increment below: 398 on the native library and 132 on the WebAssembly library.
+- **The setup's creation.** `b * slots` bytes, `b` the build peak below: 884 on the native library and 824 on the WebAssembly library.
+- **The masking beside it.** The request charge plus `m * slots` bytes, `m` the masking increment below: 395 on the native library and 60 on the WebAssembly library.
 
 Each figure is the largest measured on its library, rounded up, and the check takes the figures of the library the run loaded: the native addon, or the WebAssembly build the CLI falls back to where no native build loads (`loadCliPsiBackend`, `apps/cli/src/psiBackend.ts`).
 
@@ -671,19 +671,22 @@ On the native library, one run at a time, the lower of the two masking runs besi
 | 2,097,152 elements | 1 | 752.06 | 695.66 | 63.75 |
 | 4,194,304 elements | 1 | 798.40 | 691.71 | 38.89 |
 | 8,388,608 elements | 2 | 761.60 to 769.97 | 618.99 to 644.20 | 165.14 to 183.79 |
-| 16,777,216 elements | 2 | 688.05 to 763.40 | 626.57 to 630.21 | 267.11 to 397.15 |
+| 16,777,216 elements | 2 | 688.05 to 781.02 | 623.48 to 630.21 | 267.11 to 394.12 |
 
-On the WebAssembly library, up to four runs at a time, the lower of the two masking runs beside 1,000 values peaked 4,131,147,776 bytes above its baseline:
+On the WebAssembly library, one run at a time, the lower of the two masking runs beside 1,000 values peaked 4,104,970,240 bytes above its baseline:
 
 | Setup | Runs | Build peak per element | Held per element | Masking increment per element |
 | --- | --- | --- | --- | --- |
-| 1,048,576 elements | 2 | 819.43 to 821.89 | 683.78 to 695.11 | 1.11 to 131.50 |
-| 2,097,152 elements | 2 | 747.34 to 763.12 | 690.70 to 694.65 | 40.13 to 47.19 |
-| 4,194,304 elements | 2 | 771.25 to 864.77 | 693.65 to 707.71 | 36.29 to 65.74 |
+| 1,048,576 elements | 2 | 812.63 to 832.45 | 677.63 to 684.08 | 6.85 to 34.34 |
+| 2,097,152 elements | 2 | 802.70 to 807.88 | 696.91 to 704.40 | 12.75 to 32.50 |
+| 4,194,304 elements | 2 | 811.85 to 823.13 | 701.94 to 714.77 | 58.25 to 59.86 |
 
-The masking reuses the memory the setup holds. Beside the setups of 2^20 to 2^22 elements the masking raised the resident set above what the setup held; beside the native ones of 2^23 and 2^24 it never raised it, so its peak was what the setup held. The increment therefore grows with the setup against a fixed request, and was measured beside one request size only. The WebAssembly library was measured at 2^20 to 2^22 elements only, where the native increment was at most 166 bytes an element, against 398 at 2^24. On 2026-11-09, 11 earlier native runs at 2^20 to 2^23 elements peaked at 792 to 881 bytes an element in creation.
+The masking reuses the memory the setup holds. Beside the setups of 2^20 to 2^22 elements the masking raised the resident set above what the setup held; beside the native ones of 2^23 and 2^24 it never raised it, so its peak was what the setup held. The increment therefore grows with the setup against a fixed request, and was measured beside one request size only. The WebAssembly library was measured at 2^20 to 2^22 elements only, where the native increment was at most 166 bytes an element, against 395 at 2^24. On 2026-11-09, 11 earlier native runs at 2^20 to 2^23 elements peaked at 792 to 881 bytes an element in creation.
 
-During the second native run at 2^24 the container's free memory fell to 0.3 GB, with 6.2 GB still available to reclaim, and its swap use rose by 53 MB. While the first four WebAssembly runs masked side by side, its swap use rose by 302 MB.
+A high-water mark of the resident set does not count pages swapped out, so a run during which the container's swap use rose by more than 16 MB was left out and run once more:
+
+- **The WebAssembly runs.** Swap use did not rise during any of them.
+- **The native runs at 2^24.** Swap use rose during three of the four. The second of the first two, its build peak 763.40 and its masking increment 397.15 bytes an element, rose by 53 MB, with free memory down to 0.3 GB and 6.2 GB still available to reclaim, and is left out. Of two more, one rose by 68 MB and is left out, and the other, the 2^24 row's build peak of 781.02 and masking increment of 394.12, rose again, by 55 MB, and is kept: the native increment may read up to 3.3 bytes an element low.
 
 A smaller setup costs more an element: one of 100,000 elements peaked at 103,055,360 bytes in creation on the native library, 1,031 an element, about 15 MB more than the charge.
 
