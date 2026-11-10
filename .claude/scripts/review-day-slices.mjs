@@ -260,6 +260,7 @@ export const BOUNDARIES = [
 /** The reviewer-facing governance documents, all read when any is touched. */
 export const GOVERNANCE_DOCS = [
   "docs/COMPLIANCE.md",
+  "docs/INCIDENT_RESPONSE.md",
   "docs/SERVICE_FACT_SHEET.md",
   "docs/SHARED_RESPONSIBILITY.md",
   "docs/SECURITY_DESIGN.md",
