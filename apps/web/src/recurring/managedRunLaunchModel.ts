@@ -11,7 +11,9 @@
 
 import {
   RoundCapacityError,
+  isPartnerStopAtMatchingStart,
   isSetTooLargeError,
+  isShardStalled,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
 
@@ -34,9 +36,15 @@ import {
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
+  PARTNER_STOPPED_RESPONDING_TITLE,
+  PARTNER_STOP_AT_MATCHING_START_MESSAGE,
+  PARTNER_STOP_AT_MATCHING_START_TITLE,
   RAN_ELSEWHERE_IMPORT_REMEDY,
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
+  RECORDED_PARTNER_STOPPED_RESPONDING_MESSAGE,
   REINVITE_IF_RUNS_KEEP_FAILING,
+  SHARD_STALLED_MESSAGE,
+  SHARD_STALLED_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   STORAGE_FAILURE_TITLE,
   TERMS_CHANGE_FAILURE_TITLE,
@@ -157,8 +165,7 @@ export interface ManagedRunFailure {
   kind:
     | Exclude<ManagedFailureTier, "none">
     | BenignRerunOutcome
-    | "saved-address-refused"
-    | "partner-stopped-responding";
+    | "saved-address-refused";
   /** The surface title. */
   title: string;
   /** The operator-facing message. */
@@ -647,6 +654,35 @@ function partnerProtocolRefusalFailure(copy: {
   };
 }
 
+/** The recorded state of a run whose partner sent nothing for the
+ * partner-silence bound during matching: the live alert's copy, retried in
+ * place. */
+const RECORDED_PARTNER_STOPPED_RESPONDING_FAILURE: ManagedRunFailure = {
+  kind: "partner-stopped-responding",
+  title: PARTNER_STOPPED_RESPONDING_TITLE,
+  message: RECORDED_PARTNER_STOPPED_RESPONDING_MESSAGE,
+  recovery: "retry",
+};
+
+/** The state of a run whose split encryption stopped on a PSI worker that
+ * reported no progress, live or recorded: retried in place. */
+const SHARD_STALLED_FAILURE: ManagedRunFailure = {
+  kind: "shard-stalled",
+  title: SHARD_STALLED_TITLE,
+  message: SHARD_STALLED_MESSAGE,
+  recovery: "retry",
+};
+
+/** The state of a run refused because its partner's first message of matching
+ * was its local-fault abort, live or recorded: settled with the partner, as
+ * the protocol refusal it is raised as. */
+const PARTNER_STOP_AT_MATCHING_START_FAILURE: ManagedRunFailure = {
+  kind: "partner-stop-at-matching-start",
+  title: PARTNER_STOP_AT_MATCHING_START_TITLE,
+  message: PARTNER_STOP_AT_MATCHING_START_MESSAGE,
+  recovery: "ask-partner",
+};
+
 /** {@link partnerProtocolRefusalFailure} read back from the record. */
 const RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE = partnerProtocolRefusalFailure(
   {
@@ -868,6 +904,12 @@ export function managedRunTierFailure(
       return PARTNER_REFUSED_TERMS_FAILURE;
     case "partner-protocol-refusal":
       return RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE;
+    case "partner-stop-at-matching-start":
+      return PARTNER_STOP_AT_MATCHING_START_FAILURE;
+    case "partner-stopped-responding":
+      return RECORDED_PARTNER_STOPPED_RESPONDING_FAILURE;
+    case "shard-stalled":
+      return SHARD_STALLED_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(record.lastRun ?? {});
     case "custody-unreadable":
@@ -984,6 +1026,9 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "partner-storage": "none",
   "partner-refused-terms": "alert-copy",
   "partner-protocol-refusal": "none",
+  "partner-stop-at-matching-start": "none",
+  "partner-stopped-responding": "none",
+  "shard-stalled": "none",
   expired: "none",
   input: "none",
   missed: "none",
@@ -1043,6 +1088,8 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
 > = {
   transport: "attributed",
   "partner-stopped-responding": "withheld",
+  "partner-stop-at-matching-start": "withheld",
+  "shard-stalled": "withheld",
   "partner-refused-terms": "attributed",
   "partner-protocol-refusal": "attributed",
   "custody-unreadable": "withheld",
@@ -1107,9 +1154,11 @@ export function withShownCause(
  * partner-influenced. Any other failure is tiered from the record's own
  * bookkeeping: {@link deriveManagedFailureTier} reads the tier and {@link
  * managedRunTierFailure} maps it to copy. `now` and `local` feed that
- * derivation (expiry and the import marker). The transport tier of an error
- * holding core's `partner-stopped-responding` cause takes that cause's copy
- * ({@link partnerStoppedRespondingCopy}); the record holds it as `transport`.
+ * derivation (expiry and the import marker). An error holding core's
+ * `partner-stopped-responding` cause takes that cause's copy
+ * ({@link partnerStoppedRespondingCopy}), with the wait it reached, and a
+ * stalled split whose record did not take its stamp takes its own
+ * ({@link SHARD_STALLED_FAILURE}).
  *
  * A derived tier reads the record reloaded after the run (`records.afterRun`),
  * since it rests on what THIS run stamped. The no-show rests on what stood
@@ -1203,6 +1252,8 @@ function classifyLaunchState(
     case "partner-refused-terms":
       return PARTNER_REFUSED_TERMS_FAILURE;
     case "partner-protocol-refusal":
+      if (isPartnerStopAtMatchingStart(error))
+        return PARTNER_STOP_AT_MATCHING_START_FAILURE;
       return partnerProtocolRefusalFailure(partnerProtocolRefusalCopy(error));
     case "relay-registration":
       return relayRegistrationFailure(error);
@@ -1228,14 +1279,19 @@ function classifyLaunchState(
     return STORAGE_NEXT_RUN_HEALS_FAILURE;
   const shownTier =
     dataExchangeStarted && attestsNonDisclosure(tier) ? "transport" : tier;
-  const stoppedResponding =
-    shownTier === "transport" ? partnerStoppedRespondingCopy(error) : undefined;
+  const liveTransport =
+    shownTier === "transport" || shownTier === "partner-stopped-responding";
+  const stoppedResponding = liveTransport
+    ? partnerStoppedRespondingCopy(error)
+    : undefined;
   if (stoppedResponding !== undefined)
     return {
       kind: "partner-stopped-responding",
       ...stoppedResponding,
       recovery: "retry",
     };
+  if (shownTier === "transport" && isShardStalled(error))
+    return SHARD_STALLED_FAILURE;
   return managedRunTierFailure(shownTier, afterRun, local, now);
 }
 

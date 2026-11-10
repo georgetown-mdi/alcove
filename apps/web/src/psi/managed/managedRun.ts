@@ -27,9 +27,12 @@ import {
   RoundCapacityError,
   TermsChangeRefusedError,
   classifyFailure,
+  failureCauseOf,
   handshakeRoleForRendezvousRole,
   isPartnerProtocolRefusal,
+  isPartnerStopAtMatchingStart,
   isSetTooLargeError,
+  isShardStalled,
   isTrustBoundaryFailure,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
@@ -458,12 +461,17 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * `"partner"`) records `partner-refused-terms`: the same terms refuse
  * identically until the two parties agree on them. `aborted` then records
  * `cancelled`, before this party's refusal of what the partner sent
- * ({@link isPartnerProtocolRefusal}), which records
- * `partner-protocol-refusal`: a stopped run's teardown can cut a frame short
- * and raise that refusal. A trust-boundary failure
+ * ({@link isPartnerProtocolRefusal}): a stopped run's teardown can cut a frame
+ * short and raise that refusal. The refusal of a partner's local-fault abort
+ * as matching started ({@link isPartnerStopAtMatchingStart}) records
+ * `partner-stop-at-matching-start`, and any other refusal records
+ * `partner-protocol-refusal`. A trust-boundary failure
  * ({@link isTrustBoundaryFailure} of {@link classifyFailure}) before the data
- * exchange began records `auth`. Everything else -- including any of these
- * once the data exchange began -- records `transport`.
+ * exchange began records `auth`. A failure holding core's
+ * `partner-stopped-responding` cause records `partner-stopped-responding`, and
+ * a stalled split ({@link isShardStalled}) records `shard-stalled`. Everything
+ * else -- including the three kinds below once the data exchange began --
+ * records `transport`.
  *
  * `terms-shortfall`, `auth`, and `missed` require `!dataExchangeStarted`: each
  * tells the operator nothing left this device. Every outcome here is `failed`
@@ -519,10 +527,15 @@ export function rerunFailureLastRun(
   if (termsDifferenceRefusedBy(error) === "partner")
     return failedRun(at, "failed", "partner-refused-terms");
   if (aborted) return failedRun(at, "failed", "cancelled");
+  if (isPartnerStopAtMatchingStart(error))
+    return failedRun(at, "failed", "partner-stop-at-matching-start");
   if (isPartnerProtocolRefusal(error))
     return failedRun(at, "failed", "partner-protocol-refusal");
   if (isTrustBoundaryFailure(classifyFailure(error)) && !dataExchangeStarted)
     return failedRun(at, "failed", "auth");
+  if (failureCauseOf(error)?.kind === "partner-stopped-responding")
+    return failedRun(at, "failed", "partner-stopped-responding");
+  if (isShardStalled(error)) return failedRun(at, "failed", "shard-stalled");
   return failedRun(at, "failed", "transport");
 }
 

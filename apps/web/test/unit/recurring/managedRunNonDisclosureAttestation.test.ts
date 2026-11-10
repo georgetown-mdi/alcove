@@ -94,6 +94,15 @@ const TIER_EVIDENCE: Record<
     record({ lastRun: failed("partner-protocol-refusal") }),
     undefined,
   ],
+  "partner-stop-at-matching-start": [
+    record({ lastRun: failed("partner-stop-at-matching-start") }),
+    undefined,
+  ],
+  "partner-stopped-responding": [
+    record({ lastRun: failed("partner-stopped-responding") }),
+    undefined,
+  ],
+  "shard-stalled": [record({ lastRun: failed("shard-stalled") }), undefined],
   "custody-unreadable": [
     record({ lastRun: failed("custody-unreadable") }),
     undefined,

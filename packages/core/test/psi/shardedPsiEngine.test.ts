@@ -8,6 +8,7 @@ import { countDeclaredPsiElements } from "../../src/connection/psiElementScan";
 import {
   InternalConsistencyError,
   PartnerProtocolRefusalError,
+  ShardStalledError,
 } from "../../src/errors";
 import {
   drawUniformPermutation,
@@ -764,7 +765,7 @@ describe("the shard progress timeout", () => {
       primary.report?.(1);
       await vi.advanceTimersByTimeAsync(1);
       expect(await outcome).toEqual(
-        new Error(
+        new ShardStalledError(
           "Encrypting the data made no progress for 1 minute. Run the exchange again.",
         ),
       );

@@ -390,13 +390,18 @@ sooner. One fires for each of these:
 - **The partner's data did not follow the exchange protocol** (see [Partner data
   that does not follow the
   protocol](#partner-data-that-does-not-follow-the-protocol)).
+- **Your partner's run stopped as matching started** (see [Partner data that
+  does not follow the
+  protocol](#partner-data-that-does-not-follow-the-protocol)).
 - **A run failed with no benign explanation**, which needs your out-of-band
   confirmation (see [Telling a desync from an
   attack](#telling-a-desync-from-an-attack)).
 
 The seven conditions from your partner's terms change to the protocol failure recur
 at every window until you act, or, for your partner's failed save, leave every
-window unable to reach your partner, so none is offered as retryable. A missing or
+window unable to reach your partner, so none is offered as retryable. Nor is
+your partner's run stopping as matching started: you both make sure you run the
+current version of Alcove before the exchange runs again. A missing or
 rejected input file is offered as retryable: put the file in place, or replace
 a rejected one with a file whose columns satisfy the terms, then try again.
 
@@ -574,6 +579,12 @@ different protocol versions it says so, naming which runs the older one where it
 can tell. The next visit and the notification say to check with the partner
 which version each runs, and that whoever runs the older one updates it. The run
 history states the same uncertain disclosure line as above.
+
+A partner whose run stopped as matching started is a state of its own: the run
+screen, the next visit, and the notification say that the partner's run stopped,
+and to make sure you both run the current version of Alcove, then run the
+exchange again. No retry is offered, and the run history states the same
+uncertain disclosure line.
 
 #### An input that has not changed since the last run
 

@@ -5,6 +5,7 @@ import {
   ConnectionError,
   InternalConsistencyError,
   OperatorConfigError,
+  PartnerProtocolRefusalError,
   PeerAbortError,
   ProtocolRefusalError,
   UsageError,
@@ -13,13 +14,17 @@ import {
   classifyFailure,
   firstLinkBehindTransportWraps,
   isPartnerNextSecretStoreFailure,
+  isPartnerStopAtMatchingStart,
+  isShardStalled,
   isTrustBoundaryFailure,
   type FailureClass,
 } from "../src/failureClass";
 import {
+  LOCAL_FAULT_ABORT_REASON,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "../src/partnerAbortFrame";
+import { shardStalledError } from "../src/psi/shardedPsiEngine";
 import { ReceiptVerificationError } from "../src/records/signedReceipt";
 import { MAX_ERROR_CAUSE_DEPTH } from "../src/utils/sanitizeErrorForDisplay";
 
@@ -220,5 +225,50 @@ describe("isPartnerNextSecretStoreFailure", () => {
     ],
   ])("does not hold for %s", (_name, err) => {
     expect(isPartnerNextSecretStoreFailure(err())).toBe(false);
+  });
+});
+
+describe("isPartnerStopAtMatchingStart", () => {
+  const refusal = (cause?: unknown) =>
+    new PartnerProtocolRefusalError("refused", { cause });
+
+  test("holds for a partner refusal holding the partner's local-fault abort, bare or behind transport wraps", () => {
+    const stop = () =>
+      refusal(new PeerAbortError(undefined, LOCAL_FAULT_ABORT_REASON));
+    expect(isPartnerStopAtMatchingStart(stop())).toBe(true);
+    expect(isPartnerStopAtMatchingStart(behindTransportWraps(2, stop()))).toBe(
+      true,
+    );
+  });
+
+  test.each([
+    ["a partner refusal with no cause", () => refusal()],
+    [
+      "a partner refusal holding another abort",
+      () =>
+        refusal(new PeerAbortError(undefined, PSI_SET_TOO_LARGE_ABORT_REASON)),
+    ],
+    [
+      "the local-fault abort itself",
+      () => new PeerAbortError(undefined, LOCAL_FAULT_ABORT_REASON),
+    ],
+  ])("does not hold for %s", (_name, err) => {
+    expect(isPartnerStopAtMatchingStart(err())).toBe(false);
+  });
+});
+
+describe("isShardStalled", () => {
+  test("holds for a stalled split, bare or behind transport wraps, and classifies as unavailable", () => {
+    expect(isShardStalled(shardStalledError(60_000))).toBe(true);
+    expect(isShardStalled(behindTransportWraps(2, shardStalledError(1)))).toBe(
+      true,
+    );
+    expect(classifyFailure(shardStalledError(60_000))).toBe("unavailable");
+  });
+
+  test("does not hold for a plain error holding its message", () => {
+    expect(isShardStalled(new Error(shardStalledError(60_000).message))).toBe(
+      false,
+    );
   });
 });

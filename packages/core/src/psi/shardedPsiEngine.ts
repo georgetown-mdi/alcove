@@ -1,7 +1,11 @@
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import { countDeclaredPsiElements } from "../connection/psiElementScan";
-import { InternalConsistencyError, markPsiLibraryFailure } from "../errors";
+import {
+  InternalConsistencyError,
+  markPsiLibraryFailure,
+  ShardStalledError,
+} from "../errors";
 import {
   appendChunkElements,
   buildRequest,
@@ -81,12 +85,12 @@ export interface ShardedPsiEngineOptions {
  * The failure of a split operation one of whose shards reported nothing for
  * `timeoutMs`.
  */
-export function shardStalledError(timeoutMs: number): Error {
+export function shardStalledError(timeoutMs: number): ShardStalledError {
   const minutes = timeoutMs / 60_000;
   const span = Number.isInteger(minutes)
     ? `${String(minutes)} minute${minutes === 1 ? "" : "s"}`
     : `${String(Math.ceil(timeoutMs / 1000))} seconds`;
-  return new Error(
+  return new ShardStalledError(
     `Encrypting the data made no progress for ${span}. Run the exchange again.`,
   );
 }

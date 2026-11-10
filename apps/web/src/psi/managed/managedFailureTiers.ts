@@ -47,6 +47,9 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"partner-protocol-refusal"` -- this party refused what the partner sent
  *   as not following the exchange protocol (the two parties compare their
  *   versions of Alcove).
+ * - `"partner-stop-at-matching-start"` -- the partner's first message of
+ *   matching was its local-fault abort (both run the current version, then
+ *   run again).
  * - `"missed"` -- the partner never arrived within the wait (the next window, or
  *   run again once the partner is ready).
  * - `"custody-unreadable"` -- the stored record could not be
@@ -59,6 +62,10 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"imported"` -- an import since the last success, read beside a
  *   failed-closed handshake or a no-show after the import (the newest copy,
  *   or re-invite).
+ * - `"partner-stopped-responding"` -- nothing arrived from the partner for the
+ *   partner-silence bound during matching (ask the partner, then retry).
+ * - `"shard-stalled"` -- a PSI worker of this browser's split encryption
+ *   reported no progress for its timeout (retry).
  * - `"transport"` -- a connection drop that is not a failed-closed handshake, or a
  *   cancelled run (retry).
  * - `"unexplained"` -- a failed-closed (`auth`) handshake with no benign
@@ -76,11 +83,14 @@ export type ManagedFailureTier =
   | "partner-storage"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
+  | "partner-stop-at-matching-start"
   | "custody-unreadable"
   | "missed"
   | "storage"
   | "partial-rotation"
   | "imported"
+  | "partner-stopped-responding"
+  | "shard-stalled"
   | "transport"
   | "unexplained"
   | "none";
@@ -302,6 +312,8 @@ function recordedFailureTier(
     return "partner-refused-terms";
   if (lastRun.failureKind === "partner-protocol-refusal")
     return "partner-protocol-refusal";
+  if (lastRun.failureKind === "partner-stop-at-matching-start")
+    return "partner-stop-at-matching-start";
   if (lastRun.failureKind === "custody-unreadable") return "custody-unreadable";
   if (lastRun.failureKind === "storage") return "storage";
 
@@ -310,6 +322,9 @@ function recordedFailureTier(
   if (lastRun.failureKind === "auth" && importedSinceLastSuccess(local))
     return "imported";
 
+  if (lastRun.failureKind === "partner-stopped-responding")
+    return "partner-stopped-responding";
+  if (lastRun.failureKind === "shard-stalled") return "shard-stalled";
   if (lastRun.failureKind === "transport") return "transport";
 
   if (lastRun.failureKind === "cancelled") return "transport";

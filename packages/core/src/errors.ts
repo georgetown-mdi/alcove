@@ -510,6 +510,19 @@ export class InternalConsistencyError extends Error {
 }
 
 /**
+ * The failure of a split PSI operation one of whose parts reported no progress
+ * for its timeout (`shardStalledError`, `psi/shardedPsiEngine.ts`). Classified
+ * as any unrecognized error is, so a run stopped on it is retried; its class
+ * is what lets a front end name the cause ({@link isShardStalled}).
+ */
+export class ShardStalledError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ShardStalledError";
+  }
+}
+
+/**
  * A refusal by the partner or the agreed terms: incompatible terms or protocol
  * version, a partner abort, or a frame or payload this party cannot read. A retry
  * reaches the same refusal; the CLI exits 76 (docs/CLI.md, Exit codes). A plain

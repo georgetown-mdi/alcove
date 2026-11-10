@@ -406,7 +406,7 @@ export function failureCauseError(cause: FailureCause): Error {
 
 /** The remedy for a partner that stopped responding during matching. */
 export const PARTNER_STOPPED_RESPONDING_REMEDY =
-  "Ask your partner to check their run, then start the exchange again.";
+  "Ask your partner to check their run, then run the exchange again.";
 
 /**
  * The `transport` failure a parked receive raises when the partner-silence

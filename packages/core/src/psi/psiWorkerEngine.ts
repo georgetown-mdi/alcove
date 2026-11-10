@@ -6,6 +6,7 @@ import {
   markPsiLibraryFailure,
   PartnerProtocolRefusalError,
   ProtocolRefusalError,
+  ShardStalledError,
 } from "../errors";
 import {
   InProcessPsiEngine,
@@ -130,6 +131,8 @@ export type PsiWorkerResponse =
        * with its {@link PartnerProtocolRefusalError.olderVersion}. */
       refusal?: WorkerRefusal;
       stopped?: boolean;
+      /** Whether the failure is a {@link ShardStalledError}, rebuilt as one. */
+      shardStalled?: boolean;
     };
 
 /**
@@ -486,6 +489,7 @@ export function servePsiEngine(
             libraryFailure: isPsiLibraryFailure(error),
             ...refusalOf(error),
             stopped: error instanceof PsiOperationStoppedError,
+            shardStalled: error instanceof ShardStalledError,
           }),
       );
   };
@@ -507,15 +511,18 @@ function refusalOf(error: unknown): { refusal?: WorkerRefusal } {
 
 // Rebuilds a failed reply into the error the host raises. Only the message
 // crosses the boundary, so a library failure is re-tagged here from the
-// reply's own flag, and a stop or a protocol refusal is rebuilt as the one it
-// was.
+// reply's own flag, and a stop, a stalled split or a protocol refusal is
+// rebuilt as the one it was.
 function rebuildWorkerFailure(response: {
   error: string;
   libraryFailure?: boolean;
   refusal?: WorkerRefusal;
   stopped?: boolean;
+  shardStalled?: boolean;
 }): Error {
   if (response.stopped === true) return new PsiOperationStoppedError();
+  if (response.shardStalled === true)
+    return new ShardStalledError(response.error);
   if (response.refusal?.kind === "partner-protocol")
     return new PartnerProtocolRefusalError(response.error, {
       olderVersion: response.refusal.olderVersion,

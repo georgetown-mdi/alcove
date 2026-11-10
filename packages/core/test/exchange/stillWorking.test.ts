@@ -19,7 +19,10 @@ import {
   SINGLE_CALL_ENVELOPE_VERSION,
 } from "../../src/connection/encryptedMessageConnection";
 import { failureCauseOf } from "../../src/failureCause";
-import { olderVersionOf } from "../../src/failureClass";
+import {
+  isPartnerStopAtMatchingStart,
+  olderVersionOf,
+} from "../../src/failureClass";
 import { runExchange } from "../../src/exchange";
 import {
   connectionLayer,
@@ -32,6 +35,7 @@ import { sendLocalFaultAbort, sendTermsAbort } from "../../src/protocolSetup";
 import {
   OLDER_PARTNER_AT_MATCHING_MESSAGE,
   PARTNER_SILENCE_BOUND_MS,
+  PARTNER_STOPPED_AT_MATCHING_MESSAGE,
   STILL_WORKING_FRAME,
   STILL_WORKING_INTERVAL_MS,
   isStillWorkingFrame,
@@ -472,16 +476,22 @@ describe("a partner on an older version", () => {
     expect(refused).toBeInstanceOf(PartnerProtocolRefusalError);
     expect((refused as Error).message).toBe(OLDER_PARTNER_AT_MATCHING_MESSAGE);
     expect(olderVersionOf(refused)).toBe("partner");
+    expect(isPartnerStopAtMatchingStart(refused)).toBe(false);
     expect(statesItsOwnNextStep(refused)).toBe(true);
   });
 
-  test("a partner whose first PSI-phase frame is its local-fault abort is refused as running an older version, the abort kept as the cause", async () => {
+  test("a partner whose first PSI-phase frame is its local-fault abort is refused naming no older party, the abort kept as the cause", async () => {
     const [local, partner] = createMessagePipe({ stillWorkingFrames: true });
     const layer = layerOver(local);
     await partner.send(decisionOnlyAbortFrame([LOCAL_FAULT_ABORT_REASON]));
     const refused = await layer.conn.receive().catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(PartnerProtocolRefusalError);
-    expect(olderVersionOf(refused)).toBe("partner");
+    expect((refused as Error).message).toBe(
+      PARTNER_STOPPED_AT_MATCHING_MESSAGE,
+    );
+    expect(olderVersionOf(refused)).toBeUndefined();
+    expect(isPartnerStopAtMatchingStart(refused)).toBe(true);
+    expect(statesItsOwnNextStep(refused)).toBe(true);
     expect((refused as Error).cause).toBeInstanceOf(PeerAbortError);
   });
 
