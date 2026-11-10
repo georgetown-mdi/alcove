@@ -229,6 +229,36 @@ describe("components and seats", () => {
     ]);
   });
 
+  it("writes main-session spend per day and each agent's peak context", async () => {
+    const a = await aggregateStore("a", {
+      [S1]: {
+        main: [
+          call("2026-01-10T10:00:00Z", "msg_fixture_d1", usage({ output: M })),
+          call("2026-01-11T10:00:00Z", "msg_fixture_d2", usage({ output: M })),
+        ],
+        subagents: {
+          "agent-afixture03": {
+            entries: [
+              call(
+                "2026-01-11T10:00:00Z",
+                "msg_fixture_d3",
+                usage({ cacheRead: 600000 }),
+              ),
+            ],
+          },
+        },
+      },
+    });
+    const { rollups, agents } = cost([a], PRICING);
+    expect(rollups.mainByDay).toEqual({ "2026-01-10": 10, "2026-01-11": 10 });
+    expect(rollups.byDay["2026-01-11"]).toBe(10.06);
+    expect(agents[0]).toMatchObject({
+      peakCtx: 600000,
+      callsOver300k: 1,
+      callsOver500k: 1,
+    });
+  });
+
   it("leaves an agent with no window entry out of the session's counts and the workflow names", async () => {
     const late = "2026-01-12T01:00:00Z";
     const agg = await aggregateStore("a", {

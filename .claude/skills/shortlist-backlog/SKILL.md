@@ -30,8 +30,11 @@ args for usage; listings default to non-Done items):
 - node .claude/scripts/list-issues.mjs --skip-parked 9    (product board)
 - node .claude/scripts/list-issues.mjs --skip-parked 10   (release & operations board)
 --skip-parked leaves out each item whose body has a "Parked until:" line --
-it waits on a stated trigger the retrospective re-tests -- and counts them;
-do not list or fetch them.
+it waits on a stated trigger -- and counts them. Re-test their triggers with
+- node .claude/scripts/parked-triggers.mjs 9 10
+which prints fired, not fired or cannot answer per parked item. A fired item
+is a candidate like any other, its line ending "trigger fired -- <the
+trigger>"; do not list or fetch the rest.
 
 Read the bodies of every In Progress item and of the plausible next
 candidates with node .claude/scripts/fetch-issues.mjs <board> <itemId>... --

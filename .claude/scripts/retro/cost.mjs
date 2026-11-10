@@ -5,12 +5,14 @@
 // components. Writes to --out-dir:
 //   rollups.json            totals, window days and spend per day, and spend by
 //                           model (with its equivalent tokens, `eqTok`),
-//                           store (`bySeat`), component, UTC day, cost
-//                           anatomy, context per call, workflow name and denial;
+//                           store (`bySeat`), component, UTC day (all, and main
+//                           sessions alone as `mainByDay`), cost anatomy,
+//                           context per call, workflow name and denial;
 //                           `streamFix` compares each model and component's
 //                           output with its first-entry count
 //   sessions-enriched.json  one row per session with spend or owner turns
-//   agents.json             one row per subagent or workflow agent with calls
+//   agents.json             one row per subagent or workflow agent with calls,
+//                           with its peak context and calls over 300k and 500k
 //
 // Usage:
 //   node cost.mjs --out-dir DIR [--pricing FILE] [--first-entry-output]
@@ -152,6 +154,7 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
   const byModel = {};
   const bySeat = {};
   const byDay = {};
+  const mainByDay = {};
   const anatomy = {};
   const ctx = {};
   const denials = {};
@@ -230,6 +233,7 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
     grandAlt += costOf(usage, true);
     for (const [day, du] of Object.entries(dayUsage || {})) {
       byDay[day] = (byDay[day] || 0) + costOf(du);
+      if (comp === "main") mainByDay[day] = (mainByDay[day] || 0) + costOf(du);
     }
   };
   const addDenials = (comp, d) => {
@@ -340,6 +344,9 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
             calls,
             cost: r2(c),
             ctxPerCall: Math.round(ctxTok / calls),
+            peakCtx: a.ctxPeak,
+            callsOver300k: a.callsOver300k,
+            callsOver500k: a.callsOver500k,
             branches: Object.keys(a.branches),
             prMentions: Object.keys(a.prMentions).map(Number),
             denials: a.denials,
@@ -384,6 +391,7 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
         interrupts: s.interrupts,
         ownerByDay: s.ownerByDay,
         compactions: s.compactions,
+        compactByDay: s.compactByDay,
         toolErrors: s.toolErrors,
         denials: s.denials,
         branches: s.branches,
@@ -464,6 +472,11 @@ export function cost(aggregates, pricing, { firstEntryOutput = false } = {}) {
     denials,
     byDay: Object.fromEntries(
       Object.entries(byDay)
+        .sort()
+        .map(([d, c]) => [d, r2(c)]),
+    ),
+    mainByDay: Object.fromEntries(
+      Object.entries(mainByDay)
         .sort()
         .map(([d, c]) => [d, r2(c)]),
     ),

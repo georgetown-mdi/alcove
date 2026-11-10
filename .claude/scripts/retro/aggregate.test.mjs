@@ -513,6 +513,141 @@ describe("owner turns", () => {
     expect(session.commands).toEqual({ "/pm": 1 });
     expect(agentOf(session, "agent-afixture08").ownerByDay).toBeUndefined();
   });
+
+  it("counts a slash command typed with arguments once, and a lone command once", async () => {
+    const command = (ts, name, args = "") =>
+      user(ts, [
+        {
+          type: "text",
+          text: `<command-name>${name}</command-name><command-args>${args}</command-args>`,
+        },
+      ]);
+    const result = await aggregateSessions({
+      [S1]: {
+        main: [
+          command("2026-01-11T10:00:00.000Z", "/retro", "the window's end"),
+          user("2026-01-11T10:00:01.000Z", "/retro the window's end"),
+          command("2026-01-11T11:00:00.000Z", "/pm"),
+          user("2026-01-11T11:00:01.000Z", "/pmx is not the same command"),
+          user("2026-01-11T12:00:00.000Z", "/orchestrate later on"),
+          command("2026-01-11T12:00:05.000Z", "/orchestrate", "later on"),
+        ],
+      },
+    });
+    const session = sessionOf(result, S1);
+    expect(session.ownerByDay).toEqual({
+      "2026-01-11": { command: 3, "command-twin": 1, typed: 2 },
+    });
+    expect(session.userTurns).toBe(5);
+    expect(session.commands).toEqual({
+      "/retro": 1,
+      "/pm": 1,
+      "/orchestrate": 1,
+    });
+  });
+
+  it("books a typed-first twin's command and compaction turn once", async () => {
+    const command = (ts, name) =>
+      user(ts, [
+        { type: "text", text: `<command-name>${name}</command-name>` },
+      ]);
+    const boundary = (ts) => ({
+      type: "system",
+      subtype: "compact_boundary",
+      timestamp: ts,
+      uuid: `boundary-${ts}`,
+      compactMetadata: { trigger: "manual", preTokens: 300000 },
+    });
+    const result = await aggregateSessions({
+      [S1]: {
+        main: [
+          user("2026-01-11T10:00:00.000Z", "/compact"),
+          command("2026-01-11T10:00:01.000Z", "/compact"),
+          boundary("2026-01-11T10:00:30.000Z"),
+          user("2026-01-11T10:01:00.000Z", "/retro now"),
+          command("2026-01-11T10:01:01.000Z", "/retro"),
+          user("2026-01-11T10:02:00.000Z", "Carry on."),
+        ],
+      },
+    });
+    const session = sessionOf(result, S1);
+    expect(session.ownerByDay).toEqual({
+      "2026-01-11": { typed: 3, "command-twin": 2 },
+    });
+    expect(session.userTurns).toBe(3);
+    expect(session.commands).toEqual({ "/compact": 1, "/retro": 1 });
+    expect(session.compactByDay["2026-01-11"]).toMatchObject({
+      manual: 1,
+      ownerTurns: 2,
+    });
+  });
+});
+
+describe("peak context", () => {
+  it("records a file's peak window context and its calls over 300k and 500k", async () => {
+    const at = "2026-01-11T10:00:00Z";
+    const ctx = (cacheRead, id) =>
+      assistant(at, { id, u: usage({ input: 1, cacheRead: cacheRead - 1 }) });
+    const result = await aggregateSessions({
+      [S1]: {
+        main: [ctx(1000, "msg_fixture_m1")],
+        subagents: {
+          "agent-afixture20": {
+            entries: [
+              ctx(200000, "msg_fixture_p1"),
+              ctx(400000, "msg_fixture_p2"),
+              ctx(600000, "msg_fixture_p3"),
+              assistant("2026-01-12T01:00:00Z", {
+                id: "msg_fixture_p4",
+                u: usage({ cacheRead: 900000 }),
+              }),
+            ],
+          },
+        },
+      },
+    });
+    const agent = agentOf(sessionOf(result, S1), "agent-afixture20");
+    expect(agent).toMatchObject({
+      ctxPeak: 600000,
+      callsOver300k: 2,
+      callsOver500k: 1,
+    });
+    expect(sessionOf(result, S1).ctxPeak).toBe(1000);
+  });
+});
+
+describe("compactions", () => {
+  const boundary = (ts, trigger) => ({
+    type: "system",
+    subtype: "compact_boundary",
+    timestamp: ts,
+    uuid: `boundary-${ts}`,
+    compactMetadata: trigger ? { trigger, preTokens: 300000 } : {},
+  });
+  const command = (ts, name) =>
+    user(ts, [{ type: "text", text: `<command-name>${name}</command-name>` }]);
+
+  it("counts boundaries by trigger and the owner turns on compaction", async () => {
+    const result = await aggregateSessions({
+      [S1]: {
+        main: [
+          command("2026-01-11T09:00:00Z", "/compact-prep"),
+          command("2026-01-11T09:01:00Z", "/compact"),
+          boundary("2026-01-11T09:02:00Z", "manual"),
+          command("2026-01-11T09:03:00Z", "/orchestrate"),
+          command("2026-01-11T09:04:00Z", "/pm"),
+          boundary("2026-01-11T10:00:00Z", "auto"),
+          user("2026-01-11T10:05:00Z", "Carry on with the next item."),
+          command("2026-01-11T10:06:00Z", "/orchestrate"),
+          boundary("2026-01-11T11:00:00Z"),
+          boundary("2026-01-09T11:00:00Z", "auto"),
+        ],
+      },
+    });
+    expect(sessionOf(result, S1).compactByDay).toEqual({
+      "2026-01-11": { manual: 1, auto: 1, unknown: 1, ownerTurns: 3 },
+    });
+  });
 });
 
 describe("denials", () => {

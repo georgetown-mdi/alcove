@@ -131,7 +131,7 @@ An item that waits on an event outside any session -- another item reaching Done
 Parked until: <trigger> (YYYY-MM-DD)
 ```
 
-The trigger is a condition a command or a board read answers yes or no without judgment ("board 9 item N is Done", "`gh release list` names a release"); the date is when the item was parked. A host step or an owner's call is not a trigger: such an item stays a candidate with its action line. The shortlist's default listing (`list-issues.mjs --skip-parked`) leaves a parked item out, and each retrospective re-tests every trigger from `list-issues.mjs --parked <N>` as one of its standing duties: a trigger that fired loses its line and the item is a candidate again; one that cannot be answered yes or no is rewritten or goes to the docket.
+The trigger is a condition a command or a board read answers yes or no without judgment ("board 9 item N is Done", "`gh release list` names a release"); the date is when the item was parked. A host step or an owner's call is not a trigger: such an item stays a candidate with its action line. The shortlist's default listing (`list-issues.mjs --skip-parked`) leaves a parked item out, and the shortlist's listing step re-tests each trigger a command answers, by `node .claude/scripts/parked-triggers.mjs`: a trigger that fired loses its line and the item is a candidate again, and a retro rewrites the triggers it cannot answer.
 
 ## Style rules
 
