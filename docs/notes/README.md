@@ -84,6 +84,7 @@ a restatement.
 | [sftp-adapter-state-machine.md](sftp-adapter-state-machine.md) | The SFTP adapter's state machines | built |
 | [shared-consent-summary.md](shared-consent-summary.md) | One consent summary for two surfaces | built |
 | [signing-identity-custody.md](signing-identity-custody.md) | Resolving the signing identity like a credential | built |
+| [site-layout.md](site-layout.md) | A layout for the site's sources | open |
 | [standing-relay-delivery.md](standing-relay-delivery.md) | How the standing relay is delivered | built |
 | [terms-comparison.md](terms-comparison.md) | Comparing the two parties' linkage terms | built |
 | [turn-provisioning-governance.md](turn-provisioning-governance.md) | TURN provisioning against partners' governance | open |
