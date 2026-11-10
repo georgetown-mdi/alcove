@@ -14,6 +14,7 @@ import {
   owedFiles,
   parseOwed,
   planDay,
+  selectedLineCount,
 } from "./review-day-slices.mjs";
 
 // The selectors run real git over repositories built here; the board read
@@ -272,6 +273,52 @@ describe("owed passes", () => {
     );
   });
 
+  it("stops the run on an owed list line with three fields", () => {
+    const { fixture, base } = baseRepo();
+    const { root, dayDir } = daysRoot();
+    previousDay(root, {
+      owed: "# Owed\n\n- 2 | `a.ts` | no blocked-by field\n",
+    });
+
+    const result = runScript(fixture.dir, [base, dayDir, "--prev", base]);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      'owed.md line 3: a list line has 3 of the 4 fields "lens | files | reason | blocked by"',
+    );
+  });
+
+  it("takes the owed list and sha from the newest day with FINAL/, past an aborted one", () => {
+    const { fixture } = baseRepo();
+    fixture.write("src/a.ts", textOfLines(5, "a"));
+    const readAt = fixture.commit("One");
+    fixture.write("src/a.ts", textOfLines(5, "a2"));
+    const head = fixture.commit("Two");
+    const { root, dayDir } = daysRoot();
+    previousDay(root, {
+      owed: "- 1 | `src/a.ts` | a spec range left unread | -\n",
+      record: { sha: readAt, slices: [] },
+    });
+    const aborted = join(root, "2026-11-13");
+    mkdirSync(aborted);
+    writeFileSync(join(aborted, "summary.md"), "Stopped at Step 1.\n");
+
+    const result = runScript(fixture.dir, [head, dayDir]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      `not the previous day: ${aborted}, which has no FINAL/ directory`,
+    );
+    const plan = JSON.parse(readFileSync(join(dayDir, "plan.json"), "utf8"));
+    expect(plan.previousDay).toBe(join(root, "2026-11-06"));
+    expect(plan.skippedDays).toEqual([aborted]);
+    expect(plan.prevSha).toBe(readAt);
+    const owed = plan.slices.filter((slice) => slice.selector === "owed");
+    expect(owed.map(({ files, reason }) => ({ files, reason }))).toEqual([
+      { files: ["src/a.ts"], reason: "a spec range left unread" },
+    ]);
+  });
+
   it("resolves backticked paths, stems and directories to tracked files", () => {
     const tracked = ["apps/x/run/prepare.ts", "apps/x/authoring/a.ts", "b.ts"];
     expect(
@@ -412,6 +459,96 @@ describe("plan.json", () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("--prev <sha>");
+  });
+});
+
+describe("slices sized by the lines they match", () => {
+  it("counts each match with its context, overlaps once, inside the file", () => {
+    expect(selectedLineCount([10], 100, 5)).toBe(11);
+    expect(selectedLineCount([10, 12, 10], 100, 5)).toBe(13);
+    expect(selectedLineCount([2, 99], 100, 5)).toBe(7 + 7);
+    expect(selectedLineCount([], 100, 5)).toBe(0);
+  });
+
+  it("sizes user-string and stale-spec slices by their matches and lists each string", () => {
+    const { fixture } = baseRepo();
+    const source = (message) =>
+      [
+        "export function refuseLongFrame(frame) {",
+        ...Array.from({ length: 98 }, (_, i) => `  const step${i} = frame;`),
+        `  throw new Error("${message}");`,
+        ...Array.from({ length: 100 }, (_, i) => `  const tail${i} = frame;`),
+        "}",
+        "",
+      ].join("\n");
+    fixture.write("apps/cli/src/frames.ts", source("Frame too long"));
+    fixture.write(
+      "docs/spec/LONG.md",
+      Array.from({ length: 300 }, (_, i) =>
+        i === 149 || i === 152 ? "refuseLongFrame refuses it." : `Prose ${i}.`,
+      ).join("\n") + "\n",
+    );
+    const from = fixture.commit("Base sources");
+    fixture.write(
+      "apps/cli/src/frames.ts",
+      source("The frame is over the limit. Send a shorter one."),
+    );
+    const head = fixture.commit("Reword the refusal");
+    const { dayDir } = daysRoot();
+    const context = WORKING_VALUES.matchContextLines;
+
+    const result = runScript(fixture.dir, [head, dayDir, "--prev", from]);
+
+    expect(result.status).toBe(0);
+    const plan = JSON.parse(readFileSync(join(dayDir, "plan.json"), "utf8"));
+    const strings = plan.slices.find(
+      (slice) => slice.kind === "user-visible strings",
+    );
+    expect(strings.files).toEqual(["apps/cli/src/frames.ts"]);
+    expect(strings.strings).toEqual([
+      {
+        path: "apps/cli/src/frames.ts",
+        line: 100,
+        text: 'throw new Error("The frame is over the limit. Send a shorter one.");',
+      },
+    ]);
+    expect(strings.lines).toBe(2 * context + 1);
+    const spec = plan.slices.find((slice) => slice.selector === "stale-spec");
+    expect(spec.statements.map(({ line }) => line)).toEqual([150, 153]);
+    expect(spec.lines).toBe(2 * context + 1 + 3);
+    expect(readFileSync(join(dayDir, "SLICES.md"), "utf8")).toContain(
+      '  - apps/cli/src/frames.ts:100: throw new Error("The frame is over the limit. Send a shorter one.");',
+    );
+  });
+
+  it("leaves a file only its strings were read from open to rotation", () => {
+    const { fixture, base } = baseRepo();
+    fixture.write("apps/cli/src/hot.ts", textOfLines(10, "h1"));
+    fixture.write(
+      "apps/cli/src/strings.ts",
+      'throw new Error("The key file is missing. Run init first.");\n',
+    );
+    fixture.commit("One");
+    fixture.write("apps/cli/src/hot.ts", textOfLines(10, "h2"));
+    const head = fixture.commit("Two");
+    const { dayDir } = daysRoot();
+
+    const plan = planDay({
+      cwd: fixture.dir,
+      sha: head,
+      dayDir,
+      prevSha: base,
+      deliveredBy: noBoardRead,
+      workingValues: { ...WORKING_VALUES, hotLineTarget: 10 },
+    });
+
+    expect(plan.hotThreshold).toBe(2);
+    const strings = plan.slices.find(
+      (slice) => slice.kind === "user-visible strings",
+    );
+    expect(strings.files).toEqual(["apps/cli/src/strings.ts"]);
+    const rotation = plan.slices.find((slice) => slice.selector === "rotation");
+    expect(rotation.files).toEqual(["apps/cli/src/strings.ts"]);
   });
 });
 

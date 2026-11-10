@@ -9,8 +9,10 @@
 // The window and the previous day:
 //
 // - The previous day is the newest directory beside `<dayDir>` (normally
-//   `scratch/review-days/<date>/`) whose name sorts before `<dayDir>`'s own. With
-//   none, the day runs with no owed passes and nothing skipped.
+//   `scratch/review-days/<date>/`) whose name sorts before `<dayDir>`'s own and
+//   that holds `FINAL/`. A newer one without `FINAL/`, a day stopped at a failed
+//   precondition, is skipped and named on stdout. With none, the day runs with
+//   no owed passes and nothing skipped.
 // - The window is `git log --first-parent <prev>..<sha>`, one first-parent
 //   commit per merged pull request. `<prev>` is `--prev <sha>` when given, else
 //   the `sha` of the previous day's `FINAL/record.json`; with neither, the run
@@ -40,7 +42,9 @@
 // slice, from the directory whose least recently read file was read whole
 // longest ago (never first), its oldest-read files up to the bound. Each
 // selector's set is cut by directory into slices of at most `maxSliceLines`, a
-// small directory joining its neighbour.
+// small directory joining its neighbour. A user-string or stale-spec slice
+// lists the lines it matched and is sized by them, `matchContextLines` either
+// side of each; every other slice is sized by its files' whole line counts.
 //
 // Exit 0 written; 1 a slice over `maxSliceLines`, nothing written; 2 usage, an
 // unreadable input, a git error, or a failed board read.
@@ -60,12 +64,15 @@ import { fileURLToPath } from "node:url";
 /**
  * Working values fitted from the 2026-11-06 review pass and re-fitted at each
  * retro, not constants: the slice size bound, the hot-file line target the
- * threshold N is fitted to, and the cost of one slice by lens (each including
- * reviewer, verifier and triage share), with the mean for a slice of no lens.
+ * threshold N is fitted to, the lines of context charged either side of a
+ * matched string or spec statement, and the cost of one slice by lens (each
+ * including reviewer, verifier and triage share), with the mean for a slice of
+ * no lens.
  */
 export const WORKING_VALUES = Object.freeze({
   maxSliceLines: 8000,
   hotLineTarget: 45000,
+  matchContextLines: 5,
   unitCosts: Object.freeze({ 1: 8.41, 2: 7.36, 3: 4.97, 4: 6.39 }),
   meanUnitCost: 7.18,
 });
@@ -450,7 +457,10 @@ export function windowCounts(git, prevSha, sha) {
   return { commits, prCounts };
 }
 
-/** The lines the window's net diff adds, per file. */
+/**
+ * The lines the window's net diff adds, per file, each as its line number at
+ * `sha` and its text.
+ */
 function addedLines(git, prevSha, sha, paths) {
   const added = new Map();
   if (paths.length === 0) return added;
@@ -470,6 +480,7 @@ function addedLines(git, prevSha, sha, paths) {
   ]);
   let current = null;
   let inHeader = false;
+  let nextLine = 0;
   for (const line of out.split("\n")) {
     if (line.startsWith("diff --git ")) {
       inHeader = true;
@@ -478,9 +489,11 @@ function addedLines(git, prevSha, sha, paths) {
       current = line.startsWith("+++ b/") ? line.slice(6) : null;
     } else if (line.startsWith("@@")) {
       inHeader = false;
+      nextLine = Number(/^@@ -\S+ \+(\d+)/.exec(line)?.[1] ?? 0);
     } else if (!inHeader && current !== null && line.startsWith("+")) {
       if (!added.has(current)) added.set(current, []);
-      added.get(current).push(line.slice(1));
+      added.get(current).push({ line: nextLine, text: line.slice(1) });
+      nextLine += 1;
     }
   }
   return added;
@@ -545,6 +558,22 @@ export function cutByDirectory(files, lineOf, maxLines) {
   return joined;
 }
 
+/**
+ * How many of a file's `fileLines` lines the matches at line numbers `lines`
+ * select, each with `context` lines either side, overlaps counted once.
+ */
+export function selectedLineCount(lines, fileLines, context) {
+  let count = 0;
+  let coveredTo = 0;
+  for (const line of [...new Set(lines)].sort((a, b) => a - b)) {
+    const from = Math.max(1, line - context, coveredTo + 1);
+    const to = Math.min(Math.max(fileLines, line), line + context);
+    if (to >= from) count += to - from + 1;
+    coveredTo = Math.max(coveredTo, to);
+  }
+  return count;
+}
+
 /** Refuse any slice over `maxLines`, naming each. */
 export function assertSliceBound(slices, maxLines) {
   const over = slices.filter((slice) => slice.lines > maxLines);
@@ -565,7 +594,10 @@ export function parseOwed(text) {
   text.split("\n").forEach((line, index) => {
     if (!line.startsWith("- ")) return;
     const fields = line.slice(2).split(" | ");
-    if (fields.length < 4) return;
+    if (fields.length < 4)
+      throw new Error(
+        `owed.md line ${index + 1}: a list line has ${fields.length} of the 4 fields "lens | files | reason | blocked by"`,
+      );
     const lens = fields[0].trim();
     if (!/^[1-4]$/.test(lens))
       throw new Error(
@@ -734,11 +766,18 @@ export function planDay({
   workingValues = WORKING_VALUES,
 }) {
   const git = gitIn(cwd);
-  const { maxSliceLines, hotLineTarget, unitCosts, meanUnitCost } =
-    workingValues;
+  const {
+    maxSliceLines,
+    hotLineTarget,
+    matchContextLines,
+    unitCosts,
+    meanUnitCost,
+  } = workingValues;
   const sha = resolveCommit(git, shaRef);
   const days = earlierDays(dayDir);
-  const previousDay = days.at(-1) ?? null;
+  const previousDay =
+    days.findLast((day) => existsSync(join(day, "FINAL"))) ?? null;
+  const skippedDays = days.slice(days.indexOf(previousDay) + 1);
   const previousRecord = previousDay === null ? null : dayRecord(previousDay);
   const windowRef = prevRef ?? previousRecord?.sha ?? null;
   if (windowRef === null)
@@ -772,12 +811,12 @@ export function planDay({
 
   const slices = [];
   const counters = new Map();
-  const addSlices = (selector, lens, files, extra = {}) => {
+  const addSlices = (selector, lens, files, extra = {}, sizeOf = lineOf) => {
     ensureLines(files);
     // An owed pass whose text names no tracked file is still a pass to run.
     const pieces =
       files.length > 0
-        ? cutByDirectory(files, lineOf, maxSliceLines)
+        ? cutByDirectory(files, sizeOf, maxSliceLines)
         : selector === "owed"
           ? [{ files: [], lines: 0 }]
           : [];
@@ -794,6 +833,19 @@ export function planDay({
         ...(typeof extra === "function" ? extra(piece.files) : extra),
       });
     }
+  };
+  const matchedSize = (matches) => {
+    const linesByPath = new Map();
+    for (const { path, line } of matches) {
+      if (!linesByPath.has(path)) linesByPath.set(path, []);
+      linesByPath.get(path).push(line);
+    }
+    return (path) =>
+      selectedLineCount(
+        linesByPath.get(path) ?? [],
+        lineOf(path),
+        matchContextLines,
+      );
   };
   const boundaryExtra = (boundary) =>
     boundary === null
@@ -866,7 +918,7 @@ export function planDay({
   const censusKinds = new Map();
   for (const path of censusCandidates) {
     const kinds = CENSUS_PATTERNS.filter(({ pattern }) =>
-      (added.get(path) ?? []).some((line) => pattern.test(line)),
+      (added.get(path) ?? []).some(({ text }) => pattern.test(text)),
     ).map(({ kind }) => kind);
     if (kinds.length > 0) censusKinds.set(path, kinds);
   }
@@ -952,11 +1004,22 @@ export function planDay({
   ];
   if (outwardDocs.length > 0)
     addSlices("outward", 3, outwardDocs, { kind: "docs" });
-  const userStringFiles = userStringCandidates.filter((path) =>
-    (added.get(path) ?? []).some((line) => USER_STRING_PATTERN.test(line)),
+  const userStrings = userStringCandidates.flatMap((path) =>
+    (added.get(path) ?? [])
+      .filter(({ text }) => USER_STRING_PATTERN.test(text))
+      .map(({ line, text }) => ({ path, line, text: text.trim() })),
   );
-  if (userStringFiles.length > 0)
-    addSlices("outward", 3, userStringFiles, { kind: "user-visible strings" });
+  if (userStrings.length > 0)
+    addSlices(
+      "outward",
+      3,
+      [...new Set(userStrings.map(({ path }) => path))],
+      (sliceFiles) => ({
+        kind: "user-visible strings",
+        strings: userStrings.filter(({ path }) => sliceFiles.includes(path)),
+      }),
+      matchedSize(userStrings),
+    );
 
   // 5. Stale spec statements.
   const statements = specStatements(
@@ -967,9 +1030,15 @@ export function planDay({
   );
   const specFiles = [...new Set(statements.map(({ path }) => path))];
   if (specFiles.length > 0)
-    addSlices("stale-spec", 1, specFiles, (sliceFiles) => ({
-      statements: statements.filter(({ path }) => sliceFiles.includes(path)),
-    }));
+    addSlices(
+      "stale-spec",
+      1,
+      specFiles,
+      (sliceFiles) => ({
+        statements: statements.filter(({ path }) => sliceFiles.includes(path)),
+      }),
+      matchedSize(statements),
+    );
 
   // 6. Rotation.
   const lastRead = new Map();
@@ -978,7 +1047,14 @@ export function planDay({
     for (const path of record?.filesReadWhole ?? [])
       lastRead.set(path, basename(day));
   }
-  const covered = new Set(slices.flatMap((slice) => slice.files));
+  const covered = new Set(
+    slices
+      .filter(
+        (slice) =>
+          slice.strings === undefined && slice.statements === undefined,
+      )
+      .flatMap((slice) => slice.files),
+  );
   const rotationByDirectory = new Map();
   for (const path of tracked) {
     if (!isSourcePath(path) || covered.has(path)) continue;
@@ -1029,6 +1105,7 @@ export function planDay({
     sha,
     prevSha,
     previousDay,
+    skippedDays,
     window: { from: prevSha, to: sha, commits },
     hotThreshold: hot.threshold,
     hotLines: hot.lines,
@@ -1059,6 +1136,9 @@ export function renderSlices(plan) {
     `Pinned sha: ${plan.sha}.`,
     `Window: ${plan.prevSha}..${plan.sha}, ${plan.window.commits} first-parent commits.`,
     `Previous day: ${plan.previousDay ?? "none"}.`,
+    ...plan.skippedDays.map(
+      (day) => `Not the previous day: ${day}, which has no FINAL/ directory.`,
+    ),
     plan.hotThreshold === null
       ? "Hot files: none in the window."
       : `Hot files: touched by ${plan.hotThreshold} or more pull requests, ${plan.hotLines} lines (target ${values.hotLineTarget}).`,
@@ -1096,6 +1176,11 @@ export function renderSlices(plan) {
       for (const [path, lines] of byPath)
         out.push(`  - ${path}: ${lines.join("; ")}`);
     }
+    if (slice.strings !== undefined) {
+      out.push("- Strings:");
+      for (const { path, line, text } of slice.strings)
+        out.push(`  - ${path}:${line}: ${text}`);
+    }
     if (slice.specs?.length > 0) out.push(`- Specs: ${slice.specs.join(", ")}`);
     if (slice.assets) out.push(`- Assets: ${slice.assets}`);
     out.push(
@@ -1131,9 +1216,9 @@ const USAGE =
   "Usage: node .claude/scripts/review-day-slices.mjs <sha> <dayDir> [--prev <sha>]\n" +
   "Writes <dayDir>/SLICES.md and <dayDir>/plan.json for the review day pinned at <sha>,\n" +
   "and prints the total cost estimate. The previous day is the newest directory beside\n" +
-  "<dayDir> whose name sorts before it; its FINAL/owed.md lists the owed passes and its\n" +
-  "FINAL/record.json the window's start, which --prev <sha> overrides. Refs resolve in\n" +
-  "the git worktree this is run from.\n";
+  "<dayDir> whose name sorts before it and that holds FINAL/; its FINAL/owed.md lists\n" +
+  "the owed passes and its FINAL/record.json the window's start, which --prev <sha>\n" +
+  "overrides. Refs resolve in the git worktree this is run from.\n";
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
@@ -1156,7 +1241,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const plan = planDay({ sha, dayDir, prevSha });
     writeDay(plan, dayDir);
     process.stdout.write(
-      `wrote ${join(dayDir, "SLICES.md")} and ${join(dayDir, "plan.json")}\n` +
+      plan.skippedDays
+        .map(
+          (day) =>
+            `not the previous day: ${day}, which has no FINAL/ directory\n`,
+        )
+        .join("") +
+        `wrote ${join(dayDir, "SLICES.md")} and ${join(dayDir, "plan.json")}\n` +
         `${plan.slices.length} slices, ${plan.carried.length} owed passes carried over\n` +
         `estimated total: ${money(plan.totalEstimate)}\n`,
     );
