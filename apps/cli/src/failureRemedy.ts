@@ -2,13 +2,14 @@
 // stating what to do, naming only the flag that applies to this run. Core's
 // sentence states what happened (failureCauseSentence); this map is total over
 // FailureCauseKind, so a cause core adds fails to compile here until bound.
-// Also the steps for states only the CLI reaches, an online setup that stopped
-// with its key file saved and no configuration written
-// (keyFileSavedConfigNotWrittenRemedy), or before it saved its key file
-// (keyFileNotSavedRemedy).
+// Also the steps for states only the CLI reaches: what a run left its key file
+// holding when it failed or was interrupted (keyFileStateStep), and the
+// failure of a write to the key file (keyFileWriteFailure).
 
 import {
   failureCauseOf,
+  keepOperatorSuppliedText,
+  markStatesItsOwnNextStep,
   messageWithOperatorText,
   NEW_INVITATION_REMEDY,
   operatorSuppliedText,
@@ -24,6 +25,8 @@ import {
   annotationKey,
   annotationOf,
 } from "@alcove/core";
+
+import { OUT_OF_SYNC_TOKENS_DOC_URL } from "./docLinks";
 
 /**
  * Which flag bounds this run's wait for the partner: `--accept-timeout` for an
@@ -260,10 +263,15 @@ export interface KeyFileSavedConfigNotWritten extends OnlineSetupConfiguration {
 
 /**
  * How a run ended: on a failure, whose message or fixed next step states a step
- * of its own or not, or on a signal.
+ * of its own or not, or on a signal. `authenticationFailed` marks a failure
+ * that began the key exchange and failed to authenticate (exit 77).
  */
 export type RunEnding =
-  | { readonly kind: "failed"; readonly errorStatesItsStep: boolean }
+  | {
+      readonly kind: "failed";
+      readonly errorStatesItsStep: boolean;
+      readonly authenticationFailed?: boolean;
+    }
   | { readonly kind: "interrupted" };
 
 /**
@@ -326,6 +334,208 @@ export function keyFileNotSavedRemedy(ending: RunEnding): string {
   return ending.kind === "failed" && ending.errorStatesItsStep
     ? `${happened} The next run needs a new invitation.`
     : `${happened} ${NEW_INVITATION_REMEDY}`;
+}
+
+/**
+ * Where a run's rotation left the two parties, read from how far it got in the
+ * store order (docs/spec/PROTOCOL.md, "The rotation at the terms exchange"):
+ * - `unchanged`: neither side can have stored the next secret.
+ * - `partner-may-lead`: this side, the responder, holds the secret the run
+ *   authenticated with, and the initiator may hold the next one.
+ * - `partner-may-lag`: this side, the initiator, stored the next secret, and
+ *   the responder may not have.
+ * - `both-stored`: both sides hold the next secret.
+ */
+export type RotationStanding =
+  "unchanged" | "partner-may-lead" | "partner-may-lag" | "both-stored";
+
+/** What a run left its key file holding when it ended. */
+export interface RunKeyFileState {
+  readonly standing: RotationStanding;
+  /** The run is an online `alcove invite` or `alcove accept`. */
+  readonly onlineSetup: boolean;
+  /**
+   * The online setup saved its key file and wrote no configuration, whose step
+   * ({@link keyFileSavedConfigNotWrittenRemedy}) replaces every other.
+   */
+  readonly keyFileSavedConfigNotWritten?: KeyFileSavedConfigNotWritten;
+}
+
+const AUTHENTICATION_FAILED_STEP =
+  "Authentication failed, and a retry with this key file fails the same " +
+  `way. ${NEW_INVITATION_REMEDY} If the SFTP server's host key is not the ` +
+  "pinned one, confirm the server's key with its administrator and pin " +
+  "that key instead.";
+
+/**
+ * The line stating what `state` leaves the two parties holding on a run that
+ * ended as `ending`, or `undefined` where there is nothing to state: a run that
+ * rotated nobody leaves the existing secret valid on both sides. The failure
+ * site and the signal handler both state it through here. Where the failure
+ * states its own step, the line states the secret's state without prescribing
+ * one.
+ */
+export function keyFileStateStep(
+  state: RunKeyFileState,
+  ending: RunEnding,
+): string | undefined {
+  if (state.keyFileSavedConfigNotWritten !== undefined)
+    return keyFileSavedConfigNotWrittenRemedy(
+      state.keyFileSavedConfigNotWritten,
+      ending,
+    );
+  const interrupted = ending.kind === "interrupted";
+  const retryRuledOut = ending.kind === "failed" && ending.errorStatesItsStep;
+  const saved =
+    "The shared secret was already rotated and saved before " +
+    `${interrupted ? "the exchange was interrupted" : "this error"}.`;
+  const behind =
+    "This side had not saved the next shared secret when " +
+    `${interrupted ? "the exchange was interrupted" : "this error occurred"}, ` +
+    "and your partner may already have saved it";
+  switch (state.standing) {
+    case "unchanged":
+      return ending.kind === "failed" && ending.authenticationFailed === true
+        ? AUTHENTICATION_FAILED_STEP
+        : undefined;
+    case "partner-may-lead":
+      if (state.onlineSetup) return keyFileNotSavedRemedy(ending);
+      return retryRuledOut
+        ? `${behind}, so the next run may need a new invitation from your ` +
+            "partner."
+        : `${behind}. Retry the exchange with the existing key file; if ` +
+            "authentication fails on retry, ask your partner for a new " +
+            "invitation.";
+    case "partner-may-lag":
+    case "both-stored":
+      // No line beneath a step that rules out a retry: a responder's partner
+      // stored too, and an initiator does not track the responder's first
+      // frame after `proceed`, which shows the responder stored, so a line
+      // would name a new invitation a retry may not need.
+      if (retryRuledOut) return undefined;
+      return state.standing === "partner-may-lag"
+        ? `${saved} Retry the exchange with the same key file; if ` +
+            "authentication fails on retry, ask your partner for a new " +
+            "invitation."
+        : `${saved} Your partner saved it too, so retry the exchange with ` +
+            "the same key file.";
+  }
+}
+
+/**
+ * Which write to the key file failed during a run, and so what its failure
+ * states:
+ * - `rotation-mark`: recording the key exchange as in flight, before it began.
+ * - `first-store`: the initiator's save of the next secret, which comes first.
+ * - `responder-store`: the responder's save, where its initiator kept the
+ *   secret this run used, so the next run heals.
+ * - `responder-store-no-heal`: the responder's save, where it cannot heal.
+ * - `previous-drop`: removing the secret before the new one, once both saved.
+ * - `partner-store`: the partner's save, which failed after this side saved,
+ *   where this side kept the secret this run used.
+ * - `partner-store-no-heal`: the same, where the next run cannot heal.
+ */
+export type KeyFileWriteFailureKind =
+  | "rotation-mark"
+  | "first-store"
+  | "responder-store"
+  | "responder-store-no-heal"
+  | "previous-drop"
+  | "partner-store"
+  | "partner-store-no-heal";
+
+const PARTNER_STORE_PREAMBLE =
+  "Your partner could not save the new shared secret, so the exchange " +
+  "stopped. This side had already saved it to ";
+
+const RESPONDER_STORE_PREAMBLE =
+  "authentication succeeded and the shared token was rotated, but the " +
+  "updated token could not be saved to ";
+
+// The text ahead of the key file path, and the text after it and after the
+// write's own failure where there is one.
+const KEY_FILE_WRITE_FAILURES: {
+  readonly [K in KeyFileWriteFailureKind]: {
+    readonly preamble: string;
+    readonly step: string;
+  };
+} = {
+  "rotation-mark": {
+    preamble:
+      "the key exchange did not start because it could not be recorded in " +
+      "the key file at ",
+    step:
+      " The shared secret is unchanged, though the key file may still " +
+      "record this attempt; fix the key file's location or permissions and " +
+      "run the exchange again.",
+  },
+  "first-store": {
+    preamble:
+      "authentication succeeded, but the next shared secret could not be " +
+      "saved to ",
+    step:
+      " Your partner did not save it. Fix the key file's location or " +
+      "permissions, then run the same command again; if authentication " +
+      "fails on that run, ask your partner for a new invitation.",
+  },
+  "responder-store": {
+    preamble: RESPONDER_STORE_PREAMBLE,
+    step:
+      " Your partner saved the new token and kept the one this run used, so " +
+      "the next run can use that one. Fix the key file's location or " +
+      "permissions, then run the same command again; if authentication " +
+      "fails on that run or it never meets your partner, ask your partner " +
+      "for a new invitation.",
+  },
+  "responder-store-no-heal": {
+    preamble: RESPONDER_STORE_PREAMBLE,
+    step: ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`,
+  },
+  "previous-drop": {
+    preamble:
+      "both sides saved the new shared secret, but removing the secret " +
+      "before it failed in ",
+    step:
+      ". The exchange stopped. Fix the key file's location or permissions, " +
+      "then run the same command again.",
+  },
+  "partner-store": {
+    preamble: PARTNER_STORE_PREAMBLE,
+    step:
+      ", and kept the secret this run used, so the next run can use that " +
+      "one. Run the exchange again once your partner has fixed what stopped " +
+      "their save. If authentication then fails, or the run never meets " +
+      "your partner, you and your partner hold different secrets. " +
+      `${NEW_INVITATION_REMEDY} See ${OUT_OF_SYNC_TOKENS_DOC_URL} for how.`,
+  },
+  "partner-store-no-heal": {
+    preamble: PARTNER_STORE_PREAMBLE,
+    step:
+      ", so you and your partner now hold different secrets, and running " +
+      `the exchange again cannot reconnect you. ${NEW_INVITATION_REMEDY} ` +
+      `See ${OUT_OF_SYNC_TOKENS_DOC_URL} for how.`,
+  },
+};
+
+/**
+ * The failure of the `kind` write to the key file at `keyFilePath`: what
+ * happened, the path marked as operator-supplied text, the write's own
+ * failure `reason` where there is one, and the step, marked as stating its
+ * own next step so no rotation line prints beneath it.
+ */
+export function keyFileWriteFailure(
+  kind: KeyFileWriteFailureKind,
+  keyFilePath: string,
+  reason?: string,
+): Error {
+  const { preamble, step } = KEY_FILE_WRITE_FAILURES[kind];
+  const after = reason === undefined ? step : `: ${reason}${step}`;
+  const message = messageWithOperatorText`${preamble}${operatorSuppliedText(
+    keyFilePath,
+  )}${after}`;
+  return markStatesItsOwnNextStep(
+    keepOperatorSuppliedText(new Error(message.text), message),
+  );
 }
 
 const KEY_FILE_SAVED_CONFIG_NOT_WRITTEN =

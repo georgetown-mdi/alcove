@@ -25,8 +25,6 @@ import {
   causeChainSome,
   ConnectionError,
   isPeerWaitTimeout,
-  keepOperatorSuppliedText,
-  messageWithOperatorText,
   operatorSuppliedText,
   payloadReceiveFilledNotice,
   redactAndDisplayPartyIdentity,
@@ -37,9 +35,7 @@ import {
   allowedRelaysLeaveOutInvitationRelay,
   runEnrollsAtInvitationRegistrar,
   selectRunRelay,
-  NEW_INVITATION_REMEDY,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  markStatesItsOwnNextStep,
   statesItsOwnNextStep,
   classifyFailure,
   isPartnerNextSecretStoreFailure,
@@ -75,13 +71,14 @@ import { LocalFSClient } from "./connection/localFSClient";
 import { raiseInactivityLimit } from "./connection/timeoutGuidance";
 import {
   isConfigAppearedLate,
-  keyFileNotSavedRemedy,
-  keyFileSavedConfigNotWrittenRemedy,
+  keyFileStateStep,
+  keyFileWriteFailure,
   markArrivalWait,
   markKeyFileSavedConfigNotWritten,
   type ArrivalWait,
   type KeyFileSavedConfigNotWritten,
   type OnlineSetupConfiguration,
+  type RotationStanding,
 } from "./failureRemedy";
 import { markTermsRefusalRun } from "./termsRefusalRemedy";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
@@ -90,7 +87,6 @@ import { openWebRtcWithRelayFallback } from "./connection/webrtc/relayFallback";
 import { webSocketRelayDialsFor } from "./connection/webrtc/websocketRelayDial";
 import { FinalFrameUnconfirmedError } from "./connection/webrtc/webrtcMessageConnection";
 import { persistPartnerFingerprint } from "./config";
-import { OUT_OF_SYNC_TOKENS_DOC_URL } from "./docLinks";
 import {
   enrollAtInvitationRelay,
   reportInvitationRelayEnrollment,
@@ -1038,17 +1034,6 @@ async function openRunTransport(params: {
   return role;
 }
 
-/** What {@link authenticateRun} states ahead of the key file it could not mark. */
-const ROTATION_MARK_PREAMBLE =
-  "the key exchange did not start because it could not be recorded in the " +
-  "key file at ";
-
-/** What {@link authenticateRun} states behind that key file and the failure. */
-const ROTATION_MARK_REMEDY =
-  " The shared secret is unchanged, though the key file may still record " +
-  "this attempt; fix the key file's location or permissions and run the " +
-  "exchange again.";
-
 /**
  * Remove the rotation-in-flight marker after a run whose recorded outcome
  * leaves nothing for the next run to report: a key exchange that failed
@@ -1074,19 +1059,6 @@ function clearRotationInFlightMarker(
     );
   }
 }
-
-/**
- * Where a run's rotation left the two parties, read from how far it got in the
- * store order (docs/spec/PROTOCOL.md, "The rotation at the terms exchange"):
- * - `unchanged`: neither side can have stored the next secret.
- * - `partner-may-lead`: this side, the responder, holds the secret the run
- *   authenticated with, and the initiator may hold the next one.
- * - `partner-may-lag`: this side, the initiator, stored the next secret, and
- *   the responder may not have.
- * - `both-stored`: both sides hold the next secret.
- */
-type RotationStanding =
-  "unchanged" | "partner-may-lead" | "partner-may-lag" | "both-stored";
 
 /**
  * The {@link RotationStanding} of `run`. The initiator stores first, so before
@@ -1128,70 +1100,6 @@ function keyFileSavedConfigNotWritten(
     }),
   };
 }
-
-/**
- * The rotation line printed beneath a failure, for a run whose standing is
- * `standing`, or `undefined` where there is nothing to state: a run that
- * rotated nobody leaves the existing secret valid on both sides. Where the
- * failure's own next step rules out a retry (`retryRuledOut`), the line states
- * the token state without prescribing one.
- */
-function rotationLineAfterFailure(
-  standing: RotationStanding,
-  retryRuledOut: boolean,
-): string | undefined {
-  const saved =
-    "The shared secret was already rotated and saved before this error.";
-  const behind =
-    "This side had not saved the next shared secret when this error " +
-    "occurred, and your partner may already have saved it";
-  switch (standing) {
-    case "unchanged":
-      return undefined;
-    case "partner-may-lead":
-      return retryRuledOut
-        ? `${behind}, so the next run may need a new invitation from your ` +
-            "partner."
-        : `${behind}. Retry the exchange with the existing key file; if ` +
-            "authentication fails on retry, ask your partner for a new " +
-            "invitation.";
-    case "partner-may-lag":
-    case "both-stored":
-      // No line beneath a step that rules out a retry: a responder's partner
-      // stored too, and an initiator does not track the responder's first
-      // frame after `proceed`, which shows the responder stored, so a line
-      // would name a new invitation a retry may not need.
-      if (retryRuledOut) return undefined;
-      return standing === "partner-may-lag"
-        ? `${saved} Retry the exchange with the same key file; if ` +
-            "authentication fails on retry, ask your partner for a new " +
-            "invitation."
-        : `${saved} Your partner saved it too, so retry the exchange with ` +
-            "the same key file.";
-  }
-}
-
-/**
- * What {@link authenticateRun} states ahead of the key file it could not save
- * as the responder, which stores after the initiator did.
- */
-const ROTATED_TOKEN_SAVE_PREAMBLE =
-  "authentication succeeded and the shared token was rotated, but the " +
-  "updated token could not be saved to ";
-
-/**
- * What {@link authenticateRun} states behind that key file and the failure:
- * the initiator kept the secret this run used, so the next run heals.
- */
-const ROTATED_TOKEN_SAVE_REMEDY =
-  " Your partner saved the new token and kept the one this run used, so " +
-  "the next run can use that one. Fix the key file's location or " +
-  "permissions, then run the same command again; if authentication fails " +
-  "on that run or it never meets your partner, ask your partner for a new " +
-  "invitation.";
-
-/** {@link ROTATED_TOKEN_SAVE_REMEDY} where the next run cannot heal. */
-const ROTATED_TOKEN_SAVE_REMEDY_NO_HEAL = ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`;
 
 const NO_HEAL_SAVE_FAILURE = annotationKey<true>("no-heal save failure");
 
@@ -1244,51 +1152,6 @@ function initiatorKeepsSecretRunUsed(
 }
 
 /**
- * What {@link authenticateRun} states ahead of the key file it could not save
- * as the initiator, which stores first, so its partner stored nothing.
- */
-const FIRST_STORE_SAVE_PREAMBLE =
-  "authentication succeeded, but the next shared secret could not be saved to ";
-
-/**
- * What {@link authenticateRun} states behind that key file and the failure. A
- * directory flush that fails after the rename leaves the next secret in this
- * side's key file beside the secret the run used, which the next run heals
- * where it can ({@link nextRunCanHeal}); the authentication-failure fallback,
- * and over WebRTC the next run's no-show remedy, cover a state it cannot.
- */
-const FIRST_STORE_SAVE_REMEDY =
-  " Your partner did not save it. Fix the key file's location or " +
-  "permissions, then run the same command again; if authentication fails on " +
-  "that run, ask your partner for a new invitation.";
-
-/**
- * What an initiator states ahead of its key file when the partner's abort
- * says it could not save the next shared secret this side had saved.
- */
-const PARTNER_SAVE_FAILURE_PREAMBLE =
-  "Your partner could not save the new shared secret, so the exchange " +
-  "stopped. This side had already saved it to ";
-
-/**
- * What follows that key file: this side kept the secret the run used, so the
- * next run heals.
- */
-const PARTNER_SAVE_FAILURE_REMEDY =
-  ", and kept the secret this run used, so the next run can use that one. " +
-  "Run the exchange again once your partner has fixed what stopped their " +
-  "save. If authentication then fails, or the run never meets your " +
-  "partner, you and your partner hold different secrets. " +
-  `${NEW_INVITATION_REMEDY} See ` +
-  `${OUT_OF_SYNC_TOKENS_DOC_URL} for how.`;
-
-/** {@link PARTNER_SAVE_FAILURE_REMEDY} where the next run cannot heal. */
-const PARTNER_SAVE_FAILURE_REMEDY_NO_HEAL =
-  ", so you and your partner now hold different secrets, and running the " +
-  `exchange again cannot reconnect you. ${NEW_INVITATION_REMEDY} See ` +
-  `${OUT_OF_SYNC_TOKENS_DOC_URL} for how.`;
-
-/**
  * The failure an initiator reports in place of the partner's abort stating
  * that it could not save the next shared secret
  * ({@link isPartnerNextSecretStoreFailure}), where this side saved it: as the
@@ -1310,17 +1173,15 @@ function partnerSaveFailure(
     !isPartnerNextSecretStoreFailure(err)
   )
     return undefined;
-  const message = messageWithOperatorText`${PARTNER_SAVE_FAILURE_PREAMBLE}${operatorSuppliedText(
+  const failure = keyFileWriteFailure(
+    nextRunHeals ? "partner-store" : "partner-store-no-heal",
     keyFilePath,
-  )}${nextRunHeals ? PARTNER_SAVE_FAILURE_REMEDY : PARTNER_SAVE_FAILURE_REMEDY_NO_HEAL}`;
-  const failure = keepOperatorSuppliedText(new Error(message.text), message);
-  return markStatesItsOwnNextStep(
-    nextRunHeals
-      ? failure
-      : markNoHealSaveFailure(
-          withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE),
-        ),
   );
+  return nextRunHeals
+    ? failure
+    : markNoHealSaveFailure(
+        withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE),
+      );
 }
 
 /**
@@ -1364,12 +1225,10 @@ function dropStoredPreviousSecret(
   try {
     dropPreviousSecret(keyFilePath, storedSecret);
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    const message = messageWithOperatorText`${PREVIOUS_DROP_PREAMBLE}${operatorSuppliedText(
+    throw keyFileWriteFailure(
+      "previous-drop",
       keyFilePath,
-    )}: ${reason}${PREVIOUS_DROP_REMEDY}`;
-    throw markStatesItsOwnNextStep(
-      keepOperatorSuppliedText(new Error(message.text), message),
+      err instanceof Error ? err.message : String(err),
     );
   }
 }
@@ -1418,16 +1277,6 @@ async function runConfigWrite(params: {
     );
   }
 }
-
-/** What a failed drop of the previous secret states ahead of the key file. */
-const PREVIOUS_DROP_PREAMBLE =
-  "both sides saved the new shared secret, but removing the secret before " +
-  "it failed in ";
-
-/** What follows that key file and the failure. */
-const PREVIOUS_DROP_REMEDY =
-  ". The exchange stopped. Fix the key file's location or permissions, " +
-  "then run the same command again.";
 
 /**
  * The run's authentication stage: run the key exchange, set the rotation the
@@ -1491,11 +1340,10 @@ async function authenticateRun(params: {
     if (role === "responder")
       markRotationInFlight(keyFilePath, auth.sharedSecret, Date.now());
   } catch (err) {
-    const message = messageWithOperatorText`${ROTATION_MARK_PREAMBLE}${operatorSuppliedText(
+    throw keyFileWriteFailure(
+      "rotation-mark",
       keyFilePath,
-    )}: ${err instanceof Error ? err.message : String(err)}${ROTATION_MARK_REMEDY}`;
-    throw markStatesItsOwnNextStep(
-      keepOperatorSuppliedText(new Error(message.text), message),
+      err instanceof Error ? err.message : String(err),
     );
   }
   // Set synchronously before the await, so a signal arriving during the key
@@ -1621,33 +1469,23 @@ async function authenticateRun(params: {
       // the two. An online invite or accept responder (saved exclusively) has
       // no key file after a failed save, and a re-run bootstrap healing from
       // none is unmeasured, so it takes the 77 path on every channel.
-      const reason = err instanceof Error ? err.message : String(err);
       const responderCannotHeal =
         role === "responder" &&
         !(nextRunHeals && initiatorKeepsSecretRunUsed(channel, secretUsed));
-      const [preamble, remedy] =
+      const failure = keyFileWriteFailure(
         role === "initiator"
-          ? [FIRST_STORE_SAVE_PREAMBLE, FIRST_STORE_SAVE_REMEDY]
-          : [
-              ROTATED_TOKEN_SAVE_PREAMBLE,
-              responderCannotHeal
-                ? ROTATED_TOKEN_SAVE_REMEDY_NO_HEAL
-                : ROTATED_TOKEN_SAVE_REMEDY,
-            ];
-      const message = messageWithOperatorText`${preamble}${operatorSuppliedText(
+          ? "first-store"
+          : responderCannotHeal
+            ? "responder-store-no-heal"
+            : "responder-store",
         keyFilePath,
-      )}: ${reason}${remedy}`;
-      const failure = keepOperatorSuppliedText(
-        new Error(message.text),
-        message,
+        err instanceof Error ? err.message : String(err),
       );
-      throw markStatesItsOwnNextStep(
-        responderCannotHeal
-          ? markNoHealSaveFailure(
-              withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE),
-            )
-          : failure,
-      );
+      throw responderCannotHeal
+        ? markNoHealSaveFailure(
+            withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE),
+          )
+        : failure;
     }
   }
 
@@ -2197,10 +2035,11 @@ export interface RunProtocolOptions {
  * {@link RunProtocolResult.configWriteError}. A run that saved its rotated key
  * file and stopped before the step, or after it failed to write the
  * configuration, states the step for that state
- * ({@link keyFileSavedConfigNotWrittenRemedy}): on the error it rejects with,
+ * (`keyFileSavedConfigNotWrittenRemedy`): on the error it rejects with,
  * which the command boundary renders, or from the signal handler on an
  * interrupt. A run that stopped before saving its key file, where its partner
- * may have saved the next secret, states {@link keyFileNotSavedRemedy}. Omit
+ * may have saved the next secret, states `keyFileNotSavedRemedy`. Both come
+ * from {@link keyFileStateStep} on an interrupt. Omit
  * it on the no-auth path and from every other caller; passing it with
  * `auth: null` is rejected up front, since an unauthenticated exchange has no
  * acceptance step.
@@ -2424,49 +2263,22 @@ export async function runProtocol(
       if (maxListenersIncremented) process.setMaxListeners(prevMaxListeners);
     }
   }
-  // SIGINT and SIGTERM share one helper, reading the same state the catch
-  // block reads (keyFileSavedConfigNotWritten, then rotationStanding); a run
-  // that rotated nobody states nothing.
-  function logRotationStateOnInterrupt(reason: string): void {
-    const setup = keyFileSavedConfigNotWritten(
-      run,
-      build.trimmedKeyFilePath,
-      onlineSetup,
+  // SIGINT and SIGTERM share one helper, stating the key-file state through
+  // the builder the catch block's failure path uses.
+  function logKeyFileStateOnInterrupt(): void {
+    const step = keyFileStateStep(
+      {
+        standing: rotationStanding(run),
+        onlineSetup: onlineSetup !== undefined,
+        keyFileSavedConfigNotWritten: keyFileSavedConfigNotWritten(
+          run,
+          build.trimmedKeyFilePath,
+          onlineSetup,
+        ),
+      },
+      { kind: "interrupted" },
     );
-    if (setup !== undefined) {
-      log.warn(
-        keyFileSavedConfigNotWrittenRemedy(setup, { kind: "interrupted" }),
-      );
-      return;
-    }
-    const saved = `The shared secret was already rotated and saved before ${reason}.`;
-    switch (rotationStanding(run)) {
-      case "unchanged":
-        return;
-      case "partner-may-lead":
-        if (onlineSetup !== undefined) {
-          log.warn(keyFileNotSavedRemedy({ kind: "interrupted" }));
-          return;
-        }
-        log.warn(
-          `This side had not saved the next shared secret when ${reason}, ` +
-            "and your partner may already have saved it. Retry the exchange " +
-            "with the existing key file; if authentication fails on retry, " +
-            "ask your partner for a new invitation.",
-        );
-        return;
-      case "partner-may-lag":
-        log.warn(
-          `${saved} Retry with the same key file; if authentication fails ` +
-            "on retry, ask your partner for a new invitation.",
-        );
-        return;
-      case "both-stored":
-        log.warn(
-          `${saved} Your partner saved it too, so retry with the same key file.`,
-        );
-        return;
-    }
+    if (step !== undefined) log.warn(step);
   }
   const psiWorkerExitWait: PsiWorkerExitWaitOptions = {
     announce: (line) => log.info(line),
@@ -2519,7 +2331,7 @@ export async function runProtocol(
     try {
       log.info(`caught ${signal}, stopping`);
       offerExitAtOnceWhilePsiWorkersStop(psiWorkerExitWait);
-      logRotationStateOnInterrupt("the exchange was interrupted");
+      logKeyFileStateOnInterrupt();
       await cleanup();
     } catch (cleanupErr: unknown) {
       log.debug(
@@ -2935,19 +2747,14 @@ export async function runProtocol(
     );
     if (setup !== undefined) markKeyFileSavedConfigNotWritten(reported, setup);
     else if (!hintAlreadyEmitted) {
-      const rotationLine =
-        standing === "unchanged" && run.authStarted && authenticationFailed
-          ? "Authentication failed, and a retry with this key file fails " +
-            `the same way. ${NEW_INVITATION_REMEDY} ` +
-            "If the SFTP server's host key is not the pinned one, " +
-            "confirm the server's key with its administrator and pin " +
-            "that key instead."
-          : standing === "partner-may-lead" && onlineSetup !== undefined
-            ? keyFileNotSavedRemedy({
-                kind: "failed",
-                errorStatesItsStep: retryRuledOut,
-              })
-            : rotationLineAfterFailure(standing, retryRuledOut);
+      const rotationLine = keyFileStateStep(
+        { standing, onlineSetup: onlineSetup !== undefined },
+        {
+          kind: "failed",
+          errorStatesItsStep: retryRuledOut,
+          authenticationFailed: run.authStarted && authenticationFailed,
+        },
+      );
       if (rotationLine !== undefined) log.error(rotationLine);
     }
     // Authenticated cross-party abort marker: on a terminal organic fault
