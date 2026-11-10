@@ -3,6 +3,8 @@
 // cause alike. The web app's check of an exchange's relays words each cause
 // itself. Contract: docs/spec/CLI_DOCTOR.md, The relay check.
 
+import type { RelayTransport } from "./relayCheck.js";
+
 /** A cause's meaning and the change that fixes it. */
 export interface RelayCheckWords {
   meaning: string;
@@ -16,11 +18,19 @@ export interface RelayCheckWords {
 export const RELAY_NOT_REACHED_REMEDY =
   "Fix the relay, or arrange a direct path; waiting longer changes nothing.";
 
-/** What a TURN relay that gave no relay candidate means, its cause unread. */
-export const TURN_RELAY_NOT_REACHED_MEANING =
-  "nothing on this host reached this relay, the relay refused the " +
-  "credential, or it presented a certificate this host does not trust; " +
-  "the reason is not reported, so the check cannot tell which.";
+/**
+ * What a TURN relay that gave no relay candidate means, its cause unread. Only
+ * a `turns:` relay presents a certificate, so only its meaning names one.
+ */
+export function turnRelayNotReachedMeaning(transport: RelayTransport): string {
+  return transport === "tls"
+    ? "nothing on this host reached this relay, the relay refused the " +
+        "credential, or it presented a certificate this host does not trust; " +
+        "the reason is not reported, so the check cannot tell which."
+    : "nothing on this host reached this relay, or the relay refused the " +
+        "credential; the reason is not reported, so the check cannot tell " +
+        "which.";
+}
 
 /** Why a relay keyed by its registrar refuses a run, where a run enrolls there. */
 export const RELAY_REFUSES_UNTIL_ENROLLED_AT_REGISTRAR =

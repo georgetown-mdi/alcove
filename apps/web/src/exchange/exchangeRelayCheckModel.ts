@@ -1,4 +1,8 @@
-import { RELAY_CHECK_BOUND_MS, sanitizeForDisplay } from "@alcove/core";
+import {
+  RELAY_CHECK_BOUND_MS,
+  sanitizeForDisplay,
+  turnUrlTransport,
+} from "@alcove/core";
 
 import {
   defaultRelayRefusalReason,
@@ -361,9 +365,12 @@ export function exchangeRelayCheckLineShown(
         return doesNotWork(url, "not_reached", {
           summary: `no connection through this relay within ${BOUND_SECONDS}.`,
           meaning:
-            "this computer could not reach it, the relay refused this " +
-            "exchange, or the relay presented a certificate this computer " +
-            "does not trust; the browser does not report which.",
+            turnUrlTransport(url) === "tls"
+              ? "this computer could not reach it, the relay refused this " +
+                "exchange, or the relay presented a certificate this " +
+                "computer does not trust; the browser does not report which."
+              : "this computer could not reach it, or the relay refused " +
+                "this exchange; the browser does not report which.",
           action:
             "Check that this computer can reach the relay, then check again." +
             NOT_REACHED_FOLLOW_UP[owner],
