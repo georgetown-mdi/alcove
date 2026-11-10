@@ -79,6 +79,7 @@ a restatement.
 | [rename-to-alcove.md](rename-to-alcove.md) | The rename to Alcove | built |
 | [repo-check-scripts.md](repo-check-scripts.md) | Why the repository check scripts have their shape | built |
 | [reported-failure-cause.md](reported-failure-cause.md) | Showing a failed exchange's reported cause | built |
+| [review-day.md](review-day.md) | The review-day command and its briefs | built |
 | [rotation-hardening.md](rotation-hardening.md) | Stale copies and one-sided rotations | built |
 | [rule-set-citation-verdict.md](rule-set-citation-verdict.md) | A false rule-set citation in the acceptor's record | withdrawn |
 | [sftp-adapter-state-machine.md](sftp-adapter-state-machine.md) | The SFTP adapter's state machines | built |
