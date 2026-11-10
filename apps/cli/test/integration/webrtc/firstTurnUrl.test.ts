@@ -9,12 +9,14 @@ import {
 } from "../../../src/connection/webrtc/weriftPeer";
 
 import type { Socket } from "node:dgram";
+import type { RTCIceServer } from "werift";
 
 /**
  * Which of the STUN and TURN urls a CLI run lists a real werift peer contacts
- * while it gathers. The parser test in webrtcIceConfiguration.test.ts pins
- * what `parseIceServers` keeps; this one counts the requests that reach each
- * server, so a release that gathered from more urls by any path reddens here.
+ * while it gathers. werift gathers from every url it is given; the run hands
+ * it the first of each kind, which webrtcIceConfiguration.test.ts pins. This
+ * one counts the requests that reach each server, so a run that handed werift
+ * more urls, or a werift that gathered from others by any path, reddens here.
  * The assumption and its re-verification on a bump are in
  * docs/spec/DEPENDENCY_PINS.md.
  */
@@ -122,34 +124,68 @@ test(
       startCountingServer(),
       startCountingServer(),
     ]);
-    const configuration = buildPeerConfiguration(
-      iceServersFromConnection({
-        stun: [
-          `stun:127.0.0.1:${firstStun.port}`,
-          `stun:127.0.0.1:${secondStun.port}`,
-        ],
-        turn: [
-          {
-            url: `turn:127.0.0.1:${firstTurn.port}?transport=udp`,
-            username: "first-user",
-            credential: "placeholder-not-a-secret",
-          },
-          {
-            url: `turn:127.0.0.1:${secondTurn.port}?transport=udp`,
-            username: "second-user",
-            credential: "placeholder-not-a-secret",
-          },
-        ],
-      }),
-    );
-    expect(configuration.iceServers).toHaveLength(3);
+    const listed = iceServersFromConnection({
+      stun: [
+        `stun:127.0.0.1:${firstStun.port}`,
+        `stun:127.0.0.1:${secondStun.port}`,
+      ],
+      turn: [
+        {
+          url: `turn:127.0.0.1:${firstTurn.port}?transport=udp`,
+          username: "first-user",
+          credential: "placeholder-not-a-secret",
+        },
+        {
+          url: `turn:127.0.0.1:${secondTurn.port}?transport=udp`,
+          username: "second-user",
+          credential: "placeholder-not-a-secret",
+        },
+      ],
+    });
+    expect(listed).toHaveLength(3);
 
-    await gatherOnce(configuration);
+    await gatherOnce(buildPeerConfiguration(listed));
 
     expect(firstStun.requests).toContain(BINDING_REQUEST);
     expect(firstTurn.requests).toContain(ALLOCATE_REQUEST);
     expect(secondStun.requests).toEqual([]);
     expect(secondTurn.requests).toEqual([]);
+  },
+);
+
+test(
+  "a werift peer handed every url contacts every STUN and TURN server",
+  { timeout: GATHERING_TIMEOUT_MS + 10_000 },
+  async () => {
+    const [firstStun, secondStun, firstTurn, secondTurn] = await Promise.all([
+      startCountingServer(),
+      startCountingServer(),
+      startCountingServer(),
+      startCountingServer(),
+    ]);
+    const turnServer = (port: number): RTCIceServer => ({
+      urls: `turn:127.0.0.1:${port}?transport=udp`,
+      username: "user",
+      credential: "placeholder-not-a-secret",
+    });
+
+    await gatherOnce({
+      iceServers: [
+        {
+          urls: [
+            `stun:127.0.0.1:${firstStun.port}`,
+            `stun:127.0.0.1:${secondStun.port}`,
+          ],
+        },
+        turnServer(firstTurn.port),
+        turnServer(secondTurn.port),
+      ],
+    });
+
+    expect(firstStun.requests).toContain(BINDING_REQUEST);
+    expect(secondStun.requests).toContain(BINDING_REQUEST);
+    expect(firstTurn.requests).toContain(ALLOCATE_REQUEST);
+    expect(secondTurn.requests).toContain(ALLOCATE_REQUEST);
   },
 );
 

@@ -41,6 +41,11 @@ const EARLIEST_REFRESH_MS = 700;
 const armedTimeouts = (): number =>
   process.getActiveResourcesInfo().filter((kind) => kind === "Timeout").length;
 
+/** A STUN method's name: werift's `methods` is a plain object with no reverse lookup. */
+const methodName = (method: methods): string =>
+  Object.entries(methods).find(([, value]) => value === method)?.[0] ??
+  String(method);
+
 interface ScriptedRelay {
   transport: IceTransport;
   /** Resolves when the relay is asked for `method`; rejects at the deadline. */
@@ -98,7 +103,7 @@ function scriptedRelay(): ScriptedRelay {
       new Promise<void>((resolve, reject) => {
         const deadline = setTimeout(() => {
           waiting.delete(method);
-          reject(new Error(`no ${methods[method]} within ${withinMs} ms`));
+          reject(new Error(`no ${methodName(method)} within ${withinMs} ms`));
         }, withinMs);
         waiting.set(method, () => {
           clearTimeout(deadline);

@@ -565,9 +565,9 @@ test("a list that keeps a TURN url warns nothing though allowed_relays left anot
   expect(warnings).toEqual([]);
 });
 
-// --- what werift takes from the list ----------------------------------------
+// --- what the run hands werift ----------------------------------------------
 
-test("werift's parser keeps the first TURN url and the first STUN url of the list a run passes it", () => {
+test("a run hands werift the first STUN url and the first TURN url of its list, and werift's parser keeps those alone", () => {
   const configuration = buildPeerConfiguration(
     iceServersFromConnection(
       {
@@ -592,19 +592,28 @@ test("werift's parser keeps the first TURN url and the first STUN url of the lis
       RUN_CREDENTIAL,
     ),
   );
-  expect(configuration.iceServers).toHaveLength(4);
 
+  expect(configuration.iceServers).toEqual([
+    { urls: ["stun:own-first.example:3478"] },
+    {
+      urls: "turn:own-first.example:3478",
+      username: "first-user",
+      credential: "first-secret",
+    },
+  ]);
   const options = parseIceServers(configuration.iceServers ?? []);
-
-  expect(options).toEqual({
-    stunServer: ["own-first.example", 3478],
-    turnServer: ["own-first.example", 3478],
-    turnUsername: "first-user",
-    turnPassword: "first-secret",
-  });
+  expect(options.stunServers).toEqual([["own-first.example", 3478]]);
+  expect(options.turnServers).toEqual([
+    {
+      address: ["own-first.example", 3478],
+      username: "first-user",
+      password: "first-secret",
+      transport: undefined,
+    },
+  ]);
 });
 
-test("werift's parser takes the invitation's first TURN url when the connection names no TURN of its own", () => {
+test("a run hands werift the invitation's first TURN url when the connection names no TURN of its own", () => {
   const configuration = buildPeerConfiguration(
     iceServersFromConnection(
       {
@@ -623,13 +632,57 @@ test("werift's parser takes the invitation's first TURN url when the connection 
     ),
   );
 
-  expect(parseIceServers(configuration.iceServers ?? [])).toEqual({
-    stunServer: ["partner-first.example", 3478],
-    turnServer: ["partner-first.example", 3478],
-    turnUsername: RUN_CREDENTIAL.username,
-    turnPassword: RUN_CREDENTIAL.credential,
-  });
+  expect(configuration.iceServers).toEqual([
+    { urls: ["stun:partner-first.example:3478"] },
+    {
+      urls: "turn:partner-first.example:3478",
+      username: RUN_CREDENTIAL.username,
+      credential: RUN_CREDENTIAL.credential,
+    },
+  ]);
+  const options = parseIceServers(configuration.iceServers ?? []);
+  expect(options.stunServers).toEqual([["partner-first.example", 3478]]);
+  expect(options.turnServers).toEqual([
+    {
+      address: ["partner-first.example", 3478],
+      username: RUN_CREDENTIAL.username,
+      password: RUN_CREDENTIAL.credential,
+      transport: undefined,
+    },
+  ]);
 });
+
+test.each([
+  [
+    "only TURN urls",
+    [
+      { urls: "turn:a.example:3478", username: "u", credential: "c" },
+      { urls: "turn:b.example:3478", username: "u", credential: "c" },
+    ],
+    [{ urls: "turn:a.example:3478", username: "u", credential: "c" }],
+  ],
+  [
+    "only STUN urls, as a string and a list",
+    [{ urls: "stun:a.example:3478" }, { urls: ["stun:b.example:3478"] }],
+    [{ urls: "stun:a.example:3478" }],
+  ],
+  [
+    "a TURN url before the STUN url",
+    [
+      { urls: "turn:a.example:3478", username: "u", credential: "c" },
+      { urls: ["stun:b.example:3478", "stun:c.example:3478"] },
+    ],
+    [
+      { urls: "turn:a.example:3478", username: "u", credential: "c" },
+      { urls: ["stun:b.example:3478"] },
+    ],
+  ],
+])(
+  "a list holding %s is cut to the first of each kind, in list order",
+  (_label, servers, handed) => {
+    expect(buildPeerConfiguration(servers).iceServers).toEqual(handed);
+  },
+);
 
 // --- plaintext signaling ----------------------------------------------------
 

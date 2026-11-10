@@ -813,7 +813,7 @@ function waitSoFar(ms: number): string {
 
 /**
  * The line a run prints when it holds a minted TURN credential: its lifetime
- * and expiry, the one TURN url werift contacts, the first listed, and whether
+ * and expiry, the one TURN url the run contacts, the first listed, and whether
  * that url is presented the credential. An invitation's url is the partner's
  * text, so it is named escaped.
  */
@@ -882,9 +882,13 @@ export interface WeriftPeerConfiguration {
  * `iceServers` and an absent one both mean "use the built-in default", so
  * omitting it keeps the two from looking different when they are not. Both arms
  * are driven in webrtcIceConfiguration.test.ts -- an empty list and no list each
- * yield `{}` with the warning, and a non-empty list is passed verbatim, which is
+ * yield `{}` with the warning, and a non-empty list is passed on, which is
  * what makes it, and not the default, the list actually used. What werift falls
  * back to when it is given neither is measured by the integration suite.
+ *
+ * A non-empty list is cut to its first STUN url and its first TURN url
+ * ({@link firstStunAndTurnUrl}): a run allocates on, presents a credential to,
+ * and enrolls for that one TURN url alone.
  */
 export function buildPeerConfiguration(
   iceServers: Array<RTCIceServer> | undefined,
@@ -896,7 +900,35 @@ export function buildPeerConfiguration(
     relaysLeftOut.length > 0 && !(iceServers ?? []).some(listsTurnUrl);
   if (relaysEmptied) warn(relaysLeftOutWarning(relaysLeftOut, noServers));
   else if (noServers) warn(NO_ICE_SERVERS_WARNING);
-  return noServers ? {} : { iceServers };
+  return noServers ? {} : { iceServers: firstStunAndTurnUrl(iceServers) };
+}
+
+/**
+ * The first `stun:`/`stuns:` url and the first `turn:`/`turns:` url of
+ * `iceServers`, each in an entry of its own that keeps its server's other
+ * fields, in list order. werift 0.27 gathers from every url it is given, and
+ * the relay credential notice, the relay check and the registrar enrollment
+ * each name the first TURN url as the one a run contacts.
+ */
+function firstStunAndTurnUrl(
+  iceServers: ReadonlyArray<RTCIceServer>,
+): Array<RTCIceServer> {
+  const kept: Array<RTCIceServer> = [];
+  let stunKept = false;
+  let turnKept = false;
+  for (const server of iceServers) {
+    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+    for (const url of urls) {
+      const isStun = /^stuns?:/i.test(url);
+      const isTurn = /^turns?:/i.test(url);
+      if ((isStun && stunKept) || (isTurn && turnKept) || (!isStun && !isTurn))
+        continue;
+      if (isStun) stunKept = true;
+      else turnKept = true;
+      kept.push({ ...server, urls: Array.isArray(server.urls) ? [url] : url });
+    }
+  }
+  return kept;
 }
 
 /** Whether a server entry lists a `turn:` or `turns:` url. */

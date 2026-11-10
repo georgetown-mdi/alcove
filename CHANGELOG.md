@@ -56,6 +56,10 @@ This changelog is a reader's summary of what Alcove does and how that changes pe
 - BREAKING: the dual-signed receipt format holds the partner's linkage terms, so verifying a receipt needs no partner terms document beside it; a receipt in an earlier format is refused. See `docs/spec/EXCHANGE_RECORD.md`.
 - BREAKING: the web app and the CLI apply application-layer encryption on every WebRTC exchange, so a web app build from before this change cannot complete a WebRTC exchange with a current CLI or web app. See `docs/spec/CHANNEL_SECURITY.md`.
 
+### Fixed
+
+- A CLI WebRTC exchange relayed through a TURN server stays connected past the relay's nonce lifetime, about 1,000 seconds on the project's relay, where it lost its connection. See `docs/spec/DEPENDENCY_PINS.md`.
+
 ### Security
 
 - Recurring CLI exchanges are encrypted end-to-end on the wire with an application-layer AEAD, authenticated with a P-256 key exchange, and SFTP connections verify the server host key fail-closed. See `docs/SECURITY_DESIGN.md`, `docs/spec/CHANNEL_SECURITY.md` and `docs/spec/SFTP_CONNECTION.md`.
