@@ -21,7 +21,7 @@ Alcove performs privacy-preserving record linkage with a cryptographic protocol 
 - **From the command line**, for IT teams fitting linkage into a data pipeline.
 
 You and your partner do not have to choose the same one.
-To start, [choose a guide](../docs/guides/index.md).
+To start, [choose a guide](guides/index.md).
 For the design, security, and compliance documents, read the [documentation](../docs/README.md).
 
 ## Open source

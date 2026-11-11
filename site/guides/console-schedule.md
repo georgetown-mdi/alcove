@@ -141,4 +141,4 @@ A run does not overwrite the last one's files.
 On Windows, check the task's **Last Run Result** in Task Scheduler after each run: `0x0` is success, `0x42` means the input file was missing, `0x45` that the server or your partner was not reached. All codes: [Exit codes](./cli-schedule.md#exit-codes).
 For failure alerts, see [Schedule it](./cli-schedule.md) on the command line.
 
-More detail: [What the scheduling machine needs](../CLI.md#scheduling-the-run), [Moving the key file to another machine](../CLI.md#the-key-file-on-the-scheduling-machine).
+More detail: [What the scheduling machine needs](../../docs/CLI.md#scheduling-the-run), [Moving the key file to another machine](../../docs/CLI.md#the-key-file-on-the-scheduling-machine).

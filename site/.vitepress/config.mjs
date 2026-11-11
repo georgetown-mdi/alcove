@@ -1,7 +1,7 @@
 // @ts-check
 // The project site, built by VitePress from the Markdown under docs/ and site/
 // and a few files at the repository root, in place: `npm run site:build` writes
-// docs/.vitepress/dist, which site_deploy.yaml (the staging preview) and
+// site/.vitepress/dist, which site_deploy.yaml (the staging preview) and
 // site_publish.yaml (production) upload to Cloudflare Pages.
 // What the site is and how it deploys: infra/hosted/README.md, "The project site".
 
@@ -40,6 +40,10 @@ export const ROOT_PAGES = [
   "SUPPORT.md",
 ];
 
+// The directories inside SOURCE_DIRECTORIES the site does not publish: the
+// design notes are read on GitHub, and a link to one points there.
+export const UNPUBLISHED_DIRECTORIES = ["docs/notes"];
+
 const srcExclude = readdirSync(repoRoot, { withFileTypes: true })
   .filter(
     (entry) =>
@@ -47,7 +51,10 @@ const srcExclude = readdirSync(repoRoot, { withFileTypes: true })
       !ROOT_PAGES.includes(entry.name),
   )
   .map((entry) => (entry.isDirectory() ? `${entry.name}/**` : entry.name))
-  .concat(["**/node_modules/**", "docs/.vitepress/**", GUIDE_INCLUDES]);
+  .concat(
+    ["**/node_modules/**", "site/.vitepress/**", GUIDE_INCLUDES],
+    UNPUBLISHED_DIRECTORIES.map((dir) => `${dir}/**`),
+  );
 
 // The project pages and the guides are served at the site root, the overview
 // beside the documentation index, and each directory's README at the
@@ -57,7 +64,6 @@ const REWRITES = {
   "docs/index.md": "docs/overview.md",
   "docs/README.md": "docs/index.md",
   "docs/spec/README.md": "docs/spec/index.md",
-  "docs/notes/README.md": "docs/notes/index.md",
 };
 
 const toPosix = (path) => path.split(sep).join(posix.sep);
@@ -68,6 +74,7 @@ function isSitePage(path) {
     path.endsWith(".md") &&
     (ROOT_PAGES.includes(path) ||
       SOURCE_DIRECTORIES.some((dir) => path.startsWith(`${dir}/`))) &&
+    !UNPUBLISHED_DIRECTORIES.some((dir) => path.startsWith(`${dir}/`)) &&
     existsSync(resolve(repoRoot, path))
   );
 }
@@ -172,7 +179,7 @@ function dropHtmlComments(md) {
 function page(text, path) {
   if (!isSitePage(path)) {
     throw new Error(
-      `docs/.vitepress/config.mjs names ${path} in a menu, which is not a page the site renders. Correct the path or remove the entry.`,
+      `site/.vitepress/config.mjs names ${path} in a menu, which is not a page the site renders. Correct the path or remove the entry.`,
     );
   }
   return { text, link: siteAddress(path) };
@@ -201,7 +208,7 @@ export default {
   ],
   // With srcDir at the repository root, the default public directory would be
   // a top-level public/; the site's static files sit beside this config.
-  vite: { publicDir: resolve(repoRoot, "docs/.vitepress/public") },
+  vite: { publicDir: resolve(repoRoot, "site/.vitepress/public") },
   markdown: {
     // Raw HTML is shown as text, and HTML comments are dropped
     // (dropHtmlComments): a `<name>` placeholder in prose would otherwise reach
@@ -278,7 +285,10 @@ export default {
           page("Privacy", "PRIVACY.md"),
           page("How an exchange communicates", "docs/COMMUNICATION.md"),
           page("Technical specifications", "docs/spec/README.md"),
-          page("Design notes", "docs/notes/README.md"),
+          {
+            text: "Design notes on GitHub",
+            link: `${REPOSITORY_URL}/tree/main/docs/notes`,
+          },
         ],
       },
       {

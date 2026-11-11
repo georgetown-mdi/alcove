@@ -342,10 +342,10 @@ A push to `main` does not update the project site at `data-bridge.org`. Its prod
 
    ```sh
    git fetch origin --tags --force
-   git diff site-published origin/main -- docs site CHANGELOG.md CONTRIBUTING.md LICENSE.md PRIVACY.md SECURITY.md SUPPORT.md
+   git diff site-published origin/main -- docs ':(exclude)docs/notes' ':(exclude)docs/spec/wording-changes' site CHANGELOG.md CONTRIBUTING.md LICENSE.md PRIVACY.md SECURITY.md SUPPORT.md
    ```
 
-   Before the first publish the tag does not exist, so there is nothing to compare against: review the staging preview alone.
+   The design notes and the spec's wording-change lists are not published on the site, so the compare leaves them out. Before the first publish the tag does not exist, so there is nothing to compare against: review the staging preview alone.
 
 2. Run the workflow from `main` with its ref left at `main`: `gh workflow run site_publish.yaml --ref main`, or "Run workflow" on the Actions page.
 3. Check the run: the build job's summary lists the files that changed since the last publish, and the tag job's summary names the commit `site-published` points at.

@@ -21,7 +21,7 @@ Alcove is for two organizations that each hold records about people and need to 
 - Developers contributing to the project.
 
 The [reading guide for each role](../docs/README.md#role-based-reading-guide) shows where each of them starts.
-To run an exchange, [choose a guide](../docs/guides/index.md).
+To run an exchange, [choose a guide](guides/index.md).
 
 ## What stays with your organization
 

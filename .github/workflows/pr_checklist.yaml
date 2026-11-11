@@ -18,15 +18,18 @@ name: PR Checklist
 # required check (GATING_WORKFLOWS in scripts/check-merge-gate-identities.mjs),
 # so the skip holds no merge pending.
 #
-# A pull request that changes only the project pages under site/ skips it too:
-# those pages are reviewed at publication, by the compare in docs/RELEASES.md.
+# A pull request that changes only the project pages directly under site/, or
+# their images, skips it too: those pages are reviewed at publication, by the
+# compare in docs/RELEASES.md. The guides (site/guides/) and the build
+# configuration (site/.vitepress/) are not skipped.
 
 on:
   pull_request:
     branches: [main, staging]
     types: [opened, edited, reopened, synchronize, ready_for_review]
     paths-ignore:
-      - "site/**"
+      - "site/*.md"
+      - "site/img/**"
 
 # Cancel a superseded run when a newer commit or body edit lands on the same PR.
 concurrency:

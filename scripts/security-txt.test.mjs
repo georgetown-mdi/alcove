@@ -31,7 +31,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const SECURITY_TXT_FILES = [
   "apps/web/public/.well-known/security.txt",
-  "docs/.vitepress/public/.well-known/security.txt",
+  "site/.vitepress/public/.well-known/security.txt",
 ];
 
 /**
@@ -47,12 +47,12 @@ const SITE_UPLOADS = [
   },
   {
     workflow: SITE_DEPLOY_WORKFLOW,
-    output: "docs/.vitepress/dist",
+    output: "site/.vitepress/dist",
     uploads: 1,
   },
   {
     workflow: SITE_PUBLISH_WORKFLOW,
-    output: "docs/.vitepress/dist",
+    output: "site/.vitepress/dist",
     uploads: 1,
   },
 ];

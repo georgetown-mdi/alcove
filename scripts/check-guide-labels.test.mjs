@@ -8,8 +8,8 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { parseSource } from "./lib/typeScriptSources.mjs";
 import {
-  DOCS_DIR,
   GUIDES_DIR,
+  INCLUDE_DIRS,
   LABEL_SOURCE_DIRS,
   NOT_LABELS,
   boldLabels,
@@ -99,7 +99,7 @@ describe("labelIndex", () => {
 
 describe("guideLabelFailures", () => {
   const index = indexOf("fixture.tsx", APP);
-  const guide = (text) => [{ file: "docs/guides/fixture.md", text }];
+  const guide = (text) => [{ file: "site/guides/fixture.md", text }];
 
   it("passes a guide naming an existing label", () => {
     expect(
@@ -115,7 +115,7 @@ describe("guideLabelFailures", () => {
     );
     expect(failures).toHaveLength(1);
     expect(failures[0]).toMatch(
-      /^docs\/guides\/fixture\.md:2: \*\*Save the connection\*\* matches no string/,
+      /^site\/guides\/fixture\.md:2: \*\*Save the connection\*\* matches no string/,
     );
   });
 
@@ -243,15 +243,15 @@ describe("includeFailures", () => {
     return root;
   }
 
-  const failuresFor = (files, page = "docs/guides/page.md") => {
+  const failuresFor = (files, page = "site/guides/page.md") => {
     const root = tree(files);
     return includeFailures(root, [{ file: page, text: files[page] }]);
   };
 
   it("passes an include that resolves, with and without a region", () => {
     const files = {
-      "docs/guides/_part.md": PART,
-      "docs/guides/page.md":
+      "site/guides/_part.md": PART,
+      "site/guides/page.md":
         "<!--@include: ./_part.md#app-->\n<!--@include: _part.md-->",
     };
     expect(failuresFor(files)).toEqual([]);
@@ -259,46 +259,46 @@ describe("includeFailures", () => {
 
   it("resolves a path from the including file, or from the source directory with an @ prefix", () => {
     const files = {
-      "docs/shared/_part.md": PART,
-      "docs/guides/page.md":
-        "<!--@include: ../shared/_part.md#app-->\n<!--@include: @/docs/shared/_part.md#app-->\n<!--@include: @docs/shared/_part.md#app-->",
+      "site/shared/_part.md": PART,
+      "site/guides/page.md":
+        "<!--@include: ../shared/_part.md#app-->\n<!--@include: @/site/shared/_part.md#app-->\n<!--@include: @site/shared/_part.md#app-->",
     };
     expect(failuresFor(files)).toEqual([]);
   });
 
   it("resolves a leading slash from the including file, as VitePress does", () => {
     const failures = failuresFor({
-      "docs/shared/_part.md": PART,
-      "docs/guides/page.md": "<!--@include: /docs/shared/_part.md#app-->",
+      "site/shared/_part.md": PART,
+      "site/guides/page.md": "<!--@include: /site/shared/_part.md#app-->",
     });
     expect(failures).toHaveLength(1);
-    expect(failures[0]).toContain("names docs/guides/docs/shared/_part.md");
+    expect(failures[0]).toContain("names site/guides/site/shared/_part.md");
   });
 
   it("fails an include naming a missing file, with the page, line and include", () => {
     const failures = failuresFor({
-      "docs/guides/page.md": "Text.\n<!--@include: ./_gone.md#app-->",
+      "site/guides/page.md": "Text.\n<!--@include: ./_gone.md#app-->",
     });
     expect(failures).toEqual([
-      "docs/guides/page.md:2: <!--@include: ./_gone.md#app--> names docs/guides/_gone.md, which does not exist, so VitePress leaves the include out without a warning. Correct the path.",
+      "site/guides/page.md:2: <!--@include: ./_gone.md#app--> names site/guides/_gone.md, which does not exist, so VitePress leaves the include out without a warning. Correct the path.",
     ]);
   });
 
   it("fails an include naming a missing region", () => {
     const failures = failuresFor({
-      "docs/guides/_part.md": PART,
-      "docs/guides/page.md": "<!--@include: ./_part.md#cli-->",
+      "site/guides/_part.md": PART,
+      "site/guides/page.md": "<!--@include: ./_part.md#cli-->",
     });
     expect(failures).toHaveLength(1);
     expect(failures[0]).toMatch(
-      /^docs\/guides\/page\.md:1: <!--@include: \.\/_part\.md#cli--> names region cli, which docs\/guides\/_part\.md does not define, so VitePress includes the whole file/,
+      /^site\/guides\/page\.md:1: <!--@include: \.\/_part\.md#cli--> names region cli, which site\/guides\/_part\.md does not define, so VitePress includes the whole file/,
     );
   });
 
   it("fails an include naming a directory", () => {
     const failures = failuresFor({
-      "docs/guides/sub/_x.md": PART,
-      "docs/guides/page.md": "<!--@include: ./sub-->",
+      "site/guides/sub/_x.md": PART,
+      "site/guides/page.md": "<!--@include: ./sub-->",
     });
     expect(failures).toHaveLength(1);
     expect(failures[0]).toContain("which is not a file");
@@ -317,7 +317,8 @@ describe("the script", () => {
     for (const dir of LABEL_SOURCE_DIRS)
       mkdirSync(resolve(root, dir), { recursive: true });
     writeFileSync(resolve(root, LABEL_SOURCE_DIRS[0], "panel.tsx"), APP);
-    mkdirSync(resolve(root, GUIDES_DIR), { recursive: true });
+    for (const dir of [...INCLUDE_DIRS, GUIDES_DIR])
+      mkdirSync(resolve(root, dir), { recursive: true });
     const notLabels = NOT_LABELS.map(({ text }) => `**${text}**`).join(" ");
     writeFileSync(
       resolve(root, GUIDES_DIR, "guide.md"),
@@ -356,14 +357,18 @@ describe("the script", () => {
     );
   });
 
-  it("passes a fixture include that resolves", () => {
+  it("passes a fixture include that resolves, from docs/ and from site/", () => {
     const root = fixtureRoot("Choose **Save connection**.");
     writeFileSync(
-      resolve(root, DOCS_DIR, "guides", "_part.md"),
+      resolve(root, GUIDES_DIR, "_part.md"),
       "<!-- #region app -->\nShared.\n<!-- #endregion app -->\n",
     );
     writeFileSync(
-      resolve(root, DOCS_DIR, "other.md"),
+      resolve(root, "docs", "other.md"),
+      "<!--@include: ../site/guides/_part.md#app-->\n",
+    );
+    writeFileSync(
+      resolve(root, "site", "other.md"),
       "<!--@include: ./guides/_part.md#app-->\n",
     );
     const result = run(root);
@@ -371,33 +376,33 @@ describe("the script", () => {
     expect(result.status).toBe(0);
   });
 
-  it("fails a fixture include naming a missing file", () => {
+  it("fails a fixture include under docs/ naming a missing file", () => {
     const root = fixtureRoot("Choose **Save connection**.");
     writeFileSync(
-      resolve(root, DOCS_DIR, "other.md"),
-      "<!--@include: ./guides/_gone.md#app-->\n",
+      resolve(root, "docs", "other.md"),
+      "<!--@include: ../site/guides/_gone.md#app-->\n",
     );
     const result = run(root);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "docs/other.md:1: <!--@include: ./guides/_gone.md#app--> names docs/guides/_gone.md, which does not exist",
+      "docs/other.md:1: <!--@include: ../site/guides/_gone.md#app--> names site/guides/_gone.md, which does not exist",
     );
   });
 
-  it("fails a fixture include naming a missing region", () => {
+  it("fails a fixture include under site/ naming a missing region", () => {
     const root = fixtureRoot("Choose **Save connection**.");
     writeFileSync(
-      resolve(root, DOCS_DIR, "guides", "_part.md"),
+      resolve(root, GUIDES_DIR, "_part.md"),
       "<!-- #region app -->\nShared.\n<!-- #endregion app -->\n",
     );
     writeFileSync(
-      resolve(root, DOCS_DIR, "other.md"),
+      resolve(root, "site", "other.md"),
       "<!--@include: ./guides/_part.md#cli-->\n",
     );
     const result = run(root);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "docs/other.md:1: <!--@include: ./guides/_part.md#cli--> names region cli, which docs/guides/_part.md does not define",
+      "site/other.md:1: <!--@include: ./guides/_part.md#cli--> names region cli, which site/guides/_part.md does not define",
     );
   });
 

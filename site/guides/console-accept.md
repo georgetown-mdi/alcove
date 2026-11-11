@@ -147,4 +147,4 @@ Your next run needs `.alcove.key`. Where to find it:
 | "This invitation does not include a connection endpoint this build can accept, so it cannot be run here." | Your partner made it on the command line without naming the server. Ask for one as **Before you start** shows, or invite them yourself. |
 | "This invitation has expired. Ask your partner to send a new one." | Ask your partner for a new invitation. |
 
-More detail: [How the console accepts a WebRTC invitation](../CONSOLE.md#accepting-a-webrtc-invitation), [How the console holds your SFTP sign-in](../CONSOLE.md#authoring-the-sftp-connection).
+More detail: [How the console accepts a WebRTC invitation](../../docs/CONSOLE.md#accepting-a-webrtc-invitation), [How the console holds your SFTP sign-in](../../docs/CONSOLE.md#authoring-the-sftp-connection).

@@ -286,7 +286,7 @@ alcove probe-host-key sftp://sftp.example.org
 
 It prints `sftp.example.org presented a ... host key with fingerprint SHA256:...`. Confirm it against the server itself, then send it to your partner and put it in your own `host_key_fingerprint`.
 
-More detail: [How host-key pinning works](../CLI.md#sftp-host-key-trust), [Every connection setting by channel](../EXCHANGE_REFERENCE.md#connection-blocks-by-channel).
+More detail: [How host-key pinning works](../../docs/CLI.md#sftp-host-key-trust), [Every connection setting by channel](../../docs/EXCHANGE_REFERENCE.md#connection-blocks-by-channel).
 
 ## What you get
 

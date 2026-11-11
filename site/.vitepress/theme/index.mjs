@@ -1,6 +1,6 @@
 // @ts-check
 // The default theme for the reference pages, and the guide layout for the
-// guides under docs/guides/ (docs/.vitepress/guides.mjs writes their markup).
+// guides under site/guides/ (site/.vitepress/guides.mjs writes their markup).
 // The guide fonts are served from the site itself.
 
 import "@fontsource-variable/inconsolata/wght.css";

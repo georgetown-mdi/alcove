@@ -1,5 +1,5 @@
 // @ts-check
-// The markup the guides under docs/guides/ and the project pages under site/
+// The markup the guides under site/guides/ and the project pages under site/
 // are written in, rendered for the project site: a `::: tabs <group>` switcher
 // with `== <name>` pane lines, step headings (`### N. <text>`) drawn as a
 // timeline with the acting party's mark, `Screen:`, `You should see:` and
@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** The directory the guides live in, relative to the repository root. */
-export const GUIDES_DIR = "docs/guides/";
+export const GUIDES_DIR = "site/guides/";
 
 /**
  * The directory of the project pages -- home, who it is for, about and
@@ -511,7 +511,7 @@ function aboutLayout(state) {
   }
 
   const out = [];
-  for (let index = 0; index < tokens.length; ) {
+  for (let index = 0; index < tokens.length;) {
     const token = tokens[index];
     if (!(isSectionHeading(token) && token.tag === "h3")) {
       out.push(token);
@@ -607,14 +607,13 @@ function ledgerHtml(state, md, group) {
     if (token.type !== "heading_open" || token.level !== 0) return;
     if (token.tag !== "h2" || !id) return;
     const text = inlineText(state.tokens[index + 1]);
-    contents.push(`<li><a href="#${escapeHtml(id)}">${escapeHtml(text)}</a></li>`);
+    contents.push(
+      `<li><a href="#${escapeHtml(id)}">${escapeHtml(text)}</a></li>`,
+    );
   });
   if (contents.length > 0) {
     rows.push(
-      row(
-        "On this page",
-        `<ul class="guide-toc">${contents.join("")}</ul>`,
-      ),
+      row("On this page", `<ul class="guide-toc">${contents.join("")}</ul>`),
     );
   }
   if (typeof frontmatter.next === "string") {
@@ -638,11 +637,16 @@ function insertHeader(state, md, path) {
   if (title === -1) return;
   let after = title + 3;
   if (tokens[after]?.type === "paragraph_open") {
-    if (tokens[after].tag === "p") tokens[after].attrJoin("class", "guide-lede");
+    if (tokens[after].tag === "p")
+      tokens[after].attrJoin("class", "guide-lede");
     after += 3;
   }
   if (path === HOME) {
-    tokens.splice(after, 0, htmlBlock(state, `</div>\n${figureSvg()}\n</div>\n`));
+    tokens.splice(
+      after,
+      0,
+      htmlBlock(state, `</div>\n${figureSvg()}\n</div>\n`),
+    );
     tokens.splice(
       title,
       0,

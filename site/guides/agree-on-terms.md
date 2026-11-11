@@ -25,7 +25,7 @@ Broader matching has 41 rules and Highest precision has 24. An invitation keeps 
 
 A ZIP code or phone number column must be the person's own. A site's or agency's ZIP code or phone number matches unrelated people served there.
 
-More detail: [How the rules are ranked by precision](../EXCHANGE_REFERENCE.md#choosing-the-built-in-rules), [How to leave out the less certain rules](../EXCHANGE_REFERENCE.md#rules-marked-less-certain).
+More detail: [How the rules are ranked by precision](../../docs/EXCHANGE_REFERENCE.md#choosing-the-built-in-rules), [How to leave out the less certain rules](../../docs/EXCHANGE_REFERENCE.md#rules-marked-less-certain).
 
 ## What each of you sends
 
@@ -110,7 +110,7 @@ The defaults suit most exchanges. These notes matter only if you change a settin
 
 The coordination server, the STUN server (Google's, unless your settings or the invitation name another) and any relay or relay registrar of a WebRTC exchange see both parties' network addresses and connection times, never the exchange's content. A relay also sees how much traffic it carries. The SFTP server or shared folder of an invited exchange sees the exchange's data only encrypted, and sees when each file is written. None of them sees the identifiers you match on. In the web app, the site's host (Cloudflare) also sees your network address when it serves the page.
 
-More detail: [What the coordination server, relays and SFTP server can observe](../../PRIVACY.md#what-supporting-services-can-observe), [Why record counts are revealed](../SECURITY_DESIGN.md#private-set-intersection), [What a count-only exchange protects](../SECURITY_DESIGN.md#count-only-exchanges-and-the-pre-agreement-assumption).
+More detail: [What the coordination server, relays and SFTP server can observe](../../PRIVACY.md#what-supporting-services-can-observe), [Why record counts are revealed](../../docs/SECURITY_DESIGN.md#private-set-intersection), [What a count-only exchange protects](../../docs/SECURITY_DESIGN.md#count-only-exchanges-and-the-pre-agreement-assumption).
 
 ## Timing
 
@@ -155,7 +155,7 @@ Each use on **How it is used** is a pair of values in `metadata`:
 
 A column left out of `metadata` is not sent.
 
-More detail: [Which settings each app can change](../EXCHANGE_REFERENCE.md#where-each-setting-is-edited), [The output setting](../EXCHANGE_REFERENCE.md#linkage_termsoutput).
+More detail: [Which settings each app can change](../../docs/EXCHANGE_REFERENCE.md#where-each-setting-is-edited), [The output setting](../../docs/EXCHANGE_REFERENCE.md#linkage_termsoutput).
 
 ## A checklist for your partner
 

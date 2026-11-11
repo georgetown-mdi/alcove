@@ -131,7 +131,7 @@ Send your partner the guide for their side too: `https://data-bridge.org/web-acc
 
 If your partner reports a term that differs from what you agreed, choose **Replace this invitation**. The link you sent stops working, and **Review & create** opens with your choices kept. Change the term, create the new invitation, and send it.
 
-Where the exchange uses a WebSocket relay, **Check the relays** shows whether each WebSocket relay accepts the exchange from your side ([Checking the relays](../WEB_APP.md#checking-the-relays)). To change a relay, replace the invitation the same way.
+Where the exchange uses a WebSocket relay, **Check the relays** shows whether each WebSocket relay accepts the exchange from your side ([Checking the relays](../../docs/WEB_APP.md#checking-the-relays)). To change a relay, replace the invitation the same way.
 
 > [!WARNING]
 > Keep this tab open: closing it cancels the invitation. During the exchange, closing or reloading either tab stops it for both of you.
@@ -171,4 +171,4 @@ Keep the record, keys, input and result together as long as your records schedul
 
 To run the same exchange again with this partner, follow [Run it on a schedule](./web-schedule.md) before you leave this screen: the save offer appears only here.
 
-More detail: [How to check a record against your files later](../WEB_APP.md#checking-a-record-later), [How large a file the web app can match](../DEPLOYMENT.md#how-large-an-exchange-can-be).
+More detail: [How to check a record against your files later](../../docs/WEB_APP.md#checking-a-record-later), [How large a file the web app can match](../../docs/DEPLOYMENT.md#how-large-an-exchange-can-be).

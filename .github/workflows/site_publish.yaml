@@ -80,7 +80,7 @@ jobs:
       - name: List the site changes since the last publish
         env:
           COMMIT: ${{ steps.commit.outputs.commit }}
-          REVIEW_PATHS: docs site CHANGELOG.md CONTRIBUTING.md LICENSE.md PRIVACY.md SECURITY.md SUPPORT.md
+          REVIEW_PATHS: docs :(exclude)docs/notes :(exclude)docs/spec/wording-changes site CHANGELOG.md CONTRIBUTING.md LICENSE.md PRIVACY.md SECURITY.md SUPPORT.md
         run: |
           set -euo pipefail
           read -r -a paths <<<"${REVIEW_PATHS}"
@@ -111,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: docs/.vitepress/dist
+          path: site/.vitepress/dist
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error

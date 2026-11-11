@@ -4,19 +4,24 @@ title: "Where the project site's content lives in the repository"
 
 # Where the project site's content lives in the repository
 
-_Status: proposal, agent-written; nothing is moved, and the layout waits on the
-maintainer's ruling. It weighs where the project site's pages, guides and
-build configuration live, against the repository documentation the site also
+_Status: built. The maintainer chose layout B on 2026-11-10, and the site's
+files moved into `site/`, with the PR checklist skip narrowed to the project
+pages. On the separate question
+([below](#a-separate-question-the-design-notes-and-the-spec)), the maintainer
+ruled the same day that the site publishes the spec and not the notes.
+The note weighs where the project site's pages, guides and build
+configuration live, against the repository documentation the site also
 renders. What the site is and how it deploys:
 [infra/hosted/README.md](../../infra/hosted/README.md#the-project-site)._
 
-Every count below was measured at `origin/staging` 837cde344 on 2026-11-10.
+Every count below was measured at `origin/staging` 837cde344 on 2026-11-10,
+before the move, and the next section describes the layout as it was then.
 
-## The current layout
+## The layout before the move
 
 ### What the site publishes
 
-The build ([config.mjs](../.vitepress/config.mjs)) sets `srcDir` to the
+The build ([config.mjs](../../site/.vitepress/config.mjs)) sets `srcDir` to the
 repository root and excludes every root entry except `docs/`, `site/` and six
 root pages. It publishes:
 
@@ -57,7 +62,7 @@ The build configuration sits inside `docs/` but reads the whole repository.
 
 ### How a collision arises
 
-`guideRewrites()` in [guides.mjs](../.vitepress/guides.mjs) serves every page
+`guideRewrites()` in [guides.mjs](../../site/.vitepress/guides.mjs) serves every page
 of two directories, `site/` and `docs/guides/`, at the site root under its
 file stem. A guide and a project page with the same stem, or a project page
 named `guides.md`, would share an address. The filesystem cannot prevent this
@@ -221,7 +226,14 @@ README address names them.
 
 Leaving them out would take most commits out of the publish compare, and it
 would stop agent-written notes, which are proposals until ratified, from
-appearing as published documentation. This note leaves that question open.
+appearing as published documentation.
+
+**Decided and built:** the site publishes `docs/spec/` and not `docs/notes/`.
+The notes are excluded from the build, a link to one points at the file on
+GitHub, the sidebar's Design notes entry links to the directory there, and the
+notes' old addresses redirect to GitHub. The publish compare leaves out
+`docs/notes/` and the spec's `wording-changes/` lists, which the site does not
+render.
 
 ## Recommendation
 

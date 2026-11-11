@@ -40,7 +40,7 @@ The smoke, run with the same CLI, session `smoke-a` in `D/smoke/a/` and session 
 
 1. `open https://staging.data-bridge.org/` in `smoke-a`. If no browser starts, run `install-browser` for the one the error names and record it. Record the footer's `Commit` text.
 2. Isolation: `localstorage-set audit-probe 1` in `smoke-a`, then `open` the site in `smoke-b` and `localstorage-get audit-probe` there. Expected: no value.
-3. In `smoke-a`, follow `docs/guides/web-invite.md`, Practice with sample data, its "In a different browser" path: download the partner CSV, create the invitation, and write the invitation link from the page into `D/smoke/link.txt`, recording how it was read and its length.
+3. In `smoke-a`, follow `site/guides/web-invite.md`, Practice with sample data, its "In a different browser" path: download the partner CSV, create the invitation, and write the invitation link from the page into `D/smoke/link.txt`, recording how it was read and its length.
 4. In `smoke-b`, open the link, `upload` the downloaded partner CSV by absolute path, accept, and start.
 5. Expected: "Exchange complete - 41 matched records" in both sessions. Record where each download landed.
 6. Close both sessions, and report every step that went otherwise than written here.
@@ -75,7 +75,7 @@ Run one trial at a time, or two at once: four testers is the writing-spawn cap o
    The guided form adds two lines, naming `web-invite.md` for the inviter and `web-accept.md` for the acceptor:
 
    ```
-   Guide: <repo>/docs/guides/agree-on-terms.md and <repo>/docs/guides/<web-invite.md | web-accept.md>.
+   Guide: <repo>/site/guides/agree-on-terms.md and <repo>/site/guides/<web-invite.md | web-accept.md>.
    Read them before you start and follow them; they name the production site, so use the site above.
    Where a guide holds an `<!--@include: ...-->` line, read the region it names from that file in its place.
    ```

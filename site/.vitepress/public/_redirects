@@ -1,0 +1,6 @@
+/instructions /guides 301
+/instructions/ /guides 301
+/instructions/* /:splat 301
+/docs/notes https://github.com/georgetown-mdi/alcove/tree/main/docs/notes 301
+/docs/notes/ https://github.com/georgetown-mdi/alcove/tree/main/docs/notes 301
+/docs/notes/* https://github.com/georgetown-mdi/alcove/blob/main/docs/notes/:splat.md 301

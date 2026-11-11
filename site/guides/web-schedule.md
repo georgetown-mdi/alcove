@@ -142,7 +142,7 @@ If misses repeat, compare the two schedules line by line, using the UTC time in 
 If your partner was running in the window and misses continue, choose **Re-invite with the same terms**: the exchange keeps its terms and gets a new shared secret. Your partner accepts the new invitation ([Accept with the web app](./web-accept.md)), saves it as a recurring exchange, sets the schedule and folder again, and removes the old one under **Recurring exchanges**: the new one is a separate entry.
 Then, before the invitation expires an hour after you created it, agree on a time with your partner and each choose **Run exchange**. A run left to the next window is refused, and you would re-invite again.
 
-More detail: [How retries and repeated misses work](../MANAGED_EXCHANGE.md#retry-and-repeated-misses).
+More detail: [How retries and repeated misses work](../../docs/MANAGED_EXCHANGE.md#retry-and-repeated-misses).
 
 ## The shared secret's inactivity limit
 
@@ -150,4 +150,4 @@ More detail: [How retries and repeated misses work](../MANAGED_EXCHANGE.md#retry
 Ticked, it starts at 90 days and the page says "This exchange must run within 90 days, or its shared secret expires and you re-invite your partner." The count restarts at each successful run.
 For a quarterly exchange, leave it off. If your policy needs a limit, set **Days of inactivity** above two intervals, such as `200` for a 91-day cadence, so one missed window does not expire it.
 
-More detail: [How a saved exchange survives the browser clearing its storage](../MANAGED_EXCHANGE.md#surviving-storage-eviction), [Moving the exchange to another computer](../MANAGED_EXCHANGE.md#moving-the-exchange-to-another-device).
+More detail: [How a saved exchange survives the browser clearing its storage](../../docs/MANAGED_EXCHANGE.md#surviving-storage-eviction), [Moving the exchange to another computer](../../docs/MANAGED_EXCHANGE.md#moving-the-exchange-to-another-device).

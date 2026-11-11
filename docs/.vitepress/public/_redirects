@@ -1,3 +1,0 @@
-/instructions /guides 301
-/instructions/ /guides 301
-/instructions/* /:splat 301
