@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 // this reads the committed lockfile. Where the lockfile cannot answer, the check
 // refuses the input rather than guessing at it -- an `overrides` form it does
 // not model, a key shape it does not model, a source it cannot name. The
-// residual it does not cover is enumerated in docs/spec/DEPENDENCY_PINS.md.
+// residual it does not cover is enumerated in docs/spec/THIRD_PARTY_CODE.md.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const readRootJson = (name) =>

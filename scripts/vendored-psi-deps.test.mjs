@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 // These assertions stand in for the "Alcove loads no gRPC and no proto codegen
 // at runtime" claim -- a re-roll that regresses the fork's manifest fails here
 // rather than silently restoring the surface, which is what a comment or a doc
-// note alone could not do. Rationale: docs/spec/DEPENDENCY_PINS.md.
+// note alone could not do. Rationale: docs/spec/THIRD_PARTY_CODE.md.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const lock = JSON.parse(
@@ -59,7 +59,7 @@ const installedNames = new Set(
 
 describe("vendored @openmined/psi.js dependency surface", () => {
   it("resolves to the committed local tarball, not a registry package", () => {
-    // The pinning assumption in DEPENDENCY_PINS.md: a file: path resolves to
+    // The pinning assumption in THIRD_PARTY_CODE.md: a file: path resolves to
     // exactly the committed bytes. The sha256 sidecar covers those bytes in the
     // tree; the install-time half is the recorded sha512 integrity, held
     // against the tarball by the assertion below rather than claimed here.

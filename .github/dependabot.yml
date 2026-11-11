@@ -79,7 +79,7 @@ updates:
           # than resolved at runtime, so each bump is an individual,
           # reviewable PR instead of riding along in this batch -- see
           # "Inlined dependencies and their remediation path" in
-          # docs/spec/DEPENDENCY_PINS.md.
+          # docs/spec/THIRD_PARTY_CODE.md.
           - "canonicalize"
     ignore:
       # The OpenMined PSI module is vendored, not installed from the registry.

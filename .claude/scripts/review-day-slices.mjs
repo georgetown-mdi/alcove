@@ -214,6 +214,7 @@ export const BOUNDARIES = [
       "DEPENDENCY_PINS",
       "SFTP_STACK",
       "WEBRTC_STACK",
+      "THIRD_PARTY_CODE",
       "docs/RELEASES.md",
       "docs/DEPLOYMENT.md",
     ].map(spec),
