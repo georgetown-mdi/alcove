@@ -232,6 +232,26 @@ The stop at a chunk boundary and at a match's response piece boundary in both ma
 
 **Rebuilding or bumping.** The addon is built from the fork's own Docker build image, not from this repo. On any rebuild -- a fork change, an upstream merge, or a version bump -- verify the new bytes' provenance first, then rewrite the provenance marker for them, and only then regenerate the sidecar (`sha256sum <tarball> > <tarball>.sha256`), so a digest is never written over bytes whose origin was unchecked. The lockfile is then brought onto the new bytes, in order: compute their sha512, edit the `integrity` field for `node_modules/@openmined/psi.js`, force the reinstall (npm skips it while the version string is unchanged), and confirm the installed prebuilds are the ones the tarball extracts to. That confirmation is normative rather than belt-and-braces: it is the only step here that reads what npm actually installed. The ordered procedure and the reviewer's own steps are the runbook, [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md) (the lockfile and reinstall commands are its step 5). A rebuild that touches the native crypto is crypto-code review scope (see [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy)).
 
+**The fork's controls.** The fork, `georgetown-mdi/OpenMinedPSI`, is maintained as this repository is, under these controls. No CI job in either repository reads the repository settings among them; a maintainer reads each with the command shown, at each fork release.
+
+| Control | How it is checked |
+| --- | --- |
+| A ruleset on `master`: pull request required, no force-push, no deletion, and the `changes` and `committed bindings match generated` checks required | `gh api repos/georgetown-mdi/OpenMinedPSI/rulesets`, then the ruleset by id |
+| Actions pinned by commit, enforced | `gh api repos/georgetown-mdi/OpenMinedPSI/actions/permissions` reports `sha_pinning_required: true` |
+| Dependabot alerts | `gh api repos/georgetown-mdi/OpenMinedPSI/vulnerability-alerts` answers 204 |
+| Dependabot security updates, secret scanning, and push protection | `security_and_analysis` in `gh api repos/georgetown-mdi/OpenMinedPSI` reports each `enabled` |
+| Dependabot version updates for npm and GitHub Actions, weekly, with a cooldown | The fork's `.github/dependabot.yml` |
+| Code scanning: CodeQL default setup, weekly, including C/C++, JavaScript/TypeScript, and Actions | `gh api repos/georgetown-mdi/OpenMinedPSI/code-scanning/default-setup` reports `configured` and the languages |
+| Private vulnerability reporting, named as the route in the fork's `SECURITY.md` | `gh api repos/georgetown-mdi/OpenMinedPSI/private-vulnerability-reporting` reports `enabled: true` |
+| Build provenance on the tarball, signed only by a dispatched `Native prebuilds` run | `npm run check:prebuild-provenance` here, above |
+| Workflows: read-only top-level `permissions`, `persist-credentials: false` on every checkout, and the Windows leg's `node.lib` and Swift installer checked against pinned sha256 values | The fork's workflow files, in review of each change to them |
+
+The fork has no release branch. A release is a dispatched `Native prebuilds` run, and the marker names `refs/heads/master` as `source_ref`, so an attestation from a run on any other ref fails the armed check.
+
+**The fork's maintenance.** Dependabot opens the fork's npm and Actions updates weekly, after its cooldown. The fork's `DEPENDENCY_PINS.md` lists every other pinned build input -- Bazel, the Bazel modules, emsdk, the toolchains, `node.lib`, the Swift installer -- with its manual update route. `CI` runs on every push to `master` and weekly, and `Native prebuilds` runs weekly, so a broken default branch shows within a week even when nothing merges.
+
+Upstream `OpenMined/PSI` is checked at each fork release. What it has that the fork lacks is taken in a fork pull request that merges it, keeping the fork's pins and package version; the commands are in the fork's `DEPENDENCY_PINS.md`, Upstream OpenMined/PSI. An upstream merge is a rebuild, re-vendored here as above.
+
 ## Inlined dependencies and their remediation path
 
 A dependency inlined into a built artifact is not resolved at runtime, so a
