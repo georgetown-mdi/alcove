@@ -527,6 +527,51 @@ describe("a console run that failed on a catalog cause", () => {
     }
   });
 
+  test("a no-show after a delete-mode sweep leads with the both-swept line", () => {
+    const BOTH_SWEPT =
+      "You cleared leftover files first, and your partner may have done " +
+      "the same, removing each other's files. Both of you turn off " +
+      `"${SWEEP_CONTROL_LABEL}" and run again.`;
+    const noShow = (
+      cause: FailureCauseOfKind<"partner-never-arrived">,
+      sweep: { sweepExchangeFiles?: boolean; retainFiles?: boolean },
+    ) =>
+      failureFor(
+        "exchange",
+        relayed("the CLI's text", { failureCause: cause, exitCode: 69 }),
+        { channel: cause.channel, ...sweep },
+      );
+    const [filedrop, sftp] = SAMPLES["partner-never-arrived"];
+    const plain = noShow(filedrop, {});
+    const swept = noShow(filedrop, { sweepExchangeFiles: true });
+    expect(swept.title).toBe("Your partner did not arrive");
+    expect(swept.message).toBe(
+      "Your partner did not arrive in the shared folder within 90 seconds. " +
+        `${BOTH_SWEPT} ` +
+        "Check that you and your partner use the same shared folder and " +
+        "that it is syncing, then try again. " +
+        `"${PEER_TIMEOUT_LABEL}" under ${CONNECTION_TUNING_HEADING} sets ` +
+        "how long to wait.",
+    );
+    expect(swept.message).not.toContain("--sweep-exchange-files");
+    expect(noShow(sftp, { sweepExchangeFiles: true }).message).toContain(
+      BOTH_SWEPT,
+    );
+    for (const unchanged of [
+      noShow(filedrop, { sweepExchangeFiles: false }),
+      noShow(filedrop, { sweepExchangeFiles: true, retainFiles: true }),
+    ]) {
+      expect(unchanged.title).toBe(plain.title);
+      expect(unchanged.message).toBe(plain.message);
+    }
+    expect(
+      noShow(
+        { kind: "partner-never-arrived", channel: "webrtc" },
+        { sweepExchangeFiles: true },
+      ).message,
+    ).not.toContain(BOTH_SWEPT);
+  });
+
   test("a missing shared folder names the mount, not a flag", () => {
     const failure = failureFor(
       "exchange",

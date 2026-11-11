@@ -49,6 +49,8 @@ interface ConsoleFailureRemedy {
 interface ConsoleRunContext {
   /** This side set a name for itself under the exchange-files card. */
   readonly thisSideNamed?: boolean;
+  /** The run cleared leftover files at entry in delete mode, not retain mode. */
+  readonly deleteModeSweep?: boolean;
 }
 
 const WAIT_SETTING =
@@ -59,6 +61,13 @@ const WAIT_SETTING =
 // name: a partner that arrived second with the same name refuses this side's
 // file at entry and writes nothing, so this side waits with no file to report.
 const SET_NAMES_DIFFER_CLAUSE = `If both sides set a name under "${EXCHANGE_FILES_HEADING}", check that the names differ.`;
+
+// The line a swept no-show leads with: two sides that both sweep at entry can
+// each delete the other's hello, so neither sees the other arrive.
+const BOTH_SWEPT_LINE =
+  "You cleared leftover files first, and your partner may have done the " +
+  `same, removing each other's files. Both of you turn off ` +
+  `"${SWEEP_CONTROL_LABEL}" and run again.`;
 
 const SHARED_NAME_TITLE = "Both sides may be using the same name";
 
@@ -94,7 +103,7 @@ const partnerNeverArrived = (
     sharedName,
     ignoredHello,
   }: FailureCauseOfKind<"partner-never-arrived">,
-  { thisSideNamed }: ConsoleRunContext,
+  { thisSideNamed, deleteModeSweep }: ConsoleRunContext,
 ): ConsoleFailureRemedy => {
   if (sharedName === true)
     return {
@@ -118,9 +127,13 @@ const partnerNeverArrived = (
     thisSideNamed === true && channel !== "webrtc"
       ? `${SET_NAMES_DIFFER_CLAUSE} `
       : "";
+  const swept =
+    deleteModeSweep === true && channel !== "webrtc"
+      ? `${BOTH_SWEPT_LINE} `
+      : "";
   return {
     title: "Your partner did not arrive",
-    remedy: check + names + WAIT_SETTING,
+    remedy: swept + check + names + WAIT_SETTING,
   };
 };
 

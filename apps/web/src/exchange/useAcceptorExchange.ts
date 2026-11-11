@@ -672,6 +672,8 @@ export function useAcceptorExchange({
           identityLocationPicked:
             receipts?.signing?.identityLocation !== undefined,
           thisSideNamed: options?.peerId !== undefined,
+          sweepExchangeFiles: runDiagnostics?.sweepExchangeFiles === true,
+          retainFiles: options?.retainFiles === true,
         }),
       );
       setRun((prev) => runWithFailure(prev));

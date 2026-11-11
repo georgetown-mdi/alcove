@@ -203,6 +203,8 @@ export function useDirectExchange({
           channel,
           seat: "inviter",
           thisSideNamed: options?.peerId !== undefined,
+          sweepExchangeFiles: runDiagnostics?.sweepExchangeFiles === true,
+          retainFiles: options?.retainFiles === true,
         }),
       );
       setRun((current) => runWithFailure(current));

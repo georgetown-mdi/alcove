@@ -46,6 +46,7 @@ import {
   fromEventConnection,
   type MessageConnection,
 } from "../src/connection/messageConnection";
+import { failureCauseOf } from "../src/failureCause";
 
 import { PassthroughConnection } from "./utils/passthroughConnection";
 
@@ -1010,6 +1011,9 @@ test("the handshake times out if the peer never responds", async () => {
   // Tagged as a peer-wait timeout so a consumer that also knows the run swept
   // the shared folder at entry can offer that as the likely cause.
   expect(isPeerWaitTimeout(err)).toBe(true);
+  // It carries no catalog cause, so the console's partner-never-arrived
+  // remedy never reads it (docs/notes/failure-cause-catalog.md).
+  expect(failureCauseOf(err)).toBeUndefined();
 });
 
 test("a transport refusal during the handshake is reported as itself, not as a timeout", async () => {

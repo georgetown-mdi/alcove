@@ -337,6 +337,11 @@ export interface FailureContext {
   singleColumnInput?: boolean;
   /** Whether this side set a name for itself under the exchange-files card. */
   thisSideNamed?: boolean;
+  /** Whether the run cleared leftover files at entry. */
+  sweepExchangeFiles?: boolean;
+  /** Whether the run kept its exchange files, which turns the sweep's
+   * deletion off. */
+  retainFiles?: boolean;
 }
 
 /** @internal */
@@ -646,6 +651,8 @@ function failureContentFor(
     identityLocationPicked = false,
     singleColumnInput = false,
     thisSideNamed = false,
+    sweepExchangeFiles = false,
+    retainFiles = false,
   }: FailureContext = {},
 ): Omit<RunFailure, "retry"> {
   // The console already holds an exchange (its single slot is occupied), so the
@@ -905,7 +912,10 @@ function failureContentFor(
       cause.kind === "message-write-unconfirmed"
         ? { category: "config" as const, settingsCannotResolve: true as const }
         : { category }),
-      ...consoleFailureForCause(cause, { thisSideNamed }),
+      ...consoleFailureForCause(cause, {
+        thisSideNamed,
+        deleteModeSweep: sweepExchangeFiles && !retainFiles,
+      }),
       ...((cause.kind === "partner-never-arrived" &&
         cause.sharedName === true) ||
       cause.kind === "shared-name-at-entry"
@@ -1709,6 +1719,8 @@ export function useInviterExchange({
             receipts?.signing?.identityLocation !== undefined,
           singleColumnInput: minted.columns.length === 1,
           thisSideNamed: options?.peerId !== undefined,
+          sweepExchangeFiles: runDiagnostics?.sweepExchangeFiles === true,
+          retainFiles: options?.retainFiles === true,
         }),
       );
       setRun((current) => runWithFailure(current));
