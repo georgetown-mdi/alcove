@@ -209,19 +209,21 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 5
 
-  # GitHub Actions used by the workflows in .github/workflows. Every remote
-  # action is pinned to a commit with its release tag in a trailing comment
-  # (e.g. actions/checkout@<commit> # v7.0.1), the form Dependabot reads and
-  # rewrites. This block is configured against that path.
+  # GitHub Actions used by the workflows in .github/workflows and the composite
+  # actions in .github/actions. Every remote action is pinned to a commit with
+  # its release tag in a trailing comment (e.g. actions/checkout@<commit>
+  # # v7.0.1), the form Dependabot reads and rewrites. "/" reads the workflows,
+  # and each composite action's directory is listed beside it, so the group
+  # below moves a pin in both trees in one pull request.
   #
-  # A pin that also appears in a composite action under .github/actions is not
-  # relied upon to be tracked there. Coverage reaches it through the workflow
-  # occurrence instead: scripts/check-action-pin-drift.mjs holds every composite
-  # pin identical to a workflow pin, so a release or advisory reported on the
-  # workflow pin covers the composite occurrence too, and the bump answering it
-  # cannot land on the workflow and leave the composite stale.
+  # scripts/check-action-pin-drift.mjs holds every composite pin identical to a
+  # workflow pin, so a bump cannot land on one tree and leave the other stale.
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/path-scope"
+      - "/.github/actions/setup"
+      - "/.github/actions/test-durations"
     target-branch: "staging"
     schedule:
       interval: weekly

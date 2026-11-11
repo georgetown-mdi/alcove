@@ -75,7 +75,7 @@ section each row links.
 | Relay 443 front image | `infra/relay/front/Dockerfile` | The `nginx:1.31-alpine` index digest | automatic | The `docker` block at `/infra/relay/front`. |
 | BuildKit daemon image | The four `docker/setup-buildx-action` steps in `release.yaml` and `image_smoke.yaml` | The `moby/buildkit:v0.34.2` index digest in `driver-opts`, and in `.github/builder-images/Dockerfile` | automatic | No Dependabot block reads an action input, so the `docker` block at `/.github/builder-images` moves the Dockerfile's pin, and `scripts/dockerhub-login.test.mjs` fails until the same pull request moves the four inputs by hand. |
 | QEMU emulator image | The two `docker/setup-qemu-action` steps in `release.yaml` | The `tonistiigi/binfmt` index digest, and the `qemu-v10.2.3` tag with that digest in `.github/builder-images/Dockerfile` | automatic | The same block and test, for the two inputs. Whether Dependabot compares the `qemu-v` tags as versions is unmeasured until its first run on the block. |
-| Commit-pinned actions | Every remote action in `.github/workflows` and `.github/actions` | A commit, with its release tag in a trailing comment | automatic | The `github-actions` block at `/`, which has no ignore entry and groups every minor and patch action update into one weekly pull request, each major bump opening its own ([GitHub Action pins and the composite mirror](#github-action-pins-and-the-composite-mirror)). The composite occurrences follow the workflow pins ([The composite mirror](#the-composite-mirror)). No step passes `trivy-action` a `version` input, so the Trivy release it installs is the one the pinned commit selects. |
+| Commit-pinned actions | Every remote action in `.github/workflows` and `.github/actions` | A commit, with its release tag in a trailing comment | automatic | The `github-actions` block at `/` and each composite action's directory, which has no ignore entry and groups every minor and patch action update into one weekly pull request, each major bump opening its own ([GitHub Action pins and the composite mirror](#github-action-pins-and-the-composite-mirror)). The composite occurrences follow the workflow pins ([The composite mirror](#the-composite-mirror)). No step passes `trivy-action` a `version` input, so the Trivy release it installs is the one the pinned commit selects. |
 | Cosign release | The `cosign-release` input of two steps in `pages_deploy.yaml` and three in `release.yaml` | `v3.1.4`, and the `ghcr.io/sigstore/cosign/cosign` tag in `.github/tool-versions/Dockerfile` | automatic | No Dependabot block reads an action input, so the `docker` block at `/.github/tool-versions` moves the Dockerfile's tag, and `scripts/tool-versions.test.mjs` fails until the same pull request moves the five inputs by hand. `broker_core_build.yaml` passes no `cosign-release`, so its Cosign is the release the pinned installer selects. |
 | Python | The `actions/setup-python` step in `re2js_reference.yaml` | `python-version` `3.12.10`, and the `python` tag in `.github/tool-versions/Dockerfile` | automatic | The same block and test, for patch releases on the 3.12 line. The block's `ignore` entry holds out minor and major releases, which move by hand. The comparison runs only on a pull request moving re2js, so it does not exercise a bump here. |
 | google-re2 | `scripts/re2-reference/requirements.txt`, which `scripts/compare-regex-with-re2.mjs` installs from | `google-re2==1.1.20251105` | automatic | The `pip` block at `/scripts/re2-reference`. As with Python, the comparison does not run on its pull request. |
@@ -390,10 +390,15 @@ one action has one ref across the workflows. The rule pins every organization
 alike, the steps that run beside the release signing identity
 (`id-token: write`) or the Docker Hub publish token included. The
 `github-actions` block in `.github/dependabot.yml` is configured against
-`.github/workflows` and has no `ignore` entry, so a within-major release opens a
+`.github/workflows` and each composite action's directory under
+`.github/actions`, and has no `ignore` entry, so a within-major release opens a
 pull request and moves the pin. One group holds every minor and patch action
 update, so a weekly run opens one pull request for them, and each major bump
 opens its own.
+Measured 2026-11-10 with the Dependabot CLI 1.97.0, with `actions/setup-node`
+rolled back in both trees: the block's grouped pull request moves the pin in the
+workflows and in `.github/actions/setup/action.yml`, while the block configured
+against `/` alone moves the workflows and leaves the composite behind.
 `scripts/signed-build-inputs.test.mjs` (run by `npm run test:scripts`, a CI
 static check) fails on a remote reference that is not a commit followed by its
 `# vX.Y.Z` tag.
@@ -407,8 +412,8 @@ by this document: the composite mirror below.
 ### The composite mirror
 
 The shared CI prologue composite (`.github/actions/setup/action.yml`) pins
-actions of its own, on a path this repo does not rely on being scanned. The
-invariant that covers it is a mirror rather than a second ecosystem block:
+actions of its own. The Dependabot block above lists its directory, and a
+mirror check holds it beside the workflows:
 
 **Every action pin under `.github/actions` is identical to a pin under
 `.github/workflows`.** A release or advisory then shows on the workflow
