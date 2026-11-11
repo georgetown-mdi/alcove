@@ -1,5 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -158,6 +165,73 @@ describe("reported events", () => {
     ).toEqual([`ci-green 12 ${NEW_HEAD}`]);
   });
 
+  it("reports ci-red again on the same head after a rerun", () => {
+    const path = statePath();
+    const red = view({
+      statusCheckRollup: [checkRun("unit", "COMPLETED", "FAILURE")],
+    });
+    expect(pollWith(path, { 12: red }).lines).toEqual([
+      `ci-red 12 ${HEAD} unit`,
+    ]);
+    expect(pollWith(path, { 12: red }).lines).toEqual([]);
+    expect(
+      pollWith(path, {
+        12: view({ statusCheckRollup: [checkRun("unit", "IN_PROGRESS")] }),
+      }).lines,
+    ).toEqual([]);
+    expect(readFileSync(path, "utf8")).toBe("");
+    expect(pollWith(path, { 12: red }).lines).toEqual([
+      `ci-red 12 ${HEAD} unit`,
+    ]);
+  });
+
+  it("keeps the keys of a watch that wrote while another poll ran", () => {
+    const path = statePath();
+    writeFileSync(path, `georgetown-mdi/alcove#12 conflict ${HEAD}\n`);
+    let inner;
+    const outer = poll({
+      prs: [pr("12")],
+      statePath: path,
+      view: () => {
+        inner = pollWith(path, {
+          13: view({ state: "MERGED", mergeCommit: { oid: MERGE } }),
+        });
+        return view({ state: "CLOSED" });
+      },
+      warn: () => {},
+    });
+    expect(inner.lines).toEqual([`merged 13 ${MERGE}`]);
+    expect(outer).toEqual(["closed 12"]);
+    expect(readFileSync(path, "utf8")).toBe(
+      [
+        `georgetown-mdi/alcove#12 conflict ${HEAD}`,
+        `georgetown-mdi/alcove#13 merged ${MERGE}`,
+        `georgetown-mdi/alcove#12 closed ${HEAD}`,
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("deletes only its own removals when another watch wrote meanwhile", () => {
+    const path = statePath();
+    writeFileSync(path, `georgetown-mdi/alcove#12 conflict ${HEAD}\n`);
+    const outer = poll({
+      prs: [pr("12")],
+      statePath: path,
+      view: () => {
+        pollWith(path, {
+          13: view({ state: "MERGED", mergeCommit: { oid: MERGE } }),
+        });
+        return view();
+      },
+      warn: () => {},
+    });
+    expect(outer).toEqual([]);
+    expect(readFileSync(path, "utf8")).toBe(
+      `georgetown-mdi/alcove#13 merged ${MERGE}\n`,
+    );
+  });
+
   it("reports a conflict again only after the PR was seen mergeable", () => {
     const path = statePath();
     const conflicting = view({ mergeable: "CONFLICTING" });
@@ -275,6 +349,39 @@ describe("parseArgs", () => {
 });
 
 describe("watch-prs.mjs", () => {
+  it("exits 2 naming the file and --state when the state file cannot be written", () => {
+    const directory = mkdtempSync(join(tmpdir(), "watch-prs-cli-"));
+    directories.push(directory);
+    const bin = join(directory, "bin");
+    const stateDirectory = join(directory, "state");
+    mkdirSync(bin);
+    mkdirSync(stateDirectory);
+    writeFileSync(
+      join(bin, "gh"),
+      `#!/bin/sh\necho '${JSON.stringify(view({ state: "MERGED", mergeCommit: { oid: MERGE } }))}'\n`,
+    );
+    chmodSync(join(bin, "gh"), 0o755);
+    chmodSync(stateDirectory, 0o555);
+    try {
+      const state = join(stateDirectory, "watch-prs.reported");
+      const { status, stdout, stderr } = spawnSync(
+        "node",
+        [SCRIPT, "12", "--state", state],
+        {
+          encoding: "utf8",
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+        },
+      );
+      expect(status).toBe(2);
+      expect(stdout).toBe("");
+      expect(stderr.trim().split("\n")).toHaveLength(1);
+      expect(stderr).toContain(`cannot use the state file ${state}`);
+      expect(stderr).toContain("--state");
+    } finally {
+      chmodSync(stateDirectory, 0o755);
+    }
+  });
+
   it("prints its usage and exits 2 with no arguments", () => {
     const { status, stderr } = spawnSync("node", [SCRIPT], {
       encoding: "utf8",

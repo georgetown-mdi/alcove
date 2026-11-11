@@ -14,6 +14,9 @@
 // merge commit's), so a re-armed watch does not report them again and a new
 // head reports its own CI result. A conflict is suppressed while any conflict
 // key for its PR is recorded; seeing the PR mergeable deletes those keys.
+// Seeing a head's checks pending deletes that head's ci keys, so a rerun's
+// result on the same head is reported. A poll re-reads the file before writing
+// and applies only its own additions and deletions, so watches can share it.
 //
 // Exit 0 an event was printed; 2 a usage error or an unusable state file.
 
@@ -198,7 +201,12 @@ export function prEvents(pr, view) {
       key: `${prKey} ci-red ${head}`,
     });
   }
-  return { prKey, mergeable: view.mergeable === "MERGEABLE", events };
+  return {
+    prKey,
+    mergeable: view.mergeable === "MERGEABLE",
+    events,
+    pendingHead: ci.result === "pending" ? head : undefined,
+  };
 }
 
 /** The recorded keys in the state file; an absent file records none. */
@@ -244,13 +252,18 @@ export function ghView({ repo, number }) {
 }
 
 /**
- * One poll over every PR: the new events' lines, after recording their keys
- * and deleting the conflict keys of a PR seen mergeable. The state file is
- * re-read each poll, so watches sharing it see each other's records.
+ * One poll over every PR: the new events' lines, after recording their keys,
+ * deleting the conflict keys of a PR seen mergeable, and deleting the ci keys
+ * of a head seen pending.
  */
 export function poll({ prs, statePath, view = ghView, warn }) {
-  const recorded = readState(statePath);
-  let keys = recorded;
+  let keys = readState(statePath);
+  const added = new Set();
+  const removed = new Set();
+  const remove = (predicate) => {
+    for (const key of keys.filter(predicate)) removed.add(key);
+    keys = keys.filter((key) => !predicate(key));
+  };
   const lines = [];
   for (const pr of prs) {
     let shown;
@@ -264,8 +277,13 @@ export function poll({ prs, statePath, view = ghView, warn }) {
       continue;
     }
     const conflictPrefix = `${shown.prKey} conflict `;
-    if (shown.mergeable) {
-      keys = keys.filter((key) => !key.startsWith(conflictPrefix));
+    if (shown.mergeable) remove((key) => key.startsWith(conflictPrefix));
+    if (shown.pendingHead !== undefined) {
+      const ciKeys = new Set([
+        `${shown.prKey} ci-green ${shown.pendingHead}`,
+        `${shown.prKey} ci-red ${shown.pendingHead}`,
+      ]);
+      remove((key) => ciKeys.has(key));
     }
     for (const event of shown.events) {
       const reported = event.conflict
@@ -273,10 +291,17 @@ export function poll({ prs, statePath, view = ghView, warn }) {
         : keys.includes(event.key);
       if (reported) continue;
       keys = [...keys, event.key];
+      added.add(event.key);
       lines.push(event.line);
     }
   }
-  if (keys !== recorded) writeState(statePath, keys);
+  if (added.size > 0 || removed.size > 0) {
+    const current = readState(statePath).filter((key) => !removed.has(key));
+    writeState(statePath, [
+      ...current,
+      ...[...added].filter((key) => !current.includes(key)),
+    ]);
+  }
   return lines;
 }
 
@@ -339,11 +364,20 @@ async function main() {
     process.exitCode = USAGE_EXIT;
     return;
   }
-  const lines = await watch({
-    prs: parsed.prs,
-    statePath,
-    intervalSeconds: parsed.intervalSeconds,
-  });
+  let lines;
+  try {
+    lines = await watch({
+      prs: parsed.prs,
+      statePath,
+      intervalSeconds: parsed.intervalSeconds,
+    });
+  } catch (error) {
+    process.stderr.write(
+      `watch-prs: cannot use the state file ${statePath}: ${error.message}. Pass a writable file with --state.\n`,
+    );
+    process.exitCode = USAGE_EXIT;
+    return;
+  }
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
