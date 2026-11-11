@@ -19,6 +19,7 @@ import {
   safeParseConnectionConfigAwaitingAddress,
   safeParseFileSyncOptions,
   statesServerHost,
+  turnServerEntries,
   withRetainModeImplications,
 } from "../../src/config/connection";
 import {
@@ -1901,7 +1902,9 @@ test("a padded TURN url names a host, and parses without its padding", () => {
   expect(result.success).toBe(true);
   if (!result.success) return;
   expect(
-    result.data.channel === "webrtc" ? result.data.turn?.[0]?.url : undefined,
+    result.data.channel === "webrtc"
+      ? turnServerEntries(result.data.turn)[0]?.url
+      : undefined,
   ).toBe("turns:turn.example.org:443");
 });
 

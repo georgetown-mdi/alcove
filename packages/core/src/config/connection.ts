@@ -500,6 +500,42 @@ interface TurnServer {
   credentialType?: "password" | "hmac-sha1";
 }
 
+/** The relay providers a `turn` entry can mint its servers and credential from. */
+export const TURN_PROVIDERS = ["cloudflare"] as const;
+
+/**
+ * A `turn` entry whose servers and credential each run mints from a relay
+ * provider's API under the operator's own account
+ * (docs/spec/RELAY_CREDENTIALS.md, "Provider-minted credentials"). It names
+ * no url, username or credential: those come from the provider's answer.
+ */
+export interface TurnProviderEntry {
+  provider: (typeof TURN_PROVIDERS)[number];
+  /** The provider's TURN key id, named in the minting request's path. */
+  keyId: string;
+  /** The TURN key's API token, sent as the minting request's bearer; @-file. */
+  apiToken: string;
+}
+
+/** One `connection.turn` entry: a TURN server, or a provider to mint one from. */
+export type TurnEntry = TurnServer | TurnProviderEntry;
+
+/** Whether a `turn` entry names a provider rather than a server. */
+export function isTurnProviderEntry(
+  entry: TurnEntry,
+): entry is TurnProviderEntry {
+  return "provider" in entry && entry.provider !== undefined;
+}
+
+/** The `turn` entries that name a TURN server, in their listed order. */
+export function turnServerEntries(
+  turn: ReadonlyArray<TurnEntry> | undefined,
+): TurnServer[] {
+  return (turn ?? []).filter(
+    (entry): entry is TurnServer => !isTurnProviderEntry(entry),
+  );
+}
+
 // A TURN or STUN URI names its host directly after the scheme. An entry with
 // no host -- `turn:` left by an empty environment substitution, say -- reaches
 // the ICE layer as a server it cannot resolve and is dropped there: a turn
@@ -700,8 +736,9 @@ export const StunUrlSchema = z
     ),
   );
 
-const TurnServerSchema: z.ZodType<TurnServer> = z
+const TurnServerSchema = z
   .object({
+    provider: z.undefined().optional(),
     url: TurnUrlSchema,
     username: z.string().min(1).optional(),
     credential: z.string().min(1).optional(),
@@ -726,6 +763,63 @@ const TurnServerSchema: z.ZodType<TurnServer> = z
         "from an entry whose credential is minted from the shared secret",
     },
   );
+
+// The keys a server entry sets that a provider entry takes from the provider's
+// answer instead, as the configuration file spells them.
+const TURN_SERVER_ONLY_KEYS: Readonly<Record<string, string>> = {
+  url: "url",
+  username: "username",
+  credential: "credential",
+  credentialType: "credential_type",
+};
+
+function turnProviderEntryKeysMessage(keys: ReadonlyArray<string>): string {
+  const serverKeys = keys.filter((key) => key in TURN_SERVER_ONLY_KEYS);
+  if (serverKeys.length > 0)
+    return (
+      "a turn entry that names a provider takes its url and credential from " +
+      "the provider on each run, so it sets no url, username, credential or " +
+      "credential_type; remove " +
+      serverKeys.map((key) => TURN_SERVER_ONLY_KEYS[key]).join(", ")
+    );
+  return (
+    `a turn entry that names a provider has no ${keys.length === 1 ? "key" : "keys"} ` +
+    `${keys.join(", ")}; it holds only provider, key_id and api_token`
+  );
+}
+
+// A key id is named in the minting request's path, so it is held to
+// characters a path segment needs no escaping for.
+const TURN_PROVIDER_KEY_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+const TurnProviderEntrySchema = z.strictObject(
+  {
+    provider: z.enum(TURN_PROVIDERS),
+    keyId: z.string().regex(TURN_PROVIDER_KEY_ID_PATTERN, {
+      error:
+        "a turn entry's key_id is the provider's TURN key id: 1 to 128 " +
+        "letters, digits, hyphens or underscores",
+    }),
+    apiToken: z.string().min(1),
+  },
+  {
+    error: (issue) =>
+      issue.code === "unrecognized_keys"
+        ? turnProviderEntryKeysMessage(issue.keys)
+        : undefined,
+  },
+);
+
+const TurnEntrySchema: z.ZodType<TurnEntry> = z.discriminatedUnion(
+  "provider",
+  [TurnServerSchema, TurnProviderEntrySchema],
+  {
+    error: (issue) =>
+      issue.code === "invalid_union"
+        ? `a turn entry's provider is one of ${TURN_PROVIDERS.join(", ")}`
+        : undefined,
+  },
+);
 
 /**
  * A provisioning endpoint returning a combined set of ICE servers (STUN +
@@ -1662,12 +1756,15 @@ export const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
 
 /**
  * Whether `turn` holds an entry whose credential a run mints from the shared
- * secret: one that sets no username or credential.
+ * secret: a server entry that sets no username or credential. A provider
+ * entry is not one: its credential comes from the provider.
  */
 export function hasMintedTurnEntry(
   turn: WebRTCConnectionConfig["turn"],
 ): boolean {
-  return (turn ?? []).some((server) => server.credential === undefined);
+  return turnServerEntries(turn).some(
+    (server) => server.credential === undefined,
+  );
 }
 
 // --- Connection config -------------------------------------------------------
@@ -1693,8 +1790,11 @@ export interface WebRTCConnectionConfig {
    * `stuns:` URI followed by a host.
    */
   stun?: string[];
-  /** TURN servers for relaying when no direct path can be found. */
-  turn?: TurnServer[];
+  /**
+   * TURN servers for relaying when no direct path can be found, and relay
+   * providers a run mints servers from in the entry's place.
+   */
+  turn?: TurnEntry[];
   /**
    * The relay named by the invitation this connection was accepted from. A
    * run lists its TURN urls after {@link turn} and its STUN urls after
@@ -1871,7 +1971,7 @@ const WebRTCConnectionConfigSchema = z.strictObject(
     server: WebRTCServerSchema,
     role: z.enum(["inviter", "acceptor"]).optional(),
     stun: z.array(StunUrlSchema).optional(),
-    turn: z.array(TurnServerSchema).optional(),
+    turn: z.array(TurnEntrySchema).optional(),
     invitationRelay: ConnectionRelayLocatorSchema.optional(),
     allowedRelays: z.array(AllowedRelaySchema).optional(),
     relayRegistrar: RelayRegistrarSchema.optional(),

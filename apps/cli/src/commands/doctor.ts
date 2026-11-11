@@ -2,11 +2,17 @@ import type { Argv, Arguments } from "yargs";
 import logLibrary from "loglevel";
 
 import {
+  isTurnProviderEntry,
   redactAndSanitizeForDisplay,
   relayHostStatement,
   relayHostStatementLines,
 } from "@alcove/core";
+import type { ConnectionConfig } from "@alcove/core";
 
+import {
+  mintProviderTurn,
+  providerTurnMintStatement,
+} from "../connection/webrtc/providerTurn";
 import {
   gatherRelayCandidate,
   relayCredentialForRun,
@@ -92,7 +98,10 @@ export interface RelayCheckOptions {
   gather?: RelayCandidateGathering;
   /** Asks each WebSocket relay whether it admits the run's proof. */
   askWebSocket?: WebSocketRelayAsking;
-  /** The fetch the enrollment at the invitation relay's registrar sends with. */
+  /**
+   * The fetch the enrollment at the invitation relay's registrar, and the
+   * mint of a provider turn entry's servers, send with.
+   */
   fetch?: typeof globalThis.fetch;
   now?: Date;
   boundMs?: number;
@@ -115,7 +124,9 @@ export async function checkRelay(
     configFile: options.configFile,
     keyFile: options.keyFile,
   });
-  const connection = relayCheckConnection(loaded);
+  const connection = relayCheckConnection(
+    await withProviderTurnMinted(loaded, options),
+  );
   const role = connection.role;
   const websocketDials =
     role === undefined
@@ -153,6 +164,27 @@ export async function checkRelay(
     enrollment,
     options.askWebSocket,
   );
+}
+
+/**
+ * `connection` with each provider `turn` entry's servers minted in its place,
+ * as a run mints them, after a statement line naming the provider the mint
+ * contacts. Any other connection is returned as it is.
+ */
+async function withProviderTurnMinted(
+  connection: ConnectionConfig,
+  options: Pick<RelayCheckOptions, "writeStatementLine" | "fetch">,
+): Promise<ConnectionConfig> {
+  if (connection.channel !== "webrtc" || connection.iceProvision !== undefined)
+    return connection;
+  const provider = (connection.turn ?? []).find(isTurnProviderEntry);
+  if (provider === undefined) return connection;
+  options.writeStatementLine(providerTurnMintStatement(provider.provider));
+  const minted = await mintProviderTurn(
+    connection,
+    options.fetch === undefined ? {} : { fetch: options.fetch },
+  );
+  return minted?.connection ?? connection;
 }
 
 export function builder(cmd: Argv): Argv {

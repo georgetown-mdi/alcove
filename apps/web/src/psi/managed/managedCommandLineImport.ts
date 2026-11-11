@@ -78,6 +78,7 @@ import {
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
+  turnServerEntries,
 } from "@alcove/core";
 
 import {
@@ -110,6 +111,7 @@ import type {
   ExchangeSpec,
   KeyFile,
   RelayRegistrar,
+  TurnEntry,
 } from "@alcove/core";
 import type {
   ManagedExchangeKeyFields,
@@ -317,12 +319,21 @@ function importedConnection(
   return connection;
 }
 
-function everyTurnEntryMinted(
-  turn: ReadonlyArray<{ username?: string; credential?: string }>,
-): boolean {
-  return turn.every(
-    (entry) => entry.username === undefined && entry.credential === undefined,
-  );
+/** The urls of `turn` when every entry is a server whose credential is
+ * minted from the shared secret, else `undefined`: a provider entry, like a
+ * static credential, stays for the allowlist to refuse. */
+function mintedTurnUrls(
+  turn: ReadonlyArray<TurnEntry>,
+): Array<string> | undefined {
+  const servers = turnServerEntries(turn);
+  if (
+    servers.length !== turn.length ||
+    servers.some(
+      (entry) => entry.username !== undefined || entry.credential !== undefined,
+    )
+  )
+    return undefined;
+  return servers.map(({ url }) => url);
 }
 
 /** The connection without the webrtc `role`, which the allowlist measures
@@ -342,7 +353,7 @@ function withoutLocalConnectionFields(
   if (rest.channel !== "webrtc" || rest.relayRegistrar === undefined)
     return rest;
   const { relayRegistrar: _relayRegistrar, turn, ...held } = rest;
-  return turn === undefined || everyTurnEntryMinted(turn)
+  return turn === undefined || mintedTurnUrls(turn) !== undefined
     ? held
     : { ...held, turn };
 }
@@ -363,10 +374,10 @@ function ownRelayBesideRegistrar(
     connection.relayRegistrar === undefined
   )
     return undefined;
-  const turn = connection.turn ?? [];
-  if (turn.length === 0 || !everyTurnEntryMinted(turn)) return undefined;
+  const turn = mintedTurnUrls(connection.turn ?? []);
+  if (turn === undefined || turn.length === 0) return undefined;
   const ownRelay = OwnRelaySchema.safeParse({
-    turn: turn.map(({ url }) => url),
+    turn,
     stun: [],
   });
   if (!ownRelay.success)

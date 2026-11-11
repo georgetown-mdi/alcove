@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 
-import { UsageError, parseExchangeSpec } from "@alcove/core";
+import { UsageError, parseExchangeSpec, turnServerEntries } from "@alcove/core";
 import type {
   ConnectionConfig,
   ExchangeSpec,
@@ -17,6 +17,7 @@ import {
   resolveAtSignRef,
   resolveAtSignRefs,
   resolveExchangeSpecRefs,
+  TURN_PROVIDER_TOKEN_INLINE_REFUSAL,
 } from "../../../src/util/atSignRefs";
 
 let dir: string;
@@ -391,7 +392,7 @@ test("resolveExchangeSpecRefs resolves @path turn credentials and provision auth
   });
   const conn = resolveExchangeSpecRefs(spec)
     .connection as WebRTCConnectionConfig;
-  expect(conn.turn?.[0].credential).toBe("TURNPW");
+  expect(turnServerEntries(conn.turn)[0]?.credential).toBe("TURNPW");
   expect(conn.server.provision?.auth?.bearer).toBe("WBEAR");
   expect(conn.providerOptions?.key).toBe("WOPAQUE");
 });
@@ -524,4 +525,53 @@ test("resolveExchangeSpecRefs leaves a turn entry with no credential without one
   if (resolved.connection.channel !== "webrtc")
     throw new Error("expected webrtc");
   expect(resolved.connection.turn).toEqual([{ url: "turn:relay:3478" }]);
+});
+
+const TURN_TOKEN = "placeholder-turn-api-token-2222";
+
+function specWithTurnToken(apiToken: string): ExchangeSpec {
+  return parseSpec({
+    connection: {
+      channel: "webrtc",
+      server: { host: "peer" },
+      turn: [
+        {
+          provider: "cloudflare",
+          key_id: "0123456789abcdef0123456789abcdef",
+          api_token: apiToken,
+        },
+      ],
+    },
+  });
+}
+
+test("resolveExchangeSpecRefs reads a provider turn entry's api_token from its @-file", () => {
+  const resolved = resolveExchangeSpecRefs(
+    specWithTurnToken(atFile("turn-token", `${TURN_TOKEN}\n`)),
+  );
+  if (resolved.connection.channel !== "webrtc")
+    throw new Error("expected webrtc");
+  expect(resolved.connection.turn?.[0]).toMatchObject({ apiToken: TURN_TOKEN });
+});
+
+test("resolveExchangeSpecRefs refuses a missing or empty api_token file by its reference", () => {
+  const missing = `@${path.join(dir, "absent")}`;
+  expect(() => resolveExchangeSpecRefs(specWithTurnToken(missing))).toThrow(
+    `cannot read the @-file reference ${missing}`,
+  );
+  expect(() =>
+    resolveExchangeSpecRefs(specWithTurnToken(atFile("empty-token", "\n"))),
+  ).toThrow("resolved to an empty file");
+});
+
+test("resolveExchangeSpecRefs refuses an api_token written in the configuration, without repeating it", () => {
+  let failure: unknown;
+  try {
+    resolveExchangeSpecRefs(specWithTurnToken(TURN_TOKEN));
+  } catch (err) {
+    failure = err;
+  }
+  expect(failure).toBeInstanceOf(UsageError);
+  expect((failure as Error).message).toBe(TURN_PROVIDER_TOKEN_INLINE_REFUSAL);
+  expect((failure as Error).message).not.toContain(TURN_TOKEN);
 });

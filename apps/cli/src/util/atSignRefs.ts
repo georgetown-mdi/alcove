@@ -9,6 +9,7 @@ import type {
 import {
   HOST_KEY_FINGERPRINT_REGEX,
   InternalConsistencyError,
+  isTurnProviderEntry,
   UsageError,
 } from "@alcove/core";
 
@@ -96,7 +97,8 @@ export function resolveAtSignRefs(obj: unknown): unknown {
  * live under `connection`: the SFTP `server.password`, `server.privateKey`, and
  * `server.privateKeyPassphrase`, the HTTP-auth `bearer` / `password` on the
  * `server.provision` and `iceProvision` endpoints, each WebRTC
- * `turn[].credential`, and the opaque `providerOptions` map. Every other field
+ * `turn[].credential`, a provider `turn` entry's `apiToken` (an @-file only), and
+ * the opaque `providerOptions` map. Every other field
  * is left verbatim, so a free-text value with a literal leading `@` (`linkageTerms.identity`,
  * `retentionDisposition`, ...) passes through unread rather than exfiltrating
  * a local file into the self-attested exchange record. A local-path field such as
@@ -141,7 +143,9 @@ function resolveConnectionAtSignRefs(
       resolveHttpAuthAtSignRefs(resolved.iceProvision?.auth);
       if (resolved.turn !== undefined)
         for (const turn of resolved.turn)
-          turn.credential = resolveOptionalAtSignRef(turn.credential);
+          if (isTurnProviderEntry(turn))
+            turn.apiToken = resolveTurnProviderToken(turn.apiToken);
+          else turn.credential = resolveOptionalAtSignRef(turn.credential);
       resolveProviderOptionsAtSignRefs(resolved);
       break;
     case "filedrop":
@@ -149,6 +153,24 @@ function resolveConnectionAtSignRefs(
       break;
   }
   return resolved;
+}
+
+/**
+ * The refusal of a provider `turn` entry whose `api_token` is written in the
+ * configuration rather than read from a file. It does not repeat the value.
+ */
+export const TURN_PROVIDER_TOKEN_INLINE_REFUSAL =
+  "a turn entry that names a provider reads its api_token from a file, and " +
+  "this one holds the token itself. Move the token into a file readable " +
+  "only by you, and set api_token to @ followed by that file's path, for " +
+  "example @/run/secrets/turn-api-token.";
+
+// The account token goes in an @-file alone, so a configuration file that is
+// copied or shown holds no token.
+function resolveTurnProviderToken(value: string): string {
+  if (!value.startsWith("@"))
+    throw new UsageError(TURN_PROVIDER_TOKEN_INLINE_REFUSAL);
+  return resolveAtSignRef(value);
 }
 
 function resolveOptionalAtSignRef(

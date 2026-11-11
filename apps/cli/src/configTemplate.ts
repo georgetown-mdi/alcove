@@ -379,7 +379,10 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # direct connection fails (write the credential as an @path, or leave out
 # username and credential to have each run mint one from the shared secret;
 # credential_type is hmac-sha1 for a time-limited credential your relay's
-# deployment minted, password otherwise). allowed_relays names the relay
+# deployment minted, password otherwise). A turn entry may instead name
+# provider: cloudflare, with your Cloudflare TURN key_id and an api_token
+# written as an @path, to have each run mint servers and a credential from
+# your own Cloudflare account. allowed_relays names the relay
 # hosts, each with a port when given, that your side may connect through,
 # enroll at, and name in its invitations, among your own and an invitation's;
 # unset, it may use them all. Your relay_registrar, where set, still receives
@@ -399,8 +402,12 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 #       username: REPLACE_WITH_TURN_USERNAME
 #       credential: "@./turn-credential.txt"
 #       credential_type: password
+#     - provider: cloudflare
+#       key_id: REPLACE_WITH_CLOUDFLARE_TURN_KEY_ID
+#       api_token: "@./cloudflare-api-token.txt"
 #   allowed_relays:
 #     - relay.example.org
+#     - turn.cloudflare.com
 
 # unexpected_files (sftp and filedrop): what to do when a file that is not part
 # of the exchange appears in the shared directory during it. error stops the
