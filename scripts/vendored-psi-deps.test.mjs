@@ -47,10 +47,9 @@ const tarballIntegrity = (path) =>
 
 // Read the name after the LAST "node_modules/" segment: npm nests a package
 // whose version conflicts with another consumer's at
-// node_modules/<parent>/node_modules/<name>, and this lockfile already installs
-// the vendored package's own google-protobuf that way. Matching the first
-// segment instead would read a nested entry's name as "<parent>/node_modules/
-// <name>" and never match, so a nested reintroduction would pass unseen.
+// node_modules/<parent>/node_modules/<name>. Matching the first segment
+// instead would read a nested entry's name as "<parent>/node_modules/<name>"
+// and never match, so a nested reintroduction would pass unseen.
 const NM = "node_modules/";
 const installedNames = new Set(
   Object.keys(lock.packages)
