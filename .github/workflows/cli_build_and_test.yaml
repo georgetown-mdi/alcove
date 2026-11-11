@@ -81,7 +81,7 @@ jobs:
   # gate's wall time is its slowest suite rather than their sum. Each leg is a
   # runner of its own, and within a leg each suite stands up everything it
   # touches: the SFTP suite's server binds loopback on an ephemeral port
-  # (test/sftpServer/inProcessServer.ts, test/sftpServer/nativeSshdServer.ts)
+  # (test/sftpServer/inProcessServer.ts, packages/testkit/src/nativeSshd.ts)
   # under a globalSetup only the `integration` project references
   # (test/sftpServer/globalSetup.ts); the WebRTC suite spawns a broker per file
   # that reports the port it chose (test/signaling/brokerProcess.ts) behind

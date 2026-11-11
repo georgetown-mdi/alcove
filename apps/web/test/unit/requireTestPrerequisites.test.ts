@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 
 import { loopbackTlsCert } from "@alcove/testkit/loopbackTlsCert";
 
+import { sshTargetAvailable } from "../devServer/sshTargetCommands";
+
 import {
   ALLOW_MISSING_PREREQUISITES_ENV,
   prerequisitesAreRequired,
@@ -106,5 +108,13 @@ describe("webTestPrerequisites", () => {
     expect(certificate).toBeDefined();
     expect(certificate?.available).toBe(loopbackTlsCert !== null);
     expect(certificate?.remedy).toContain("openssl");
+  });
+
+  test("declares the sshd the browser SSH client cases skip on", () => {
+    const sshd = webTestPrerequisites().find(
+      (prerequisite) => prerequisite.name === "OpenSSH sshd",
+    );
+    expect(sshd).toBeDefined();
+    expect(sshd?.available).toBe(sshTargetAvailable());
   });
 });

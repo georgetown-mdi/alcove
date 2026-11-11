@@ -1,0 +1,73 @@
+- Two dependency stacks and the CLI's WebRTC peer are reached past their public APIs, so their internals are critical and each of their upgrades is reviewed on its own; a further dependency, the PSI crypto addon, is a vendored local fork. -> Two dependency stacks, the CLI's WebRTC peer and the browser SSH client's library are reached past their public APIs, so their internals are critical and each of their upgrades is reviewed on its own; a further dependency, the PSI crypto addon, is a vendored local fork.
+- npm registry packages | Every workspace `package.json` and the root `package-lock.json` | Ranges in the manifests, versions and `integrity` in the lockfile | automatic | The `npm` block at `/`, weekly. The reviewed groups and the routine batch are in [How these packages are versioned](#how-these-packages-are-versioned). -> npm registry packages | Every workspace `package.json` and the root `package-lock.json` | Ranges in the manifests apart from one exact version, versions and `integrity` in the lockfile | automatic | The `npm` block at `/`, weekly. The reviewed groups and the routine batch are in [How these packages are versioned](#how-these-packages-are-versioned).
+- The registry packages below take version ranges in their manifests (`^1.17.0`), not exact versions. -> The registry packages below take version ranges in their manifests (`^1.17.0`), not exact versions, apart from the browser SSH client's library.
+- - -> **Browser SSH client library (`@microsoft/dev-tunnels-ssh`).**
+- - -> The web app's SSH client reaches past its main entry.
+- - -> It is declared in `apps/web/package.json` at an exact version, the one exception to the ranges above, and pulled out of the routine Dependabot batch into the reviewed `cryptographic` group (`.github/dependabot.yml`).
+- - -> See [Upgrading the browser SSH client (@microsoft/dev-tunnels-ssh)](#upgrading-the-browser-ssh-client-microsoftdev-tunnels-ssh).
+- - -> Re-verification on a bump
+- - -> Upgrading the browser SSH client (@microsoft/dev-tunnels-ssh)
+- - -> The web app's SSH client (`apps/web/src/psi/transport/browserSsh/`) runs its session on `@microsoft/dev-tunnels-ssh`, through the SFTP relay ([SFTP_RELAY.md](SFTP_RELAY.md)).
+- - -> No shipped page loads it yet.
+- - -> The library is a cryptographic dependency, and the client reaches it past its main entry, so this checklist covers the internals it rests on.
+- - -> Why the library was chosen is in [browser-sftp-proxy.md](../notes/browser-sftp-proxy.md#the-chosen-client-dependency-check-and-sizing).
+- - -> The exact pin
+- - -> `apps/web/package.json` declares the exact version, `3.12.42`, not a range.
+- - -> This is the one exception to the ranges in [How these packages are versioned](#how-these-packages-are-versioned).
+- - -> An `npm update` or `npm audit fix` cannot move it: only a manifest edit does.
+- - -> Dependabot opens that edit in the `cryptographic` group (`.github/dependabot.yml`), and the pull request is checked against this section before it merges.
+- - -> The internal assumptions
+- - -> **Deep imports.**
+- - -> The main entry requires Node's `stream` when it loads (`sshStream.js`, `secureStream.js`), and no browser bundle here provides one.
+- - -> So the client imports the modules it uses by path, all through `browserSsh/sshLibrary.ts`.
+- - -> The package has no `exports` map; a release that adds one hiding those paths fails the build.
+- - -> That file enters `algorithms/sshAlgorithms` first: `algorithms/publicKeyAlgorithm`, `io/sshData` and `algorithms/sshAlgorithms` require one another in a cycle, which completes only in that order.
+- - -> **The `diffie-hellman` load and call split.**
+- - -> `algorithms/web/webKeyExchange.js` requires `diffie-hellman` when it loads, and calls it only for a negotiated finite-field key exchange.
+- - -> The client offers ECDH alone (`ecdh-sha2-nistp256`, `-384`, `-521`), so every browser config aliases the package to a stub that throws `BrowserSshUnsupportedKeyExchangeError` (`browserSshDependencyAliases`, `apps/web/vite.config.ts`).
+- - -> The client build guard, which the hosted and console builds install, fails a browser bundle holding `diffie-hellman` (`apps/web/hosted/moduleGraphGuard.ts`).
+- - -> It does not name the packages `diffie-hellman` brings, since other dependencies bring them too.
+- - -> **`node-rsa`.**
+- - -> `algorithms/node/nodeRsa.js` requires `node-rsa` inside a function, and the package does not declare it.
+- - -> A bundler still resolves it, so it is aliased to a stub as well.
+- - -> **The `self` switch.**
+- - -> `algorithms/sshAlgorithms.js` picks its WebCrypto classes when `self` is an object and `crypto.subtle` exists, and otherwise requires its `algorithms/node/` classes.
+- - -> A production build bundles those Node modules but never loads them in a page.
+- - -> **The negotiation message.**
+- - -> A failed negotiation rejects `connect()` with a plain `Error` reading `Failed <category> negotiation: Server (<list>) Client (<list>)` (`services/keyExchangeService.js`).
+- - -> `browserSshErrors.ts` reads it into `BrowserSshNoCommonAlgorithmError`.
+- - -> A reworded message reaches the caller as the library's own error, unnamed.
+- - -> **`vscode-jsonrpc`.**
+- - -> The library uses only its `Emitter`, `Event`, `Disposable`, `CancellationToken` and `CancellationTokenSource`.
+- - -> The package's main entry reads a `Buffer` global when it loads, and requires `net`, `os` and `crypto`.
+- - -> So the browser configs alias the bare specifier to a module re-exporting the package's own `lib/events` and `lib/cancellation` (`browserSsh/stubs/vscodeJsonrpc.ts`).
+- - -> Whether to replace the package is open ([browser-sftp-proxy.md](../notes/browser-sftp-proxy.md#what-it-adds-to-the-browser-bundle)).
+- - -> **A bare `Buffer` global.**
+- - -> Several modules read `Buffer` without importing it, among them `algorithms/web/jsonWebKeyFormatter.js`, `sshChannel.js`, `sshClientSession.js` and `services/authenticationService.js`.
+- - -> The client installs the app's `buffer` on `globalThis` when the page has none (`provideBufferGlobal`).
+- - -> `apps/web` declares `buffer` at the library's major version, 5, and the browser configs set `resolve.dedupe: ["buffer"]`, so a bundle holds one copy.
+- It covers every package rather than the ones this has happened to, because the mechanism is the block's presence and not any one dependency; a split that is meant to stand is recorded, with its reason, in the check's own `NESTED_BY_DESIGN` map, which is empty. -> It covers every package rather than the ones this has happened to, because the mechanism is the block's presence and not any one dependency; a split that is meant to stand is recorded, with its reason, in the check's own `NESTED_BY_DESIGN` map, which holds one: `apps/web`'s `buffer` at major 5, the browser SSH client's library's line.
+- - -> **The host-key blob.**
+- - -> The library hands a host key's bytes to `setPublicKeyBytes` as a view of a packet buffer it reuses.
+- - -> The owned Ed25519 key copies them.
+- - -> **Abort and the library's pending steps.**
+- - -> Disposing a session does not cancel the library's own pending steps.
+- - -> An abort just after the version line leaves its version read rejected with nothing handling it.
+- - -> An abort once `authenticateClient` has started its un-awaited step can still sign with the client key; the send that would carry the signature throws on the disposed session, so nothing reaches the server, and that rejection also goes unhandled.
+- - -> Run `npx vitest run --project unit test/unit/psi/browserSsh test/unit/hostedModuleGraphGuard.test.ts` from `apps/web`.
+- - -> It covers:
+- - -> the stubs and the shim;
+- - -> the offered algorithm lists, read off the client's KEXINIT;
+- - -> the named negotiation error against a scripted server;
+- - -> the Ed25519 verifier and the non-extractable key;
+- - -> the bundle without the `diffie-hellman` alias failing the guard;
+- - -> the client bundled with the browser aliases, holding one `buffer`, and loading in a context with `self` and no `process`.
+- - -> The guard test also checks that the library is the only package in `package-lock.json` requiring `diffie-hellman`, since the alias hands every importer the stub.
+- - -> Run `npx vitest run --project browser test/browser/browserSshClient.test.ts` from `apps/web`, with OpenSSH's `sshd` installed.
+- - -> It drives a session through the relay to a real sshd:
+- - -> the host key exposed before any signature, ed25519 and ECDSA;
+- - -> authentication with a non-extractable P-256 key, and the `sftp` subsystem;
+- - -> the named error against a server offering only finite-field Diffie-Hellman, or only `aes128-ctr`;
+- - -> a test-only finite-field offer reaching the `diffie-hellman` stub in the pre-bundled library.
+- - -> Confirm the install stays clean: the package declares no install script, and ships no license file.
+- - -> `scripts/lib/bundleNotices.mjs` refuses a shipped bundle that inlines a package with no license file unless that file's `NO_LICENSE_FILE` lists it, so the first pull request that ships the client adds the entry.

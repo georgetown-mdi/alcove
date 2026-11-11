@@ -8,6 +8,8 @@ _Status: design; the proxy is built as the SFTP relay ([SFTP_RELAY.md](../spec/S
 The relay is first-party and fixed-target, by the maintainer's ruling of 2026-10-29 on fork 5, after spike S7 found no off-the-shelf relay, of three tried, that both refuses by `Origin` and holds backpressure in both directions.
 Spike S8 drove three browser SSH clients: `@microsoft/dev-tunnels-ssh` passed with three additions in the spike's own code, `ssh2` bundled for the browser passed only against a server that also offers an ECDSA host key, and `@verdigris/libssh2.js` failed.
 The browser SSH client is `@microsoft/dev-tunnels-ssh`, chosen by the maintainer on 2026-10-29 and conditional on a dependency check and a sizing, measured on 2026-10-30: the licence check passes, the maintenance check does not, and the client is sized ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
+Its session layer is built (`apps/web/src/psi/transport/browserSsh/`), with `diffie-hellman` stubbed and ECDH the only key exchange offered, and completes a session through the relay against OpenSSH's sshd, measured on 2026-11-11 ([What it adds to the browser bundle](#what-it-adds-to-the-browser-bundle)).
+No shipped page loads it, and the SFTP client over it is not built.
 The note frames what a browser SFTP path would need, recommends where it can, and lists the choices left open for the maintainer.
 Nothing here is normative: the channel-security rules are in
 [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it),
@@ -214,13 +216,19 @@ Whether to accept them, remove some, or wait is the maintainer's decision, and t
 - **Bundled:** 11 packages, 328.4 KiB minified and 78.3 KiB gzipped.
   `debug` and `ms` are declared dependencies, but the library's code requires neither, and the bundle has no part of them.
 - **Not resolved for the browser:** `stream`, which `sshStream.js` and `secureStream.js` extend (`stream.Duplex`) when they load.
-  esbuild refused it, and the web application provides none, so the client item adds a stream implementation, a package not checked here.
-  One candidate, `readable-stream` 4.8.0, is MIT, was last modified on 2026-10-08, and brings `buffer` 6, `events`, `process`, `string_decoder` and `abort-controller`.
+  esbuild refused it, and the web application provides none.
+  The built client imports the library's modules by path and never loads those two, so it needs no stream implementation.
 - **Marked external to complete the bundle:** `crypto` (the library's `algorithms/node/` and `brorand`), `net`, `path` and `os` (`vscode-jsonrpc`'s pipe and socket support), and `node-rsa`, a dynamic `require` in `algorithms/node/nodeRsa.js` that the library does not declare.
-  The library picks its WebCrypto classes when `self` and `crypto.subtle` exist (`algorithms/sshAlgorithms.js`); that a browser run reaches none of these modules was not driven.
+  The library picks its WebCrypto classes when `self` and `crypto.subtle` exist (`algorithms/sshAlgorithms.js`).
+  Driven on 2026-11-11: a production build of the client bundles the `algorithms/node/` modules, and the bundle loads without them in a context that has `self` and no `process` (`apps/web/test/unit/hostedModuleGraphGuard.test.ts`).
 - **With `diffie-hellman` stubbed** by a module that throws: `diffie-hellman`, `bn.js`, `miller-rabin`, `brorand`, `randombytes` and `safe-buffer` leave the bundle, which falls to 271.2 KiB minified and 62.8 KiB gzipped.
-  The stub can work only if the session offers the ECDH key exchanges alone; that a session negotiates and completes with it was not driven.
-- **`vscode-jsonrpc`:** the library's code uses only `CancellationToken`, `CancellationTokenSource` and `Emitter` from it (counted with `grep`), so an owned replacement aliased in at build time is possible; it was not tried.
+  The stub works only if the session offers the ECDH key exchanges alone.
+  Driven on 2026-11-11: with the stub aliased in and ECDH alone offered, a session negotiates and completes against OpenSSH's sshd, and a server offering only finite-field Diffie-Hellman fails at once with a named error, before authentication (`apps/web/test/browser/browserSshClient.test.ts`).
+  The client build guard, which the hosted and console builds install, fails a browser bundle holding `diffie-hellman` (`apps/web/hosted/moduleGraphGuard.ts`).
+  It does not name the packages `diffie-hellman` brings, since other dependencies bring them too.
+- **`vscode-jsonrpc`:** the library's code uses only `CancellationToken`, `CancellationTokenSource`, `Disposable`, `Emitter` and `Event` from it.
+  Its main entry reads a `Buffer` global when it loads, so the client aliases the bare specifier to a module re-exporting the package's own `lib/events` and `lib/cancellation`.
+  Whether to replace the package with owned code is open.
 
 ### Licence and maintenance, per package
 

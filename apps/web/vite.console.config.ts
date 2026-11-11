@@ -8,7 +8,13 @@ import {
   bundleNotices,
   bundleNoticesFile,
 } from "../../scripts/lib/bundleNotices.mjs";
-import { srcAliases } from "./vite.config.ts";
+
+import {
+  browserSshDedupe,
+  browserSshDependencyAliases,
+  srcAliasEntries,
+} from "./vite.config.ts";
+import { clientModuleGraphGuard } from "./hosted/moduleGraphGuard.ts";
 import { withColorSchemeScript } from "./src/utils/colorSchemeScript.ts";
 
 import type { Plugin } from "vite";
@@ -41,7 +47,9 @@ const notices = bundleNoticesFile();
  * server/console/main.ts` writes the console server, every dependency bundled
  * in, to `dist/console-server/main.mjs`, with the license text of each package
  * it inlines at its head. The server serves the client from the directory
- * beside its own.
+ * beside its own. The client build fails if the page's or a worker's module
+ * graph reaches a server-only module or `diffie-hellman`
+ * (hosted/moduleGraphGuard.ts).
  */
 export default defineConfig(({ isSsrBuild }) => ({
   root: appRoot,
@@ -58,17 +66,16 @@ export default defineConfig(({ isSsrBuild }) => ({
     }),
     viteReact(),
     consoleColorSchemeScript(),
-    ...(isSsrBuild ? [] : [notices.client]),
+    ...(isSsrBuild ? [] : [clientModuleGraphGuard(), notices.client]),
   ],
-  worker: { plugins: () => [notices.worker] },
+  worker: { plugins: () => [clientModuleGraphGuard(), notices.worker] },
   resolve: {
     alias: [
       { find: /^\.\/routeTree\.gen$/, replacement: consoleRouteTree },
-      ...Object.entries(srcAliases).map(([find, replacement]) => ({
-        find,
-        replacement,
-      })),
+      ...srcAliasEntries,
+      ...browserSshDependencyAliases,
     ],
+    dedupe: browserSshDedupe,
   },
   ...(isSsrBuild
     ? {

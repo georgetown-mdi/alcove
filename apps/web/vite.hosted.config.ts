@@ -7,15 +7,17 @@ import viteReact from "@vitejs/plugin-react";
 import { bundleNoticesFile } from "../../scripts/lib/bundleNotices.mjs";
 
 import {
+  browserSshDedupe,
+  browserSshDependencyAliases,
+  requireHostedSignalingServer,
+  requireValidDefaultRelay,
+  srcAliasEntries,
+} from "./vite.config.ts";
+import {
   gitHeadCommit,
   hostedBuildIdentity,
   hostedBuildIdentityDefines,
 } from "./hosted/buildIdentity.ts";
-import {
-  requireHostedSignalingServer,
-  requireValidDefaultRelay,
-  srcAliases,
-} from "./vite.config.ts";
 import { clientModuleGraphGuard } from "./hosted/moduleGraphGuard.ts";
 import { deployGraphRecorderFromEnv } from "./hosted/deployGraphRecorder.ts";
 import { hostedHeadersFile } from "./hosted/headersFile.ts";
@@ -62,11 +64,10 @@ const hostedConfig = {
   resolve: {
     alias: [
       { find: /^\.\/routeTree\.gen$/, replacement: hostedRouteTree },
-      ...Object.entries(srcAliases).map(([find, replacement]) => ({
-        find,
-        replacement,
-      })),
+      ...srcAliasEntries,
+      ...browserSshDependencyAliases,
     ],
+    dedupe: browserSshDedupe,
   },
   build: {
     outDir: "dist/hosted",
@@ -84,7 +85,7 @@ const hostedConfig = {
  * (hosted/signalingDiscoveryFile.ts), the license text of every package the
  * build inlines (`third-party-licenses.txt`, scripts/lib/bundleNotices.mjs)
  * and no server. The build fails if the page's or a worker's module graph
- * reaches a server-only module
+ * reaches a server-only module or `diffie-hellman`
  * (hosted/moduleGraphGuard.ts), and on a default relay variable the page
  * would refuse at load (vite.config.ts). The page names the release tag or
  * commit it was built from (hosted/buildIdentity.ts).

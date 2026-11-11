@@ -87,7 +87,7 @@ describe("what the lockfile records", () => {
 
 describe("the verdict", () => {
   it("fires on the split the measured vite bump left", () => {
-    const verdict = assess(committedLockWithViteSplit());
+    const verdict = assess(committedLockWithViteSplit(), {});
     expect(verdict.ok).toBe(false);
     const message = verdict.lines.join("\n");
     expect(message).toContain("vite is split across the workspace boundary");
@@ -105,6 +105,7 @@ describe("the verdict", () => {
           "apps/web/node_modules/vite": { version: "8.2.1" },
         },
       }),
+      {},
     );
     expect(verdict.ok).toBe(false);
     expect(verdict.lines.join("\n")).toContain(
@@ -121,6 +122,7 @@ describe("the verdict", () => {
           "apps/web/node_modules/@mantine/core": { version: "9.5.1" },
         },
       }),
+      {},
     );
     expect(verdict.ok, verdict.lines.join("\n")).toBe(true);
   });
@@ -139,7 +141,7 @@ describe("the verdict", () => {
       "string-width",
     );
     expect(splitCopies(lock)).toEqual([]);
-    expect(assess(lock).ok).toBe(true);
+    expect(assess(lock, {}).ok).toBe(true);
   });
 
   it("passes over a copy nested under another package, either side", () => {
@@ -155,6 +157,7 @@ describe("the verdict", () => {
           },
         },
       }),
+      {},
     );
     expect(verdict.ok, verdict.lines.join("\n")).toBe(true);
   });
@@ -170,6 +173,7 @@ describe("the verdict", () => {
           "apps/cli/node_modules/@noble/curves": { version: "1.9.7" },
         },
       }),
+      {},
     );
     expect(verdict.ok).toBe(false);
     const message = verdict.lines.join("\n");
@@ -283,6 +287,7 @@ describe("what it refuses to answer for", () => {
           "apps/web/node_modules/string-width": { version: "7.2.0" },
         },
       }),
+      {},
     );
     expect(verdict.ok).toBe(false);
     const message = verdict.lines.join("\n");
@@ -300,7 +305,7 @@ describe("what it refuses to answer for", () => {
 });
 
 describe("the real repository", () => {
-  it("has no package split across the workspace boundary", () => {
+  it("has no split across the workspace boundary that is not by design", () => {
     const verdict = assess(readRootJson("package-lock.json"));
     expect(verdict.ok, verdict.lines.join("\n")).toBe(true);
   });

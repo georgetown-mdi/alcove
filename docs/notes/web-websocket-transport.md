@@ -465,7 +465,7 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   websockify refuses by `Origin` and maps closes, but keeps reading from the browser while the SFTP server reads nothing; websocat holds backpressure both ways and maps closes, but has no `Origin` check; the npm port of websockify exits on its first upgrade.
 
   The run was in the development container (Node 26.11.1, linux/arm64).
-  Each relay sat between a Node client on `ws` 8.22.0 and either the SFTP test server's native backend (`startNativeSshdServer` in `apps/cli/test/sftpServer/nativeSshdServer.ts`, baseline profile, OpenSSH 9.2p1) or a loopback TCP target the harness controlled.
+  Each relay sat between a Node client on `ws` 8.22.0 and either the SFTP test server's native backend (`startNativeSshdServer` in `packages/testkit/src/nativeSshd.ts`, baseline profile, OpenSSH 9.2p1) or a loopback TCP target the harness controlled.
   The relays, each installed outside the repository:
   - **websockify 0.13.0**, tag `v0.13.0` of `novnc/websockify` (commit e81894751365), run from its source with Python 3.11.2 and none of its optional packages: `python3 -m websockify --auth-plugin websockify.auth_plugins.ExpectOrigin --auth-source <origin> <listen> <target>`.
   - **websocat 1.14.1**, the release binary `websocat.aarch64-unknown-linux-musl` (SHA-256 `711a69576a2ff473fb01a90ffafb571c2ed019e55479d7ae71b12c2eadeb7011`): `websocat --binary -E ws-l:<listen> tcp:<target>`.
@@ -497,7 +497,7 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
 
   What it leaves for [fork 5](#the-forks-and-their-rulings), whose reading is an `Origin` check on an off-the-shelf relay: websocat behind a front that checks `Origin` (not tested), websockify with the browser-to-server direction bounded, or the first-party relay [Question 2](#question-2-one-component-or-two) kept for the case that no relay qualifies.
 
-  The harness is throwaway and kept outside the repository; it starts the native backend through Node's type stripping of `nativeSshdServer.ts`: `node s7.mjs --relay websockify --leg sftp`, with `--relay websocat` or `--relay node-websockify`, and `--leg origin`, `--leg bp-down --seconds 20`, `--leg bp-up --seconds 20` or `--leg close`.
+  The harness is throwaway and kept outside the repository; it starts the native backend by running `packages/testkit/src/nativeSshd.ts` under Node's type stripping: `node s7.mjs --relay websockify --leg sftp`, with `--relay websocat` or `--relay node-websockify`, and `--leg origin`, `--leg bp-down --seconds 20`, `--leg bp-up --seconds 20` or `--leg close`.
 - **S8. The browser SSH client with an external signer.**
   A candidate client through the raw relay from the browser suite, authenticating with a non-extractable WebCrypto P-256 key.
   PASS: the client authenticates, exposes the host-key blob before authentication, and completes a file write and read; the key never leaves WebCrypto.

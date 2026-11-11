@@ -129,10 +129,10 @@ export async function assertLeadingLineWithinByteCeiling(
  * imports no `node:stream` into the web bundle.
  */
 type StreamSource = {
-  on?: (event: "data", listener: (chunk: Buffer | string) => void) => void;
+  on?: (event: "data", listener: (chunk: Uint8Array | string) => void) => void;
   removeListener?: (
     event: "data",
-    listener: (chunk: Buffer | string) => void,
+    listener: (chunk: Uint8Array | string) => void,
   ) => void;
   destroy?: (error?: Error) => void;
 };
@@ -157,9 +157,10 @@ export function guardStreamLineByteCeiling(
   if (typeof source.on !== "function") return () => undefined;
   let run = 0;
   let tripped = false;
-  const onData = (chunk: Buffer | string): void => {
+  const onData = (chunk: Uint8Array | string): void => {
     if (tripped) return;
-    const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    const buf =
+      typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk;
     // Check the run at each terminator and at the unterminated tail, so an
     // overflow before a later terminator in the same chunk still trips.
     let from = 0;

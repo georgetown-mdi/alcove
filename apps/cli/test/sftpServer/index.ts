@@ -4,7 +4,7 @@ import {
   NATIVE_PROFILES,
   type NativeProfile,
   startNativeSshdServer,
-} from "./nativeSshdServer";
+} from "@alcove/testkit/nativeSshd";
 
 export * from "./types";
 export {
@@ -16,7 +16,7 @@ export {
   NATIVE_PROFILES,
   type NativeProfile,
   startNativeSshdServer,
-} from "./nativeSshdServer";
+} from "@alcove/testkit/nativeSshd";
 
 /** The test SFTP server backends the suite can run against. */
 export type SftpBackendName = "in-process" | "native";

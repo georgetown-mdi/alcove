@@ -25,9 +25,14 @@ const SCRIPT = "scripts/check-nested-root-package.mjs";
  * and valued by why that workspace cannot take the version the rest of the tree
  * resolves. An entry naming a path the lockfile no longer holds as a split
  * fails alongside the rest, so a split that gets fixed cannot leave its excuse
- * behind. Empty because the committed lockfile contains no split at all.
+ * behind.
  */
-export const NESTED_BY_DESIGN = {};
+export const NESTED_BY_DESIGN = {
+  "apps/web/node_modules/buffer":
+    "@microsoft/dev-tunnels-ssh declares buffer ^5, and the browser SSH client " +
+    "shares its Buffer class with the library, so apps/web declares buffer at " +
+    "major 5 and its browser configs dedupe to it; the root's 6.x is werift's.",
+};
 
 const segments = (path) => path.split("/");
 

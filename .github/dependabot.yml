@@ -27,6 +27,7 @@ updates:
           - "node-forge"
           - "ssh2"
           - "ssh2-sftp-client"
+          - "@microsoft/dev-tunnels-ssh"
       # The WebRTC stack is grouped (not batched into non-critical) so each
       # bump is checked against its checklist before it merges: the web
       # inbound bound drives peerjs internals, the CLI transport drives
@@ -66,6 +67,7 @@ updates:
           - "node-forge"
           - "ssh2"
           - "ssh2-sftp-client"
+          - "@microsoft/dev-tunnels-ssh"
           - "peerjs"
           - "peerjs-js-binarypack"
           - "werift"

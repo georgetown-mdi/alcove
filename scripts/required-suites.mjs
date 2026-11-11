@@ -42,6 +42,7 @@ export const CI_PROVISIONING_STEPS = {
   ],
   [`${WORKFLOW_DIR}/web_build_and_test.yaml`]: [
     "Assert the test-prerequisite gate is armed",
+    "Create the sshd privilege-separation directory",
     "Bound apt network stalls",
     "Resolve the installed Playwright version",
     "Restore the Playwright browser build",

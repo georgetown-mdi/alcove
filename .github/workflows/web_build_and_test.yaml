@@ -365,6 +365,12 @@ jobs:
           VITE_SIGNALING_SERVER_URL=ws://127.0.0.1/api/ npm run build -w apps/web
           npm run build:console -w apps/web
           npm run build:console-server -w apps/web
+      # The browser SSH client cases start the runner's sshd
+      # (apps/web/test/devServer/sshTargetCommands.ts), which fatally checks for
+      # its privilege-separation directory at startup even when unprivileged.
+      - name: Create the sshd privilege-separation directory
+        if: matrix.playwright == 'true'
+        run: sudo mkdir -p /run/sshd
       # apt applies no network timeout of its own, so a mirror connection that
       # goes quiet hangs the --with-deps install below with nothing to time it
       # out.

@@ -4,7 +4,7 @@ title: "Pinned Dependency Internals and Upgrade Checklists"
 
 # Pinned dependency internals
 
-Two dependency stacks and the CLI's WebRTC peer are reached past their public
+Two dependency stacks, the CLI's WebRTC peer and the browser SSH client's library are reached past their public
 APIs, so their internals are critical and each of their upgrades is reviewed on
 its own; a further dependency, the PSI crypto addon, is a vendored local fork. This document records the internal
 assumptions each rests on, the checklist to re-verify them before a bump merges,
@@ -62,7 +62,7 @@ section each row links.
 | Pin | Where | Recorded as | Route | How it moves |
 | --- | --- | --- | --- | --- |
 | `@openmined/psi.js` | `lib/openmined-psi.js-2.0.6-alcove.1.tgz`, a `file:` dependency of `packages/core`, `apps/cli` and `apps/web` | Version in the file name, the sha256 sidecar, and the lockfile `integrity` | planned | The `npm` block at `/` ignores every version update of it. The planned route is a fork release workflow that opens the re-vendor pull request here. A rebuild follows [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md), and [The vendored @openmined/psi.js addon](#the-vendored-openminedpsijs-addon) states what it must keep. |
-| npm registry packages | Every workspace `package.json` and the root `package-lock.json` | Ranges in the manifests, versions and `integrity` in the lockfile | automatic | The `npm` block at `/`, weekly. The reviewed groups and the routine batch are in [How these packages are versioned](#how-these-packages-are-versioned). |
+| npm registry packages | Every workspace `package.json` and the root `package-lock.json` | Ranges in the manifests apart from one exact version, versions and `integrity` in the lockfile | automatic | The `npm` block at `/`, weekly. The reviewed groups and the routine batch are in [How these packages are versioned](#how-these-packages-are-versioned). |
 | `vite` under `vitepress` | The root `package.json` `overrides` entry | The range `^6.4.5` | scheduled | The range admits a later 6.x release, which lands by `npm update vite --package-lock-only` ([The project site's vite override](#the-project-sites-vite-override)), run each release. A Dependabot pull request does not move it: measured 2026-11-10 with the Dependabot CLI 1.97.0, its `vite` bump leaves this entry and the nested copy as they were, with a later release in the range available. |
 | wrangler | `.github/wrangler/package.json` and its lockfile | The exact version `4.147.0` | automatic | The `npm` block at `/.github/wrangler`. The six `wranglerVersion` inputs move by hand in the same pull request ([The Pages deploy tool](#the-pages-deploy-tool)). |
 | `sharp` and `undici` under wrangler | The `.github/wrangler/package.json` `overrides` entry | The exact versions `0.35.5` and `7.30.2` | scheduled | Each comes out when the locked wrangler resolves that release or a later one, which is checked each release. A Dependabot pull request does not remove either: measured 2026-11-10 with the Dependabot CLI 1.97.0, its wrangler bump from 4.147.0 to 4.158.0 leaves both entries as written, though the `miniflare` that release locks declares `sharp` `0.35.5` itself. |
@@ -99,7 +99,7 @@ These resolve at build or run time, so they have no pin to route:
 ## How these packages are versioned
 
 The registry packages below take version ranges in their manifests
-(`^1.17.0`), not exact versions. Every workspace manifest is private, and the
+(`^1.17.0`), not exact versions, apart from the browser SSH client's library. Every workspace manifest is private, and the
 Dockerfiles and CI install with `npm ci` from the committed `package-lock.json`,
 so the lockfile fixes the version installed; an exact version in a manifest
 would change nothing that is installed.
@@ -165,6 +165,7 @@ request is held back with a range cap (`>=1.17.0 <1.18.0`) or a Dependabot
   (`.github/dependabot.yml`) ended, by the maintainer's decision: its
   published tarball was first rebuilt byte for byte from the upstream tag
   `v0.27.0`, and it showed no install scripts and no new capability.
+- **Browser SSH client library (`@microsoft/dev-tunnels-ssh`).** The web app's SSH client reaches past its main entry. It is declared in `apps/web/package.json` at an exact version, the one exception to the ranges above, and pulled out of the routine Dependabot batch into the reviewed `cryptographic` group (`.github/dependabot.yml`). See [Upgrading the browser SSH client (@microsoft/dev-tunnels-ssh)](#upgrading-the-browser-ssh-client-microsoftdev-tunnels-ssh).
 - **PSI crypto addon (`@openmined/psi.js`).** Pinned by construction: an Alcove
   fork vendored as a local `file:` tarball
   (`lib/openmined-psi.js-<version>.tgz`), whose path resolves to exactly the
@@ -634,7 +635,8 @@ entries. The split then lands as a named failure on the bump's own pull request
 rather than as a downstream failure that does not name it. It covers every package rather
 than the ones this has happened to, because the mechanism is the block's
 presence and not any one dependency; a split that is meant to stand is recorded,
-with its reason, in the check's own `NESTED_BY_DESIGN` map, which is empty. What
+with its reason, in the check's own `NESTED_BY_DESIGN` map, which holds one:
+`apps/web`'s `buffer` at major 5, the browser SSH client's library's line. What
 it reports is the split the lockfile records, not one npm would resolve, and
 only at that one depth: a copy nested under another package is ordinary conflict
 resolution, which this tree has dozens of.
@@ -870,6 +872,43 @@ That endpoint is a confidentiality statement an operator reads before handing a 
 - Re-drive the candidate-queue assumption by hand against a browser peer if the negotiation changes. The unit test pins the order this side emits in; only a real PeerJS peer shows what it does with one that arrives early.
 - Confirm the install stays clean: werift declares no `preinstall`/`install`/`postinstall` script and ships no native or compiled content, so nothing compiles at install and no `allowScripts` verdict is needed (see [The install-script policy](#the-install-script-policy-allowscripts)). `mediabunny` (MPL-2.0) is installed as a transitive but never loaded by a datachannel-only peer.
 - TURN's relayed connectivity remains unverified by these suites. The relay transports are present in the published API, the URL parser resolves the port-443 TLS case, and an allocation has been driven against a real relay for the refresh-timer assumption above, but no exchange here runs over a relayed candidate pair; drive one before any deployment relies on relayed connectivity.
+
+## Upgrading the browser SSH client (@microsoft/dev-tunnels-ssh)
+
+The web app's SSH client (`apps/web/src/psi/transport/browserSsh/`) runs its session on `@microsoft/dev-tunnels-ssh`, through the SFTP relay ([SFTP_RELAY.md](SFTP_RELAY.md)). No shipped page loads it yet. The library is a cryptographic dependency, and the client reaches it past its main entry, so this checklist covers the internals it rests on. Why the library was chosen is in [browser-sftp-proxy.md](../notes/browser-sftp-proxy.md#the-chosen-client-dependency-check-and-sizing).
+
+### The exact pin
+
+`apps/web/package.json` declares the exact version, `3.12.42`, not a range. This is the one exception to the ranges in [How these packages are versioned](#how-these-packages-are-versioned). An `npm update` or `npm audit fix` cannot move it: only a manifest edit does. Dependabot opens that edit in the `cryptographic` group (`.github/dependabot.yml`), and the pull request is checked against this section before it merges.
+
+### The internal assumptions
+
+- **Deep imports.** The main entry requires Node's `stream` when it loads (`sshStream.js`, `secureStream.js`), and no browser bundle here provides one. So the client imports the modules it uses by path, all through `browserSsh/sshLibrary.ts`. The package has no `exports` map; a release that adds one hiding those paths fails the build. That file enters `algorithms/sshAlgorithms` first: `algorithms/publicKeyAlgorithm`, `io/sshData` and `algorithms/sshAlgorithms` require one another in a cycle, which completes only in that order.
+- **The `diffie-hellman` load and call split.** `algorithms/web/webKeyExchange.js` requires `diffie-hellman` when it loads, and calls it only for a negotiated finite-field key exchange. The client offers ECDH alone (`ecdh-sha2-nistp256`, `-384`, `-521`), so every browser config aliases the package to a stub that throws `BrowserSshUnsupportedKeyExchangeError` (`browserSshDependencyAliases`, `apps/web/vite.config.ts`). The client build guard, which the hosted and console builds install, fails a browser bundle holding `diffie-hellman` (`apps/web/hosted/moduleGraphGuard.ts`). It does not name the packages `diffie-hellman` brings, since other dependencies bring them too.
+- **`node-rsa`.** `algorithms/node/nodeRsa.js` requires `node-rsa` inside a function, and the package does not declare it. A bundler still resolves it, so it is aliased to a stub as well.
+- **The `self` switch.** `algorithms/sshAlgorithms.js` picks its WebCrypto classes when `self` is an object and `crypto.subtle` exists, and otherwise requires its `algorithms/node/` classes. A production build bundles those Node modules but never loads them in a page.
+- **The negotiation message.** A failed negotiation rejects `connect()` with a plain `Error` reading `Failed <category> negotiation: Server (<list>) Client (<list>)` (`services/keyExchangeService.js`). `browserSshErrors.ts` reads it into `BrowserSshNoCommonAlgorithmError`. A reworded message reaches the caller as the library's own error, unnamed.
+- **`vscode-jsonrpc`.** The library uses only its `Emitter`, `Event`, `Disposable`, `CancellationToken` and `CancellationTokenSource`. The package's main entry reads a `Buffer` global when it loads, and requires `net`, `os` and `crypto`. So the browser configs alias the bare specifier to a module re-exporting the package's own `lib/events` and `lib/cancellation` (`browserSsh/stubs/vscodeJsonrpc.ts`). Whether to replace the package is open ([browser-sftp-proxy.md](../notes/browser-sftp-proxy.md#what-it-adds-to-the-browser-bundle)).
+- **A bare `Buffer` global.** Several modules read `Buffer` without importing it, among them `algorithms/web/jsonWebKeyFormatter.js`, `sshChannel.js`, `sshClientSession.js` and `services/authenticationService.js`. The client installs the app's `buffer` on `globalThis` when the page has none (`provideBufferGlobal`). `apps/web` declares `buffer` at the library's major version, 5, and the browser configs set `resolve.dedupe: ["buffer"]`, so a bundle holds one copy.
+- **The host-key blob.** The library hands a host key's bytes to `setPublicKeyBytes` as a view of a packet buffer it reuses. The owned Ed25519 key copies them.
+- **Abort and the library's pending steps.** Disposing a session does not cancel the library's own pending steps. An abort just after the version line leaves its version read rejected with nothing handling it. An abort once `authenticateClient` has started its un-awaited step can still sign with the client key; the send that would carry the signature throws on the disposed session, so nothing reaches the server, and that rejection also goes unhandled.
+
+### Re-verification on a bump
+
+- Run `npx vitest run --project unit test/unit/psi/browserSsh test/unit/hostedModuleGraphGuard.test.ts` from `apps/web`. It covers:
+  - the stubs and the shim;
+  - the offered algorithm lists, read off the client's KEXINIT;
+  - the named negotiation error against a scripted server;
+  - the Ed25519 verifier and the non-extractable key;
+  - the bundle without the `diffie-hellman` alias failing the guard;
+  - the client bundled with the browser aliases, holding one `buffer`, and loading in a context with `self` and no `process`.
+- The guard test also checks that the library is the only package in `package-lock.json` requiring `diffie-hellman`, since the alias hands every importer the stub.
+- Run `npx vitest run --project browser test/browser/browserSshClient.test.ts` from `apps/web`, with OpenSSH's `sshd` installed. It drives a session through the relay to a real sshd:
+  - the host key exposed before any signature, ed25519 and ECDSA;
+  - authentication with a non-extractable P-256 key, and the `sftp` subsystem;
+  - the named error against a server offering only finite-field Diffie-Hellman, or only `aes128-ctr`;
+  - a test-only finite-field offer reaching the `diffie-hellman` stub in the pre-bundled library.
+- Confirm the install stays clean: the package declares no install script, and ships no license file. `scripts/lib/bundleNotices.mjs` refuses a shipped bundle that inlines a package with no license file unless that file's `NO_LICENSE_FILE` lists it, so the first pull request that ships the client adds the entry.
 
 ## The shipped images hold no package manager
 
