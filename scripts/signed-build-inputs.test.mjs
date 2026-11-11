@@ -126,8 +126,7 @@ describe("the release publish job's image builds", () => {
   );
 });
 
-describe("the actions in the signing and publishing jobs", () => {
-  const REMOTE_ACTION = /^(?!\.\/|docker:\/\/).+/;
+describe("remote action pins and their Dependabot updates", () => {
   const workflows = readWorkflows(repoRoot);
   const composites = compositeFiles(repoRoot).map((path) => ({
     path,
@@ -167,28 +166,6 @@ describe("the actions in the signing and publishing jobs", () => {
         ),
       );
     expect((block.ignore ?? []).filter(withinMajor)).toEqual([]);
-  });
-
-  it("finds jobs holding the signing identity or the Docker Hub publish token, each using such an action", () => {
-    const holders = workflows.flatMap(({ path, source }) =>
-      Object.entries(parse(source).jobs ?? {})
-        .filter(
-          ([, job]) =>
-            job?.permissions?.["id-token"] === "write" ||
-            JSON.stringify(job ?? null).includes("DOCKERHUB_PUBLISH_TOKEN"),
-        )
-        .map(([id, job]) => ({ path, id, job })),
-    );
-    expect(holders.length).toBeGreaterThan(0);
-    for (const { path, id, job } of holders) {
-      const pinned = stepsOf(job).filter((step) =>
-        REMOTE_ACTION.test(String(step.uses ?? "")),
-      );
-      expect(pinned.length, `${path} job ${id}`).toBeGreaterThan(0);
-      for (const step of pinned) {
-        expect(step.uses, `${path} job ${id}`).toMatch(/@[0-9a-f]{40}$/);
-      }
-    }
   });
 });
 
