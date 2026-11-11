@@ -39,6 +39,12 @@ push:
   `webrtc-capture.mjs`, which a host session runs for a browser step: it
   prints the capture code the owner pastes into a page's console and
   summarizes the file the page downloads, or a saved Firefox about:webrtc page
+- `watch-prs.mjs`, which the session runs in the background under `timeout`
+  over the pull requests it pushed: it exits at the first poll finding an
+  event not already reported -- CI green or red on the head, a conflict, a
+  merge, a close -- and prints one line per event, recording each in a
+  state file under the primary checkout's `scratch/` so a re-armed watch
+  does not report it again
 - `format-squash-message.mjs`, which rewraps the draft body of the squash
   message a pull request lands as, drops the markdown and list markers a
   commit message does not take, reports what it cannot fix without rewriting
