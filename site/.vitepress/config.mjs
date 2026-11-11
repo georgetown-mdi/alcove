@@ -40,6 +40,10 @@ export const ROOT_PAGES = [
   "SUPPORT.md",
 ];
 
+// The directories inside SOURCE_DIRECTORIES the site does not publish: the
+// design notes are read on GitHub, and a link to one points there.
+export const UNPUBLISHED_DIRECTORIES = ["docs/notes"];
+
 const srcExclude = readdirSync(repoRoot, { withFileTypes: true })
   .filter(
     (entry) =>
@@ -47,7 +51,10 @@ const srcExclude = readdirSync(repoRoot, { withFileTypes: true })
       !ROOT_PAGES.includes(entry.name),
   )
   .map((entry) => (entry.isDirectory() ? `${entry.name}/**` : entry.name))
-  .concat(["**/node_modules/**", "site/.vitepress/**", GUIDE_INCLUDES]);
+  .concat(
+    ["**/node_modules/**", "site/.vitepress/**", GUIDE_INCLUDES],
+    UNPUBLISHED_DIRECTORIES.map((dir) => `${dir}/**`),
+  );
 
 // The project pages and the guides are served at the site root, the overview
 // beside the documentation index, and each directory's README at the
@@ -57,7 +64,6 @@ const REWRITES = {
   "docs/index.md": "docs/overview.md",
   "docs/README.md": "docs/index.md",
   "docs/spec/README.md": "docs/spec/index.md",
-  "docs/notes/README.md": "docs/notes/index.md",
 };
 
 const toPosix = (path) => path.split(sep).join(posix.sep);
@@ -68,6 +74,7 @@ function isSitePage(path) {
     path.endsWith(".md") &&
     (ROOT_PAGES.includes(path) ||
       SOURCE_DIRECTORIES.some((dir) => path.startsWith(`${dir}/`))) &&
+    !UNPUBLISHED_DIRECTORIES.some((dir) => path.startsWith(`${dir}/`)) &&
     existsSync(resolve(repoRoot, path))
   );
 }
@@ -278,7 +285,10 @@ export default {
           page("Privacy", "PRIVACY.md"),
           page("How an exchange communicates", "docs/COMMUNICATION.md"),
           page("Technical specifications", "docs/spec/README.md"),
-          page("Design notes", "docs/notes/README.md"),
+          {
+            text: "Design notes on GitHub",
+            link: `${REPOSITORY_URL}/tree/main/docs/notes`,
+          },
         ],
       },
       {

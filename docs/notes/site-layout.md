@@ -6,8 +6,9 @@ title: "Where the project site's content lives in the repository"
 
 _Status: built. The maintainer chose layout B on 2026-11-10, and the site's
 files moved into `site/`, with the PR checklist skip narrowed to the project
-pages. Whether the site publishes `docs/spec/` and `docs/notes/` stays open
-([A separate question](#a-separate-question-the-design-notes-and-the-spec)).
+pages. On the separate question
+([below](#a-separate-question-the-design-notes-and-the-spec)), the maintainer
+ruled the same day that the site publishes the spec and not the notes.
 The note weighs where the project site's pages, guides and build
 configuration live, against the repository documentation the site also
 renders. What the site is and how it deploys:
@@ -225,7 +226,14 @@ README address names them.
 
 Leaving them out would take most commits out of the publish compare, and it
 would stop agent-written notes, which are proposals until ratified, from
-appearing as published documentation. This note leaves that question open.
+appearing as published documentation.
+
+**Decided and built:** the site publishes `docs/spec/` and not `docs/notes/`.
+The notes are excluded from the build, a link to one points at the file on
+GitHub, the sidebar's Design notes entry links to the directory there, and the
+notes' old addresses redirect to GitHub. The publish compare leaves out
+`docs/notes/` and the spec's `wording-changes/` lists, which the site does not
+render.
 
 ## Recommendation
 

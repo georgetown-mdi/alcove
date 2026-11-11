@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import siteConfig, {
   ROOT_PAGES,
   SOURCE_DIRECTORIES,
+  UNPUBLISHED_DIRECTORIES,
 } from "../site/.vitepress/config.mjs";
 import {
   DEPLOY_ACTION,
@@ -227,13 +228,34 @@ describe("the project site's publish", () => {
   });
 
   // The summary and the review command docs/RELEASES.md gives compare the
-  // same paths: docs/, site/ and every root page the site publishes.
+  // same paths: docs/, site/ and every root page the site publishes, less the
+  // directories the site leaves out and the spec's wording-change lists.
   describe("the review compare", () => {
     const compare = build.steps.find((step) => step.env?.REVIEW_PATHS);
     const reviewPaths = compare.env.REVIEW_PATHS.split(" ");
+    const EXCLUDE = ":(exclude)";
 
     it("covers docs/, site/ and every published root page", () => {
-      expect(reviewPaths).toEqual([...SOURCE_DIRECTORIES, ...ROOT_PAGES]);
+      expect(reviewPaths.filter((path) => !path.startsWith(":"))).toEqual([
+        ...SOURCE_DIRECTORIES,
+        ...ROOT_PAGES,
+      ]);
+    });
+
+    it("leaves out the unpublished directories and the wording-change lists", () => {
+      expect(
+        reviewPaths
+          .filter((path) => path.startsWith(EXCLUDE))
+          .map((path) => path.slice(EXCLUDE.length))
+          .sort(),
+      ).toEqual(
+        [...UNPUBLISHED_DIRECTORIES, "docs/spec/wording-changes"].sort(),
+      );
+      expect(
+        reviewPaths.filter(
+          (path) => path.startsWith(":") && !path.startsWith(EXCLUDE),
+        ),
+      ).toEqual([]);
     });
 
     it("is the command docs/RELEASES.md gives", () => {
@@ -241,8 +263,11 @@ describe("the project site's publish", () => {
         resolve(repoRoot, "docs/RELEASES.md"),
         "utf8",
       );
+      const quoted = reviewPaths.map((path) =>
+        path.startsWith(":") ? `'${path}'` : path,
+      );
       expect(releases).toContain(
-        `git diff ${PUBLISHED_TAG} origin/main -- ${reviewPaths.join(" ")}`,
+        `git diff ${PUBLISHED_TAG} origin/main -- ${quoted.join(" ")}`,
       );
     });
   });
