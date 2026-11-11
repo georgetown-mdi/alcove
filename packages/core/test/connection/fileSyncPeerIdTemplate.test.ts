@@ -196,7 +196,7 @@ describe("two runs from one configuration", () => {
       expect(first.size).toBeGreaterThanOrEqual(2);
       expect([...first].filter((name) => second.has(name))).toEqual([]);
       // A lock file starts with whichever id sorts first, the partner's
-      // included (docs/spec/FILE_SYNC.md); every other name starts with the
+      // included (docs/spec/FILE_SYNC_MODES.md); every other name starts with the
       // text before the first field.
       for (const name of [...first, ...second].filter(
         (written) => !written.endsWith("-lock.json"),

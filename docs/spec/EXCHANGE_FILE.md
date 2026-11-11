@@ -673,7 +673,7 @@ host/port/path, or a file-drop directory / split pair) and never a credential;
 the per-channel sub-schemas are `z.strictObject` and reject any field outside the
 locator allowlist. The endpoint wire format is specified in
 [INVITATION_TOKEN.md](INVITATION_TOKEN.md#connection-endpoint), and the
-split-directory mirror swap in [FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories).
+split-directory mirror swap in [FILE_SYNC_MODES.md](FILE_SYNC_MODES.md#split-inboundoutbound-directories).
 
 ## The secret's path
 

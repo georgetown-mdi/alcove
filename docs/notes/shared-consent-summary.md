@@ -588,7 +588,7 @@ rather than on a term of the exchange: the inviting party's `retain_files`, whic
 makes the rendezvous location a permanent transcript instead of emptying it as each
 message is consumed. Its wire form, the mint paths that stamp it, and why a
 declared-but-never-applied flag stays inside the transport's detect-and-fail stance
-are the spec's ([FILE_SYNC.md](../spec/FILE_SYNC.md#retain-mode-declaration-on-the-token)).
+are the spec's ([FILE_SYNC_MODES.md](../spec/FILE_SYNC_MODES.md#retain-mode-declaration-on-the-token)).
 What is this table's is the classification and the copy.
 
 The basis splits, and the split is the reason the entry has a caveat sentence

@@ -1,6 +1,6 @@
 // The retain-mode start-up ignore list: the protocol files an earlier exchange
 // left in a reused directory, which a run treats as absent and never deletes.
-// Specified in docs/spec/FILE_SYNC.md, "Reusing a retain-mode directory".
+// Specified in docs/spec/FILE_SYNC_MODES.md, "Reusing a retain-mode directory".
 
 import type { FileInfo } from "./fileSyncConnection";
 import { isMessageName, parseSizedControlName } from "./fileSyncNames";

@@ -1424,8 +1424,9 @@ export class FileSyncRendezvous {
 
     // Split mode: no peer file lands in outbound, so every protocol file there
     // is this party's own leftover, judged as on the inbound side except that
-    // both temp shapes are swept (docs/spec/FILE_SYNC.md, Split
-    // inbound/outbound directories and Hello temp disposition).
+    // both temp shapes are swept (docs/spec/FILE_SYNC_MODES.md, Split
+    // inbound/outbound directories, and docs/spec/FILE_SYNC.md, Hello temp
+    // disposition).
     let outOrphans: FileInfo[] = [];
     let outFiles: FileInfo[] = [];
     if (split) {

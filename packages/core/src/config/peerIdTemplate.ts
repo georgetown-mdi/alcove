@@ -1,6 +1,6 @@
 // The `peer_id` template grammar: literal text plus fields Alcove fills in when
 // a file-sync connection opens, so each run's id can differ while keeping the
-// text the operator wrote. Spec: docs/spec/FILE_SYNC.md, Per-run peer id.
+// text the operator wrote. Spec: docs/spec/FILE_SYNC_MODES.md, Per-run peer id.
 
 import { randomBytes, toHex } from "../utils/crypto.js";
 

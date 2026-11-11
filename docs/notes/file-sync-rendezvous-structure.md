@@ -17,7 +17,7 @@ Each read must apply the same checks before the hello leads to any write
 ([site 5](../spec/FILE_SYNC.md#the-five-enforcement-sites)):
 the read gate ([I5a](../spec/FILE_SYNC.md#invariants)),
 the version selection and the mode-flag comparison
-([Bilateral configuration](../spec/FILE_SYNC.md#bilateral-configuration-detect-and-fail)),
+([Bilateral configuration](../spec/FILE_SYNC_MODES.md#bilateral-configuration-detect-and-fail)),
 and the two id-pair refusals.
 
 `readPeerHello` does the read and returns the refusal, rather than returning the envelope for each site to check.
