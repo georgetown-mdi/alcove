@@ -60,7 +60,7 @@ No worker is created from a `blob:` URL: the three workers load from `/assets/`,
 ## How `'unsafe-eval'` was removed
 
 - **The PSI engine.** The fork links its Emscripten targets with `-sDYNAMIC_EXECUTION=0`.
-  In the rebuilt `psi_wasm_web.js`, `psi_wasm_worker.js` and `psi_wasm_node.js`, the two embind `new Function` sites are gone; the one string-to-code call left is the Closure `eval` above, which nothing in the bundle calls (`goog.loadModule` has no caller).
+  In the rebuilt `psi_wasm_web.js`, `psi_wasm_worker.js` and `psi_wasm_node.js`, the two embind `new Function` sites are gone; two uncalled Closure helpers still hold an `eval`: `goog.loadModuleFromSource_` above (`goog.loadModule` has no caller) and `goog.globalEval`'s indirect `eval` (`goog.globalEval` has no caller).
   Against the rebuilt engine, the PSI wire and intersection vectors, the native parity suite, and `npm run check:vectors` pass unchanged.
 - **Zod.** `apps/web/src/utils/zodJitless.ts` sets `jitless`, and every page and worker entry imports it first.
   Zod probes when a module builds an object schema, not at the first parse, so the call has to run before any schema module does.
