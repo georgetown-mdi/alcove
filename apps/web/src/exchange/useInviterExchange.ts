@@ -873,9 +873,12 @@ function failureContentFor(
   ) {
     const cause = error.failureCause;
     return {
-      // The partner's run stopped: a retry and a settings change both meet
-      // it again, as for any other partner refusal.
-      ...(cause.kind === "partner-stopped-at-matching"
+      // The partner's run stopped, the shared secret is unusable, or the
+      // folder needs cleaning: a retry and a settings change both meet it
+      // again.
+      ...(cause.kind === "partner-stopped-at-matching" ||
+      cause.kind === "shared-secret-unusable" ||
+      cause.kind === "message-write-unconfirmed"
         ? { category: "config" as const, settingsCannotResolve: true as const }
         : { category }),
       ...consoleFailureForCause(cause, { thisSideNamed }),

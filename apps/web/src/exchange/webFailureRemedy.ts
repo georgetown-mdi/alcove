@@ -5,7 +5,6 @@
 
 import {
   MATCHES_OVER_LIMIT_REMEDY,
-  NEW_INVITATION_REMEDY,
   PARTNER_STOPPED_AT_MATCHING_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   failureCauseOf,
@@ -22,6 +21,10 @@ import type {
   FailureCauseKind,
   FailureCauseOfKind,
 } from "@alcove/core";
+
+const NEW_INVITATION_STEP =
+  "Ask your partner for a new invitation, or start over and create one for " +
+  "your partner to accept.";
 
 const WEB_FAILURE_REMEDIES: {
   readonly [K in FailureCauseKind]:
@@ -42,7 +45,7 @@ const WEB_FAILURE_REMEDIES: {
   "set-over-limit": setOverLimitRemedy,
   "single-pass-over-limit": singlePassOverLimitRemedy,
   "matches-over-limit": () => MATCHES_OVER_LIMIT_REMEDY,
-  "shared-secret-unusable": () => NEW_INVITATION_REMEDY,
+  "shared-secret-unusable": () => NEW_INVITATION_STEP,
   "partner-stopped-at-matching": () => PARTNER_STOPPED_AT_MATCHING_REMEDY,
   "message-write-unconfirmed": undefined,
   "shared-name-at-entry": undefined,

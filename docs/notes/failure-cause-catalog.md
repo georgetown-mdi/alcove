@@ -102,7 +102,7 @@ The parts:
   - A partner's value slots over the limit read as one sentence ending "while your own N value slots are within it.", and the remedy asks the partner to reduce their record count.
   - The matched-list sentence states that the exchange stopped and told the partner; the remedy states the likely reason and the step.
 - **Part 3, run-ending refusals outside the data: built.** Four kinds, raised where core wrote the remedy into its message:
-  - `shared-secret-unusable`, a malformed secret or one expired before the handshake (`auth.ts`) or before the next one was saved (`protocolSetup.ts`), both through `sharedSecretUnusableError`. The CLI and the public web app remedy it with `NEW_INVITATION_REMEDY`; the console asks for a new invitation without naming a command.
+  - `shared-secret-unusable`, a malformed secret or one expired before the handshake (`auth.ts`) or before the next one was saved (`protocolSetup.ts`), both through `sharedSecretUnusableError`. The CLI remedies it with `NEW_INVITATION_REMEDY`; the public web app and the console ask for a new invitation without naming a command.
   - `partner-stopped-at-matching` (`exchange/stillWorking.ts`), with `PARTNER_STOPPED_AT_MATCHING_REMEDY`. The console keeps the partner refusal's config category and withheld retry for it.
   - `message-write-unconfirmed`, the three write refusals in `connection/fileSyncMessageLoop.ts`, with `CLEAN_DIRECTORY_RESTART_REMEDY`.
   - `shared-name-at-entry`, the start-up refusal of a hello with this side's name (`connection/fileSyncRendezvous.ts`). The CLI's remedy and its no-show remedy for the shared-name fact share one step, so no copy of the sentence remains; the console names its name control and its sweep control.

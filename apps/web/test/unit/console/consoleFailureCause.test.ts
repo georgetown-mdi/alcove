@@ -190,7 +190,11 @@ describe("a console run that failed on a catalog cause", () => {
     expect(failure.reportedCause).toBeUndefined();
     expect(failure.title).not.toBe("Exchange failed");
     expect(failure.retry).toBe(
-      cause.kind === "partner-stopped-at-matching" ? "withheld" : "offered",
+      cause.kind === "partner-stopped-at-matching" ||
+        cause.kind === "shared-secret-unusable" ||
+        cause.kind === "message-write-unconfirmed"
+        ? "withheld"
+        : "offered",
     );
   });
 
