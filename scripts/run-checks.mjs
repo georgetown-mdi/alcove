@@ -204,13 +204,6 @@ export const CHECKS = [
       "No gating job is renamed out from under the required check that names it, no path filter is added to a gating workflow, every gating workflow but the exempt ones runs on push to staging, and every workflow declaring a required job is on the list held filter-free. The branch-rule half needs a token and states a skip without one.",
   },
   {
-    script: "check:dependabot-ignore-shape",
-    group: INDEPENDENT,
-    expiresOn: "2027-03-31",
-    description:
-      "Every github-actions pin under a within-major Dependabot ignore floats within its major, so the ignore does not freeze it.",
-  },
-  {
     script: "check:dependabot-pin-coverage",
     group: INDEPENDENT,
     expiresOn: "2027-03-31",

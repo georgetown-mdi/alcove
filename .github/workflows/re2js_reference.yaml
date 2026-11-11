@@ -37,7 +37,7 @@ jobs:
     outputs:
       moved: ${{ steps.version.outputs.moved }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The merge commit and its first parent, the base branch tip.
           fetch-depth: 2
@@ -62,11 +62,11 @@ jobs:
     # setup-python's prebuilt interpreters cover ubuntu-24.04.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - name: Set up Python
         id: python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12.10"
       - name: Compare re2js with RE2 over the golden cases

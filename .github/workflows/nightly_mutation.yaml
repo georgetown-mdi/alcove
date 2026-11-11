@@ -58,7 +58,7 @@ jobs:
     # survives adds a second whole pass to the job, about ten minutes more.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # A scheduled workflow runs from the default branch, so the ref cannot
           # be left implicit: the floors are committed against `staging`, which
@@ -78,7 +78,7 @@ jobs:
       # since that is the run somebody has to diagnose.
       - name: Upload the mutation report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: core-security-mutation-report
           path: ${{ runner.temp }}/alcove-stryker/reports/
@@ -91,7 +91,7 @@ jobs:
     # build here; a mutant that reaches two minutes fails as a timeout.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # As in the core job.
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'staging' }}
@@ -100,7 +100,7 @@ jobs:
         run: npm run test:mutation:cli
       - name: Upload the mutation report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-accept-mutation-report
           path: ${{ runner.temp }}/alcove-stryker/cli/reports/

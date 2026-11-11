@@ -162,7 +162,7 @@ Which version is installed is fixed by the lockfile, not the spec, so the spec m
 - What is installed. No rule reads `package-lock.json` or `node_modules`; a lockfile outside a declared range is `npm ci`'s and `check-locked-dep-ranges.mjs`'s to catch.
 - Whether the installed version is the one the checklist was last worked through against. A bump's own review establishes that.
 - The docker and github-actions update blocks, whose lists hold different rationales;
-  [`check-dependabot-ignore-shape.mjs`](../../scripts/check-dependabot-ignore-shape.mjs) owns the github-actions ignore list.
+  [`signed-build-inputs.test.mjs`](../../scripts/signed-build-inputs.test.mjs) holds the github-actions block free of a within-major ignore.
 - Whether a package that ought to have a checklist has one. The read runs from the document outward, never back.
 - A `patterns` entry with a `*` inside an otherwise literal name, such as a scoped-org wildcard.
   What it would swallow depends on resolution, so the check throws rather than guessing.
@@ -841,36 +841,6 @@ the same approach as [`check-contributing-scope.mjs`](../../scripts/check-contri
   The check enforces the title anyway, as the one field the workflow can see, and the maintainer can align the two at merge; it does not branch on commit count to guess GitHub's squash behavior.
 - `titleBudget()`'s fallback for an unnumbered pull request serves a direct call; the CLI requires `PR_NUMBER` on the runner.
 
-## Dependabot ignore shape
-
-[`scripts/check-dependabot-ignore-shape.mjs`](../../scripts/check-dependabot-ignore-shape.mjs)
-
-### Why it is a check
-
-The `github-actions` block in `.github/dependabot.yml` ignores within-major updates for several organizations.
-That suppression is sound only over pins that float within their major:
-an exact pin such as `actions/checkout@v7.0.1`, a commit sha, or a branch name under a covered organization sits under an ignore that suppresses every update it could receive,
-so it freezes with no pull request to expose a fix.
-The entries are read from the config, so editing the ignore list changes what is enforced with no second edit.
-
-### A property of the config, not a prediction
-
-Whether those ignores in fact suppress a v7.0.1 to v7.0.2 bump has not been driven against Dependabot, and the rule does not rest on it.
-A pin the config's own stated rationale assumes to be floating is worth holding to that shape either way.
-
-### Why `*` matches across `/`
-
-Under that reading `github/*` covers the subpath action `github/codeql-action/init`.
-Whether that is Dependabot's reading is unsettled; see the open assumption in [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md).
-The inclusive reading is the fail-closed one: it requires more pins to be bare majors, so the rule stays correct if the narrower reading is Dependabot's.
-
-### What it does not cover
-
-- A bare-major pin from an organization no ignore entry names: whether the ignore list is complete is unchecked, only the direction that fails silently is.
-- A reference naming no ref at all, which rule C of [`check-action-pin-drift.mjs`](../../scripts/check-action-pin-drift.mjs) owns; a test holds that delegation.
-- The npm and docker Dependabot blocks, whose ignore and exclude-patterns lists rest on different rationales.
-- What `@v7` resolves to: the ref is read as text, so a tag named like a bare major that points at a frozen commit is out of scope.
-
 ## Built-in STUN default claims
 
 [`scripts/check-stun-default-claims.mjs`](../../scripts/check-stun-default-claims.mjs)
@@ -1022,8 +992,8 @@ so a release or advisory showing on the workflow occurrence covers the composite
 
 ### What it does not cover
 
-- What a ref resolves to: `@v7` agrees with `@v7` whatever the tag points at,
-  so a floating major moving under both occurrences, one spelling denoting different commits in different places, and whether a ref is a tag, a branch or a sha are outside it.
+- What a ref resolves to: two occurrences naming one commit agree whatever tag each trailing comment names,
+  so a comment naming a tag the commit does not carry, one spelling denoting different commits in different places, and whether a ref is a tag, a branch or a sha are outside it.
 - Which paths Dependabot in fact scans: it enforces the mirror invariant and confirms no tool's coverage.
 - An action reached other than by `uses:`: a `run:` line that fetches a release, or an image named in `container:` or `services:`.
 - Two workflows pinning an action no composite uses at differing refs: rule A binds only actions appearing in both trees.

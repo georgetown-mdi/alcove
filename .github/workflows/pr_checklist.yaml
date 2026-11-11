@@ -50,11 +50,11 @@ jobs:
     if: github.event.pull_request.user.type != 'Bot' && !github.event.pull_request.draft
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The script is dependency-free, so a plain pinned Node suffices -- no npm
       # ci or @alcove/core build (the ./.github/actions/setup prologue) needed.
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
       # The pull request as the API holds it at this moment, rather than the copy

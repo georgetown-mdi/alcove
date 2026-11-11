@@ -109,7 +109,7 @@ jobs:
     # hold a runner for the default six hours.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Windows PowerShell 5.1 rather than pwsh: SmbShare, ServerManager, DFSN
       # and the script under test are all native there rather than reached
@@ -124,7 +124,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The suite sets the policy itself, after the harness and Pester are
       # loaded, so this session keeps FullLanguage and drives the runs.
@@ -137,7 +137,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run the schedule line suite
         shell: cmd
@@ -151,7 +151,7 @@ jobs:
     # the default six hours.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Windows PowerShell 5.1 for the reason the test job gives, and for the
       # WScript.Network COM surface that is this harness's subject matter.

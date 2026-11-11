@@ -17,6 +17,7 @@ import {
 } from "./check-deploy-trigger-graph.mjs";
 import {
   WORKFLOW_DIR,
+  compositeFiles,
   readWorkflows,
   workflowDocument,
 } from "./lib/workflows.mjs";
@@ -28,7 +29,8 @@ import {
 //   - the deployed sites are built from a clean install, not a restored
 //     actions/cache entry, off a pull request;
 //   - the release publish job's image builds read no shared layer cache;
-//   - the docker, aquasecurity and sigstore actions are pinned to a commit;
+//   - every remote action is pinned to a commit with its release tag beside it,
+//     and Dependabot holds back no within-major update of one;
 //   - each job taking a site from the web gate downloads it by the id its
 //     package job reported and checks it against that job's digest;
 //   - each wrangler-action step runs wrangler installed from the committed
@@ -124,20 +126,21 @@ describe("the release publish job's image builds", () => {
   );
 });
 
-describe("the actions in the signing and publishing jobs", () => {
-  const COMMIT_PINNED_ORGS = /^(docker|aquasecurity|sigstore)\//;
+describe("remote action pins and their Dependabot updates", () => {
   const workflows = readWorkflows(repoRoot);
+  const composites = compositeFiles(repoRoot).map((path) => ({
+    path,
+    source: readFileSync(resolve(repoRoot, path), "utf8"),
+  }));
 
   // Every occurrence, so one action has one ref across the workflows and a
   // bump moves them together.
-  it("pins every docker, aquasecurity and sigstore action to a commit with its release tag beside it", () => {
-    const lines = workflows.flatMap(({ path, source }) =>
+  it("pins every remote action to a commit with its release tag beside it", () => {
+    const lines = [...workflows, ...composites].flatMap(({ path, source }) =>
       source
         .split("\n")
         .map((line, index) => ({ path, line: index + 1, text: line.trim() }))
-        .filter(({ text }) =>
-          /^(- )?uses: (docker|aquasecurity|sigstore)\//.test(text),
-        ),
+        .filter(({ text }) => /^(- )?uses: (?!\.\/|docker:\/\/)/.test(text)),
     );
     expect(lines.length).toBeGreaterThan(0);
     const unpinned = lines.filter(
@@ -146,26 +149,23 @@ describe("the actions in the signing and publishing jobs", () => {
     expect(unpinned).toEqual([]);
   });
 
-  it("finds jobs holding the signing identity or the Docker Hub publish token, each using such an action", () => {
-    const holders = workflows.flatMap(({ path, source }) =>
-      Object.entries(parse(source).jobs ?? {})
-        .filter(
-          ([, job]) =>
-            job?.permissions?.["id-token"] === "write" ||
-            JSON.stringify(job ?? null).includes("DOCKERHUB_PUBLISH_TOKEN"),
-        )
-        .map(([id, job]) => ({ path, id, job })),
+  // A commit pin moves only by a Dependabot pull request, so an ignore entry
+  // holding back minor or patch updates would freeze every pin it covers.
+  it("has no Dependabot ignore entry holding back a within-major action update", () => {
+    const block = parse(
+      readFileSync(resolve(repoRoot, ".github/dependabot.yml"), "utf8"),
+    ).updates.find(
+      (candidate) => candidate["package-ecosystem"] === "github-actions",
     );
-    expect(holders.length).toBeGreaterThan(0);
-    for (const { path, id, job } of holders) {
-      const pinned = stepsOf(job).filter((step) =>
-        COMMIT_PINNED_ORGS.test(String(step.uses ?? "")),
+    expect(block).toBeDefined();
+    const withinMajor = (entry) =>
+      !Array.isArray(entry["update-types"]) ||
+      entry["update-types"].some((type) =>
+        ["version-update:semver-minor", "version-update:semver-patch"].includes(
+          type,
+        ),
       );
-      expect(pinned.length, `${path} job ${id}`).toBeGreaterThan(0);
-      for (const step of pinned) {
-        expect(step.uses, `${path} job ${id}`).toMatch(/@[0-9a-f]{40}$/);
-      }
-    }
+    expect((block.ignore ?? []).filter(withinMajor)).toEqual([]);
   });
 });
 

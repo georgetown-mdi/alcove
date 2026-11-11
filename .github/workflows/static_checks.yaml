@@ -50,7 +50,7 @@ jobs:
     name: Typecheck, Lint, Format
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Pins Node, installs from the lockfile, and builds @alcove/core (built
       # first so the CLI and web typechecks resolve its declarations from dist,
       # the same way the apps consume it).
@@ -70,7 +70,7 @@ jobs:
       # Hub token is set reaches the login step below through this.
       DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The comment history-narration check reads the comment lines the pull
           # request adds against its base, and the spec sentence comparison the
