@@ -236,11 +236,22 @@ describe("the release workflow's use of the answer", () => {
     });
   });
 
-  it("deploys production only on the newest line, never for a prerelease", () => {
+  it("deploys production for a release on the newest line or a prerelease", () => {
     const pages = document.jobs.pages;
     expect([pages.needs].flat()).toContain("release-line");
-    expect(pages.if).toContain(`${NEWEST} == 'true'`);
-    expect(pages.if).toContain(`${PRERELEASE} == 'false'`);
+    expect(pages.if).toBe(
+      `\${{ github.event_name == 'push' && (${NEWEST} == 'true' || ${PRERELEASE} == 'true') }}`,
+    );
+    // Either way the upload waits on main's tip being the tag's commit or an
+    // ancestor of it.
+    const compare = pages.steps.find((step) => step.id === "compare-main");
+    expect(compare.run).toMatch(/identical \| behind\)/);
+    const uploads = pages.steps.filter((step) =>
+      (step.uses ?? "").startsWith("cloudflare/wrangler-action@"),
+    );
+    expect(uploads.length).toBeGreaterThan(0);
+    for (const step of uploads)
+      expect(step.if).toContain("steps.compare-main.outputs.upload == 'true'");
   });
 
   it("adds `latest` to the ghcr.io image only on the newest line", () => {

@@ -49,6 +49,7 @@ import {
   compareReleaseVersions,
   isResetRelease,
   manifestVersion,
+  parseReleaseVersion,
 } from "./lib/releaseManifest.mjs";
 
 export { RELEASE_MANIFEST, RESET_RELEASE };
@@ -168,6 +169,13 @@ export function recoveryViolations(sources) {
   }));
 }
 
+// The release a reset taken at `releaseVersion` is recorded as: a prerelease
+// counts as the release it qualifies (docs/RELEASES.md), so `0.9.0-beta.1`
+// records `0.9.0`.
+function releaseToRecord(releaseVersion) {
+  return parseReleaseVersion(releaseVersion)?.join(".") ?? releaseVersion;
+}
+
 /**
  * The reasons the tree breaks rule 2, as `{kind, message}`; empty when it
  * meets it. `kind` is `discharge` (the recorded RESET_TAKEN_AT_RELEASE names
@@ -230,7 +238,7 @@ export function resetViolations({
         "  - regenerate the record vectors through their generator, which `npm run check:vectors` compares them against;",
         `  - re-take the recovery obligations rule 1 names and re-record RECORD_VERSION_PIN in ${CHECK_SOURCE}, which fails on its own once the literal moves;`,
         "  - clear the development artifacts the checklist step enumerates, which a downward move leaves misread rather than refused;",
-        `  - record the reset: RESET_TAKEN_AT_RELEASE = "${releaseVersion}" in ${CHECK_SOURCE}.`,
+        `  - record the reset: RESET_TAKEN_AT_RELEASE = "${releaseToRecord(releaseVersion)}" in ${CHECK_SOURCE}.`,
       ].join("\n"),
     });
     return violations;
@@ -241,7 +249,7 @@ export function resetViolations({
     message: [
       `${RECORD_VERSION_SOURCE} declares EXCHANGE_RECORD_VERSION "${RESET_RECORD_VERSION}" and ${RELEASE_MANIFEST} names release ${releaseVersion}, at or above ${RESET_RELEASE}, but ${CHECK_SOURCE} records no RESET_TAKEN_AT_RELEASE.`,
       "",
-      `Once the rest of the checklist step is met -- the vectors regenerated, RECORD_VERSION_PIN re-recorded, and the development artifacts cleared -- set RESET_TAKEN_AT_RELEASE to "${releaseVersion}" in ${CHECK_SOURCE}. The reset is taken once, and recording it retires this rule, so an ordinary forward bump after this release passes (${CHECKLIST_STEP}).`,
+      `Once the rest of the checklist step is met -- the vectors regenerated, RECORD_VERSION_PIN re-recorded, and the development artifacts cleared -- set RESET_TAKEN_AT_RELEASE to "${releaseToRecord(releaseVersion)}" in ${CHECK_SOURCE}. The reset is taken once, and recording it retires this rule, so an ordinary forward bump after this release passes (${CHECKLIST_STEP}).`,
     ].join("\n"),
   });
   return violations;

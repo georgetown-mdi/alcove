@@ -65,8 +65,8 @@ jobs:
   # `latest-fips` image tags, and the GitHub Release's Latest marker; a tag on
   # an older line leaves each where it is. A prerelease is never on the newest
   # line, and its second answer, `prerelease`, keeps the `X.Y` and `X.Y-fips`
-  # tags and production where they are and marks the GitHub Release as a
-  # prerelease. Every other job runs the same for either answer.
+  # tags where they are, marks the GitHub Release as a prerelease, and lets
+  # the pages job deploy it. Every other job runs the same for either answer.
   release-line:
     name: Decide whether the tag is on the newest release line
     if: ${{ github.event_name == 'push' }}
@@ -1027,10 +1027,10 @@ jobs:
   # needs the manifest's signature too, so production never serves a release
   # build that has no signed manifest. A tag on an older release line, such as
   # a hotfix of the previous major, skips it, so production keeps the newest
-  # release's build. A prerelease skips it too: production follows main, which
-  # pages_deploy.yaml deploys. A tag main has moved past uploads nothing either
-  # (the comparison step before the upload), so production keeps the newer
-  # build main deployed.
+  # release's build. A prerelease runs it, so production serves the build that
+  # names the prerelease's own image once main is promoted to it. A tag main
+  # has moved past uploads nothing either (the comparison step before the
+  # upload), so production keeps the newer build main deployed.
   #
   # The only job here given the Cloudflare credentials. As in
   # pages_deploy.yaml, it checks out the deploy tool's lockfile alone and runs
@@ -1045,7 +1045,7 @@ jobs:
       - hosted-manifest-sign
       - hosted-manifest-publish
       - release-line
-    if: ${{ github.event_name == 'push' && needs.release-line.outputs.newest == 'true' && needs.release-line.outputs.prerelease == 'false' }}
+    if: ${{ github.event_name == 'push' && (needs.release-line.outputs.newest == 'true' || needs.release-line.outputs.prerelease == 'true') }}
     # Held on Ubuntu 24.04 with pages_deploy.yaml's upload job.
     runs-on: ubuntu-24.04
     timeout-minutes: 10

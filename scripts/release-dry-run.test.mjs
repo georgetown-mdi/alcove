@@ -118,7 +118,7 @@ describe("the release workflow's dry run", () => {
   for (const job of HOSTED_APP_JOBS) {
     it(`runs the ${job} job on a tag push only`, () => {
       expect(document.jobs[job]?.if).toBe(
-        "${{ github.event_name == 'push' && needs.release-line.outputs.newest == 'true' && needs.release-line.outputs.prerelease == 'false' }}",
+        "${{ github.event_name == 'push' && (needs.release-line.outputs.newest == 'true' || needs.release-line.outputs.prerelease == 'true') }}",
       );
     });
   }

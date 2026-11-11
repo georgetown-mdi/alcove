@@ -943,7 +943,7 @@ Reading the JSON and the config source would be a second implementation of two r
 An assumption like that is invisible when it breaks.
 Let an unfiltered source into the deployed site and edits to it stop triggering a deploy: production serves the previous build and no run goes red.
 So every source the deployed build reads has to match the filter that redeploys it.
-A release tag on the newest release line also redeploys production, from `release.yaml`, with no path filter.
+A release tag on the newest release line, or a prerelease tag, also redeploys production, from `release.yaml`, with no path filter.
 
 The deploy holds a Cloudflare token able to replace the public site, and a job holding it that also ran repository code would hand that token to whatever a pull request merged into that code.
 So the upload job checks out only the deploy tool's `package.json` and lockfile (`.github/wrangler`), installs wrangler from them, and uploads the artifact the gate built, and no other job, in any workflow, holds the token or runs in the GitHub environments the token is set on.
