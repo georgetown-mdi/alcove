@@ -936,7 +936,7 @@ with the condition. A run never writes it, and a run never clears it.
 
 ### The schedule object
 
-The optional `schedule` object, the run window it defines, the run bookkeeping that counts missed windows, and the scheduled lines the command-line export writes are specified in [MANAGED_EXCHANGE_SCHEDULE.md](MANAGED_EXCHANGE_SCHEDULE.md).
+The optional `schedule` object, the run window it defines, the run bookkeeping that counts missed windows, and the scheduled lines and command rules of the command-line export (its mount paths and its PowerShell and pasted-text quoting) are specified in [MANAGED_EXCHANGE_SCHEDULE.md](MANAGED_EXCHANGE_SCHEDULE.md).
 
 ### Re-supplied each run
 
@@ -2466,7 +2466,7 @@ service-worker registration shows the notice through the page's own
 - [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges) - the browser at-rest threat model for the persisted secret: the primary controls, the rollback and metadata-at-rest analyses, and the egress-hardening limits
 - [EXCHANGE_FILE.md](EXCHANGE_FILE.md) - the exchange-file artifact and the credential-free endpoint locator the record composes from
 - [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md) - the shared-secret rotation construction
-- [MANAGED_EXCHANGE_SCHEDULE.md](MANAGED_EXCHANGE_SCHEDULE.md) - the schedule object, the run window, catch-up on wake, and the command-line export's scheduled lines
+- [MANAGED_EXCHANGE_SCHEDULE.md](MANAGED_EXCHANGE_SCHEDULE.md) - the schedule object, the run window, catch-up on wake, and the command-line export's scheduled lines and command rules
 - [KEY_EXCHANGE.md](KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation) - the rendezvous-peer-id derivation construction
 - [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md) - the self-attested per-run disclosure record (a distinct artifact; the managed record is not a disclosure log, and the accounting of disclosures above accumulates these records rather than defining a log of its own)
 </content>

@@ -4,7 +4,7 @@ title: "Managed Exchange Schedule"
 
 # Managed exchange schedule
 
-This document specifies the **schedule** of a managed exchange record: the `schedule` object's fields and bounds, what schedule entry writes, how the runner counts and catches up on elapsed windows, how it occupies a due window and what it does about a waiting app version and the operator's compromise response, how the window width absorbs clock skew, and the scheduled lines the command-line export writes.
+This document specifies the **schedule** of a managed exchange record: the `schedule` object's fields and bounds, what schedule entry writes, how the runner counts and catches up on elapsed windows, how it occupies a due window and what it does about a waiting app version and the operator's compromise response, how the window width absorbs clock skew, and the scheduled lines the command-line export writes, with that export's command rules: its mount paths and its quoting for PowerShell and pasted text.
 It does not cover the rest of the record or how the browser persists it (see [MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md)), the guide to running a recurring exchange (see [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md)), or the design rationale (see [managed-exchange-design.md](../notes/managed-exchange-design.md)).
 Intended readers are security auditors and implementors.
 
