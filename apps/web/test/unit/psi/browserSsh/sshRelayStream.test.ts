@@ -99,6 +99,19 @@ describe("SshRelayStream", () => {
     await expect(reading).rejects.toThrow(/text message/);
   });
 
+  test("ends the stream at a text message: closes the socket and never reads the bytes after it", async () => {
+    const { socket, stream } = await openStream();
+    socket.receive("hello");
+    socket.receive(new Uint8Array([1, 2, 3]));
+    socket.remoteClose(1000);
+    expect(socket.closedWith).toBe(1000);
+    await expect(stream.read(4)).rejects.toThrow(/text message/);
+    await expect(stream.read(4)).rejects.toThrow(/text message/);
+    await expect(stream.write(Buffer.from([1]))).rejects.toThrow(
+      /text message/,
+    );
+  });
+
   test("rejects the open with the close code when the socket closes first", async () => {
     const socket = new FakeRelaySocket();
     const opening = SshRelayStream.open("ws://relay.test/sftp", () => socket);

@@ -41,10 +41,13 @@ export type RelaySocket = Pick<
  * The SSH library's byte stream over a WebSocket to the SFTP relay. Writes are
  * split at the relay's message cap and wait on the socket's send buffer, and a
  * close other than 1000 fails pending reads with
- * {@link BrowserSshRelayClosedError} carrying the relay's code.
+ * {@link BrowserSshRelayClosedError} carrying the relay's code. A text message
+ * closes the socket and fails every later read and write, so no byte after it
+ * is read.
  */
 export class SshRelayStream extends BaseStream {
   #closeError: BrowserSshRelayClosedError | null = null;
+  #textMessageError: Error | null = null;
   #relayClosed = false;
   /** Whether this client closed the stream before the relay closed it. */
   #closedLocally = false;
@@ -53,12 +56,18 @@ export class SshRelayStream extends BaseStream {
     super();
     socket.binaryType = "arraybuffer";
     socket.addEventListener("message", (event: MessageEvent) => {
-      if (event.data instanceof ArrayBuffer)
+      if (this.#textMessageError !== null) return;
+      if (event.data instanceof ArrayBuffer) {
         this.onData(Buffer.from(event.data));
-      else this.onError(new Error("The SFTP relay sent a text message."));
+        return;
+      }
+      this.#textMessageError = new Error("The SFTP relay sent a text message.");
+      this.#closeSocket();
+      this.onError(this.#textMessageError);
     });
     socket.addEventListener("close", (event: CloseEvent) => {
       this.#relayClosed = true;
+      if (this.#textMessageError !== null) return;
       if (event.code === CLOSE_NORMAL) {
         this.onEnd();
         return;
@@ -143,11 +152,7 @@ export class SshRelayStream extends BaseStream {
     if (!this.disposed) {
       this.disposed = true;
       this.#closedLocally = !this.#relayClosed;
-      if (
-        this.socket.readyState === SOCKET_OPEN ||
-        this.socket.readyState === SOCKET_CONNECTING
-      )
-        this.socket.close(CLOSE_NORMAL);
+      this.#closeSocket();
       this.onError(error ?? new Error("The SSH stream was closed."));
       this.fireOnClose(error);
     }
@@ -157,17 +162,22 @@ export class SshRelayStream extends BaseStream {
   override dispose(): void {
     if (!this.disposed) {
       this.#closedLocally = !this.#relayClosed;
-      if (
-        this.socket.readyState === SOCKET_OPEN ||
-        this.socket.readyState === SOCKET_CONNECTING
-      )
-        this.socket.close(CLOSE_NORMAL);
+      this.#closeSocket();
     }
     super.dispose();
   }
 
+  #closeSocket(): void {
+    if (
+      this.socket.readyState === SOCKET_OPEN ||
+      this.socket.readyState === SOCKET_CONNECTING
+    )
+      this.socket.close(CLOSE_NORMAL);
+  }
+
   #requireOpen(): void {
     if (this.socket.readyState === SOCKET_OPEN && !this.disposed) return;
+    if (this.#textMessageError !== null) throw this.#textMessageError;
     if (this.#closedLocally) throw new BrowserSshClientClosedError();
     throw (
       this.#closeError ??
