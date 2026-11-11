@@ -45,6 +45,7 @@
 - - -> Several modules read `Buffer` without importing it, among them `algorithms/web/jsonWebKeyFormatter.js`, `sshChannel.js`, `sshClientSession.js` and `services/authenticationService.js`.
 - - -> The client installs the app's `buffer` on `globalThis` when the page has none (`provideBufferGlobal`).
 - - -> `apps/web` declares `buffer` at the library's major version, 5, and the browser configs set `resolve.dedupe: ["buffer"]`, so a bundle holds one copy.
+- It covers every package rather than the ones this has happened to, because the mechanism is the block's presence and not any one dependency; a split that is meant to stand is recorded, with its reason, in the check's own `NESTED_BY_DESIGN` map, which is empty. -> It covers every package rather than the ones this has happened to, because the mechanism is the block's presence and not any one dependency; a split that is meant to stand is recorded, with its reason, in the check's own `NESTED_BY_DESIGN` map, which holds one: `apps/web`'s `buffer` at major 5, the browser SSH client's library's line.
 - - -> **The host-key blob.**
 - - -> The library hands a host key's bytes to `setPublicKeyBytes` as a view of a packet buffer it reuses.
 - - -> The owned Ed25519 key copies them.

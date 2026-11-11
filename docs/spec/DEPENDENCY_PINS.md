@@ -635,7 +635,8 @@ entries. The split then lands as a named failure on the bump's own pull request
 rather than as a downstream failure that does not name it. It covers every package rather
 than the ones this has happened to, because the mechanism is the block's
 presence and not any one dependency; a split that is meant to stand is recorded,
-with its reason, in the check's own `NESTED_BY_DESIGN` map, which is empty. What
+with its reason, in the check's own `NESTED_BY_DESIGN` map, which holds one:
+`apps/web`'s `buffer` at major 5, the browser SSH client's library's line. What
 it reports is the split the lockfile records, not one npm would resolve, and
 only at that one depth: a copy nested under another package is ordinary conflict
 resolution, which this tree has dozens of.
