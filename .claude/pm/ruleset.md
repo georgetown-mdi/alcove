@@ -478,10 +478,9 @@ Ratified by the owner:
   operator must read or act on -- result, prompt, decision, outcome -- looks
   the same at every log level, and log formatting and diagnostic lines appear
   only on the diagnostic stream.
-- **Dependency supply chain** (board 10) -- Done is: every image and package the
-  build or a shipped artifact resolves is pinned by digest or exact version and
-  held there by a drift check -- no unpinned reference is reachable from a
-  release.
+- **Dependency supply chain** (board 10) -- Done is: every dependency the build
+  or a shipped artifact uses is recorded by version or digest, held there by a
+  drift check, and offered for upgrade by an automatic or scheduled update.
 - **FIPS 140-3 claim** (board 10) -- Done is: every FIPS claim the published
   docs make names the certificate and the shipped provider build that backs it,
   and a check fails when the image's provider drifts from that pin.

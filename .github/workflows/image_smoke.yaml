@@ -162,11 +162,10 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
-      # action's default floats on `buildx-stable-1`. Dependabot does not
-      # track this input: to move it, take the index digest
-      # `docker buildx imagetools inspect moby/buildkit:<version>` prints and
-      # set it in all four setup-buildx-action steps, in this workflow and in
-      # release.yaml.
+      # action's default floats on `buildx-stable-1`. Dependabot moves the pin
+      # in .github/builder-images/Dockerfile, and scripts/dockerhub-login.test.mjs
+      # fails until all four setup-buildx-action steps, in this workflow and in
+      # release.yaml, pass it.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
@@ -1052,11 +1051,10 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
-      # action's default floats on `buildx-stable-1`. Dependabot does not
-      # track this input: to move it, take the index digest
-      # `docker buildx imagetools inspect moby/buildkit:<version>` prints and
-      # set it in all four setup-buildx-action steps, in this workflow and in
-      # release.yaml.
+      # action's default floats on `buildx-stable-1`. Dependabot moves the pin
+      # in .github/builder-images/Dockerfile, and scripts/dockerhub-login.test.mjs
+      # fails until all four setup-buildx-action steps, in this workflow and in
+      # release.yaml, pass it.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:

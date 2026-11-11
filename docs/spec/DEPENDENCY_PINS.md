@@ -46,8 +46,8 @@ pins, as surveyed on 2026-11-10, with the route that offers it for upgrade:
 - **automatic**: a block in `.github/dependabot.yml` reaches the pin and opens
   a pull request.
 - **scheduled**: a documented manual cadence moves the pin. No pin has one.
-- **planned**: a scheduled cadence for the pin is planned and not yet
-  documented.
+- **planned**: an automatic or scheduled route for the pin is planned and not
+  yet in place.
 - **none**: nothing offers an upgrade, and the pin moves only when someone
   edits it.
 
@@ -57,7 +57,7 @@ section each row links.
 
 | Pin | Where | Recorded as | Route | How it moves |
 | --- | --- | --- | --- | --- |
-| `@openmined/psi.js` | `lib/openmined-psi.js-2.0.6-seclink.7.tgz`, a `file:` dependency of `packages/core`, `apps/cli` and `apps/web` | Version in the file name, the sha256 sidecar, and the lockfile `integrity` | none | The `npm` block at `/` ignores every version update of it. A rebuild follows [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md), and [The vendored @openmined/psi.js addon](#the-vendored-openminedpsijs-addon) states what it must keep. |
+| `@openmined/psi.js` | `lib/openmined-psi.js-2.0.6-seclink.7.tgz`, a `file:` dependency of `packages/core`, `apps/cli` and `apps/web` | Version in the file name, the sha256 sidecar, and the lockfile `integrity` | planned | The `npm` block at `/` ignores every version update of it. A release of the fork is planned to open the re-vendor pull request here. A rebuild follows [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md), and [The vendored @openmined/psi.js addon](#the-vendored-openminedpsijs-addon) states what it must keep. |
 | npm registry packages | Every workspace `package.json` and the root `package-lock.json` | Ranges in the manifests, versions and `integrity` in the lockfile | automatic | The `npm` block at `/`, weekly. The reviewed groups and the routine batch are in [How these packages are versioned](#how-these-packages-are-versioned). |
 | `vite` under `vitepress` | The root `package.json` `overrides` entry | The range `^6.4.5` | none | The range admits a later 6.x release, which lands by `npm update vite --package-lock-only` ([The project site's vite override](#the-project-sites-vite-override)). Whether a Dependabot pull request moves the nested copy is unmeasured. |
 | wrangler | `.github/wrangler/package.json` and its lockfile | The exact version `4.147.0` | automatic | The `npm` block at `/.github/wrangler`. The six `wranglerVersion` inputs move by hand in the same pull request ([The Pages deploy tool](#the-pages-deploy-tool)). |
@@ -69,8 +69,8 @@ section each row links.
 | TURN relay image | `infra/relay/Dockerfile` | The `coturn/coturn:4.18.0` index digest | automatic | The `docker` block at `/infra/relay`. |
 | Broker TLS front image | `infra/broker/Dockerfile` | The `nginx:1.31-alpine` index digest | automatic | The `docker` block at `/infra/broker`. |
 | Relay 443 front image | `infra/relay/front/Dockerfile` | The `nginx:1.31-alpine` index digest | automatic | The `docker` block at `/infra/relay/front`. |
-| BuildKit daemon image | The four `docker/setup-buildx-action` steps in `release.yaml` and `image_smoke.yaml` | The `moby/buildkit:v0.34.2` index digest in `driver-opts` | none | No Dependabot block reads an action input. The comment above each step states the manual move. |
-| QEMU emulator image | The two `docker/setup-qemu-action` steps in `release.yaml` | The `tonistiigi/binfmt` index digest | none | No Dependabot block reads an action input. The comment above the first of the two steps states the manual move. |
+| BuildKit daemon image | The four `docker/setup-buildx-action` steps in `release.yaml` and `image_smoke.yaml` | The `moby/buildkit:v0.34.2` index digest in `driver-opts`, and in `.github/builder-images/Dockerfile` | automatic | No Dependabot block reads an action input, so the `docker` block at `/.github/builder-images` moves the Dockerfile's pin, and `scripts/dockerhub-login.test.mjs` fails until the same pull request moves the four inputs by hand. |
+| QEMU emulator image | The two `docker/setup-qemu-action` steps in `release.yaml` | The `tonistiigi/binfmt` index digest, and the `qemu-v10.2.3` tag with that digest in `.github/builder-images/Dockerfile` | automatic | The same block and test, for the two inputs. Whether Dependabot compares the `qemu-v` tags as versions is unmeasured until its first run on the block. |
 | Commit-pinned actions | `docker/*`, `aquasecurity/trivy-action`, `sigstore/cosign-installer` and `cloudflare/wrangler-action` in `.github/workflows` | A commit, with its release tag in a trailing comment | automatic | The `github-actions` block at `/`, whose ignore entries name none of these orgs ([GitHub Action pins and the composite mirror](#github-action-pins-and-the-composite-mirror)). No step passes `trivy-action` a `version` input, so the Trivy release it installs is the one the pinned commit selects. |
 | Floating-major actions | `actions/*` and `github/*` in `.github/workflows` and `.github/actions` | A major tag (`@v7`) | automatic | The `github-actions` block at `/` offers each new major. Its ignore entries hold back within-major bumps, which the tag takes at run time, and the composite occurrences follow the workflow pins ([The composite mirror](#the-composite-mirror)). |
 | Cosign release | The `cosign-release` input of two steps in `pages_deploy.yaml` and three in `release.yaml` | `v3.1.4` | none | A Dependabot bump moves `sigstore/cosign-installer`'s commit and not this input. `broker_core_build.yaml` passes no `cosign-release`, so its Cosign is the release the pinned installer selects. |
