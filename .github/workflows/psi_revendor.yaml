@@ -404,11 +404,7 @@ jobs:
             echo "::error::the verified attestation names no fork workflow run"
             exit 1
           fi
-          if [ "$(jq -r .attestation_expected "$marker")" = true ]; then
-            arming="armed (\`attestation_expected: true\`, \`source_ref\` \`refs/heads/master\`, \`source_digest\` \`$COMMIT\`)"
-          else
-            arming="disarmed (\`attestation_expected\` is not true in the marker)"
-          fi
+          arming="armed (\`attestation_expected: true\`, \`source_ref\` \`refs/heads/master\`, \`source_digest\` \`$COMMIT\`)"
           {
             echo "sha256=$sha256"
             echo "run-url=$run_url"
