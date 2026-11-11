@@ -11,9 +11,13 @@
 // the reporting thread's own clock rather than from anything the crypto
 // reports, and the rate is measured only once the operation returns.
 //
-// Every line is composed from fixed literals, an element count and a duration,
-// so no partner-supplied text reaches the terminal through it and no display
-// escape is needed on the way.
+// While this party waits on its partner, the live line states the partner's
+// progress through its own operation instead (onPartnerProgress).
+//
+// Every line is composed from fixed literals, an element count, a duration and
+// an integer from 0 to 100 that core parsed from the partner's frame, so no
+// partner-supplied text reaches the terminal through it and no display escape
+// is needed on the way.
 
 import logLibrary from "loglevel";
 
@@ -24,6 +28,8 @@ import {
   type PsiProgress,
   type PsiProgressReporter,
 } from "@alcove/core";
+
+import { isProgressPercent } from "@alcove/cli-contract";
 
 import { runBeforeEachLogLine } from "./util/logging";
 
@@ -75,6 +81,11 @@ export interface PsiStatusLine {
 /** Takes core's PSI progress reports and renders them. */
 export interface PsiProgressDisplay {
   report(progress: PsiProgress): void;
+  /**
+   * The partner's progress figure, drawn on the live line while no operation
+   * of this party's runs, or `undefined` to clear it.
+   */
+  partnerProgress(percent: number | undefined): void;
   /** Drop the live line and stop redrawing it. Call when the PSI phase ends. */
   close(): void;
 }
@@ -173,6 +184,13 @@ export function psiStatusText(
   );
 }
 
+/** The live line's text while this party waits on a partner `percent` through its crypto operation. */
+export function partnerWaitingText(percent: number): string {
+  return percent === 0
+    ? "waiting for your partner: their current calculation has started"
+    : `waiting for your partner: their current calculation is ${percent}% done`;
+}
+
 /**
  * The completion line for `progress`, or `undefined` where there is nothing to
  * report: an operation that failed rather than finished, one whose report holds
@@ -211,13 +229,27 @@ export function createPsiProgressDisplay(
         processed?: number;
       }
     | undefined;
+  let partnerPercent: number | undefined;
   let ticker: ReturnType<typeof setInterval> | undefined;
   let drawn = false;
+  let closed = false;
 
   const stopTicker = (): void => {
     if (ticker === undefined) return;
     clearInterval(ticker);
     ticker = undefined;
+  };
+
+  // Redraws while there is a line to draw, so the row a log line clears is
+  // put back at the next tick.
+  const startTickerIfDrawing = (): void => {
+    if (statusLine === undefined || ticker !== undefined) return;
+    if (running === undefined && partnerPercent === undefined) return;
+    ticker = setInterval(draw, tickMs);
+    // An operation holds the process open on its own (the PSI worker is
+    // ref'd while it runs), so the redraw timer must not: a report that
+    // never settles leaves it the only thing keeping the process alive.
+    ticker.unref();
   };
 
   const clearLine = (): void => {
@@ -232,20 +264,26 @@ export function createPsiProgressDisplay(
       : options.clearBeforeLogLine?.(clearLine);
 
   const draw = (): void => {
-    if (statusLine === undefined || running === undefined) return;
-    drawn = true;
-    statusLine.draw(
-      psiStatusText(
-        running.operation,
-        running.elements,
-        Math.max(0, now() - running.startedAt),
-        running.processed,
-      ),
-    );
+    if (statusLine === undefined) return;
+    if (running !== undefined) {
+      drawn = true;
+      statusLine.draw(
+        psiStatusText(
+          running.operation,
+          running.elements,
+          Math.max(0, now() - running.startedAt),
+          running.processed,
+        ),
+      );
+    } else if (partnerPercent !== undefined) {
+      drawn = true;
+      statusLine.draw(partnerWaitingText(partnerPercent));
+    }
   };
 
   return {
     report(progress: PsiProgress): void {
+      if (closed) return;
       if (progress.state === "started") {
         running = {
           operation: progress.operation,
@@ -253,12 +291,8 @@ export function createPsiProgressDisplay(
           startedAt: now(),
         };
         stopTicker();
-        if (statusLine === undefined) return;
-        ticker = setInterval(draw, tickMs);
-        // An operation holds the process open on its own (the PSI worker is
-        // ref'd while it runs), so the redraw timer must not: a report that
-        // never settles leaves it the only thing keeping the process alive.
-        ticker.unref();
+        clearLine();
+        startTickerIfDrawing();
         return;
       }
       if (progress.state === "progress") {
@@ -273,9 +307,24 @@ export function createPsiProgressDisplay(
       clearLine();
       const line = psiMilestoneText(progress);
       if (line !== undefined) options.milestone(line);
+      startTickerIfDrawing();
+    },
+    partnerProgress(percent: number | undefined): void {
+      if (closed) return;
+      partnerPercent = isProgressPercent(percent) ? percent : undefined;
+      if (running !== undefined) return;
+      if (partnerPercent === undefined) {
+        stopTicker();
+        clearLine();
+        return;
+      }
+      draw();
+      startTickerIfDrawing();
     },
     close(): void {
+      closed = true;
       running = undefined;
+      partnerPercent = undefined;
       stopTicker();
       clearLine();
       removeLogLineHook?.();

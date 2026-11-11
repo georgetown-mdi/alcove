@@ -1628,8 +1628,7 @@ describe("the PSI progress reporter", () => {
   });
 
   test("is left off the call for an owner that shows no progress", async () => {
-    // Core composes no report at all for a run that hands it no reporter, so an
-    // owner with nothing to show must not be given one anyway.
+    // An owner with nothing to show is given no reporter.
     const acquire = acquireStub();
 
     await runExchangeLifecycle({
@@ -1671,6 +1670,51 @@ describe("the PSI progress reporter", () => {
     });
 
     expect(onPsiProgress).not.toHaveBeenCalled();
+  });
+});
+
+describe("the partner's progress figure", () => {
+  function acquireStub(): Acquire {
+    const { mc } = makeFakeMc();
+    mockedOpen.mockResolvedValue(mc);
+    const { acquire } = makeResources();
+    return acquire;
+  }
+
+  test("reaches runExchange and reports through the owner's sink until the run is aborted", async () => {
+    const acquire = acquireStub();
+    const controller = new AbortController();
+    const onPartnerProgress = vi.fn();
+    mockedRunExchange.mockImplementation((_mc, _role, _prepared, options) => {
+      options.onPartnerProgress?.(40);
+      options.onPartnerProgress?.(undefined);
+      controller.abort();
+      options.onPartnerProgress?.(50);
+      return Promise.resolve(STUB_EXCHANGE_RESULT);
+    });
+
+    await runExchangeLifecycle({
+      acquire,
+      exchangeRole: "initiator",
+      signal: controller.signal,
+      ...seams(),
+      onPartnerProgress,
+    });
+
+    expect(onPartnerProgress.mock.calls).toEqual([[40], [undefined]]);
+  });
+
+  test("is left off the call for an owner that shows no figure", async () => {
+    await runExchangeLifecycle({
+      acquire: acquireStub(),
+      exchangeRole: "initiator",
+      signal: new AbortController().signal,
+      ...seams(),
+    });
+
+    expect(mockedRunExchange.mock.calls[0][3]).not.toHaveProperty(
+      "onPartnerProgress",
+    );
   });
 });
 

@@ -68,6 +68,12 @@ export interface ExchangeDriverEvents<
    * console-conducted run reports none, leaving that consumer its static
    * in-progress state -- and never terminal. */
   onPsiProgress?: (progress: PsiProgress) => void;
+  /** The partner's progress through its current crypto operation while this
+   * party waits for it, an integer from 0 to 100, or `undefined` when the
+   * figure no longer applies. Reported by the in-browser driver from core and
+   * by the console driver from the CLI's `partnerProgress` event. Optional on
+   * both sides and never terminal. */
+  onPartnerProgress?: (percent: number | undefined) => void;
 }
 
 /** A per-channel exchange driver: a `run` that conducts one exchange and
@@ -120,6 +126,7 @@ export function createBrowserExchangeDriver<
       onWarning,
       onResolvedMatching,
       onPsiProgress,
+      onPartnerProgress,
     }) =>
       runExchangeLifecycle<TOutputs>({
         acquire,
@@ -135,6 +142,7 @@ export function createBrowserExchangeDriver<
         onWarning,
         onResolvedMatching,
         onPsiProgress,
+        onPartnerProgress,
       }),
   };
 }

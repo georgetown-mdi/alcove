@@ -42,6 +42,7 @@ export const EVENT_TYPES = [
   "stageEnd",
   "warning",
   "metrics",
+  "partnerProgress",
   "result",
   "error",
 ] as const;
@@ -151,6 +152,32 @@ export interface MetricsEvent extends EventBase {
   reconnects: number;
 }
 
+/**
+ * The partner's progress through its current crypto operation while this
+ * party waits for it. See docs/spec/CLI_EVENTS.md#partnerprogress.
+ */
+export interface PartnerProgressEvent extends EventBase {
+  type: "partnerProgress";
+  /**
+   * An integer from 0 to 100; absent when the figure no longer applies, so a
+   * supervisor clears what it shows.
+   */
+  percent?: number;
+}
+
+/**
+ * Whether `value` is a {@link PartnerProgressEvent.percent}: an integer from 0
+ * to 100. Every boundary the figure crosses drops any other value.
+ */
+export function isProgressPercent(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 100
+  );
+}
+
 /** The success terminal event. See docs/spec/CLI_EVENTS.md#result. */
 export interface ResultEvent extends EventBase {
   type: "result";
@@ -237,5 +264,6 @@ export type StreamEvent =
   | StageEndEvent
   | WarningEvent
   | MetricsEvent
+  | PartnerProgressEvent
   | ResultEvent
   | ErrorEvent;

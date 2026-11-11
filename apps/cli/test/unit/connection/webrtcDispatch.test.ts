@@ -1839,6 +1839,7 @@ test("a registrar repeating one enrollment's exchange id and relay key in the ot
     stages: ignored,
     stage: ignored,
     stageEnd: ignored,
+    partnerProgress: ignored,
     warning: ignored,
     payloadReceiveTaken: ignored,
     logFileLoss: ignored,

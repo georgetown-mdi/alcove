@@ -386,9 +386,12 @@ interface RunExchangeLifecycleOptions<
   onResolvedMatching?: (matching: ResolvedMatching) => void;
   /** Where each PSI crypto operation stands, reported as it starts and again as
    * it settles, for an owner showing a live progress line through the minutes
-   * one of them can run. Optional, and omitting it costs nothing: core composes
-   * no report at all for a run that passes no reporter. */
+   * one of them can run. Optional. */
   onPsiProgress?: (progress: PsiProgress) => void;
+  /** The partner's progress through its current crypto operation while this
+   * party waits for it, an integer from 0 to 100, or `undefined` when the
+   * figure no longer applies. Optional. */
+  onPartnerProgress?: (percent: number | undefined) => void;
 }
 
 /**
@@ -441,6 +444,7 @@ export async function runExchangeLifecycle<
     onWarning,
     onResolvedMatching,
     onPsiProgress,
+    onPartnerProgress,
   } = options;
 
   // Every owner-driven React callback is a no-op once the signal aborts, so an
@@ -481,6 +485,9 @@ export async function runExchangeLifecycle<
   );
   const emitPsiProgress = ifLive((progress: PsiProgress) =>
     onPsiProgress?.(progress),
+  );
+  const emitPartnerProgress = ifLive((percent: number | undefined) =>
+    onPartnerProgress?.(percent),
   );
 
   let acquired: AcquiredExchange;
@@ -619,10 +626,11 @@ export async function runExchangeLifecycle<
         for (const notice of [cardinalityNotice, pairTableAdvisory])
           if (notice !== undefined) emitRunNotice(notice);
       },
-      // Passed only where the owner takes it: core composes no report for a run
-      // that hands it no reporter.
       ...(onPsiProgress !== undefined
         ? { onPsiProgress: emitPsiProgress }
+        : {}),
+      ...(onPartnerProgress !== undefined
+        ? { onPartnerProgress: emitPartnerProgress }
         : {}),
     });
     // The privacy-sensitive exchange has succeeded here. A failure building the

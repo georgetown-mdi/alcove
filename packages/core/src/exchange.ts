@@ -158,7 +158,10 @@ import {
 } from "./exchange/termsRefusals.js";
 import { buildOwedExchangeRecord } from "./exchange/owedRecord.js";
 import { psiParticipantId, runPsiPhase } from "./exchange/psiPhase.js";
-import { stillWorkingLayer } from "./exchange/stillWorking.js";
+import {
+  stillWorkingLayer,
+  type PartnerProgressReporter,
+} from "./exchange/stillWorking.js";
 import type {
   DualSignedRecord,
   ReceiptContent,
@@ -1155,9 +1158,20 @@ export interface RunExchangeOptions {
    * it feeds the partner's response in.
    *
    * Every figure is a count or a duration, never a value from either party's
-   * data, and none of it goes on the wire.
+   * data. On a connection whose parties exchange still-working frames, the
+   * whole percent of the operation in flight goes on the wire in them,
+   * whether or not this is given.
    */
   onPsiProgress?: PsiProgressReporter;
+  /**
+   * Called with the partner's progress through its current crypto operation,
+   * an integer from 0 to 100, while this party waits for the partner's next
+   * frame, and with `undefined` when the figure no longer applies: the wait
+   * ended, or the partner's operation did. At most once per
+   * `PARTNER_PROGRESS_MIN_GAP_MS` for a figure. Only a connection whose
+   * parties exchange still-working frames reports one.
+   */
+  onPartnerProgress?: PartnerProgressReporter;
   /** Called for each non-fatal warning produced during terms exchange. */
   onWarning?: (msg: string) => void;
   /**
@@ -2026,7 +2040,11 @@ export async function runExchange(
 
   // The payload exchange after the phase reads through the layer too, which
   // drops the partner's still-working frames sent before its own phase ended.
-  const stillWorking = stillWorkingLayer(conn);
+  const stillWorking = stillWorkingLayer(
+    conn,
+    undefined,
+    options.onPartnerProgress,
+  );
   if (stillWorking !== undefined) conn = stillWorking.conn;
   const {
     associationTable,

@@ -1110,6 +1110,7 @@ condition holds.
 | Parked receive | 1 h | Peer silence on an open channel, each frame that arrives restarting it; through the PSI phase the partner's still-working frames restart it ([The wait through a partner's PSI step](#the-wait-through-a-partners-psi-step)) |
 | Partner silence | 2 min (`PARTNER_SILENCE_BOUND_MS`) | A parked receive with nothing arriving, each part of a frame restarting it, from the partner's first still-working frame to the end of this party's PSI phase. A working value not yet measured in a real browser |
 | Still-working interval | 30 s (`STILL_WORKING_INTERVAL_MS`) | The longest this party goes without sending through its PSI phase. A working value not yet measured in a real browser |
+| Partner progress gap | 15 s (`PARTNER_PROGRESS_MIN_GAP_MS`) | The least time between two deliveries of the partner's progress figure to the application, whatever rate the partner sends at. A working value: half the interval, so a partner sending one frame per interval is never held back |
 | Close drain | 5 min | The clean close's wait above -- the CLI's acknowledgement drain, the web's wait for the peer's close -- sized from the largest admissible frame and the measured send rate |
 | Sentinel hand-off | 2 s | Getting the close sentinel itself onto the wire |
 | Channel close | 2 s | The data channel's own close completing on a clean close -- the peer answering the stream reset. A partner that goes during the teardown spends it whole, ICE being slower than this to call the link dead; reaching it closes the session anyway |
@@ -1193,7 +1194,16 @@ ends the run when they stop.
   with nothing sent. Every send through the phase goes through one queue, so a
   still-working send never overlaps another. It stops, once a send in flight
   settles, when the phase ends, on success, failure or cancellation, or when
-  the party sends an abort.
+  the party sends an abort. Each frame after the first states the party's
+  progress through its crypto operation in flight, read when the frame is sent
+  ([PROTOCOL.md](PROTOCOL.md#the-still-working-frame)).
+- **Showing the partner's figure.** The partner's figure reaches the
+  application only while the party waits in a receive, and at most once per
+  15 s, whatever rate the partner sends at. A frame with no figure, a data
+  frame, and the end of the receive each clear a figure shown, so a figure is
+  never left on screen after the wait. A figure read from the queue while the
+  party computes is kept, and shown when the party next waits if nothing else
+  is queued by then.
 - **Waiting.** The partner's first still-working frame arms the partner-silence
   bound, 2 min, on a parked receive: a receive with nothing arriving for that
   long ends the run with the `partner-stopped-responding` cause ([CLI_EVENTS.md](CLI_EVENTS.md)),
@@ -1217,8 +1227,9 @@ ends the run when they stop.
   party with no upper bound. Each still-working frame restarts the whole-frame
   budget, and the silence bound never fires while they arrive.
 - **A stated limit: a refusal the drain reads is raised at the next read.** Such
-  a refusal is a malformed frame of still-working length, the older-version
-  reading, or a forged, replayed or altered envelope of still-working length.
+  a refusal is a malformed frame of one of the still-working frame's lengths,
+  the older-version reading, or a forged, replayed or altered envelope of one
+  of those lengths.
   The party raises it at its next receive, not when the drain reads it, and
   carries on with its own step until then.
 - **Through the WebSocket relay.** A still-working frame is a message to the

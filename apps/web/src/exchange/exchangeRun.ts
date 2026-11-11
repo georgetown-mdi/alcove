@@ -5,6 +5,7 @@ import {
   describeExchangeStages,
   formatCount,
 } from "@alcove/core";
+import { isProgressPercent } from "@alcove/cli-contract";
 
 import type {
   PreparedExchange,
@@ -143,6 +144,10 @@ export interface ExchangeRun {
    * leaves the status panel showing its stage label alone. A console-conducted
    * run reports none, so it shows that static state throughout. */
   psiOperation?: RunningPsiOperation;
+  /** The partner's progress through its current crypto operation, an integer
+   * from 0 to 100, while this party waits for it. Unset when the driver clears
+   * it, at each stage change, and once the run ends. */
+  partnerPercent?: number;
 }
 
 /** The figures a live PSI progress line states: which operation is running, how
@@ -252,7 +257,7 @@ export function runWithStage(
 ): ExchangeRun {
   if (stageId === run.stageId || stageId === DONE_STAGE_ID) return run;
   return {
-    ...run,
+    ...withoutPartnerPercent(run),
     stageId,
     visits: [
       ...closedVisits(run.visits, at),
@@ -267,7 +272,7 @@ export function runWithStage(
  * recorded for the completion header. */
 export function runWithCompletion(run: ExchangeRun, at: Date): ExchangeRun {
   return {
-    ...withoutPsiOperation(run),
+    ...withoutPartnerPercent(withoutPsiOperation(run)),
     stageId: DONE_STAGE_ID,
     visits: [
       ...closedVisits(run.visits, at),
@@ -321,12 +326,34 @@ function withoutPsiOperation(run: ExchangeRun): ExchangeRun {
   return rest;
 }
 
+/** Take the partner's progress figure, or its clear. A value that is not an
+ * integer from 0 to 100 clears the figure, so nothing else reaches the
+ * screen. Returns the run unchanged where nothing moves. */
+export function runWithPartnerProgress(
+  run: ExchangeRun,
+  percent: number | undefined,
+): ExchangeRun {
+  if (!isProgressPercent(percent)) return withoutPartnerPercent(run);
+  return run.partnerPercent === percent
+    ? run
+    : { ...run, partnerPercent: percent };
+}
+
+function withoutPartnerPercent(run: ExchangeRun): ExchangeRun {
+  if (run.partnerPercent === undefined) return run;
+  const { partnerPercent: _cleared, ...rest } = run;
+  return rest;
+}
+
 /** Mark the run failed: the timeline and history freeze where they stand, the
  * status panel stops presenting the open stage as in flight, and the live PSI
- * line closes -- a run that failed inside an operation, or was cut short of the
- * report settling it, has none running. */
+ * line and the partner's figure close -- a run that failed inside an
+ * operation, or was cut short of the report settling it, has none running. */
 export function runWithFailure(run: ExchangeRun): ExchangeRun {
-  return { ...withoutPsiOperation(run), failed: true };
+  return {
+    ...withoutPartnerPercent(withoutPsiOperation(run)),
+    failed: true,
+  };
 }
 
 /** One step of the five-step protocol timeline the top bar shows after create. */
@@ -476,6 +503,18 @@ export function psiProgressLabel(
   return operationLabel === currentStageLabel(run)
     ? figures
     : `${operationLabel}: ${figures}`;
+}
+
+/** The status panel's line for the partner's progress while this party waits
+ * on it. Undefined while this party's own operation has the line, and when
+ * the partner states no figure. */
+export function partnerProgressLabel(run: ExchangeRun): string | undefined {
+  if (run.psiOperation !== undefined) return undefined;
+  const percent = run.partnerPercent;
+  if (!isProgressPercent(percent)) return undefined;
+  return percent === 0
+    ? "Waiting for your partner: their current calculation has started"
+    : `Waiting for your partner: their current calculation is ${percent}% done`;
 }
 
 /** A history row's completion time, e.g. `2:43 PM`. */

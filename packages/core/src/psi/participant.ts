@@ -168,8 +168,9 @@ export type PsiProgressState = "started" | "progress" | "finished" | "failed";
 /**
  * One report about a PSI crypto operation, for a progress display. Every figure
  * is a count or a duration -- how many elements the operation covers and how
- * long it ran -- never a value from either party's data, and none of it goes on
- * the wire.
+ * long it ran -- never a value from either party's data. Only the whole
+ * percent of an operation's elements processed goes on the wire, in the
+ * still-working frames (`exchange/stillWorking.ts`).
  */
 export interface PsiProgress {
   operation: PsiOperation;
@@ -296,8 +297,9 @@ export class PSIParticipant {
         this.id,
         "identifier-revealing",
       );
-    // Take the engine's processed counts only where a caller is rendering
-    // them, so a participant that shows nothing composes no report at all.
+    // Take the engine's processed counts only where a caller takes the
+    // reports -- a display, or the still-working frames' tracker -- so a
+    // participant given no reporter composes no report at all.
     if (onProgress !== undefined)
       this.engine.observeProcessedElements?.((processed) =>
         this.reportProcessed(processed),

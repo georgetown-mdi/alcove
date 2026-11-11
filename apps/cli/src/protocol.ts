@@ -579,6 +579,12 @@ async function runExchangeStage(params: {
       // phase's live progress. Counts and durations only -- no value from
       // either party's data reaches the display.
       onPsiProgress: (progress) => psiProgress.report(progress),
+      // The partner's figure, an integer core checked, on the live line and
+      // fd 3 alike; a run without a terminal logs no line for it.
+      onPartnerProgress: (percent) => {
+        psiProgress.partnerProgress(percent);
+        emit((e) => e.partnerProgress(percent));
+      },
       onStage: (id: string) => {
         if (id === SINGLE_PASS_END_MARKER) return;
         const label = stageLabels[id] ?? id;

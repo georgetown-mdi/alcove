@@ -23,7 +23,7 @@ import {
   isPartnerStopAtMatchingStart,
   olderVersionOf,
 } from "../../src/failureClass";
-import { runExchange } from "../../src/exchange";
+import { runExchange, type RunExchangeOptions } from "../../src/exchange";
 import {
   connectionLayer,
   decisionOnlyAbortFrame,
@@ -34,11 +34,13 @@ import {
 import { sendLocalFaultAbort, sendTermsAbort } from "../../src/protocolSetup";
 import {
   OLDER_PARTNER_AT_MATCHING_MESSAGE,
+  PARTNER_PROGRESS_MIN_GAP_MS,
   PARTNER_SILENCE_BOUND_MS,
   PARTNER_STOPPED_AT_MATCHING_MESSAGE,
   STILL_WORKING_FRAME,
   STILL_WORKING_INTERVAL_MS,
   isStillWorkingFrame,
+  operationPercentTracker,
   stillWorkingLayer,
   type StillWorkingLayer,
 } from "../../src/exchange/stillWorking";
@@ -51,6 +53,7 @@ import {
 } from "../../src/psi/psiEngine";
 import { psiElementBounds } from "../../src/psi/singlePassSizing";
 import type { StandardizedKeyIterable } from "../../src/standardization";
+import type { PsiOperation, PsiProgress } from "../../src/psi/participant";
 import { prepared } from "../utils/support";
 
 const HOUR_MS = 3_600_000;
@@ -199,12 +202,12 @@ describe("sending", () => {
     expect(sent).toHaveLength(4);
   });
 
-  test("every still-working frame a party sends is exactly the bare frame, with no progress figure", async () => {
+  test("a party with no crypto operation in flight sends exactly the bare frame", async () => {
     vi.useFakeTimers();
     const { conn, sent } = recordingConnection();
     const layer = layerOver(conn);
 
-    layer.start();
+    layer.start(() => undefined);
     await vi.advanceTimersByTimeAsync(3 * STILL_WORKING_INTERVAL_MS);
     expect(sent).toHaveLength(4);
     expect(sent.map((frame) => JSON.stringify(frame))).toStrictEqual(
@@ -212,6 +215,53 @@ describe("sending", () => {
     );
     await layer.endPhase();
   });
+
+  test("a party states its progress figure as read at each send, and its first frame states none", async () => {
+    vi.useFakeTimers();
+    const { conn, sent } = recordingConnection();
+    const layer = layerOver(conn);
+    let percent: number | undefined = 42;
+
+    layer.start(() => percent);
+    await vi.advanceTimersByTimeAsync(STILL_WORKING_INTERVAL_MS);
+    percent = 57;
+    await vi.advanceTimersByTimeAsync(STILL_WORKING_INTERVAL_MS);
+    percent = undefined;
+    await vi.advanceTimersByTimeAsync(STILL_WORKING_INTERVAL_MS);
+
+    expect(sent.map((frame) => JSON.stringify(frame))).toStrictEqual([
+      '{"working":true}',
+      '{"working":true,"percent":42}',
+      '{"working":true,"percent":57}',
+      '{"working":true}',
+    ]);
+    await layer.endPhase();
+  });
+
+  test.each([
+    ["101", () => 101],
+    ["-1", () => -1],
+    ["4.5", () => 4.5],
+    ["NaN", () => Number.NaN],
+    [
+      "a throw",
+      () => {
+        throw new Error("reader failed");
+      },
+    ],
+  ])(
+    "a party whose progress reader returns %s sends the bare frame",
+    async (_case, read) => {
+      vi.useFakeTimers();
+      const { conn, sent } = recordingConnection();
+      const layer = layerOver(conn);
+
+      layer.start(read);
+      await vi.advanceTimersByTimeAsync(STILL_WORKING_INTERVAL_MS);
+      expect(sent).toStrictEqual([STILL_WORKING_FRAME, STILL_WORKING_FRAME]);
+      await layer.endPhase();
+    },
+  );
 
   test("a party sends no still-working frame once its PSI phase ends", async () => {
     vi.useFakeTimers();
@@ -551,6 +601,235 @@ describe("the progress figure on a received still-working frame", () => {
   });
 });
 
+describe("this party's progress through its crypto operation", () => {
+  const report = (
+    state: PsiProgress["state"],
+    fields: Partial<PsiProgress> = {},
+  ): PsiProgress => ({
+    operation: "createClientRequest",
+    elements: 1000,
+    state,
+    ...fields,
+  });
+
+  test("a tracker reads 0 when an operation starts, the share processed as it moves, and none once it settles", () => {
+    const tracker = operationPercentTracker();
+    expect(tracker.percent()).toBeUndefined();
+    tracker.report(report("started"));
+    expect(tracker.percent()).toBe(0);
+    tracker.report(report("progress", { processed: 409 }));
+    expect(tracker.percent()).toBe(40);
+    tracker.report(report("progress", { processed: 999 }));
+    expect(tracker.percent()).toBe(99);
+    tracker.report(report("finished", { durationMs: 5 }));
+    expect(tracker.percent()).toBeUndefined();
+    tracker.report(report("started"));
+    tracker.report(report("failed", { durationMs: 5 }));
+    expect(tracker.percent()).toBeUndefined();
+  });
+
+  test.each([
+    ["no elements", { elements: 0, processed: 0 }, 0],
+    ["a negative element count", { elements: -10, processed: -5 }, 0],
+    ["more processed than covered", { processed: 5000 }, 100],
+    ["a negative processed count", { processed: -5 }, 0],
+    ["no processed count", {}, 0],
+  ])(
+    "a tracker given %s reads a figure from 0 to 100",
+    (_case, fields, percent) => {
+      const tracker = operationPercentTracker();
+      tracker.report(report("progress", fields));
+      expect(tracker.percent()).toBe(percent);
+    },
+  );
+
+  test("a tracker ignores the count of the first round's values", () => {
+    const tracker = operationPercentTracker();
+    tracker.report(report("started", { operation: "countFirstRoundValues" }));
+    expect(tracker.percent()).toBeUndefined();
+  });
+});
+
+describe("the partner's progress figure, shown to this party", () => {
+  // A local layer reporting the partner's figure, over a pipe whose partner
+  // end the test sends frames on directly.
+  function waitingPair(): {
+    layer: StillWorkingLayer;
+    partner: MessageConnection;
+    shown: Array<number | undefined>;
+  } {
+    const [local, partner] = createMessagePipe({
+      stillWorkingFrames: true,
+      inactivityTimeoutMs: 100 * HOUR_MS,
+    });
+    const shown: Array<number | undefined> = [];
+    const layer = stillWorkingLayer(local, undefined, (percent) => {
+      shown.push(percent);
+    });
+    if (layer === undefined) throw new Error("no still-working layer");
+    return { layer, partner, shown };
+  }
+
+  test("a waiting party is shown the partner's figure, then the clear when the partner's data frame ends the wait", async () => {
+    vi.useFakeTimers();
+    const { layer, partner, shown } = waitingPair();
+    const { state } = settledOf(layer.conn.receive());
+
+    await partner.send({ working: true, percent: 40 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown).toStrictEqual([40]);
+
+    await partner.send({ round: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state).toStrictEqual({ settled: true, value: { round: 1 } });
+    expect(shown).toStrictEqual([40, undefined]);
+  });
+
+  test("a frame without a figure clears the figure shown, and a party shown none is sent no clear", async () => {
+    vi.useFakeTimers();
+    const { layer, partner, shown } = waitingPair();
+    settledOf(layer.conn.receive());
+
+    await partner.send(STILL_WORKING_FRAME);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown).toStrictEqual([]);
+    await partner.send({ working: true, percent: 40 });
+    await partner.send(STILL_WORKING_FRAME);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown).toStrictEqual([40, undefined]);
+    await partner.send(STILL_WORKING_FRAME);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown).toStrictEqual([40, undefined]);
+  });
+
+  test("a receive that fails clears the figure shown", async () => {
+    vi.useFakeTimers();
+    const { layer, partner, shown } = waitingPair();
+    const { state } = settledOf(layer.conn.receive());
+
+    await partner.send({ working: true, percent: 40 });
+    await vi.advanceTimersByTimeAsync(0);
+    await partner.close();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state.error).toBeInstanceOf(ConnectionError);
+    expect(shown).toStrictEqual([40, undefined]);
+  });
+
+  test("a refused still-working frame ends the wait with no figure shown", async () => {
+    vi.useFakeTimers();
+    const { layer, partner, shown } = waitingPair();
+    const { state } = settledOf(layer.conn.receive());
+
+    await partner.send(STILL_WORKING_FRAME);
+    await partner.send({ working: true, percent: 101 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect((state.error as ConnectionError).kind).toBe("protocol");
+    expect(shown).toStrictEqual([]);
+  });
+
+  test("a figure drained while this party computes is shown only once it waits, and a data frame drained behind it drops it", async () => {
+    vi.useFakeTimers();
+    const keying = {
+      sessionKey: new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>,
+      negotiated: {
+        kex: 3,
+        protocol: 1,
+        envelope: SINGLE_CALL_ENVELOPE_VERSION,
+      },
+    };
+    const [rawA, rawB] = createMessagePipe({
+      stillWorkingFrames: true,
+      inactivityTimeoutMs: 100 * HOUR_MS,
+    });
+    const [localEnd, partnerEnd] = await Promise.all([
+      EncryptedMessageConnection.create(rawA, keying, "initiator"),
+      EncryptedMessageConnection.create(rawB, keying, "responder"),
+    ]);
+    const shown: Array<number | undefined> = [];
+    const layer = stillWorkingLayer(localEnd, undefined, (percent) => {
+      shown.push(percent);
+    });
+    if (layer === undefined) throw new Error("no still-working layer");
+
+    layer.start();
+    await partnerEnd.send({ working: true, percent: 40 });
+    await vi.advanceTimersByTimeAsync(STILL_WORKING_INTERVAL_MS);
+    expect(localEnd.nextQueuedMessageBytes?.()).toBeUndefined();
+    expect(shown).toStrictEqual([]);
+
+    // The receive shows the figure once the drain's decrypt settles, which
+    // runs in WebCrypto's thread pool where no timer advance reaches it.
+    const received = layer.conn.receive();
+    await vi.waitFor(() => expect(shown).toStrictEqual([40]));
+    await partnerEnd.send({ round: 1 });
+    expect(await received).toStrictEqual({ round: 1 });
+    expect(shown).toStrictEqual([40, undefined]);
+
+    // A figure drained ahead of a data frame already queued is not shown.
+    await partnerEnd.send({ working: true, percent: 50 });
+    await partnerEnd.send({ round: 2 });
+    await vi.advanceTimersByTimeAsync(STILL_WORKING_INTERVAL_MS);
+    expect(localEnd.nextQueuedMessageBytes?.()).toBeDefined();
+    expect(await layer.conn.receive()).toStrictEqual({ round: 2 });
+    expect(shown).toStrictEqual([40, undefined]);
+    await layer.endPhase();
+  });
+
+  test("a partner flooding still-working frames is shown at most one figure per gap, and one clear after each", async () => {
+    vi.useFakeTimers();
+    const { layer, partner, shown } = waitingPair();
+    settledOf(layer.conn.receive());
+    const frames = 10_000;
+    const stepMs = 10;
+
+    for (let i = 0; i < frames; i++) {
+      await partner.send(
+        i % 2 === 0
+          ? { working: true, percent: (i / 2) % 101 }
+          : STILL_WORKING_FRAME,
+      );
+      await vi.advanceTimersByTimeAsync(stepMs);
+    }
+
+    const figures = shown.filter((percent) => percent !== undefined);
+    const clears = shown.filter((percent) => percent === undefined);
+    expect(figures).toHaveLength(
+      Math.floor((frames * stepMs) / PARTNER_PROGRESS_MIN_GAP_MS) + 1,
+    );
+    expect(clears.length).toBeLessThanOrEqual(figures.length);
+  });
+
+  test("a figure that changes within the gap is shown once the gap has passed", async () => {
+    vi.useFakeTimers();
+    const { layer, partner, shown } = waitingPair();
+    settledOf(layer.conn.receive());
+
+    await partner.send({ working: true, percent: 20 });
+    await vi.advanceTimersByTimeAsync(PARTNER_PROGRESS_MIN_GAP_MS - 1);
+    await partner.send({ working: true, percent: 30 });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(shown).toStrictEqual([20]);
+    await partner.send({ working: true, percent: 40 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown).toStrictEqual([20, 40]);
+  });
+
+  test("an app callback that throws does not end the wait", async () => {
+    vi.useFakeTimers();
+    const [local, partner] = createMessagePipe({ stillWorkingFrames: true });
+    const layer = stillWorkingLayer(local, undefined, () => {
+      throw new Error("display failed");
+    });
+    if (layer === undefined) throw new Error("no still-working layer");
+    const { state } = settledOf(layer.conn.receive());
+
+    await partner.send({ working: true, percent: 40 });
+    await partner.send({ round: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state).toStrictEqual({ settled: true, value: { round: 1 } });
+  });
+});
+
 describe("a partner on an older version", () => {
   test("a partner whose first PSI-phase frame is data is refused as running an older version", async () => {
     const [local, partner] = createMessagePipe({ stillWorkingFrames: true });
@@ -887,6 +1166,97 @@ describe("a whole exchange", () => {
       ).toHaveLength(0);
     },
   );
+
+  test("a party sends its progress through a long crypto operation, and its waiting partner is shown it, then the clear", async () => {
+    const psiLibrary = await PSI();
+    const cryptoOperations = new Set<PsiOperation>([
+      "createServerSetup",
+      "createClientRequest",
+      "processClientRequest",
+      "computeAssociationTable",
+    ]);
+    // Party A's engine reports one element processed at the start of its
+    // first crypto operation, then runs it for two intervals.
+    let slowedOnce = false;
+    const slowEngine: RunExchangeOptions["psiEngineFactory"] = (
+      role,
+      id,
+      mode,
+    ) => {
+      const inner = new InProcessPsiEngine(psiLibrary, role, id, mode);
+      let observer: ((processed: number) => void) | undefined;
+      return new Proxy(inner, {
+        get(target, property) {
+          if (property === "observeProcessedElements")
+            return (report: (processed: number) => void) => {
+              observer = report;
+            };
+          const member: unknown = Reflect.get(target, property, target);
+          if (typeof member !== "function") return member;
+          const bound = (member as (...args: unknown[]) => unknown).bind(
+            target,
+          );
+          if (!cryptoOperations.has(property as PsiOperation) || slowedOnce)
+            return bound;
+          return async (...args: unknown[]) => {
+            slowedOnce = true;
+            observer?.(1);
+            await new Promise((resolve) =>
+              setTimeout(resolve, 2 * STILL_WORKING_INTERVAL_MS),
+            );
+            return bound(...args);
+          };
+        },
+      });
+    };
+    const rows = (names: Array<string>) =>
+      names.map((first_name) => ({ first_name }));
+    const [a, b] = createMessagePipe({ stillWorkingFrames: true });
+    const sentByA: Array<unknown> = [];
+    const reportsOfA: Array<PsiProgress> = [];
+    const shownToB: Array<number | undefined> = [];
+
+    vi.useFakeTimers();
+    const { state } = settledOf(
+      Promise.all([
+        runExchange(
+          recordingSends(a, sentByA),
+          "initiator",
+          prepared("Party A", rows(["ann", "bob", "cy"])),
+          {
+            psiLibrary,
+            psiEngineFactory: slowEngine,
+            onPsiProgress: (progress) => reportsOfA.push(progress),
+          },
+        ),
+        runExchange(
+          b,
+          "responder",
+          prepared("Party B", rows(["bob", "cy", "dee"])),
+          {
+            psiLibrary,
+            onPartnerProgress: (percent) => shownToB.push(percent),
+          },
+        ),
+      ]),
+    );
+    for (let i = 0; i < 1000 && !state.settled; i++)
+      await vi.advanceTimersByTimeAsync(1000);
+
+    expect(state.error).toBeUndefined();
+    const reported = reportsOfA.find(
+      (progress) => progress.state === "progress",
+    );
+    if (reported?.processed === undefined) throw new Error("no progress");
+    const percent = Math.floor((100 * reported.processed) / reported.elements);
+    expect(
+      sentByA.filter(
+        (frame) =>
+          JSON.stringify(frame) === JSON.stringify({ working: true, percent }),
+      ),
+    ).not.toHaveLength(0);
+    expect(shownToB).toStrictEqual([percent, undefined]);
+  });
 });
 
 test("an abort sent through the layer counts as sent on the connection under it", async () => {

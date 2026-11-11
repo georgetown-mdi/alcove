@@ -20,6 +20,7 @@ import {
   PERSISTENCE_LOSS_EXIT_CODE,
   failureCauseStreamField,
   isEventType,
+  isProgressPercent,
   unknownEventNotice,
 } from "@alcove/cli-contract";
 
@@ -630,6 +631,12 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
       (key === "message" || key === UNESCAPED_MESSAGE_FIELD)
     )
       continue;
+    // The partner's figure, kept only as the integer from 0 to 100 the CLI
+    // emits; anything else is dropped, leaving the event that clears it.
+    if (type === "partnerProgress" && key === "percent") {
+      if (isProgressPercent(field)) sanitized[outKey] = field;
+      continue;
+    }
     sanitized[outKey] = sanitizeValue(field);
   }
   if (type === "warning")

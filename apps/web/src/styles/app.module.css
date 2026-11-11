@@ -1005,6 +1005,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The partner line's status region stays mounted while empty; it takes no
+   room until it holds text, and stays in the accessibility tree. */
+.psiProgress:empty {
+  margin: 0;
+}
+
 .stageHistory {
   list-style: none;
   margin: 0.8rem 0 0 0;

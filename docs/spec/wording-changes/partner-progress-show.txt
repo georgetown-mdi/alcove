@@ -1,0 +1,50 @@
+- `type` | string | one of `stages`, `stage`, `stageEnd`, `warning`, `metrics`, `result`, `error` | The event discriminant. This party owns every value; none is partner-derived, so a consumer can switch on it safely. -> `type` | string | one of `stages`, `stage`, `stageEnd`, `partnerProgress`, `warning`, `metrics`, `result`, `error` | The event discriminant. This party owns every value; none is partner-derived, so a consumer can switch on it safely.
+- - -> A new event `type` is additive too: a consumer skips a line whose `type` it does not recognize, so it reads every event it knows as before.
+- - -> `partnerProgress`
+- - -> The partner's progress through its current crypto operation, while this party waits for it on a WebRTC data channel or a WebSocket relay ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)).
+- - -> An event with no `percent` clears the figure: the wait ended, or the partner's operation did.
+- - -> A figure is emitted at most once per 15 s, and a clear only after a figure, so a partner's send rate does not set the event rate.
+- - -> A file-sync run emits none.
+- - -> Field | Type | Meaning
+- - -> `percent` | integer, optional | The partner's figure, from 0 to 100, as its still-working frame states it ([PROTOCOL.md](PROTOCOL.md#the-still-working-frame)). Absent to clear it.
+- - -> {"v":1,"type":"partnerProgress","percent":40}
+- The `stages`, `stage`, `stageEnd`, `warning`, and `metrics` events that precede it are progress and summary, not outcome. -> The `stages`, `stage`, `stageEnd`, `partnerProgress`, `warning`, and `metrics` events that precede it are progress and summary, not outcome.
+- - -> The `partnerProgress` `percent` is a figure the partner sends, held to an integer from 0 to 100 by core's parse of the frame and checked again at construction, the field dropped otherwise.
+- The `result` `intersectionCount` is the one numeric field a partner can influence -- a count-only sender is told the tally by the receiver (see [PROTOCOL.md](PROTOCOL.md), PSI-C) -- and it takes the same floor at construction, on top of the protocol bound core applies before it gets here: the reported figure may not exceed the smaller of the two exchanged record counts. -> The `result` `intersectionCount` is the one numeric field a partner can influence besides it -- a count-only sender is told the tally by the receiver (see [PROTOCOL.md](PROTOCOL.md), PSI-C) -- and it takes the same floor at construction, on top of the protocol bound core applies before it gets here: the reported figure may not exceed the smaller of the two exchanged record counts.
+- This build accepts `percent` but sends only the bare frame, `{"working":true}`, which states nothing but its presence. -> The first frame of its PSI phase is the bare frame, `{"working":true}`, sent before any crypto operation starts.
+- - -> Each later frame states `percent` when one of its crypto operations is in flight, read when the frame is sent, and is bare otherwise.
+- - -> An operation reads 0 when it starts and moves as the engine finishes each part of a large set (`operationPercentTracker`, `packages/core/src/exchange/stillWorking.ts`).
+- - -> **What the receiver shows.**
+- - -> The receiver hands the figure to its application only while it waits for the partner's next frame, at most once per 15 s ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)).
+- - -> The figure is a whole number and never text, so no partner-written text reaches a display through it.
+- - -> A partner on a build before the one that accepts `percent` refuses a still-working frame that states `percent` as a `protocol` error:
+- - -> A party on this build, paired with such a partner, passes the first-frame rule above, since its first frame is bare.
+- - -> The run completes only if none of the party's crypto operations is still running 30 s after the party last sent, so that no frame states a figure.
+- - -> Otherwise the partner refuses the first frame stating a figure, partway through the operation, and ends the run with its local-fault abort.
+- - -> No fallback to the bare frame is sent, and the version is not raised.
+- - -> A partner on such a build sends only bare frames, which this build accepts.
+- The CLI is a separate process, so the server re-validates every fd-3 line against the v1 schema the `@alcove/cli-contract` package declares -- all seven event types [CLI_EVENTS.md](CLI_EVENTS.md#event-types) defines -- requiring `v === 1` and a known `type`. -> The CLI is a separate process, so the server re-validates every fd-3 line against the v1 schema the `@alcove/cli-contract` package declares -- all eight event types [CLI_EVENTS.md](CLI_EVENTS.md#event-types) defines -- requiring `v === 1` and a known `type`.
+- - -> **The partner's progress figure.**
+- - -> A `partnerProgress` event's `percent` is relayed only as the integer from 0 to 100 the CLI emits, and dropped otherwise, so the relayed event clears the figure.
+- - -> The browser-side driver checks it again before the run screen reads it (`serverJobExchangeDriver.ts`).
+- - -> Partner progress gap | 15 s (`PARTNER_PROGRESS_MIN_GAP_MS`) | The least time between two deliveries of the partner's progress figure to the application, whatever rate the partner sends at. A working value: half the interval, so a partner sending one frame per interval is never held back
+- - -> Each frame after the first states the party's progress through its crypto operation in flight, read when the frame is sent ([PROTOCOL.md](PROTOCOL.md#the-still-working-frame)).
+- - -> **Showing the partner's figure.**
+- - -> The partner's figure reaches the application only while the party waits in a receive, and at most once per 15 s, whatever rate the partner sends at.
+- - -> A frame with no figure, a data frame, and the end of the receive each clear a figure shown, so a figure is never left on screen after the wait.
+- - -> A figure read from the queue while the party computes is kept, and shown when the party next waits if nothing else is queued by then.
+- Such a refusal is a malformed frame of still-working length, the older-version reading, or a forged, replayed or altered envelope of still-working length. -> Such a refusal is a malformed frame of one of the still-working frame's lengths, the older-version reading, or a forged, replayed or altered envelope of one of those lengths.
+- - -> **What the partner learns.**
+- - -> The partner reads a figure, or none, from each frame, about every 30 s, so it learns when each of the sender's crypto operations in the PSI phase started and ended, and how far it had got at each frame, to within about one frame interval.
+- - -> On a PSI-C exchange, what the PSI sender learns this way includes the receiver's match step ([What each party learns, and on what basis](#what-each-party-learns-and-on-what-basis)).
+- - -> The figure is computed only from the operation's processed and total element counts, and the processed count moves only at the chunk boundaries the engine splits the set at, which depend on the set's size and the party's memory budget, never on its values (`overChunks`, `packages/core/src/psi/psiEngine.ts`), so it carries no data value and no number of matches.
+- - -> **Each party learns when the other's crypto operations ran, and that is accepted.**
+- - -> On a WebRTC data channel or a WebSocket relay, each party's still-working frames state its progress through its current crypto operation about every 30 s ([The still-working frame](#the-still-working-frame)), so a sender running this protocol learns when the receiver's match step started and ended, and how far it had got at each frame, to within about one frame interval.
+- - -> The figure carries no data value and no number of matches.
+- - -> The [threat-model scope](#threat-model-scope-of-the-count-only-claim) states what timing the match revealed when measured together with the receiver's masking, under the deviating sender's timing; the match step's duration on its own is not measured.
+- - -> A file-sync exchange sends no still-working frame.
+- An honest sender's own setup hides the match entirely. -> On a file-sync channel an honest sender's own setup hides the match entirely.
+- - -> On a WebRTC data channel or a WebSocket relay the receiver's still-working frames tell any sender, honest or not, when the match step started and ended, and how far it had got at each frame, to within about one frame interval ([What each party learns, and on what basis](#what-each-party-learns-and-on-what-basis)).
+- - -> **A partner can fill the buffer.**
+- - -> A partner that keeps alternating still-working frames with and without a figure adds at most one `partnerProgress` figure per 15 s and one clear after each, 480 events an hour, so the buffer fills after about 21 h of such a wait and the job ends with the overflow terminal above.
+- - -> This is accepted: such a partner can already hold the wait open with no upper bound ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)), so the outcome is a failed job rather than a hung one.

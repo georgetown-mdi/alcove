@@ -7,6 +7,7 @@ import {
   createPsiProgressDisplay,
   formatDuration,
   formatValues,
+  partnerWaitingText,
   psiMilestoneText,
   psiStatusText,
   terminalPsiStatusLine,
@@ -609,4 +610,124 @@ test("a wedged stderr drops the line rather than raising", () => {
   } finally {
     write.mockRestore();
   }
+});
+
+test("the live line states the partner's figure while this party waits, is put back after a log line clears it, and is cleared with the figure", () => {
+  vi.useFakeTimers();
+  try {
+    const { line, draws, clears } = recordingStatusLine();
+    let clearBeforeLogLine: (() => void) | undefined;
+    const display = createPsiProgressDisplay({
+      milestone: () => {},
+      statusLine: line,
+      clearBeforeLogLine: (clear) => {
+        clearBeforeLogLine = clear;
+        return () => {};
+      },
+      now: () => 0,
+      tickMs: 1000,
+    });
+
+    display.partnerProgress(40);
+    expect(draws).toStrictEqual([
+      "waiting for your partner: their current calculation is 40% done",
+    ]);
+
+    clearBeforeLogLine?.();
+    expect(clears.count).toBe(1);
+    vi.advanceTimersByTime(1000);
+    expect(draws).toHaveLength(2);
+    expect(draws.at(-1)).toBe(partnerWaitingText(40));
+
+    display.partnerProgress(undefined);
+    expect(clears.count).toBe(2);
+    vi.advanceTimersByTime(5000);
+    expect(draws).toHaveLength(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("this party's own operation takes the live line over the partner's figure", () => {
+  vi.useFakeTimers();
+  try {
+    const { line, draws } = recordingStatusLine();
+    let clock = 0;
+    const display = createPsiProgressDisplay({
+      milestone: () => {},
+      statusLine: line,
+      now: () => clock,
+      tickMs: 1000,
+    });
+
+    display.partnerProgress(40);
+    display.report(started(120_000));
+    display.partnerProgress(50);
+    clock = 1000;
+    vi.advanceTimersByTime(1000);
+    expect(draws.at(-1)).toBe(
+      "doubly-encrypting partner's data: 120,000 values, 1s elapsed",
+    );
+
+    display.report(finished(120_000, 1000));
+    vi.advanceTimersByTime(1000);
+    expect(draws.at(-1)).toBe(partnerWaitingText(50));
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test.each([101, -1, 4.5, "42" as unknown as number])(
+  "a partner figure of %s draws nothing",
+  (percent) => {
+    const { line, draws } = recordingStatusLine();
+    const display = createPsiProgressDisplay({
+      milestone: () => {},
+      statusLine: line,
+    });
+    display.partnerProgress(percent);
+    expect(draws).toStrictEqual([]);
+    display.close();
+  },
+);
+
+test("a partner figure of 0 reads as a calculation that has started", () => {
+  const { line, draws } = recordingStatusLine();
+  const display = createPsiProgressDisplay({
+    milestone: () => {},
+    statusLine: line,
+  });
+  display.partnerProgress(0);
+  expect(draws).toStrictEqual([
+    "waiting for your partner: their current calculation has started",
+  ]);
+  display.close();
+});
+
+test("a partner figure after close draws nothing", () => {
+  vi.useFakeTimers();
+  try {
+    const { line, draws } = recordingStatusLine();
+    const display = createPsiProgressDisplay({
+      milestone: () => {},
+      statusLine: line,
+      tickMs: 1000,
+    });
+    display.close();
+    display.partnerProgress(40);
+    vi.advanceTimersByTime(5000);
+    expect(draws).toStrictEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a display with no status line logs nothing for the partner's figure", () => {
+  const milestones: Array<string> = [];
+  const display = createPsiProgressDisplay({
+    milestone: (line) => milestones.push(line),
+  });
+  display.partnerProgress(40);
+  display.partnerProgress(undefined);
+  expect(milestones).toStrictEqual([]);
 });
