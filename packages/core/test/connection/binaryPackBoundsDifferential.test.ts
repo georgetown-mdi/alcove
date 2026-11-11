@@ -22,7 +22,7 @@ import { mulberry32 } from "../utils/mulberry32";
 // `peerjs-js-binarypack` is a dependency of THIS package
 // (packages/core/package.json), so the guard holds whether or not an app keeps the
 // dependency: the scan lives here, and so does the declaration backing it
-// (docs/spec/DEPENDENCY_PINS.md).
+// (docs/spec/WEBRTC_STACK.md).
 //
 // What this suite holds is the scan's reading of the wire against the real
 // unpacker's: that the two agree on every marker's payload width and child count,

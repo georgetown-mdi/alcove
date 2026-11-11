@@ -178,7 +178,7 @@ const SHAPES: Array<{
  * version that decoded one into a heavier boxed value -- a `BigInt` for the
  * 64-bit markers, say -- would retain past the per-slot figure the envelope
  * rests on
- * (docs/spec/DEPENDENCY_PINS.md, the PeerJS stack upgrade checklist). */
+ * (docs/spec/WEBRTC_STACK.md, the PeerJS stack upgrade checklist). */
 const WIDE_NUMBER_MARKERS: Array<{
   label: string;
   marker: number;

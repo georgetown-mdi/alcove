@@ -389,7 +389,7 @@ That name's size grows with what the frame _declares_, not with the bytes it spe
 The scan therefore refuses the frame the moment it reads a map key whose marker is not a string marker, deciding on that marker byte alone, before descending into the key, so a truncated frame cannot get one past the check.
 
 Refusing is safe because no legitimate frame holds such a key: the pinned packer emits a map only for a plain JS object, whose own keys are strings by construction, and refuses a `Map` or `Set` outright.
-That is a dependency assumption, so it is enforced as a check rather than recorded here alone -- the differential suite packs every value Alcove sends on the data channel with the real packer and requires the scan to accept each (see [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md)).
+That is a dependency assumption, so it is enforced as a check rather than recorded here alone -- the differential suite packs every value Alcove sends on the data channel with the real packer and requires the scan to accept each (see [WEBRTC_STACK.md](WEBRTC_STACK.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack)).
 
 _The envelope these rules leave._
 The cumulative element rule admits at most one declared node per wire byte, so what an admitted frame retains is **(its wire bytes) x (the worst retention of one declared node)**.

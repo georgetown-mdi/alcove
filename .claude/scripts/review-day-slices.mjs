@@ -212,6 +212,7 @@ export const BOUNDARIES = [
       "CONTAINER_IMAGES",
       "DEPENDENCY_PINS",
       "SFTP_STACK",
+      "WEBRTC_STACK",
       "docs/RELEASES.md",
       "docs/DEPLOYMENT.md",
     ].map(spec),

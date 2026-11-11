@@ -13,7 +13,7 @@ import type { RefusingStunServer } from "./refusingStunServer";
  * encryption on every channel, `webrtc` included, and DTLS below it still
  * protects the data channel against the network path, so a session to a
  * certificate the description did not name must not complete. The assumption
- * and its re-verification on a bump are in docs/spec/DEPENDENCY_PINS.md.
+ * and its re-verification on a bump are in docs/spec/WEBRTC_STACK.md.
  *
  * Two real werift peers meet over loopback with host candidates only, as in
  * transport.test.ts, handing each other their descriptions directly.

@@ -20,7 +20,7 @@ export const PACED_STRETCH_RECORDS = 1024;
  * Paces a loop over records so its thread's event loop runs while it does. A
  * transport on the same thread answers its partner's liveness checks only
  * from the event loop, so a loop that holds the thread for the whole of a
- * large input ends the connection (docs/spec/DEPENDENCY_PINS.md, The
+ * large input ends the connection (docs/spec/WEBRTC_STACK.md, The
  * behavioural assumptions).
  */
 export class EventLoopPacer {

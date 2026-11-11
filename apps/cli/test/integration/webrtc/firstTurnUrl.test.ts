@@ -18,7 +18,7 @@ import type { RTCIceServer } from "werift";
  * one counts the requests that reach each server, so a run that handed werift
  * more urls, or a werift that gathered from others by any path, reddens here.
  * The assumption and its re-verification on a bump are in
- * docs/spec/DEPENDENCY_PINS.md.
+ * docs/spec/WEBRTC_STACK.md.
  */
 
 /** RFC 5389 section 6: the fixed header every STUN message opens with. */

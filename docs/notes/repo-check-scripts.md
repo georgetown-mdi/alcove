@@ -857,7 +857,7 @@ A copy left behind by a bump is a confidentiality statement gone false, which pr
 
 The CLI owns the werift dependency, and its WebRTC integration suite (`apps/cli/test/integration/webrtc/transport.test.ts`) drives a real peer with no configured list,
 resolves the hostname to loopback, and watches the STUN binding request arrive on that port.
-It is re-run on every werift bump per [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md).
+It is re-run on every werift bump per [WEBRTC_STACK.md](../spec/WEBRTC_STACK.md#re-verification-on-a-bump).
 This check holds the copies to the constant and says nothing about whether the constant is right.
 Reading the library's source to predict its default would be a second implementation of it, which this repository does not accept.
 

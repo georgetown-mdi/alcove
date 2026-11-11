@@ -24,7 +24,7 @@ interface PackingDataConnection {
  * upgrade that moves them fails before any listener is attached instead of
  * leaving the recursive packer in place. `_send_blob` is not probed: the
  * replacement drops it and the encoder refuses a `Blob`. See
- * docs/spec/DEPENDENCY_PINS.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack.
+ * docs/spec/WEBRTC_STACK.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack.
  */
 export function assertIterativePackingSupported(conn: DataConnection): void {
   const probe = conn as unknown as {

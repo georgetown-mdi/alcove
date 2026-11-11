@@ -13,7 +13,7 @@
 // The scan reads only the BinaryPack wire format -- the marker dispatch in
 // `peerjs-js-binarypack`'s `Unpacker.unpack` -- never the library's API, so
 // it rests on an assumption about that marker table and one about how
-// `unpack` allocates (docs/spec/DEPENDENCY_PINS.md), both driven against the
+// `unpack` allocates (docs/spec/WEBRTC_STACK.md), both driven against the
 // real library by the differential suite. A misparse either refuses the frame
 // early (fail-closed) or runs the cursor off the end, treated as a malformed
 // frame and delegated to the real unpacker.

@@ -206,7 +206,7 @@ discipline applies here as to the SFTP tree: what the CLI's hand-written
 signaling client and PeerJS framing rest on was established by driving the real
 broker and the real `peerjs`/`peerjs-js-binarypack` packages, and the
 assumptions that follow are held as checks -- see
-[docs/spec/DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md#upgrading-the-cli-webrtc-peer-werift).
+[docs/spec/WEBRTC_STACK.md](spec/WEBRTC_STACK.md#upgrading-the-cli-webrtc-peer-werift).
 
 The peers' ICE server list names a second loopback harness server,
 `apps/cli/test/integration/webrtc/refusingStunServer.ts`: a STUN server on an

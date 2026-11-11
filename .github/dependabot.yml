@@ -36,7 +36,7 @@ updates:
       # exchange. The two halves speak one data channel to each other, so a
       # bump on either side is reviewed against both -- see the "Upgrading the
       # PeerJS Stack" and "Upgrading the CLI WebRTC peer" checklists in
-      # docs/spec/DEPENDENCY_PINS.md, the same review the SFTP stack gets.
+      # docs/spec/WEBRTC_STACK.md, the same review the SFTP stack gets.
       webrtc-stack:
         patterns:
           - "peerjs"

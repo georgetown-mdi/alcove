@@ -190,7 +190,7 @@ describe("packOutboundFramesIteratively", () => {
 
   // PeerJS's own `_send` hands a Blob to `_send_blob`, packing it
   // asynchronously; the replacement has no such path, so the Blob is refused
-  // before a datagram exists (docs/spec/DEPENDENCY_PINS.md).
+  // before a datagram exists (docs/spec/WEBRTC_STACK.md).
   test("refuses a Blob rather than taking the dropped async send path", () => {
     const { fake, conn } = standIn();
     packOutboundFramesIteratively(conn);

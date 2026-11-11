@@ -15,7 +15,7 @@ import { expect, test } from "vitest";
  * lifetime past the end of a relayed exchange. Held here: a live allocation
  * draws a REFRESH at five sixths of the grant; the allocation arms one timer,
  * which `close()` removes from Node's active timers; and no REFRESH follows
- * the close (docs/spec/DEPENDENCY_PINS.md). A release that leaves the timer
+ * the close (docs/spec/WEBRTC_STACK.md). A release that leaves the timer
  * armed fails here. It observes the timer, not a whole run's exit.
  */
 

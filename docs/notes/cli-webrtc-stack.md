@@ -29,10 +29,10 @@ transport holds.
   was current when the decision was taken. Installs run with
   `--ignore-scripts`; nothing in werift's tree needs an install script, and the
   tree contains no native or compiled content at all. How its upgrades are held
-  and reviewed, and its internal assumptions, sit with the other
-  reached-past-their-API stacks in
+  and reviewed sit with the other reached-past-their-API stacks in
   [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#how-these-packages-are-versioned),
-  which holds the per-bump re-verification checklist.
+  and its internal assumptions and per-bump re-verification checklist in
+  [WEBRTC_STACK.md](../spec/WEBRTC_STACK.md#upgrading-the-cli-webrtc-peer-werift).
 - **Architecture: drive werift's native API directly.** No PeerJS runs in Node.
   The CLI speaks the PeerJS broker's WebSocket protocol through a hand-written
   signaling client, and speaks PeerJS-compatible DataConnection framing on the
@@ -239,7 +239,7 @@ transport owed on top of that -- that a configured server list is the list
 actually used -- was measured after this note was written: a non-empty list
 REPLACES the built-in default rather than adding to it, so nothing further was
 needed (the assumption and its check are in
-[DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md)). Separately and optionally, an
+[WEBRTC_STACK.md](../spec/WEBRTC_STACK.md#the-behavioural-assumptions)). Separately and optionally, an
 upstream issue proposing that an empty or undefined list mean "no STUN" (an
 accurate host-candidates-only mode for VPN or LAN deployments) is worth opening
 only if a compelling case for that mode emerges; the transport documents the
@@ -351,5 +351,5 @@ certificate handling drags in, not by media.
 - [TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)
   -- the web app's inbound reassembly bound, which rests on PeerJS's BinaryPack
   chunking.
-- [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack)
+- [WEBRTC_STACK.md](../spec/WEBRTC_STACK.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack)
   -- how the PeerJS stack is upgraded and what an upgrade must re-verify.

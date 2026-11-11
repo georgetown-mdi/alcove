@@ -21,7 +21,7 @@ import {
 // packing the shapes PeerJS itself puts on the wire. They are the cross-
 // implementation vectors for the framing: a bump that changes the encoding, the
 // chunk envelope's keys, or the close sentinel fails here rather than at a
-// partner's browser. See docs/spec/DEPENDENCY_PINS.md.
+// partner's browser. See docs/spec/WEBRTC_STACK.md.
 
 const CLOSE_SENTINEL_HEX = "81ba5f5f706565724461746181b474797065b5636c6f7365";
 const CHUNK_ENVELOPE_HEX =

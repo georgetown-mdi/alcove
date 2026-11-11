@@ -8,7 +8,7 @@ import { withoutTypeAwareLayer } from "./eslint-strip-type-aware-layer.mjs";
 // Coverage of the peerjs-js-binarypack import ban in the repo-root
 // eslint.config.mjs: core's BinaryPack encoder and structural pre-scan never
 // import the library their differential suites compare them against
-// (docs/spec/DEPENDENCY_PINS.md). A ban that stops matching keeps reporting
+// (docs/spec/WEBRTC_STACK.md). A ban that stops matching keeps reporting
 // zero problems, indistinguishable from clean source, so each case is linted
 // through the real repo config against the two guarded paths, with the
 // type-aware layer stripped so no TypeScript program is built.

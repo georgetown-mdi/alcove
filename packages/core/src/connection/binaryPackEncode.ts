@@ -16,7 +16,7 @@
 // test/connection/binaryPackEncodeDifferential.test.ts encodes each shape both
 // ways and compares bytes, so a pinned-version bump that moves the encoding
 // fails there rather than at a partner's browser
-// (docs/spec/DEPENDENCY_PINS.md).
+// (docs/spec/WEBRTC_STACK.md).
 //
 // A value kind the library encodes but Alcove never sends -- a Date, a class
 // instance, a Blob -- is refused rather than guessed at, since a guess that

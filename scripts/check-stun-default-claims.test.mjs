@@ -17,7 +17,7 @@ const WEB_COPY_FILE = "apps/web/src/recurring/managedCronExportModel.ts";
 const PANEL_COPY_FILE = "apps/web/src/recurring/managedCronExportModel.ts";
 const DOCS = [
   "docs/CLI.md",
-  "docs/spec/DEPENDENCY_PINS.md",
+  "docs/spec/WEBRTC_STACK.md",
   "docs/notes/cli-webrtc-stack.md",
 ];
 

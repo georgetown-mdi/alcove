@@ -77,7 +77,7 @@ import type {
  * built-in STUN default, while a list with no `stun` url, `turn` alone
  * included, still uses it -- and one measured PeerJS behaviour: a second `OFFER` for a
  * connection id a browser peer holds replaces that connection. Each has its
- * assumptions and re-verification in docs/spec/DEPENDENCY_PINS.md. The broker's hold and expiry of frames for an
+ * assumptions and re-verification in docs/spec/WEBRTC_STACK.md. The broker's hold and expiry of frames for an
  * unregistered peer, which decides when the dialer offers again, is in
  * docs/spec/WEBRTC_TRANSPORT.md.
  */
@@ -313,7 +313,7 @@ export interface WebRtcPeerSession {
  * data; the channel's own `bufferedAmount` is not a refinement of that and
  * loses data if used instead. This reaches past werift's public API, so each
  * werift upgrade is re-verified against it -- the measurement behind it and
- * the checklist: docs/spec/DEPENDENCY_PINS.md.
+ * the checklist: docs/spec/WEBRTC_STACK.md.
  */
 interface SctpDrainInternals {
   sctp: { sctp: { outboundQueue: SctpQueue; sentQueue: SctpQueue } };
