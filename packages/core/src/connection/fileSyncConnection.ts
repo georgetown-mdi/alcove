@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 
 import { getLoggerForVerbosity } from "../utils/logger";
 import { pathsResolveToSameDir } from "../utils/pathCompare";
+import { unrefTimer } from "../utils/promise";
 import {
   redactAndSanitizeForDisplay,
   redactPrivateKeyMaterial,
@@ -118,7 +119,7 @@ function withTransportBudget<T>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(makeError()), budgetMs);
-    timer.unref();
+    unrefTimer(timer);
   });
   const settled = op.finally(() => clearTimeout(timer));
   void settled.catch(() => {});
@@ -135,7 +136,7 @@ function withTransportBudgetVoid(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<void>((resolve) => {
     timer = setTimeout(resolve, budgetMs);
-    timer.unref();
+    unrefTimer(timer);
   });
   const settled = op.finally(() => clearTimeout(timer));
   void settled.catch(() => {});

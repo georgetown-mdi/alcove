@@ -57,7 +57,9 @@ export const MESSAGE_HEADER_BYTES = 10;
 export const messageTypeLabel = (type: number): string =>
   type === MESSAGE_TYPE_BINARY ? "Uint8Array" : "Object";
 
-// Assigns every header byte, so an allocUnsafe target leaks none.
+// Assigns every header byte, so an allocUnsafe target leaks none. A DataView
+// rather than Buffer's own BigInt writer, which the `buffer` package a page
+// runs on lacks before version 6.
 const writeMessageHeader = (
   out: Buffer,
   type: number,
@@ -66,7 +68,11 @@ const writeMessageHeader = (
 ): void => {
   out[0] = version;
   out[1] = type;
-  out.writeBigUInt64BE(BigInt(seq), 2);
+  new DataView(out.buffer, out.byteOffset, out.byteLength).setBigUint64(
+    2,
+    BigInt(seq),
+    false,
+  );
 };
 
 /**

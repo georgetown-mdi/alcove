@@ -23,6 +23,7 @@ import {
 } from "../utils/sanitizeErrorForDisplay";
 import { toBase64Url, fromBase64Url, bytesEqual } from "../utils/crypto";
 import { parseBoundedJson } from "../utils/boundedJson";
+import { unrefTimer } from "../utils/promise";
 import { TransportOperationStalledError, UsageError } from "../errors";
 import { ABORT_TOKEN_BYTES } from "../auth";
 import { sizedControlName } from "./fileSyncNames";
@@ -367,7 +368,7 @@ export class AbortMarkerSubsystem {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const grace = new Promise<"timeout">((resolve) => {
       timer = setTimeout(() => resolve("timeout"), ABORT_DECISION_GRACE_MS);
-      timer.unref();
+      unrefTimer(timer);
     });
     return Promise.race([decision.finally(() => clearTimeout(timer)), grace]);
   }
