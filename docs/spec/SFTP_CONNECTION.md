@@ -324,7 +324,7 @@ The page that runs this path is a later stage, the browser SFTP driver.
   `onHostKeyFromVerifier` answers that hook with core's verifier, the one `FileSyncConnection` installs as `hostVerifier`, so the browser path runs the enforcing, fail-closed, and capture verifiers above unchanged.
   The fingerprint comparison, the multiple pins for rotation, the mismatch refusal naming the presented fingerprint with the pinned ones on a cause link of their own, and the recorded `observedHostKey` are therefore the CLI's.
   A verifier that throws, or returns a promise that rejects, refuses the key.
-  A verifier that never answers is bounded by the caller: `connectBrowserSsh` stops only on its `AbortSignal`, so a caller sets the connect deadline, as the browser SFTP transport does with `readyTimeout`.
+  A verifier that never answers is bounded by the caller: `connectBrowserSsh` stops only on its `AbortSignal`, so the browser SFTP driver stage must pass a signal that sets the connect deadline.
 - **Where the pin is kept.**
   The pin is the exchange document's `connection.server.host_key_fingerprint`, as on the CLI, so it is kept per exchange rather than per host.
   A recurring exchange's document is stored whole in its [managed record](MANAGED_EXCHANGE_RECORD.md), so every later run reads the pin with it.
@@ -333,6 +333,7 @@ The page that runs this path is a later stage, the browser SFTP driver.
 - **First use.**
   `establishBrowserHostKeyTrust` (`apps/web/src/psi/transport/browserSsh/browserHostKeyTrust.ts`) decides the pin a run connects with.
   A connection with a pin is returned unchanged, and its connect checks the server against it.
+  An empty `host_key_fingerprint` list, which the CLI rejects at parse, is treated here as no pin.
   With no pin, a scheduled run, which has no one to ask, refuses before contacting the server, as a non-interactive CLI run does.
   Through an SFTP relay the party set itself, an attended run probes as the CLI does, with core's capture verifier through the hook, shows the fingerprint and key type, and pins the key on the operator's yes.
   Through the relay the invitation names, the run does not probe: that relay's operator, not the invitation, chooses the server it connects to, so the first key it shows is never pinned.
