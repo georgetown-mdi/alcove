@@ -16,9 +16,11 @@ name: PSI Re-vendor
 #            confirms the installed prebuilds are the new bytes, runs the
 #            provenance checks, and hands the commit on as a patch. Read-only.
 #   publish  applies the patch to the same staging commit, refuses a second
-#            commit or any path outside the re-vendor's files, checks the
-#            committed tarball against its sidecar, its marker and its
-#            attestation itself, then pushes the branch and opens
+#            commit or any path outside the re-vendor's files, holds lib/,
+#            package-lock.json and the workspace manifests to the edits a
+#            re-vendor makes, checks the committed tarball against its
+#            sidecar, its marker and its attestation itself, then pushes the
+#            branch and opens
 #            the draft pull request with ALCOVE_REVENDOR_TOKEN: a pull request
 #            opened with GITHUB_TOKEN starts no workflow. It runs no npm and no
 #            repository script.
@@ -279,6 +281,71 @@ jobs:
                 ;;
             esac
           done < <(git diff -z --no-renames --name-only "$BASE" HEAD)
+      - name: Hold lib/, the lockfile and the manifests to the re-vendor's edits
+        # The allowlist above admits these files whole. These are the edits
+        # scripts/revendor-psi.mjs makes to them, and nothing else may differ.
+        run: |
+          old_dep=$(git show "$BASE:packages/core/package.json" | jq -r '.dependencies["@openmined/psi.js"]')
+          if ! [[ $old_dep =~ ^file:\.\./\.\./lib/openmined-psi\.js-(.+)\.tgz$ ]]; then
+            echo "::error::packages/core/package.json at $BASE names no lib/ tarball for @openmined/psi.js"
+            exit 1
+          fi
+          old_version=${BASH_REMATCH[1]}
+          tarball="lib/openmined-psi.js-$VERSION.tgz"
+          dep="file:../../$tarball"
+
+          extra=""
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              "$tarball" | "$tarball.sha256" | "$tarball.provenance.json") ;;
+              lib/openmined-psi.js-*) extra+=" $(printf '%q' "$path")" ;;
+            esac
+          done < <(git ls-tree -z --name-only HEAD lib/)
+          if [ ! -f "$tarball" ] || [ -n "$extra" ]; then
+            echo "::error::lib/ must hold $tarball, its sidecar and its marker alone; it also holds:${extra:- nothing, and lacks the tarball}"
+            exit 1
+          fi
+
+          # The first path at which two JSON files differ, empty when none.
+          first_difference() {
+            jq -rn --slurpfile want "$1" --slurpfile got "$2" '
+              def leaves:
+                [([[]] + [paths])[] as $p
+                 | {key: ($p | tojson),
+                    value: {v: (getpath($p) | if type == "object" or type == "array" then type else . end)}}]
+                | from_entries;
+              ($want[0] | leaves) as $w | ($got[0] | leaves) as $g
+              | [($w + $g) | keys[] | select($w[.] != $g[.])] | first // empty
+              | fromjson | map(if type == "number" then "[\(.)]" else "[\(tojson)]" end) | join("")
+              | if . == "" then "the top level" else . end'
+          }
+          hex=$(sha512sum < "$tarball" | cut -d' ' -f1)
+          escaped=""
+          for ((i = 0; i < ${#hex}; i += 2)); do escaped+="\\x${hex:i:2}"; done
+          integrity="sha512-$(printf '%b' "$escaped" | base64 | tr -d '\n')"
+          git show "$BASE:package-lock.json" | jq --arg old "$old_version" --arg version "$VERSION" \
+            --arg dep "$dep" --arg resolved "file:$tarball" --arg integrity "$integrity" '
+            .packages["apps/cli"].dependencies["@openmined/psi.js"] = $dep
+            | .packages["apps/web"].dependencies["@openmined/psi.js"] = $dep
+            | .packages["packages/core"].dependencies["@openmined/psi.js"] = $dep
+            | if .packages["node_modules/@openmined/psi.js"].version == $old then
+                .packages["node_modules/@openmined/psi.js"] += {version: $version, resolved: $resolved, integrity: $integrity}
+              else error("the base package-lock.json does not pin @openmined/psi.js at \($old)") end' \
+            > "$RUNNER_TEMP/expected-lock.json"
+          difference=$(first_difference "$RUNNER_TEMP/expected-lock.json" package-lock.json)
+          if [ -n "$difference" ]; then
+            echo "::error::package-lock.json differs from $BASE at $difference, beyond the @openmined/psi.js version, path and integrity a re-vendor writes"
+            exit 1
+          fi
+          for manifest in apps/cli/package.json apps/web/package.json packages/core/package.json; do
+            git show "$BASE:$manifest" | jq --arg dep "$dep" '.dependencies["@openmined/psi.js"] = $dep' \
+              > "$RUNNER_TEMP/expected-manifest.json"
+            difference=$(first_difference "$RUNNER_TEMP/expected-manifest.json" "$manifest")
+            if [ -n "$difference" ]; then
+              echo "::error::$manifest differs from $BASE at $difference, beyond its @openmined/psi.js dependency"
+              exit 1
+            fi
+          done
       - name: Verify the committed tarball, sidecar and marker
         # Its own check of the bytes it pushes, against check's commit rather
         # than anything prepare reported; gh, jq and coreutils only.
