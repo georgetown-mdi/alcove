@@ -552,8 +552,9 @@ the digest alone.
 So the variant's pull request is the offer to upgrade, not the upgrade: it is
 taken through
 [the procedure in DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image),
-which moves the other pins on the same branch. Three things keep a filed bump
-from landing half-done or unexamined:
+which moves the other pins on the same branch. Two things keep a filed bump
+from landing half-done or unexamined, and a third is an obligation that follows
+the move:
 
 - **The pinning mechanism is the freeze, not the filing.** The digest freeze in
   `scripts/dockerfile-freeze.test.mjs` holds this base whether a pull request

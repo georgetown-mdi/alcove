@@ -34,8 +34,9 @@ what it does not cover.
 That form is for npm packages only, because every name in such a heading is read
 as one and looked up in the npm groups. A checklist for a pin in another
 ecosystem therefore has a heading of another shape -- "Bumping the FIPS base
-image" below is a docker-ecosystem pin, which no npm group can hold. Renaming one of those to `Upgrading ...` fails the check
-with a message asking for an npm exclude entry that would be false.
+image" below is a docker-ecosystem pin, which no npm group can hold. Renaming
+one of those to `Upgrading ...` fails the check with a message asking for an npm
+exclude entry that would be false.
 
 ## Every pin's update route
 
@@ -44,7 +45,8 @@ pins, as surveyed on 2026-11-10, with the route that offers it for upgrade:
 
 - **automatic**: a block in `.github/dependabot.yml` reaches the pin and opens
   a pull request.
-- **scheduled**: a documented manual cadence moves the pin. No pin has one.
+- **scheduled**: a documented manual cadence moves the pin. Only the FIPS
+  image's Node runtime has one: each FIPS base pull request moves it.
 - **planned**: an automatic or scheduled route for the pin is planned and not
   yet in place.
 - **none**: nothing offers an upgrade, and the pin moves only when someone
@@ -63,7 +65,7 @@ section each row links.
 | `sharp` and `undici` under wrangler | The `.github/wrangler/package.json` `overrides` entry | The exact versions `0.35.5` and `7.30.2` | none | Each comes out when a wrangler bump resolves that release or a later one. Whether a Dependabot pull request moves either is unmeasured. |
 | Default image base | `Dockerfile`, both stages | The `node:26-alpine` index digest | automatic | The `docker` block at `/`. The freeze literal and the attribution list move in the same diff ([Bumping the default base image](#bumping-the-default-base-image)). |
 | FIPS image base | `Dockerfile.fips` | The ECR Public `amazonlinux` index digest, `AL2023_RELEASEVER`, and the certified provider's NVR pins | automatic | The `docker` block at `/`, weekly, opens a pull request moving the digest. That pull request is taken through [Bumping the FIPS base image](#bumping-the-fips-base-image), which moves the other pins on it. |
-| FIPS image Node runtime | `Dockerfile.fips` | `ARG NODE_VERSION` (`v26.13.0`) and the two tarball sha256 values | automatic | No Dependabot block reads it. Each FIPS base pull request moves it to the current Node 26 release ([Bumping the FIPS base image](#bumping-the-fips-base-image)), so a Node release waits for the next base rebuild. |
+| FIPS image Node runtime | `Dockerfile.fips` | `ARG NODE_VERSION` (`v26.13.0`) and the two tarball sha256 values | scheduled | No Dependabot block reads it. Each FIPS base pull request moves it to the current Node 26 release ([Bumping the FIPS base image](#bumping-the-fips-base-image)), so a Node release waits for the next base rebuild. |
 | SFTP relay image base | `packages/sftp-relay/Dockerfile`, both stages | The `node:26-alpine` index digest | automatic | The `docker` block at `/packages/sftp-relay`. |
 | TURN relay image | `infra/relay/Dockerfile` | The `coturn/coturn:4.18.0` index digest | automatic | The `docker` block at `/infra/relay`. |
 | Broker TLS front image | `infra/broker/Dockerfile` | The `nginx:1.31-alpine` index digest | automatic | The `docker` block at `/infra/broker`. |
@@ -1004,9 +1006,11 @@ it merges:
 - The FIPS provider: `openssl-fips-provider-certified` and
   `openssl-fips-provider-certified-so`, or whichever package (4) above names.
 - The other packages the closure carries for cryptography or trust:
-  `crypto-policies`, `gnutls`, `libgcrypt`, `nettle`, `libxcrypt`,
-  `krb5-libs`, `p11-kit`, `p11-kit-trust` and `ca-certificates`, and any
-  package of that kind a new snapshot adds.
+  `crypto-policies`, `gnutls`, `libgcrypt`, `libgpg-error`, `nettle`,
+  `libxcrypt`, `libtasn1`, `krb5-libs`, `keyutils-libs`, `cyrus-sasl-lib`,
+  `cryptsetup-libs`, `gpgme`, `python3-gpg`, `gpg-pubkey`, `p11-kit`,
+  `p11-kit-trust` and `ca-certificates`, and any other package of that kind,
+  whether a new snapshot adds it or the list already carries it.
 
 Any other move is reviewed by the mechanical checks: the build's assertions,
 the freeze test, the attribution check, and the `image_smoke.yaml` legs and
@@ -1114,7 +1118,7 @@ digest in the `FROM` and opens a pull request of its own when the
 `node:26-alpine` tag is rebuilt onto a newer image. That block declares no
 groups, so the bump is never batched. The same block files
 [the FIPS variant's](#bumping-the-fips-base-image) base, which is taken through
-its own procedure. Its weekly cadence is the accepted
+its own procedure. The block's weekly cadence is the accepted
 latency here -- nothing polls the registry more often, and a rebuild is what
 this waits for rather than something this repository can provoke.
 Dependabot's own commit edits only the `Dockerfile` `FROM` lines; nothing
