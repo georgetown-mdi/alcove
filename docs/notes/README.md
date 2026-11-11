@@ -85,6 +85,7 @@ a restatement.
 | [rule-set-citation-verdict.md](rule-set-citation-verdict.md) | A false rule-set citation in the acceptor's record | withdrawn |
 | [sftp-adapter-state-machine.md](sftp-adapter-state-machine.md) | The SFTP adapter's state machines | built |
 | [shared-consent-summary.md](shared-consent-summary.md) | One consent summary for two surfaces | built |
+| [shared-secret-expiry.md](shared-secret-expiry.md) | One expiry for two kinds of shared secret | built |
 | [signing-identity-custody.md](signing-identity-custody.md) | Resolving the signing identity like a credential | built |
 | [site-layout.md](site-layout.md) | A layout for the site's sources | built |
 | [standing-relay-delivery.md](standing-relay-delivery.md) | How the standing relay is delivered | built |
