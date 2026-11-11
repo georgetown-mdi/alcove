@@ -38,6 +38,8 @@ export interface SshTarget {
   relayUrl: string;
   username: string;
   hostKeyFingerprints: Partial<Record<NativeSshdHostKeyType, string>>;
+  /** The served directory, as an SFTP path. */
+  remoteRoot: string;
 }
 
 interface RunningTarget {
@@ -85,6 +87,7 @@ async function startTarget(options: SshTargetOptions): Promise<SshTarget> {
     relayUrl: `ws://127.0.0.1:${port}${SFTP_RELAY_PATH}`,
     username: sshd.handle.usera.username,
     hostKeyFingerprints: sshd.handle.hostKeyFingerprints,
+    remoteRoot: sshd.handle.remoteRoot,
   };
 }
 
