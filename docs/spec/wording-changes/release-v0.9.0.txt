@@ -21,4 +21,4 @@
 - One object per exchange: a `version` (`alcove-unfiled-disclosure/v2`, its own literal) and `entries`, oldest first. -> One object per exchange: a `version` (`alcove-unfiled-disclosure/v3`, its own literal) and `entries`, oldest first.
 - The table has no step yet. -> The table has one step, from `alcove-unfiled-disclosure/v2`, which moves the version alone: a note at `v2` was written before the exchange-record reset at release 0.9.0, so each record it retained is one this build refuses, and the note reads as runs whose records cannot be filed.
 - - -> A later run that leaves a note merges into a note an earlier build wrote at `alcove-unfiled-disclosure/v2` and writes it back at v3, with that note's pre-reset records inside, so a v3 note can hold records from before the reset.
-- - -> A later exchange-record version bump that reuses one of their ordinals reads such a record against its own schema.
+- - -> A later exchange-record version bump that reuses the record-format ordinal of one of those pre-reset records reads such a record against its own schema.
