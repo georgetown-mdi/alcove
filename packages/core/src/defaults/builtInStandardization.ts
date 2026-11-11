@@ -163,6 +163,9 @@ const EMAIL_ADDRESS_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   { function: "remove_non_ascii" },
   { function: "to_lower_case" },
+  // Before the shape test, so a Gmail address left with no local part
+  // (`+tag@gmail.com`) is dropped.
+  { function: "gmail_address" },
   {
     function: "filter_regex",
     params: { pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" },

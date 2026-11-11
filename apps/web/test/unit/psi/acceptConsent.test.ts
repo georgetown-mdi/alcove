@@ -2307,6 +2307,9 @@ describe("summarizeInvitation", () => {
       zip3: "partial",
       state_code: "partial",
       usps_street_name: "partial",
+      // Removing dots and a tag, and naming one domain for two, leaves a value
+      // whose characters come from the address, so a slice reads part of it.
+      gmail_address: "partial",
       // Likewise for the value-deriving steps that still derive from the value: a
       // slice of a slice, a captured run of the value's own characters, a
       // pass-through-or-drop, a date laid out from its own components, and a
@@ -2379,6 +2382,7 @@ describe("summarizeInvitation", () => {
       pad_left: null,
       state_code: null,
       usps_street_name: null,
+      gmail_address: null,
       parse_date: null,
       // Routine as the only step for a reason of position rather than of kind: a
       // coalesce is reached with the value the record realized still in hand, so

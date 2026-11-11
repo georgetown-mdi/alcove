@@ -182,6 +182,7 @@ export const STANDARDIZATION_FUNCTION_GROUPS: Array<StandardizationFunctionGroup
       label: "Places",
       functionNames: ["zip3", "state_code", "usps_street_name"],
     },
+    { label: "Email addresses", functionNames: ["gmail_address"] },
     { label: "Drop or default", functionNames: ["null_if", "coalesce"] },
   ];
 

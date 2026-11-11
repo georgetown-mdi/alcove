@@ -31,7 +31,7 @@ A rule matches two records only when every element agrees exactly.
   `street number` is the number of the person's street address.
   `STATE` and `COUNTY` are the state and county of the person's address.
 - `PHONE` is a ten-digit phone number.
-  `EMAIL` is an email address, trimmed and lowercased.
+  `EMAIL` is an email address, trimmed and lowercased, with the spellings of one Gmail mailbox written one way.
 - `soundex(LN)` and `soundex(FN)` are the Soundex code of the last and the first name.
 - `swap(LN, FN)` matches the two names in either order.
 - `split(LN)` matches on the whole last name or on any one hyphen- or space-separated part of it.
@@ -583,7 +583,9 @@ One measurement exists outside program data: Kim et al. (2019) found pairs shari
 The email was attached only where it resembled the author's name, so it is nearest rule 38 on researchers' institutional addresses.
 UCLA found 13 of 100 pairs agreeing on an email alone were the same person, in a stratum its EHR module had left unlinked (Ross et al. 2020).
 The HL7 identity-matching guide grades first + last name + DOB + email "Superior" on uniqueness rather than measured precision (HL7 International 2025).
-Two forms of one mailbox, with dots or a plus tag, produce different values, which costs matches but not precision (reasoning).
+The default cleaning writes the forms of one Gmail mailbox, with dots or a plus tag, as one value, following Google's normalization ([DEFAULT_STANDARDIZATION.md](../spec/DEFAULT_STANDARDIZATION.md#email_address)).
+Two addresses it joins reach one mailbox, so a false match from them still needs two people who share it and agree on the rule's name and date elements (reasoning).
+At any other domain two forms of one mailbox produce different values, which costs matches but not precision (reasoning).
 
 ## Follow-on, unbanded until measured
 

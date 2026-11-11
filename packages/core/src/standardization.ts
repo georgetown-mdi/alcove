@@ -362,6 +362,21 @@ function toLowerCase(s: string): string {
   return s.toLowerCase();
 }
 
+// Google's normalization for Gmail: dots and a plus tag in the local part of a
+// gmail.com or googlemail.com address name one mailbox, and every other domain
+// keeps both (Google Ads API, "Manage online click conversions"). The non-`u`
+// `i` flag folds only ASCII letters, so a lookalike domain is not matched.
+const GMAIL_DOMAIN_PATTERN = /^(?:gmail|googlemail)\.com$/i;
+
+function gmailAddress(s: string): string {
+  const at = s.indexOf("@");
+  if (at === -1 || at !== s.lastIndexOf("@")) return s;
+  if (!GMAIL_DOMAIN_PATTERN.test(s.slice(at + 1))) return s;
+  const plus = s.indexOf("+");
+  const localEnd = plus !== -1 && plus < at ? plus : at;
+  return `${s.slice(0, localEnd).replaceAll(".", "")}@gmail.com`;
+}
+
 // Latin letters with no canonical decomposition: the NFD strip leaves them
 // whole, so a later remove_non_ascii would delete them. Each maps to the
 // ASCII spelling a writer without the letter conventionally uses.
@@ -971,6 +986,7 @@ const STANDARDIZING_FUNCTIONS = frozenLookupTable({
   zip3: (_params) => zip3,
   state_code: (_params) => usStateCode,
   usps_street_name: noParamFactory(uspsStreetName),
+  gmail_address: noParamFactory(gmailAddress),
   null_if: nullIfFactory,
   replace_regex: replaceRegexFactory,
   extract_regex: extractRegexFactory,
@@ -1410,6 +1426,14 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
     label: "USPS street name",
     blurb:
       "Write a street name's suffix and directionals in their USPS forms by position, abbreviating or spelling each out (MAIN STREET NORTH to MAIN ST N, N AVE to NORTH AVE), keeping the other words.",
+    tier: "standard",
+    params: noParams,
+  },
+  gmail_address: {
+    name: "gmail_address",
+    label: "Gmail address",
+    blurb:
+      "For a gmail.com or googlemail.com address, remove dots and a plus tag before the @ and write the domain as gmail.com (Jane.Doe+news@googlemail.com to JaneDoe@gmail.com); keep any other address as it is.",
     tier: "standard",
     params: noParams,
   },
