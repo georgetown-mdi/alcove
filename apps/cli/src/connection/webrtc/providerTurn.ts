@@ -77,8 +77,8 @@ export function providerTurnMintError(
       if (outcome.status === 401 || outcome.status === 403)
         return markStatesItsOwnNextStep(
           new UsageError(
-            `${answered} Check that the file the turn entry's api_token ` +
-              "names holds the API token of the TURN key its key_id names, " +
+            `${answered} Check that the turn entry's api_token, or the file ` +
+              "it names, holds the API token of the TURN key its key_id names, " +
               "and run the exchange again.",
           ),
         );
