@@ -291,7 +291,8 @@ jobs:
         # The allowlist above admits these files whole. These are the edits
         # scripts/revendor-psi.mjs makes to them, and nothing else may differ:
         # the lockfile and package.json files are compared as JSON, the other
-        # files byte for byte. The next step checks the sidecar and marker.
+        # files byte for byte. The next step checks the sidecar and the rest of
+        # the marker.
         run: |
           old_dep=$(git show "$BASE:packages/core/package.json" | jq -r '.dependencies["@openmined/psi.js"]')
           if ! [[ $old_dep =~ ^file:\.\./\.\./lib/openmined-psi\.js-(.+)\.tgz$ ]]; then
@@ -311,6 +312,10 @@ jobs:
           done < <(git ls-tree -z --name-only HEAD lib/)
           if [ ! -f "$tarball" ] || [ -n "$extra" ]; then
             echo "::error::lib/ must hold $tarball, its sidecar and its marker alone; it also holds:${extra:- nothing, and lacks the tarball}"
+            exit 1
+          fi
+          if ! jq -e '.attestation_expected == true' "$tarball.provenance.json" > /dev/null; then
+            echo "::error::the provenance marker's attestation_expected is not true, as a re-vendor writes it"
             exit 1
           fi
 

@@ -67,9 +67,9 @@ in `lib/`, a change to any file these steps do not write, and a change to
 `NOTICE`, `CONTRIBUTING.md` or the prebuild manifest other than the tarball's
 new file name. It also refuses a lockfile or `package.json` change other than
 the `@openmined/psi.js` version, path and integrity; those files are compared
-as JSON, so their formatting is not checked. The marker's
-`attestation_expected` is not held to `true`: the pull request states the
-arming state the marker records. The pushed commit's author is the workflow's
+as JSON, so their formatting is not checked. It refuses a marker that is not
+armed, with `attestation_expected: true`, as step 3 writes it after step 2
+verified. The pushed commit's author is the workflow's
 bot, and its message is the workflow's own. The steps here are its manual
 fallback, for a build the fork attests but does not release, or a run of the
 workflow that fails.
