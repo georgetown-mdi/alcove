@@ -847,7 +847,7 @@ connection:
 |-------|------|----------|-------------|
 | `provider` | enum | yes | `cloudflare` |
 | `key_id` | string | yes | The TURN key's id, from your Cloudflare dashboard: 1 to 128 letters, digits, hyphens or underscores |
-| `api_token` | string | yes | The TURN key's API token, as an `@`-file: `@` followed by the path of a file holding the token. A token written in the configuration itself is refused |
+| `api_token` | string | yes | The TURN key's API token, as an `@`-file: `@` followed by the path of a file holding the token. A token written in the configuration itself is used, with a warning to move it into a file. A token holding a space, a line break or a non-ASCII character is refused |
 
 ```yaml
 connection:
@@ -857,6 +857,7 @@ connection:
       api_token: "@/run/secrets/cloudflare-turn-token"
 ```
 
+- **Which entry is minted.** Only the TURN entry the run uses: the first one [`allowed_relays`](#connectionallowed_relays) keeps, where an entry naming Cloudflare counts as `turn.cloudflare.com`. An entry naming Cloudflare after another kept entry is not minted, and Cloudflare is not asked.
 - **What the run uses.** Each run asks Cloudflare for a credential valid for one hour and uses only the `turns:` urls on `turn.cloudflare.com` from the answer, port 443 first, so the relay's certificate is checked against Cloudflare's name. The run states when the credential expires.
 - **Waiting for the partner.** A connection attempt that would outlast the credential starts with a newly minted one. Once the partner connects the credential is not renewed.
 - **What is never written.** The token and the minted credential are never written to the configuration, the key file, the event stream, the log, or an error message.

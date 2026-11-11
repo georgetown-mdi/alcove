@@ -116,7 +116,7 @@ describe("minting a run's provider entries", () => {
     });
     if (run === undefined) throw new Error("nothing minted");
     const notice = providerTurnNotice(run);
-    expect(notice).toContain("Cloudflare TURN credential");
+    expect(notice).toMatch(/^the Cloudflare TURN credential was minted/);
     expect(notice).toContain(run.expiresAt.toISOString());
     expect(notice).not.toContain("minted-1");
     expect(notice).not.toContain(TOKEN);
@@ -310,7 +310,7 @@ describe("the run's dial", () => {
   test("names a minted url allowed_relays leaves out", async () => {
     const connection: WebRTCConnectionConfig = {
       ...CONNECTION,
-      allowedRelays: ["relay.example.org"],
+      allowedRelays: ["relay.example.org", "turn.cloudflare.com:5349"],
     };
     const run = await mintProviderTurn(connection, {
       fetch: stubbedApi().fetch,
@@ -322,11 +322,82 @@ describe("the run's dial", () => {
       undefined,
     );
     expect(dial.options.iceServers?.map((server) => server.urls)).toEqual([
+      "turns:turn.cloudflare.com:5349?transport=tcp",
       "turns:relay.example.org:443",
     ]);
     expect(dial.options.relaysLeftOut).toEqual([
       "turns:turn.cloudflare.com:443?transport=tcp",
-      "turns:turn.cloudflare.com:5349?transport=tcp",
     ]);
+  });
+});
+
+describe("which provider entry a run mints", () => {
+  const SECOND_PROVIDER: TurnProviderEntry = {
+    provider: "cloudflare",
+    keyId: "fedcba9876543210fedcba9876543210",
+    apiToken: "placeholder-turn-api-token-3333",
+  };
+
+  test.each([
+    ["after a static turn entry", { turn: [STATIC_ENTRY, PROVIDER] }],
+    [
+      "that allowed_relays leaves out",
+      { turn: [PROVIDER, STATIC_ENTRY], allowedRelays: ["relay.example.org"] },
+    ],
+    [
+      "that allowed_relays leaves out, with no other entry",
+      { turn: [PROVIDER], allowedRelays: ["relay.example.org"] },
+    ],
+  ])("none, for a provider entry %s", async (_label, fields) => {
+    const api = stubbedApi();
+    expect(
+      await mintProviderTurn(
+        { ...CONNECTION, ...fields },
+        { fetch: api.fetch },
+      ),
+    ).toBeUndefined();
+    expect(api.calls).toHaveLength(0);
+  });
+
+  test("the first, after a static entry allowed_relays leaves out", async () => {
+    const api = stubbedApi();
+    const run = await mintProviderTurn(
+      {
+        ...CONNECTION,
+        turn: [STATIC_ENTRY, PROVIDER],
+        allowedRelays: ["turn.cloudflare.com"],
+      },
+      { fetch: api.fetch },
+    );
+    expect(api.calls).toHaveLength(1);
+    expect(run?.connection.turn?.[0]).toEqual(STATIC_ENTRY);
+    expect(run?.connection.turn?.[1]).toMatchObject({
+      url: "turns:turn.cloudflare.com:443?transport=tcp",
+    });
+  });
+
+  test("the first alone, never a second provider entry", async () => {
+    const api = stubbedApi();
+    const run = await mintProviderTurn(
+      { ...CONNECTION, turn: [PROVIDER, SECOND_PROVIDER, STATIC_ENTRY] },
+      { fetch: api.fetch, now: () => new Date(0) },
+    );
+    if (run === undefined) throw new Error("nothing minted");
+    expect(api.calls).toHaveLength(1);
+    expect(api.calls[0]?.url).toContain(`/keys/${PROVIDER.keyId}/`);
+    expect(
+      run.connection.turn?.map((entry) => "url" in entry && entry.url),
+    ).toEqual([
+      "turns:turn.cloudflare.com:443?transport=tcp",
+      "turns:turn.cloudflare.com:5349?transport=tcp",
+      STATIC_ENTRY.url,
+    ]);
+    await providerTurnPerAttempt(
+      run,
+      undefined,
+      () => run.expiresAt,
+    )({ kind: "signaling-dropped" });
+    expect(api.calls).toHaveLength(2);
+    expect(api.calls[1]?.url).toContain(`/keys/${PROVIDER.keyId}/`);
   });
 });

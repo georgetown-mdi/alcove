@@ -1,5 +1,14 @@
-import { TurnUrlSchema, turnUrlRelay } from "./config/connection.js";
-import type { TurnProviderEntry } from "./config/connection.js";
+import {
+  isTurnProviderEntry,
+  turnHostIsAllowed,
+  TurnUrlSchema,
+  turnUrlIsAllowed,
+  turnUrlRelay,
+} from "./config/connection.js";
+import type {
+  TurnProviderEntry,
+  WebRTCConnectionConfig,
+} from "./config/connection.js";
 import { RELAY_CREDENTIAL_MAX_TTL_SECONDS } from "./relayCredential.js";
 import { readBoundedJsonBody } from "./utils/boundedJsonBody.js";
 
@@ -19,10 +28,18 @@ export const TURN_PROVIDER_NAMES: Readonly<
 /** The host Cloudflare's TURN servers answer on, and the one name kept. */
 export const CLOUDFLARE_TURN_HOST = "turn.cloudflare.com";
 
+// Each provider's minting API, up to the key id. Written whole so the egress
+// check (scripts/check-egress-claims.mjs) sees the host.
+const TURN_PROVIDER_MINT_URL_PREFIXES: Readonly<
+  Record<TurnProviderEntry["provider"], string>
+> = { cloudflare: "https://rtc.live.cloudflare.com/v1/turn/keys/" };
+
 /** The host each provider's minting API answers on. */
 export const TURN_PROVIDER_MINT_HOSTS: Readonly<
   Record<TurnProviderEntry["provider"], string>
-> = { cloudflare: "rtc.live.cloudflare.com" };
+> = {
+  cloudflare: new URL(TURN_PROVIDER_MINT_URL_PREFIXES.cloudflare).host,
+};
 
 /**
  * The lifetime every mint asks for, in seconds: the one-hour ceiling on any
@@ -61,7 +78,7 @@ export interface MintedTurnServer {
 export type TurnProviderMintOutcome =
   | { kind: "minted"; servers: MintedTurnServer[]; expiresAt: Date }
   | { kind: "refused"; status: number }
-  | { kind: "unreachable"; reason: "timeout" | "network" | "cancelled" }
+  | { kind: "unreachable"; reason: "timeout" | "network" }
   | { kind: "malformed"; problem: "not-ice-servers" | "no-kept-url" };
 
 /** The request a mint sends, built apart from the send so a test can read it. */
@@ -82,7 +99,7 @@ export function turnProviderMintRequest(
 ): TurnProviderMintRequest {
   return {
     url:
-      `https://${TURN_PROVIDER_MINT_HOSTS[entry.provider]}/v1/turn/keys/` +
+      TURN_PROVIDER_MINT_URL_PREFIXES[entry.provider] +
       `${encodeURIComponent(entry.keyId)}/credentials/generate-ice-servers`,
     method: "POST",
     headers: {
@@ -104,6 +121,29 @@ export function isKeptProviderTurnUrl(url: string): boolean {
     TurnUrlSchema.safeParse(url).success &&
     turnUrlRelay(url)?.host === CLOUDFLARE_TURN_HOST
   );
+}
+
+/**
+ * The provider `turn` entry a run mints, or `undefined` when it mints none:
+ * the entry, where it is the first TURN entry the run would use. That is the
+ * first entry `allowedRelays` keeps, a provider entry judged by the host its
+ * mint's kept urls name ({@link CLOUDFLARE_TURN_HOST}). An invitation's TURN
+ * urls follow every own entry, so they never come first. Any other provider
+ * entry is minted by no one.
+ */
+export function providerTurnEntryToMint(
+  connection: Pick<WebRTCConnectionConfig, "turn" | "allowedRelays">,
+): TurnProviderEntry | undefined {
+  for (const entry of connection.turn ?? []) {
+    if (!isTurnProviderEntry(entry)) {
+      if (turnUrlIsAllowed(entry.url, connection.allowedRelays))
+        return undefined;
+    } else if (
+      turnHostIsAllowed(CLOUDFLARE_TURN_HOST, connection.allowedRelays)
+    )
+      return entry;
+  }
+  return undefined;
 }
 
 function boundedString(value: unknown): value is string {
@@ -165,8 +205,6 @@ export interface TurnProviderTransport {
   fetch?: typeof globalThis.fetch;
   /** {@link TURN_PROVIDER_REQUEST_TIMEOUT_MS} when unset. */
   timeoutMs?: number;
-  /** Cancels the mint. */
-  signal?: AbortSignal;
   /** The clock the lifetime counts from. */
   now?: () => Date;
 }
@@ -187,18 +225,9 @@ export async function mintProviderTurnCredential(
   const request = turnProviderMintRequest(entry);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const cancel = transport.signal;
-  const onCancel = () => controller.abort();
-  if (cancel?.aborted === true) controller.abort();
-  else cancel?.addEventListener("abort", onCancel, { once: true });
   const notAnswered = (): TurnProviderMintOutcome => ({
     kind: "unreachable",
-    reason:
-      cancel?.aborted === true
-        ? "cancelled"
-        : controller.signal.aborted
-          ? "timeout"
-          : "network",
+    reason: controller.signal.aborted ? "timeout" : "network",
   });
   const sentAt = now();
   try {
@@ -242,6 +271,5 @@ export async function mintProviderTurnCredential(
     };
   } finally {
     clearTimeout(timer);
-    cancel?.removeEventListener("abort", onCancel);
   }
 }

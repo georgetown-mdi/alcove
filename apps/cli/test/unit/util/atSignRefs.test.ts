@@ -17,7 +17,7 @@ import {
   resolveAtSignRef,
   resolveAtSignRefs,
   resolveExchangeSpecRefs,
-  TURN_PROVIDER_TOKEN_INLINE_REFUSAL,
+  turnProviderTokenCharacterRefusal,
 } from "../../../src/util/atSignRefs";
 
 let dir: string;
@@ -564,14 +564,56 @@ test("resolveExchangeSpecRefs refuses a missing or empty api_token file by its r
   ).toThrow("resolved to an empty file");
 });
 
-test("resolveExchangeSpecRefs refuses an api_token written in the configuration, without repeating it", () => {
-  let failure: unknown;
-  try {
-    resolveExchangeSpecRefs(specWithTurnToken(TURN_TOKEN));
-  } catch (err) {
-    failure = err;
-  }
-  expect(failure).toBeInstanceOf(UsageError);
-  expect((failure as Error).message).toBe(TURN_PROVIDER_TOKEN_INLINE_REFUSAL);
-  expect((failure as Error).message).not.toContain(TURN_TOKEN);
+test("resolveExchangeSpecRefs accepts an api_token written in the configuration", () => {
+  const resolved = resolveExchangeSpecRefs(
+    specWithTurnToken(` ${TURN_TOKEN} `),
+  );
+  if (resolved.connection.channel !== "webrtc")
+    throw new Error("expected webrtc");
+  expect(resolved.connection.turn?.[0]).toMatchObject({ apiToken: TURN_TOKEN });
 });
+
+function tokenRefusal(apiToken: string): Error {
+  try {
+    resolveExchangeSpecRefs(specWithTurnToken(apiToken));
+  } catch (err) {
+    return err as Error;
+  }
+  throw new Error("expected a refusal");
+}
+
+const UNSENDABLE_TOKENS = [
+  ["an inner newline", "Pq7xZr\nWk3mNb"],
+  ["a space", "Pq7xZr Wk3mNb"],
+  ["a non-ASCII character", "Pq7xZréWk3mNb"],
+] as const;
+
+test.each(UNSENDABLE_TOKENS)(
+  "resolveExchangeSpecRefs refuses an api_token file holding %s, naming the file and not the token",
+  (_label, token) => {
+    const reference = atFile("unsendable-token", `${token}\n`);
+    const failure = tokenRefusal(reference);
+    expect(failure).toBeInstanceOf(UsageError);
+    expect(failure.message).toBe(
+      turnProviderTokenCharacterRefusal("cloudflare", reference),
+    );
+    expect(failure.message).toContain(reference);
+    expect(failure.message).toContain("Cloudflare dashboard");
+    for (const part of token.split(/[^\x21-\x7E]/))
+      expect(failure.message).not.toContain(part);
+  },
+);
+
+test.each(UNSENDABLE_TOKENS)(
+  "resolveExchangeSpecRefs refuses an api_token written in the configuration holding %s, without repeating it",
+  (_label, token) => {
+    const failure = tokenRefusal(token);
+    expect(failure).toBeInstanceOf(UsageError);
+    expect(failure.message).toBe(
+      turnProviderTokenCharacterRefusal("cloudflare", undefined),
+    );
+    expect(failure.message).toContain("written in the configuration");
+    for (const part of token.split(/[^\x21-\x7E]/))
+      expect(failure.message).not.toContain(part);
+  },
+);

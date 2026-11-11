@@ -1,8 +1,11 @@
 import {
+  CLOUDFLARE_TURN_HOST,
   INVITATION_RELAY_REFUSES_UNTIL_ENROLLED,
   InternalConsistencyError,
+  isTurnProviderEntry,
   LATER_TURN_URL_NOT_CONTACTED,
   OWN_RELAY_REFUSES_UNTIL_ENROLLED,
+  providerTurnEntryToMint,
   RELAY_CHECK_BOUND_MS,
   RELAY_CHECK_ENROLLMENT_ID,
   RELAY_NOT_REACHED_REMEDY,
@@ -11,6 +14,7 @@ import {
   relayCheckHeadline,
   relayCheckPlan as relayCheckHostPlan,
   selectRunRelay,
+  TURN_PROVIDER_NAMES,
   turnRelayNotReachedMeaning,
   turnUrlTransport,
   UsageError,
@@ -31,6 +35,7 @@ import type {
   RelayTransport,
   RunRelayConnection,
   RunTurnServer,
+  TurnProviderEntry,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 import type { RTCIceServer } from "werift";
@@ -86,14 +91,21 @@ export const RELAY_CHECK_ROLE_REQUIRED =
 /**
  * The refusal of a webrtc configuration whose every relay url
  * `allowed_relays` leaves out, naming them; raw, escaped where shown.
+ * `mintedBy` names the provider asked for a TURN credential first, the one
+ * host contacted.
  */
 export function relayCheckAllLeftOutMessage(
   leftOut: ReadonlyArray<string>,
+  mintedBy?: TurnProviderEntry["provider"],
 ): string {
   return (
     `connection.allowed_relays leaves out every relay url this configuration ` +
     `lists (${leftOut.join(", ")}), so a run contacts no relay and there is ` +
-    "none to check. Nothing was contacted."
+    "none to check. " +
+    (mintedBy === undefined
+      ? "Nothing was contacted."
+      : `Only ${TURN_PROVIDER_NAMES[mintedBy]} was contacted, for the TURN ` +
+        "credential.")
   );
 }
 
@@ -125,11 +137,17 @@ export type RelayCandidateGathering = (
  * The connection the check applies to, refusing one it does not: one that is
  * not webrtc, one the run itself refuses for `ice_provision`, one that lists
  * no relay a run contacts, and one that lists a WebSocket relay and no role.
+ * Each is decided from the configuration alone, so it runs before a provider
+ * entry is minted: the entry the run mints (`providerTurnEntryToMint`) counts
+ * as a relay, and a provider entry `allowed_relays` leaves out is named by
+ * its host. Run again on the minted connection with `mintedBy` set, it
+ * decides from the urls the provider's answer named.
  *
  * @throws {UsageError} for each refusal above.
  */
 export function relayCheckConnection(
   connection: ConnectionConfig,
+  mintedBy?: TurnProviderEntry["provider"],
 ): WebRTCConnectionConfig {
   if (connection.channel !== "webrtc")
     throw new UsageError(RELAY_CHECK_WEBRTC_ONLY);
@@ -137,12 +155,20 @@ export function relayCheckConnection(
     throw new UsageError(ICE_PROVISION_REFUSAL);
   const { turn, turnLeftOut, websocket, websocketLeftOut } =
     selectRunRelay(connection);
-  if ((turn ?? []).length === 0 && (websocket ?? []).length === 0) {
-    const leftOut = [...(turnLeftOut ?? []), ...(websocketLeftOut ?? [])];
+  const minted = providerTurnEntryToMint(connection) !== undefined;
+  if ((turn ?? []).length === 0 && (websocket ?? []).length === 0 && !minted) {
+    // No url-bearing TURN entry is kept, so a provider entry goes unminted
+    // only because `allowed_relays` leaves out its host.
+    const providerLeftOut = (connection.turn ?? []).some(isTurnProviderEntry);
+    const leftOut = [
+      ...(turnLeftOut ?? []).map((relay) => relay.url),
+      ...(providerLeftOut ? [CLOUDFLARE_TURN_HOST] : []),
+      ...(websocketLeftOut ?? []).map((relay) => relay.url),
+    ];
     throw new UsageError(
       leftOut.length === 0
         ? RELAY_CHECK_NO_RELAY
-        : relayCheckAllLeftOutMessage(leftOut.map((relay) => relay.url)),
+        : relayCheckAllLeftOutMessage(leftOut, mintedBy),
     );
   }
   if ((websocket ?? []).length > 0 && connection.role === undefined)

@@ -1068,6 +1068,7 @@ export {
   isKeptProviderTurnUrl,
   mintProviderTurnCredential,
   PROVIDER_TURN_CREDENTIAL_TTL_SECONDS,
+  providerTurnEntryToMint,
   providerTurnServersFromAnswer,
   TURN_PROVIDER_MINT_HOSTS,
   TURN_PROVIDER_NAMES,

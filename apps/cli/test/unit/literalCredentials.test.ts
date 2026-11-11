@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { getLogger, UsageError } from "@alcove/core";
-import type { ExchangeSpec } from "@alcove/core";
+import type { ExchangeSpec, WebRTCConnectionConfig } from "@alcove/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { saveConfig } from "../../src/config";
@@ -13,6 +13,7 @@ import {
   commandLineLiteralCredentialNotice,
   commandLineLiteralCredentials,
   literalCredentials,
+  literalTurnProviderTokenWarning,
   savedLiteralCredentialWarning,
   urlPasswordIsNotStorable,
 } from "../../src/literalCredentials";
@@ -117,6 +118,50 @@ describe("savedLiteralCredentialWarning", () => {
       savedLiteralCredentialWarning("alcove.yaml", {
         channel: "sftp",
         server: { password: "@./pw.txt" },
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("literalTurnProviderTokenWarning", () => {
+  const TOKEN = "placeholder-turn-api-token-5555";
+  const connection = (apiToken: string): WebRTCConnectionConfig => ({
+    channel: "webrtc",
+    server: { host: "peers.example.org" },
+    turn: [
+      { url: "turns:relay.example.org:443" },
+      {
+        provider: "cloudflare",
+        keyId: "0123456789abcdef0123456789abcdef",
+        apiToken,
+      },
+    ],
+  });
+
+  test("names the file, the field and the @path form, and not the token", () => {
+    const warning = literalTurnProviderTokenWarning(
+      "./alcove.yaml",
+      connection(TOKEN),
+    );
+    expect(warning).toBe(
+      "the configuration ./alcove.yaml holds a Cloudflare API token as " +
+        "typed in the api_token of a connection.turn entry, and anyone with " +
+        "a copy of the file can use it. Put the token in a file of its own " +
+        "and write its path with a leading @ in its place, e.g. " +
+        'api_token: "@./cloudflare-api-token.txt".',
+    );
+    expect(warning).not.toContain(TOKEN);
+  });
+
+  test("a token read from an @-file, or no provider entry, gets none", () => {
+    expect(
+      literalTurnProviderTokenWarning("alcove.yaml", connection("@./token")),
+    ).toBeUndefined();
+    expect(
+      literalTurnProviderTokenWarning("alcove.yaml", {
+        channel: "webrtc",
+        server: { host: "peers.example.org" },
+        turn: [{ url: "turns:relay.example.org:443", credential: "pw" }],
       }),
     ).toBeUndefined();
   });

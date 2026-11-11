@@ -1599,6 +1599,22 @@ export function turnUrlIsAllowed(
   return relayIsAllowed(relay, allowedRelays);
 }
 
+/**
+ * Whether `allowedRelays` admits a TURN relay on `host` on some port: every
+ * host when the setting is unset, else a host an entry names, whatever port
+ * the entry names. For a relay whose port is not known yet, such as the one a
+ * provider `turn` entry's mint will name.
+ */
+export function turnHostIsAllowed(
+  host: string,
+  allowedRelays: ReadonlyArray<string> | undefined,
+): boolean {
+  if (allowedRelays === undefined) return true;
+  return allowedRelays.some(
+    (entry) => parseRelayHostAndPort(entry)?.host === host,
+  );
+}
+
 function relayIsAllowed(
   relay: RelayHostAndPort,
   allowedRelays: ReadonlyArray<string>,

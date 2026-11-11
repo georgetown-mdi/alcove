@@ -5,6 +5,7 @@ import {
   PROVIDER_TURN_CREDENTIAL_TTL_SECONDS,
   isKeptProviderTurnUrl,
   mintProviderTurnCredential,
+  providerTurnEntryToMint,
   providerTurnServersFromAnswer,
   turnProviderMintRequest,
 } from "../src/turnProvider";
@@ -14,7 +15,10 @@ import {
   hasMintedTurnEntry,
   safeParseConnectionConfig,
 } from "../src/config/connection";
-import type { TurnProviderEntry } from "../src/config/connection";
+import type {
+  TurnProviderEntry,
+  WebRTCConnectionConfig,
+} from "../src/config/connection";
 
 const TOKEN = "placeholder-turn-api-token-0000";
 const ENTRY: TurnProviderEntry = {
@@ -72,6 +76,35 @@ describe("the minting request", () => {
     const request = turnProviderMintRequest(ENTRY);
     expect(request.url).not.toContain(TOKEN);
     expect(request.body).not.toContain(TOKEN);
+  });
+});
+
+describe("which provider entry a run mints", () => {
+  const STATIC = { url: "turns:relay.example.org:443" };
+  const SECOND: TurnProviderEntry = { ...ENTRY, keyId: "second-key" };
+
+  test.each<
+    [
+      string,
+      Pick<WebRTCConnectionConfig, "turn" | "allowedRelays">,
+      TurnProviderEntry | undefined,
+    ]
+  >([
+    ["the first entry", { turn: [ENTRY, SECOND] }, ENTRY],
+    ["none after a kept static entry", { turn: [STATIC, ENTRY] }, undefined],
+    [
+      "the first after a static entry allowed_relays leaves out",
+      { turn: [STATIC, ENTRY], allowedRelays: ["turn.cloudflare.com:5349"] },
+      ENTRY,
+    ],
+    [
+      "none where allowed_relays leaves out Cloudflare's host",
+      { turn: [ENTRY, STATIC], allowedRelays: ["relay.example.org"] },
+      undefined,
+    ],
+    ["none for a connection with no turn entry", {}, undefined],
+  ])("%s", (_label, connection, expected) => {
+    expect(providerTurnEntryToMint(connection)).toBe(expected);
   });
 });
 

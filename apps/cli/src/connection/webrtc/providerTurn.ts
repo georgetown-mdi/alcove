@@ -1,10 +1,10 @@
 import {
   ConnectionError,
-  InternalConsistencyError,
   isTurnProviderEntry,
   markStatesItsOwnNextStep,
   mintProviderTurnCredential,
   mintRunRelayCredential,
+  providerTurnEntryToMint,
   TURN_PROVIDER_MINT_HOSTS,
   TURN_PROVIDER_NAMES,
   TURN_PROVIDER_REQUEST_TIMEOUT_MS,
@@ -29,20 +29,21 @@ import type {
 } from "@alcove/core";
 
 /**
- * The servers a run minted for its provider `turn` entries
+ * The servers a run minted for the provider `turn` entry it uses
  * (docs/spec/RELAY_CREDENTIALS.md, "Provider-minted credentials").
  */
 export interface ProviderTurnRun {
   /**
-   * The connection with each provider entry replaced by the servers minted
-   * for it, each with its own minted credential, in the entry's place.
+   * The connection with the minted servers, each with the minted
+   * credential, in the minted entry's place, and every other provider entry
+   * left out.
    */
   connection: WebRTCConnectionConfig;
-  /** The provider named by the first provider entry, for the run's notices. */
+  /** The minted entry's provider, for the run's notices. */
   provider: TurnProviderEntry["provider"];
-  /** When the earliest of the minted credentials expires. */
+  /** When the minted credential expires. */
   expiresAt: Date;
-  /** Mint every provider entry again, as for a later connection attempt. */
+  /** Mint the same entry again, as for a later connection attempt. */
   mintAgain: () => Promise<ProviderTurnRun>;
 }
 
@@ -85,8 +86,7 @@ export function providerTurnMintError(
         return markStatesItsOwnNextStep(
           new UsageError(
             `${answered} Check that the turn entry's key_id names a TURN ` +
-              `key in your ${name} account, since a deleted key answers ` +
-              "this way, and run the exchange again.",
+              `key in your ${name} account, and run the exchange again.`,
           ),
         );
       return markStatesItsOwnNextStep(
@@ -104,9 +104,7 @@ export function providerTurnMintError(
                 `${TURN_PROVIDER_REQUEST_TIMEOUT_MS / 1000} seconds. Check ` +
                 `that this computer can reach ${name} over HTTPS, and run ` +
                 "the exchange again."
-            : outcome.reason === "cancelled"
-              ? `${notMinted}: the request was cancelled.`
-              : `${notMinted}: it could not be reached. Check that this ` +
+            : `${notMinted}: it could not be reached. Check that this ` +
                 `computer can reach ${name} over HTTPS, and run the ` +
                 "exchange again.",
           "transport",
@@ -127,51 +125,43 @@ export function providerTurnMintError(
 }
 
 /**
- * Mint the servers of every provider `turn` entry `connection` lists, or
- * return `undefined` when it lists none. The token is read from the entry,
- * already resolved from its @-file, and goes to the provider alone.
+ * Mint the servers of the provider `turn` entry the run would use
+ * (`providerTurnEntryToMint`), or return `undefined` when it uses none. No
+ * other provider entry is minted. The token is read from the entry, already
+ * resolved, and goes to the provider alone.
  *
- * @throws {UsageError | ConnectionError} {@link providerTurnMintError} for
- *   the first entry whose mint does not yield servers.
+ * @throws {UsageError | ConnectionError} {@link providerTurnMintError} when
+ *   the mint does not yield servers.
  */
 export async function mintProviderTurn(
   connection: WebRTCConnectionConfig,
   transport: TurnProviderTransport = {},
 ): Promise<ProviderTurnRun | undefined> {
-  const first = (connection.turn ?? []).find(isTurnProviderEntry);
-  if (first === undefined) return undefined;
-  return mintEveryProviderEntry(connection, first, transport);
+  const entry = providerTurnEntryToMint(connection);
+  if (entry === undefined) return undefined;
+  return mintProviderEntry(connection, entry, transport);
 }
 
-async function mintEveryProviderEntry(
+async function mintProviderEntry(
   connection: WebRTCConnectionConfig,
-  first: TurnProviderEntry,
+  entry: TurnProviderEntry,
   transport: TurnProviderTransport,
 ): Promise<ProviderTurnRun> {
-  const minted: TurnEntry[] = [];
-  let expiresAt: Date | undefined;
-  for (const entry of connection.turn ?? []) {
-    if (!isTurnProviderEntry(entry)) {
-      minted.push(entry);
-      continue;
-    }
-    const outcome = await mintProviderTurnCredential(entry, transport);
-    if (outcome.kind !== "minted")
-      throw providerTurnMintError(entry.provider, outcome);
-    minted.push(...outcome.servers);
-    if (expiresAt === undefined || outcome.expiresAt < expiresAt)
-      expiresAt = outcome.expiresAt;
-  }
-  if (expiresAt === undefined)
-    throw new InternalConsistencyError(
-      "mintEveryProviderEntry: a connection with a provider turn entry " +
-        "minted none",
-    );
+  const outcome = await mintProviderTurnCredential(entry, transport);
+  if (outcome.kind !== "minted")
+    throw providerTurnMintError(entry.provider, outcome);
+  const turn = (connection.turn ?? []).flatMap((listed): TurnEntry[] =>
+    listed === entry
+      ? outcome.servers
+      : isTurnProviderEntry(listed)
+        ? []
+        : [listed],
+  );
   return {
-    connection: { ...connection, turn: minted },
-    provider: first.provider,
-    expiresAt,
-    mintAgain: () => mintEveryProviderEntry(connection, first, transport),
+    connection: { ...connection, turn },
+    provider: entry.provider,
+    expiresAt: outcome.expiresAt,
+    mintAgain: () => mintProviderEntry(connection, entry, transport),
   };
 }
 
@@ -192,12 +182,12 @@ export function providerTurnMintStatement(
 
 /**
  * The line a run prints when it holds minted provider credentials: the
- * provider, the lifetime asked for and the expiry. The credential itself is
+ * provider and the expiry. The credential itself is
  * never printed.
  */
 export function providerTurnNotice(run: ProviderTurnRun): string {
   return (
-    `the run's ${TURN_PROVIDER_NAMES[run.provider]} TURN credential was ` +
+    `the ${TURN_PROVIDER_NAMES[run.provider]} TURN credential was ` +
     `minted for this run and expires at ${run.expiresAt.toISOString()}`
   );
 }
