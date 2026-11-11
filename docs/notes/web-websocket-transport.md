@@ -109,7 +109,7 @@ It does not fit, for reasons in its own specification:
 
 - Each signaling frame is capped at 256 KiB and parsed as JSON through `parseBoundedJson` ([SIGNALING_SERVER_BOUNDS.md](../spec/SIGNALING_SERVER_BOUNDS.md#signaling-server-inbound-frame-bound)); an exchange's frames are binary and run to 256 MiB, so each would become more than a thousand base64 text frames.
 - It does not pause a fast sender: a destination whose socket holds over 1 MiB is terminated and told to leave (`MAX_RELAY_BUFFERED_BYTES`, `packages/peerjs-broker/src/contrib/messageHandler/handlers/transmission/index.ts`), which is right for signaling and wrong for a 539,000,000-byte PSI round whose receiver is slower than its sender.
-- Its liveness and queue bounds are sized for a rendezvous ([SIGNALING_SERVER_BOUNDS.md](../spec/SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds)), and the vendored message routing is upstream's, kept unedited for traceability (`packages/peerjs-broker/README.md`).
+- Its liveness and queue bounds are sized for a rendezvous ([SIGNALING_SERVER_BOUNDS.md](../spec/SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds)).
 
 What the broker does show is the shape: a WebSocket server that pairs two sockets by a derived identity and forwards opaque frames, behind a TLS front, with its upgrade surface bounded (`packages/peerjs-broker/src/standaloneUpgradeBounds.ts`).
 The relay below is that shape with binary frames, pause-and-resume forwarding, per-exchange authentication, and quotas.

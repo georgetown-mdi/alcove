@@ -305,12 +305,6 @@ export default tseslint.config(
       "**/dist/**",
       "**/node_modules/**",
       "apps/web/eslint.config.js",
-      // The part of the vendored PeerJS signaling server this project has not
-      // edited since the vendoring -- upstream's message routing -- kept as
-      // upstream wrote it so its review history stays traceable; the rest of
-      // the directory carries this project's hardening and is linted.
-      "packages/peerjs-broker/src/contrib/messageHandler/**",
-      "packages/peerjs-broker/src/contrib/models/message.ts",
       "scratch/**",
       "research/**",
       ".claude/worktrees/**",
@@ -631,9 +625,7 @@ export default tseslint.config(
     //
     // The raw-error ban applies because the diagnostics sink writes a peer's own
     // error text to the operator's log, and the YAML ban because a config reader
-    // added here would leak source bytes exactly as one in core would. Upstream's
-    // unedited message routing is not linted at all (the ignores at the top of
-    // this file).
+    // added here would leak source bytes exactly as one in core would.
     files: ["packages/peerjs-broker/src/**/*.ts"],
     // Fail CI on a stray or rule-silencing disable so the ban cannot be quietly
     // turned off on an untrusted parse (a bare `eslint .` only warns).
@@ -658,8 +650,7 @@ export default tseslint.config(
       // its runtime closure is the set of packages an advisory can force a
       // redeploy of it over; the package root reaches every dependency core
       // declares, the subpath none of them. It bans the exact specifier only, so
-      // a subpath import is untouched. The measured closure behind it, and the
-      // scan that covers the vendored files the repo-wide ignores leave unlinted:
+      // a subpath import is untouched. The measured closure behind it:
       // scripts/broker-core-reach.test.mjs.
       "no-restricted-imports": [
         "error",
