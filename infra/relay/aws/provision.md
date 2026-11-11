@@ -156,10 +156,7 @@ install -m 600 /opt/alcove-src/infra/relay/relay.env.example /etc/alcove-relay/r
 sed -i 's/^ALCOVE_RELAY_REALM=.*/ALCOVE_RELAY_REALM=relay.example.org/' /etc/alcove-relay/relay.env
 # The DNS provider credential, from wherever this account keeps secrets. It is
 # not in the repository and not in user-data, which is readable from the
-# instance metadata service by anything running on the box. A Cloudflare token
-# holds DNS Edit and Zone Read on the challenge-only zone alone, filtered to
-# this host's address. The challenge domain matters to acme.sh only; lego
-# follows the CNAME.
+# instance metadata service by anything running on the box.
 install -m 600 /dev/stdin /etc/alcove-relay/acme.env <<'ACME'
 ALCOVE_RELAY_ACME_EMAIL=relay-admin@example.org
 ALCOVE_RELAY_ACME_CLIENT=lego

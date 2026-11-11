@@ -48,9 +48,7 @@ EMAIL="${ALCOVE_RELAY_ACME_EMAIL:-}"
 [ -n "$EMAIL" ] || die "ALCOVE_RELAY_ACME_EMAIL is unset in $ACME_ENV; the authority requires a contact"
 PROVIDER="${ALCOVE_RELAY_DNS_PROVIDER:-cloudflare}"
 CLIENT="${ALCOVE_RELAY_ACME_CLIENT:-lego}"
-# Where each name's _acme-challenge is a CNAME into a challenge-only zone, the
-# challenge record is written there (README.md, Certificates). acme.sh needs the
-# domain named; lego follows the CNAME itself and does not read it.
+# Per-client behavior: README.md, Certificates, Delegated renewal.
 CHALLENGE_DOMAIN="${ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN:-}"
 
 # The registrar's own name and the WebSocket relay's, where the host's 443
@@ -61,8 +59,7 @@ CHALLENGE_DOMAIN="${ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN:-}"
 # fails until then.
 #
 # acme.sh gets --challenge-alias after every -d, so each name is paired with
-# the alias however acme.sh matches the two. No acme.sh run has driven the
-# alias yet.
+# the alias however acme.sh matches the two.
 ACMESH_ALIAS=()
 [ -z "$CHALLENGE_DOMAIN" ] || ACMESH_ALIAS=(--challenge-alias "$CHALLENGE_DOMAIN")
 LEGO_DOMAINS=(--domains "$REALM")

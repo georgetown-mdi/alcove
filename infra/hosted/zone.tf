@@ -93,9 +93,8 @@ resource "cloudflare_dns_record" "dmarc" {
 }
 
 # The relay host renews its certificates by DNS-01 with a token that can edit
-# only the challenge zone, so each name it renews delegates its challenge there.
-# acme.sh writes every name's challenge at this one target (its
-# --challenge-alias), and lego follows the CNAME to it.
+# only the challenge zone, so each name it renews delegates its challenge there
+# (infra/relay/README.md, Certificates, Delegated renewal).
 resource "cloudflare_dns_record" "acme_challenge" {
   for_each = var.acme_challenge_domain == "" ? toset([]) : var.dns_only_names
 
