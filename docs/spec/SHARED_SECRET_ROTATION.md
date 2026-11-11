@@ -73,11 +73,11 @@ An initiator that stored and then reads the responder's store-failure reason kee
 
 The heal run rotates as any run does. The initiator of the cut run is the side that may be ahead, and only its responder can be behind: before the initiator's store the responder cannot have stored, and after it the initiator holds the newer secret.
 
-Each application that keeps the two passes the previous secret and history it read, writes them at its store, and removes the previous secret at `partnerStored`:
+How each application keeps the previous secret and history:
 
 - **The command line** (`apps/cli/src/protocol.ts`) keeps both in the key file ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-previous-secret-and-the-rotation-history)), so a cut run heals on the next run and a stale copy gets `LocalCopyBehindError` or `PartnerCopyBehindError`. Over WebRTC the side that may be ahead is the acceptor, which meets a partner left behind at the rendezvous ids of its previous secret ([WebRTC rendezvous peer-id derivation](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation)). Each side whose handshake used a previous secret, its own or its peer's, reports that the run is healing a cut one.
 - **A managed browser exchange** keeps both in its record ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#persisted-across-runs), `previousSharedSecret` and `rotationHistory`), reading them inside the run+rotate lock (`authenticateExchange` in `apps/web/src/psi/authenticateExchange.ts`) and making each write a strict-durability write under that lock (`runManagedExchange` in `apps/web/src/psi/managed/managedExchangeRun.ts`).
-- **The one-shot browser exchange** keeps no previous secret, offers none, and passes an empty history.
+- **The one-off browser exchange** keeps no previous secret, offers none, and passes an empty history.
 
 ## The rotation history
 
