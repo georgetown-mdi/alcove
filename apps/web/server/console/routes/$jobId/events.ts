@@ -7,12 +7,12 @@ import { defineJobRoute } from "../../jobRoute";
 /**
  * `GET /api/jobs/:jobId/events` -- the job's event stream over SSE.
  *
- * Feature-gated and id-validated. Every connect replays the job's buffered events
- * (the latest `partnerProgress` only) from the start with monotonic ids; a `Last-Event-ID` header (or a
+ * Feature-gated and id-validated. Every connect replays the job's complete event
+ * history from the start with monotonic ids; a `Last-Event-ID` header (or a
  * `?lastEventId=` query fallback) resumes from that offset. An idle stream writes
  * a keepalive frame so an intermediary's idle window does not cut the operator's
  * view of a waiting run. The stream closes after the terminal event is delivered.
- * Since a job's events are retained in memory for its lifetime, a reconnect
+ * Since a job's full history is retained in memory for its lifetime, a reconnect
  * resumes losslessly.
  */
 export const route = defineJobRoute({

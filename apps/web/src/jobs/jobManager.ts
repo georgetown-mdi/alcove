@@ -433,10 +433,9 @@ function composedFromIntent<TComposed>(compose: () => TComposed): TComposed {
 }
 
 /**
- * A single buffered event with its monotonic id. The event list is retained
- * for the job's lifetime, bar superseded `partnerProgress` events, so every
- * SSE connect can replay from the start (or from a Last-Event-ID offset). Ids
- * rise but can skip the ones of superseded progress events.
+ * A single buffered event with its monotonic id. The full event list is
+ * retained for the job's lifetime so every SSE connect can replay from the
+ * start (or from a Last-Event-ID offset).
  */
 export interface BufferedEvent {
   id: number;
@@ -575,9 +574,6 @@ export interface JobRecord {
   runsInWorkingFolder: boolean;
   status: JobStatus;
   events: Array<BufferedEvent>;
-  /** The id of the last event appended; ids never repeat or reuse a replaced
-   * progress event's. */
-  lastEventId: number;
   /** True once a terminal event has been buffered; the SSE stream closes after it. */
   terminalEmitted: boolean;
   /**
@@ -1701,7 +1697,6 @@ export class JobManager {
       runsInWorkingFolder,
       status: "running",
       events: [],
-      lastEventId: 0,
       terminalEmitted: false,
       transportTeardownOverran: false,
       terminal: null,
@@ -2071,21 +2066,15 @@ export class JobManager {
    * Append an event to a job's buffer with the next monotonic id, notify SSE
    * listeners, and enforce the cap. On overflow the job is failed with a
    * synthesized error terminal so a supervisor always sees a terminal event.
-   * A `partnerProgress` event first removes the buffered one, then appends
-   * under a new id: a reader past the old id still receives the new figure.
    */
   private appendEvent(record: JobRecord, event: RelayEvent): void {
     if (record.terminalEmitted) return;
-    if (event.type === "partnerProgress")
-      record.events = record.events.filter(
-        (entry) => entry.event.type !== "partnerProgress",
-      );
     if (record.events.length >= this.eventBufferCap) {
       this.failOnOverflow(record);
       return;
     }
     const entry: BufferedEvent = {
-      id: ++record.lastEventId,
+      id: record.events.length + 1,
       event: relayedForConsole(record, event),
     };
     record.events.push(entry);
@@ -2196,7 +2185,7 @@ export class JobManager {
   /** Fail a job whose event buffer overflowed, appending a synthesized error. */
   private failOnOverflow(record: JobRecord): void {
     const entry: BufferedEvent = {
-      id: ++record.lastEventId,
+      id: record.events.length + 1,
       event: {
         v: 1,
         type: "error",
@@ -2379,7 +2368,7 @@ export class JobManager {
   /** Append a synthesized terminal event and close the streams. */
   private synthesizeTerminal(record: JobRecord, event: RelayEvent): void {
     const entry: BufferedEvent = {
-      id: ++record.lastEventId,
+      id: record.events.length + 1,
       event,
     };
     record.events.push(entry);

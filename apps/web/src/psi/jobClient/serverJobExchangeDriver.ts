@@ -823,9 +823,8 @@ interface SseFrame {
  *
  * A stream that ends before its terminal event is a drop, not a completion:
  * the connection re-opens from the last id delivered so the run continues
- * where it left off, and the resume loses nothing but a superseded
- * `partnerProgress` event, since the server drops those. A failure on the
- * FIRST connect is not
+ * where it left off, and the resume loses and restarts nothing since the
+ * server retains full history. A failure on the FIRST connect is not
  * retried (nothing exists yet to resume), and a confirmed 404 (the job is
  * gone from the console) stops retries immediately. */
 async function* streamJobEvents(
