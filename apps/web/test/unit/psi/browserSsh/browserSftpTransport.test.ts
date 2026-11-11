@@ -20,6 +20,7 @@ import {
 } from "@psi/transport/browserSsh/browserSftpTransport";
 import {
   SftpFailureError,
+  SftpNameCountOverCapError,
   SftpNoSuchFileError,
   SftpPermissionDeniedError,
   SftpSessionClosedError,
@@ -505,6 +506,22 @@ describe("list", () => {
     sftp.batches = [names(MAX_DIRECTORY_ENTRIES - 1), names(1, 9_000)];
     expect(await transport.list(ROOT)).toHaveLength(MAX_DIRECTORY_ENTRIES);
     sftp.batches = [names(MAX_DIRECTORY_ENTRIES), names(1, 9_000)];
+    const error = await failure(transport.list(ROOT));
+    expect(error).toBeInstanceOf(DirectoryListingBoundsError);
+    expect((error as Error).message).toContain(
+      `more than ${MAX_DIRECTORY_ENTRIES} entries`,
+    );
+  });
+
+  test("reports a NAME reply over the entry cap as a directory too large", async () => {
+    const { transport, sftp } = await connected();
+    sftp.readdir = () =>
+      Promise.reject(
+        new SftpNameCountOverCapError(
+          MAX_DIRECTORY_ENTRIES + 1,
+          MAX_DIRECTORY_ENTRIES,
+        ),
+      );
     const error = await failure(transport.list(ROOT));
     expect(error).toBeInstanceOf(DirectoryListingBoundsError);
     expect((error as Error).message).toContain(

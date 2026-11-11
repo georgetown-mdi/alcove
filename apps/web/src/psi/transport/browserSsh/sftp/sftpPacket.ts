@@ -1,4 +1,6 @@
-import { SftpProtocolError } from "./sftpErrors";
+import { MAX_DIRECTORY_ENTRIES } from "@alcove/core";
+
+import { SftpNameCountOverCapError, SftpProtocolError } from "./sftpErrors";
 
 /**
  * The SFTP version 3 wire codec (draft-ietf-secsh-filexfer-02): the requests
@@ -300,9 +302,14 @@ class PacketReader {
     return attributes;
   }
 
-  /** A count of items each at least `minimumBytes`, refused past what is left. */
-  countOf(minimumBytes: number, what: string): number {
+  /**
+   * A count of items each at least `minimumBytes`, refused past `maxCount`
+   * when given, then past what is left.
+   */
+  countOf(minimumBytes: number, what: string, maxCount?: number): number {
     const count = this.uint32(what);
+    if (maxCount !== undefined && count > maxCount)
+      throw new SftpNameCountOverCapError(count, maxCount);
     if (count * minimumBytes > this.remaining)
       throw new SftpProtocolError(
         `its ${what} of ${count} overruns the packet`,
@@ -363,7 +370,7 @@ export function decodeReply(body: Uint8Array): SftpReply {
       reply = { type: "data", id, data: reader.bytes("data") };
       break;
     case SftpPacketType.name: {
-      const count = reader.countOf(12, "name count");
+      const count = reader.countOf(12, "name count", MAX_DIRECTORY_ENTRIES);
       const entries: Array<SftpNameEntry> = [];
       for (let index = 0; index < count; index++)
         entries.push({

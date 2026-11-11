@@ -20,6 +20,7 @@ import {
 import { SFTP_MAX_READ_BYTES, SftpClient } from "./sftp/sftpClient";
 import {
   SftpFailureError,
+  SftpNameCountOverCapError,
   SftpNoSuchFileError,
   SftpSessionClosedError,
 } from "./sftp/sftpErrors";
@@ -442,7 +443,14 @@ export class BrowserSftpTransport implements FileTransportClient {
             `made no progress over ${MAX_LISTING_READDIR_BATCHES} readdir ` +
               `round-trips without reaching end-of-directory`,
           );
-        const batch = await deadline.race(sftp.readdir(handle));
+        let batch: Awaited<ReturnType<typeof sftp.readdir>>;
+        try {
+          batch = await deadline.race(sftp.readdir(handle));
+        } catch (error) {
+          if (error instanceof SftpNameCountOverCapError)
+            throw directoryTooLargeError(path);
+          throw error;
+        }
         if (batch === null) return entries;
         // The entry count first, then the name length, as the CLI adapters do.
         for (const entry of batch) {

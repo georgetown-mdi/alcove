@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 
+import { MAX_DIRECTORY_ENTRIES } from "@alcove/core";
+
 import {
   SFTP_MAX_HANDLE_BYTES,
   decodeReply,
@@ -7,7 +9,10 @@ import {
   encodeInit,
   encodeRequest,
 } from "@psi/transport/browserSsh/sftp/sftpPacket";
-import { SftpProtocolError } from "@psi/transport/browserSsh/sftp/sftpErrors";
+import {
+  SftpNameCountOverCapError,
+  SftpProtocolError,
+} from "@psi/transport/browserSsh/sftp/sftpErrors";
 
 import { NO_ATTRS, T, concat, packet, str, u32, u64 } from "./sftpWire";
 
@@ -184,6 +189,52 @@ describe("decodeReply", () => {
     });
   });
 
+  test(`reads a NAME of exactly ${MAX_DIRECTORY_ENTRIES} entries`, () => {
+    const entry = concat(str("f"), str(""), NO_ATTRS);
+    const reply = decodeReply(
+      body(
+        packet(
+          T.name,
+          u32(2),
+          u32(MAX_DIRECTORY_ENTRIES),
+          ...Array.from({ length: MAX_DIRECTORY_ENTRIES }, () => entry),
+        ),
+      ),
+    );
+    expect(reply.type === "name" && reply.entries).toHaveLength(
+      MAX_DIRECTORY_ENTRIES,
+    );
+  });
+
+  test(`refuses a NAME declaring ${MAX_DIRECTORY_ENTRIES + 1} entries from its count, reading none`, () => {
+    const overCap = (reply: Uint8Array) => {
+      try {
+        decodeReply(body(reply));
+      } catch (error) {
+        return error;
+      }
+      throw new Error("expected a refusal");
+    };
+    const entry = concat(str("f"), str(""), NO_ATTRS);
+    const full = overCap(
+      packet(
+        T.name,
+        u32(2),
+        u32(MAX_DIRECTORY_ENTRIES + 1),
+        ...Array.from({ length: MAX_DIRECTORY_ENTRIES + 1 }, () => entry),
+      ),
+    );
+    expect(full).toBeInstanceOf(SftpNameCountOverCapError);
+    expect(full).toMatchObject({
+      declaredCount: MAX_DIRECTORY_ENTRIES + 1,
+      maxCount: MAX_DIRECTORY_ENTRIES,
+    });
+    // No entry bytes follow the count, so the refusal can only come from it.
+    expect(
+      overCap(packet(T.name, u32(2), u32(MAX_DIRECTORY_ENTRIES + 1))),
+    ).toBeInstanceOf(SftpNameCountOverCapError);
+  });
+
   test("accepts a handle of the longest allowed length", () => {
     const handle = new Uint8Array(SFTP_MAX_HANDLE_BYTES).fill(1);
     expect(decodeReply(body(packet(T.handle, u32(1), str(handle))))).toEqual({
@@ -208,7 +259,7 @@ describe("decodeReply", () => {
     },
     {
       case: "a name count the packet cannot hold",
-      bytes: packet(T.name, u32(1), u32(0x10000000), str("a")),
+      bytes: packet(T.name, u32(1), u32(MAX_DIRECTORY_ENTRIES), str("a")),
     },
     {
       case: "an extended attribute count the packet cannot hold",

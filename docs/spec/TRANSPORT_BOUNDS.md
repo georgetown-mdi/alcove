@@ -252,6 +252,7 @@ It holds the CLI SFTP adapter's memory bounds at the same figures, read from cor
 - **Directory listing.**
   `list()` reads one READDIR reply at a time and refuses more than **8,192 entries** (`MAX_DIRECTORY_ENTRIES`) or a name over **255 bytes** of UTF-8 (`MAX_FILE_NAME_BYTES`), with a `DirectoryListingBoundsError`, checking the entry count first as both CLI adapters do.
   One reply is itself bounded by the [packet bound](#browser-sftp-packet-bound).
+  A reply declaring more than 8,192 names is refused from its count field, before any name is read, and `list()` reports it as the same `DirectoryListingBoundsError`, so it never holds more than 8,192 entries.
 
 Its liveness bounds are in [TRANSPORT_LIVENESS.md, Browser SFTP transport liveness](TRANSPORT_LIVENESS.md#browser-sftp-transport-liveness).
 
