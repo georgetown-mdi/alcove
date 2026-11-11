@@ -104,7 +104,7 @@ export const zodJitlessChunkOutput = {
     groups: [
       {
         name: "zod",
-        test: /[\\/]node_modules[\\/]zod[\\/]|[\\/]src[\\/]utils[\\/]zodJitless\.ts$/,
+        test: /(?:[\\/]node_modules[\\/]zod[\\/]|[\\/]src[\\/]utils[\\/]zodJitless\.ts$)/,
       },
     ],
   },
