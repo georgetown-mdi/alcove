@@ -5,7 +5,7 @@
 // mid-handshake. Capability is measured by performing each primitive, once
 // per process. No application-level FIPS switch exists: redundant where a
 // provider already enforces policy, misleading where it does not. Measured
-// assumptions: docs/spec/DEPENDENCY_PINS.md ("Upgrading the SFTP Stack").
+// assumptions: docs/spec/SFTP_STACK.md#key-exchange-ciphers-and-delete-of-a-missing-path.
 
 import { generateKeyPairSync } from "node:crypto";
 

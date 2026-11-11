@@ -116,7 +116,7 @@ inProcessOnly(
 
       // The abandoned dial's transport is closed before the failure is
       // reported, so no later dial on this client is issued over a socket ssh2
-      // would defer behind (docs/spec/DEPENDENCY_PINS.md).
+      // would defer behind (docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization).
       expect(internalsOf(adapter).client?._sock?.destroyed).toBe(true);
     } finally {
       srv.sessionControls.withholdSubsystemOpen = false;
@@ -249,7 +249,7 @@ inProcessOnly(
       // connect-time listeners fail a dial issued while the ssh2 Client's
       // 'close' for that transport is still owed, and the handshake that dial
       // started runs on unowned at the server
-      // (docs/spec/DEPENDENCY_PINS.md).
+      // (docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization).
       expect(chained).toBeInstanceOf(TimeoutError);
       expect((chained as Error).message).toContain(
         "did not open the SFTP subsystem",

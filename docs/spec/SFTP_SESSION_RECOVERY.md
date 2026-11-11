@@ -34,7 +34,7 @@ The memory bounds (`FrameSizeExceededError`, `DirectoryListingBoundsError`) also
 **Where the lifecycle readings in this section are driven.**
 The trigger above and the three paragraphs below it rest on how the pinned ssh2 / ssh2-sftp-client deliver a drop, and each reading is driven against the in-process harness server (`apps/cli/test/sftpServer/`) rather than taken from the libraries' source: a clean drop tearing a high-level or a raw-wrapper operation, at a sweep of cut positions, by `apps/cli/test/integration/inflightDropRecovery.test.ts`; a drop with the close withheld by `heldSessionWithheldClose.test.ts`; a drop tearing several operations at once by `concurrentOpDropRecovery.test.ts`; and the socket every re-dial is issued over by `dialDeferral.test.ts`.
 Those suites assert the adapter's outcome -- the recovery, the count, the dial -- not the libraries' error text, which is why the trigger reads post-state.
-Only the in-process backend can cut a session or withhold its close, so none of these readings is verified against a native `sshd`; the shapes measured and what a version bump re-checks are in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client).
+Only the in-process backend can cut a session or withhold its close, so none of these readings is verified against a native `sshd`; the shapes measured and what a version bump re-checks are in [SFTP_STACK.md](SFTP_STACK.md#session-release-and-close).
 
 **A session still set over an ended transport is a loss, not a live session.**
 The session property alone does not determine the reading, because one partner class leaves it set over a session that is gone.
@@ -43,7 +43,7 @@ The trigger therefore reads the transport alongside the property: a session stil
 It is recovered exactly as a clean loss is -- one re-dial, one re-issue, counted in `reconnects` and its mid-exchange sub-count, and warned and charged on the terms its own row in the trigger table below states.
 Reaching that re-dial means clearing the dead session first, which the recovery does by forcing the ended transport closed -- the mechanism the `connection_per_poll` release uses, with its own call-site resolution and none of its accounting, so a drop is never reported as an idle release.
 Every way that forced close can fail (a relocated call site, a destroy that raises, a session that does not clear, a transport that does not close) warns naming what broke and pointing at the issues tracker to report the library incompatibility, then leaves the operation to fail with the loss it already had -- the outcome it had before recovery reached it at all.
-The internals and the measurements are in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md).
+The internals and the measurements are in [SFTP_STACK.md](SFTP_STACK.md#session-release-and-close).
 
 **The two operation routes are torn a full event apart, and at the pinned versions both read as the clean loss they are.**
 A raw-wrapper operation (`list`, `createExclusive`, which drive the `SFTPWrapper` directly) is failed by ssh2, which fails outstanding channel requests only from the socket's `'close'` handler -- the socket's `'end'` emits and cleans the protocol up but leaves them outstanding.
@@ -62,7 +62,7 @@ A transport that cannot be retired refuses the dial and leaves the operation the
 A `Client` that exposes no `on()` to watch leaves no reading to take at all, which the retirement treats as *cannot tell* rather than as *nothing owed* -- the flag's unwritten default is the same value a delivered sequence leaves, so the two are separated by whether the watch attached.
 It warns for the lost reading, naming the call site and pointing at the issues tracker to report the library incompatibility, and retires the transport rather than dialing into a window it cannot see: a drop that would have recovered still recovers, at the cost of the forced close's bound on a transport whose `'close'` had already landed.
 Where the same relocation took the forced close's own call sites with it there is nothing left to retire, and the dial is refused on the terms above.
-The ordering assumption, the measurements behind it and their bound, and what a version bump must re-verify are in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md).
+The ordering assumption, the measurements behind it and their bound, and what a version bump must re-verify are in [SFTP_STACK.md](SFTP_STACK.md#session-release-and-close).
 
 **Re-dial goes through `connect()`, never a bare `client.connect()`.**
 The adapter retains the full original connect options (including the pinned host key and stored credentials) and re-invokes its own `connect()`, so the re-dial re-runs the entire post-connect sequence on the fresh wrapper.
@@ -210,7 +210,7 @@ The runs behind that reach the source-absent state by the landed-and-consumed ro
 Separating them would take a durable artifact created by the write or by the consumption -- a change to the write shape or the protocol, not to this recovery.
 So the adapter rejects that state with a distinct error type (`TransportWriteIndeterminateError`) with the re-issue's own error as its `cause`, rather than resolving it (which would report a message that never landed as sent) or propagating the raw `SSH_FX_NO_SUCH_FILE` (which states a non-delivery it cannot know).
 Every neighbouring state is unchanged: a confirmed destination resolves, a re-issue failing with the source still on the server propagates its own error, and a non-`SSH_FX_NO_SUCH_FILE` failure -- including the code-4 generic failure, the server's answer that the rename did not take effect -- propagates unchanged.
-A server reporting a missing rename source as code 4 rather than `SSH_FX_NO_SUCH_FILE` would therefore be classified determinate; the pinned stack does not (see [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md)).
+A server reporting a missing rename source as code 4 rather than `SSH_FX_NO_SUCH_FILE` would therefore be classified determinate; the pinned stack does not (see [SFTP_STACK.md](SFTP_STACK.md#wrapper-listeners-and-numeric-constants)).
 The rejection is caller-neutral by design: `rename` is shared machinery, and four writes reach it -- the message loop's `send()`, its ack, the rendezvous `joining` -> `hello` rename, and the abort marker -- which share no recovery.
 So its message names the *file* rather than a message, prescribes no next step, and is not marked with `markStatesItsOwnNextStep`; a caller whose recovery is established restates it as its own marked error holding this one as the `cause`.
 The consumer-side consequence is in [FILE_SYNC.md](FILE_SYNC.md) (I8): the sequence number such a write spent is not reusable, the next `send()` is refused rather than writing a second message under a sequence number the peer may already have delivered one under, and `send()` is the one caller that does restate this rejection with a remedy.
@@ -234,7 +234,7 @@ Three shapes are stated limits rather than covered ones.
 The `safeDelete` fan-out never reaches this window at all, sitting outside the recovery chokepoint by its never-reject contract, and what covers a cleanup delete that did not take effect is the record the adapter keeps for it (below).
 A partner that drops the SFTP session while withholding its connection close produces no tear to settle anything, so both operations ride to the first deadline that expires and the forced close that follows settles the rest, which is the withheld-close path above rather than this one.
 And core's own `send()`-alongside-`poll()` interleaving, driven across a sweep of cut points, put two operations on the wire at the tear in only some of them and reached this window in none, so what the shapes above measure is the adapter's behavior under such concurrency and not a demonstration that the poll loop produces it at a drop.
-The numbers, the cut positions, and the pairs the runs did not reach are in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md).
+The numbers, the cut positions, and the pairs the runs did not reach are in [SFTP_STACK.md](SFTP_STACK.md#keepalive-concurrent-operations-and-the-put-stream).
 
 A second concurrency is core's per-operation `inactivityTimeoutMs` budget (a `Promise.race` in `boundTransport`), which can reject a stalled operation to the caller while the adapter operation keeps running, so an abandoned operation may still be inside its re-dial's `connect()` when the aborting caller reaches `close()` -> `end()`.
 Both share the one `Ssh2SftpClient`, and a fresh handshake must never overlap `end()`'s `client.end()`.
@@ -248,7 +248,7 @@ Its release drives the ssh2 `Client`'s `end()` and awaits the `'close'`, and it 
 Between the two the session can still read live, over a transport that `end()` has already ended, so an operation rejecting in that window rejects against a session that reads live and is not -- the transport reading above resolves that as the loss it is, while the boundary the release recorded is what decides the accounting.
 After the window it rejects against a cleared one, which without further information is treated as a server drop.
 An operation reaching the transport at a boundary is driven by the protocol continuation, not by the poll cycle, so it can land on either side of it.
-The release does not leave the end of that window to the partner: a server that accepts the disconnect and never closes the connection leaves the transport ended with the session still reading live, so past its bound the release destroys the socket itself and the resulting `'close'` clears the session (the internals and the measurements are in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md)).
+The release does not leave the end of that window to the partner: a server that accepts the disconnect and never closes the connection leaves the transport ended with the session still reading live, so past its bound the release destroys the socket itself and the resulting `'close'` clears the session (the internals and the measurements are in [SFTP_STACK.md](SFTP_STACK.md#session-release-and-close)).
 The window spans that forced close, and the release holds the transition lock across it, so an operation arriving inside it is serialized on exactly the terms below rather than being admitted by a session that can no longer answer.
 
 An operation issued once the release is running is held off both readings at the adapter's recovery chokepoint -- the entry point of the recovery-wrapped operations, which is all of them but the never-reject cleanup delete (covered instead by the record below) and a `put` whose source cannot be re-issued.
@@ -448,7 +448,7 @@ Teardown is the one exception and only in the narrow form: it may give up ssh2-s
 That destroy is the one mechanism driven from outside the transition holding the client, exempt from the identity check above, and what makes it safe is the teardown latch rather than the destroy's own harmlessness.
 Every transition behind the teardown skips its body, so the holder ahead of it is the only one that can be running, and the exemption checks that latch rather than asserting it.
 Because destroying the socket cuts an in-flight handshake short, `connect()`'s retry loop reads the teardown latch between attempts as well: without that it re-dials on a fresh socket and keeps a torn-down connection, and a process that exits by drain, alive for the remainder of the dial budget.
-Both halves are measured against a real ssh2 server (see [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md)).
+Both halves are measured against a real ssh2 server (see [SFTP_STACK.md](SFTP_STACK.md#dial-bounds-and-session-transition-serialization)).
 Cutting that handshake short also settles it with the exact error a genuine peer close produces, so nothing riding the settled dial may report this side's close as the partner's.
 The cycle-start re-dial reads the teardown latch before warning (a closing run has no next tick to retry on either), and an operation whose recovery re-dial was the dial destroyed reports the session loss it was recovering from rather than that rejection.
 Both read adapter state -- the latch, and whether an abandoned teardown closed the transport itself -- and neither matches on the error text, which cannot tell the two apart.
@@ -470,7 +470,7 @@ Three degraded branches stand in their place, each warning and returning:
 - the bounded destroy raises;
 - the socket does not report itself `destroyed` afterwards.
 
-Each warning names what broke and ends with where to report the library incompatibility (the issues tracker and the `alcove --version` output to include; the upgrade checklist in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md) is cited from code comments, not from the warning text), and each names the same operator consequence: the connection is left to the operating system, may stay half-open, and a half-open connection can keep this process from exiting.
+Each warning names what broke and ends with where to report the library incompatibility (the issues tracker and the `alcove --version` output to include; the upgrade checklist in [SFTP_STACK.md](SFTP_STACK.md) is cited from code comments, not from the warning text), and each names the same operator consequence: the connection is left to the operating system, may stay half-open, and a half-open connection can keep this process from exiting.
 None of the three emits the informational line, which reports the close in the past tense and follows the close for exactly that reason.
 A rejecting `end()` is re-raised behind every one of them too, so on the member-unavailable branch it is re-raised over a socket this side never closed.
 Nothing on the forced path throws: core treats `end()` as best-effort and logs that rejection at debug, and the exit code is untouched either way.

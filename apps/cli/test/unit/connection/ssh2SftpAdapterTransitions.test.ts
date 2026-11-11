@@ -465,7 +465,7 @@ describe("session transitions", () => {
   // transport beneath it, because that is what the real stack does: a destroy
   // mid-handshake cuts the parked attempt short and it rejects with an
   // unexpected-close error indistinguishable from a peer's (measured; see
-  // docs/spec/DEPENDENCY_PINS.md). A dial that stayed parked through the destroy
+  // docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization). A dial that stayed parked through the destroy
   // would hide what this adapter reports about that rejection, which is the
   // operator-facing half of what an abandoning teardown does.
   function parkDialUntilTransportDestroyed(

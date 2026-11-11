@@ -228,8 +228,8 @@ export function sessionRecoveredHeldWarning(
  * read: that state is watched through ssh2's client.on(), not available after
  * connect(), so rather than dial into a window it cannot see, every mid-exchange
  * re-dial closes the connection from this side first and waits for that close.
- * Re-verify the assumptions per the "Upgrading the SFTP Stack" checklist in
- * docs/spec/DEPENDENCY_PINS.md.
+ * Re-verify the assumptions per the checklist in
+ * docs/spec/SFTP_STACK.md#session-release-and-close.
  *
  * @param forcedCloseTimeoutMs - The wait each mid-exchange re-dial spends on the
  * close it drives instead of the reading it cannot take, which is what the

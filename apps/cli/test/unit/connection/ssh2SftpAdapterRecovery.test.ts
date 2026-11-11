@@ -1444,7 +1444,7 @@ describe("session recovery", () => {
 // forces the ended transport closed so the library clears the session, then
 // re-dials and re-issues exactly as it does for a partner that closes. A stall
 // over a transport that is still live stays terminal, which is the distinction
-// these cases pin. Measured against a real ssh2 server (docs/spec/DEPENDENCY_PINS.md);
+// these cases pin. Measured against a real ssh2 server (docs/spec/SFTP_STACK.md#session-release-and-close);
 // the end-to-end exercise is test/integration/heldSessionWithheldClose.test.ts.
 
 describe("mid-exchange drop against a partner that withholds its close", () => {

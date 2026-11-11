@@ -22,7 +22,7 @@ import { inProcessOnly } from "../sftpBackendGate";
 // dial paths issue is recorded with the state of the socket beneath it at entry,
 // and none may be writable. Its companion, that each dial settles at all, is what
 // catches a deferral this snapshot did not predict. See
-// docs/notes/connection-per-poll-sftp.md and docs/spec/DEPENDENCY_PINS.md.
+// docs/notes/connection-per-poll-sftp.md and docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization.
 //
 // Only the in-process backend can be made to withhold its close (a native sshd
 // cannot), and that partner class is the one that can leave a transport in a state

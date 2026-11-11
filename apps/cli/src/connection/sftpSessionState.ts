@@ -19,7 +19,7 @@ export type TeardownState =
  * What is known about the ssh2 Client's transport close: `unreadable` when the
  * Client exposes no `on()` to watch, `owed` between its `'end'` and `'close'`
  * (when a dial on that Client is rejected), and `delivered` otherwise:
- * docs/spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client.
+ * docs/spec/SFTP_STACK.md#session-release-and-close.
  */
 export type TransportCloseReading = "unreadable" | "owed" | "delivered";
 
@@ -76,7 +76,7 @@ export class SftpSessionState {
 
   /**
    * Whether an abandoning teardown closed the transport itself. The dial it cut
-   * short rejects with the same error as a peer close (docs/spec/DEPENDENCY_PINS.md),
+   * short rejects with the same error as a peer close (docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization),
    * so this, not the error text, tells the two apart. Never cleared: it is only
    * set on a connection already closing.
    */

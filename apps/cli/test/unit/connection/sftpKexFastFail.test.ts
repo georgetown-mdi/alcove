@@ -50,9 +50,8 @@ const MISSING: KexPrimitive = {
 };
 
 // The message ssh2-sftp-client shows when the two ends share no key-exchange
-// algorithm, measured against the pinned versions (docs/spec/DEPENDENCY_PINS.md,
-// "Upgrading the SFTP Stack", which names confirming this fragment as a per-bump
-// obligation).
+// algorithm, measured against the pinned versions (docs/spec/SFTP_STACK.md#key-exchange-ciphers-and-delete-of-a-missing-path,
+// which names confirming this fragment as a per-bump obligation).
 const NEGOTIATION_FAILURE =
   "getConnection: Handshake failed: no matching key exchange algorithm";
 
