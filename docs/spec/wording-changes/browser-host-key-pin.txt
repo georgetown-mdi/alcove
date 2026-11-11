@@ -7,7 +7,8 @@
 - - -> The browser SSH client (`apps/web/src/psi/transport/browserSsh/browserSshClient.ts`) passes the server's host key to its `onHostKey` hook after the key exchange has verified that the server has the key, and before it signs anything; a `false` answer ends the session there, so no credential is presented.
 - - -> `onHostKeyFromVerifier` answers that hook with core's verifier, the one `FileSyncConnection` installs as `hostVerifier`, so the browser path runs the enforcing, fail-closed, and capture verifiers above unchanged.
 - - -> The fingerprint comparison, the multiple pins for rotation, the mismatch refusal naming the presented fingerprint with the pinned ones on a cause link of their own, and the recorded `observedHostKey` are therefore the CLI's.
-- - -> A verifier that throws refuses the key.
+- - -> A verifier that throws, or returns a promise that rejects, refuses the key.
+- - -> A verifier that never answers is bounded by the caller: `connectBrowserSsh` stops only on its `AbortSignal`, so a caller sets the connect deadline, as the browser SFTP transport does with `readyTimeout`.
 - - -> **Where the pin is kept.**
 - - -> The pin is the exchange document's `connection.server.host_key_fingerprint`, as on the CLI, so it is kept per exchange rather than per host.
 - - -> A recurring exchange's document is stored whole in its [managed record](MANAGED_EXCHANGE_RECORD.md), so every later run reads the pin with it.

@@ -74,6 +74,32 @@ describe("establishBrowserHostKeyTrust", () => {
   });
 
   test.each(["own", "invitation"] as const)(
+    "refuses an unattended run with an empty pin list through the %s relay without reaching the server",
+    async (relay) => {
+      const steps = deps({ confirm: true, entered: PUBLISHED });
+      await expect(
+        establishBrowserHostKeyTrust(
+          sftpConnection([]),
+          { attended: false, relay },
+          steps,
+        ),
+      ).rejects.toThrow(/host key is not pinned/);
+      expect(steps.probe).not.toHaveBeenCalled();
+      expect(steps.enterServerFingerprint).not.toHaveBeenCalled();
+    },
+  );
+
+  test("takes the first-use route for an attended run with an empty pin list", async () => {
+    const trust = await establishBrowserHostKeyTrust(
+      sftpConnection([]),
+      { attended: true, relay: "own" },
+      deps({ confirm: true }),
+    );
+    expect(trust.newPin).toBe(PRESENTED);
+    expect(trust.connection.server.hostKeyFingerprint).toBe(PRESENTED);
+  });
+
+  test.each(["own", "invitation"] as const)(
     "refuses an unattended first use through the %s relay without reaching the server",
     async (relay) => {
       const steps = deps({ confirm: true, entered: PUBLISHED });

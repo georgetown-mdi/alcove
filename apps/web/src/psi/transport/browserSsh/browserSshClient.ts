@@ -63,7 +63,8 @@ export type BrowserSshHostVerifier = (
 
 /**
  * The `onHostKey` that asks `verify` about the server's key, so the session
- * continues only on its verdict. A verifier that throws refuses the key.
+ * continues only on its verdict. A verifier that throws, or returns a promise
+ * that rejects, refuses the key.
  */
 export function onHostKeyFromVerifier(
   verify: BrowserSshHostVerifier,
@@ -71,7 +72,14 @@ export function onHostKeyFromVerifier(
   return (hostKey) =>
     new Promise<boolean>((resolve) => {
       try {
-        verify(hostKey.blob, resolve);
+        const returned: unknown = verify(hostKey.blob, resolve);
+        if (
+          typeof (returned as PromiseLike<unknown> | undefined)?.then ===
+          "function"
+        )
+          (returned as PromiseLike<unknown>).then(undefined, () =>
+            resolve(false),
+          );
       } catch {
         resolve(false);
       }

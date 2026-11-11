@@ -160,4 +160,41 @@ describe("onHostKeyFromVerifier", () => {
       onHostKey({ algorithm: "ssh-ed25519", blob: SERVER_KEY }),
     ).resolves.toBe(false);
   });
+
+  test("refuses when the verifier returns a promise that rejects, with no unhandled rejection", async () => {
+    const unhandled: Array<unknown> = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const verify = (() =>
+        Promise.reject(new Error("unreadable key"))) as unknown as (
+        ...args: Parameters<BrowserSshHostVerifier>
+      ) => void;
+      await expect(
+        onHostKeyFromVerifier(verify)({
+          algorithm: "ssh-ed25519",
+          blob: SERVER_KEY,
+        }),
+      ).resolves.toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  test("accepts when an async verifier answers through its callback", async () => {
+    const verify = ((
+      _blob: Uint8Array,
+      verdict: (permitted: boolean) => void,
+    ) => Promise.resolve().then(() => verdict(true))) as unknown as (
+      ...args: Parameters<BrowserSshHostVerifier>
+    ) => void;
+    await expect(
+      onHostKeyFromVerifier(verify)({
+        algorithm: "ssh-ed25519",
+        blob: SERVER_KEY,
+      }),
+    ).resolves.toBe(true);
+  });
 });

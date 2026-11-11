@@ -55,7 +55,7 @@ export interface BrowserHostKeyTrust {
 
 /**
  * Decide the host-key pin an SFTP run connects with. A connection that has a
- * pin is returned unchanged, and its connect checks the server against it. One
+ * pin (an empty list is none) is returned unchanged, and its connect checks the server against it. One
  * with none needs a person at the page: through a relay the party set itself,
  * the server's key is read without authenticating and pinned on the
  * operator's yes; through a relay the invitation names, the operator enters
@@ -73,9 +73,9 @@ export async function establishBrowserHostKeyTrust(
   context: BrowserHostKeyTrustContext,
   deps: BrowserHostKeyTrustDeps,
 ): Promise<BrowserHostKeyTrust> {
-  const pinned = connection.server.hostKeyFingerprint;
-  if (pinned !== undefined) {
-    if ([pinned].flat().some((entry) => entry.startsWith("@")))
+  const pins = [connection.server.hostKeyFingerprint ?? []].flat();
+  if (pins.length > 0) {
+    if (pins.some((entry) => entry.startsWith("@")))
       throw new UsageError(
         "The server's host key fingerprint is given as a file reference, " +
           "which the browser cannot read. Enter the fingerprint itself, a " +
