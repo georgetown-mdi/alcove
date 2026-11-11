@@ -196,7 +196,7 @@ traffic passes through it, and no exchange work happens in it.
   while its own window shows
   something a reload would lose, such as a finished run's downloads or an
   unsaved change. The rule and how long an app can run an older version:
-  [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#applying-a-waiting-app-version-between-windows).
+  [MANAGED_EXCHANGE_SCHEDULE.md](spec/MANAGED_EXCHANGE_SCHEDULE.md#applying-a-waiting-app-version-between-windows).
 - While a new version waits, the update notice says what is holding it back
   (a running exchange, an open invitation or file, results on screen, or an
   unsaved change) and how to clear each. You do not have to answer it: the
@@ -242,7 +242,7 @@ window length; text that is not a schedule is refused.
 The recurrence is an anchor instant plus a whole-day interval, and each window
 stays open for the agreed width. Both parties store the same anchor and
 interval, so both compute the same window opens ([the schedule
-object](spec/MANAGED_EXCHANGE_RECORD.md#the-schedule-object)).
+object](spec/MANAGED_EXCHANGE_SCHEDULE.md#the-schedule-object)).
 
 At its window open, each installed app derives the rendezvous id from the
 current secret and waits for the partner across the window, in repeated bounded
@@ -254,7 +254,7 @@ window.
 Set a window of hours, not minutes. The two machines never exchange a clock
 reading, so the width is what absorbs clock skew and a machine that woke or
 launched late ([the
-bound](spec/MANAGED_EXCHANGE_RECORD.md#clock-skew-and-the-window-width)). A
+bound](spec/MANAGED_EXCHANGE_SCHEDULE.md#clock-skew-and-the-window-width)). A
 missed window has no security meaning (see [A missed window is neither desync
 nor attack](#a-missed-window-is-neither-desync-nor-attack)).
 
@@ -268,7 +268,7 @@ A single miss needs no action. A pattern of misses means the partnership is no
 longer meeting: the partner stopped running the exchange, the two schedules
 differ, or a machine's clock is wrong. The record counts consecutive misses
 since the last success ([the schedule
-object](spec/MANAGED_EXCHANGE_RECORD.md#the-schedule-object)). Once the count
+object](spec/MANAGED_EXCHANGE_SCHEDULE.md#the-schedule-object)). Once the count
 reaches the escalation threshold, the exchange's page and the between-visit
 notification show a coordination prompt. It names the likely cause first, a
 schedule entered differently on the two sides, often from converting the window
@@ -357,7 +357,7 @@ sooner. One fires for each of these:
 - **A window was missed.** Sent once at its window, naming the next window; no
   action is needed. An app that wakes after several windows have passed reports
   them once ([catch-up on
-  wake](spec/MANAGED_EXCHANGE_RECORD.md#catch-up-on-wake)). Once consecutive
+  wake](spec/MANAGED_EXCHANGE_SCHEDULE.md#catch-up-on-wake)). Once consecutive
   misses reach the escalation threshold, it becomes the coordination prompt, and
   further misses are not notified while that state stands.
 - **A window was missed, probably from a desync.** After a key exchange that
@@ -678,7 +678,7 @@ from Alcove's published image over the folder, with each path the configuration
 names outside it mounted at its own path. Beside it are the cron and Task
 Scheduler lines for the agreed schedule, or daily at 2am for an exchange with
 none ([the scheduled
-lines](spec/MANAGED_EXCHANGE_RECORD.md#the-command-line-exports-scheduled-lines)),
+lines](spec/MANAGED_EXCHANGE_SCHEDULE.md#the-command-line-exports-scheduled-lines)),
 and a cron line for an installed `alcove`. The rules for a scheduled
 command-line run: [Scheduling the run](CLI.md#scheduling-the-run).
 

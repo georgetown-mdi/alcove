@@ -17,7 +17,7 @@
  * takeover that has not landed within {@link APP_UPDATE_TAKEOVER_WAIT_MS}
  * leaves the window to make its attempt on the current version.
  *
- * Normative rule: docs/spec/MANAGED_EXCHANGE_RECORD.md, "Applying a waiting app
+ * Normative rule: docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "Applying a waiting app
  * version between windows".
  */
 
@@ -40,7 +40,7 @@ import type { AppUpdateHolder } from "@utils/appUpdateHolder";
 /**
  * How long the runner waits for a waiting worker's takeover to land before it
  * makes the window's attempt on the current version instead. The basis, a
- * measured takeover time, is in docs/spec/MANAGED_EXCHANGE_RECORD.md,
+ * measured takeover time, is in docs/spec/MANAGED_EXCHANGE_SCHEDULE.md,
  * "Applying a waiting app version between windows".
  */
 export const APP_UPDATE_TAKEOVER_WAIT_MS = 10_000;

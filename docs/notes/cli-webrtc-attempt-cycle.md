@@ -29,7 +29,7 @@ automatically, the CLI's data channel opened on a connection the web app never
 reads, and the CLI reported connected and then failed.
 
 The replacement is the shape the web app's scheduled runs already use
-([MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#occupying-a-due-window)):
+([MANAGED_EXCHANGE_SCHEDULE.md](../spec/MANAGED_EXCHANGE_SCHEDULE.md#occupying-a-due-window)):
 bounded attempts, each a fresh registration and peer connection with a fresh
 credential. The design panel before the ruling split 3-1; the dissent held
 that a CLI process does not share the browser's fragility and that cycling

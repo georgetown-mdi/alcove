@@ -152,7 +152,7 @@ function powerShellTrigger(schedule: RunSchedule | undefined): string {
  * The PowerShell command that registers a Windows Task Scheduler task running
  * `command` under cmd on `schedule` (daily at 2am without one), from the
  * folder holding the exchange's files. `command` is already quoted for cmd.
- * Not a schtasks line, for the reasons docs/spec/MANAGED_EXCHANGE_RECORD.md
+ * Not a schtasks line, for the reasons docs/spec/MANAGED_EXCHANGE_SCHEDULE.md
  * gives under "The Task Scheduler line".
  */
 export function taskSchedulerLine(

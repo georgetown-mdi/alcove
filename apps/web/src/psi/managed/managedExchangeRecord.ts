@@ -209,7 +209,7 @@ export function documentPartsThisAppDoesNotRun(
  * Upper bound on {@link ManagedExchangeSchedule.intervalDays}: an annual cadence,
  * the longest partnership recurrence the design serves. It also bounds how far
  * past any instant a window can fall, which is what lets every surface render an
- * admitted schedule without a fallback (see docs/spec/MANAGED_EXCHANGE_RECORD.md,
+ * admitted schedule without a fallback (see docs/spec/MANAGED_EXCHANGE_SCHEDULE.md,
  * the `intervalDays` row and "Every admitted schedule renders").
  */
 export const MAX_SCHEDULE_INTERVAL_DAYS = 366;
@@ -219,7 +219,7 @@ export const MAX_SCHEDULE_INTERVAL_DAYS = 366;
  * a day. It is below the shortest period {@link MAX_SCHEDULE_INTERVAL_DAYS}'s
  * companion floor of one day admits, so no schedule this schema accepts can
  * place two windows over the same instant (see
- * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `windowSeconds` row).
+ * docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, the `windowSeconds` row).
  */
 export const MAX_SCHEDULE_WINDOW_SECONDS = 43_200;
 

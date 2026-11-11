@@ -2,7 +2,7 @@
  * The managed exchange's schedule arithmetic: where a recurrence's run windows
  * fall, which window an instant sits in, and the catch-up and advance rules that
  * move `nextWindow` and `consecutiveMisses`. The normative rules are in
- * docs/spec/MANAGED_EXCHANGE_RECORD.md, "The schedule object" and "Catch-up on
+ * docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "The schedule object" and "Catch-up on
  * wake"; this module implements them.
  *
  * Every instant is UTC milliseconds computed by fixed arithmetic from the
@@ -367,7 +367,7 @@ export function advanceManagedScheduleAfterWindow(
 }
 
 /**
- * Apply the catch-up rule at a wake (see docs/spec/MANAGED_EXCHANGE_RECORD.md,
+ * Apply the catch-up rule at a wake (see docs/spec/MANAGED_EXCHANGE_SCHEDULE.md,
  * "Catch-up on wake"): walk forward from the window `nextWindow` plans, one
  * window at a time, until the walk lands on a window still live; advance
  * `nextWindow` there and report whether it is open now. Runs on the ordinary
@@ -387,7 +387,7 @@ export function advanceManagedScheduleAfterWindow(
  * An elapsed window with no recorded run that opened at or after
  * `respondedAtMs` is `"skipped"` instead of missed: the operator's compromise
  * response stood over that window, so this device withheld it and waited for no
- * partner (docs/spec/MANAGED_EXCHANGE_RECORD.md, "A due window under the
+ * partner (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "A due window under the
  * operator's compromise response"). A window that opened before the response is
  * still a miss.
  *
@@ -578,7 +578,7 @@ export function foldElapsedWindowsUnderResponse(
  * Resolve an operator's local wall-clock cadence to the UTC anchor the record
  * stores. This is the ONE place the host's zone is read, along with the
  * read-back in {@link localCadenceFromAnchor}: it runs at save and again only
- * when the operator edits the schedule (see docs/spec/MANAGED_EXCHANGE_RECORD.md,
+ * when the operator edits the schedule (see docs/spec/MANAGED_EXCHANGE_SCHEDULE.md,
  * "The schedule object", for why).
  *
  * A wall-clock time the local zone skips (the hour a spring-forward transition

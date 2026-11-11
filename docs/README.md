@@ -99,6 +99,7 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 - [CANONICAL_ENCODING.md](spec/CANONICAL_ENCODING.md) - the RFC 8785 encoding that receipts, record commitments, and the agreed-terms hash are computed over
 - [CREDENTIAL_STORAGE.md](spec/CREDENTIAL_STORAGE.md) - how the key file, signing identity, exchange record, and result CSV are written owner-only and durably
 - [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md) - the record a recurring web exchange stores, the save-before-success order, the one-owner rule, and the export file
+- [MANAGED_EXCHANGE_SCHEDULE.md](spec/MANAGED_EXCHANGE_SCHEDULE.md) - the schedule of a recurring web exchange: the window arithmetic, catch-up after a sleep, the retries inside a window, and the scheduled lines and command rules (mount paths, PowerShell and pasted-text quoting) of the command-line export
 - [CLI_EVENTS.md](spec/CLI_EVENTS.md) - the opt-in `--event-stream` output: framing, event types, error categories, and sanitization
 - [CLI_DOCTOR.md](spec/CLI_DOCTOR.md) - the `alcove doctor --json` document: fields, schema version, status values, checks, and exit codes
 - [SERVER_JOB_API.md](spec/SERVER_JOB_API.md) - the console's job API: request schema, SFTP connection, lifecycle, working-folder layout, event relay, and startup rules

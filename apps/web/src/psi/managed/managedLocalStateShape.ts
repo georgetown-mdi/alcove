@@ -297,7 +297,7 @@ export function parseManagedLocalStateEntries(
  * Partition a sibling store's parallel key and value arrays into the entries
  * that parse and the keys of those that do not: the tolerant counterpart of
  * {@link parseManagedLocalStateEntries}, for the unattended read
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Every admitted schedule renders").
+ * (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "Every admitted schedule renders").
  * An entry discarded for its version is in neither. Never throws.
  */
 export function partitionReadableManagedLocalState(

@@ -827,7 +827,7 @@ describe("a window whose attempts do not agree", () => {
     // The partnership MET here: the authenticated key exchange runs only over a
     // channel already open to the partner, so promoting this window to "missed"
     // on the earlier waits would count a coordination miss against a window that
-    // raises a desync question instead (docs/spec/MANAGED_EXCHANGE_RECORD.md,
+    // raises a desync question instead (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md,
     // the `consecutiveMisses` row).
     const runner = harness({
       records: [recordWith()],
