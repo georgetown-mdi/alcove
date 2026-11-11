@@ -551,7 +551,7 @@ The library mechanism itself still exists, which is the part to keep rather than
 discard: a second `connect()` on a live socket does not settle, and its
 precondition is narrower than "an open connection". The measured figures and the
 exact precondition are a normative pin row in
-[DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client),
+[SFTP_STACK.md](../spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization),
 which defers to this note for the two barriers above and the caveats below.
 
 What the verdict, and the check that backs it, do not cover:
@@ -588,7 +588,7 @@ established but never ready (`stallHandshakeOnConnect` in
 What the run shows about the library -- that `end()` closes nothing
 mid-handshake, that the destroy settles the parked attempt rather than
 abandoning it, and what that rejection looks like -- is a normative pin row in
-[DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client),
+[SFTP_STACK.md](../spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization),
 with the measured figures and the re-verify instruction on a bump. That row
 defers to this note for the driven measurement and its limits, which are the
 residue below.

@@ -31,8 +31,8 @@ import { waitFor } from "../support";
 // ssh2-sftp-client, not the adapter. A bump of either package fails red at the
 // assumption that moved, naming which one, where an adapter-level test would
 // report the same break as a timeout. Which assumptions are checks and which
-// stay re-verify-on-upgrade prose, and why: docs/spec/DEPENDENCY_PINS.md
-// ("Upgrading the SFTP Stack"). Only the in-process backend can be made to
+// stay re-verify-on-upgrade prose, and why: docs/spec/SFTP_STACK.md.
+// Only the in-process backend can be made to
 // stall a handshake or drop a session, so these run there with their own
 // server; the shared globalSetup server hands workers only connection details.
 

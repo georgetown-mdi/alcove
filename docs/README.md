@@ -20,7 +20,7 @@ Alcove is a privacy-preserving record linkage (PPRL) tool that enables partner a
 | Operator running one exchange from a graphical console on their own machine | [CONSOLE.md](CONSOLE.md) | [CLI.md](CLI.md), [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) |
 | Operator running a recurring exchange from the browser | [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md) | [SECURITY_DESIGN.md](SECURITY_DESIGN.md), [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md) |
 | Developer contributing to the project | [DESIGN.md](DESIGN.md) | [PROTOCOL.md](spec/PROTOCOL.md), [COMMUNICATION.md](COMMUNICATION.md), [FILE_SYNC.md](spec/FILE_SYNC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), [TESTING.md](TESTING.md) |
-| Maintainer upgrading a pinned dependency | [CONTRIBUTING.md](../CONTRIBUTING.md#dependency-policy) | [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md), [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) |
+| Maintainer upgrading a pinned dependency | [CONTRIBUTING.md](../CONTRIBUTING.md#dependency-policy) | [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md), [SFTP_STACK.md](spec/SFTP_STACK.md), [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) |
 | Partner agency whose IT staff run the command line app | [CLI.md](CLI.md#your-first-recurring-exchange) | [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) |
 
 ## Glossary
@@ -98,7 +98,8 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 - [CLI_EVENTS.md](spec/CLI_EVENTS.md) - the opt-in `--event-stream` output: framing, event types, error categories, and sanitization
 - [CLI_DOCTOR.md](spec/CLI_DOCTOR.md) - the `alcove doctor --json` document: fields, schema version, status values, checks, and exit codes
 - [SERVER_JOB_API.md](spec/SERVER_JOB_API.md) - the console's job API: request schema, SFTP connection, lifecycle, working-folder layout, event relay, and startup rules
-- [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md) - the SFTP and WebRTC stack internals, the upgrade checklists, and the install-script policy
+- [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md) - the WebRTC stack internals, the upgrade checklists, and the install-script policy
+- [SFTP_STACK.md](spec/SFTP_STACK.md) - the SFTP stack internals and the checklist to re-verify them when `ssh2` or `ssh2-sftp-client` is upgraded
 - [CONTAINER_IMAGES.md](spec/CONTAINER_IMAGES.md) - the standard and FIPS images: dependency pinning, the FIPS provider's CMVP certificate coverage, and the writable and setuid inventories
 
 ### Design notes ([`docs/notes/`](notes/README.md))

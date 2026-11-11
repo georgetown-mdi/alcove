@@ -41,7 +41,7 @@ export const hostKeyBlob = (keyBlob: Buffer): Uint8Array<ArrayBuffer> =>
  * Deliver an ssh2 hostVerifier verdict, swallowing any throw: a verdict the
  * async check delivers after the handshake has torn down is moot, and an
  * escaped throw would be an unhandled rejection. What the pinned ssh2 does with
- * a late verdict: docs/spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client.
+ * a late verdict: docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication.
  *
  * @internal
  */

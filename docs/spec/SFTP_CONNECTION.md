@@ -111,7 +111,7 @@ The best-effort `safeDelete` has the same 60-second deadline so a teardown delet
 The entry guard's role is to spare the 60-second wait once a fatal error is already known, not to be the sole thing standing between the call and an indefinite hang.
 
 The bounds above reach past the public `ssh2-sftp-client` API and drive ssh2 internals directly, so they rest on assumptions about ssh2's internal behavior that an upgrade can silently break.
-Before raising either `ssh2` or `ssh2-sftp-client`, follow the upgrade checklist in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client), which names the internal assumptions, the source files to re-read, and the contract-assertion test that fails red on a lifecycle change.
+Before raising either `ssh2` or `ssh2-sftp-client`, follow the upgrade checklist in [SFTP_STACK.md](SFTP_STACK.md), which names the internal assumptions, the source files to re-read, and the contract-assertion test that fails red on a lifecycle change.
 
 ## SFTP host-key verification
 
@@ -143,7 +143,7 @@ On a mismatch the error's own message names the presented fingerprint and how ma
 The control is fail-closed on every path.
 A mismatch, a malformed or empty blob, or any error inside the callback results in `verify(false)`, which ssh2 raises as a fatal handshake error whose message contains `Host denied (verification failed)` -- before authentication, so no credential is presented to an unverified server.
 The CLI adapter treats that rejection as terminal and does not retry it: retrying would only re-run the key exchange against the same untrusted host.
-The `Host denied` message fragment is an ssh2 internal assumption recorded in the [SFTP-stack upgrade checklist](DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client); even if a future version renamed it, core re-wraps the same rejection into an `SFTP host-key verification failed:` message and the outcome is unchanged, only slower.
+The `Host denied` message fragment is an ssh2 internal assumption recorded in the [SFTP-stack upgrade checklist](SFTP_STACK.md#host-key-diagnostics-and-authentication); even if a future version renamed it, core re-wraps the same rejection into an `SFTP host-key verification failed:` message and the outcome is unchanged, only slower.
 The mismatch message names the presented fingerprint and key type so an operator can distinguish a legitimate key rotation from an attack.
 The key type is the server's choice within the bound below, so it rides a labelled cause link of its own (see [Message display budgets](DISPLAY_REDACTION.md#message-display-budgets)) and is escaped at the display boundary before it reaches the operator's terminal or log.
 A changed key is never auto-accepted -- there is no standing always-accept flag (which would be permanent trust-on-first-use disguised as protection).
@@ -237,7 +237,7 @@ PRIVATE KEY` marker on a real socket, asserted on the emitted line's bytes, in `
 
 **Diagnosing a peer that never identifies itself.**
 An SSH server sends its identification string before anything else, so a dial that never reaches host-key verification saw something that is not one.
-The pinned stack reports a proxy answering with an HTML page, a TLS service, and a firewall closing the connection in front of the server all as the same `Connection lost before handshake`, with the peer's own bytes discarded (recorded as a measured assumption in the [SFTP-stack upgrade checklist](DEPENDENCY_PINS.md)).
+The pinned stack reports a proxy answering with an HTML page, a TLS service, and a firewall closing the connection in front of the server all as the same `Connection lost before handshake`, with the peer's own bytes discarded (recorded as a measured assumption in the [SFTP-stack upgrade checklist](SFTP_STACK.md#host-key-diagnostics-and-authentication)).
 Every dial therefore reaches one diagnosis step (`apps/cli/src/connection/sftpPeerIdentification.ts`), which on that rejection, or on an `ECONNRESET` anywhere in the cause chain, opens **one** further connect attempt -- a single `net.connect` call to the same endpoint, which for a dual-stack hostname may race address families within that one call, exactly as the dial it follows does -- and reports what the peer sends.
 It runs at exactly one layer, the transport adapter's dial sequence -- the one path to `ssh2`'s connect, so the connect loop, the connection-per-poll cycle-start re-dial, the mid-exchange recovery re-dial, the teardown's, and the credential-free host-key probe (which dials the same adapter as its raw client) all pass through it.
 Both probe entry points therefore add no diagnosis of their own.

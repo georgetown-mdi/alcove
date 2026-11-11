@@ -2,7 +2,7 @@
 // offers, packet flow) into Alcove's logger at the trace level. Every line holds
 // text the remote server chose, so this module is a display sink and escapes what
 // it emits (CONTRIBUTING.md, Operator-facing escaping; what the stack escapes
-// first: docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack").
+// first: docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication).
 
 import logLibrary from "loglevel";
 

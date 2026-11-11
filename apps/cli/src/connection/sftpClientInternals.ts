@@ -1,7 +1,7 @@
 // Types for the ssh2 / ssh2-sftp-client internals the SFTP adapter reaches
 // past their public APIs, and pure resolvers that detect the close members.
 // Re-verify on any bump:
-// docs/spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client.
+// docs/spec/SFTP_STACK.md.
 
 import { UsageError } from "@alcove/core";
 

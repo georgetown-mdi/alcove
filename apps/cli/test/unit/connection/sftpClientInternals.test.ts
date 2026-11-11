@@ -213,6 +213,6 @@ describe("transportCloseSeamError", () => {
     // The ssh2 internal that is missing is contributor-tier detail: the caller
     // logs it at debug rather than putting it on the operator's terminal, and no
     // operator message cites a docs path the shipped image does not contain.
-    expect(error.message).not.toContain("docs/spec/DEPENDENCY_PINS.md");
+    expect(error.message).not.toContain("docs/spec/SFTP_STACK.md");
   });
 });

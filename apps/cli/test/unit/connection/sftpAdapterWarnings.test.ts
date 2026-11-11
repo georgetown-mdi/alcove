@@ -319,7 +319,7 @@ describe("the unreadable transport lifecycle", () => {
     // The ssh2 reading behind it is contributor-tier detail, logged at debug by
     // the adapter rather than put on the operator's terminal.
     expect(message).not.toContain("ssh2's client.on()");
-    expect(message).not.toContain("docs/spec/DEPENDENCY_PINS.md");
+    expect(message).not.toContain("docs/spec/SFTP_STACK.md");
   });
 });
 

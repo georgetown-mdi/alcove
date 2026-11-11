@@ -360,6 +360,6 @@ reason measured during implementation:
   this one: why the mode exists, and the reconnect posture it rests on.
 - [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#sftp-only-options) -- the
   operator-facing configuration surface and what the run reports.
-- [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md) -- the ssh2 and
+- [SFTP_STACK.md](../spec/SFTP_STACK.md) -- the ssh2 and
   ssh2-sftp-client internals the session machine's readings rest on, and what a
   version bump must re-verify.

@@ -301,7 +301,7 @@ inProcessOnly(
     // operation happened to be on the wire when it went -- driven against the real
     // server rather than modelled, because what
     // the release's own end() does to a transport ssh2 has already ended is the
-    // pinned stack's behavior (see docs/spec/DEPENDENCY_PINS.md) and a stand-in
+    // pinned stack's behavior (see docs/spec/SFTP_STACK.md#session-release-and-close) and a stand-in
     // that answered it differently would report a different operator experience.
     // Driven at the adapter because the poll loop does not stage a drop between
     // its cycles on demand.

@@ -1054,7 +1054,7 @@ test("probeHostKeyFingerprint swallows a late verify() throw on a torn-down hand
   // The competing-rejection race: connect() rejects on its own (as readyTimeout
   // would) while the verifier's async fingerprint hash is still pending. The
   // verify() here throws as a mock; the pinned ssh2 returns without throwing on
-  // a torn-down handshake (docs/spec/DEPENDENCY_PINS.md, host-key probe premise
+  // a torn-down handshake (docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication, host-key probe premise
   // (4); driven in apps/cli/test/integration/sftpStackPremises.test.ts). This
   // covers the guard against a later version that does throw: settleVerify must
   // swallow it so the void-ed verifier IIFE never rejects, which would show up

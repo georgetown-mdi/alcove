@@ -303,7 +303,7 @@ absence, the entry separates the two.
   the runtime's rather than Alcove's or an operator's -- `ssh2`
   capability-probes the cipher list it offers, and Alcove sets
   `algorithms.cipher` nowhere
-  ([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client))
+  ([SFTP_STACK.md](../spec/SFTP_STACK.md#key-exchange-ciphers-and-delete-of-a-missing-path))
   -- and whether an operator naming that cipher would put it back in the offer
   is unmeasured. A FIPS deployment would not name it: it is not an approved
   algorithm.

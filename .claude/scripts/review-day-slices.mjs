@@ -210,6 +210,7 @@ export const BOUNDARIES = [
     specs: [
       "CONTAINER_IMAGES",
       "DEPENDENCY_PINS",
+      "SFTP_STACK",
       "docs/RELEASES.md",
       "docs/DEPLOYMENT.md",
     ].map(spec),

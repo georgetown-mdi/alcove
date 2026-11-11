@@ -760,7 +760,7 @@ const REFUSAL_WITHOUT_CONFIG = [
 // Raised after the probe, itself a connection: this can only accurately
 // assure what that connection disclosed, not that none was opened. ssh2
 // refuses at host-key verification, before userauth (the assumption recorded
-// in docs/spec/DEPENDENCY_PINS.md), so no credential was sent; and the
+// in docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication), so no credential was sent; and the
 // decline returns ahead of every persist arm, so nothing was written (the
 // check above).
 const DECLINED_SUMMARY =

@@ -23,8 +23,7 @@ import { serverAuth, sftpServer } from "../sftpServer/testContext";
 // that no credential the dial sends is among what it reports; that every level
 // below trace emits not one line of it, whatever the `-v` count; that a
 // peer's own bytes reach the operator escaped, since a name-list the peer chose
-// arrives verbatim from ssh2 (docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP
-// Stack"); that the lines the stack renders as the transport drains reach the
+// arrives verbatim from ssh2 (docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication); that the lines the stack renders as the transport drains reach the
 // operator's --log-file rather than the stderr it would reach once a command
 // has closed its sink; and that the wait which keeps those lines is a
 // bound the process cannot exit out from under.

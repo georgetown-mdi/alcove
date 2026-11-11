@@ -112,7 +112,7 @@ describe("the dial's subsystem-open bound", () => {
 
       // Closed before the rejection is reported: ssh2 defers a later connect()
       // on a still-writable socket behind its close and arms no readyTimeout
-      // for the deferred attempt (docs/spec/DEPENDENCY_PINS.md).
+      // for the deferred attempt (docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization).
       expect({
         attempts: connect.mock.calls.length,
         closed: socket.destroyed,
@@ -240,7 +240,7 @@ describe("the dial's subsystem-open bound", () => {
       // its failure only once that destroy's 'close' has landed: a dial issued
       // on this client while it is owed is failed by ssh2-sftp-client's
       // connect-time listeners while the handshake it started runs on unowned
-      // at the server (docs/spec/DEPENDENCY_PINS.md).
+      // at the server (docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization).
       expect({ destroyed: socket.destroyed, outcome: dial.outcome }).toEqual({
         destroyed: true,
         outcome: "pending",

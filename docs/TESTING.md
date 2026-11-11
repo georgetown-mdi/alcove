@@ -82,7 +82,7 @@ The in-process backend adds two surfaces a real `sshd` cannot offer:
   progress-free flood the listing's round-trip cap exists for, and the only
   shape that reaches it), and a NAME reply of a chosen width (the hook the
   pinned stack's reply wall is measured through; see
-  [docs/spec/DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client)).
+  [docs/spec/SFTP_STACK.md](spec/SFTP_STACK.md#re-verification-by-test)).
 - `sessionControls.ts`, the session-lifecycle hub -- lifetime, op-count, and
   idle caps that drop a live session, one-shot drops armed on the Nth further
   operation or on a wall clock, a withheld-close mode that consumes the client's

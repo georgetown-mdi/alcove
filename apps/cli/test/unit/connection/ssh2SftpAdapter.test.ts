@@ -172,8 +172,8 @@ describe("connect retry", () => {
     // The connect-retry predicate treats a host-key verification rejection as
     // terminal by matching the `Host denied` message fragment; a renamed message
     // would silently retry a host-key failure instead of failing after one
-    // attempt. Keep this in sync with the "Upgrading the SFTP Stack" checklist in
-    // docs/spec/DEPENDENCY_PINS.md.
+    // attempt. Keep this in sync with the checklist in
+    // docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication.
     vi.useFakeTimers();
     const adapter = new SSH2SFTPClientAdapter();
     let calls = 0;
@@ -185,8 +185,8 @@ describe("connect retry", () => {
         // (hostVerifier calling verify(false)) is "Host denied (verification
         // failed)", from node_modules/ssh2/lib/protocol/kex.js. ssh2 sets no
         // machine-readable `code` on it, so the predicate keys on this message
-        // fragment. Keep it in sync with kex.js and the "Upgrading the SFTP
-        // Stack" checklist in docs/spec/DEPENDENCY_PINS.md.
+        // fragment. Keep it in sync with kex.js and the checklist in
+        // docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication.
         throw new Error("Host denied (verification failed)");
       }),
       client: noDelayClient(),
@@ -2692,8 +2692,8 @@ describe("out-of-band client event callbacks", () => {
   // ssh2-sftp-client constructor so the library's globalListener routes an
   // out-of-band ssh2 Client event to the project logger instead of its default
   // console.error/console.log. The library stores those callbacks on the client
-  // as `eventCallbacks` (the same 2nd-positional-arg coupling the "Upgrading the
-  // SFTP Stack" checklist tracks); invoke them directly to pin the routing and
+  // as `eventCallbacks` (the same 2nd-positional-arg coupling the checklist in
+  // docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication tracks); invoke them directly to pin the routing and
   // -- security-relevant -- the escaping of the server-controlled error message.
   function eventCallbacks(adapter: SSH2SFTPClientAdapter): {
     error: (err: unknown) => void;

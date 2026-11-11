@@ -1,6 +1,6 @@
 // This adapter drives ssh2's raw SFTPWrapper internals past the public
 // ssh2-sftp-client API. On any upgrade of ssh2 or ssh2-sftp-client, re-verify the internal assumptions
-// per the "Upgrading the SFTP Stack" checklist in docs/spec/DEPENDENCY_PINS.md
+// per the checklist in docs/spec/SFTP_STACK.md
 // before it merges -- a "compatible" bump can silently break an assumption no
 // normal-path test exercises.
 import Ssh2SftpClient from "ssh2-sftp-client";
@@ -173,8 +173,7 @@ const MAX_SPLIT_SCOPE_ENTRY_SWEEP_DELETES = 2 * MAX_DIRECTORY_ENTRIES;
  * Listeners the shared ssh2 `Client` can hold on one event name for work
  * running BESIDE the widest fan, counted into
  * {@link SHARED_SSH2_CLIENT_MAX_EVENT_LISTENERS}. MEASURED rather than summed;
- * the runs behind it are in docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP
- * Stack".
+ * the runs behind it are in docs/spec/SFTP_STACK.md#keepalive-concurrent-operations-and-the-put-stream.
  *
  * @internal exported for the adapter's own tests
  */
@@ -224,7 +223,7 @@ const PEAK_SHARED_CLIENT_LISTENERS_PER_EVENT =
  * Ceiling this adapter raises on its shared ssh2 `Client`'s per-event listener
  * count, in place of Node's default of 10. The derivation, the measured
  * behavior behind it, and what an ssh2 / ssh2-sftp-client bump re-confirms are
- * in docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack".
+ * in docs/spec/SFTP_STACK.md#keepalive-concurrent-operations-and-the-put-stream.
  *
  * @internal exported for the adapter's own tests
  */
@@ -234,7 +233,7 @@ export const SHARED_SSH2_CLIENT_MAX_EVENT_LISTENERS =
 // The ssh2 Client's 'close' for one dial, subscribed before the dial so a close
 // delivered while it fails is recorded. Node marks a destroyed socket `closed`
 // before that event fires, so the event, not the socket, tells whether the
-// dial's close is still to come (docs/spec/DEPENDENCY_PINS.md).
+// dial's close is still to come (docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization).
 interface DialCloseWatch {
   readonly delivered: Promise<void>;
   seen(): boolean;
@@ -352,7 +351,7 @@ type AbandonedTransitionDisposition =
   | "rejects"
   // Teardown alone, and only in this narrow form: it gives up ssh2-sftp-client's
   // end() -- which a live handshake beneath it resolves in a millisecond having
-  // closed nothing (measured; see docs/spec/DEPENDENCY_PINS.md) -- and closes the
+  // closed nothing (measured; see docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization) -- and closes the
   // transport from this side instead. The destroy needs nothing from the peer and
   // settles the very dial being waited on.
   | "forcesTheTransportClosed";
@@ -565,8 +564,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // An error is logged at ERROR only while a session is still held, the
     // state in which the exchange can lose one; the library has not cleared
     // `sftp` by the time it hands such an error over (measured for a reset
-    // that takes a live session; see docs/spec/DEPENDENCY_PINS.md, "Upgrading
-    // the SFTP Stack"). A teardown the peer answers with a reset also arrives
+    // that takes a live session; see
+    // docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication). A teardown the peer answers with a reset also arrives
     // held and logs here. With no session held -- a failed dial, a closed
     // connection -- the outcome already went to that call's caller, so the
     // line joins end/close at trace.
@@ -1122,8 +1121,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
 
   // Answer the SSH server's keyboard-interactive authentication prompts with the
   // configured password. The ssh2 behaviors it rests on, and what a bump
-  // re-verifies, are in docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP
-  // Stack".
+  // re-verifies, are in
+  // docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication.
   //
   // The password is read from the live connect options at answer time, NOT
   // captured at attach time, so a reconnect under a different credential can
@@ -1165,7 +1164,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // Watch the ssh2 Client's transport lifecycle so the recovery re-dial can tell
   // a transport whose events have ALL been delivered from one that still owes
   // its 'close'. The measured ordering, and what an unwatchable Client costs,
-  // are in docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack".
+  // are in docs/spec/SFTP_STACK.md#session-release-and-close.
   private watchTransportLifecycle(): void {
     const client = (this.client as unknown as Ssh2SftpClientInternals).client;
     if (typeof client?.on !== "function") return;
@@ -1756,7 +1755,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // for). ssh2 exposes setNoDelay but not setKeepAlive, so reach the Client's
     // underlying net.Socket (`_sock`) directly, the same access-past-the-public-API
     // assumption the fatal-'error' guard and createExclusive rely on (re-verify on
-    // any ssh2 upgrade per the DEPENDENCY_PINS.md checklist). Guarded and
+    // any ssh2 upgrade per docs/spec/SFTP_STACK.md#keepalive-concurrent-operations-and-the-put-stream). Guarded and
     // non-fatal, exactly like setNoDelay.
     const rawSocket = internals.client?._sock;
     if (typeof rawSocket?.setKeepAlive === "function") {
@@ -1903,7 +1902,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     } catch (error: unknown) {
       // The dial that lost that race is still parked on a socket that is still
       // WRITABLE, which every later dial on this shared client would defer
-      // behind forever (docs/spec/DEPENDENCY_PINS.md). Closed, and that close
+      // behind forever (docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization). Closed, and that close
       // waited out, before the rejection is reported: no caller can observe the
       // failure over a transport that is still open, nor over one whose close
       // this side still owes.
@@ -1921,7 +1920,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // close out, as this adapter's other two forced closes do: a dial issued while
   // the ssh2 Client's 'close' is still owed is failed by ssh2-sftp-client's
   // connect-time listeners while the handshake it started runs on unowned at the
-  // server (docs/spec/DEPENDENCY_PINS.md).
+  // server (docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization).
   //
   // net.Socket's destroy() needs nothing from the peer, and it settles the
   // abandoned dial as well (measured against the pinned stack in
@@ -1979,7 +1978,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
 
   // A dial can reject before the connection it opened has delivered the ssh2
   // Client's 'close', and the next dial on the shared Client then fails
-  // however the server answers (docs/spec/DEPENDENCY_PINS.md). So that
+  // however the server answers (docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization). So that
   // connection is closed and the close waited out before the rejection is
   // reported. A socket the dial did not open belongs to the path that opened
   // it, and a dial whose 'close' was already delivered needs nothing more.
@@ -2294,7 +2293,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // it has no such end() -- and it must not create one, because driven beneath a
   // live handshake ssh2-sftp-client's end() short-circuits on the session that
   // handshake has not restored yet, resolving in a millisecond with the socket
-  // untouched (measured; docs/spec/DEPENDENCY_PINS.md). What the destroy needs is
+  // untouched (measured; docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization). What the destroy needs is
   // nothing from the peer, and it settles the very dial being waited on, so there
   // is nothing left to wait for after it: `destroyed` reads back in the same tick.
   //
@@ -2497,8 +2496,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     const { end, once, removeListener, socket } = seams;
     // WHO ended this transport is the entry classification, recorded BEFORE the
     // close is driven so an operation that close tears reads the boundary. How
-    // the two half-close flags are read is in docs/spec/DEPENDENCY_PINS.md,
-    // "Upgrading the SFTP Stack"; what each reading records, counts and warns
+    // the two half-close flags are read is in docs/spec/SFTP_STACK.md#dial-bounds-and-session-transition-serialization;
+    // what each reading records, counts and warns
     // is in docs/spec/SFTP_SESSION_RECOVERY.md, "What the accounting counts".
     const entry: IdleBoundaryOutcome =
       socket.readableEnded === true
@@ -2763,7 +2762,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           // holds this arm, and ephemeralSessionExchange.test.ts drives the
           // consequence end to end. Nothing here bounds a streak that never
           // resolves: that is the consumer's peer-inactivity ceiling
-          // (docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack").
+          // (docs/spec/SFTP_STACK.md#key-exchange-ciphers-and-delete-of-a-missing-path).
           this.log.warn(
             "ephemeral SFTP re-dial failed; skipping this poll cycle and " +
               `retrying on the next tick: ${sanitizeErrorForDisplay(error)}`,
@@ -2795,7 +2794,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // peer-silence timeout. ssh2's "Host denied (verification failed)" is wrapped
   // by ssh2-sftp-client as a new Error with the same message, so the stable
   // fragment from kex.js is matched rather than a code the error does not
-  // carry (re-verify on any ssh2 upgrade per docs/spec/DEPENDENCY_PINS.md).
+  // carry (re-verify on any ssh2 upgrade per docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication).
   //
   // A key exchange this process cannot perform is permanent for the life of the
   // run: every attempt puts the same withheld offer to the same server. What

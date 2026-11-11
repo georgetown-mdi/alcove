@@ -1,6 +1,6 @@
 // Diagnoses a dial that failed before the peer identified itself as an SSH
 // server. ssh2 discards the peer's bytes and rejects every such cause with one
-// message (docs/spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client),
+// message (docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication),
 // so this module reads them on a second, bounded, credential-free connection.
 // Rules: docs/spec/SFTP_CONNECTION.md#sftp-host-key-verification, "Diagnosing
 // a peer that never identifies itself".
@@ -61,7 +61,7 @@ export type PeerAnswer =
 
 /**
  * The rejection fragments the pinned stack raises for a dial that ended
- * before the peer identified itself (see DEPENDENCY_PINS.md). A stack that
+ * before the peer identified itself (see docs/spec/SFTP_STACK.md#host-key-diagnostics-and-authentication). A stack that
  * rewords them only stops the diagnosis: an unmatched rejection is returned
  * as it stands.
  */

@@ -140,5 +140,5 @@ A file-sync run with no marker armed, which has no session key, tells its partne
 - [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security) - the Channel security overview: what each control protects against and why the design is sufficient
 - [PROTOCOL.md](PROTOCOL.md) - the PSI and P-256 key-exchange wire-level protocol that produces the session key these controls key from
 - [COMMUNICATION.md](../COMMUNICATION.md) - the network channels and the message-delivery/teardown transport contract these controls run within
-- [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client) - the SFTP-stack upgrade checklist for the ssh2 internal assumptions these controls depend on
+- [SFTP_STACK.md](SFTP_STACK.md) - the SFTP-stack upgrade checklist for the ssh2 internal assumptions these controls depend on
 - [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack) - the PeerJS-stack upgrade checklist for the PeerJS and BinaryPack internal assumptions the WebRTC data-channel bound (specified in [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)) depends on
