@@ -94,6 +94,15 @@ describe("Ed25519PublicKeyAlgorithm", () => {
     ).rejects.toThrow(/32 bytes/);
   });
 
+  test("refuses a 32-byte key with bytes after it", async () => {
+    const keyPair = new Ed25519PublicKeyAlgorithm().createKeyPair();
+    await expect(
+      keyPair.setPublicKeyBytes(
+        Buffer.concat([keyBlob(RFC8032_PUBLIC_KEY), Buffer.from([1, 2, 3])]),
+      ),
+    ).rejects.toThrow(/got 32 bytes and 3 more\.$/);
+  });
+
   test("refuses a blob naming another algorithm", async () => {
     const keyPair = new Ed25519PublicKeyAlgorithm().createKeyPair();
     const blob = Buffer.concat([

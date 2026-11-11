@@ -5,20 +5,14 @@ import type { Plugin } from "vite";
 const SERVER_ONLY_PACKAGES = ["env-schema", "dotenv"];
 
 /**
- * `diffie-hellman` and every package it brings (package-lock.json), the
- * finite-field key exchange the browser SSH client's library requires. Every
+ * The finite-field key exchange package the browser SSH client's library
+ * requires, and the only package in package-lock.json that requires it. Every
  * browser config aliases it to a stub (`browserSshDependencyAliases`,
- * vite.config.ts), so any of these in a browser bundle means the alias is
- * missing.
+ * vite.config.ts), so the package in a browser bundle means the alias is
+ * missing. The packages it brings are not named: other dependencies bring
+ * them too.
  */
-export const DIFFIE_HELLMAN_CHAIN_PACKAGES = [
-  "diffie-hellman",
-  "bn.js",
-  "miller-rabin",
-  "brorand",
-  "randombytes",
-  "safe-buffer",
-];
+export const DIFFIE_HELLMAN_PACKAGE = "diffie-hellman";
 
 const MAX_REPORTED_MODULES = 10;
 
@@ -45,10 +39,10 @@ export function isServerOnlyModule(idOrSpecifier: string): boolean {
   );
 }
 
-/** Whether a module id or import specifier names a package of
- * {@link DIFFIE_HELLMAN_CHAIN_PACKAGES}. */
-export function isDiffieHellmanChainModule(idOrSpecifier: string): boolean {
-  return namesPackage(idOrSpecifier, DIFFIE_HELLMAN_CHAIN_PACKAGES);
+/** Whether a module id or import specifier names a module of
+ * {@link DIFFIE_HELLMAN_PACKAGE}. */
+export function isDiffieHellmanModule(idOrSpecifier: string): boolean {
+  return namesPackage(idOrSpecifier, [DIFFIE_HELLMAN_PACKAGE]);
 }
 
 const FORBIDDEN = [
@@ -59,10 +53,10 @@ const FORBIDDEN = [
       "Move each import behind a server-only module the browser code does not import.",
   },
   {
-    matches: isDiffieHellmanChainModule,
-    problem: "the browser bundle holds the diffie-hellman package chain",
+    matches: isDiffieHellmanModule,
+    problem: "the browser bundle holds the diffie-hellman package",
     remedy:
-      "Add browserSshDependencyAliases from vite.config.ts to this build's resolve.alias.",
+      "Add browserSshDependencyAliases from vite.config.ts to this build's resolve.alias, or, if it already has them, remove the import that brings diffie-hellman in.",
   },
 ] as const;
 
@@ -78,7 +72,7 @@ function describeReached(reached: Map<string, string>): string {
 
 /**
  * Fails the build whose module graph reaches a module
- * {@link isServerOnlyModule} or {@link isDiffieHellmanChainModule} names. It
+ * {@link isServerOnlyModule} or {@link isDiffieHellmanModule} names. It
  * records both the specifiers imports name and the ids they resolve to, since a
  * production browser build replaces every Node builtin with one stub whose id
  * no longer says which builtin it was. It resolves, loads and rewrites

@@ -1,5 +1,8 @@
 import { BaseStream, Buffer } from "./sshLibrary";
-import { BrowserSshRelayClosedError } from "./browserSshErrors";
+import {
+  BrowserSshClientClosedError,
+  BrowserSshRelayClosedError,
+} from "./browserSshErrors";
 
 /**
  * The largest message the SFTP relay takes from a browser
@@ -42,6 +45,9 @@ export type RelaySocket = Pick<
  */
 export class SshRelayStream extends BaseStream {
   #closeError: BrowserSshRelayClosedError | null = null;
+  #relayClosed = false;
+  /** Whether this client closed the stream before the relay closed it. */
+  #closedLocally = false;
 
   constructor(private readonly socket: RelaySocket) {
     super();
@@ -52,6 +58,7 @@ export class SshRelayStream extends BaseStream {
       else this.onError(new Error("The SFTP relay sent a text message."));
     });
     socket.addEventListener("close", (event: CloseEvent) => {
+      this.#relayClosed = true;
       if (event.code === CLOSE_NORMAL) {
         this.onEnd();
         return;
@@ -64,21 +71,32 @@ export class SshRelayStream extends BaseStream {
     });
   }
 
-  /** Open a WebSocket to `url` and resolve once it is open. */
+  /**
+   * Open a WebSocket to `url` and resolve once it is open. An abort of
+   * `signal` before then closes the socket and rejects with its reason; an
+   * already-aborted signal rejects without opening one.
+   */
   static open(
     url: string,
     createSocket: (url: string) => RelaySocket = (target) =>
       new WebSocket(target),
+    signal?: AbortSignal,
   ): Promise<SshRelayStream> {
+    if (signal?.aborted) return Promise.reject(signal.reason as Error);
     const socket = createSocket(url);
     const stream = new SshRelayStream(socket);
     return new Promise((resolve, reject) => {
-      const onOpen = () => {
+      const settle = () => {
+        socket.removeEventListener("open", onOpen);
         socket.removeEventListener("close", onClose);
+        signal?.removeEventListener("abort", onAbort);
+      };
+      const onOpen = () => {
+        settle();
         resolve(stream);
       };
       const onClose = (event: CloseEvent) => {
-        socket.removeEventListener("open", onOpen);
+        settle();
         reject(
           new BrowserSshRelayClosedError(
             event.code || CLOSE_ABNORMAL,
@@ -86,8 +104,14 @@ export class SshRelayStream extends BaseStream {
           ),
         );
       };
+      const onAbort = () => {
+        settle();
+        stream.dispose();
+        reject(signal!.reason as Error);
+      };
       socket.addEventListener("open", onOpen, { once: true });
       socket.addEventListener("close", onClose, { once: true });
+      signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
 
@@ -118,6 +142,7 @@ export class SshRelayStream extends BaseStream {
   close(error?: Error): Promise<void> {
     if (!this.disposed) {
       this.disposed = true;
+      this.#closedLocally = !this.#relayClosed;
       if (
         this.socket.readyState === SOCKET_OPEN ||
         this.socket.readyState === SOCKET_CONNECTING
@@ -130,17 +155,20 @@ export class SshRelayStream extends BaseStream {
   }
 
   override dispose(): void {
-    if (
-      !this.disposed &&
-      (this.socket.readyState === SOCKET_OPEN ||
-        this.socket.readyState === SOCKET_CONNECTING)
-    )
-      this.socket.close(CLOSE_NORMAL);
+    if (!this.disposed) {
+      this.#closedLocally = !this.#relayClosed;
+      if (
+        this.socket.readyState === SOCKET_OPEN ||
+        this.socket.readyState === SOCKET_CONNECTING
+      )
+        this.socket.close(CLOSE_NORMAL);
+    }
     super.dispose();
   }
 
   #requireOpen(): void {
     if (this.socket.readyState === SOCKET_OPEN && !this.disposed) return;
+    if (this.#closedLocally) throw new BrowserSshClientClosedError();
     throw (
       this.#closeError ??
       new BrowserSshRelayClosedError(CLOSE_ABNORMAL, "the socket is not open")

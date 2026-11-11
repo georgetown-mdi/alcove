@@ -2,10 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import * as diffieHellman from "@psi/transport/browserSsh/stubs/diffieHellman";
 import * as vscodeJsonrpc from "@psi/transport/browserSsh/stubs/vscodeJsonrpc";
-import {
-  BrowserSshUnsupportedKeyExchangeError,
-  BrowserSshVerifyOnlyError,
-} from "@psi/transport/browserSsh/browserSshErrors";
+import { BrowserSshUnsupportedKeyExchangeError } from "@psi/transport/browserSsh/browserSshErrors";
 import NodeRsa from "@psi/transport/browserSsh/stubs/nodeRsa";
 
 describe("the diffie-hellman stub", () => {
@@ -26,7 +23,9 @@ describe("the diffie-hellman stub", () => {
 
 describe("the node-rsa stub", () => {
   test("throws when constructed", () => {
-    expect(() => NodeRsa()).toThrow(BrowserSshVerifyOnlyError);
+    expect(() => NodeRsa()).toThrow(
+      "node-rsa is not included in the browser build.",
+    );
   });
 });
 

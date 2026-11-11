@@ -224,7 +224,8 @@ Whether to accept them, remove some, or wait is the maintainer's decision, and t
 - **With `diffie-hellman` stubbed** by a module that throws: `diffie-hellman`, `bn.js`, `miller-rabin`, `brorand`, `randombytes` and `safe-buffer` leave the bundle, which falls to 271.2 KiB minified and 62.8 KiB gzipped.
   The stub works only if the session offers the ECDH key exchanges alone.
   Driven on 2026-11-11: with the stub aliased in and ECDH alone offered, a session negotiates and completes against OpenSSH's sshd, and a server offering only finite-field Diffie-Hellman fails at once with a named error, before authentication (`apps/web/test/browser/browserSshClient.test.ts`).
-  The client build guard fails a browser bundle holding any package of the chain (`apps/web/hosted/moduleGraphGuard.ts`).
+  The client build guard, which the hosted and console builds install, fails a browser bundle holding `diffie-hellman` (`apps/web/hosted/moduleGraphGuard.ts`).
+  It does not name the packages `diffie-hellman` brings, since other dependencies bring them too.
 - **`vscode-jsonrpc`:** the library's code uses only `CancellationToken`, `CancellationTokenSource`, `Disposable`, `Emitter` and `Event` from it.
   Its main entry reads a `Buffer` global when it loads, so the client aliases the bare specifier to a module re-exporting the package's own `lib/events` and `lib/cancellation`.
   Whether to replace the package with owned code is open.

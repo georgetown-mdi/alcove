@@ -116,9 +116,10 @@ const browserSshStubs = path.resolve(
  * client never offers; `node-rsa`, required undeclared on the library's Node
  * path; and `vscode-jsonrpc`'s main entry, which cannot load in a browser, for
  * the two of its modules the library uses. Every config that bundles for a
- * browser puts these in its `resolve.alias`; `hosted/moduleGraphGuard.ts`
- * fails a build that bundles the real `diffie-hellman` chain anyway. Exact
- * matches, so `vscode-jsonrpc/lib/...` still reaches the package.
+ * browser puts these in its `resolve.alias`, and the hosted and console build
+ * configs install `hosted/moduleGraphGuard.ts`, which fails a build that
+ * bundles the real `diffie-hellman` anyway. Exact matches, so
+ * `vscode-jsonrpc/lib/...` still reaches the package.
  */
 export const browserSshDependencyAliases = [
   {

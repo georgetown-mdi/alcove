@@ -125,6 +125,7 @@ RUN npm run build -w packages/core \
 COPY packages/peerjs-broker/tsconfig.json packages/peerjs-broker/
 COPY packages/peerjs-broker/src packages/peerjs-broker/src/
 COPY apps/web/vite.config.ts apps/web/vite.console.config.ts apps/web/postcss.config.cjs apps/web/tsconfig.json apps/web/index.html apps/web/
+COPY apps/web/hosted/moduleGraphGuard.ts apps/web/hosted/
 COPY apps/web/src apps/web/src/
 COPY apps/web/server apps/web/server/
 COPY apps/web/public apps/web/public/

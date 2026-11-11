@@ -43,14 +43,16 @@ RUN npm run build -w packages/core \
   && npm run build -w packages/cli-contract \
   && npm run build -w apps/cli
 
-# apps/web build inputs: the console build's config and the vite config it
-# takes its aliases from, the postcss and TypeScript config, the client's
-# index.html, and the source, console server, and static assets vite reads. The
-# signaling broker is a source-only workspace the web source imports (no build
-# step of its own), so its source is a build input here too.
+# apps/web build inputs: the console build's config, the vite config it
+# takes its aliases from and the module graph guard it installs, the postcss
+# and TypeScript config, the client's index.html, and the source, console
+# server, and static assets vite reads. The signaling broker is a source-only
+# workspace the web source imports (no build step of its own), so its source is
+# a build input here too.
 COPY packages/peerjs-broker/tsconfig.json packages/peerjs-broker/
 COPY packages/peerjs-broker/src packages/peerjs-broker/src/
 COPY apps/web/vite.config.ts apps/web/vite.console.config.ts apps/web/postcss.config.cjs apps/web/tsconfig.json apps/web/index.html apps/web/
+COPY apps/web/hosted/moduleGraphGuard.ts apps/web/hosted/
 COPY apps/web/src apps/web/src/
 COPY apps/web/server apps/web/server/
 COPY apps/web/public apps/web/public/

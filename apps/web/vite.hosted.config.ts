@@ -85,7 +85,7 @@ const hostedConfig = {
  * (hosted/signalingDiscoveryFile.ts), the license text of every package the
  * build inlines (`third-party-licenses.txt`, scripts/lib/bundleNotices.mjs)
  * and no server. The build fails if the page's or a worker's module graph
- * reaches a server-only module
+ * reaches a server-only module or `diffie-hellman`
  * (hosted/moduleGraphGuard.ts), and on a default relay variable the page
  * would refuse at load (vite.config.ts). The page names the release tag or
  * commit it was built from (hosted/buildIdentity.ts).

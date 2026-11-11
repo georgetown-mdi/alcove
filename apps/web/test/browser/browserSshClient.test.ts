@@ -202,6 +202,34 @@ sshTest(
   },
 );
 
+sshTest(
+  "an abort while the host-key check is pending closes the relay socket and rejects",
+  async () => {
+    const target = await startTarget();
+    const { key } = await authorizedKey(target);
+    const controller = new AbortController();
+    const reason = new Error("stopped");
+    let socket: WebSocket | undefined;
+    const failure = await connectBrowserSsh({
+      relayUrl: target.relayUrl,
+      username: target.username,
+      key,
+      onHostKey: () => {
+        queueMicrotask(() => controller.abort(reason));
+        return new Promise<boolean>(() => {});
+      },
+      signal: controller.signal,
+      createSocket: (url) => (socket = new WebSocket(url)),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBe(reason);
+    expect(socket?.readyState).toBeGreaterThanOrEqual(WebSocket.CLOSING);
+    expect(signatures).toBe(0);
+  },
+);
+
 sshTest("names a key the server does not authorize", async () => {
   const target = await startTarget();
   const key = await NonExtractableEcdsaP256KeyPair.generate();

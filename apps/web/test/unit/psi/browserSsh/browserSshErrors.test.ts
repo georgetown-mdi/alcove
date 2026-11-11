@@ -21,7 +21,32 @@ describe("noCommonAlgorithmError", () => {
       clientAlgorithms: ["ecdh-sha2-nistp256"],
       cause: original,
     });
-    expect(named?.message).toContain("KeyExchange");
+    expect(named?.message).toBe(
+      "The SFTP server offers no key exchange algorithm this client supports. " +
+        "Server: diffie-hellman-group14-sha256, diffie-hellman-group16-sha512. " +
+        "Client: ecdh-sha2-nistp256. " +
+        "Ask the SFTP server's administrator to enable one of the client's algorithms.",
+    );
+  });
+
+  test.each([
+    ["KeyExchange", "key exchange"],
+    ["PublicKey", "host key"],
+    ["ClientEncryption", "encryption"],
+    ["ServerEncryption", "encryption"],
+    ["ClientHmac", "message authentication"],
+    ["ServerHmac", "message authentication"],
+    ["ClientCompression", "compression"],
+    ["ServerCompression", "compression"],
+  ])("names %s in plain words", (category, words) => {
+    const named = noCommonAlgorithmError(
+      new Error(`Failed ${category} negotiation: Server (x) Client (y)`),
+    );
+    expect(named?.category).toBe(category);
+    expect(named?.message).toMatch(
+      new RegExp(`^The SFTP server offers no ${words} algorithm `),
+    );
+    expect(named?.message).not.toContain(category);
   });
 
   test("reads an empty server list as none", () => {

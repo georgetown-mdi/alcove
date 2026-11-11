@@ -9,16 +9,24 @@ export type BrowserSshNegotiationCategory =
   | "ClientCompression"
   | "ServerCompression";
 
-const NEGOTIATION_CATEGORIES: ReadonlySet<string> = new Set([
-  "KeyExchange",
-  "PublicKey",
-  "ClientEncryption",
-  "ServerEncryption",
-  "ClientHmac",
-  "ServerHmac",
-  "ClientCompression",
-  "ServerCompression",
-]);
+const NEGOTIATION_CATEGORY_WORDS: Readonly<
+  Record<BrowserSshNegotiationCategory, string>
+> = {
+  KeyExchange: "key exchange",
+  PublicKey: "host key",
+  ClientEncryption: "encryption",
+  ServerEncryption: "encryption",
+  ClientHmac: "message authentication",
+  ServerHmac: "message authentication",
+  ClientCompression: "compression",
+  ServerCompression: "compression",
+};
+
+function isNegotiationCategory(
+  category: string,
+): category is BrowserSshNegotiationCategory {
+  return Object.hasOwn(NEGOTIATION_CATEGORY_WORDS, category);
+}
 
 /**
  * The server offered no algorithm in one category that the client supports,
@@ -34,9 +42,10 @@ export class BrowserSshNoCommonAlgorithmError extends Error {
     options?: ErrorOptions,
   ) {
     super(
-      `The SFTP server offers no ${category} algorithm this client supports. ` +
+      `The SFTP server offers no ${NEGOTIATION_CATEGORY_WORDS[category]} algorithm this client supports. ` +
         `Server: ${serverAlgorithms.join(", ") || "(none)"}. ` +
-        `Client: ${clientAlgorithms.join(", ")}.`,
+        `Client: ${clientAlgorithms.join(", ")}. ` +
+        "Ask the SFTP server's administrator to enable one of the client's algorithms.",
       options,
     );
   }
@@ -76,6 +85,14 @@ export class BrowserSshRelayClosedError extends Error {
     super(
       `The SFTP relay closed the connection (code ${code}${reason === "" ? "" : `: ${reason}`}).`,
     );
+  }
+}
+
+/** This client closed its connection to the relay, and then used it. */
+export class BrowserSshClientClosedError extends Error {
+  override readonly name = "BrowserSshClientClosedError";
+  constructor() {
+    super("This client closed its connection to the SFTP relay.");
   }
 }
 
@@ -120,9 +137,9 @@ export function noCommonAlgorithmError(
   const match = NEGOTIATION_FAILURE.exec(error.message);
   if (match === null) return null;
   const [, category, server, client] = match;
-  if (!NEGOTIATION_CATEGORIES.has(category)) return null;
+  if (!isNegotiationCategory(category)) return null;
   return new BrowserSshNoCommonAlgorithmError(
-    category as BrowserSshNegotiationCategory,
+    category,
     splitList(server),
     splitList(client),
     { cause: error },

@@ -38,7 +38,7 @@ export class Ed25519PublicKey implements KeyPair {
     const key = reader.readBinary();
     if (key.length !== ED25519_PUBLIC_KEY_BYTES || reader.available !== 0)
       throw new Error(
-        `An ${SSH_ED25519} key is ${ED25519_PUBLIC_KEY_BYTES} bytes; got ${key.length}.`,
+        `An ${SSH_ED25519} key is ${ED25519_PUBLIC_KEY_BYTES} bytes with nothing after it; got ${key.length} bytes${reader.available === 0 ? "" : ` and ${reader.available} more`}.`,
       );
     this.#key = await crypto.subtle.importKey(
       "raw",

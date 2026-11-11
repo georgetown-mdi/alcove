@@ -217,6 +217,64 @@ describe("negotiation failure", () => {
   });
 });
 
+describe("abort", () => {
+  async function connectWith(
+    signal: AbortSignal,
+    createSocket: () => FakeRelaySocket,
+  ): Promise<unknown> {
+    return connectBrowserSsh({
+      relayUrl: "ws://relay.test/sftp",
+      username: "alcove",
+      key: await NonExtractableEcdsaP256KeyPair.generate(),
+      onHostKey: () => true,
+      signal,
+      createSocket,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+  }
+
+  test("an already-aborted signal rejects without opening a socket", async () => {
+    const reason = new Error("stopped");
+    const createSocket = vi.fn(() => new FakeRelaySocket());
+    const failure = await connectWith(AbortSignal.abort(reason), createSocket);
+    expect(failure).toBe(reason);
+    expect(createSocket).not.toHaveBeenCalled();
+  });
+
+  test("an abort before the relay socket opens closes it and rejects", async () => {
+    const controller = new AbortController();
+    const reason = new Error("stopped");
+    const socket = new FakeRelaySocket();
+    const failure = connectWith(controller.signal, () => {
+      queueMicrotask(() => controller.abort(reason));
+      return socket;
+    });
+    expect(await failure).toBe(reason);
+    expect(socket.closedWith).toBe(1000);
+  });
+
+  test("an abort while the server stalls mid-connect closes the socket and rejects", async () => {
+    const controller = new AbortController();
+    const reason = new Error("stopped");
+    const socket = new FakeRelaySocket();
+    socket.onSend = () => {
+      if (clientKexInit(socket.sent) !== null)
+        queueMicrotask(() => {
+          socket.receive(Buffer.from(SERVER_VERSION, "ascii"));
+          controller.abort(reason);
+        });
+    };
+    const failure = await connectWith(controller.signal, () => {
+      queueMicrotask(() => socket.open());
+      return socket;
+    });
+    expect(failure).toBe(reason);
+    expect(socket.closedWith).toBe(1000);
+  });
+});
+
 describe("provideBufferGlobal", () => {
   test("installs Buffer when the page has none and leaves an existing one", () => {
     const scope = globalThis as { Buffer?: unknown };

@@ -25,7 +25,8 @@
 - - -> **The `diffie-hellman` load and call split.**
 - - -> `algorithms/web/webKeyExchange.js` requires `diffie-hellman` when it loads, and calls it only for a negotiated finite-field key exchange.
 - - -> The client offers ECDH alone (`ecdh-sha2-nistp256`, `-384`, `-521`), so every browser config aliases the package to a stub that throws `BrowserSshUnsupportedKeyExchangeError` (`browserSshDependencyAliases`, `apps/web/vite.config.ts`).
-- - -> The client build guard fails a browser bundle holding any package of the chain (`apps/web/hosted/moduleGraphGuard.ts`).
+- - -> The client build guard, which the hosted and console builds install, fails a browser bundle holding `diffie-hellman` (`apps/web/hosted/moduleGraphGuard.ts`).
+- - -> It does not name the packages `diffie-hellman` brings, since other dependencies bring them too.
 - - -> **`node-rsa`.**
 - - -> `algorithms/node/nodeRsa.js` requires `node-rsa` inside a function, and the package does not declare it.
 - - -> A bundler still resolves it, so it is aliased to a stub as well.
@@ -57,7 +58,7 @@
 - - -> the Ed25519 verifier and the non-extractable key;
 - - -> the bundle without the `diffie-hellman` alias failing the guard;
 - - -> the client bundled with the browser aliases, holding one `buffer`, and loading in a context with `self` and no `process`.
-- - -> The guard test also reads the closure of `diffie-hellman`'s dependencies from `package-lock.json`, so a bump that grows the chain fails until the guard names the new package.
+- - -> The guard test also checks that the library is the only package in `package-lock.json` requiring `diffie-hellman`, since the alias hands every importer the stub.
 - - -> Run `npx vitest run --project browser test/browser/browserSshClient.test.ts` from `apps/web`, with OpenSSH's `sshd` installed.
 - - -> It drives a session through the relay to a real sshd:
 - - -> the host key exposed before any signature, ed25519 and ECDSA;

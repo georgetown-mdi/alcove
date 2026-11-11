@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
+  BrowserSshClientClosedError,
+  BrowserSshRelayClosedError,
+} from "@psi/transport/browserSsh/browserSshErrors";
+import {
   SSH_RELAY_MAX_MESSAGE_BYTES,
   SSH_RELAY_SEND_WINDOW_BYTES,
   SSH_RELAY_SEND_WINDOW_LOW_BYTES,
   SshRelayStream,
 } from "@psi/transport/browserSsh/sshRelayStream";
-import { BrowserSshRelayClosedError } from "@psi/transport/browserSsh/browserSshErrors";
 import { Buffer } from "@psi/transport/browserSsh/sshLibrary";
 
 import { FakeRelaySocket } from "./fakeRelaySocket";
@@ -111,5 +114,27 @@ describe("SshRelayStream", () => {
     await stream.close();
     expect(socket.closedWith).toBe(1000);
     await expect(stream.read(1)).rejects.toThrow();
+  });
+
+  test.each(["close", "dispose"] as const)(
+    "fails a write after a local %s with this client's close",
+    async (method) => {
+      const { stream } = await openStream();
+      await stream[method]();
+      await expect(stream.write(Buffer.from([1]))).rejects.toBeInstanceOf(
+        BrowserSshClientClosedError,
+      );
+    },
+  );
+
+  test("keeps the relay's close for a write after the relay closed and the client disposed", async () => {
+    const { socket, stream } = await openStream();
+    socket.remoteClose(4002, "idle");
+    stream.dispose();
+    await expect(stream.write(Buffer.from([1]))).rejects.toMatchObject({
+      name: "BrowserSshRelayClosedError",
+      code: 4002,
+      reason: "idle",
+    });
   });
 });

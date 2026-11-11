@@ -8,9 +8,9 @@ import { afterEach, describe, expect, test } from "vitest";
 import { build } from "vite";
 
 import {
-  DIFFIE_HELLMAN_CHAIN_PACKAGES,
+  DIFFIE_HELLMAN_PACKAGE,
   clientModuleGraphGuard,
-  isDiffieHellmanChainModule,
+  isDiffieHellmanModule,
   isServerOnlyModule,
 } from "../../hosted/moduleGraphGuard";
 import {
@@ -122,49 +122,53 @@ describe("clientModuleGraphGuard over a real browser build", () => {
   });
 });
 
-describe("isDiffieHellmanChainModule", () => {
+describe("isDiffieHellmanModule", () => {
   test.each([
     "diffie-hellman",
     "/repo/node_modules/diffie-hellman/browser.js",
-    "C:\\repo\\node_modules\\bn.js\\lib\\bn.js",
-    "/repo/node_modules/@microsoft/dev-tunnels-ssh/node_modules/miller-rabin/lib/mr.js",
-    "randombytes/browser.js",
+    "C:\\repo\\node_modules\\diffie-hellman\\lib\\dh.js",
+    "/repo/node_modules/@microsoft/dev-tunnels-ssh/node_modules/diffie-hellman/browser.js",
   ])("names %s", (id) => {
-    expect(isDiffieHellmanChainModule(id)).toBe(true);
+    expect(isDiffieHellmanModule(id)).toBe(true);
   });
 
+  // Packages diffie-hellman brings that other dependencies bring too.
   test.each([
     "/repo/apps/web/src/psi/transport/browserSsh/stubs/diffieHellman.ts",
     "/repo/node_modules/diffie-hellman-extra/index.js",
     "/repo/node_modules/@noble/curves/abstract/montgomery.js",
+    "/repo/node_modules/bn.js/lib/bn.js",
+    "/repo/node_modules/safe-buffer/index.js",
+    "randombytes/browser.js",
   ])("passes %s", (id) => {
-    expect(isDiffieHellmanChainModule(id)).toBe(false);
+    expect(isDiffieHellmanModule(id)).toBe(false);
   });
 
-  // A dependency bump that grows the chain grows this closure, and the guard
-  // has to name the new package before the bundle can hold it.
-  test("lists the closure of diffie-hellman's dependencies in package-lock.json", () => {
+  // The alias hands the stub to every importer of diffie-hellman, so a second
+  // dependency requiring it would get a stub that throws; it fails here first.
+  test("is required in package-lock.json only by the SSH library", () => {
     const lock = JSON.parse(
       readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"),
     ) as {
-      packages: Record<string, { dependencies?: Record<string, string> }>;
+      packages: Record<
+        string,
+        {
+          dependencies?: Record<string, string>;
+          optionalDependencies?: Record<string, string>;
+          peerDependencies?: Record<string, string>;
+        }
+      >;
     };
-    const closure = new Set<string>();
-    const pending = ["diffie-hellman"];
-    while (pending.length > 0) {
-      const name = pending.pop()!;
-      if (closure.has(name)) continue;
-      closure.add(name);
-      const entries = Object.entries(lock.packages).filter(([path]) =>
-        path.endsWith(`node_modules/${name}`),
-      );
-      expect(entries.length, name).toBeGreaterThan(0);
-      for (const [, entry] of entries)
-        pending.push(...Object.keys(entry.dependencies ?? {}));
-    }
-    expect([...closure].sort()).toEqual(
-      [...DIFFIE_HELLMAN_CHAIN_PACKAGES].sort(),
-    );
+    const requirers = Object.entries(lock.packages)
+      .filter(([, entry]) =>
+        [
+          entry.dependencies,
+          entry.optionalDependencies,
+          entry.peerDependencies,
+        ].some((list) => list !== undefined && DIFFIE_HELLMAN_PACKAGE in list),
+      )
+      .map(([path]) => path);
+    expect(requirers).toEqual(["node_modules/@microsoft/dev-tunnels-ssh"]);
   });
 });
 
@@ -229,7 +233,7 @@ describe("the diffie-hellman chain over a real browser build", () => {
         ),
       }),
     ).rejects.toThrow(
-      /diffie-hellman package chain: .*\bdiffie-hellman \(from \S*webKeyExchange\.js\)/,
+      /diffie-hellman package: .*\bdiffie-hellman \(from \S*webKeyExchange\.js\)/,
     );
   });
 
@@ -237,9 +241,7 @@ describe("the diffie-hellman chain over a real browser build", () => {
     const chunk = await buildBrowserSshFixture(libraryFixture, {
       alias: browserSshDependencyAliases,
     });
-    expect(Object.keys(chunk.modules).some(isDiffieHellmanChainModule)).toBe(
-      false,
-    );
+    expect(Object.keys(chunk.modules).some(isDiffieHellmanModule)).toBe(false);
   });
 
   test("bundles the client with the hosted aliases: one buffer, and the library's Node code never runs", async () => {
