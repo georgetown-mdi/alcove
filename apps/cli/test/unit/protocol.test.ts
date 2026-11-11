@@ -2984,7 +2984,8 @@ test("the both-swept advice appears on a flagged run that fails in the key excha
   expect(mockState.errors).toContain(BOTH_SWEPT_GUIDANCE);
   // The console reads the terminal event, which states no cause here: it
   // recognizes this failure by the message's first line instead.
-  const event = buildErrorEvent(err, "prepare");
+  const event = buildErrorEvent(err, "run");
+  expect(event.category).toBe("exchange");
   expect(event.message.split("\n")[0]).toBe(KEX_HANDSHAKE_TIMEOUT_MESSAGE);
   expect(event.cause).toBeUndefined();
   expect(event.recoveryHint).toBeUndefined();

@@ -260,6 +260,6 @@ export function consoleSweptHandshakeTimeout(
     title: "Your partner did not answer",
     message:
       "Your partner did not answer in time. " +
-      `${BOTH_SWEPT_LINE} ${sharedLocationCheck(channel)}`,
+      `${BOTH_SWEPT_LINE} Then try again.`,
   };
 }
