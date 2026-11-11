@@ -92,6 +92,21 @@ resource "cloudflare_dns_record" "dmarc" {
   ttl     = 1
 }
 
+# The relay host renews its certificates by DNS-01 with a token that can edit
+# only the challenge zone, so each name it renews delegates its challenge there.
+# acme.sh writes every name's challenge at this one target (its
+# --challenge-alias), and lego follows the CNAME to it.
+resource "cloudflare_dns_record" "acme_challenge" {
+  for_each = var.acme_challenge_domain == "" ? toset([]) : var.dns_only_names
+
+  zone_id = var.cloudflare_zone_id
+  name    = "_acme-challenge.${each.value}"
+  type    = "CNAME"
+  content = "_acme-challenge.${var.acme_challenge_domain}"
+  proxied = false
+  ttl     = 1
+}
+
 # At the apex, a CAA record governs every name below it that has none of its
 # own (RFC 8659, 3), the wildcard on the zone's edge certificate included.
 resource "cloudflare_dns_record" "caa" {

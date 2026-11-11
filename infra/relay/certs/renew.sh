@@ -48,6 +48,10 @@ EMAIL="${ALCOVE_RELAY_ACME_EMAIL:-}"
 [ -n "$EMAIL" ] || die "ALCOVE_RELAY_ACME_EMAIL is unset in $ACME_ENV; the authority requires a contact"
 PROVIDER="${ALCOVE_RELAY_DNS_PROVIDER:-cloudflare}"
 CLIENT="${ALCOVE_RELAY_ACME_CLIENT:-lego}"
+# Where each name's _acme-challenge is a CNAME into a challenge-only zone, the
+# challenge record is written there (README.md, Certificates). acme.sh needs the
+# domain named; lego follows the CNAME itself and does not read it.
+CHALLENGE_DOMAIN="${ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN:-}"
 
 # The registrar's own name and the WebSocket relay's, where the host's 443
 # front routes each, are further names on the same certificate. The realm
@@ -55,13 +59,19 @@ CLIENT="${ALCOVE_RELAY_ACME_CLIENT:-lego}"
 # before a name was set does not cover it until a forced renewal
 # (ALCOVE_RELAY_RENEW_FORCE=1) reissues it; verify.sh's probe of that service
 # fails until then.
+#
+# acme.sh gets --challenge-alias after every -d, so each name is paired with
+# the alias however acme.sh matches the two. No acme.sh run has driven the
+# alias yet.
+ACMESH_ALIAS=()
+[ -z "$CHALLENGE_DOMAIN" ] || ACMESH_ALIAS=(--challenge-alias "$CHALLENGE_DOMAIN")
 LEGO_DOMAINS=(--domains "$REALM")
-ACMESH_DOMAINS=(-d "$REALM")
+ACMESH_DOMAINS=(-d "$REALM" ${ACMESH_ALIAS[@]+"${ACMESH_ALIAS[@]}"})
 NAMES="$REALM"
 for name in "${ALCOVE_RELAY_REGISTRAR_NAME:-}" "${ALCOVE_RELAY_WEBSOCKET_NAME:-}"; do
   if [ -n "$name" ] && [ "$name" != "$REALM" ]; then
     LEGO_DOMAINS+=(--domains "$name")
-    ACMESH_DOMAINS+=(-d "$name")
+    ACMESH_DOMAINS+=(-d "$name" ${ACMESH_ALIAS[@]+"${ACMESH_ALIAS[@]}"})
     NAMES="$NAMES and $name"
   fi
 done
