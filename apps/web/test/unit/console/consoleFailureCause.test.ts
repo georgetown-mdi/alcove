@@ -474,6 +474,41 @@ describe("a console run that failed on a catalog cause", () => {
     },
   );
 
+  test.each([1_000, 1_100])(
+    "an uncounted set whose count failure runs to %i characters shows no cut remedy in the report",
+    (length) => {
+      const cause = {
+        kind: "set-over-limit",
+        stage: "after-terms",
+        limit: "uncounted",
+      } as const;
+      const countFailure = "Map maximum size exceeded "
+        .repeat(64)
+        .slice(0, length);
+      const err = setOverLimitError(cause, {
+        cause: new RangeError(countFailure),
+      });
+      const cliMessage = `${sanitizeErrorForDisplay(err)}\n${setOverLimitRemedy(cause)}`;
+      const relayedLinks = sanitizeErrorChainLinks(cliMessage);
+      // The relay's cap cuts the last link inside the remedy or before it.
+      expect(relayedLinks.at(-1)).not.toContain(setOverLimitRemedy(cause));
+      const failure = failureFor(
+        "exchange",
+        relayed(joinErrorCauseChain(relayedLinks), {
+          failureCause: cause,
+          exitCode: 64,
+        }),
+      );
+      expect(failure.reportedCause).toContain("Map maximum size exceeded");
+      expect(failure.reportedCause).not.toContain("x0a");
+      expect(failure.reportedCause).not.toContain("Split");
+      const shown = `${failure.message}\n${failure.reportedCause ?? ""}`;
+      const times = (part: string): number => shown.split(part).length - 1;
+      expect(times(failureCauseSentence(cause))).toBe(1);
+      expect(times(setOverLimitRemedy(cause))).toBe(1);
+    },
+  );
+
   test("an uncounted set whose report holds no chain shows no report", () => {
     const cause = {
       kind: "set-over-limit",

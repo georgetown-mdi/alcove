@@ -22,7 +22,6 @@ import {
   sanitizeErrorChainLinks,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
-  setOverLimitRemedy,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
 import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
@@ -137,8 +136,6 @@ import {
 import type { DataConnection } from "peerjs";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type Peer from "peerjs";
-
-import type { FailureCauseOfKind } from "@alcove/core";
 
 import type {
   Acquire,
@@ -263,24 +260,25 @@ function reportedCauseFields(cause: string): Pick<RunFailure, "reportedCause"> {
   return cause.trim() === "" ? {} : { reportedCause: cause };
 }
 
+const CAUSE_CHAIN_SEPARATOR = joinErrorCauseChain(["", ""]);
+const RELAYED_LINE_BREAK = sanitizeForDisplay("\n");
+
 /**
  * What the CLI's report of a refused set adds to core's sentence and the
  * remedy the console shows beside it: the cause chain behind the sentence,
  * without the remedy line the CLI writes beneath it. The relay escapes that
- * line's break into the chain's last link, so it is cut from the relayed text,
- * escaped or raw, before the links are escaped for display. Empty where the
- * report holds no chain.
+ * line's break into the chain's last link and may cut the remedy after it, so
+ * the last link ends at its first escaped break, before the links are escaped
+ * for display. Empty where the report holds no chain.
  */
-function setOverLimitReport(
-  error: RelayedTerminalError,
-  cause: FailureCauseOfKind<"set-over-limit">,
-): string {
-  const remedyLine = `\n${setOverLimitRemedy(cause)}`;
-  const reported = [sanitizeForDisplay(remedyLine), remedyLine].reduce(
-    (text, line) => (text.endsWith(line) ? text.slice(0, -line.length) : text),
-    error.message,
+function setOverLimitReport(error: RelayedTerminalError): string {
+  const reported = error.message;
+  const lastLinkAt = reported.lastIndexOf(CAUSE_CHAIN_SEPARATOR);
+  if (lastLinkAt === -1) return "";
+  const breakAt = reported.indexOf(RELAYED_LINE_BREAK, lastLinkAt);
+  const [, ...chain] = sanitizeErrorChainLinks(
+    breakAt === -1 ? reported : reported.slice(0, breakAt),
   );
-  const [, ...chain] = sanitizeErrorChainLinks(reported);
   return joinErrorCauseChain(chain);
 }
 
@@ -882,7 +880,7 @@ function failureContentFor(
         : {}),
       // Why the count failed is in the CLI's report alone.
       ...(cause.kind === "set-over-limit" && cause.limit === "uncounted"
-        ? reportedCauseFields(setOverLimitReport(error, cause))
+        ? reportedCauseFields(setOverLimitReport(error))
         : {}),
     };
   }
