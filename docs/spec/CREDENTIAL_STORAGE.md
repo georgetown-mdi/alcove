@@ -611,9 +611,10 @@ a file. The code is `apps/web/src/psi/managed/managedSftpClientKey.ts`.
   object store of the managed-exchange IndexedDB database, under the exchange
   record's `id`, and written in the same transaction as the record. IndexedDB
   stores a `CryptoKey` by structured clone, which keeps its non-extractable
-  flag. The key is not part of the record and never enters the export artifact,
-  so an exchange imported from a backup as a new record has no key; an import
-  that replaces an exchange's stored copy keeps the key already stored for it.
+  flag. The key is not part of the record and never enters the export artifact.
+  An SFTP record holds no secret, so the backup export refuses it and no backup
+  or pair import replaces it; an exchange created from an imported
+  configuration has no key.
 - **The public key.** It is given as one OpenSSH `authorized_keys` line,
   `ecdsa-sha2-nistp256 <base64 public-key blob> alcove-exchange-<id>`, for the
   server's administrator to add to the exchange's account. The comment names
@@ -635,8 +636,8 @@ a file. The code is `apps/web/src/psi/managed/managedSftpClientKey.ts`.
   Chromium; other browsers not measured). The overview is in
   [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#the-sftp-client-key-at-rest).
 - **A stated limit: no page saves an SFTP exchange with a key yet, and no call
-  gives a key to an exchange saved without one,** such as one imported from a
-  backup as a new record. The browser SFTP driver stage adds both: the save,
+  gives a key to an exchange saved without one,** such as one created from an
+  imported configuration. The browser SFTP driver stage adds both: the save,
   which calls `createManagedSftpExchange` where
   the exchange pages' manage offer (`manageExchange` in
   `apps/web/src/exchange/InviterScreen.tsx` and `AcceptorScreen.tsx`) calls
