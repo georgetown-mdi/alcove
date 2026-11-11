@@ -235,6 +235,41 @@ test("every emitted cause passes the allowlist a consumer checks it against", ()
       limitValues: 2,
     },
     { kind: "set-over-limit", stage: "after-terms", limit: "uncounted" },
+    {
+      kind: "single-pass-over-limit",
+      limit: "browser-dataset",
+      recordCount: 1_200_000,
+      linkageKeyCount: 3,
+      fansOut: true,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "value-slots",
+      local: { effectiveKeyCount: 2, recordCount: 2 },
+      partner: { effectiveKeyCount: 2, recordCount: 5 },
+      limitSlots: 6,
+      localFansOut: true,
+      partnerFansOut: true,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "frame",
+      frame: "request",
+      frameBytes: 70_001,
+      limitBytes: 65_536,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "distinct-values",
+      limitValues: 122_713_351,
+    },
+    { kind: "matches-over-limit", list: "grouping" },
+    {
+      kind: "matches-over-limit",
+      list: "resolved",
+      matchCount: 5,
+      limitMatches: 4,
+    },
   ];
   expect(new Set(emitted.map((cause) => cause.kind))).toEqual(
     new Set(FAILURE_CAUSE_KINDS),

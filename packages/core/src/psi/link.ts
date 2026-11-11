@@ -39,14 +39,13 @@ import {
 } from "../connection/frameSize";
 import {
   partyFansOut,
-  SINGLE_PASS_LOCAL_REMEDY,
   singlePassCeilingBreach,
   singlePassReplyByteCap,
   singlePassRequestByteCap,
   valueSlots,
-  type SinglePassCeilingBreach,
   type SinglePassPartySize,
 } from "./singlePassSizing";
+import { failureCauseSentence, markFailureCause } from "../failureCause";
 import {
   assertRoundDiagonalClosure,
   type ClosureBlock,
@@ -1811,76 +1810,17 @@ export async function linkViaCountOnlyPSI(
   return receiveCountReport(conn, maxCount);
 }
 
-const declaredSinglePassSize = (
-  who: string,
-  party: SinglePassPartySize,
-): string =>
-  `${who} declared ${party.effectiveKeyCount} effective linkage key(s) ` +
-  `across ${party.recordCount} record(s), which is ${valueSlots(party)} ` +
-  "value slot(s)";
-
-// Guidance past the single-pass ceiling a browser party holds both parties to
-// (docs/spec/PROTOCOL.md, The single-pass dataset ceiling). The partner's
-// cleaning is invisible here, so its fan-out hint rests on the agreed width
-// alone. Raised as a UsageError (CLI exit 64). It interpolates only
-// authenticated session state -- the two parties' declared effective key
-// counts, record counts, and value slot products -- and no partner-authored text.
-function singlePassOverCapMessage(
-  id: string,
-  numLinkageKeys: number,
-  breach: SinglePassCeilingBreach,
-  local: SinglePassPartySize,
-  localFansOut: boolean,
-  partner: SinglePassPartySize,
-  ceiling: number,
-): string {
-  const cause =
-    breach === "local"
-      ? declaredSinglePassSize("you", local)
-      : breach === "partner"
-        ? declaredSinglePassSize("your partner", partner)
-        : `${declaredSinglePassSize("you", local)}, and ${declaredSinglePassSize("your partner", partner)}`;
-
-  const remedies: string[] = [];
-  if (breach !== "partner")
-    remedies.push(
-      SINGLE_PASS_LOCAL_REMEDY +
-        (localFansOut
-          ? " Removing a step that splits values or expands a key also " +
-            "lowers the count."
-          : ""),
-    );
-  if (breach !== "local")
-    remedies.push(
-      (breach === "both"
-        ? "Ask your partner to reduce their record count or split their " +
-          "dataset too."
-        : `Your own ${valueSlots(local)} value slot(s) are within the ` +
-          "limit. Ask your partner to reduce their record count or split " +
-          "their dataset.") +
-        (partyFansOut(numLinkageKeys, partner)
-          ? " Your partner can also remove a step that splits values or " +
-            "expands a key."
-          : ""),
-    );
-
-  return (
-    `${id}: this ${breach === "local" ? "dataset" : "exchange"} is too large for ` +
-    `single-pass linkage: ${cause}, above the single-pass limit of ` +
-    `${ceiling} value slot(s) per party in an exchange with a browser. ` +
-    remedies.join(" ")
-  );
-}
-
 /**
  * Refuses a single-pass run whose declared sizes pass `ceiling`, the
  * value-slot ceiling where a browser is a party, as a {@link UsageError}
- * naming the remedy. Both parties call it on the same authenticated counts
- * before either sends a single-pass frame, so both stop and neither waits.
- * The exchange calls it at the terms exchange, ahead of the memory checks.
+ * tagged with the `single-pass-over-limit` cause (docs/spec/PROTOCOL.md, The
+ * single-pass dataset ceiling). Both parties call it on the same authenticated
+ * counts before either sends a single-pass frame, so both stop and neither
+ * waits. The exchange calls it at the terms exchange, ahead of the memory
+ * checks. The partner's cleaning is invisible here, so its fan-out fact rests
+ * on the agreed width alone.
  */
 export function refuseSinglePassOverCeiling(
-  id: string,
   numLinkageKeys: number,
   local: SinglePassPartySize,
   localFansOut: boolean,
@@ -1888,30 +1828,28 @@ export function refuseSinglePassOverCeiling(
   ceiling: number | undefined,
 ): void {
   if (ceiling === undefined) return;
-  const breach = singlePassCeilingBreach(local, partner, ceiling);
-  if (breach === undefined) return;
-  throw new UsageError(
-    singlePassOverCapMessage(
-      id,
-      numLinkageKeys,
-      breach,
-      local,
-      localFansOut,
-      partner,
-      ceiling,
-    ),
-  );
+  if (singlePassCeilingBreach(local, partner, ceiling) === undefined) return;
+  const cause = {
+    kind: "single-pass-over-limit",
+    limit: "value-slots",
+    local,
+    partner,
+    limitSlots: ceiling,
+    ...(localFansOut ? { localFansOut: true as const } : {}),
+    ...(partyFansOut(numLinkageKeys, partner)
+      ? { partnerFansOut: true as const }
+      : {}),
+  } as const;
+  throw markFailureCause(new UsageError(failureCauseSentence(cause)), cause);
 }
 
 // Over file-sync a frame's real size is known only after masking, and the
 // counts bound it from above without deciding it: a run can fit where its counts
 // would not. So a frame larger than one message can be on this connection (the
 // AEAD's limit) is refused here, ahead of the write, and the partner parked on it
-// is told. The reply includes the receiver's re-encrypted request, so its remedy
-// is addressed to both parties.
+// is told.
 async function refuseSinglePassFrameOverCeiling(
   conn: MessageConnection,
-  id: string,
   frame: "reply" | "request",
   frameBytes: number,
 ): Promise<void> {
@@ -1919,17 +1857,14 @@ async function refuseSinglePassFrameOverCeiling(
   const ceiling = conn.frameCeilingBytes?.();
   if (ceiling === undefined || frameBytes <= ceiling) return;
   await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
-  const remedy =
-    frame === "reply"
-      ? "To shrink it, either party can reduce its record count or split its " +
-        "dataset into smaller batches, or the two parties can agree on new " +
-        "terms with fewer linkage keys."
-      : SINGLE_PASS_LOCAL_REMEDY;
-  throw new UsageError(
-    `${id}: the single-pass ${frame} came to ${frameBytes} byte(s), above the ` +
-      `${ceiling} byte(s) one encrypted message can hold, so the exchange ` +
-      `stopped and your partner was told. ${remedy}`,
-  );
+  const cause = {
+    kind: "single-pass-over-limit",
+    limit: "frame",
+    frame,
+    frameBytes,
+    limitBytes: ceiling,
+  } as const;
+  throw markFailureCause(new UsageError(failureCauseSentence(cause)), cause);
 }
 
 /**
@@ -2315,7 +2250,6 @@ export async function linkViaSinglePassPSI(
   // meets after it (refuseSinglePassFrameOverCeiling).
   if (!fileSync)
     refuseSinglePassOverCeiling(
-      participant.id,
       numLinkageKeys,
       localSize,
       localFansOut,
@@ -2404,12 +2338,7 @@ export async function linkViaSinglePassPSI(
       );
     }
 
-    await refuseSinglePassFrameOverCeiling(
-      conn,
-      participant.id,
-      "reply",
-      replyBytes,
-    );
+    await refuseSinglePassFrameOverCeiling(conn, "reply", replyBytes);
 
     log.debug(`${participant.id}: sending combined single-pass reply`);
     if (singlePassMessageInParts(conn, replyCap)) {
@@ -2544,12 +2473,7 @@ export async function linkViaSinglePassPSI(
       request.byteLength,
     );
     setSinglePassReadGate(conn, replyCap);
-    await refuseSinglePassFrameOverCeiling(
-      conn,
-      participant.id,
-      "request",
-      request.byteLength,
-    );
+    await refuseSinglePassFrameOverCeiling(conn, "request", request.byteLength);
     if (singlePassMessageInParts(conn, singlePassRequestByteCap(receiverSize)))
       await sendPsiSet(conn, request);
     else await conn.send(request);
@@ -2763,7 +2687,7 @@ export async function linkViaSinglePassPSI(
     `${participant.id}: ${result[0].length} match(es); returning sender's ` +
       `view`,
   );
-  await sendResolvedTable(conn, participant.id, theirResult);
+  await sendResolvedTable(conn, theirResult);
   stage("done");
   return result;
 }
@@ -2775,7 +2699,6 @@ export async function linkViaSinglePassPSI(
 /** @internal exported for the single-pass wire-message tests. */
 export async function sendResolvedTable(
   conn: MessageConnection,
-  id: string,
   table: AssociationTable,
 ): Promise<void> {
   const most = Math.floor(
@@ -2786,8 +2709,12 @@ export async function sendResolvedTable(
     conn,
     resolvedTableSource(table),
     statedFrameBound(conn),
-    `${id}: This exchange found ${table[0].length} matches, more than the ` +
-      `${most} it can send.`,
+    {
+      kind: "matches-over-limit",
+      list: "resolved",
+      matchCount: table[0].length,
+      limitMatches: most,
+    },
   );
 }
 
@@ -2923,14 +2850,17 @@ export function getDistinctValuesAndIndices(
   let slotCount = 0;
   const idOf = (value: string): number => {
     const id = valueIds.add(value);
-    if (id === maxDistinctValues)
-      throw new RoundSetLimitError(
-        "Too large to send: your records give more than " +
-          `${maxDistinctValues} distinct linkage key values, the most ` +
-          "one single-pass set can hold, so the exchange stopped before " +
-          `masking them and told your partner. ${SINGLE_PASS_LOCAL_REMEDY}`,
-        "over-set-maximum",
+    if (id === maxDistinctValues) {
+      const cause = {
+        kind: "single-pass-over-limit",
+        limit: "distinct-values",
+        limitValues: maxDistinctValues,
+      } as const;
+      throw markFailureCause(
+        new RoundSetLimitError(failureCauseSentence(cause), "over-set-maximum"),
+        cause,
       );
+    }
     return id;
   };
   for (let j = 0; j < data.length; ++j) {

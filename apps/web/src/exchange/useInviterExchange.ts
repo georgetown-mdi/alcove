@@ -20,7 +20,6 @@ import {
   loadPsiBackend,
   prepareForExchange,
   sanitizeErrorChainLinks,
-  sanitizeErrorForDisplay,
   sanitizeForDisplay,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
@@ -238,14 +237,15 @@ function retryDispositionFor(
  * that chain as one value instead cuts it inside the first link or two
  * (docs/spec/CLI_EVENTS.md, "Sanitization"; docs/spec/DISPLAY_REDACTION.md,
  * "Message display budgets"). Every other failure is raw, thrown in
- * this browser, and goes straight through `sanitizeErrorForDisplay`. The
+ * this browser, and goes straight through `sanitizeErrorForDisplay`, with the
+ * web app's remedy for a catalog cause it holds (`webFailureMessage`). The
  * framing is the renderer's own newline, laid out as a line break by
  * `FailureMessage` in `./RunSurface`.
  */
 export function sanitizedFailureMessage(error: unknown): string {
   return error instanceof RelayedTerminalError
     ? joinErrorCauseChain(sanitizeErrorChainLinks(error.message))
-    : sanitizeErrorForDisplay(error);
+    : webFailureMessage(error);
 }
 
 /**

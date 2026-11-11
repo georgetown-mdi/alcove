@@ -6,10 +6,12 @@
 // compile here until bound.
 
 import {
+  MATCHES_OVER_LIMIT_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   failureCauseSentence,
   relayRegistrarUnreachableRemedy,
   setOverLimitRemedy,
+  singlePassOverLimitRemedy,
 } from "@alcove/core";
 
 import {
@@ -137,6 +139,17 @@ const CONSOLE_FAILURE_REMEDIES: {
           : {},
     ),
     remedy: setOverLimitRemedy(cause),
+  }),
+  "single-pass-over-limit": (cause) => ({
+    title:
+      cause.limit === "distinct-values"
+        ? tooLargeFailureTitle({})
+        : "This exchange is too large for single-pass linkage",
+    remedy: singlePassOverLimitRemedy(cause),
+  }),
+  "matches-over-limit": () => ({
+    title: "This exchange found more matches than it can send",
+    remedy: MATCHES_OVER_LIMIT_REMEDY,
   }),
 };
 

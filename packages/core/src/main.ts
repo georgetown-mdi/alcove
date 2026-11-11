@@ -45,10 +45,12 @@ export {
   failureCauseSentence,
   formatWaitDuration,
   markFailureCause,
+  MATCHES_OVER_LIMIT_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   relayRegistrarUnreachableRemedy,
   setOverLimitError,
   setOverLimitRemedy,
+  singlePassOverLimitRemedy,
 } from "./failureCause";
 export type {
   FailureCause,
@@ -56,10 +58,12 @@ export type {
   FailureCauseOfKind,
   FolderMissingCode,
   IgnoredUnansweredHello,
+  MatchesOverLimitFailure,
   RelayRegistrarUnreachableFailure,
   RoundSetScope,
   SetOverLimitFailure,
   SetOverLimitStage,
+  SinglePassOverLimitFailure,
 } from "./failureCause";
 export {
   classifyFailure,

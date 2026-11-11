@@ -9,10 +9,12 @@ import {
   failureCauseSentence,
   formatFileAge,
   formatWaitDuration,
+  MATCHES_OVER_LIMIT_REMEDY,
   relayRegistrarUnreachableRemedy,
   markFailureCause,
   setOverLimitError,
   setOverLimitRemedy,
+  singlePassOverLimitRemedy,
   type FailureCause,
   type FailureCauseKind,
   type FailureCauseOfKind,
@@ -146,6 +148,78 @@ const SAMPLES: {
     { kind: "set-over-limit", stage: "before-contact", limit: "uncounted" },
     { kind: "set-over-limit", stage: "after-terms", limit: "uncounted" },
   ],
+  "single-pass-over-limit": [
+    {
+      kind: "single-pass-over-limit",
+      limit: "browser-dataset",
+      recordCount: 1_200_000,
+      linkageKeyCount: 3,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "browser-dataset",
+      recordCount: 1,
+      linkageKeyCount: 1,
+      fansOut: true,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "value-slots",
+      local: { effectiveKeyCount: 3, recordCount: 2_000_000 },
+      partner: { effectiveKeyCount: 3, recordCount: 400_000 },
+      limitSlots: 3_000_000,
+      localFansOut: true,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "value-slots",
+      local: { effectiveKeyCount: 3, recordCount: 400_000 },
+      partner: { effectiveKeyCount: 3, recordCount: 2_000_000 },
+      limitSlots: 3_000_000,
+      partnerFansOut: true,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "value-slots",
+      local: { effectiveKeyCount: 3, recordCount: 2_000_000 },
+      partner: { effectiveKeyCount: 4, recordCount: 1_000_000 },
+      limitSlots: 3_000_000,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "frame",
+      frame: "reply",
+      frameBytes: 70_000,
+      limitBytes: 65_536,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "frame",
+      frame: "request",
+      frameBytes: 70_001,
+      limitBytes: 65_536,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "distinct-values",
+      limitValues: 122_713_351,
+    },
+  ],
+  "matches-over-limit": [
+    { kind: "matches-over-limit", list: "grouping" },
+    {
+      kind: "matches-over-limit",
+      list: "resolved",
+      matchCount: 9_000_000,
+      limitMatches: 8_388_607,
+    },
+    {
+      kind: "matches-over-limit",
+      list: "resolved",
+      matchCount: 1,
+      limitMatches: 0,
+    },
+  ],
 };
 
 const allSamples: FailureCause[] = Object.values(SAMPLES).flat();
@@ -213,6 +287,52 @@ describe("the failure-cause catalog", () => {
       "Alcove could not count the values the first linkage key gives you to send, so it cannot confirm one PSI set can hold them, and nothing was sent.",
       "Alcove could not count the values the first linkage key gives you to send, so it cannot confirm your partner can receive them, and the exchange stopped before any linkage key was sent and told your partner.",
     ]);
+    expect(
+      SAMPLES["single-pass-over-limit"].map((cause) =>
+        failureCauseSentence(cause),
+      ),
+    ).toEqual([
+      "This dataset is too large for single-pass linkage in a browser: 1,200,000 declared records across 3 linkage keys exceed the single-pass limit.",
+      "This dataset is too large for single-pass linkage in a browser: 1 declared record across 1 linkage key exceed the single-pass limit.",
+      "This dataset is too large for single-pass linkage: you declared 3 effective linkage keys across 2,000,000 records, which is 6,000,000 value slots, above the single-pass limit of 3,000,000 value slots per party in an exchange with a browser.",
+      "This exchange is too large for single-pass linkage: your partner declared 3 effective linkage keys across 2,000,000 records, which is 6,000,000 value slots, above the single-pass limit of 3,000,000 value slots per party in an exchange with a browser, while your own 1,200,000 value slots are within it.",
+      "This exchange is too large for single-pass linkage: you declared 3 effective linkage keys across 2,000,000 records, which is 6,000,000 value slots, and your partner declared 4 effective linkage keys across 1,000,000 records, which is 4,000,000 value slots, above the single-pass limit of 3,000,000 value slots per party in an exchange with a browser.",
+      "The single-pass reply came to 70,000 bytes, above the 65,536 bytes one encrypted message can hold, so the exchange stopped and your partner was told.",
+      "The single-pass request came to 70,001 bytes, above the 65,536 bytes one encrypted message can hold, so the exchange stopped and your partner was told.",
+      "Too large to send: your records give more than 122,713,351 distinct linkage key values, the most one single-pass set can hold, so the exchange stopped before masking them and told your partner.",
+    ]);
+    expect(
+      SAMPLES["matches-over-limit"].map((cause) => failureCauseSentence(cause)),
+    ).toEqual([
+      "This exchange found more matches than it can send, so it stopped and told your partner.",
+      "This exchange found 9,000,000 matches, more than the 8,388,607 it can send, so it stopped and told your partner.",
+      "This exchange found 1 match, more than the 0 it can send, so it stopped and told your partner.",
+    ]);
+  });
+
+  test("the single-pass remedy names the party whose data is over the limit", () => {
+    const local =
+      "Reduce the record count or split the dataset into smaller batches, " +
+      "or agree on new terms with fewer linkage keys with your partner.";
+    const fanOut =
+      " Removing a step that splits values or expands a key also lowers the count.";
+    expect(
+      SAMPLES["single-pass-over-limit"].map((cause) =>
+        singlePassOverLimitRemedy(cause),
+      ),
+    ).toEqual([
+      local,
+      local + fanOut,
+      local + fanOut,
+      "Ask your partner to reduce their record count or split their dataset. Your partner can also remove a step that splits values or expands a key.",
+      `${local} Ask your partner to reduce their record count or split their dataset too.`,
+      "To shrink it, either party can reduce its record count or split its dataset into smaller batches, or the two parties can agree on new terms with fewer linkage keys.",
+      local,
+      local,
+    ]);
+    expect(MATCHES_OVER_LIMIT_REMEDY).toBe(
+      "This usually means many records on both sides share a key value. Use a more distinctive key or split the data into smaller batches.",
+    );
   });
 
   test("the set-size remedy names the command-line application only for a first round over the partner's ceiling", () => {
@@ -668,6 +788,84 @@ describe("failureCauseFromUntrusted", () => {
         limitValues: 2,
         scope: "every-round",
       },
+    ],
+    [
+      "a single-pass limit off the list",
+      { kind: "single-pass-over-limit", limit: "memory", limitValues: 1 },
+    ],
+    [
+      "a browser dataset with no key count",
+      {
+        kind: "single-pass-over-limit",
+        limit: "browser-dataset",
+        recordCount: 1,
+      },
+    ],
+    [
+      "a browser dataset whose fan-out is false",
+      {
+        kind: "single-pass-over-limit",
+        limit: "browser-dataset",
+        recordCount: 1,
+        linkageKeyCount: 1,
+        fansOut: false,
+      },
+    ],
+    [
+      "a value-slot count no party breaches",
+      {
+        kind: "single-pass-over-limit",
+        limit: "value-slots",
+        local: { effectiveKeyCount: 1, recordCount: 2 },
+        partner: { effectiveKeyCount: 1, recordCount: 2 },
+        limitSlots: 2,
+      },
+    ],
+    [
+      "a value-slot party with a negative record count",
+      {
+        kind: "single-pass-over-limit",
+        limit: "value-slots",
+        local: { effectiveKeyCount: 1, recordCount: -3 },
+        partner: { effectiveKeyCount: 1, recordCount: 3 },
+        limitSlots: 2,
+      },
+    ],
+    [
+      "a value-slot party as a list",
+      {
+        kind: "single-pass-over-limit",
+        limit: "value-slots",
+        local: [1, 3],
+        partner: { effectiveKeyCount: 1, recordCount: 3 },
+        limitSlots: 2,
+      },
+    ],
+    [
+      "a single-pass frame off the list",
+      {
+        kind: "single-pass-over-limit",
+        limit: "frame",
+        frame: "table",
+        frameBytes: 2,
+        limitBytes: 1,
+      },
+    ],
+    [
+      "a fractional distinct-value limit",
+      {
+        kind: "single-pass-over-limit",
+        limit: "distinct-values",
+        limitValues: 1.5,
+      },
+    ],
+    [
+      "a matched list off the list",
+      { kind: "matches-over-limit", list: "pairs" },
+    ],
+    [
+      "a resolved table with no limit figure",
+      { kind: "matches-over-limit", list: "resolved", matchCount: 3 },
     ],
     ["an array", ["partner-never-arrived"]],
     ["a string", "partner-never-arrived"],

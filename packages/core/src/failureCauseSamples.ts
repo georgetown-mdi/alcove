@@ -39,4 +39,18 @@ export const REPRESENTATIVE_FAILURE_CAUSES: {
     limitValues: 8_388_608,
     scope: "first-key",
   },
+  "single-pass-over-limit": {
+    kind: "single-pass-over-limit",
+    limit: "value-slots",
+    local: { effectiveKeyCount: 3, recordCount: 400_000 },
+    partner: { effectiveKeyCount: 3, recordCount: 2_000_000 },
+    limitSlots: 3_000_000,
+    partnerFansOut: true,
+  },
+  "matches-over-limit": {
+    kind: "matches-over-limit",
+    list: "resolved",
+    matchCount: 9_000_000,
+    limitMatches: 8_388_607,
+  },
 };

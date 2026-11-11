@@ -98,19 +98,18 @@ export function roundGroupingSource(
  * Sends a round's grouping after the index lists it describes, in parts; an
  * omitted grouping is one part of no entries. A grouping whose parts total
  * more than the connection's stated frame bound, which the receiver holds it
- * to, sends no part: the partner is sent an abort and a `UsageError` naming
- * `participantId` is thrown.
+ * to, sends no part: the partner is sent an abort and a `UsageError` tagged
+ * with the `matches-over-limit` cause is thrown.
  */
 export async function sendRoundGrouping(
   conn: MessageConnection,
-  participantId: string,
   field: RoundGroupingField | undefined,
 ): Promise<void> {
   await sendMatchedListWithin(
     conn,
     roundGroupingSource(field),
     statedFrameBound(conn),
-    `${participantId}: This exchange found more matches than it can send.`,
+    { kind: "matches-over-limit", list: "grouping" },
   );
 }
 

@@ -1,6 +1,8 @@
 import { expect, test } from "vitest";
 
 import {
+  MATCHES_OVER_LIMIT_REMEDY,
+  failureCauseSentence,
   markFailureCause,
   sanitizeErrorForDisplay,
   setOverLimitError,
@@ -35,6 +37,29 @@ test("the remedy goes before the cause chain, where core composed it", () => {
     [`${head} ${SPLIT}`, ...chain].join("\ncaused by: "),
   );
   expect(webFailureMessage(err)).not.toContain("\u001b");
+});
+
+test("a single-pass or matched-list refusal raised in this browser states core's sentence, then the remedy", () => {
+  const cause = {
+    kind: "matches-over-limit",
+    list: "resolved",
+    matchCount: 5,
+    limitMatches: 4,
+  } as const;
+  const err = markFailureCause(new Error(failureCauseSentence(cause)), cause);
+  expect(webFailureMessage(err)).toBe(
+    `${err.message} ${MATCHES_OVER_LIMIT_REMEDY}`,
+  );
+  const slots = {
+    kind: "single-pass-over-limit",
+    limit: "value-slots",
+    local: { effectiveKeyCount: 1, recordCount: 2 },
+    partner: { effectiveKeyCount: 1, recordCount: 9 },
+    limitSlots: 3,
+  } as const;
+  expect(webRemedyForCause(slots)).toBe(
+    "Ask your partner to reduce their record count or split their dataset.",
+  );
 });
 
 test("a failure with no cause, or a cause this app states in its own copy, is rendered alone", () => {

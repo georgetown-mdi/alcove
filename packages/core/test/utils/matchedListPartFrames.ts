@@ -495,7 +495,7 @@ export async function sendHandPlayedOriginalIndexList(
   list: ReadonlyArray<number>,
 ): Promise<void> {
   await sendRoundIndexList(conn, list);
-  await sendRoundGrouping(conn, "", undefined);
+  await sendRoundGrouping(conn, undefined);
 }
 
 /**

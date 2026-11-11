@@ -10,9 +10,16 @@ import type {
   FailureCause,
   FailureCauseKind,
   FailureCauseOfKind,
+  MatchesOverLimitFailure,
   RelayRegistrarUnreachableFailure,
   SetOverLimitFailure,
+  SinglePassOverLimitFailure,
 } from "@alcove/core";
+
+type SinglePassPartySizeField = Extract<
+  SinglePassOverLimitFailure,
+  { limit: "value-slots" }
+>["local"];
 
 /**
  * A counter or duration as a non-negative whole number, so a malformed value
@@ -52,6 +59,61 @@ function setOverLimitFailureFields(
     limitValues: toStreamCount(cause.limitValues),
     ...(cause.scope !== undefined ? { scope: cause.scope } : {}),
   };
+}
+
+const partySizeFields = ({
+  effectiveKeyCount,
+  recordCount,
+}: SinglePassPartySizeField): SinglePassPartySizeField => ({
+  effectiveKeyCount: toStreamCount(effectiveKeyCount),
+  recordCount: toStreamCount(recordCount),
+});
+
+function singlePassFailureFields(
+  cause: SinglePassOverLimitFailure,
+): SinglePassOverLimitFailure {
+  switch (cause.limit) {
+    case "browser-dataset":
+      return {
+        limit: cause.limit,
+        recordCount: toStreamCount(cause.recordCount),
+        linkageKeyCount: toStreamCount(cause.linkageKeyCount),
+        ...(cause.fansOut === true ? { fansOut: true } : {}),
+      };
+    case "value-slots":
+      return {
+        limit: cause.limit,
+        local: partySizeFields(cause.local),
+        partner: partySizeFields(cause.partner),
+        limitSlots: toStreamCount(cause.limitSlots),
+        ...(cause.localFansOut === true ? { localFansOut: true } : {}),
+        ...(cause.partnerFansOut === true ? { partnerFansOut: true } : {}),
+      };
+    case "frame":
+      return {
+        limit: cause.limit,
+        frame: cause.frame,
+        frameBytes: toStreamCount(cause.frameBytes),
+        limitBytes: toStreamCount(cause.limitBytes),
+      };
+    case "distinct-values":
+      return {
+        limit: cause.limit,
+        limitValues: toStreamCount(cause.limitValues),
+      };
+  }
+}
+
+function matchesFailureFields(
+  cause: MatchesOverLimitFailure,
+): MatchesOverLimitFailure {
+  return cause.list === "grouping"
+    ? { list: cause.list }
+    : {
+        list: cause.list,
+        matchCount: toStreamCount(cause.matchCount),
+        limitMatches: toStreamCount(cause.limitMatches),
+      };
 }
 
 /**
@@ -108,6 +170,14 @@ export const FAILURE_CAUSE_STREAM_FIELDS: {
     kind: "set-over-limit",
     stage: cause.stage,
     ...setOverLimitFailureFields(cause),
+  }),
+  "single-pass-over-limit": (cause) => ({
+    kind: "single-pass-over-limit",
+    ...singlePassFailureFields(cause),
+  }),
+  "matches-over-limit": (cause) => ({
+    kind: "matches-over-limit",
+    ...matchesFailureFields(cause),
   }),
 };
 

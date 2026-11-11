@@ -591,7 +591,7 @@ test("a single-pass exchange over the value-slot ceiling gets the ceiling refusa
     expect(String(reason)).toMatch(/too large for single-pass linkage/);
   }
   expect(String((local as PromiseRejectedResult).reason)).toContain(
-    "single-pass limit of 10 value slot(s) per party",
+    "single-pass limit of 10 value slots per party",
   );
   expect(binaryFrames(sent)).toEqual([]);
   expect(binaryFrames(partnerSent)).toEqual([]);

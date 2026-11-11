@@ -8,8 +8,10 @@
 import { ConnectionError, RoundSetLimitError } from "./errors";
 import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
 import { formatCount } from "./utils/formatCount";
+import { singlePassCeilingBreach, valueSlots } from "./psi/singlePassSizing";
 
 import type { RoundSetLimitReason } from "./errors";
+import type { SinglePassPartySize } from "./psi/singlePassSizing";
 
 /** Every {@link PartnerMeetingChannel}. */
 export const PARTNER_MEETING_CHANNELS = ["filedrop", "sftp", "webrtc"] as const;
@@ -125,6 +127,59 @@ export type SetOverLimitFailure =
     }
   | { readonly limit: "uncounted" };
 
+/** Every frame a single-pass exchange can refuse as over one message. */
+export const SINGLE_PASS_FRAMES = ["reply", "request"] as const;
+
+/**
+ * What a single-pass-over-limit cause found.
+ *
+ * - `browser-dataset`: this browser party's declared records across the
+ *   linkage keys exceed the single-pass limit, before contact.
+ * - `value-slots`: either party's declared value slots exceed the single-pass
+ *   limit of an exchange with a browser, at the terms exchange.
+ * - `frame`: a single-pass frame came to more bytes than one encrypted message
+ *   on a file-sync connection can hold.
+ * - `distinct-values`: this party's records give more distinct values than one
+ *   single-pass set can hold.
+ *
+ * A `fansOut` fact is set where a step that splits values or expands a key
+ * raises that party's count.
+ */
+export type SinglePassOverLimitFailure =
+  | {
+      readonly limit: "browser-dataset";
+      readonly recordCount: number;
+      readonly linkageKeyCount: number;
+      readonly fansOut?: true;
+    }
+  | {
+      readonly limit: "value-slots";
+      readonly local: SinglePassPartySize;
+      readonly partner: SinglePassPartySize;
+      readonly limitSlots: number;
+      readonly localFansOut?: true;
+      readonly partnerFansOut?: true;
+    }
+  | {
+      readonly limit: "frame";
+      readonly frame: (typeof SINGLE_PASS_FRAMES)[number];
+      readonly frameBytes: number;
+      readonly limitBytes: number;
+    }
+  | { readonly limit: "distinct-values"; readonly limitValues: number };
+
+/**
+ * What a matches-over-limit cause found: a round's grouping, or a single-pass
+ * resolved table with its count and the most one message holds.
+ */
+export type MatchesOverLimitFailure =
+  | { readonly list: "grouping" }
+  | {
+      readonly list: "resolved";
+      readonly matchCount: number;
+      readonly limitMatches: number;
+    };
+
 /**
  * A failure whose cause the catalog names. Members hold facts only: a channel,
  * a path, an errno code, a duration. A path is composed into the sentence raw
@@ -176,7 +231,15 @@ export type FailureCause =
       /** A set of this party's own was too large to send, or uncounted. */
       readonly kind: "set-over-limit";
       readonly stage: SetOverLimitStage;
-    } & SetOverLimitFailure);
+    } & SetOverLimitFailure)
+  | ({
+      /** A single-pass exchange's data was too large for its limit. */
+      readonly kind: "single-pass-over-limit";
+    } & SinglePassOverLimitFailure)
+  | ({
+      /** This party found more matches than it can send its partner. */
+      readonly kind: "matches-over-limit";
+    } & MatchesOverLimitFailure);
 
 /** The discriminant of {@link FailureCause}. */
 export type FailureCauseKind = FailureCause["kind"];
@@ -198,6 +261,8 @@ export const FAILURE_CAUSE_KINDS = [
   "relay-registrar-unreachable",
   "partner-stopped-responding",
   "set-over-limit",
+  "single-pass-over-limit",
+  "matches-over-limit",
 ] as const satisfies ReadonlyArray<FailureCauseKind>;
 
 const FAILURE_CAUSE = annotationKey<FailureCause>("failure cause");
@@ -284,6 +349,85 @@ function setOverLimitFailureFromUntrusted({
   };
 }
 
+function partySizeFromUntrusted(
+  value: unknown,
+): SinglePassPartySize | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const { effectiveKeyCount, recordCount } = value as Record<string, unknown>;
+  return isWholeNumber(effectiveKeyCount) && isWholeNumber(recordCount)
+    ? { effectiveKeyCount, recordCount }
+    : undefined;
+}
+
+const isUnsetOrTrue = (value: unknown): value is true | undefined =>
+  value === undefined || value === true;
+
+function singlePassFailureFromUntrusted(
+  fields: Record<string, unknown>,
+): SinglePassOverLimitFailure | undefined {
+  switch (fields.limit) {
+    case "browser-dataset": {
+      const { recordCount, linkageKeyCount, fansOut } = fields;
+      if (!isWholeNumber(recordCount) || !isWholeNumber(linkageKeyCount))
+        return undefined;
+      if (!isUnsetOrTrue(fansOut)) return undefined;
+      return {
+        limit: "browser-dataset",
+        recordCount,
+        linkageKeyCount,
+        ...(fansOut === true ? { fansOut } : {}),
+      };
+    }
+    case "value-slots": {
+      const local = partySizeFromUntrusted(fields.local);
+      const partner = partySizeFromUntrusted(fields.partner);
+      const { limitSlots, localFansOut, partnerFansOut } = fields;
+      if (local === undefined || partner === undefined) return undefined;
+      if (!isWholeNumber(limitSlots)) return undefined;
+      if (!isUnsetOrTrue(localFansOut) || !isUnsetOrTrue(partnerFansOut))
+        return undefined;
+      // A cause no party's count breaches has no sentence to state.
+      if (singlePassCeilingBreach(local, partner, limitSlots) === undefined)
+        return undefined;
+      return {
+        limit: "value-slots",
+        local,
+        partner,
+        limitSlots,
+        ...(localFansOut === true ? { localFansOut } : {}),
+        ...(partnerFansOut === true ? { partnerFansOut } : {}),
+      };
+    }
+    case "frame": {
+      const { frame, frameBytes, limitBytes } = fields;
+      return oneOf(SINGLE_PASS_FRAMES, frame) &&
+        isWholeNumber(frameBytes) &&
+        isWholeNumber(limitBytes)
+        ? { limit: "frame", frame, frameBytes, limitBytes }
+        : undefined;
+    }
+    case "distinct-values":
+      return isWholeNumber(fields.limitValues)
+        ? { limit: "distinct-values", limitValues: fields.limitValues }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function matchesFailureFromUntrusted({
+  list,
+  matchCount,
+  limitMatches,
+}: Record<string, unknown>): MatchesOverLimitFailure | undefined {
+  if (list === "grouping") return { list };
+  if (list !== "resolved") return undefined;
+  return isWholeNumber(matchCount) && isWholeNumber(limitMatches)
+    ? { list, matchCount, limitMatches }
+    : undefined;
+}
+
 const FROM_UNTRUSTED: {
   readonly [K in FailureCauseKind]: (
     fields: Record<string, unknown>,
@@ -342,6 +486,18 @@ const FROM_UNTRUSTED: {
     return failure === undefined
       ? undefined
       : { kind: "set-over-limit", stage, ...failure };
+  },
+  "single-pass-over-limit": (fields) => {
+    const failure = singlePassFailureFromUntrusted(fields);
+    return failure === undefined
+      ? undefined
+      : { kind: "single-pass-over-limit", ...failure };
+  },
+  "matches-over-limit": (fields) => {
+    const failure = matchesFailureFromUntrusted(fields);
+    return failure === undefined
+      ? undefined
+      : { kind: "matches-over-limit", ...failure };
   },
 };
 
@@ -488,6 +644,61 @@ function setOverLimitSentence(
   return `${head}: ${values}, ${over}${SET_REFUSED_AT[cause.stage]}`;
 }
 
+const counted = (count: number, noun: string, nouns = `${noun}s`): string =>
+  `${formatCount(count)} ${count === 1 ? noun : nouns}`;
+
+const declaredSize = (who: string, party: SinglePassPartySize): string =>
+  `${who} declared ${counted(party.effectiveKeyCount, "effective linkage key")} ` +
+  `across ${counted(party.recordCount, "record")}, which is ` +
+  counted(valueSlots(party), "value slot");
+
+function singlePassOverLimitSentence(
+  cause: FailureCauseOfKind<"single-pass-over-limit">,
+): string {
+  switch (cause.limit) {
+    case "browser-dataset":
+      return (
+        "This dataset is too large for single-pass linkage in a browser: " +
+        `${counted(cause.recordCount, "declared record")} across ` +
+        `${counted(cause.linkageKeyCount, "linkage key")} exceed the ` +
+        "single-pass limit."
+      );
+    case "value-slots": {
+      const { local, partner } = cause;
+      const breach = singlePassCeilingBreach(local, partner, cause.limitSlots);
+      const found =
+        breach === "local"
+          ? declaredSize("you", local)
+          : breach === "partner"
+            ? declaredSize("your partner", partner)
+            : `${declaredSize("you", local)}, and ${declaredSize("your partner", partner)}`;
+      return (
+        `This ${breach === "local" ? "dataset" : "exchange"} is too large ` +
+        `for single-pass linkage: ${found}, above the single-pass limit of ` +
+        `${counted(cause.limitSlots, "value slot")} per party in an exchange ` +
+        "with a browser" +
+        (breach === "partner"
+          ? `, while your own ${counted(valueSlots(local), "value slot")} ${valueSlots(local) === 1 ? "is" : "are"} within it.`
+          : ".")
+      );
+    }
+    case "frame":
+      return (
+        `The single-pass ${cause.frame} came to ` +
+        `${counted(cause.frameBytes, "byte")}, above the ` +
+        `${counted(cause.limitBytes, "byte")} one encrypted message can hold, ` +
+        "so the exchange stopped and your partner was told."
+      );
+    case "distinct-values":
+      return (
+        "Too large to send: your records give more than " +
+        `${formatCount(cause.limitValues)} distinct linkage key values, the ` +
+        "most one single-pass set can hold, so the exchange stopped before " +
+        "masking them and told your partner."
+      );
+  }
+}
+
 const SENTENCES: {
   readonly [K in FailureCauseKind]: (cause: FailureCauseOfKind<K>) => string;
 } = {
@@ -516,6 +727,14 @@ const SENTENCES: {
     "Your partner stopped responding during matching: nothing arrived from " +
     `them for ${formatWaitDuration(silentMs)}.`,
   "set-over-limit": setOverLimitSentence,
+  "single-pass-over-limit": singlePassOverLimitSentence,
+  "matches-over-limit": (cause) =>
+    "This exchange found " +
+    (cause.list === "grouping"
+      ? "more matches than it can send"
+      : `${counted(cause.matchCount, "match", "matches")}, more than the ` +
+        `${formatCount(cause.limitMatches)} it can send`) +
+    ", so it stopped and told your partner.",
 };
 
 /**
@@ -600,3 +819,69 @@ export function setOverLimitError(
     cause,
   );
 }
+
+// The linkage keys are an agreed term, so the remedy names new terms with the
+// partner rather than an edit.
+const SINGLE_PASS_LOCAL_REMEDY =
+  "Reduce the record count or split the dataset into smaller batches, or " +
+  "agree on new terms with fewer linkage keys with your partner.";
+
+const SINGLE_PASS_FAN_OUT_CLAUSE =
+  " Removing a step that splits values or expands a key also lowers the count.";
+
+// The reply carries the receiver's re-encrypted request, so both parties'
+// data sets its size.
+const SINGLE_PASS_REPLY_REMEDY =
+  "To shrink it, either party can reduce its record count or split its " +
+  "dataset into smaller batches, or the two parties can agree on new terms " +
+  "with fewer linkage keys.";
+
+/**
+ * The remedy for a single-pass exchange over its limit: no setting raises the
+ * limit, so every app states it alike, naming the party whose data is over.
+ */
+export function singlePassOverLimitRemedy(
+  cause: FailureCauseOfKind<"single-pass-over-limit">,
+): string {
+  switch (cause.limit) {
+    case "browser-dataset":
+      return (
+        SINGLE_PASS_LOCAL_REMEDY +
+        (cause.fansOut === true ? SINGLE_PASS_FAN_OUT_CLAUSE : "")
+      );
+    case "frame":
+      return cause.frame === "reply"
+        ? SINGLE_PASS_REPLY_REMEDY
+        : SINGLE_PASS_LOCAL_REMEDY;
+    case "distinct-values":
+      return SINGLE_PASS_LOCAL_REMEDY;
+    case "value-slots": {
+      const { local, partner } = cause;
+      const breach = singlePassCeilingBreach(local, partner, cause.limitSlots);
+      const remedies: Array<string> = [];
+      if (breach !== "partner")
+        remedies.push(
+          SINGLE_PASS_LOCAL_REMEDY +
+            (cause.localFansOut === true ? SINGLE_PASS_FAN_OUT_CLAUSE : ""),
+        );
+      if (breach !== "local")
+        remedies.push(
+          (breach === "both"
+            ? "Ask your partner to reduce their record count or split their " +
+              "dataset too."
+            : "Ask your partner to reduce their record count or split their " +
+              "dataset.") +
+            (cause.partnerFansOut === true
+              ? " Your partner can also remove a step that splits values or " +
+                "expands a key."
+              : ""),
+        );
+      return remedies.join(" ");
+    }
+  }
+}
+
+/** The remedy for more matches than this party can send its partner. */
+export const MATCHES_OVER_LIMIT_REMEDY =
+  "This usually means many records on both sides share a key value. Use a " +
+  "more distinctive key or split the data into smaller batches.";

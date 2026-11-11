@@ -218,6 +218,46 @@ describe("the stream field", () => {
     expect(failureCauseFromUntrusted(read)).toEqual(inRound);
   });
 
+  it("copies a single-pass cause's facts, its party sizes one by one, and drops every other key", () => {
+    const slots = Object.assign(
+      {
+        kind: "single-pass-over-limit",
+        limit: "value-slots",
+        local: Object.assign(
+          { effectiveKeyCount: 2, recordCount: 5.5 },
+          { name: "not a fact" },
+        ),
+        partner: { effectiveKeyCount: 2, recordCount: 2 },
+        limitSlots: 6,
+        localFansOut: true,
+      } as const,
+      { recordCount: 9 },
+    );
+    expect(failureCauseStreamField(slots)).toEqual({
+      kind: "single-pass-over-limit",
+      limit: "value-slots",
+      local: { effectiveKeyCount: 2, recordCount: 5 },
+      partner: { effectiveKeyCount: 2, recordCount: 2 },
+      limitSlots: 6,
+      localFansOut: true,
+    });
+    const resolved = Object.assign(
+      {
+        kind: "matches-over-limit",
+        list: "resolved",
+        matchCount: 5,
+        limitMatches: 4,
+      } as const,
+      { list2: "grouping" },
+    );
+    expect(failureCauseStreamField(resolved)).toEqual({
+      kind: "matches-over-limit",
+      list: "resolved",
+      matchCount: 5,
+      limitMatches: 4,
+    });
+  });
+
   it("drops a cause whose kind has no row rather than throwing", () => {
     for (const kind of ["partner-went-away", "toString", "__proto__", ""]) {
       const unknown = { kind } as unknown as FailureCause;

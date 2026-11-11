@@ -13,6 +13,7 @@
 // as the part arrives, so the receiver holds one unread part at a time
 // (docs/spec/PROTOCOL.md, "A list of matched records is sent in parts").
 import { ConnectionError, UsageError, chainDetailCauses } from "../errors";
+import { failureCauseSentence, markFailureCause } from "../failureCause";
 import { PSI_SET_REFUSED_ABORT_REASON } from "../partnerAbortFrame";
 import { sendAbort } from "../protocolSetup";
 import { receiveBinaryFrame } from "./psiBinaryFrame";
@@ -22,6 +23,7 @@ import {
 } from "./psiSetParts";
 
 import type { MessageConnection } from "../connection/messageConnection";
+import type { FailureCauseOfKind } from "../failureCause";
 
 /**
  * Bytes of the header every part of a matched-record list begins with: the
@@ -285,29 +287,23 @@ export async function sendMatchedList(
   }
 }
 
-const TOO_MANY_MATCHES_REMEDY =
-  "It stopped, and your partner was told. This usually means many records on " +
-  "both sides share a key value. Use a more distinctive key or split the " +
-  "data into smaller batches.";
-
 /**
  * {@link sendMatchedList} for a list that must total at most `maxListBytes`. A
  * list over it sends no part: the partner is sent an abort stating that this
- * run refused to send, and `refusal` followed by the remedy is thrown as a
- * {@link UsageError}.
+ * run refused to send, and a {@link UsageError} tagged with `cause` is thrown.
  */
 export async function sendMatchedListWithin(
   conn: MessageConnection,
   source: BinaryListSource,
   maxListBytes: number,
-  refusal: string,
+  cause: FailureCauseOfKind<"matches-over-limit">,
 ): Promise<void> {
   try {
     await sendMatchedList(conn, source, undefined, maxListBytes);
   } catch (err) {
     if (!(err instanceof MatchedListOverBoundError)) throw err;
     await sendAbort(conn, [PSI_SET_REFUSED_ABORT_REASON]);
-    throw new UsageError(`${refusal} ${TOO_MANY_MATCHES_REMEDY}`);
+    throw markFailureCause(new UsageError(failureCauseSentence(cause)), cause);
   }
 }
 
