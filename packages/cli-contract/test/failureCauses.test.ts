@@ -169,6 +169,55 @@ describe("the stream field", () => {
     });
   });
 
+  it("copies a set-size cause's facts, floors its counts, and drops another limit's", () => {
+    const counted = Object.assign(
+      {
+        kind: "set-over-limit",
+        stage: "after-terms",
+        limit: "partner-ceiling",
+        valueCount: 12.9,
+        limitValues: 11,
+        scope: "every-key",
+      } as const,
+      { extra: "not a fact" },
+    );
+    expect(failureCauseStreamField(counted)).toEqual({
+      kind: "set-over-limit",
+      stage: "after-terms",
+      limit: "partner-ceiling",
+      valueCount: 12,
+      limitValues: 11,
+      scope: "every-key",
+    });
+    const uncounted = Object.assign(
+      {
+        kind: "set-over-limit",
+        stage: "before-contact",
+        limit: "uncounted",
+      } as const,
+      { valueCount: 3 },
+    );
+    expect(failureCauseStreamField(uncounted as FailureCause)).toEqual({
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "uncounted",
+    });
+    const inRound: FailureCause = {
+      kind: "set-over-limit",
+      stage: "in-round",
+      limit: "set-maximum",
+      valueCount: 16_777_217,
+      limitValues: 16_777_216,
+    };
+    const line = JSON.stringify({
+      v: 1,
+      type: "error",
+      cause: failureCauseStreamField(inRound),
+    });
+    const read = (parseBoundedJson(line) as { cause: unknown }).cause;
+    expect(failureCauseFromUntrusted(read)).toEqual(inRound);
+  });
+
   it("drops a cause whose kind has no row rather than throwing", () => {
     for (const kind of ["partner-went-away", "toString", "__proto__", ""]) {
       const unknown = { kind } as unknown as FailureCause;

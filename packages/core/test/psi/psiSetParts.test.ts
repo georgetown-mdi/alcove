@@ -33,11 +33,10 @@ import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "../../src/partnerAbortFrame";
 import { PSIParticipant } from "../../src/psi/participant";
+import { failureCauseOf, failureCauseSentence } from "../../src/failureCause";
 import { serializeSetup } from "../../src/psi/psiChunks";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
-  ownSetOverPartnerCeilingMessage,
-  ownSetTooLargeMessage,
   partnerSetOverCeilingMessage,
   PSI_SET_PART_HEADER_BYTES,
   psiSetByteBound,
@@ -975,8 +974,19 @@ test.each([
 
     expect(overEnd).toBeInstanceOf(RoundSetLimitError);
     expect((overEnd as RoundSetLimitError).reason).toBe("over-set-maximum");
+    const cause = {
+      kind: "set-over-limit",
+      stage: "in-round",
+      limit: "set-maximum",
+      limitValues: MAX_PSI_DECODE_ELEMENTS,
+      valueCount: MAX_PSI_DECODE_ELEMENTS + 1,
+    } as const;
+    expect(failureCauseOf(overEnd)).toEqual(cause);
+    expect((overEnd as Error).message).toBe(failureCauseSentence(cause));
     expect((overEnd as Error).message).toBe(
-      ownSetTooLargeMessage(MAX_PSI_DECODE_ELEMENTS + 1),
+      "Too large to send: the set you send for this linkage key holds " +
+        "16,777,217 values, over the 16,777,216 one set can hold, so the " +
+        "exchange stopped before sending it and told your partner.",
     );
     expect(sent).toEqual([
       { decision: "abort", abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON] },
@@ -1057,8 +1067,17 @@ test.each([
 
     expect(overEnd).toBeInstanceOf(RoundSetLimitError);
     expect((overEnd as RoundSetLimitError).reason).toBe("over-partner-ceiling");
+    expect(failureCauseOf(overEnd)).toEqual({
+      kind: "set-over-limit",
+      stage: "in-round",
+      limit: "partner-ceiling",
+      limitValues: 2,
+      valueCount: 3,
+    });
     expect((overEnd as Error).message).toBe(
-      ownSetOverPartnerCeilingMessage(3, 2),
+      "Too large for your partner: the set you send for this linkage key " +
+        "holds 3 values, over the 2 your partner can receive in one PSI set, " +
+        "so the exchange stopped before sending it and told your partner.",
     );
     expect(sent).toEqual([
       { decision: "abort", abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON] },

@@ -2,10 +2,11 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { RoundSetLimitError, UsageError } from "../../src/errors";
 import { prepareForExchange } from "../../src/exchange";
+import { assertFirstRoundWithinSetMaximum } from "../../src/exchange/firstRoundCapacity";
 import {
-  assertFirstRoundWithinSetMaximum,
-  roundOneSetOverMaximumMessage,
-} from "../../src/exchange/firstRoundCapacity";
+  failureCauseSentence,
+  type RoundSetScope,
+} from "../../src/failureCause";
 import {
   StandardizedDataset,
   StandardizedField,
@@ -20,6 +21,21 @@ import { distinctFirstName, preparedFirstNames } from "../utils/support";
 // The first-round count reads the prepared dataset, before any connection.
 // The per-set maximum is lowered so the bound is reached with a few hundred
 // values.
+
+function roundOneSetOverMaximumMessage(
+  valueCount: number,
+  limitValues: number,
+  scope: RoundSetScope,
+): string {
+  return failureCauseSentence({
+    kind: "set-over-limit",
+    stage: "before-contact",
+    limit: "set-maximum",
+    valueCount,
+    limitValues,
+    scope,
+  });
+}
 
 /** What `check` rejects with, or undefined where it resolves. */
 async function refusalOf(check: Promise<void>): Promise<unknown> {
@@ -48,7 +64,7 @@ test("a deduplicating party's count stops once its set is over the bound", async
     ),
   );
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
-  expect((refusal as Error).message).toMatch(/at least 1024 values to send/);
+  expect((refusal as Error).message).toMatch(/at least 1,024 values to send/);
   expect(reports.map((report) => report.state)).toEqual([
     "started",
     "finished",

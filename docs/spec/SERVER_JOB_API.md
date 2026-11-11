@@ -908,6 +908,8 @@ Each of those values, and the preflight's own, is described in [Warning sources 
 
 **Buffer cap.** The event buffer is capped at 10,000 entries (a runaway safety check; a real CLI stream is dozens of lines). On overflow the job is failed rather than dropping events silently: a synthesized `error` terminal is appended, the child is `SIGKILL`ed, and status becomes `failed`, so a supervisor never observes a truncated history. The one exception to retention is `partnerProgress`: a new one removes the buffered one and is appended under the next id, so progress takes at most one entry toward the cap and a partner's figures cannot fill it. Event ids rise but skip a replaced event's id, and the status body's `eventCount` is the buffered count.
 
+**Limit: an uncounted set's report keeps one line of its count failure.** When the first round's values could not be counted, the console's reported-cause block ends the count failure at the first escaped line break after the last cause link, which is how it leaves out the CLI's next step; a count failure whose own message spans lines is shown only up to its first line break.
+
 ## Exit-code reconciliation
 
 The child's exit is classified from the exit code and signal, per the CLI's terminal contract ([CLI_EVENTS.md](CLI_EVENTS.md#terminal-event-guarantees)): exit `0` is `succeeded`; an interrupt -- exit `130` or `143`, or death to `SIGINT`/`SIGTERM` -- is `cancelled`; exit `73` is `completedWithPersistenceLoss`; any other exit or signal is `failed`, with the exit code recorded. An interrupt legitimately produces no terminal fd-3 event, so a `cancelled` job's stream is not a broken one.

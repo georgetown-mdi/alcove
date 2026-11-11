@@ -47,6 +47,8 @@ export {
   markFailureCause,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   relayRegistrarUnreachableRemedy,
+  setOverLimitError,
+  setOverLimitRemedy,
 } from "./failureCause";
 export type {
   FailureCause,
@@ -55,6 +57,9 @@ export type {
   FolderMissingCode,
   IgnoredUnansweredHello,
   RelayRegistrarUnreachableFailure,
+  RoundSetScope,
+  SetOverLimitFailure,
+  SetOverLimitStage,
 } from "./failureCause";
 export {
   classifyFailure,
@@ -330,6 +335,7 @@ export {
 export type { Displayable } from "./utils/sanitizeForDisplay";
 export {
   sanitizeErrorForDisplay,
+  sanitizeErrorForDisplayWithStep,
   sanitizeErrorChainLinks,
   joinErrorCauseChain,
   keepFirstPartyLineBreaks,

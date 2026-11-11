@@ -78,6 +78,7 @@ import { openOneShotPeerConnection } from "@psi/exchangeLifecycle";
 import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
 import { ownRelayRead } from "@psi/transport/ownRelaySetting";
 import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal";
+import { webFailureMessage } from "@exchange/webFailureRemedy";
 
 import {
   CoordinationServerUnreachableError,
@@ -257,6 +258,28 @@ export function sanitizedFailureMessage(error: unknown): string {
  */
 function reportedCauseFields(cause: string): Pick<RunFailure, "reportedCause"> {
   return cause.trim() === "" ? {} : { reportedCause: cause };
+}
+
+const CAUSE_CHAIN_SEPARATOR = joinErrorCauseChain(["", ""]);
+const RELAYED_LINE_BREAK = sanitizeForDisplay("\n");
+
+/**
+ * What the CLI's report of a refused set adds to core's sentence and the
+ * remedy the console shows beside it: the cause chain behind the sentence,
+ * without the remedy line the CLI writes beneath it. The relay escapes that
+ * line's break into the chain's last link and may cut the remedy after it, so
+ * the last link ends at its first escaped break, before the links are escaped
+ * for display. Empty where the report holds no chain.
+ */
+function setOverLimitReport(error: RelayedTerminalError): string {
+  const reported = error.message;
+  const lastLinkAt = reported.lastIndexOf(CAUSE_CHAIN_SEPARATOR);
+  if (lastLinkAt === -1) return "";
+  const breakAt = reported.indexOf(RELAYED_LINE_BREAK, lastLinkAt);
+  const [, ...chain] = sanitizeErrorChainLinks(
+    breakAt === -1 ? reported : reported.slice(0, breakAt),
+  );
+  return joinErrorCauseChain(chain);
 }
 
 /** The failure for a quick exchange job create refused over the saved SFTP
@@ -793,15 +816,15 @@ function failureContentFor(
   }
   // A set of this party's own over the most values the partner can receive, or
   // over the protocol's maximum, refused before it is sent; or a first-round
-  // count that could not be taken. The message is fixed copy with counts, and
-  // for an uncounted refusal the cause's message, which the display sanitizer
-  // bounds. Classified `config`: the same input refuses identically however
-  // many times it runs.
+  // count that could not be taken. The message is core's sentence with counts
+  // and this app's remedy, and for an uncounted refusal the cause's message,
+  // which the display sanitizer bounds. Classified `config`: the same input
+  // refuses identically however many times it runs.
   if (isSetTooLargeError(error))
     return {
       category: "config",
       title: tooLargeFailureTitle(tooLargeReadingOf(error)),
-      message: sanitizedFailureMessage(error),
+      message: webFailureMessage(error),
       settingsCannotResolve: true,
     };
   if (error instanceof LinkageTermsUnsatisfiableError) {
@@ -854,6 +877,10 @@ function failureContentFor(
       ...consoleFailureForCause(cause, { thisSideNamed }),
       ...(cause.kind === "partner-never-arrived" && cause.sharedName === true
         ? { sharedName: true }
+        : {}),
+      // Why the count failed is in the CLI's report alone.
+      ...(cause.kind === "set-over-limit" && cause.limit === "uncounted"
+        ? reportedCauseFields(setOverLimitReport(error))
         : {}),
     };
   }

@@ -139,14 +139,6 @@ export {
   countOnlyRunAheadBytes,
 } from "./connection/messageConnection.js";
 
-// The first-round refusals over the partner's stated receive ceiling, so each
-// front end's suite can hold its alert to the refusal's text. They stay out of
-// the main entry point: a caller meets the refusal, not its composition.
-export {
-  ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
-  roundOneSetOverPartnerCeilingMessage,
-} from "./exchange/firstRoundCapacity.js";
-
 // The sender-side WebRTC frame check's arithmetic, so each WebRTC transport's
 // suite can hold its own receive path to the charge the check weighs. It stays
 // out of the main entry point: a caller meets the part size, not the

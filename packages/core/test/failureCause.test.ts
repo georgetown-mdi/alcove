@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { RoundSetLimitError, statesItsOwnNextStep } from "../src/errors";
 import {
   FAILURE_CAUSE_KINDS,
   failureCauseError,
@@ -10,6 +11,8 @@ import {
   formatWaitDuration,
   relayRegistrarUnreachableRemedy,
   markFailureCause,
+  setOverLimitError,
+  setOverLimitRemedy,
   type FailureCause,
   type FailureCauseKind,
   type FailureCauseOfKind,
@@ -93,6 +96,56 @@ const SAMPLES: {
   "partner-stopped-responding": [
     { kind: "partner-stopped-responding", silentMs: 120_000 },
   ],
+  "set-over-limit": [
+    {
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "set-maximum",
+      valueCount: 17_000_000,
+      limitValues: 16_777_216,
+      scope: "first-key",
+    },
+    {
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "set-maximum",
+      valueCount: 301,
+      limitValues: 300,
+      scope: "every-key",
+    },
+    {
+      kind: "set-over-limit",
+      stage: "after-terms",
+      limit: "set-maximum",
+      valueCount: 10,
+      limitValues: 9,
+      scope: "widest-key",
+    },
+    {
+      kind: "set-over-limit",
+      stage: "after-terms",
+      limit: "partner-ceiling",
+      valueCount: 9_000_000,
+      limitValues: 8_388_608,
+      scope: "first-key",
+    },
+    {
+      kind: "set-over-limit",
+      stage: "in-round",
+      limit: "set-maximum",
+      valueCount: 16_777_217,
+      limitValues: 16_777_216,
+    },
+    {
+      kind: "set-over-limit",
+      stage: "in-round",
+      limit: "partner-ceiling",
+      valueCount: 3,
+      limitValues: 2,
+    },
+    { kind: "set-over-limit", stage: "before-contact", limit: "uncounted" },
+    { kind: "set-over-limit", stage: "after-terms", limit: "uncounted" },
+  ],
 };
 
 const allSamples: FailureCause[] = Object.values(SAMPLES).flat();
@@ -148,6 +201,55 @@ describe("the failure-cause catalog", () => {
     expect(failureCauseSentence(SAMPLES["partner-stopped-responding"][0])).toBe(
       "Your partner stopped responding during matching: nothing arrived from them for 2 minutes.",
     );
+    expect(
+      SAMPLES["set-over-limit"].map((cause) => failureCauseSentence(cause)),
+    ).toEqual([
+      "Too large to send: the first linkage key gives you at least 17,000,000 values to send, over the 16,777,216 one PSI set can hold, so nothing was sent.",
+      "Too large to send: a count-only exchange sends 301 values for every linkage key, over the 300 one PSI set can hold, so nothing was sent.",
+      "Too large to send: a count-only exchange sends 10 values for its widest linkage key, over the 9 one PSI set can hold, so the exchange stopped before any linkage key was sent and told your partner.",
+      "Too large for your partner: the first linkage key gives you at least 9,000,000 values to send, over the 8,388,608 your partner can receive in one PSI set, so the exchange stopped before any linkage key was sent and told your partner.",
+      "Too large to send: the set you send for this linkage key holds 16,777,217 values, over the 16,777,216 one set can hold, so the exchange stopped before sending it and told your partner.",
+      "Too large for your partner: the set you send for this linkage key holds 3 values, over the 2 your partner can receive in one PSI set, so the exchange stopped before sending it and told your partner.",
+      "Alcove could not count the values the first linkage key gives you to send, so it cannot confirm one PSI set can hold them, and nothing was sent.",
+      "Alcove could not count the values the first linkage key gives you to send, so it cannot confirm your partner can receive them, and the exchange stopped before any linkage key was sent and told your partner.",
+    ]);
+  });
+
+  test("the set-size remedy names the command-line application only for a first round over the partner's ceiling", () => {
+    const split =
+      "Split the input into smaller files and run one exchange for each.";
+    expect(
+      SAMPLES["set-over-limit"].map((cause) => setOverLimitRemedy(cause)),
+    ).toEqual([
+      split,
+      split,
+      split,
+      `${split.slice(0, -1)}, or ask your partner to run the exchange with the command-line application.`,
+      split,
+      split,
+      split,
+      split,
+    ]);
+  });
+
+  test("a set-size refusal is a RoundSetLimitError stating its sentence, its reason read from the limit", () => {
+    const failure = new RangeError("Map maximum size exceeded");
+    const [overMaximum, , , overCeiling] = SAMPLES["set-over-limit"];
+    const uncounted = SAMPLES["set-over-limit"][6];
+    const reasons = [overMaximum, overCeiling, uncounted].map((cause) => {
+      const err = setOverLimitError(cause, { cause: failure });
+      expect(err).toBeInstanceOf(RoundSetLimitError);
+      expect(err.message).toBe(failureCauseSentence(cause));
+      expect(err.cause).toBe(failure);
+      expect(failureCauseOf(err)).toBe(cause);
+      expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
+      return err.reason;
+    });
+    expect(reasons).toEqual([
+      "over-set-maximum",
+      "over-partner-ceiling",
+      "uncounted",
+    ]);
   });
 
   test("the registrar remedy names no setting or file for any class", () => {
@@ -266,6 +368,22 @@ describe("failureCauseFromUntrusted", () => {
         extra: { nested: true },
       }),
     ).toEqual({ kind: "partner-never-arrived", channel: "filedrop" });
+  });
+
+  test("rebuilds an uncounted set-size cause from its stage and limit alone", () => {
+    expect(
+      failureCauseFromUntrusted({
+        kind: "set-over-limit",
+        stage: "after-terms",
+        limit: "uncounted",
+        valueCount: 12,
+        scope: "first-key",
+      }),
+    ).toEqual({
+      kind: "set-over-limit",
+      stage: "after-terms",
+      limit: "uncounted",
+    });
   });
 
   test("rebuilds an ignored hello from its age and window alone", () => {
@@ -507,6 +625,48 @@ describe("failureCauseFromUntrusted", () => {
         port: 443,
         failure: "no-answer",
         timedOutMs: -1,
+      },
+    ],
+    [
+      "a set-size cause with no stage",
+      { kind: "set-over-limit", limit: "uncounted" },
+    ],
+    [
+      "a set-size stage off the list",
+      { kind: "set-over-limit", stage: "mid-round", limit: "uncounted" },
+    ],
+    [
+      "a set-size limit off the list",
+      { kind: "set-over-limit", stage: "in-round", limit: "memory" },
+    ],
+    [
+      "a set-size count with no limit figure",
+      {
+        kind: "set-over-limit",
+        stage: "in-round",
+        limit: "set-maximum",
+        valueCount: 3,
+      },
+    ],
+    [
+      "a fractional set-size count",
+      {
+        kind: "set-over-limit",
+        stage: "in-round",
+        limit: "partner-ceiling",
+        valueCount: 3.5,
+        limitValues: 2,
+      },
+    ],
+    [
+      "a set-size scope off the list",
+      {
+        kind: "set-over-limit",
+        stage: "after-terms",
+        limit: "set-maximum",
+        valueCount: 3,
+        limitValues: 2,
+        scope: "every-round",
       },
     ],
     ["an array", ["partner-never-arrived"]],

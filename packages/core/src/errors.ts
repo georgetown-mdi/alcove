@@ -304,8 +304,10 @@ export type RoundSetLimitReason =
  * over the partner's stated receive ceiling or one that could not be counted;
  * in any round, a set over either bound, with the partner sent an abort in its
  * place (docs/spec/PROTOCOL.md, "The receive ceiling"). `reason` states which.
- * The message names the count, the bound, and the remedy, and is composed only
- * from counts and fixed constants. States its own next step
+ * The message names the count and the bound, and is composed only from counts
+ * and fixed constants. One tagged with the `set-over-limit` failure cause
+ * (`setOverLimitError`) takes its remedy from each app's remedy map; the
+ * single-pass refusal states its own. Marked as stating its own next step
  * ({@link markStatesItsOwnNextStep}): a retry refuses identically, so the
  * CLI's generic retry advisory is suppressed.
  */

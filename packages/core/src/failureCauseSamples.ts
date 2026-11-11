@@ -31,4 +31,12 @@ export const REPRESENTATIVE_FAILURE_CAUSES: {
     kind: "partner-stopped-responding",
     silentMs: 120_000,
   },
+  "set-over-limit": {
+    kind: "set-over-limit",
+    stage: "after-terms",
+    limit: "partner-ceiling",
+    valueCount: 9_000_000,
+    limitValues: 8_388_608,
+    scope: "first-key",
+  },
 };

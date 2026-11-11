@@ -5,9 +5,11 @@
 // that has no remedy for it. No flag, control or command name belongs here; a
 // remedy every app states alike, naming none, is here for the apps to share.
 
-import { ConnectionError } from "./errors";
+import { ConnectionError, RoundSetLimitError } from "./errors";
 import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
 import { formatCount } from "./utils/formatCount";
+
+import type { RoundSetLimitReason } from "./errors";
 
 /** Every {@link PartnerMeetingChannel}. */
 export const PARTNER_MEETING_CHANNELS = ["filedrop", "sftp", "webrtc"] as const;
@@ -77,6 +79,52 @@ export interface IgnoredUnansweredHello {
   readonly windowMs: number;
 }
 
+/** Every {@link SetOverLimitStage}. */
+export const SET_OVER_LIMIT_STAGES = [
+  "before-contact",
+  "after-terms",
+  "in-round",
+] as const;
+
+/**
+ * When a set of this party's own was refused: at the start of an exchange,
+ * before contact; after the terms exchange, before any linkage key was sent;
+ * or inside a round, before the set was sent.
+ */
+export type SetOverLimitStage = (typeof SET_OVER_LIMIT_STAGES)[number];
+
+/** Every {@link RoundSetScope}. */
+export const ROUND_SET_SCOPES = [
+  "first-key",
+  "every-key",
+  "widest-key",
+] as const;
+
+/**
+ * Which rounds a first-round refusal's figure covers: at least that many
+ * values for the first key, exactly that many for every key of a count-only
+ * exchange, or exactly that many for the widest key of a count-only exchange
+ * whose keys differ in width.
+ */
+export type RoundSetScope = (typeof ROUND_SET_SCOPES)[number];
+
+/**
+ * What a set-over-limit cause found: a count over a limit, or no count.
+ *
+ * - `set-maximum`: more values than one PSI set can hold.
+ * - `partner-ceiling`: more values than the partner stated it can receive.
+ * - `uncounted`: the first round's values could not be counted.
+ */
+export type SetOverLimitFailure =
+  | {
+      readonly limit: "set-maximum" | "partner-ceiling";
+      readonly valueCount: number;
+      readonly limitValues: number;
+      /** The rounds the count covers; unset for one linkage key's set. */
+      readonly scope?: RoundSetScope;
+    }
+  | { readonly limit: "uncounted" };
+
 /**
  * A failure whose cause the catalog names. Members hold facts only: a channel,
  * a path, an errno code, a duration. A path is composed into the sentence raw
@@ -123,7 +171,12 @@ export type FailureCause =
        */
       readonly kind: "partner-stopped-responding";
       readonly silentMs: number;
-    };
+    }
+  | ({
+      /** A set of this party's own was too large to send, or uncounted. */
+      readonly kind: "set-over-limit";
+      readonly stage: SetOverLimitStage;
+    } & SetOverLimitFailure);
 
 /** The discriminant of {@link FailureCause}. */
 export type FailureCauseKind = FailureCause["kind"];
@@ -144,6 +197,7 @@ export const FAILURE_CAUSE_KINDS = [
   "folder-missing",
   "relay-registrar-unreachable",
   "partner-stopped-responding",
+  "set-over-limit",
 ] as const satisfies ReadonlyArray<FailureCauseKind>;
 
 const FAILURE_CAUSE = annotationKey<FailureCause>("failure cause");
@@ -211,6 +265,25 @@ function ignoredHelloFromUntrusted(
     : undefined;
 }
 
+function setOverLimitFailureFromUntrusted({
+  limit,
+  valueCount,
+  limitValues,
+  scope,
+}: Record<string, unknown>): SetOverLimitFailure | undefined {
+  if (limit === "uncounted") return { limit };
+  if (limit !== "set-maximum" && limit !== "partner-ceiling") return undefined;
+  if (!isWholeNumber(valueCount) || !isWholeNumber(limitValues))
+    return undefined;
+  if (scope !== undefined && !oneOf(ROUND_SET_SCOPES, scope)) return undefined;
+  return {
+    limit,
+    valueCount,
+    limitValues,
+    ...(scope !== undefined ? { scope } : {}),
+  };
+}
+
 const FROM_UNTRUSTED: {
   readonly [K in FailureCauseKind]: (
     fields: Record<string, unknown>,
@@ -262,6 +335,14 @@ const FROM_UNTRUSTED: {
     isWholeNumber(silentMs)
       ? { kind: "partner-stopped-responding", silentMs }
       : undefined,
+  "set-over-limit": (fields) => {
+    const { stage } = fields;
+    if (!oneOf(SET_OVER_LIMIT_STAGES, stage)) return undefined;
+    const failure = setOverLimitFailureFromUntrusted(fields);
+    return failure === undefined
+      ? undefined
+      : { kind: "set-over-limit", stage, ...failure };
+  },
 };
 
 /**
@@ -358,6 +439,55 @@ export function relayRegistrarUnreachableRemedy({
   }
 }
 
+function roundValuesToSend(count: string, scope: RoundSetScope): string {
+  switch (scope) {
+    case "every-key":
+      return `a count-only exchange sends ${count} values for every linkage key`;
+    case "widest-key":
+      return `a count-only exchange sends ${count} values for its widest linkage key`;
+    case "first-key":
+      return `the first linkage key gives you at least ${count} values to send`;
+  }
+}
+
+const SET_REFUSED_AT: Record<SetOverLimitStage, string> = {
+  "before-contact": ", so nothing was sent.",
+  "after-terms":
+    ", so the exchange stopped before any linkage key was sent and told " +
+    "your partner.",
+  "in-round":
+    ", so the exchange stopped before sending it and told your partner.",
+};
+
+function setOverLimitSentence(
+  cause: FailureCauseOfKind<"set-over-limit">,
+): string {
+  if (cause.limit === "uncounted")
+    return (
+      "Alcove could not count the values the first linkage key gives you " +
+      "to send, so it cannot confirm " +
+      (cause.stage === "before-contact"
+        ? "one PSI set can hold them, and nothing was sent."
+        : "your partner can receive them, and the exchange stopped before " +
+          "any linkage key was sent and told your partner.")
+    );
+  const count = formatCount(cause.valueCount);
+  const limit = formatCount(cause.limitValues);
+  const values =
+    cause.scope === undefined
+      ? `the set you send for this linkage key holds ${count} values`
+      : roundValuesToSend(count, cause.scope);
+  const over =
+    cause.limit === "partner-ceiling"
+      ? `over the ${limit} your partner can receive in one PSI set`
+      : `over the ${limit} one ${cause.scope === undefined ? "" : "PSI "}set can hold`;
+  const head =
+    cause.limit === "partner-ceiling"
+      ? "Too large for your partner"
+      : "Too large to send";
+  return `${head}: ${values}, ${over}${SET_REFUSED_AT[cause.stage]}`;
+}
+
 const SENTENCES: {
   readonly [K in FailureCauseKind]: (cause: FailureCauseOfKind<K>) => string;
 } = {
@@ -385,6 +515,7 @@ const SENTENCES: {
   "partner-stopped-responding": ({ silentMs }) =>
     "Your partner stopped responding during matching: nothing arrived from " +
     `them for ${formatWaitDuration(silentMs)}.`,
+  "set-over-limit": setOverLimitSentence,
 };
 
 /**
@@ -419,6 +550,53 @@ export function partnerStoppedRespondingError(
   const cause: FailureCause = { kind: "partner-stopped-responding", silentMs };
   return markFailureCause(
     new ConnectionError(failureCauseSentence(cause), "transport"),
+    cause,
+  );
+}
+
+const SPLIT_INPUT_REMEDY =
+  "Split the input into smaller files and run one exchange for each.";
+
+const PARTNER_CEILING_REMEDY =
+  "Split the input into smaller files and run one exchange for each, or " +
+  "ask your partner to run the exchange with the command-line application.";
+
+/**
+ * The remedy for a set too large to send, or uncounted: no setting changes the
+ * limit, so every app states it alike. A first round over the partner's
+ * ceiling also names the command-line application.
+ */
+export function setOverLimitRemedy(
+  cause: FailureCauseOfKind<"set-over-limit">,
+): string {
+  return cause.limit === "partner-ceiling" && cause.stage === "after-terms"
+    ? PARTNER_CEILING_REMEDY
+    : SPLIT_INPUT_REMEDY;
+}
+
+const ROUND_SET_LIMIT_REASONS: Record<
+  SetOverLimitFailure["limit"],
+  RoundSetLimitReason
+> = {
+  "set-maximum": "over-set-maximum",
+  "partner-ceiling": "over-partner-ceiling",
+  uncounted: "uncounted",
+};
+
+/**
+ * The {@link RoundSetLimitError} for `cause`, its message core's sentence and
+ * its reason read from the cause's limit, tagged with the cause.
+ */
+export function setOverLimitError(
+  cause: FailureCauseOfKind<"set-over-limit">,
+  options?: ErrorOptions,
+): RoundSetLimitError {
+  return markFailureCause(
+    new RoundSetLimitError(
+      failureCauseSentence(cause),
+      ROUND_SET_LIMIT_REASONS[cause.limit],
+      options,
+    ),
     cause,
   );
 }

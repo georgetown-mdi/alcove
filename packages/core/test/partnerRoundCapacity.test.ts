@@ -30,11 +30,12 @@ import {
   partnerRoundValues,
   runExchange,
 } from "../src/exchange";
+import { assertFirstRoundWithinSetMaximum } from "../src/exchange/firstRoundCapacity";
 import {
-  assertFirstRoundWithinSetMaximum,
-  roundOneSetOverMaximumAfterTermsMessage,
-  roundOneSetOverPartnerCeilingMessage,
-} from "../src/exchange/firstRoundCapacity";
+  failureCauseOf,
+  failureCauseSentence,
+  type RoundSetScope,
+} from "../src/failureCause";
 import {
   LOCAL_FAULT_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
@@ -66,6 +67,36 @@ import { prepared } from "./utils/support";
 // moves: its own capacity against the partner's round (docs/spec/FILE_SYNC.md,
 // "The partner's round"), and its own first round against the receive ceiling
 // the partner stated (docs/spec/PROTOCOL.md, "The receive ceiling").
+
+function roundOneSetOverPartnerCeilingMessage(
+  valueCount: number,
+  limitValues: number,
+  scope: RoundSetScope = "first-key",
+): string {
+  return failureCauseSentence({
+    kind: "set-over-limit",
+    stage: "after-terms",
+    limit: "partner-ceiling",
+    valueCount,
+    limitValues,
+    scope,
+  });
+}
+
+function roundOneSetOverMaximumAfterTermsMessage(
+  valueCount: number,
+  limitValues: number,
+  scope: RoundSetScope,
+): string {
+  return failureCauseSentence({
+    kind: "set-over-limit",
+    stage: "after-terms",
+    limit: "set-maximum",
+    valueCount,
+    limitValues,
+    scope,
+  });
+}
 
 // The per-set maximum, lowered for one describe block so a handful of
 // records reaches it; every other test runs at the real maximum.
@@ -328,6 +359,20 @@ test("a sender partner over this party's stated ceiling refuses its first round 
   expect((refusal as RoundSetLimitError).reason).toBe("over-partner-ceiling");
   expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
   expect(refusal.message).toBe(roundOneSetOverPartnerCeilingMessage(12, 11));
+  expect(refusal.message).toBe(
+    "Too large for your partner: the first linkage key gives you at least " +
+      "12 values to send, over the 11 your partner can receive in one PSI " +
+      "set, so the exchange stopped before any linkage key was sent and " +
+      "told your partner.",
+  );
+  expect(failureCauseOf(refusal)).toEqual({
+    kind: "set-over-limit",
+    stage: "after-terms",
+    limit: "partner-ceiling",
+    valueCount: 12,
+    limitValues: 11,
+    scope: "first-key",
+  });
   expect(binaryFrames(partnerSent)).toEqual([]);
   expect(partnerSent.at(-1)).toEqual({
     decision: "abort",

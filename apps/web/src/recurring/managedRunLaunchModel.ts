@@ -88,6 +88,7 @@ import {
 
 import { dateTimeLabel } from "@psi/formatting";
 import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
+import { webFailureMessage } from "@exchange/webFailureRemedy";
 
 import type {
   ManagedExchangeRecord,
@@ -530,14 +531,14 @@ function recordedTooLargeFailure(reading: TooLargeReading): ManagedRunFailure {
 }
 
 /** The too-large state for THIS run's refusal: the refusal's message states the
- * set's size, the bound, and the remedy, or that the first-round count could
- * not be taken and why, so it is the state's whole message. The titles are the
+ * set's size and the bound, or that the first-round count could not be taken
+ * and why, and with this app's remedy it is the state's whole message. The titles are the
  * one-shot seats' own for the same refusal. */
 function tooLargeFailure(error: unknown): ManagedRunFailure {
   if (!isSetTooLargeError(error)) return recordedTooLargeFailure({});
   return {
     ...recordedTooLargeFailure(tooLargeReadingOf(error)),
-    message: sanitizeErrorForDisplay(error),
+    message: webFailureMessage(error),
   };
 }
 
