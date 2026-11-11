@@ -1770,7 +1770,7 @@ describe("applyEndpointSplitDirectories", () => {
 describe("applyEndpointSplitDirectories", () => {
   test("a channel-mismatched endpoint places the roles per the URL's channel", () => {
     // A bridged acceptor may reach the rendezvous over a different channel than the
-    // inviter advertises (see FILE_SYNC.md). The resulting connection's channel is
+    // inviter advertises (see FILE_SYNC_MODES.md). The resulting connection's channel is
     // the URL's, and the swapped path strings land where that channel keeps them --
     // here a filedrop endpoint's roles graft onto an sftp URL's `server.*`, with
     // the host/credentials still the URL's.

@@ -4,7 +4,7 @@ import { versionList } from "../versionHello";
 
 /**
  * The protocol and envelope versions a hello offers, by the value rules of the
- * key-exchange hello's lists (docs/spec/FILE_SYNC.md, Selecting the versions
+ * key-exchange hello's lists (docs/spec/FILE_SYNC_MODES.md, Selecting the versions
  * at the rendezvous).
  */
 export interface HelloVersions {

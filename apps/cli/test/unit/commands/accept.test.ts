@@ -3871,7 +3871,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
   });
 
   test("handler: a declared inviterRetainsFiles does not reach the acceptor's own connection options", async () => {
-    // FILE_SYNC.md states this boundary as critical: a declared flag on the
+    // FILE_SYNC_MODES.md states this boundary as critical: a declared flag on the
     // invitation stays disclosure-only, and an accept path that reads it into the
     // acceptor's own configuration -- even to pre-fill it -- has crossed from
     // disclosure into adaptation. Pin it on a non-split sftp endpoint (a single

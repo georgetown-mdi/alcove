@@ -231,7 +231,7 @@ interface Options {
   // CLI-only and never persisted (--sweep-exchange-files): absent from
   // FileSyncOptions and its schema, so it reaches here only through the
   // constructor. See
-  // docs/spec/FILE_SYNC.md#bilateral-configuration-detect-and-fail.
+  // docs/spec/FILE_SYNC_MODES.md#bilateral-configuration-detect-and-fail.
   sweepExchangeFiles: boolean;
   // Lets the sweep clear a directory that shows a retain signal; the CLI
   // refuses it without sweepExchangeFiles.
@@ -410,7 +410,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   path: string | undefined;
   // The separate outbound directory in split mode, which requires retain mode;
   // undefined in shared mode. See
-  // docs/spec/FILE_SYNC.md#split-inboundoutbound-directories.
+  // docs/spec/FILE_SYNC_MODES.md#split-inboundoutbound-directories.
   outbound: string | undefined;
   private config: SFTPConnectionConfig | FileDropConnectionConfig | undefined;
   // Whether the constructor set pollingFrequency, which open() then keeps
@@ -450,7 +450,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   private foreignFileSnapshot = new Set<string>();
   // Inbound protocol files an earlier exchange left, which a retain-mode run
   // ignored at synchronize() entry: every later listing skips them. Rebuilt at
-  // each entry. See docs/spec/FILE_SYNC.md#reusing-a-retain-mode-directory.
+  // each entry. See docs/spec/FILE_SYNC_MODES.md#reusing-a-retain-mode-directory.
   private startupIgnoredFiles = new Set<string>();
   private entryPeerHello: string | undefined;
   // The most recent `error` emitted with no listener, held for the next
@@ -1243,7 +1243,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
 
     // The three mode guards below repeat the config schema's rules for a
     // caller that builds a connection directly. See
-    // docs/spec/FILE_SYNC.md#two-orthogonal-mode-axes.
+    // docs/spec/FILE_SYNC_MODES.md#two-orthogonal-mode-axes.
     if (this.outbound !== undefined && !this.options.retainFiles)
       throw new UsageError(
         "a separate outbound directory requires retain mode: without it the " +

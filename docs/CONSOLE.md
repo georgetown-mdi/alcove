@@ -125,7 +125,7 @@ bound is in
 
 ### Split inbound and outbound shared folders
 
-Some deployments bridge two folders: this party reads its partner's files out of an **inbound** folder and writes its own into an **outbound** one. Set both `JOB_RENDEZVOUS_DIR` (inbound) and `JOB_RENDEZVOUS_OUTBOUND_DIR` (outbound), and every shared-folder exchange uses that pair, composing the CLI's `inbound_path`/`outbound_path` ([FILE_SYNC.md](spec/FILE_SYNC.md#split-inboundoutbound-directories)).
+Some deployments bridge two folders: this party reads its partner's files out of an **inbound** folder and writes its own into an **outbound** one. Set both `JOB_RENDEZVOUS_DIR` (inbound) and `JOB_RENDEZVOUS_OUTBOUND_DIR` (outbound), and every shared-folder exchange uses that pair, composing the CLI's `inbound_path`/`outbound_path` ([FILE_SYNC_MODES.md](spec/FILE_SYNC_MODES.md#split-inboundoutbound-directories)).
 
 - **Both variables are required.** With either missing, the console offers no shared-folder exchange and names the missing variable. `JOB_DATA_ROOT` never stands in for the inbound folder.
 - **It requires retain mode.** The console holds the exchange until you choose to keep every exchange file, and the CLI refuses the pair without `--retain-files`. An earlier exchange's files in either folder are ignored, as long as each run writes new file names ([Directory exclusivity](EXCHANGE_REFERENCE.md#directory-exclusivity)).

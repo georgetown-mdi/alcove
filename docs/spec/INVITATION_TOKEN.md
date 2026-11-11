@@ -8,7 +8,7 @@ This document specifies the invitation token: the encoded string an inviting par
 It covers the encoding and its checksum, the token's fields and their rules, the connection endpoint's per-channel layout, the size bounds, the checks a minter applies, and the checks a receiver applies, in order, each with the constant or function that applies it.
 It is the implementation-level complement to [Invitation contents and confidentiality](../SECURITY_DESIGN.md#invitation-contents-and-confidentiality) in SECURITY_DESIGN.md, which covers what an invitation contains, why it is confidential, and its lifetime policy.
 It does not cover the fields of the linkage-terms document the token includes (see [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage-terms)) or that document's bounds (see [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md), [TRANSFORM_REGEX_DIALECT.md](TRANSFORM_REGEX_DIALECT.md) and [TRANSFORM_PARAMETER_BOUNDS.md](TRANSFORM_PARAMETER_BOUNDS.md)).
-It does not cover the split-directory role swap or the meaning of the retain-mode declaration (see [FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories)), the relay locator's url grammar (see [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-invitations-relay-locator)), how the shared secret is generated and rotated (see [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md)), or how an accepted token becomes a key file and a connection (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#channel-binding-semantics)).
+It does not cover the split-directory role swap or the meaning of the retain-mode declaration (see [FILE_SYNC_MODES.md](FILE_SYNC_MODES.md#split-inboundoutbound-directories)), the relay locator's url grammar (see [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-invitations-relay-locator)), how the shared secret is generated and rotated (see [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md)), or how an accepted token becomes a key file and a connection (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#channel-binding-semantics)).
 Intended readers are security auditors and implementors.
 
 The encoder and decoder are `encodeInvitation` and `decodeInvitation` in `packages/core/src/config/invitation.ts`, the module every constant and schema below is defined in unless another is named.
@@ -78,7 +78,7 @@ The token is versioned under the same rule as the exchange file ([EXCHANGE_FILE.
   A decoder of any version skips every member of it, a member it does not know included.
   Every other position is strict.
 
-Version 1 holds every member above, the split directory pair and the webrtc `relay` of the endpoint included ([FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories), [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-invitations-relay-locator)), except the one the version table lists:
+Version 1 holds every member above, the split directory pair and the webrtc `relay` of the endpoint included ([FILE_SYNC_MODES.md](FILE_SYNC_MODES.md#split-inboundoutbound-directories), [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-invitations-relay-locator)), except the one the version table lists:
 
 | Version | Adds | The value its absence means to an older decoder |
 | --- | --- | --- |
@@ -181,7 +181,7 @@ The protection holds only for a party that holds the server's expected host key;
 
 The mint applies a third rule that decode does not: `MintedInvitationTokenSchema` refuses a split-pair endpoint unless `inviterRetainsFiles` is `true`.
 A token from another implementation that omits the declaration beside a split pair still decodes.
-What the declaration means, and why the third rule binds the mint only, is in [FILE_SYNC.md](FILE_SYNC.md#retain-mode-declaration-on-the-token).
+What the declaration means, and why the third rule binds the mint only, is in [FILE_SYNC_MODES.md](FILE_SYNC_MODES.md#retain-mode-declaration-on-the-token).
 
 ## Size bounds
 

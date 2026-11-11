@@ -417,7 +417,7 @@ export class UnknownStandardizationFunctionError extends UsageError {
 /**
  * The peer's hello advertised a `lockless_rendezvous` or `retain_files` setting
  * different from this party's. Both are bilateral with no negotiation
- * (docs/spec/FILE_SYNC.md, Bilateral configuration), so both parties fail fast and
+ * (docs/spec/FILE_SYNC_MODES.md, Bilateral configuration), so both parties fail fast and
  * the cleanup paths leave both hellos in place. It is not marked
  * {@link markStatesItsOwnNextStep}: detection precedes the handshake, so there
  * is no advisory to suppress (pinned in errors.test.ts).

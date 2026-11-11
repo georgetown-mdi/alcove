@@ -27,7 +27,7 @@ import { preparedFor } from "../support";
 // one folder, and what the second run reads from the first one's files. It
 // also measures the modification time a listing reports for a file the other
 // party wrote, which the start-up age of an unanswered partner hello is read
-// from (docs/spec/FILE_SYNC.md, "Reusing a retain-mode directory").
+// from (docs/spec/FILE_SYNC_MODES.md, "Reusing a retain-mode directory").
 
 const TEST_TIMEOUT_MS = 120_000;
 const PEER_TIMEOUT_MS = 30_000;

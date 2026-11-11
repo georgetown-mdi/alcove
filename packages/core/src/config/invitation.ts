@@ -376,7 +376,7 @@ export interface InvitationToken {
   /**
    * The inviter's declaration that its exchange runs in retain mode, shown to
    * the acceptor before it consents
-   * (docs/spec/FILE_SYNC.md#retain-mode-declaration-on-the-token). Never read
+   * (docs/spec/FILE_SYNC_MODES.md#retain-mode-declaration-on-the-token). Never read
    * into a connection: a mismatch fails at the hello. Absence means nothing
    * declared. The schemas refuse it where the endpoint contradicts it.
    */

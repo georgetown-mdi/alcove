@@ -158,6 +158,7 @@ export const BOUNDARIES = [
       "SFTP_SESSION_RECOVERY",
       "FILE_SYNC",
       "FILE_SYNC_MEMORY",
+      "FILE_SYNC_MODES",
       "docs/FIPS_SFTP_PROFILE.md",
     ].map(spec),
     assets:

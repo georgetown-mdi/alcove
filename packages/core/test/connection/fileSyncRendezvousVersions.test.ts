@@ -1,5 +1,5 @@
 // The protocol and envelope versions a run with no key exchange selects from
-// the two file-sync rendezvous hellos (docs/spec/FILE_SYNC.md, Selecting the
+// the two file-sync rendezvous hellos (docs/spec/FILE_SYNC_MODES.md, Selecting the
 // versions at the rendezvous).
 
 import { describe, expect, test } from "vitest";
