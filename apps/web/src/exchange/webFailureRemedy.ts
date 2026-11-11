@@ -10,6 +10,7 @@ import {
   relayRegistrarUnreachableRemedy,
   sanitizeErrorForDisplay,
   sanitizeErrorForDisplayWithStep,
+  sanitizeForDisplay,
   setOverLimitRemedy,
   singlePassOverLimitRemedy,
 } from "@alcove/core";
@@ -28,7 +29,12 @@ const WEB_FAILURE_REMEDIES: {
   "partner-never-arrived": undefined,
   // A shared folder belongs to a file-sync channel, which this app does not run.
   "folder-missing": undefined,
-  "relay-registrar-unreachable": relayRegistrarUnreachableRemedy,
+  // The host is escaped: webFailureMessage adds the remedy after escaping.
+  "relay-registrar-unreachable": (cause) =>
+    relayRegistrarUnreachableRemedy({
+      ...cause,
+      host: sanitizeForDisplay(cause.host),
+    }),
   "partner-stopped-responding": () => PARTNER_STOPPED_RESPONDING_REMEDY,
   "set-over-limit": setOverLimitRemedy,
   "single-pass-over-limit": singlePassOverLimitRemedy,
