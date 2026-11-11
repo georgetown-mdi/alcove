@@ -200,6 +200,7 @@ export const FAILURE_CAUSE_STREAM_FIELDS: {
         }
       : { kind: "message-write-unconfirmed", failure: cause.failure },
   "shared-name-at-entry": () => ({ kind: "shared-name-at-entry" }),
+  "key-exchange-timed-out": () => ({ kind: "key-exchange-timed-out" }),
 };
 
 /** Every cause kind the stream states: the keys of {@link FAILURE_CAUSE_STREAM_FIELDS}. */

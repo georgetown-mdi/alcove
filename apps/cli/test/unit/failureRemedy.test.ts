@@ -130,20 +130,32 @@ const SAMPLES: {
     { kind: "message-write-unconfirmed", failure: "sequence-spent", seq: 4 },
   ],
   "shared-name-at-entry": [{ kind: "shared-name-at-entry" }],
+  "key-exchange-timed-out": [{ kind: "key-exchange-timed-out" }],
 };
+
+// The kinds whose cause chain already ends in its step.
+const KINDS_WITHOUT_REMEDY: ReadonlyArray<FailureCauseKind> = [
+  "key-exchange-timed-out",
+];
 
 const ARRIVAL_WAITS: ArrivalWait[] = ["exchange", "online-invitation"];
 
 const cases = Object.values(SAMPLES)
   .flat()
+  .filter((cause: FailureCause) => !KINDS_WITHOUT_REMEDY.includes(cause.kind))
   .flatMap((cause: FailureCause) =>
     ARRIVAL_WAITS.map((arrivalWait) => ({ cause, arrivalWait })),
   );
 
-test("every catalog kind has a CLI remedy", () => {
+test("every catalog kind has a CLI remedy, or is bound to none", () => {
   expect(Object.keys(CLI_FAILURE_REMEDIES).sort()).toEqual(
     Object.keys(SAMPLES).sort(),
   );
+  expect(
+    Object.entries(CLI_FAILURE_REMEDIES)
+      .filter(([, remedy]) => remedy === undefined)
+      .map(([kind]) => kind),
+  ).toEqual(KINDS_WITHOUT_REMEDY);
 });
 
 test.each(cases)(
@@ -151,9 +163,24 @@ test.each(cases)(
   ({ cause, arrivalWait }) => {
     const remedy = remedyForCause(cause, { arrivalWait });
     expect(remedy).toMatch(/^[A-Z][\x20-\x7e]*\.$/);
-    expect((remedy.match(/--[a-z-]+/g) ?? []).length).toBeLessThanOrEqual(1);
+    expect((remedy?.match(/--[a-z-]+/g) ?? []).length).toBeLessThanOrEqual(1);
   },
 );
+
+test("a key-exchange timeout states its report alone, with no remedy or next step", () => {
+  const cause: FailureCause = { kind: "key-exchange-timed-out" };
+  const err = markFailureCause(
+    new Error("key exchange handshake timed out", {
+      cause: new Error("no message arrived within 30000 ms"),
+    }),
+    cause,
+  );
+  expect(failureRemedy(err)).toBeUndefined();
+  expect(renderFailureForOperator(err)).toBe(
+    "key exchange handshake timed out\n" +
+      "caused by: no message arrived within 30000 ms",
+  );
+});
 
 function rendered(cause: FailureCause, arrivalWait?: ArrivalWait): string {
   const err = markFailureCause(new Error(failureCauseSentence(cause)), cause);

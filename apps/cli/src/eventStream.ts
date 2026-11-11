@@ -342,6 +342,7 @@ export function buildErrorEvent(
   phase: ErrorPhase,
   exitCode: number = exitCodeForError(error),
 ): ErrorEvent {
+  const nextStep = nextStepBeneathFailure(error);
   return {
     v: EVENT_STREAM_VERSION,
     type: "error",
@@ -350,8 +351,8 @@ export function buildErrorEvent(
     // cause chain, so route it through the display-boundary sanitizer that
     // stderr uses; the category and version fields are this party's own vocabulary.
     message: renderFailureForOperator(error),
-    ...(errorStatesItsOwnNextStep(error) ||
-    nextStepBeneathFailure(error) !== undefined
+    ...(nextStep !== undefined ? { nextStep } : {}),
+    ...(errorStatesItsOwnNextStep(error) || nextStep !== undefined
       ? { recoveryHint: true as const }
       : {}),
     ...(exitCode === INTERNAL_FAULT_EXIT_CODE

@@ -291,6 +291,13 @@ export type FailureCause =
        * name that this run takes for its own leftover.
        */
       readonly kind: "shared-name-at-entry";
+    }
+  | {
+      /**
+       * The partner arrived and then sent nothing within the bound on one
+       * key-exchange handshake receive.
+       */
+      readonly kind: "key-exchange-timed-out";
     };
 
 /** The discriminant of {@link FailureCause}. */
@@ -319,6 +326,7 @@ export const FAILURE_CAUSE_KINDS = [
   "partner-stopped-at-matching",
   "message-write-unconfirmed",
   "shared-name-at-entry",
+  "key-exchange-timed-out",
 ] as const satisfies ReadonlyArray<FailureCauseKind>;
 
 const FAILURE_CAUSE = annotationKey<FailureCause>("failure cause");
@@ -576,6 +584,7 @@ const FROM_UNTRUSTED: {
       : undefined;
   },
   "shared-name-at-entry": () => ({ kind: "shared-name-at-entry" }),
+  "key-exchange-timed-out": () => ({ kind: "key-exchange-timed-out" }),
 };
 
 /**
@@ -835,6 +844,8 @@ const SENTENCES: {
   "shared-name-at-entry": () =>
     "The exchange directory holds a hello file with this side's name, so " +
     "this run takes it for its own leftover.",
+  "key-exchange-timed-out": () =>
+    "Your partner did not answer in time during the key exchange.",
 };
 
 /**

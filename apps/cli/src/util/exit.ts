@@ -122,7 +122,7 @@ export function nextStepBeneathFailure(err: unknown): string | undefined {
  * sanitized error chain, followed on its own line by
  * {@link nextStepBeneathFailure} where there is one. The terminal event's
  * `message` is this same text, so stderr and the event stream state the same
- * step.
+ * step, and its `nextStep` is that step alone.
  */
 export function renderFailureForOperator(err: unknown): string {
   const text = sanitizeErrorForDisplay(err);

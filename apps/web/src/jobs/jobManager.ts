@@ -13,7 +13,10 @@ import {
 } from "@alcove/core";
 import { INTERNAL_FAULT_EXIT_CODE } from "@alcove/cli-contract";
 
-import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
+import {
+  ERROR_MESSAGE_CHAIN_FIELD,
+  ERROR_NEXT_STEP_FIELD,
+} from "@psi/relayErrorChain";
 
 import {
   CONFIGURATION_CHANGED_SAVE_REFUSAL,
@@ -2831,7 +2834,19 @@ function rewrittenTermsProposalRefusal(
     record.termsProposalBasis !== null
       ? TERMS_PROPOSAL_REFUSAL
       : TERMS_CHANGE_REFUSAL;
-  return { ...event, message, [ERROR_MESSAGE_CHAIN_FIELD]: [message] };
+  return withConsoleErrorMessage(event, message);
+}
+
+/**
+ * `event` with `message` as the console's own account in place of the CLI's:
+ * the flat field and the chain both, and no CLI next step beneath it.
+ */
+function withConsoleErrorMessage(
+  event: RelayEvent,
+  message: string,
+): RelayEvent {
+  const { [ERROR_NEXT_STEP_FIELD]: _nextStep, ...rest } = event;
+  return { ...rest, message, [ERROR_MESSAGE_CHAIN_FIELD]: [message] };
 }
 
 /**
@@ -2918,11 +2933,7 @@ function rewrittenPartnerPinFailure(
     recordedPartnerFingerprint(configPath) !== undefined
   )
     return event;
-  return {
-    ...event,
-    message: PARTNER_PIN_UNRECORDABLE_FAILURE,
-    [ERROR_MESSAGE_CHAIN_FIELD]: [PARTNER_PIN_UNRECORDABLE_FAILURE],
-  };
+  return withConsoleErrorMessage(event, PARTNER_PIN_UNRECORDABLE_FAILURE);
 }
 
 /**
@@ -2951,13 +2962,15 @@ function configPathAsRelayed(configPath: string): string {
 }
 
 /** Every string a relayed `error` event puts in front of the operator: the flat
- * message field and the links of the chain the relay derived from it, which is
- * what the seat renders when it holds any text. */
+ * message field, the links of the chain the relay derived from it, which is
+ * what the seat renders when it holds any text, and the next step. */
 function errorDisplayStrings(event: RelayEvent): Array<string> {
   const chain = event[ERROR_MESSAGE_CHAIN_FIELD];
-  return [event.message, ...(Array.isArray(chain) ? chain : [])].filter(
-    (text): text is string => typeof text === "string",
-  );
+  return [
+    event.message,
+    ...(Array.isArray(chain) ? chain : []),
+    event[ERROR_NEXT_STEP_FIELD],
+  ].filter((text): text is string => typeof text === "string");
 }
 
 /**

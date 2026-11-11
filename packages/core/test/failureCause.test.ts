@@ -244,6 +244,7 @@ const SAMPLES: {
     { kind: "message-write-unconfirmed", failure: "sequence-spent", seq: 4 },
   ],
   "shared-name-at-entry": [{ kind: "shared-name-at-entry" }],
+  "key-exchange-timed-out": [{ kind: "key-exchange-timed-out" }],
 };
 
 const allSamples: FailureCause[] = Object.values(SAMPLES).flat();
@@ -355,6 +356,9 @@ describe("the failure-cause catalog", () => {
     ]);
     expect(failureCauseSentence(SAMPLES["shared-name-at-entry"][0])).toBe(
       "The exchange directory holds a hello file with this side's name, so this run takes it for its own leftover.",
+    );
+    expect(failureCauseSentence(SAMPLES["key-exchange-timed-out"][0])).toBe(
+      "Your partner did not answer in time during the key exchange.",
     );
   });
 

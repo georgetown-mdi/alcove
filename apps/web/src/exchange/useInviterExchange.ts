@@ -5,6 +5,7 @@ import PSI from "@openmined/psi.js/psi_wasm_web";
 
 import {
   BROWSER_PSI_SET_MAX_ELEMENTS,
+  COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   PSI_SET_REFUSED_ABORT_REASON,
@@ -245,12 +246,26 @@ function retryDispositionFor(
  * this browser, and goes straight through `sanitizeErrorForDisplay`, with the
  * web app's remedy for a catalog cause it holds (`webFailureMessage`). The
  * framing is the renderer's own newline, laid out as a line break by
- * `FailureMessage` in `./RunSurface`.
+ * `FailureMessage` in `./RunSurface`. A relayed failure's next step, where the
+ * event held one apart from its report, follows on a line of its own.
  */
 export function sanitizedFailureMessage(error: unknown): string {
-  return error instanceof RelayedTerminalError
-    ? joinErrorCauseChain(sanitizeErrorChainLinks(error.message))
-    : webFailureMessage(error);
+  if (!(error instanceof RelayedTerminalError)) return webFailureMessage(error);
+  const report = relayedReport(error);
+  return error.nextStep === undefined
+    ? report
+    : `${report}\n${sanitizeForDisplay(error.nextStep, {
+        maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
+      })}`;
+}
+
+/**
+ * A relayed failure's report without the CLI's next step where the event held
+ * the step apart ({@link RelayedTerminalError.nextStep}), escaped link by link
+ * as {@link sanitizedFailureMessage} escapes it.
+ */
+function relayedReport(error: RelayedTerminalError): string {
+  return joinErrorCauseChain(sanitizeErrorChainLinks(error.message));
 }
 
 /**
@@ -266,48 +281,19 @@ function reportedCauseFields(cause: string): Pick<RunFailure, "reportedCause"> {
 }
 
 const CAUSE_CHAIN_SEPARATOR = joinErrorCauseChain(["", ""]);
-const RELAYED_LINE_BREAK = sanitizeForDisplay("\n");
-
-/**
- * The index of the first escape marker for a line break at or after `from`
- * whose backslash is not itself escaped: an even number of backslashes
- * before it. A break inside a file name reaches here escaped twice (`\\x0a`),
- * and a name holding a backslash then `x0a` escaped twice reads `\\\\x0a`;
- * neither is the break the CLI wrote.
- */
-function indexOfRelayedLineBreak(text: string, from: number): number {
-  for (
-    let at = text.indexOf(RELAYED_LINE_BREAK, from);
-    at !== -1;
-    at = text.indexOf(RELAYED_LINE_BREAK, at + 1)
-  ) {
-    let backslashes = 0;
-    while (at - backslashes > from && text[at - backslashes - 1] === "\\")
-      backslashes += 1;
-    if (backslashes % 2 === 0) return at;
-  }
-  return -1;
-}
 
 /**
  * What the CLI's report of a catalog cause adds to core's sentence and the
- * remedy the console shows beside it: the cause chain behind the sentence,
- * without the remedy line the CLI writes beneath it. The relay escapes that
- * line's break into the chain's last link and may cut the remedy after it, so
- * the last link ends at its first unescaped break marker. The links are split
- * off as the relay sent them, already escaped, and are not escaped again; the
- * return type of `diagnosedTerminal` in `@jobs/jobManager`, which bars a
- * `cause` on the one terminal that composes its links raw, is what keeps that
- * input escaped. Empty where the report holds no chain.
+ * remedy the console shows beside it: the cause chain behind the sentence. The
+ * relay holds the CLI's remedy line apart from the report
+ * ({@link RelayedTerminalError.nextStep}), so the chain holds none of it. The
+ * links are split off as the relay sent them, already escaped, and are not
+ * escaped again; the return type of `diagnosedTerminal` in `@jobs/jobManager`,
+ * which bars a `cause` on the one terminal that composes its links raw, is
+ * what keeps that input escaped. Empty where the report holds no chain.
  */
 function causeChainReport(error: RelayedTerminalError): string {
-  const reported = error.message;
-  const lastLinkAt = reported.lastIndexOf(CAUSE_CHAIN_SEPARATOR);
-  if (lastLinkAt === -1) return "";
-  const breakAt = indexOfRelayedLineBreak(reported, lastLinkAt);
-  const [, ...chain] = (
-    breakAt === -1 ? reported : reported.slice(0, breakAt)
-  ).split(CAUSE_CHAIN_SEPARATOR);
+  const [, ...chain] = error.message.split(CAUSE_CHAIN_SEPARATOR);
   return joinErrorCauseChain(chain);
 }
 
@@ -902,10 +888,19 @@ function failureContentFor(
   // A console run that failed on a cause core's catalog names: core's sentence
   // with the console's own remedy. The CLI's report is left out, since its
   // remedy names a command-line flag this operator does not set.
-  if (
+  const causeCopy =
     error instanceof RelayedTerminalError &&
     error.failureCause !== undefined &&
     (category === "exchange" || category === "config")
+      ? consoleFailureForCause(error.failureCause, {
+          thisSideNamed,
+          deleteModeSweep: sweepExchangeFiles && !retainFiles,
+        })
+      : undefined;
+  if (
+    causeCopy !== undefined &&
+    error instanceof RelayedTerminalError &&
+    error.failureCause !== undefined
   ) {
     const cause = error.failureCause;
     return {
@@ -917,10 +912,7 @@ function failureContentFor(
       cause.kind === "message-write-unconfirmed"
         ? { category: "config" as const, settingsCannotResolve: true as const }
         : { category }),
-      ...consoleFailureForCause(cause, {
-        thisSideNamed,
-        deleteModeSweep: sweepExchangeFiles && !retainFiles,
-      }),
+      ...causeCopy,
       ...((cause.kind === "partner-never-arrived" &&
         cause.sharedName === true) ||
       cause.kind === "shared-name-at-entry"
@@ -935,11 +927,11 @@ function failureContentFor(
         : {}),
     };
   }
-  // The CLI's report is left out for the reason above: it names a
-  // command-line flag.
+  // The CLI's report is left out: its cause chain names the command-line flag
+  // and the setting for the inactivity limit.
   const sweptHandshakeTimeout =
     error instanceof RelayedTerminalError && category === "exchange"
-      ? consoleSweptHandshakeTimeout(error.message, {
+      ? consoleSweptHandshakeTimeout(error.failureCause, {
           channel,
           deleteModeSweep: sweepExchangeFiles && !retainFiles,
         })
@@ -948,7 +940,9 @@ function failureContentFor(
     return { category, ...sweptHandshakeTimeout };
   // A console run the partner or the agreed terms refused (the CLI's exit 76):
   // the partner's refusal, which a retry and a change to this party's settings
-  // both meet again, so it takes the config category and no retry.
+  // both meet again, so it takes the config category and no retry. The CLI's
+  // next step is left out: this copy states the step, and the CLI's names its
+  // own commands.
   if (
     error instanceof RelayedTerminalError &&
     error.exitCode === PARTNER_REFUSED_EXIT_CODE &&
@@ -962,7 +956,7 @@ function failureContentFor(
         "and running it again stops the same way. Contact your partner " +
         "before running it again.",
       settingsCannotResolve: true,
-      ...reportedCauseFields(sanitizedFailureMessage(error)),
+      ...reportedCauseFields(relayedReport(error)),
     };
   if (category === "config") {
     // A prepare-time fault in the operator's OWN config, safe to show because

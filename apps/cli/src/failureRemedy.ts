@@ -117,15 +117,15 @@ const partnerNeverArrived = (
 };
 
 /**
- * The remedy sentence for each cause kind, given the cause and the run.
+ * The remedy sentence for each cause kind, given the cause and the run;
+ * `undefined` binds a kind whose cause chain already ends in its step.
  *
  * @internal exported for testing
  */
 export const CLI_FAILURE_REMEDIES: {
-  readonly [K in FailureCauseKind]: (
-    cause: FailureCauseOfKind<K>,
-    context: RemedyContext,
-  ) => string;
+  readonly [K in FailureCauseKind]:
+    | ((cause: FailureCauseOfKind<K>, context: RemedyContext) => string)
+    | undefined;
 } = {
   "partner-never-arrived": partnerNeverArrived,
   "folder-missing": ({ code }) =>
@@ -152,19 +152,22 @@ export const CLI_FAILURE_REMEDIES: {
   "partner-stopped-at-matching": () => PARTNER_STOPPED_AT_MATCHING_REMEDY,
   "message-write-unconfirmed": () => CLEAN_DIRECTORY_RESTART_REMEDY,
   "shared-name-at-entry": () => SHARED_NAME_AT_ENTRY_REMEDY,
+  // The receive-deadline failure the timeout wraps names the inactivity limit
+  // to raise, which the transport supplies.
+  "key-exchange-timed-out": undefined,
 };
 
-/** The CLI's remedy sentence for `cause` on a run described by `context`. */
+/**
+ * The CLI's remedy sentence for `cause` on a run described by `context`, or
+ * `undefined` for a kind {@link CLI_FAILURE_REMEDIES} binds to none.
+ */
 export function remedyForCause(
   cause: FailureCause,
   context: RemedyContext = DEFAULT_CONTEXT,
-): string {
-  return (
-    CLI_FAILURE_REMEDIES[cause.kind] as (
-      c: FailureCause,
-      ctx: RemedyContext,
-    ) => string
-  )(cause, context);
+): string | undefined {
+  const remedy = CLI_FAILURE_REMEDIES[cause.kind] as
+    ((c: FailureCause, ctx: RemedyContext) => string) | undefined;
+  return remedy?.(cause, context);
 }
 
 const ARRIVAL_WAIT = annotationKey<ArrivalWait>("arrival wait");

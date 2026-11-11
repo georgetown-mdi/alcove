@@ -16,3 +16,12 @@
  * sanitization escape format).
  */
 export const ERROR_MESSAGE_CHAIN_FIELD = "messageChain";
+
+/**
+ * The field a relayed terminal `error` event holds the CLI's next step in,
+ * apart from the report {@link ERROR_MESSAGE_CHAIN_FIELD} then holds. The relay
+ * derives it from the event's `nextStep` (`validateAndSanitizeEvent` in
+ * `@jobs/cliDriver`), and a terminal the console rewrites or synthesizes holds
+ * none.
+ */
+export const ERROR_NEXT_STEP_FIELD = "nextStep";

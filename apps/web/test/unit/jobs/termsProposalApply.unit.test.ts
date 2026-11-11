@@ -9,7 +9,10 @@ import { stringify as stringifyYaml } from "yaml";
 
 import { snakeizeKeys } from "@alcove/core";
 
-import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
+import {
+  ERROR_MESSAGE_CHAIN_FIELD,
+  ERROR_NEXT_STEP_FIELD,
+} from "@psi/relayErrorChain";
 
 import {
   JobManager,
@@ -47,7 +50,9 @@ const REFUSAL_EVENT = {
   category: "config",
   message:
     "this run is not attended. Your partner's terms were written to " +
-    "__CONFIG_FILE__. Review and apply them.",
+    "__CONFIG_FILE__. Review and apply them.\nRun alcove apply, then run " +
+    "the same command again.",
+  nextStep: "Run alcove apply, then run the same command again.",
   termsChange: {
     proposalWritten: true,
     received: { added: ["county"], removed: [] },
@@ -166,6 +171,8 @@ describe("applying the terms proposal a run of the opened configuration stopped 
     expect(terminal[ERROR_MESSAGE_CHAIN_FIELD]).toEqual([
       TERMS_PROPOSAL_REFUSAL,
     ]);
+    // The CLI's step beneath its refusal goes with it.
+    expect(terminal).not.toHaveProperty(ERROR_NEXT_STEP_FIELD);
     expect(terminal.termsChange).toEqual(REFUSAL_EVENT.termsChange);
   });
 
