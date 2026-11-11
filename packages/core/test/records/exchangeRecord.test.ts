@@ -1218,9 +1218,7 @@ describe("serialize / parse", () => {
     expect(() => parseExchangeRecord(bumped)).toThrow();
   });
 
-  test("parseExchangeRecord refuses a record hashed over the unresolved terms", async () => {
-    // v9 hashed the terms as sent, an unset receive list unresolved: its
-    // termsHash would mismatch a recomputation rather than be refused.
+  test("parseExchangeRecord refuses a record at v9, a later version than this build's", async () => {
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
     const v9 = { ...record, version: "alcove-exchange-record/v9" };
     expect(() => parseExchangeRecord(v9)).toThrow(
@@ -1228,12 +1226,7 @@ describe("serialize / parse", () => {
     );
   });
 
-  test("parseExchangeRecord refuses a record written before the run outcome", async () => {
-    // The v5 shape: no outcome, which a reader of this version would take as a
-    // record its writer never made a completion claim on. A v5 writer produced a
-    // record only for a run that finished, so reading its silence either way
-    // states something it did not -- refused on the version discriminant, like
-    // the shapes above.
+  test("parseExchangeRecord refuses a record at v5, a later version than this build's", async () => {
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
     const v5 = { ...record, version: "alcove-exchange-record/v5" };
     expect(() => parseExchangeRecord(v5)).toThrow();
@@ -1335,11 +1328,7 @@ describe("serialize / parse", () => {
     );
   });
 
-  test("parseExchangeRecord refuses a record written while it could cite a rule set", async () => {
-    // The v10 shape: a governance block that could hold a rule-set citation and
-    // a verdict on it. This reader drops an unknown key, so it would read a
-    // citing record as one that never cited -- refused on the version
-    // discriminant instead, like the shapes above.
+  test("parseExchangeRecord refuses a record at v10, a later version than this build's", async () => {
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
     const v10 = { ...record, version: "alcove-exchange-record/v10" };
     expect(() => parseExchangeRecord(v10)).toThrow(
@@ -1347,7 +1336,7 @@ describe("serialize / parse", () => {
     );
   });
 
-  test("parseExchangeRecord refuses a record written before the agreement's purpose and expiry became omittable", async () => {
+  test("parseExchangeRecord refuses a record at v11, a later version than this build's", async () => {
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
     const v11 = { ...record, version: "alcove-exchange-record/v11" };
     expect(() => parseExchangeRecord(v11)).toThrow(

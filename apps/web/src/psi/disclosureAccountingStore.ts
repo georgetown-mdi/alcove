@@ -29,7 +29,7 @@
  * which this page being behind is enough to explain.
  */
 
-import { FormatMigrationError, parseExchangeRecord } from "@alcove/core";
+import { parseExchangeRecord } from "@alcove/core";
 
 import {
   MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
@@ -37,15 +37,13 @@ import {
 } from "./managed/managedExchangeStore";
 import {
   appendToStoredDisclosureAccounting,
+  classifyRefusedDisclosureAccounting,
   parseDisclosureAccounting,
-  parseStoredDisclosureAccounting,
-  storedEntriesAheadOfThisBuild,
-  storedEnvelopeAheadOfThisBuild,
 } from "./disclosureAccounting";
 
 import type {
   DisclosureAccounting,
-  StoredDisclosureAccounting,
+  RefusedDisclosureAccounting,
 } from "./disclosureAccounting";
 import type { ExchangeRecord } from "@alcove/core";
 
@@ -90,42 +88,9 @@ export type DisclosureAccountingRead =
   | { kind: "none" }
   /** The stored accounting, validated through {@link parseDisclosureAccounting}. */
   | { kind: "accounting"; accounting: DisclosureAccounting }
-  /** A stored value the validating parse refused -- a corrupted accounting, or
-   * one whose migration failed. `stored` holds the entries exactly as they sit
-   * at rest when the ENVELOPE still parses (an entry whose record migration
-   * failed, which is what makes the export arm possible), and is `undefined`
-   * when the envelope is gone too and there is nothing to hand back.
-   * `migrationFailure` is the refusal where a migration failed, its message
-   * naming the versions and the cause, and is absent for damage. */
-  | {
-      kind: "unreadable";
-      stored: StoredDisclosureAccounting | undefined;
-      migrationFailure?: FormatMigrationError;
-    }
-  /** A stored value the validating parse refused whose envelope declares a
-   * LATER accounting version, or whose entries name a LATER exchange-record
-   * format, than this build admits: the records are fine and this PAGE is
-   * behind them (see {@link storedEnvelopeAheadOfThisBuild} and
-   * {@link storedEntriesAheadOfThisBuild}). Its recovery is to reload onto the
-   * build that wrote them, never the reset -- which would destroy records the
-   * current build reads. `stored` is the same envelope-only value, since
-   * handing back stored bytes claims nothing either way, and is `undefined`
-   * where the envelope itself is the later one. */
-  | { kind: "stale-page"; stored: StoredDisclosureAccounting | undefined };
-
-/** The stored value held only to its envelope, or `undefined` when even that
- * refuses. Never a rendering source: these are the entries the validating parse
- * declined to vouch for, fit for handing back to the operator as stored bytes and
- * for nothing else (see {@link parseStoredDisclosureAccounting}). */
-function recoverableStored(
-  raw: unknown,
-): StoredDisclosureAccounting | undefined {
-  try {
-    return parseStoredDisclosureAccounting(raw);
-  } catch {
-    return undefined;
-  }
-}
+  /** A stored value the validating parse refused, stranded or behind (see
+   * {@link RefusedDisclosureAccounting}). */
+  | RefusedDisclosureAccounting;
 
 /**
  * Read one managed exchange's accounting of disclosures and classify the outcome.
@@ -139,11 +104,10 @@ function recoverableStored(
  * list: only a value actually read and then refused reaches `"unreadable"`, so a
  * blocked open -- which self-heals when the other tab yields -- can never present
  * as the irreversible-reset case. A value that WAS refused is then split by
- * direction, on the envelope's declared version and then the refused entries'
- * own version literals: only an earlier format whose migration failed, or a
- * damaged value, is the stranded accounting the reset exists for; a later
- * envelope or entry says this page is running older code than the build that
- * wrote it, and reloading is that state's whole recovery.
+ * direction ({@link classifyRefusedDisclosureAccounting}): only an earlier
+ * format, or a damaged value, is the stranded accounting the reset exists for;
+ * a later envelope or entry says this page is running older code than the build
+ * that wrote it, and reloading is that state's whole recovery.
  *
  * Total: every failure classifies rather than rejecting, so a caller renders an
  * outcome rather than catching one.
@@ -161,18 +125,7 @@ export async function readDisclosureAccounting(
   try {
     return { kind: "accounting", accounting: parseDisclosureAccounting(raw) };
   } catch (error) {
-    if (storedEnvelopeAheadOfThisBuild(raw))
-      return { kind: "stale-page", stored: undefined };
-    const stored = recoverableStored(raw);
-    if (stored !== undefined && storedEntriesAheadOfThisBuild(stored))
-      return { kind: "stale-page", stored };
-    return {
-      kind: "unreadable",
-      stored,
-      ...(error instanceof FormatMigrationError
-        ? { migrationFailure: error }
-        : {}),
-    };
+    return classifyRefusedDisclosureAccounting(raw, error);
   }
 }
 

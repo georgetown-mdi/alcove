@@ -29,7 +29,7 @@ This changelog is a reader's summary of what Alcove does and how that changes pe
 
 - BREAKING: the product is renamed Alcove, from psilink: the command is `alcove`, not `psi-link`, and the container image moves from `docker.io/vdorie/psi-link`, which takes no new release, to `ghcr.io/georgetown-mdi/alcove` and `docker.io/gumdi/alcove`. See `docs/notes/rename-to-alcove.md`.
 - BREAKING: the container image runs unprivileged as uid 1000 instead of root. A bind-mounted working directory must be writable by uid 1000: run the container as your own account with `--user`, or `chown -R 1000:1000` the directory. See `docs/DEPLOYMENT.md`.
-- BREAKING: the exchange record format starts at version 1 in this release, so the web app does not read a record an earlier hosted build wrote, whether downloaded or stored with a recurring exchange's accounting of disclosures. See `docs/spec/EXCHANGE_RECORD.md`.
+- BREAKING: the exchange record format starts at version 1 in this release, so the web app does not read a record an earlier hosted build wrote. A recurring exchange whose accounting of disclosures an earlier build stored says so on its page: download the stored records, then start a fresh accounting so its runs file their records again. See `docs/spec/MANAGED_EXCHANGE_RECORD.md`.
 - BREAKING: the web app opens on the browser's recurring exchanges once one exists and on the quick path otherwise, and the legacy web interface is removed. See `docs/WEB_APP.md`.
 
 ### Security

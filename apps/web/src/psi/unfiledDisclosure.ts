@@ -22,7 +22,7 @@ import type { ZodType } from "zod";
 /** The format version this build writes for a stored note; a reader migrates an
  * earlier version {@link UNFILED_DISCLOSURE_MIGRATIONS} leads from and refuses
  * any other value. */
-export const UNFILED_DISCLOSURE_VERSION = "alcove-unfiled-disclosure/v2";
+export const UNFILED_DISCLOSURE_VERSION = "alcove-unfiled-disclosure/v3";
 
 /**
  * The note's migrations, run in memory at every read. It is audit state: it
@@ -30,13 +30,23 @@ export const UNFILED_DISCLOSURE_VERSION = "alcove-unfiled-disclosure/v2";
  * forward is read rather than discarded. A step moves the note and never a
  * retained record, which is migrated on its own read. A migrated note is
  * written at the current version by its next write, never by a read.
+ *
+ * The step from v2 moves the version alone: a v2 note was written before the
+ * exchange-record reset at release 0.9.0, so its retained records are ones this
+ * build refuses, and the note reads as runs whose records cannot be filed.
  */
 export const UNFILED_DISCLOSURE_MIGRATIONS: FormatMigrations<string> =
   Object.freeze({
     fileName: "The note of runs missing from the accounting of disclosures",
     versionField: "version",
     current: UNFILED_DISCLOSURE_VERSION,
-    steps: Object.freeze([]),
+    steps: Object.freeze([
+      Object.freeze({
+        from: "alcove-unfiled-disclosure/v2",
+        to: "alcove-unfiled-disclosure/v3",
+        migrate: (document: Record<string, unknown>) => document,
+      }),
+    ]),
     unchangedStatement: "The stored note was not changed.",
     failureRemedy:
       "Keep the exchange in this browser: the note is the only record of " +

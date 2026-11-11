@@ -143,6 +143,8 @@ vi.mock("@psi/disclosureAccounting", async (importOriginal) => {
       actual.parseStoredDisclosureAccounting(raw, table),
     appendToStoredDisclosureAccounting: (current: unknown, record: unknown) =>
       actual.appendToStoredDisclosureAccounting(current, record, table),
+    classifyRefusedDisclosureAccounting: (raw: unknown, refusal: unknown) =>
+      actual.classifyRefusedDisclosureAccounting(raw, refusal, table),
   };
 });
 

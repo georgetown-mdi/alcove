@@ -1025,14 +1025,13 @@ describe("readExchangeRecordFile / readVerificationKeysFile", () => {
     );
   });
 
-  test("reject a record whose terms hash predates the resolved terms", async () => {
-    // A v9 record hashed the terms with an unset receive list unresolved:
-    // refused on its version rather than reported as a terms mismatch.
+  test("reject a record at a later version than this build's, naming the version", async () => {
+    // Refused on its version rather than reported as a terms mismatch.
     const dir = tmp();
     const { record } = await buildExchangeRecord(baseInputs);
-    const previous = { ...record, version: "alcove-exchange-record/v9" };
+    const later = { ...record, version: "alcove-exchange-record/v9" };
     const recPath = join(dir, "rec.json");
-    writeFileSync(recPath, JSON.stringify(previous, null, 2));
+    writeFileSync(recPath, JSON.stringify(later, null, 2));
     expect(() => readExchangeRecordFile(recPath)).toThrow(
       `unrecognized version (alcove-exchange-record/v9); this build recognizes ${EXCHANGE_RECORD_VERSION}`,
     );

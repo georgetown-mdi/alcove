@@ -2977,6 +2977,46 @@ describe("why an accounting or its note could not be read", () => {
     ).toBeNull();
   });
 
+  test("an accounting an earlier release filed names that release and offers the download, then the reset", async () => {
+    const filed = await disclosureRecord();
+    renderReads(
+      {
+        kind: "unreadable",
+        stored: {
+          version: DISCLOSURE_ACCOUNTING_VERSION,
+          entries: [{ ...filed, version: "alcove-exchange-record/v12" }],
+        },
+        fromEarlierRelease: true,
+      },
+      { kind: "none" },
+    );
+
+    await expect
+      .element(
+        page.getByText(
+          "are from an earlier version of Alcove, and this version cannot read them",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByRole("button", {
+          name: "Download the stored records (JSON)",
+        }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Start a fresh accounting" }))
+      .toBeInTheDocument();
+    for (const text of [
+      "running an older version of Alcove",
+      "Reload this page",
+      "They are damaged",
+    ])
+      expect(page.getByText(text, { exact: false }).query()).toBeNull();
+  });
+
   test("a note a newer version wrote asks for a reload", async () => {
     renderReads({ kind: "none" }, { kind: "stale-page" });
 

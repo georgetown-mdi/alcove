@@ -7,10 +7,12 @@ import {
   DISCLOSURE_ACCOUNTING_VERSION,
   appendDisclosureRecord,
   appendToStoredDisclosureAccounting,
+  classifyRefusedDisclosureAccounting,
   parseDisclosureAccounting,
   parseStoredDisclosureAccounting,
   storedEntriesAheadOfThisBuild,
   storedEnvelopeAheadOfThisBuild,
+  storedEnvelopePredatesRecordReset,
 } from "../../../src/psi/disclosureAccounting.js";
 
 import {
@@ -117,7 +119,7 @@ describe("reading a stored accounting", () => {
     expect(() =>
       parseDisclosureAccounting({
         ...accounting,
-        version: "alcove-disclosure-accounting/v3",
+        version: nextVersionOf(DISCLOSURE_ACCOUNTING_VERSION),
       }),
     ).toThrow();
   });
@@ -355,7 +357,7 @@ describe("the envelope-only read is scoped to the envelope, not an override", ()
     expect(() =>
       parseStoredDisclosureAccounting({
         ...accounting,
-        version: "alcove-disclosure-accounting/v3",
+        version: nextVersionOf(DISCLOSURE_ACCOUNTING_VERSION),
       }),
     ).toThrow();
   });
@@ -507,5 +509,147 @@ describe("the append writes the stored entries as they sit at rest", () => {
         next,
       ),
     ).toThrow(FormatMigrationError);
+  });
+});
+
+/** The refusal {@link parseDisclosureAccounting} throws for `raw`. */
+function refusalOf(raw: unknown): unknown {
+  try {
+    parseDisclosureAccounting(raw);
+  } catch (refusal) {
+    return refusal;
+  }
+  throw new Error("the accounting was not refused");
+}
+
+/** The accounting version hosted builds before release 0.9.0 wrote. */
+const PRE_RESET_ACCOUNTING_VERSION = "alcove-disclosure-accounting/v2";
+
+/** Every exchange-record literal a build before release 0.9.0 filed. */
+const PRE_RESET_RECORD_VERSIONS = Array.from(
+  { length: 11 },
+  (_, index) => `alcove-exchange-record/v${index + 2}`,
+);
+
+/**
+ * The exchange-record format reset to v1 at release 0.9.0, so an entry an
+ * earlier hosted build filed names an ordinal above this build's, the same
+ * ordinals a later build will reuse. The accounting's envelope version is what
+ * tells the two apart, and both directions are driven here on one literal.
+ */
+describe("an accounting a release before 0.9.0 filed", () => {
+  test.each(PRE_RESET_RECORD_VERSIONS)(
+    "holding an entry at %s is stranded with its stored form, never a stale page",
+    async (version) => {
+      const entries = [{ ...(await disclosureRecord()), version }];
+      const raw = { version: PRE_RESET_ACCOUNTING_VERSION, entries };
+
+      expect(classifyRefusedDisclosureAccounting(raw, refusalOf(raw))).toEqual({
+        kind: "unreadable",
+        stored: { version: DISCLOSURE_ACCOUNTING_VERSION, entries },
+        fromEarlierRelease: true,
+      });
+    },
+  );
+
+  test("holding entries this build would read as later is still stranded", async () => {
+    const record = await disclosureRecord();
+    const entries = [
+      { ...record, version: neighbouringRecordVersion(1) },
+      { ...record, version: "alcove-exchange-record/v12" },
+    ];
+    const raw = { version: PRE_RESET_ACCOUNTING_VERSION, entries };
+
+    expect(
+      storedEntriesAheadOfThisBuild(parseStoredDisclosureAccounting(raw)),
+    ).toBe(true);
+    expect(classifyRefusedDisclosureAccounting(raw, refusalOf(raw)).kind).toBe(
+      "unreadable",
+    );
+  });
+
+  test("cannot be appended to until it is reset", async () => {
+    const raw = {
+      version: PRE_RESET_ACCOUNTING_VERSION,
+      entries: [
+        {
+          ...(await disclosureRecord()),
+          version: "alcove-exchange-record/v11",
+        },
+      ],
+    };
+
+    const next = await disclosureRecord();
+
+    expect(() => appendToStoredDisclosureAccounting(raw, next)).toThrow();
+  });
+
+  test("an empty one reads as an empty accounting at this version", () => {
+    expect(
+      parseDisclosureAccounting({
+        version: PRE_RESET_ACCOUNTING_VERSION,
+        entries: [],
+      }),
+    ).toEqual({ version: DISCLOSURE_ACCOUNTING_VERSION, entries: [] });
+  });
+
+  test("only an envelope before this version predates the reset", () => {
+    for (const version of [
+      "alcove-disclosure-accounting/v1",
+      PRE_RESET_ACCOUNTING_VERSION,
+    ])
+      expect(storedEnvelopePredatesRecordReset({ version, entries: [] })).toBe(
+        true,
+      );
+    for (const version of [
+      DISCLOSURE_ACCOUNTING_VERSION,
+      nextVersionOf(DISCLOSURE_ACCOUNTING_VERSION),
+      "alcove-disclosure-accounting/v02",
+      "alcove-exchange-record/v1",
+      undefined,
+    ])
+      expect(storedEnvelopePredatesRecordReset({ version, entries: [] })).toBe(
+        false,
+      );
+    expect(storedEnvelopePredatesRecordReset(undefined)).toBe(false);
+  });
+});
+
+describe("an accounting a later build files", () => {
+  test("an entry at a later record format, in this envelope version, is a stale page", async () => {
+    const entries = [
+      { ...(await disclosureRecord()), version: neighbouringRecordVersion(1) },
+    ];
+    const raw = { version: DISCLOSURE_ACCOUNTING_VERSION, entries };
+
+    expect(classifyRefusedDisclosureAccounting(raw, refusalOf(raw))).toEqual({
+      kind: "stale-page",
+      stored: { version: DISCLOSURE_ACCOUNTING_VERSION, entries },
+    });
+  });
+
+  test("a later envelope version is a stale page, whatever its entries", async () => {
+    const raw = {
+      version: nextVersionOf(DISCLOSURE_ACCOUNTING_VERSION),
+      entries: [await disclosureRecord()],
+    };
+
+    expect(classifyRefusedDisclosureAccounting(raw, refusalOf(raw))).toEqual({
+      kind: "stale-page",
+      stored: undefined,
+    });
+  });
+
+  test("an entry at an earlier record format, in this envelope version, stays stranded with the refusal", async () => {
+    const entries = [
+      { ...(await disclosureRecord()), version: neighbouringRecordVersion(-1) },
+    ];
+    const raw = { version: DISCLOSURE_ACCOUNTING_VERSION, entries };
+
+    expect(classifyRefusedDisclosureAccounting(raw, refusalOf(raw))).toEqual({
+      kind: "unreadable",
+      stored: { version: DISCLOSURE_ACCOUNTING_VERSION, entries },
+      migrationFailure: expect.any(FormatMigrationError),
+    });
   });
 });

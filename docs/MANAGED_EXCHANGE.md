@@ -1302,7 +1302,9 @@ free space on the device rather than keep exchanging.
 A new version of the app reads an accounting an earlier one stored. If it
 cannot convert the stored records to its own format, or they are damaged, the
 accounting page says so instead of showing entries, and names why a conversion
-failed. The entries are still
+failed. Records a version before 0.9.0 stored are ones this version cannot read,
+and the page says they are from an earlier version of Alcove. The entries are
+still
 stored, and the exchange keeps running and disclosing, but none of its runs
 files a record until the accounting is cleared. Take both steps, in order:
 
