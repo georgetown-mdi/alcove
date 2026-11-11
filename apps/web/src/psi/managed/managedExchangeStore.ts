@@ -28,6 +28,7 @@ import {
 import {
   applyManagedExchangeCommandLinePair,
   applyManagedExchangeCompromiseResponse,
+  applyManagedExchangeHostKeyPin,
   applyManagedExchangeImportReplace,
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
@@ -1324,6 +1325,26 @@ export async function persistManagedExchangeSentColumns(
 ): Promise<ManagedExchangeRecord> {
   return modifyStoredRecord(id, (existing) =>
     applyManagedExchangeSentColumns(existing, sent),
+  );
+}
+
+/**
+ * Pin a host key with the stored SFTP exchange
+ * ({@link applyManagedExchangeHostKeyPin}) inside one strict-durability
+ * readwrite transaction, so a first use's pin, or a rotated key staged beside
+ * it, is what every later run checks the server against.
+ *
+ * @throws {Error} if no record with `id` exists.
+ * @throws {UsageError} where the exchange is not SFTP or `fingerprint` is not
+ *   a host-key fingerprint.
+ * @throws {ZodError} if the stored value or the resulting record is invalid.
+ */
+export async function persistManagedExchangeHostKeyPin(
+  id: string,
+  fingerprint: string,
+): Promise<ManagedExchangeRecord> {
+  return modifyStoredRecord(id, (existing) =>
+    applyManagedExchangeHostKeyPin(existing, fingerprint),
   );
 }
 
