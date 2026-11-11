@@ -1,6 +1,7 @@
 // Each run-ending path of the CLI states its step through the remedy module:
 // the command boundary and the terminal event for a catalog cause, the failure
-// site and the signal handler for what the run left its key file holding.
+// site and the signal handler for what the run left its key file holding, and
+// the failure site for the lines it logs beside a failure.
 
 import { describe, expect, test } from "vitest";
 
@@ -15,13 +16,16 @@ import { REPRESENTATIVE_FAILURE_CAUSES } from "@alcove/core/testing";
 
 import { buildErrorEvent } from "../../src/eventStream";
 import {
+  bothSweptStep,
   keyFileNotSavedRemedy,
   keyFileSavedConfigNotWrittenRemedy,
   keyFileStateStep,
   keyFileWriteFailure,
+  missingReceiptWarning,
   remedyForCause,
   type RotationStanding,
   type RunEnding,
+  type SignedRunFacts,
 } from "../../src/failureRemedy";
 import { renderFailureForOperator } from "../../src/util/exit";
 
@@ -176,5 +180,58 @@ describe("a key-file write failure", () => {
     expect(shown).toContain(
       "/k/<1b>[31m.alcove.key: EIO. The exchange stopped.",
     );
+  });
+});
+
+describe("the both-swept line", () => {
+  test("a peer-wait timeout after a delete-mode sweep states the likely cause and the step", () => {
+    expect(
+      bothSweptStep({ deleteModeSweep: true, peerWaitTimedOut: true }),
+    ).toBe(
+      "Both sides appear to have cleared the folder at the same time, " +
+        "removing each other's files. The folder should be empty now. Run " +
+        "the exchange again on both sides, without --sweep-exchange-files.",
+    );
+  });
+
+  test("states nothing without both facts", () => {
+    expect(
+      bothSweptStep({ deleteModeSweep: false, peerWaitTimedOut: true }),
+    ).toBeUndefined();
+    expect(
+      bothSweptStep({ deleteModeSweep: true, peerWaitTimedOut: false }),
+    ).toBeUndefined();
+  });
+});
+
+describe("the missing-receipt warning", () => {
+  const DROPPED: SignedRunFacts = {
+    receiptConfigured: true,
+    exchangeComplete: false,
+    receiptRefused: false,
+    localConfigRefused: false,
+  };
+
+  test("a signed run that failed before the swap completed names the transport and the inactivity limit", () => {
+    expect(missingReceiptWarning(DROPPED)).toBe(
+      "A signed receipt was configured for this exchange, but no receipt " +
+        "reached this side before the exchange ended and the receipt swap " +
+        "did not complete. A partner that presents no signing certificate " +
+        "is refused earlier, at the authenticated setup step, so check the " +
+        "transport and the peer's own logs rather than the partner's " +
+        "signing configuration. If the peer was still working when the " +
+        "exchange ended, run again with a longer --inactivity-timeout, or " +
+        "raise inactivity_timeout_ms under connection.options in the " +
+        "configuration.",
+    );
+  });
+
+  test.each([
+    { receiptConfigured: false },
+    { exchangeComplete: true },
+    { receiptRefused: true },
+    { localConfigRefused: true },
+  ])("states nothing for %o", (fact) => {
+    expect(missingReceiptWarning({ ...DROPPED, ...fact })).toBeUndefined();
   });
 });

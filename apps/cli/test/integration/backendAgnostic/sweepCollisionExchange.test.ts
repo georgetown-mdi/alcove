@@ -11,7 +11,7 @@ import {
   runProtocol,
   type ProtocolConnectionConfig,
 } from "../../../src/protocol";
-import { BOTH_SWEPT_GUIDANCE } from "../../../src/run/notices";
+import { BOTH_SWEPT_GUIDANCE } from "../../../src/failureRemedy";
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
 import { preparedFor, waitFor } from "../../support";
 
