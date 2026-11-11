@@ -156,6 +156,15 @@ export { isProtocolGrammarName } from "./connection/fileSyncNames";
 // The file name byte limit, named individually for the CLI's directory-listing
 // guard, which bounds each listed name by it.
 export { MAX_FILE_NAME_BYTES } from "./connection/fileSyncRendezvous";
+// The SFTP operation bounds' figures and refusal cause link, shared by the
+// CLI's SFTP adapter and the web app's browser SFTP transport.
+export {
+  fittedCauseLink,
+  MAX_DIRECTORY_ENTRIES,
+  MAX_LISTING_READDIR_BATCHES,
+  SFTP_PUT_PROGRESS_CHUNK_BYTES,
+  SFTP_STALL_DEADLINE_MS,
+} from "./connection/transportOperationBounds";
 // The teardown notice's leftover-files clause. Published because both apps
 // outside this package handle it: the CLI writes the notice holding it, and the
 // console matches a run's stderr tail against it.

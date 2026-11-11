@@ -1,12 +1,12 @@
 import { Writable } from "node:stream";
 
-import { FrameSizeExceededError } from "@alcove/core";
-
-import { fittedCauseLink } from "./causeLink";
 import {
+  fittedCauseLink,
+  FrameSizeExceededError,
   SFTP_STALL_DEADLINE_MS,
-  transportOperationStalledError,
-} from "./sftpLivenessGuard";
+} from "@alcove/core";
+
+import { transportOperationStalledError } from "./sftpLivenessGuard";
 
 /**
  * Frame-size enforcement shared by the file-transport adapters
@@ -24,7 +24,7 @@ const INBOUND_FILE_LINK_LABEL = "inbound file: ";
  * file. Pass `observedBytes` when known up front (LocalFSClient's fstat);
  * omit it on the streaming path, where only "crossed the cap" is known.
  * `path` is fitted into its own labelled cause link via
- * {@link ./causeLink.fittedCauseLink} rather than composed into the
+ * {@link fittedCauseLink} rather than composed into the
  * summary, so a hostile server's arbitrarily wide filename is bounded to a
  * value's budget, not the renderer's whole-message one. Why: docs/spec/
  * DISPLAY_REDACTION.md, "Message display budgets".

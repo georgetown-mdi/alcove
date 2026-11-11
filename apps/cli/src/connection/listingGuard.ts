@@ -1,22 +1,24 @@
 import {
   DirectoryListingBoundsError,
   DISPLAY_TRUNCATION_MARKER,
+  fittedCauseLink,
+  MAX_DIRECTORY_ENTRIES,
   MAX_FILE_NAME_BYTES,
+  MAX_LISTING_READDIR_BATCHES,
   redactPrivateKeyMaterial,
   type TransportOperationStalledError,
 } from "@alcove/core";
 
-import { fittedCauseLink } from "./causeLink";
 import { transportOperationStalledError } from "./sftpLivenessGuard";
 
 /**
  * Directory-listing bounds shared by `LocalFSClient` and the SFTP adapter,
  * refused before the listing is materialized:
- * docs/spec/TRANSPORT_BOUNDS.md#directory-listing-bound.
+ * docs/spec/TRANSPORT_BOUNDS.md#directory-listing-bound. The entry and
+ * round-trip figures are core's, shared with the browser SFTP transport.
  */
 
-/** Maximum entries a transport directory listing enumerates, of any type. */
-export const MAX_DIRECTORY_ENTRIES = 8192;
+export { MAX_DIRECTORY_ENTRIES, MAX_LISTING_READDIR_BATCHES };
 
 /**
  * Maximum UTF-8 byte length of one entry's filename, measured by
@@ -89,13 +91,6 @@ export function filenameTooLongError(
     },
   );
 }
-
-/**
- * Maximum `readdir` round-trips one SFTP `list()` issues, so empty non-EOF
- * batches cannot loop forever:
- * docs/spec/TRANSPORT_LIVENESS.md#per-operation-liveness-bounds.
- */
-export const MAX_LISTING_READDIR_BATCHES = 2 * MAX_DIRECTORY_ENTRIES;
 
 /**
  * The terminal liveness error for a listing over

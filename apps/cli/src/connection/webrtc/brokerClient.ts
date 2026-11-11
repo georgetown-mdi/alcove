@@ -4,13 +4,13 @@ import {
   AuthenticationError,
   bareSignalingAuthority,
   chainDetailCauses,
+  fittedCauseLink,
   ConnectionError,
   markStatesItsOwnNextStep,
   parseBoundedJson,
   UsageError,
 } from "@alcove/core";
 
-import { fittedCauseLink } from "../causeLink";
 import {
   askSignalingCertificate,
   probeSignalingCertificate,

@@ -154,8 +154,9 @@ const DISPLAYABLE_VALUE = [
 // built-ins and every subclass in packages/core/src/errors.ts, each named
 // `...Error`), and the two composers that fold labelled fragments into a cause
 // chain -- chainDetailCauses (packages/core/src/errors.ts), which builds one
-// Error per fragment, and fittedCauseLink (apps/cli/src/connection/causeLink.ts),
-// whose result is one such fragment.
+// Error per fragment, and fittedCauseLink
+// (packages/core/src/connection/transportOperationBounds.ts), whose result is
+// one such fragment.
 const ERROR_TEXT_COMPOSITION = [
   "NewExpression[callee.name=/Error$/]",
   "NewExpression[callee.property.name=/Error$/]",

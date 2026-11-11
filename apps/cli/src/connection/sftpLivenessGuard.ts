@@ -1,11 +1,12 @@
 import { Readable } from "node:stream";
 
 import {
+  fittedCauseLink,
   redactAndSanitizeForDisplay,
+  SFTP_PUT_PROGRESS_CHUNK_BYTES,
+  SFTP_STALL_DEADLINE_MS,
   TransportOperationStalledError,
 } from "@alcove/core";
-
-import { fittedCauseLink } from "./causeLink";
 
 /**
  * Per-operation liveness bounds for the SFTP adapter's server-driven
@@ -16,12 +17,9 @@ import { fittedCauseLink } from "./causeLink";
  * docs/spec/TRANSPORT_LIVENESS.md#slow-operation-warning).
  */
 
-/**
- * How long, in milliseconds, an SFTP operation may wait on the server before it
- * is judged stalled: a whole-operation deadline or a progress idle window,
- * depending on the operation. Fixed, not operator-configurable.
- */
-export const SFTP_STALL_DEADLINE_MS = 60_000;
+// The stall deadline and the upload chunk size are core's, shared with the
+// browser SFTP transport.
+export { SFTP_PUT_PROGRESS_CHUNK_BYTES, SFTP_STALL_DEADLINE_MS };
 
 /**
  * The terminal error for an SFTP operation that made no progress within its
@@ -71,14 +69,6 @@ export function withSftpOperationDeadline<T>(
   void settled.catch(() => {});
   return Promise.race([settled, deadline]);
 }
-
-/**
- * Chunk size, in bytes, of the bounded `put` source. ssh2 calls back a write
- * stream write only once every packet of it is acked, so one whole-payload
- * write would show no progress until it finished; 64 KiB chunks let a
- * ~1 KiB/s upload progress within the idle window.
- */
-export const SFTP_PUT_PROGRESS_CHUNK_BYTES = 64 * 1024;
 
 /** The bounded `put` source returned by {@link createBoundedPutSource}. */
 export interface BoundedPutSource {
