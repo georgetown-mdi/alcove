@@ -91,18 +91,18 @@ jobs:
       file: ${{ steps.write.outputs.file }}
       sha256: ${{ steps.write.outputs.sha256 }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # The script is dependency-free, so a plain pinned Node suffices.
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
       # By id, so a later upload under the same name is not what this job
       # reads, and checked against the digest the package job reported.
       - name: Download the site
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build-and-test.outputs.artifactId }}
           path: ${{ runner.temp }}/site
@@ -122,7 +122,7 @@ jobs:
             exit 1
           fi
       - name: Download the demo site
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build-and-test.outputs.demoArtifactId }}
           path: ${{ runner.temp }}/demo-site
@@ -162,7 +162,7 @@ jobs:
             echo "sha256=${digest%% *}"
           } >>"$GITHUB_OUTPUT"
       - name: Upload the unsigned manifest
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hosted-manifest-unsigned
           path: ${{ runner.temp }}/${{ steps.write.outputs.file }}
@@ -195,7 +195,7 @@ jobs:
           cosign-release: v3.1.4
 
       - name: Fetch the unsigned manifest
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: hosted-manifest-unsigned
 
@@ -231,12 +231,12 @@ jobs:
             "${ALCOVE_MANIFEST}"
 
       - name: Attest the manifest's build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ env.ALCOVE_MANIFEST }}
 
       - name: Upload the signed manifest and its bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hosted-manifest-signed
           path: |
@@ -272,7 +272,7 @@ jobs:
       # The wrangler-action steps below find this install and skip their own
       # unlocked `npm i`, since it is the wranglerVersion they pass.
       - name: Check out the deploy tool's lockfile
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout-cone-mode: false
@@ -283,7 +283,7 @@ jobs:
         working-directory: .github/wrangler
         run: npm ci --no-audit --no-fund
       - name: Download the site
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build-and-test.outputs.artifactId }}
           path: ${{ runner.temp }}/site
@@ -324,7 +324,7 @@ jobs:
       # upload").
       - name: Download the demo site
         if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build-and-test.outputs.demoArtifactId }}
           path: ${{ runner.temp }}/demo-site
@@ -385,7 +385,7 @@ jobs:
           cosign-release: v3.1.4
 
       - name: Fetch the signed manifest and its bundle
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: hosted-manifest-signed
 
@@ -438,12 +438,12 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # The script is dependency-free, so a plain pinned Node suffices.
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
       - name: Check the site

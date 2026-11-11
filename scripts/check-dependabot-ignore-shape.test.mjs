@@ -168,8 +168,7 @@ describe("a pin covered by a within-major ignore entry", () => {
       "actions/checkout@v7.0.1 in .github/workflows/pr.yaml is not pinned to a bare floating major tag",
     );
     expect(violations[0]).toContain('under dependency-name "actions/*"');
-    expect(violations[0]).toContain("Re-pin it to the floating major tag");
-    expect(violations[0]).toContain("drop or narrow the entry");
+    expect(violations[0]).toContain("Drop or narrow the entry");
   });
 
   it("fails on a commit sha", () => {
@@ -290,25 +289,17 @@ describe("the real repository configuration", () => {
       readFileSync(resolve(repoRoot, ".github/dependabot.yml"), "utf8"),
     );
     expect(entries).not.toBeNull();
-    expect(entries.filter(suppressesWithinMajor).length).toBeGreaterThan(0);
     const { workflowReferences, actionReferences } = treeReferences(repoRoot);
     const references = [...workflowReferences, ...actionReferences];
     expect(references.length).toBeGreaterThan(0);
     expect(shapeViolations(references, entries)).toEqual([]);
   });
 
-  it("covers real pins, so the green above is not vacuous", () => {
-    const suppressing = githubActionsIgnoreEntries(
+  it("ignores no within-major update, so every commit pin is offered each release", () => {
+    const entries = githubActionsIgnoreEntries(
       readFileSync(resolve(repoRoot, ".github/dependabot.yml"), "utf8"),
-    ).filter(suppressesWithinMajor);
-    const { workflowReferences, actionReferences } = treeReferences(repoRoot);
-    const covered = [...workflowReferences, ...actionReferences].filter(
-      ({ name }) =>
-        suppressing.some(({ dependencyName }) =>
-          coversDependencyName(dependencyName, name),
-        ),
     );
-    expect(covered.length).toBeGreaterThan(0);
+    expect(entries.filter(suppressesWithinMajor)).toEqual([]);
   });
 
   it("exits 0 from the CLI entry point", () => {

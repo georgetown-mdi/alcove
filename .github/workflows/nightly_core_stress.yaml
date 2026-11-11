@@ -65,7 +65,7 @@ jobs:
       jobs: ${{ steps.list.outputs.jobs }}
       sha: ${{ steps.list.outputs.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # A scheduled workflow otherwise takes the default branch, but staging
           # is promoted to main slowly, so checking out main here would catch a
@@ -111,7 +111,7 @@ jobs:
       matrix:
         job: ${{ fromJSON(needs.files.outputs.jobs) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The commit the files job listed from, so staging moving between the
           # jobs cannot split the list from the runs.

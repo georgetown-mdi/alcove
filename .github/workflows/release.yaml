@@ -14,7 +14,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Pins Node, installs from the lockfile, and builds @alcove/core.
       # Uncached: this job is the gate the publish job below depends on, so what
       # it tests is an install of the lockfile rather than a cache entry any run
@@ -70,13 +70,13 @@ jobs:
     outputs:
       newest: ${{ steps.decide.outputs.newest }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # No npm ci: scripts/release-line.test.mjs loads the script from a copy with
       # no node_modules.
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
       - name: Compare the tag with the repository's release tags
@@ -159,7 +159,7 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
       fips_digest: ${{ steps.build_fips.outputs.digest }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # This job builds the image from its own checkout rather than an artifact
       # from the test job, so it must re-verify the vendored tarball here too;
@@ -170,7 +170,7 @@ jobs:
       # The check is dependency-free, so a plain pinned Node suffices -- no npm
       # ci or @alcove/core build (the ./.github/actions/setup prologue) needed.
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
 
@@ -515,7 +515,7 @@ jobs:
       # false), so verifying it does not depend on what the registry can hold;
       # docs/RELEASES.md carries the matching verification command.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ghcr.io/georgetown-mdi/alcove
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -549,7 +549,7 @@ jobs:
             ghcr.io/georgetown-mdi/alcove@${{ steps.build_fips.outputs.digest }}
 
       - name: Attest the FIPS variant's build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ghcr.io/georgetown-mdi/alcove
           subject-digest: ${{ steps.build_fips.outputs.digest }}
@@ -571,7 +571,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Stamp the launchers with the signed digest
         env:
@@ -807,18 +807,18 @@ jobs:
       file: ${{ steps.write.outputs.file }}
       sha256: ${{ steps.write.outputs.sha256 }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # The script is dependency-free, so a plain pinned Node suffices.
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
       # By id and checked against the package job's digest, as in
       # pages_deploy.yaml.
       - name: Download the site
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.web.outputs.artifactId }}
           path: ${{ runner.temp }}/site
@@ -838,7 +838,7 @@ jobs:
             exit 1
           fi
       - name: Download the demo site
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.web.outputs.demoArtifactId }}
           path: ${{ runner.temp }}/demo-site
@@ -887,7 +887,7 @@ jobs:
             echo "sha256=${digest%% *}"
           } >>"$GITHUB_OUTPUT"
       - name: Upload the unsigned manifest
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hosted-manifest-unsigned
           path: ${{ runner.temp }}/${{ steps.write.outputs.file }}
@@ -921,7 +921,7 @@ jobs:
           cosign-release: v3.1.4
 
       - name: Fetch the unsigned manifest
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: hosted-manifest-unsigned
 
@@ -956,12 +956,12 @@ jobs:
             "${ALCOVE_MANIFEST}"
 
       - name: Attest the manifest's build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ env.ALCOVE_MANIFEST }}
 
       - name: Upload the signed manifest and its bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hosted-manifest-signed
           path: |
@@ -982,7 +982,7 @@ jobs:
       contents: write
     steps:
       - name: Fetch the signed manifest and its bundle
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: hosted-manifest-signed
           path: hosted-manifest
@@ -1035,7 +1035,7 @@ jobs:
       demoOutcome: ${{ steps.deploy-demo.outcome }}
     steps:
       - name: Check out the deploy tool's lockfile
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout-cone-mode: false
@@ -1046,7 +1046,7 @@ jobs:
         working-directory: .github/wrangler
         run: npm ci --no-audit --no-fund
       - name: Download the site
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.web.outputs.artifactId }}
           path: ${{ runner.temp }}/site
@@ -1103,7 +1103,7 @@ jobs:
       # environment sets no CLOUDFLARE_DEMO_PAGES_PROJECT.
       - name: Download the demo site
         if: steps.compare-main.outputs.upload == 'true' && vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.web.outputs.demoArtifactId }}
           path: ${{ runner.temp }}/demo-site
@@ -1145,11 +1145,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
       - name: Check the site
@@ -1175,13 +1175,13 @@ jobs:
       # Hub token is set reaches the login step below through this.
       DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Verify vendored native tarball integrity
         run: sha256sum -c lib/openmined-psi.js-*.tgz.sha256
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
 

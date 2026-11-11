@@ -53,7 +53,7 @@ jobs:
     # budget is the browser provisioning below and its own 22-minute bound.
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # A scheduled workflow otherwise takes the default branch, but staging
           # is promoted to main slowly, so checking out main here would catch a
@@ -99,7 +99,7 @@ jobs:
           echo "os-release=$os_release" >> "$GITHUB_OUTPUT"
       - name: Restore the Playwright browser build
         id: browser-cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{runner.os}}-${{steps.playwright.outputs.os-release}}-${{runner.arch}}-${{steps.playwright.outputs.version}}
@@ -150,7 +150,7 @@ jobs:
           exit "$status"
       - name: Save the Playwright browser build
         if: steps.browser-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{runner.os}}-${{steps.playwright.outputs.os-release}}-${{runner.arch}}-${{steps.playwright.outputs.version}}

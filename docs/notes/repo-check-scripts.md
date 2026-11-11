@@ -847,9 +847,9 @@ the same approach as [`check-contributing-scope.mjs`](../../scripts/check-contri
 
 ### Why it is a check
 
-The `github-actions` block in `.github/dependabot.yml` ignores within-major updates for several organizations.
-That suppression is sound only over pins that float within their major:
-an exact pin such as `actions/checkout@v7.0.1`, a commit sha, or a branch name under a covered organization sits under an ignore that suppresses every update it could receive,
+The `github-actions` block in `.github/dependabot.yml` carries no `ignore` entry today, since every action is pinned to a commit and a commit pin needs every update.
+The check guards against an entry returning, because a within-major ignore is sound only over pins that float within their major.
+An exact pin such as `actions/checkout@v7.0.1`, a commit sha, or a branch name under a covered organization sits under an ignore that suppresses every update it could receive,
 so it freezes with no pull request to expose a fix.
 The entries are read from the config, so editing the ignore list changes what is enforced with no second edit.
 

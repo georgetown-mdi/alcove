@@ -44,7 +44,7 @@ runs:
       # repository's dev container) -- storing both on the same cadence would
       # compete for the repository's shared cache budget and evict the entries
       # this action exists to hit. A miss installs against the registry.
-      uses: actions/setup-node@v7
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: "26"
     - name: Verify vendored native tarball integrity
@@ -137,7 +137,7 @@ runs:
     - name: Restore the installed dependency tree
       id: install-cache
       if: inputs.cache != 'false' && runner.os == 'Linux'
-      uses: actions/cache/restore@v6
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           node_modules
@@ -172,7 +172,7 @@ runs:
     # ends the action above this step.
     - name: Save the installed dependency tree
       if: inputs.cache != 'false' && runner.os == 'Linux' && steps.install-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v6
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           node_modules
@@ -182,7 +182,7 @@ runs:
     - name: Restore the @alcove/core build
       id: core-cache
       if: inputs.cache != 'false' && runner.os == 'Linux'
-      uses: actions/cache/restore@v6
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         # Kept identical to the save step's path below: actions/cache derives
         # the cache version from the path list, so a restore list that
@@ -201,7 +201,7 @@ runs:
       shell: bash
     - name: Save the @alcove/core build
       if: inputs.cache != 'false' && runner.os == 'Linux' && steps.core-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v6
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         # Kept identical to the restore step's path above, for the same
         # cache-version reason.

@@ -233,13 +233,10 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 5
 
-  # GitHub Actions used by the workflows in .github/workflows. The actions/*
-  # and github/* actions are pinned to a floating major tag (e.g.
-  # actions/checkout@v7). The docker/*, aquasecurity/* and sigstore/* actions,
-  # which run in the jobs holding the release signing identity or a registry
-  # publish credential, and cloudflare/wrangler-action, which holds the Pages
-  # deploy token, are pinned to a commit with their release tag in a trailing
-  # comment. This block is configured against that path.
+  # GitHub Actions used by the workflows in .github/workflows. Every remote
+  # action is pinned to a commit with its release tag in a trailing comment
+  # (e.g. actions/checkout@<commit> # v7.0.1), the form Dependabot reads and
+  # rewrites. This block is configured against that path.
   #
   # A pin that also appears in a composite action under .github/actions is not
   # relied upon to be tracked there. Coverage reaches it through the workflow
@@ -258,29 +255,10 @@ updates:
       # Only default-days is valid for the docker and github-actions
       # ecosystems; the semver-*-days keys are supported for npm only.
       default-days: 7
-    ignore:
-      # An action pinned to a floating major tag (e.g. actions/checkout@v7)
-      # already tracks the latest release within that major at runtime. A
-      # minor/patch bump PR would only re-pin us to a specific, frozen version
-      # (dropping later fixes) and add churn -- so within-major bumps are
-      # ignored for these orgs and the major tags float. Major bumps (e.g.
-      # checkout v6 -> v7) are NOT ignored and still appear for review.
-      #
-      # That rationale rests on every pin these entries cover in fact being a
-      # floating major -- a property of the workflow trees, held by
-      # scripts/check-dependabot-ignore-shape.mjs rather than by this comment.
-      # An exact, sha, or branch pin from a listed org fails the build instead
-      # of freezing under an ignore that suppresses its every update.
-      #
-      # An org whose actions are not floating-major pinned must stay off this
-      # list for its bumps to be reported -- docker, aquasecurity, sigstore and
-      # cloudflare are absent because their actions are pinned to a commit, so
-      # no update to them, within a major included, is suppressed here.
-      #
-      # A new floating-major action from another org should be added here.
-      - dependency-name: "actions/*"
-        update-types:
-          ["version-update:semver-minor", "version-update:semver-patch"]
-      - dependency-name: "github/*"
-        update-types:
-          ["version-update:semver-minor", "version-update:semver-patch"]
+    # A commit pin never moves on its own, so no update type is ignored: a
+    # within-major release is the only way a pin picks up a later fix. One group
+    # holds every action update, so a weekly run opens one pull request.
+    groups:
+      github-actions:
+        patterns:
+          - "*"

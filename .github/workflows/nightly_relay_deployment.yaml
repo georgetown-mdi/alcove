@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The host pulls main, so a scheduled run checks out main. A manual
           # dispatch takes the ref it was dispatched on, so a change to the
@@ -61,7 +61,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'main' }}
           fetch-depth: 0
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
       - name: Compare the relay host's deployed commit with main

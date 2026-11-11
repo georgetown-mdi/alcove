@@ -68,7 +68,7 @@ jobs:
     outputs:
       run: ${{ steps.scope.outputs.run || 'true' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
         with:
           # Full history so the diff can reach the pull request's merge base.
@@ -149,7 +149,7 @@ jobs:
       demoArtifactSha256: ${{steps.demo-digest.outputs.sha256}}
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Pins Node, installs from the lockfile, and builds @alcove/core.
       # Uncached off a pull request: these artifacts are deployed and signed,
       # so they are built from an install of the lockfile rather than a cache
@@ -191,7 +191,7 @@ jobs:
       # Hidden files carry .well-known/security.txt.
       - name: Upload artifact
         id: upload-site
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{env.ARTIFACT_NAME}}
           path: apps/web/dist/hosted
@@ -220,7 +220,7 @@ jobs:
           echo "sha256=${digest%% *}" >>"$GITHUB_OUTPUT"
       - name: Upload the demo site artifact
         id: upload-demo
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{env.DEMO_ARTIFACT_NAME}}
           path: apps/web/dist/hosted
@@ -326,7 +326,7 @@ jobs:
             build-web: "true"
             playwright: "true"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Pins Node, installs from the lockfile, and builds @alcove/core. Those
       # two are what every leg would otherwise repeat; the action restores both
       # from content-keyed caches, so they are paid once per lockfile and
@@ -404,7 +404,7 @@ jobs:
       - name: Restore the Playwright browser build
         if: matrix.playwright == 'true'
         id: browser-cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{runner.os}}-${{steps.playwright.outputs.os-release}}-${{runner.arch}}-${{steps.playwright.outputs.version}}
@@ -488,7 +488,7 @@ jobs:
           exit "$status"
       - name: Save the Playwright browser build
         if: matrix.playwright == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{runner.os}}-${{steps.playwright.outputs.os-release}}-${{runner.arch}}-${{steps.playwright.outputs.version}}

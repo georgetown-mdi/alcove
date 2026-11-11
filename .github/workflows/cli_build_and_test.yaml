@@ -42,7 +42,7 @@ jobs:
     outputs:
       run: ${{ steps.scope.outputs.run }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history so the diff can reach the pull request's merge base.
           fetch-depth: 0
@@ -170,7 +170,7 @@ jobs:
             build-cli: "true"
             require-worker-build: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Pins Node, installs from the lockfile, and builds @alcove/core. Those
       # two are what every leg would otherwise repeat; the action restores both
       # from content-keyed caches, so they are paid once per lockfile and
@@ -259,7 +259,7 @@ jobs:
       matrix:
         profile: [restricted-crypto, rate-limited, allowlist]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - name: Integration tests (CLI, native sshd, ${{ matrix.profile }} profile)
         run: |
@@ -294,7 +294,7 @@ jobs:
       (github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name == github.repository)
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - name: Integration tests (CLI, native sshd, chroot profile)
         run: |
@@ -339,7 +339,7 @@ jobs:
       # Hub token is set reaches the login step below through this.
       DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - name: Build CLI
         run: npm run build -w apps/cli

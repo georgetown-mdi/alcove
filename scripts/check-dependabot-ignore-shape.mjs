@@ -88,7 +88,7 @@ export function shapeViolations(references, entries) {
     );
     if (!entry) return [];
     return [
-      `${name}@${ref} in ${file} is not pinned to a bare floating major tag, but ${CONFIG_FILE} ignores within-major updates for it under dependency-name "${entry.dependencyName}" -- so nothing will ever open a pull request moving this pin off @${ref}, however many fixes land within the major. Re-pin it to the floating major tag that entry assumes (${name}@v<major>), or drop or narrow the entry so this pin's within-major bumps surface.`,
+      `${name}@${ref} in ${file} is not pinned to a bare floating major tag, but ${CONFIG_FILE} ignores within-major updates for it under dependency-name "${entry.dependencyName}" -- so nothing will ever open a pull request moving this pin off @${ref}, however many fixes land within the major. Drop or narrow the entry so this pin's within-major bumps surface.`,
     ];
   });
   return [...new Set(messages)];
