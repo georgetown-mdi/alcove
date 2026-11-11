@@ -976,8 +976,9 @@ export const LESS_CERTAIN_KEY_COPY = {
 /**
  * The copy every surface shows for a key `linkageKeyUsesOneField` marks
  * (`consent/oneFieldKey.ts`): `keyLine` with the key, and `termsLine` once
- * outside a collapsed key list. Each surface follows the warning with the
- * remedy its reader can carry out there.
+ * outside a collapsed key list. The terms review and the CLI terms display
+ * follow the warning with a remedy; the key editors show it alone, beside
+ * the key being edited.
  */
 export const ONE_FIELD_KEY_COPY = {
   keyLine:
