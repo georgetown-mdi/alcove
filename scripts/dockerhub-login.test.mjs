@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +20,10 @@ import { readWorkflows, parseWorkflow } from "./lib/workflows.mjs";
 // a docker command naming another registry only is named in NOT_HUB. What
 // this cannot see: an image a step reaches some other way, and composite
 // actions, none of which pull today.
+//
+// It also holds the emulator and builder images the QEMU and buildx steps pass
+// equal to the pins in .github/builder-images/Dockerfile, which Dependabot
+// moves.
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -50,6 +55,18 @@ const HUB_THROUGH_SCRIPT = new Map([
 const NOT_HUB = new Map([
   ["image_smoke.yaml published_image Pull the published image", "ghcr.io"],
 ]);
+
+// The emulator and builder images the setup steps pass, pinned by stage name
+// in a Dockerfile Dependabot reads, since it reads no action input.
+const BUILDER_IMAGES_DOCKERFILE = ".github/builder-images/Dockerfile";
+const MOVE_WITH_BUILDER_IMAGES = `set every such step's input to the digest ${BUILDER_IMAGES_DOCKERFILE} pins`;
+const builderImagePins = new Map(
+  [
+    ...readFileSync(resolve(ROOT, BUILDER_IMAGES_DOCKERFILE), "utf8").matchAll(
+      /^FROM (\S+) AS (\S+)$/gm,
+    ),
+  ].map((match) => [match[2], match[1]]),
+);
 
 const keyOf = (file, job, step) =>
   `${file.split("/").pop()} ${job} ${step.name ?? ""}`;
@@ -121,33 +138,41 @@ describe("Docker Hub logins in the workflows", () => {
     expect(stray).toEqual([]);
   });
 
-  it("pins every QEMU emulator image to one digest", () => {
+  it("pins every QEMU emulator image to the digest its Dockerfile pins", () => {
     const images = jobs.flatMap(({ job }) =>
       job.steps
         .filter((step) => /^docker\/setup-qemu-action@/.test(step.uses ?? ""))
         .map((step) => step.with?.image),
     );
     expect(images.length).toBeGreaterThan(0);
+    const pinned = builderImagePins.get("binfmt");
+    expect(pinned).toMatch(
+      /^docker\.io\/tonistiigi\/binfmt:qemu-v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/,
+    );
+    const expected = pinned.replace(/:[^@]+@/, "@");
     for (const image of images) {
-      expect(image).toMatch(
-        /^docker\.io\/tonistiigi\/binfmt@sha256:[0-9a-f]{64}$/,
-      );
+      expect(image, MOVE_WITH_BUILDER_IMAGES).toBe(expected);
     }
-    expect(new Set(images).size).toBe(1);
   });
 
-  it("pins every BuildKit builder image to one digest", () => {
+  it("pins every BuildKit builder image to the digest its Dockerfile pins", () => {
     const options = jobs.flatMap(({ job }) =>
       job.steps
         .filter((step) => /^docker\/setup-buildx-action@/.test(step.uses ?? ""))
         .map((step) => step.with?.["driver-opts"]),
     );
     expect(options.length).toBeGreaterThan(0);
+    const pinned = builderImagePins.get("buildkit");
+    expect(pinned).toMatch(
+      /^docker\.io\/moby\/buildkit:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/,
+    );
+    const expected = `image=${pinned.replace(/^docker\.io\//, "")}`;
     for (const option of options) {
-      expect(option).toMatch(
-        /^image=moby\/buildkit:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/,
-      );
+      expect(option, MOVE_WITH_BUILDER_IMAGES).toBe(expected);
     }
-    expect(new Set(options).size).toBe(1);
+  });
+
+  it("is the only content of the builder images' Dockerfile", () => {
+    expect([...builderImagePins.keys()]).toEqual(["buildkit", "binfmt"]);
   });
 });

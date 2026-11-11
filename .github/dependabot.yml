@@ -198,11 +198,28 @@ updates:
       # ecosystems; the semver-*-days keys are supported for npm only.
       default-days: 7
 
+  # The BuildKit and QEMU emulator images the release and image smoke builds
+  # run. .github/builder-images/Dockerfile is their pins' home, since no
+  # Dependabot block reads the action inputs that pass them; a bump here fails
+  # scripts/dockerhub-login.test.mjs until the same pull request moves those
+  # inputs by hand.
+  - package-ecosystem: docker
+    directory: "/.github/builder-images"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      # Only default-days is valid for the docker and github-actions
+      # ecosystems; the semver-*-days keys are supported for npm only.
+      default-days: 7
+
   # The wrangler the Cloudflare Pages upload jobs install from
   # .github/wrangler/package-lock.json before cloudflare/wrangler-action runs.
   # A bump here does not move the wranglerVersion those steps pass:
   # scripts/signed-build-inputs.test.mjs holds it equal to the locked version
-  # and fails until the same pull request edits all five steps by hand.
+  # and fails until the same pull request edits all six steps by hand.
   - package-ecosystem: npm
     directory: "/.github/wrangler"
     target-branch: "staging"
