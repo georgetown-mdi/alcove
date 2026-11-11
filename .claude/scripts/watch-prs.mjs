@@ -132,13 +132,13 @@ function displayName(check) {
 /**
  * The CI result on the head the rollup describes: `pending` while a check has
  * not completed or none is registered, else `green` or `red` with the failed
- * check names, sorted and deduplicated, and a fingerprint of the completed runs.
+ * check names, sorted, and a fingerprint of the runs. Only each check name's
+ * latest run counts, as GitHub matches a required check by name.
  */
 export function ciResult(rollup) {
   const checks = rollup ?? [];
   if (checks.length === 0) return { result: "pending" };
-  const failed = new Set();
-  const runs = [];
+  const latest = new Map();
   for (const check of checks) {
     let conclusion;
     if (check.__typename === "StatusContext" || check.status === undefined) {
@@ -149,8 +149,16 @@ export function ciResult(rollup) {
       conclusion = check.conclusion;
     }
     const name = displayName(check);
-    if (!PASSING_CONCLUSIONS.has(conclusion)) failed.add(name);
     const finished = check.completedAt ?? check.startedAt ?? "";
+    const previous = latest.get(name);
+    if (previous === undefined || finished >= previous.finished) {
+      latest.set(name, { conclusion, finished });
+    }
+  }
+  const failed = new Set();
+  const runs = [];
+  for (const [name, { conclusion, finished }] of latest) {
+    if (!PASSING_CONCLUSIONS.has(conclusion)) failed.add(name);
     runs.push(`${name}\t${conclusion}\t${finished}`);
   }
   const fingerprint = createHash("sha256")

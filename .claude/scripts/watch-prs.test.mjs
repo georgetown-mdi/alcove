@@ -99,6 +99,53 @@ describe("events", () => {
     expect(lines).toEqual([`ci-red 12 ${HEAD} e2e, ext, unit`]);
   });
 
+  it("counts only the latest run of each check name", () => {
+    const path = statePath();
+    const run = (conclusion, completedAt) => ({
+      ...checkRun("PR Checklist", "COMPLETED", conclusion),
+      completedAt,
+    });
+    const failedThenPassed = [
+      run("SUCCESS", "2026-11-10T10:20:00Z"),
+      run("FAILURE", "2026-11-10T10:00:00Z"),
+    ];
+    expect(
+      pollWith(path, { 12: view({ statusCheckRollup: failedThenPassed }) })
+        .lines,
+    ).toEqual([`ci-green 12 ${HEAD}`]);
+    expect(
+      pollWith(path, {
+        12: view({
+          statusCheckRollup: [
+            ...failedThenPassed,
+            { ...checkRun("PR Checklist", "IN_PROGRESS") },
+          ],
+        }),
+      }).lines,
+    ).toEqual([]);
+    expect(
+      pollWith(path, {
+        12: view({
+          statusCheckRollup: [
+            ...failedThenPassed,
+            run("FAILURE", "2026-11-10T10:40:00Z"),
+          ],
+        }),
+      }).lines,
+    ).toEqual([`ci-red 12 ${HEAD} PR Checklist`]);
+    expect(
+      pollWith(path, {
+        12: view({
+          statusCheckRollup: [
+            ...failedThenPassed,
+            run("FAILURE", "2026-11-10T10:40:00Z"),
+            run("SUCCESS", "2026-11-10T11:00:00Z"),
+          ],
+        }),
+      }).lines,
+    ).toEqual([`ci-green 12 ${HEAD}`]);
+  });
+
   it("reports a conflict, a merge, and a close", () => {
     const { lines } = pollWith(statePath(), {
       12: view({ mergeable: "CONFLICTING" }),
