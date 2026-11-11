@@ -161,7 +161,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
+      # The BuildKit image, pinned by digest where the
       # action's default floats on `buildx-stable-1`. Dependabot moves the pin
       # in .github/builder-images/Dockerfile, and scripts/dockerhub-login.test.mjs
       # fails until all four setup-buildx-action steps, in this workflow and in
@@ -1050,7 +1050,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # The BuildKit image, pinned by digest (BuildKit v0.34.2) where the
+      # The BuildKit image, pinned by digest where the
       # action's default floats on `buildx-stable-1`. Dependabot moves the pin
       # in .github/builder-images/Dockerfile, and scripts/dockerhub-login.test.mjs
       # fails until all four setup-buildx-action steps, in this workflow and in
