@@ -15,9 +15,19 @@ import { browserDisableFeaturesSwitch } from "../../vite.config.ts";
 import { serviceWorkerStringArray } from "../utils/serviceWorkerHarness";
 import { startStandaloneBroker } from "../utils/standaloneBroker.ts";
 
-import { hasHostedBuild, hostedOutput, webRoot } from "./prodServer.js";
+import {
+  getFreePort,
+  hasConsoleBuild,
+  hasHostedBuild,
+  hostedOutput,
+  spawnConsoleServer,
+  stopProdServer,
+  waitForRoot,
+  webRoot,
+} from "./prodServer.js";
 
 import type { Browser, FileChooser, Page } from "playwright";
+import type { ChildProcess } from "node:child_process";
 import type { StandaloneBroker } from "../utils/standaloneBroker.ts";
 import type { StaticHost } from "../staticHost/server.js";
 
@@ -27,8 +37,11 @@ import type { StaticHost } from "../staticHost/server.js";
 // and the browser reports no violation of that policy from any page or worker.
 // The host adds only a report endpoint to the policy. The inviter names a
 // standalone broker under Connection settings, so the build's own coordination
-// server is never dialled. Rebuild (`npm run build -w apps/web`) before
-// re-running; CI always rebuilds first.
+// server is never dialled. The built console server, with its job API on,
+// serves the same route documents under the same policy, read from the
+// browser's console since that server takes no report endpoint. Rebuild
+// (`npm run build -w apps/web`, and the console build) before re-running; CI
+// always rebuilds first.
 
 const SETUP_TIMEOUT_MS = 60_000;
 // The bundle fetch, a CSV parse, and the invitation mint.
@@ -310,6 +323,88 @@ describe.skipIf(!hasHostedBuild)(
         expect(messages).toEqual([]);
       },
       LOAD_TIMEOUT_MS * (routeDocuments.length * 2 + 6) + HYDRATION_TIMEOUT_MS,
+    );
+  },
+);
+
+describe.skipIf(!hasConsoleBuild)(
+  "the console build under its Content-Security-Policy",
+  () => {
+    let server: ChildProcess | undefined;
+    let browser: Browser | undefined;
+    let origin = "";
+    const jobDirs: Array<string> = [];
+
+    beforeAll(async () => {
+      for (const name of ["data", "rendezvous", "cred"])
+        jobDirs.push(
+          mkdtempSync(join(tmpdir(), `alcove-csp-console-${name}-`)),
+        );
+      const [dataRoot, rendezvousDir, credentialDir] = jobDirs;
+      const port = await getFreePort();
+      const { child, getLaunchError } = await spawnConsoleServer(port, {
+        JOB_DATA_ROOT: dataRoot,
+        JOB_RENDEZVOUS_DIR: rendezvousDir,
+        JOB_SFTP_CREDENTIAL_DIR: credentialDir,
+      });
+      server = child;
+      origin = `http://127.0.0.1:${port}`;
+      await waitForRoot(`${origin}/`, child, getLaunchError);
+      browser = await chromium.launch({
+        headless: true,
+        args: [browserDisableFeaturesSwitch],
+      });
+    }, SETUP_TIMEOUT_MS);
+
+    afterAll(async () => {
+      await browser?.close();
+      await stopProdServer(server);
+      for (const dir of jobDirs) rmSync(dir, { recursive: true, force: true });
+    }, SETUP_TIMEOUT_MS);
+
+    test(
+      "loads every route document with no policy violation reported",
+      async () => {
+        if (browser === undefined) throw new Error("setup did not finish");
+        const served = await fetch(`${origin}/exchange`);
+        await served.body?.cancel();
+        expect(
+          served.headers.get("content-security-policy"),
+          "the build serves the current policy; rebuild if this fails",
+        ).toBe(contentSecurityPolicy);
+
+        const messages: Array<string> = [];
+        const context = await browser.newContext();
+        // A refused eval that the page catches, such as Zod's probe, raises
+        // the event and logs no console message.
+        await context.addInitScript(() => {
+          document.addEventListener("securitypolicyviolation", (event) => {
+            console.log(
+              `Content-Security-Policy violation: ${event.violatedDirective} ` +
+                `${event.blockedURI} in ${event.sourceFile}`,
+            );
+          });
+        });
+        try {
+          const page = await context.newPage();
+          recordPolicyMessages(page, "console visitor", messages);
+          for (const route of routeDocuments) {
+            await page.goto(`${origin}${route}`, {
+              waitUntil: "load",
+              timeout: LOAD_TIMEOUT_MS,
+            });
+            await page.locator("h1").first().waitFor({
+              timeout: LOAD_TIMEOUT_MS,
+            });
+          }
+          await page.waitForTimeout(REPORT_SETTLE_MS);
+        } finally {
+          await context.close();
+        }
+
+        expect(messages).toEqual([]);
+      },
+      LOAD_TIMEOUT_MS * routeDocuments.length * 2,
     );
   },
 );

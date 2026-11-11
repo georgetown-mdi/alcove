@@ -70,6 +70,9 @@ No worker is created from a `blob:` URL: the three workers load from `/assets/`,
 - **The policy.** `'unsafe-eval'` is dropped; `'wasm-unsafe-eval'` and the hash source stay.
 
 The measurement repeated the first one's exchange and sweep through `apps/web/test/integration/contentSecurityPolicyExchange.test.ts`, against a branch build of the fork (commit `bb71a72`, run [42955257319](https://github.com/georgetown-mdi/OpenMinedPSI/actions/runs/42955257319)) installed in a staging checkout.
+The vendored engine, `2.0.6-alcove.3`, is the `master` build of the merged fork change (fork commit `78cf78142`, run [42967308533](https://github.com/georgetown-mdi/OpenMinedPSI/actions/runs/42967308533)).
+The exchange and sweep under the shipped policy, and `npm run check:vectors`, were run again against that tarball as installed, with no report and no vector change.
+The timing below is the branch build's.
 
 **The PSI step's time** did not change beyond run-to-run spread.
 `node apps/web/test/bench/browserSameSizeRound.ts --role joiner --elements 100000`, the shipped PSI worker in Chromium against a native partner, twice per build on one Apple-silicon Mac:
@@ -77,14 +80,15 @@ The measurement repeated the first one's exchange and sweep through `apps/web/te
 | Engine | Round wall time | `createClientRequest` | `computeAssociationTable` |
 | ------ | --------------- | --------------------- | ------------------------- |
 | as first vendored | 85.4 s, 83.8 s | 46.0 s, 44.9 s | 35.8 s, 35.7 s |
-| `DYNAMIC_EXECUTION=0` | 90.0 s, 85.0 s | 47.7 s, 45.8 s | 37.4 s, 35.0 s |
+| `DYNAMIC_EXECUTION=0`, branch build `bb71a72` | 90.0 s, 85.0 s | 47.7 s, 45.8 s | 37.4 s, 35.0 s |
 
 ## Limits
 
 - **Chromium only.** No other browser was driven.
   With `'unsafe-eval'` gone, `'wasm-unsafe-eval'` is the only source admitting WebAssembly compilation, so a browser that does not recognize it runs no exchange; which browsers do was not measured.
-- **The console.** Under the first policy its pages (`/`, `/exchange`, `/accept`, `/direct`) loaded from the built console server with no violation, with no job API configured.
-  They were not driven again without `'unsafe-eval'`; its page build carries the same Zod chunk as the hosted one.
+- **The console.** On 2026-11-11, with `2.0.6-alcove.3` installed, every console route document (`/`, `/exchange`, `/accept`, `/direct`, `/quick`, `/relay`, `/verify`, `/saved`, `/saved/abc123`, `/bench`, `/bench/exchange`, and an unmatched path) loaded from the built console server under the shipped policy, with the job API on and off, and the browser raised no violation event and logged no policy message.
+  Built without the Zod chunk, the same pages raised Zod's `eval` probe on every document.
+  The console pages start no worker on load; their three worker bundles are byte-identical to the hosted build's, which the sweep starts.
   No console exchange was run: the console's exchange runs in the container, not the browser.
 - **Development servers.** Under `npm run dev:console`, Vite injects an inline React refresh preamble the policy refused, and the page did not render; the development server sends the policy without `script-src`.
   `npm run dev` sends no security headers.
@@ -93,4 +97,5 @@ The measurement repeated the first one's exchange and sweep through `apps/web/te
 
 - `apps/web/test/unit/utils/securityHeaders.test.ts` pins the policy and recomputes the hash from the script's source.
 - `apps/web/test/integration/contentSecurityPolicyExchange.test.ts` runs the exchange and the sweep above against the built site, choosing a generated CSV just large enough to start the CSV-parse and non-empty-aggregate workers, and fails on any report or console message naming the policy.
+  It also loads the console's route documents from the built console server, job API on, and fails on any violation event or console message: that server takes no report endpoint, and a refused `eval` the page catches, as Zod's probe is, logs no console message.
 - `apps/web/test/integration/securityHeaders.test.ts` and `apiNamespace.test.ts` hold the header on the wire from the static host and the console server.
