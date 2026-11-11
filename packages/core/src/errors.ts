@@ -661,8 +661,9 @@ export class AuthenticationError extends ConnectionError {
 /**
  * The key exchange failed because the peer connected with an older copy of
  * this exchange's secrets: its history proof matched the verifier of a secret
- * this side retired (docs/spec/PROTOCOL.md, "The rotation history"). The
- * match bounds how old the peer's copy is and proves nothing more.
+ * this side retired (docs/spec/SHARED_SECRET_ROTATION.md, "The rotation
+ * history"). The match bounds how old the peer's copy is and proves nothing
+ * more.
  */
 export class PartnerCopyBehindError extends AuthenticationError {
   /** The position of the matched verifier: the peer's copy is at most this

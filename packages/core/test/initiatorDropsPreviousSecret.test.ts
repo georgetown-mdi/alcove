@@ -19,10 +19,10 @@ import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 import type { HandshakeRole, PsiRole } from "../src/types";
 
 // The initiator drops the previous secret it kept on the responder's first
-// frame after terms message 3 that is not an abort (docs/spec/PROTOCOL.md, "The
-// rotation at the terms exchange"). A completed run in every exchange mode, in
-// either PSI role, must give it one, or the previous secret would outlive
-// every completed run.
+// frame after terms message 3 that is not an abort
+// (docs/spec/SHARED_SECRET_ROTATION.md, "The rotation at the terms
+// exchange"). A completed run in every exchange mode, in either PSI role, must
+// give it one, or the previous secret would outlive every completed run.
 
 const psiLibrary = await PSI();
 

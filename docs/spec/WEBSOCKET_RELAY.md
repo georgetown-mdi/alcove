@@ -161,7 +161,7 @@ Every close reason is empty except 4005's.
 
 ## A one-sided allocation
 
-A run cut between the two saves of a rotation leaves one side on the next secret and its partner on the secret before it ([PROTOCOL.md](PROTOCOL.md#the-previous-secret)).
+A run cut between the two saves of a rotation leaves one side on the next secret and its partner on the secret before it ([SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md#the-previous-secret)).
 A relay whose registrar took only one side's rotation holds that side's key under the exchange id, so only that side's hello verifies there.
 Measured 2026-11-01 in the development container (10 cores, aarch64 Linux, Node v26.13.0) against the relay's standalone process, by `apps/cli/test/integration/webrtc/websocketRelayOneSided.test.ts` in the CLI's webrtc suite:
 

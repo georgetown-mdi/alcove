@@ -260,7 +260,7 @@ revoke-exchange.sh <exchange-id>
 - **Registering.** Adds the key's row and maps the exchange to it. An exchange
   already registered has its prior row deleted in the same transaction, so the
   relay holds only its current key from the moment the call returns -- register
-  again after each [rotation](../../docs/spec/PROTOCOL.md#shared-secret-rotation).
+  again after each [rotation](../../docs/spec/SHARED_SECRET_ROTATION.md).
   Registering the key an exchange already holds renews its row: the new
   registration time and the call's max-age-days. A key another exchange holds
   is refused. The message states the resulting lapse.

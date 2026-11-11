@@ -22,8 +22,8 @@ import { randomBytes, toBase64Url } from "../src/utils/crypto";
 import type { HandshakeRole } from "../src/types";
 
 // The key exchange's previous-secret trial verification and the history proofs
-// and behind notices (docs/spec/PROTOCOL.md, "Which secret a handshake uses"
-// and "The rotation history").
+// and behind notices (docs/spec/PROTOCOL.md, "Which secret a handshake uses",
+// and docs/spec/SHARED_SECRET_ROTATION.md, "The rotation history").
 
 const GENERIC_FAILURE = "key exchange authentication failed";
 

@@ -599,4 +599,4 @@ the output is owner-only.
 
 - [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#key-file-security) - what these files protect, and the operator-facing permissions, warnings, and remediation
 - [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md) - the self-attested record whose two-file write relies on the cross-write crash-ordering guarantee
-- [PROTOCOL.md](PROTOCOL.md#shared-secret-rotation) - the rotated token this write path persists
+- [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md) - the rotated token this write path persists

@@ -36,8 +36,7 @@ export interface AuthResult {
    * What the terms exchange derives the next shared secret from. The caller
    * passes it to `runExchange` as `rotation.inputs`, beside the write that
    * stores the next secret, which the terms exchange awaits at this side's
-   * point in the store order (docs/spec/PROTOCOL.md, "Shared-secret
-   * rotation").
+   * point in the store order (docs/spec/SHARED_SECRET_ROTATION.md).
    */
   nextSecretInputs: NextSecretInputs;
   /**
@@ -72,8 +71,8 @@ export type HandshakeSecretKind = "current" | "previous";
 /**
  * What a side holds besides its current secret: the previous secret it keeps
  * until the partner confirms the next one, and its rotation history
- * (docs/spec/PROTOCOL.md, "Which secret a handshake uses" and "The rotation
- * history").
+ * (docs/spec/PROTOCOL.md, "Which secret a handshake uses", and
+ * docs/spec/SHARED_SECRET_ROTATION.md, "The rotation history").
  */
 export interface RotationState {
   /** The previous secret and its own `expires`; omitted when none is held. */
@@ -170,10 +169,11 @@ export function isExpired(expires: string, now: number): boolean {
 }
 
 /**
- * Assert the pre-handshake check on a shared secret (docs/spec/PROTOCOL.md,
- * "Enforcement sites"): present, matching {@link SHARED_SECRET_REGEX}, and not
- * expired. It reads local state only, so {@link runProtocol} runs it before
- * opening a connection; {@link authenticateConnection} runs it too.
+ * Assert the pre-handshake check on a shared secret
+ * (docs/spec/SHARED_SECRET_ROTATION.md, "Enforcement sites"): present,
+ * matching {@link SHARED_SECRET_REGEX}, and not expired. It reads local state
+ * only, so {@link runProtocol} runs it before opening a connection;
+ * {@link authenticateConnection} runs it too.
  *
  * @throws {Error} (marked {@link markStatesItsOwnNextStep}, as each message
  *                 states its own remedy) if `sharedSecret` is absent or not a
@@ -210,9 +210,9 @@ export function assertSharedSecretReadyForHandshake(
  *
  * The secret is checked before any network activity; its expiry is checked
  * again in the terms exchange, before each side's store
- * (docs/spec/PROTOCOL.md, "Enforcement sites"). Those errors are marked
- * {@link markStatesItsOwnNextStep}; a key-exchange failure is not, its
- * message generic by design.
+ * (docs/spec/SHARED_SECRET_ROTATION.md, "Enforcement sites"). Those errors
+ * are marked {@link markStatesItsOwnNextStep}; a key-exchange failure is not,
+ * its message generic by design.
  *
  * @param conn            An open, ready-to-use connection.
  * @param authentication  The authentication block from the connection

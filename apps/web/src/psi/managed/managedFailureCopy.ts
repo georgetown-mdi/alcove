@@ -272,8 +272,9 @@ export const PARTNER_SECRET_NOT_SAVED_PROBLEM =
 /** What a saved exchange can still do after such a run while its record holds
  * the secret the run used as a previous secret it would offer
  * ({@link ./managedFailureTiers.ts}, `partnerStorageReach`), so the next run
- * can meet a partner that did not save (docs/spec/PROTOCOL.md, "The previous
- * secret"). Only an acceptor keeps one, so the step is the acceptor's. */
+ * can meet a partner that did not save (docs/spec/SHARED_SECRET_ROTATION.md,
+ * "The previous secret"). Only an acceptor keeps one, so the step is the
+ * acceptor's. */
 export const PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY =
   "This device also kept the earlier secret your partner still holds, so " +
   "the next run can still reach them. If your partner's device can save " +

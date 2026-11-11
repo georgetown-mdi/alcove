@@ -540,7 +540,7 @@ under this certificate. That is a different statement from the one certificate
 The shared-secret rotation draws each party's value as a 256-bit HMAC key with
 `crypto.subtle.generateKey` and wraps it with `crypto.subtle` AES-KW under a
 256-bit key HKDF derives
-([PROTOCOL.md](PROTOCOL.md#shared-secret-rotation)). The entrypoint probe
+([SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md)). The entrypoint probe
 makes both calls, in its `rotation_value_draw` and `aes_kw_wrap_round_trip`
 legs, and either leg failing fails its verdict. Image Smoke run 40777437348,
 at commit 06b94e091 under the image's shipped `fips-only.cnf`, recorded both

@@ -505,7 +505,7 @@ export const SHARED_SECRET_EXPIRED_ABORT_REASON =
  * secret is derived from {@link inputs} and the responder's value, and
  * {@link store} is awaited at this side's point in the store order -- the
  * initiator's before it sends `proceed`, the responder's on reading it
- * (docs/spec/PROTOCOL.md, "Shared-secret rotation"). A throw from the store
+ * (docs/spec/SHARED_SECRET_ROTATION.md). A throw from the store
  * sends the partner {@link NEXT_SECRET_STORE_FAILED_ABORT_REASON} and ends the
  * run with that throw.
  */
@@ -528,7 +528,7 @@ export interface TermsRotation {
    * first frame after terms message 3 that is not an abort has arrived through
    * the connection, and awaited before that frame is read: the responder stores
    * before it sends any such frame, so the initiator drops the previous secret
-   * it kept (docs/spec/PROTOCOL.md, "The previous secret"). The
+   * it kept (docs/spec/SHARED_SECRET_ROTATION.md, "The previous secret"). The
    * frame proves it only where the AEAD layer opened it. A throw ends the run.
    */
   partnerStored?: () => void | Promise<void>;
@@ -1465,7 +1465,8 @@ export async function exchangeTerms(
  * exchange in which both parties passed `--save`. Both ends return the same
  * value, which the caller persists to its key file as the basis for future
  * recurring exchanges. The frame's placement, its format, and what protects
- * it are in docs/spec/PROTOCOL.md ("The zero-setup bootstrap frame").
+ * it are in docs/spec/SHARED_SECRET_ROTATION.md
+ * ("The zero-setup bootstrap frame").
  *
  * Call this only when both parties advertised save intent (see
  * {@link exchangeTerms}); calling it otherwise leaves one party sending a

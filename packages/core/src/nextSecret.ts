@@ -4,8 +4,8 @@ import { enc, hkdfDerive, toBase64Url } from "./utils/crypto.js";
 // 32-byte value, sends it AES-KW-wrapped under a key derived from the session
 // key (the initiator's in key-exchange message 3, the responder's in terms
 // message 2), and both derive the next secret over the key-agreement output and
-// the two values. Construction and labels: docs/spec/PROTOCOL.md
-// ("Shared-secret rotation").
+// the two values. Construction and labels:
+// docs/spec/SHARED_SECRET_ROTATION.md.
 
 const INITIATOR_WRAP_LABEL = "alcove-shared-secret-wrap-v2";
 const RESPONDER_WRAP_LABEL = "alcove-shared-secret-wrap-responder-v2";

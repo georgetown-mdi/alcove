@@ -73,6 +73,7 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 ### Technical specifications ([`docs/spec/`](spec/README.md))
 
 - [PROTOCOL.md](spec/PROTOCOL.md) - the PSI and PSI-C algorithms, linkage, the steps after linkage, and the P-256 key exchange
+- [SHARED_SECRET_ROTATION.md](spec/SHARED_SECRET_ROTATION.md) - how the shared secret is replaced after each run, how a run cut between the two saves heals, and when a secret expires
 - [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the application-layer encryption and the authenticated abort marker
 - [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md) - memory bounds on what a hostile server or partner writes for a party to read
 - [TRANSPORT_LIVENESS.md](spec/TRANSPORT_LIVENESS.md) - the deadlines that fail a stalled transport operation, and the SFTP heartbeat

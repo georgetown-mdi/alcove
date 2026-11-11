@@ -1,8 +1,9 @@
 /**
  * The failure a browser initiator reports in place of its partner's abort
  * stating that the partner could not save the next shared secret
- * (docs/spec/PROTOCOL.md, "The rotation at the terms exchange"). The one-shot
- * exchange and a managed run both raise it, so each surface reads one class,
+ * (docs/spec/SHARED_SECRET_ROTATION.md, "The rotation at the terms
+ * exchange"). The one-shot exchange and a managed run both raise it, so each
+ * surface reads one class,
  * and it records whether this side kept the next secret, which decides what
  * the failure left behind.
  */

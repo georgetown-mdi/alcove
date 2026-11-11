@@ -374,7 +374,7 @@ bound has two limits, both read from the spec:
 - **A recorder who holds one secret.** A rotated secret's confidentiality
   against a party holding the secret it replaces "rests on the ephemeral
   exchange alone"
-  ([PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation)). A recorder
+  ([SHARED_SECRET_ROTATION.md](../spec/SHARED_SECRET_ROTATION.md)). A recorder
   holding one secret who solves that handshake's Diffie-Hellman derives its
   session key and the next secret, and, solving each later handshake in turn,
   every later one.
@@ -625,7 +625,7 @@ before the measurement, was:
 ## Rotation moves to an independent secret
 
 The specified rotation derives the next pre-shared secret from the session key
-([PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation)), so its value
+([SHARED_SECRET_ROTATION.md](../spec/SHARED_SECRET_ROTATION.md)), so its value
 depends on the current secret's, which SP 800-57 Part 1 Rev. 5 section 8.2.3.2
 calls key update and forbids to federal applications. The rotation-hardening
 design derives the next secret from the handshake's key-agreement output and a
@@ -637,7 +637,7 @@ unclaimed; the SC-12 sentence the build writes states the gaps. The
 harvest-now-decrypt-later bound above is kept, because the wrapping keys still
 mix the pre-shared secret with the ECDH output, so a recorder who solves the
 Diffie-Hellman alone cannot unwrap either value. The design is built, as
-specified in [PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation); its
+specified in [SHARED_SECRET_ROTATION.md](../spec/SHARED_SECRET_ROTATION.md); its
 record is in [rotation-hardening.md](rotation-hardening.md#the-next-secret-independent-of-the-current-one),
 with the row's wording in its open questions.
 
