@@ -91,11 +91,8 @@ updates:
           ]
 
   # The base images of the two Dockerfiles at the repository root: the default
-  # image's node base and the FIPS variant's Amazon Linux base, neither ignored
-  # under any name. A FIPS base bump moves only the FROM digest, so it is taken
-  # through "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md, which
-  # moves the pins coupled to it on that branch, rather than merged as filed.
-  # The cooldown does not delay that bump: ECR Public reports no publish date.
+  # image's node base, and the FIPS variant's Amazon Linux base, which the
+  # ignore entries below hold out of this ecosystem.
   - package-ecosystem: docker
     directory: "/"
     target-branch: "staging"
@@ -107,6 +104,21 @@ updates:
       # Only default-days is valid for the docker and github-actions
       # ecosystems; the semver-*-days keys are supported for npm only.
       default-days: 7
+    ignore:
+      # The FIPS variant's Amazon Linux base is bumped per release, from the
+      # release checklist, and when the weekly image scan flags a base CVE with
+      # a fix, through "Bumping the FIPS base image" in
+      # docs/spec/DEPENDENCY_PINS.md. A Dependabot bump moves the FROM digest
+      # alone, while the digest, AL2023_RELEASEVER and the certified provider's
+      # NVR pins have to name one Amazon Linux release.
+      #
+      # No update-types are named: the pin is a tag@sha256: digest, so its bump
+      # is a digest move rather than a version change.
+      - dependency-name: "amazonlinux"
+      # The same base under the registry-qualified name Dockerfile.fips spells.
+      - dependency-name: "public.ecr.aws/amazonlinux/amazonlinux"
+      # The name Dependabot gives that ECR Public reference when it files a bump.
+      - dependency-name: "amazonlinux/amazonlinux"
 
   # The relay reference's base image. infra/relay/Dockerfile is a single pinned
   # FROM and nothing else -- the digest's only home, since every other file there

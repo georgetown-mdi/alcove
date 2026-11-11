@@ -45,10 +45,10 @@ pins, as surveyed on 2026-11-10, with the route that offers it for upgrade:
 
 - **automatic**: a block in `.github/dependabot.yml` reaches the pin and opens
   a pull request.
-- **scheduled**: a documented manual cadence moves the pin. Each FIPS base
-  pull request moves the FIPS image's Node runtime, and the dependency step of
-  the release checklist
-  ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)) re-checks
+- **scheduled**: a documented manual cadence moves the pin. The dependency
+  step of the release checklist
+  ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)) bumps the
+  FIPS base, which moves the FIPS image's Node runtime with it, and re-checks
   the other scheduled pins every release.
 - **planned**: an automatic or scheduled route for the pin is planned and not
   yet in place.
@@ -67,8 +67,8 @@ section each row links.
 | wrangler | `.github/wrangler/package.json` and its lockfile | The exact version `4.147.0` | automatic | The `npm` block at `/.github/wrangler`. The six `wranglerVersion` inputs move by hand in the same pull request ([The Pages deploy tool](#the-pages-deploy-tool)). |
 | `sharp` and `undici` under wrangler | The `.github/wrangler/package.json` `overrides` entry | The exact versions `0.35.5` and `7.30.2` | scheduled | Each comes out when the locked wrangler resolves that release or a later one, which is checked each release. A Dependabot pull request does not remove either: measured 2026-11-10 with the Dependabot CLI 1.97.0, its wrangler bump from 4.147.0 to 4.158.0 leaves both entries as written, though the `miniflare` that release locks declares `sharp` `0.35.5` itself. |
 | Default image base | `Dockerfile`, both stages | The `node:26-alpine` index digest | automatic | The `docker` block at `/`. The freeze literal and the attribution list move in the same diff ([Bumping the default base image](#bumping-the-default-base-image)). |
-| FIPS image base | `Dockerfile.fips` | The ECR Public `amazonlinux` index digest, `AL2023_RELEASEVER`, and the certified provider's NVR pins | automatic | The `docker` block at `/`, weekly, opens a pull request moving the digest. That pull request is taken through [Bumping the FIPS base image](#bumping-the-fips-base-image), which moves the other pins on it. |
-| FIPS image Node runtime | `Dockerfile.fips` | `ARG NODE_VERSION` (`v26.13.0`) and the two tarball sha256 values | scheduled | No Dependabot block reads it. Each FIPS base pull request moves it to the current Node 26 release ([Bumping the FIPS base image](#bumping-the-fips-base-image)), so a Node release waits for the next base rebuild. |
+| FIPS image base | `Dockerfile.fips` | The ECR Public `amazonlinux` index digest, `AL2023_RELEASEVER`, and the certified provider's NVR pins | scheduled | Bumped through [Bumping the FIPS base image](#bumping-the-fips-base-image) at each release, from the dependency step of the release checklist ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)), and when `image_smoke.yaml`'s weekly scan flags a base CVE with a fix. The `docker` block at `/` ignores its three names. |
+| FIPS image Node runtime | `Dockerfile.fips` | `ARG NODE_VERSION` (`v26.13.0`) and the two tarball sha256 values | scheduled | No Dependabot block reads it. Each FIPS base bump moves it to the current Node 26 release ([Bumping the FIPS base image](#bumping-the-fips-base-image)), so a Node release waits for the next base rebuild. |
 | SFTP relay image base | `packages/sftp-relay/Dockerfile`, both stages | The `node:26-alpine` index digest | automatic | The `docker` block at `/packages/sftp-relay`. |
 | TURN relay image | `infra/relay/Dockerfile` | The `coturn/coturn:4.18.0` index digest | automatic | The `docker` block at `/infra/relay`. |
 | Broker TLS front image | `infra/broker/Dockerfile` | The `nginx:1.31-alpine` index digest | automatic | The `docker` block at `/infra/broker`. |
@@ -912,31 +912,25 @@ each of those pins is, and how the current values were resolved, is in
 [CONTAINER_IMAGES.md](CONTAINER_IMAGES.md#the-fips-variant-images-pins); what
 follows is the procedure that keeps them together.
 
-**The cadence and the arrival signal.** The `docker` block at `/` in
-`.github/dependabot.yml` (weekly on Monday, targeting `staging`) opens a pull
-request when it finds a newer digest for this base, as it does for the default
-image's. That pull request is the offer to upgrade, and it is taken through
-this procedure rather than merged as filed or closed unmerged.
+**The cadence.** This base is bumped through this procedure at two points:
 
-- **Weekly, because the block is shared.** Both `Dockerfile` and
-  `Dockerfile.fips` sit at the repository root, which that one block covers. A
-  monthly schedule for this base alone would take a second `docker` block at
-  `/` naming only it. Whether Dependabot accepts two blocks with the same
-  ecosystem, directory and target branch has not been driven, so the base takes
-  the shared block's schedule.
-- **No cooldown applies.** Dependabot's own pull requests for this base, #2539
-  and #2608, each warn that the cooldown could not be applied because the
-  registry gave no publication date. A pull request can therefore arrive in the
-  first weekly run after ECR Public publishes a rootfs.
-- **No name is ignored.** The block has no `ignore` entry under any of the
-  base's three names: `amazonlinux`, Docker Hub's name for the image, which no
-  `FROM` here spells; `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public
-  name `Dockerfile.fips` spells; and `amazonlinux/amazonlinux`, the name
-  Dependabot files the bump under (PRs #2539 and #2608).
-- **It arrives red.** Dependabot's commit moves the `FROM` digest alone
-  (PR #2608), so the `nodebase` stage's release assertion, the freeze test and
-  the attribution check fail until the rest of this procedure lands. Push that
-  work as commits onto the Dependabot branch, as PR #2539 landed.
+- **At each release.** The release checklist bumps it while the release is
+  prepared ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)).
+  The images publish only on release tags, so a bump between releases reaches
+  no user sooner.
+- **When the weekly scan flags a fixable base CVE.** `image_smoke.yaml`'s
+  scheduled run scans the built variant (below); a finding in the base with a
+  fix available is bumped then rather than at the next release.
+
+**Why Dependabot does not offer it.** The `docker` block at `/` in
+`.github/dependabot.yml` ignores this base under its three names:
+`amazonlinux`, Docker Hub's name for the image, which no `FROM` here spells;
+`public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public name `Dockerfile.fips`
+spells; and `amazonlinux/amazonlinux`, the name Dependabot files the bump under
+(PRs #2539 and #2608). Dependabot's commit for this base moved the `FROM` digest
+alone (PR #2608), so the `nodebase` stage's release assertion, the freeze test
+and the attribution check failed until the rest of this procedure landed on its
+branch.
 
 The default image's base arrives on the same block with no procedure beyond
 its literals ([Bumping the default base image](#bumping-the-default-base-image)).
@@ -959,7 +953,7 @@ triage and whose pull requests against `main` it handles in
 [A security update opened against
 main](../RELEASES.md#a-security-update-opened-against-main).
 
-**What else shows a base worth moving to**, between filed pull requests:
+**What else shows a base worth moving to**, between releases:
 
 - The Trivy scan the release workflow runs over the built variant,
   which gates every publish, so a snapshot with fixable high or critical
