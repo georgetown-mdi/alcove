@@ -280,8 +280,10 @@ Each `FileTransportClient` member (`packages/core/src/connection/fileSyncConnect
 In total: 11 request types (INIT, OPEN, CLOSE, READ, WRITE, OPENDIR, READDIR, REMOVE, RENAME, STAT, REALPATH) and 6 replies (VERSION, STATUS, HANDLE, DATA, NAME, ATTRS).
 S8's client sent five of them: INIT, OPEN, WRITE, READ and CLOSE.
 The CLI adapter sets no SFTP packet-length bound of its own; the listing bound leans on the SSH transport's maximum packet size for one READDIR reply ([TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#directory-listing-bound)).
-The browser client reassembles SFTP packets from channel data itself, and each packet declares its own length, so without a cap of its own a server chooses the allocation.
-That cap is a frame-size control, and it brings the SSH client item under security review in its own right.
+The browser's SFTP client (`apps/web/src/psi/transport/browserSsh/sftp/`) sends these requests and reads these replies over the channel the SSH client opens; no page loads it yet.
+It reassembles SFTP packets from channel data itself, and each packet declares its own length, so it caps that length at the DATA reply to its largest READ, 261,129 bytes ([TRANSPORT_BOUNDS.md, Browser SFTP packet bound](../spec/TRANSPORT_BOUNDS.md#browser-sftp-packet-bound)).
+That cap is a frame-size control, which puts the SFTP client under security review in its own right.
+The bounds in the table above are the file transport's, not the SFTP client's.
 
 Core's file-sync engine uses Node's global `Buffer` (`fileSyncConnection.ts`, `fileSyncFraming.ts`, `fileSyncMessageLoop.ts`, `abortMarker.ts`, `controlEnvelope.ts`), and the web application defines none.
 `FileSyncConnection` has never run in a browser, so whether it needs more than a `Buffer` global is not known.

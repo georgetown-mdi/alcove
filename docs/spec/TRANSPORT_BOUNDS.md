@@ -4,7 +4,7 @@ title: "Transport Memory Bounds"
 
 # Transport memory bounds
 
-This document specifies the memory bounds Alcove's transports hold against what a hostile party writes for them to read, with their constant values and enforcement points: the file-sync inbound frame-size bound and the per-exchange and per-part bounds beneath it, the directory-listing bound, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound.
+This document specifies the memory bounds Alcove's transports hold against what a hostile party writes for them to read, with their constant values and enforcement points: the file-sync inbound frame-size bound and the per-exchange and per-part bounds beneath it, the browser SFTP client's packet bound, the directory-listing bound, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound.
 It is the implementation-level complement to the **Channel security** overview in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security), which covers what each control protects against and why the design is sufficient.
 It does not cover how long a transport operation may take (see [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md)), the application-layer encryption (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)), the bounds on partner-parsed input (see [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md)), or the coordination server's bounds (see [SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md)).
 Intended readers are security auditors and implementors.
@@ -213,6 +213,31 @@ Each is the receiving engine's own call pattern:
   Its cost follows the response's element count, which the request this party sent bounds, whatever the partner sends.
 - **A partner's request size sets only the number of masking chunks.**
   Answering a larger request takes more chunks, not more curve operations: each element is masked once.
+
+## Browser SFTP packet bound
+
+The web app's SFTP client (`apps/web/src/psi/transport/browserSsh/sftp/sftpClient.ts`) reassembles SFTP version 3 packets from the SSH channel's data itself; no page loads it yet.
+Each packet declares its own length in its first four bytes, up to 4 GiB, so without a cap a hostile SFTP server admin -- an adversary under the threat model (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#threat-model)) -- would choose the allocation.
+The client refuses a packet whose declared length exceeds **261,129 bytes** (`SFTP_MAX_INBOUND_PACKET_LENGTH`).
+It checks the four length bytes before it allocates any of the packet, and ends the session with an `SftpPacketTooLargeError`: every outstanding request rejects with it, and the channel is closed.
+The cap is a fixed constant, for the same reason as the frame-size bound.
+
+**The value is the largest reply the client asks for.**
+
+- The largest reply is DATA answering the client's largest READ.
+  The client asks for at most **261,120 bytes** in one READ (`SFTP_MAX_READ_BYTES`), and refuses a larger read before sending it.
+- 261,120 bytes is what OpenSSH's sftp-server returns for any larger READ.
+  Driven on 2026-11-11 (OpenSSH 10.3p1's sftp-server on macOS, over its standard input and output), its `limits@openssh.com` reply gave a max-read-length of 261,120, and READs of 261,120, 261,121, 262,144 and 1,048,576 bytes each returned 261,120 bytes.
+- A DATA reply adds 9 bytes to its data: the type byte, the request id and the data's length.
+  So the cap is 261,120 + 9, the declared length of OpenSSH's reply to a full READ, which the browser suite reads from a real sshd (`apps/web/test/browser/browserSftpClient.test.ts`).
+- Every other reply the client draws is smaller.
+  The next largest is NAME: in the same probe the server sent at most 100 entries per READDIR reply, declaring 60,609 bytes for 100 names of 255 bytes, and 161,009 for 100 names of 765 bytes of UTF-8, which APFS admits.
+  A server sending many more entries in one reply than that is refused, not read.
+
+**Within the cap.**
+The client holds at most one partial packet: it hands each data event back to the SSH channel's window once the event's complete packets are dispatched.
+It also ends the session on a reply to no outstanding request, an unknown or an already-answered id, and on a DATA reply longer than the READ asked for.
+It sends no packet declaring more than **262,144 bytes** (`SFTP_MAX_OUTBOUND_PACKET_LENGTH`), the max-packet-length in the same `limits@openssh.com` reply; in the same probe the server ended the session on a WRITE declaring 262,145 bytes.
 
 ## Directory-listing bound
 
