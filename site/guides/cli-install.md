@@ -145,7 +145,7 @@ Check three things before you run a command:
 - **When you save the output to a file**, as `alcove invite ... > invitation.txt` does. With `-it`, the log lines land in the file too.
 - **In a schedule.** A scheduled job has no terminal.
 
-You should see, for `alcove --version`: a version number, such as `0.1.0`.
+You should see, for `alcove --version`: a version number, such as `0.9.0-beta.1`.
 
 ## How long a run takes
 

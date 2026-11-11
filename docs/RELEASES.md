@@ -45,7 +45,7 @@ Alcove has one product version, held in `apps/cli/package.json`, the canonical r
 
 Compatibility between the CLI and its core dependency is recorded by the lockfile and embedded in the Docker image; no separate compatibility matrix is maintained.
 
-Nothing has been published yet: the canonical release version is still `0.1.0`, and every in-repo version literal holds at its pre-release footing. For the six record-format literals that footing ends at the first `0.9.0` release or prerelease, which resets them ([Reset the exchange-record format at 0.9.0](#reset-the-exchange-record-format-at-090)). For the wire format it ends at the `1.0.0` release rather than at publication, as specified in `docs/spec/PROTOCOL.md` (Wire-format deltas). The release checks below enforce both.
+The canonical release version is `0.9.0-beta.1`, the first prerelease of `0.9.0`; no release has been published yet. The release checks read a prerelease of `0.9.0` as `0.9.0`, so this prerelease resets the six record-format literals to their `v1` forms ([Reset the exchange-record format at 0.9.0](#reset-the-exchange-record-format-at-090)), and from it a record-format change bumps its version and adds a migration step. The wire format stays at its pre-release footing until the `1.0.0` release rather than ending it at publication, as specified in `docs/spec/PROTOCOL.md` (Wire-format deltas). The release checks below enforce both.
 
 ## Release Artifacts
 
