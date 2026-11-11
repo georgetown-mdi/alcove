@@ -15,15 +15,16 @@ name: PSI Re-vendor
 #            scripts/revendor-psi.mjs, reinstalls with --ignore-scripts,
 #            confirms the installed prebuilds are the new bytes, runs the
 #            provenance checks, and hands the commit on as a patch. Read-only.
-#   publish  applies the patch to the same staging commit, refuses a second
-#            commit or any path outside the re-vendor's files, holds lib/,
-#            package-lock.json and the workspace manifests to the edits a
-#            re-vendor makes, checks the committed tarball against its
-#            sidecar, its marker and its attestation itself, then pushes the
-#            branch and opens
-#            the draft pull request with ALCOVE_REVENDOR_TOKEN: a pull request
-#            opened with GITHUB_TOKEN starts no workflow. It runs no npm and no
-#            repository script.
+#   publish  applies the patch to the same staging commit as the bot's own
+#            commit, refuses a second commit or any path outside the
+#            re-vendor's files, holds the lockfile, the package.json files
+#            (both compared as JSON), NOTICE, CONTRIBUTING.md and the prebuild
+#            manifest to the edits a re-vendor makes, checks the committed
+#            tarball against its sidecar, its marker and its attestation
+#            itself, then pushes the branch and opens the draft pull request
+#            with ALCOVE_REVENDOR_TOKEN: a pull request opened with
+#            GITHUB_TOKEN starts no workflow. It runs no npm and no repository
+#            script.
 #
 # Every value read from the Release is untrusted. None is interpolated into a
 # script; each reaches one through env:, and the version is held to the
@@ -260,10 +261,15 @@ jobs:
           path: ${{ runner.temp }}/patch
       - name: Apply the commit and hold it to the re-vendor's files
         run: |
-          git -c core.hooksPath=/dev/null \
-            -c user.name="github-actions[bot]" \
-            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            am -q "$RUNNER_TEMP/patch/revendor.patch"
+          bot=(-c core.hooksPath=/dev/null
+            -c user.name="github-actions[bot]"
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com")
+          git "${bot[@]}" am -q "$RUNNER_TEMP/patch/revendor.patch"
+          # The pushed commit's author is the bot and its message is built
+          # here, not taken from the patch.
+          printf 'Re-vendor PSI as %s\n\nBuilt by the Native prebuilds run of the fork at commit\n%s,\nverified against its attestation.\n' \
+            "$VERSION" "$COMMIT" > "$RUNNER_TEMP/message.txt"
+          git "${bot[@]}" commit -q --amend --reset-author -F "$RUNNER_TEMP/message.txt"
           commits=$(git rev-list --count "$BASE..HEAD")
           if [ "$commits" -ne 1 ]; then
             echo "::error::the patch holds $commits commits; prepare writes exactly one"
@@ -281,9 +287,11 @@ jobs:
                 ;;
             esac
           done < <(git diff -z --no-renames --name-only "$BASE" HEAD)
-      - name: Hold lib/, the lockfile and the manifests to the re-vendor's edits
+      - name: Hold the commit's files to the re-vendor's edits
         # The allowlist above admits these files whole. These are the edits
-        # scripts/revendor-psi.mjs makes to them, and nothing else may differ.
+        # scripts/revendor-psi.mjs makes to them, and nothing else may differ:
+        # the lockfile and package.json files are compared as JSON, the other
+        # files byte for byte. The next step checks the sidecar and marker.
         run: |
           old_dep=$(git show "$BASE:packages/core/package.json" | jq -r '.dependencies["@openmined/psi.js"]')
           if ! [[ $old_dep =~ ^file:\.\./\.\./lib/openmined-psi\.js-(.+)\.tgz$ ]]; then
@@ -343,6 +351,16 @@ jobs:
             difference=$(first_difference "$RUNNER_TEMP/expected-manifest.json" "$manifest")
             if [ -n "$difference" ]; then
               echo "::error::$manifest differs from $BASE at $difference, beyond its @openmined/psi.js dependency"
+              exit 1
+            fi
+          done
+          old_name="openmined-psi.js-$old_version.tgz"
+          new_name="openmined-psi.js-$VERSION.tgz"
+          for file in CONTRIBUTING.md NOTICE packages/core/test/vectors/psi-prebuild-manifest.json; do
+            git show "$BASE:$file" | jq -Rsj --arg old "$old_name" --arg new "$new_name" 'split($old) | join($new)' \
+              > "$RUNNER_TEMP/expected-reference"
+            if [ "$(sha256sum < "$RUNNER_TEMP/expected-reference")" != "$(sha256sum < "$file")" ]; then
+              echo "::error::$file differs from $BASE beyond the tarball's file name, $old_name -> $new_name"
               exit 1
             fi
           done

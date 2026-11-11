@@ -62,10 +62,15 @@ checked) newer than the vendored version, leaving step 6's build and test run
 to the pull request's CI, and opens the pull request as a draft for the
 reviewer below. Its job that holds the push token runs no npm and no
 repository script. Before pushing, it verifies the tarball against its
-sidecar, its marker and its attestation itself, and refuses a commit that
-changes anything beyond what these steps write. That covers a second tarball
-in `lib/`, and any lockfile or `package.json` change other than the
-`@openmined/psi.js` version, path and integrity. The steps here are its manual
+sidecar, its marker and its attestation itself. It refuses a second tarball
+in `lib/`, a change to any file these steps do not write, and a change to
+`NOTICE`, `CONTRIBUTING.md` or the prebuild manifest other than the tarball's
+new file name. It also refuses a lockfile or `package.json` change other than
+the `@openmined/psi.js` version, path and integrity; those files are compared
+as JSON, so their formatting is not checked. The marker's
+`attestation_expected` is not held to `true`: the pull request states the
+arming state the marker records. The pushed commit's author is the workflow's
+bot, and its message is the workflow's own. The steps here are its manual
 fallback, for a build the fork attests but does not release, or a run of the
 workflow that fails.
 
