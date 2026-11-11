@@ -6,8 +6,9 @@
 // the record-format reset is dated by. One manifest path, one reader, and one
 // definition of each floor, so no two of them can come to disagree about which
 // file holds the release version, what counts as holding one, or when a rule
-// binds. The release-tag shape is read here too, for check-release-version.mjs
-// and release-line.mjs, so the two agree on what a release tag is.
+// binds. The release-tag and published-version shapes are read here too, for
+// check-release-version.mjs, release-line.mjs and hosted-site-manifest.mjs, so
+// they agree on what a release tag is.
 
 /** The manifest holding the canonical release version (docs/RELEASES.md). */
 export const RELEASE_MANIFEST = "apps/cli/package.json";
@@ -20,9 +21,10 @@ export const COMPATIBILITY_RELEASE = "1.0.0";
 
 // The first release at or above which the six record-format literals ship
 // reset to v1 (docs/RELEASES.md, "Reset the exchange-record format at 0.9.0").
-// Below it they are development counters. It is no later than
-// COMPATIBILITY_RELEASE, and a record-format change between the two bumps
-// forward from v1 with a migration step.
+// Below it they are development counters. A prerelease counts as the release
+// it qualifies, so the reset is taken at the first prerelease of 0.9.0. It is
+// no later than COMPATIBILITY_RELEASE, and a record-format change between the
+// two bumps forward from v1 with a migration step.
 export const RESET_RELEASE = "0.9.0";
 
 /**
@@ -35,17 +37,36 @@ export function manifestVersion(manifestSource) {
   return typeof version === "string" && version !== "" ? version : undefined;
 }
 
-// The release-tag shape .github/workflows/release.yaml triggers on, as a
-// capture of the version it names.
-const RELEASE_TAG = /^v(\d+\.\d+\.\d+)$/;
+// The version shapes the release workflow publishes (docs/RELEASES.md,
+// Versioning): `X.Y.Z`, or a prerelease of it, `X.Y.Z-beta.N` or
+// `X.Y.Z-rc.N` with N a positive integer.
+const PUBLISHED_VERSION = /^\d+\.\d+\.\d+(?:-(?:beta|rc)\.[1-9]\d*)?$/;
+const PRERELEASE_SUFFIX = /-(?:beta|rc)\.[1-9]\d*$/;
 
 /**
- * The version a release tag names, or undefined when the tag is not in the
- * shape the release workflow triggers on.
+ * Whether `version` is in a shape the release workflow publishes: `X.Y.Z`,
+ * `X.Y.Z-beta.N` or `X.Y.Z-rc.N`.
+ */
+export function isPublishedVersion(version) {
+  return typeof version === "string" && PUBLISHED_VERSION.test(version);
+}
+
+/**
+ * Whether a version {@link isPublishedVersion} admits is a prerelease, one
+ * published under its exact version alone.
+ */
+export function isPrereleaseVersion(version) {
+  return isPublishedVersion(version) && PRERELEASE_SUFFIX.test(version);
+}
+
+/**
+ * The version a release tag names, or undefined when the tag is not `v`
+ * followed by a version {@link isPublishedVersion} admits.
  */
 export function taggedVersion(tag) {
-  const match = RELEASE_TAG.exec(tag ?? "");
-  return match === null ? undefined : match[1];
+  if (typeof tag !== "string" || !tag.startsWith("v")) return undefined;
+  const version = tag.slice(1);
+  return isPublishedVersion(version) ? version : undefined;
 }
 
 /**

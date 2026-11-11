@@ -94,12 +94,16 @@ const dryRun = document.jobs[DRY_RUN_JOB];
 const dryRunSteps = dryRun?.steps ?? [];
 
 describe("the release workflow's dry run", () => {
-  it("is triggered by a pushed version tag and by a manual dispatch alone", () => {
+  it("is triggered by a pushed release or prerelease tag and by a manual dispatch alone", () => {
     expect(Object.keys(document.on).sort()).toEqual([
       "push",
       "workflow_dispatch",
     ]);
-    expect(document.on.push.tags).toEqual(["v[0-9]+.[0-9]+.[0-9]+"]);
+    expect(document.on.push.tags).toEqual([
+      "v[0-9]+.[0-9]+.[0-9]+",
+      "v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+",
+      "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+",
+    ]);
   });
 
   for (const job of PUBLISHING_JOBS) {
@@ -114,7 +118,7 @@ describe("the release workflow's dry run", () => {
   for (const job of HOSTED_APP_JOBS) {
     it(`runs the ${job} job on a tag push only`, () => {
       expect(document.jobs[job]?.if).toBe(
-        "${{ github.event_name == 'push' && needs.release-line.outputs.newest == 'true' }}",
+        "${{ github.event_name == 'push' && (needs.release-line.outputs.newest == 'true' || needs.release-line.outputs.prerelease == 'true') }}",
       );
     });
   }

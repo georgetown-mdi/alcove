@@ -26,15 +26,29 @@ describe("the tag a release publishes under", () => {
     expect(taggedVersion("v10.0.11")).toBe("10.0.11");
   });
 
+  it("names the whole prerelease version of either prerelease form", () => {
+    expect(taggedVersion("v0.9.0-beta.1")).toBe("0.9.0-beta.1");
+    expect(taggedVersion("v0.9.0-rc.1")).toBe("0.9.0-rc.1");
+    expect(taggedVersion("v1.0.0-rc.12")).toBe("1.0.0-rc.12");
+  });
+
   it("names none in any other shape", () => {
-    // The workflow triggers on `v[0-9]+.[0-9]+.[0-9]+` alone, so these reach the
-    // check only from a hand-run or a widened trigger -- where a tag it cannot
-    // parse must fail rather than compare nothing and pass.
+    // The trigger's filters admit some of these (`-beta.0`, `-rc.01`), and the
+    // rest reach the check only from a hand-run or a widened trigger -- where a
+    // tag it cannot parse must fail rather than compare nothing and pass.
     for (const tag of [
       "1.2.3",
       "v1.2",
       "v1.2.3.4",
-      "v1.2.3-rc.1",
+      "v0.9.0-beta",
+      "v0.9.0-beta1",
+      "v0.9.0-rc1",
+      "v0.9.0-alpha.1",
+      "v0.9.0-beta.0",
+      "v0.9.0-rc.01",
+      "v0.9.0-rc.1.2",
+      "v0.9.0-RC.1",
+      "v0.9.0+build.1",
       "release-1.2.3",
       "",
       undefined,
@@ -64,6 +78,24 @@ describe("the version a manifest has", () => {
 describe("the agreement the check holds", () => {
   it("passes a tag naming the manifest's version", () => {
     expect(agreementViolations("v0.4.2", "0.4.2")).toEqual([]);
+  });
+
+  it("passes a prerelease tag naming the manifest's prerelease version", () => {
+    expect(agreementViolations("v0.9.0-beta.1", "0.9.0-beta.1")).toEqual([]);
+    expect(agreementViolations("v0.9.0-rc.2", "0.9.0-rc.2")).toEqual([]);
+  });
+
+  it("fails a prerelease tag over its release's manifest, and the reverse", () => {
+    expect(agreementViolations("v0.9.0-beta.1", "0.9.0")).toHaveLength(1);
+    expect(agreementViolations("v0.9.0", "0.9.0-rc.1")).toHaveLength(1);
+    expect(agreementViolations("v0.9.0-rc.1", "0.9.0-beta.1")).toHaveLength(1);
+  });
+
+  it("fails a malformed prerelease tag even when the manifest has the same string", () => {
+    for (const version of ["0.9.0-beta", "0.9.0-beta1", "0.9.0-alpha.1"]) {
+      const [violation] = agreementViolations(`v${version}`, version);
+      expect(violation).toContain("is not a release tag");
+    }
   });
 
   it("fails a disagreement, naming both values", () => {

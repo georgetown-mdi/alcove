@@ -303,6 +303,23 @@ describe("at the release that publishes the reset", () => {
       `RESET_TAKEN_AT_RELEASE to "${FIRST_RESET_RELEASE}"`,
     );
   });
+
+  it("asks a prerelease to record the release it qualifies, not its own string", () => {
+    for (const releaseVersion of ["0.9.0-beta.1", "0.9.0-rc.2"]) {
+      const [due] = resetViolations(publishedState({ releaseVersion }));
+      expect(due.message).toContain(
+        `RESET_TAKEN_AT_RELEASE = "${FIRST_RESET_RELEASE}"`,
+      );
+      expect(due.message).not.toContain(`"${releaseVersion}"`);
+      const [record] = resetViolations(
+        publishedState({ releaseVersion, declared: RESET_RECORD_VERSION }),
+      );
+      expect(record.message).toContain(
+        `RESET_TAKEN_AT_RELEASE to "${FIRST_RESET_RELEASE}"`,
+      );
+      expect(record.message).not.toContain(`"${releaseVersion}"`);
+    }
+  });
 });
 
 describe("the recorded reset discharge", () => {

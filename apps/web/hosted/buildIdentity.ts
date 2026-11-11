@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
 
-/** The release tag shape `.github/workflows/release.yaml` triggers on,
- * capturing the version it names. */
-const RELEASE_TAG = /^v(\d+\.\d+\.\d+)$/;
+/** The release tag shapes `.github/workflows/release.yaml` publishes from --
+ * `vX.Y.Z`, `vX.Y.Z-beta.N` and `vX.Y.Z-rc.N` -- capturing the version each
+ * names, as `scripts/lib/releaseManifest.mjs` reads them. */
+const RELEASE_TAG = /^v(\d+\.\d+\.\d+(?:-(?:beta|rc)\.[1-9]\d*)?)$/;
 
 /** A full SHA-1 or SHA-256 commit id, as git and `GITHUB_SHA` write it. */
 const FULL_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -37,7 +38,8 @@ export function gitHeadCommit(cwd: string): string | undefined {
 /**
  * The {@link HostedBuildIdentity} of a hosted build run under `env`. A GitHub
  * Actions run on a release tag (`GITHUB_REF_TYPE` `tag`, `GITHUB_REF_NAME`
- * `vX.Y.Z`) names that version; any other build names no version. The commit
+ * `vX.Y.Z` or a prerelease of it) names that version; any other build names
+ * no version. The commit
  * is `GITHUB_SHA` in a CI run and `headCommit()` elsewhere.
  */
 export function hostedBuildIdentity(

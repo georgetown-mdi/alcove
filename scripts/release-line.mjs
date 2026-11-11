@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Newest-release-line decision, run by release.yaml's release-line job.
+// Newest-release-line and prerelease decision, run by release.yaml's
+// release-line job.
 //
 // A release tag on the newest line deploys the hosted app to production and
 // moves the `latest` and `latest-fips` image tags. A tag on an older line, such
@@ -8,9 +9,15 @@
 //
 // The rule, read from the release tags the repository holds when the job runs:
 // the pushed tag is on the newest line when no release tag names a higher
-// version, by version order rather than tag date. Only the `vX.Y.Z` shape the
-// workflow triggers on is a release tag; a pre-release or any other tag is not
-// compared. The first release, with no other release tag, is on the newest line.
+// version, by version order rather than tag date. Only a final `vX.Y.Z` tag is
+// compared against; a prerelease tag or any other tag is not. The first
+// release, with no other release tag, is on the newest line.
+//
+// A prerelease tag (`vX.Y.Z-beta.N`, `vX.Y.Z-rc.N`) is never on the newest
+// line, so it does not move `latest`. It still redeploys production when main
+// is promoted to it. The job reports it as a prerelease too, which keeps
+// the floating `X.Y` tags where they are and marks its GitHub release as a
+// prerelease.
 //
 // What this cannot see:
 //   - A tag pushed after the job lists the tags: two release runs started at
@@ -23,27 +30,32 @@ import { fileURLToPath } from "node:url";
 
 import {
   compareReleaseVersions,
+  isPrereleaseVersion,
   taggedVersion,
 } from "./lib/releaseManifest.mjs";
 
 /**
- * Whether `tag` is on the newest release line among `repositoryTags`. Throws
- * when `tag` is not a release tag, since it then names no version to order.
+ * Whether `tag` is on the newest release line among `repositoryTags`, and
+ * whether it is a prerelease. Throws when `tag` is not a release tag, since
+ * it then names no version to order.
  */
-export function isOnNewestReleaseLine(tag, repositoryTags) {
+export function releaseLine(tag, repositoryTags) {
   const version = taggedVersion(tag);
   if (version === undefined) {
     throw new Error(
-      `"${tag}" is not a release tag (vX.Y.Z), so it names no version to compare with the repository's release tags`,
+      `"${tag}" is not a release tag (vX.Y.Z, vX.Y.Z-beta.N or vX.Y.Z-rc.N), so it names no version to compare with the repository's release tags`,
     );
   }
-  return !repositoryTags.some((other) => {
+  if (isPrereleaseVersion(version)) return { newest: false, prerelease: true };
+  const newest = !repositoryTags.some((other) => {
     const otherVersion = taggedVersion(other);
     return (
       otherVersion !== undefined &&
+      !isPrereleaseVersion(otherVersion) &&
       compareReleaseVersions(otherVersion, version) === 1
     );
   });
+  return { newest, prerelease: false };
 }
 
 /** The tag names in `git ls-remote --tags --refs` output. */
@@ -54,9 +66,10 @@ export function tagsFromLsRemote(output) {
     .filter((name) => name !== undefined);
 }
 
-// CLI entry: prints `true` or `false` on stdout and the reason on stderr. The
-// tag arrives in the environment, so the workflow hands it over without a
-// `${{ }}` interpolation into the `run:` line.
+// CLI entry: prints `newest=` and `prerelease=` lines, each `true` or `false`,
+// on stdout for the job's GITHUB_OUTPUT, and the reason on stderr. The tag
+// arrives in the environment, so the workflow hands it over without a `${{ }}`
+// interpolation into the `run:` line.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const tag = process.env.ALCOVE_TAG;
   if (tag === undefined || tag === "") {
@@ -68,11 +81,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       encoding: "utf8",
     }),
   );
-  const newest = isOnNewestReleaseLine(tag, tags);
+  const { newest, prerelease } = releaseLine(tag, tags);
   console.error(
-    newest
-      ? `${tag} is on the newest release line: no release tag names a higher version.`
-      : `${tag} is on an older release line: a release tag names a higher version, so this release does not deploy production or move latest.`,
+    prerelease
+      ? `${tag} is a prerelease: it is published under its own version alone, so it does not move latest or the X.Y tags; it deploys production if main has been promoted to it.`
+      : newest
+        ? `${tag} is on the newest release line: no release tag names a higher version.`
+        : `${tag} is on an older release line: a release tag names a higher version, so this release does not deploy production or move latest.`,
   );
-  console.log(String(newest));
+  console.log(`newest=${newest}\nprerelease=${prerelease}`);
 }
