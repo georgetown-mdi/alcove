@@ -145,4 +145,4 @@ Your next run needs `.alcove.key`. Where to find it:
 
 If you run the SFTP server yourself, set it up as [If you run the SFTP server](./cli-invite.md#if-you-run-the-sftp-server) shows.
 
-More detail: [Every file a run writes](../CONSOLE.md#where-a-runs-files-land), [What the instructions file tells your partner](../CONSOLE.md#sending-the-partner-an-accept-kit).
+More detail: [Every file a run writes](../../docs/CONSOLE.md#where-a-runs-files-land), [What the instructions file tells your partner](../../docs/CONSOLE.md#sending-the-partner-an-accept-kit).

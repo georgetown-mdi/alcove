@@ -72,9 +72,9 @@ cosign verify \
   ghcr.io/georgetown-mdi/alcove:X.Y.Z
 ```
 
-Run the one for the registry you pulled from. The other registry's command verifies the same image only when you give it your image's digest in place of the tag (`docker.io/gumdi/alcove@sha256:...` or `ghcr.io/georgetown-mdi/alcove@sha256:...`), because the signature covers the digest, not the tag. What each argument pins, and how to verify by digest: [Verifying a Release](../RELEASES.md#container-image).
+Run the one for the registry you pulled from. The other registry's command verifies the same image only when you give it your image's digest in place of the tag (`docker.io/gumdi/alcove@sha256:...` or `ghcr.io/georgetown-mdi/alcove@sha256:...`), because the signature covers the digest, not the tag. What each argument pins, and how to verify by digest: [Verifying a Release](../../docs/RELEASES.md#container-image).
 
-More detail: [Which account the image runs as, and what each engine needs](../DEPLOYMENT.md#the-user-the-image-runs-as).
+More detail: [Which account the image runs as, and what each engine needs](../../docs/DEPLOYMENT.md#the-user-the-image-runs-as).
 
 ## The command form
 
@@ -189,4 +189,4 @@ A count-only exchange writes no results file: the run prints `exchange complete:
 > [!WARNING]
 > Keep `.alcove.key` on one machine. A stale or second copy that runs desynchronizes the secret, and both of you must start over with a new invitation.
 
-More detail: [What the result file holds](../CLI.md#the-result-file), [Setting up signed receipts](../CLI.md#from-a-quick-exchange-to-signed-receipts).
+More detail: [What the result file holds](../../docs/CLI.md#the-result-file), [Setting up signed receipts](../../docs/CLI.md#from-a-quick-exchange-to-signed-receipts).

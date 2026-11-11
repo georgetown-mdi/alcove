@@ -89,4 +89,4 @@ Later runs use `alcove exchange input.csv ./` from the same folder, at a time yo
 | `alcove.yaml` | After a browser invitation: the terms and the coordination server. A quick exchange writes none. | Keep; not secret |
 | `.alcove.key` | After a browser invitation: the shared secret, which changes after every run. A quick exchange writes none. | Keep private |
 
-More detail: [How a WebRTC invitation names its server](../CLI.md#inviting-over-webrtc), [What STUN discloses, and how to use your own](../CLI.md#stun-and-what-it-discloses).
+More detail: [How a WebRTC invitation names its server](../../docs/CLI.md#inviting-over-webrtc), [What STUN discloses, and how to use your own](../../docs/CLI.md#stun-and-what-it-discloses).

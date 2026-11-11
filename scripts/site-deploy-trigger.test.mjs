@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import siteConfig, {
   ROOT_PAGES,
   SOURCE_DIRECTORIES,
-} from "../docs/.vitepress/config.mjs";
+} from "../site/.vitepress/config.mjs";
 import {
   DEPLOY_ACTION,
   SITE_DEPLOY_WORKFLOW,
@@ -20,8 +20,8 @@ import { readWorkflows, workflowDocument } from "./lib/workflows.mjs";
 // one the configuration names is held to the filters here.
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CONFIG = "docs/.vitepress/config.mjs";
-const SITE_OUTPUT = "docs/.vitepress/dist";
+const CONFIG = "site/.vitepress/config.mjs";
+const SITE_OUTPUT = "site/.vitepress/dist";
 
 const workflow = workflowDocument(repoRoot, SITE_DEPLOY_WORKFLOW);
 const pushPaths = workflow.on.push.paths;
@@ -50,10 +50,14 @@ describe("the project site's path filters", () => {
     }
   });
 
-  it("list every file outside docs/ the site configuration imports", () => {
+  it("list every file outside docs/ and site/ the site configuration imports", () => {
     const imports = configImports();
     expect(imports.length).toBeGreaterThan(0);
-    for (const path of imports.filter((p) => !p.startsWith("docs/"))) {
+    const outside = imports.filter(
+      (path) => !SOURCE_DIRECTORIES.some((dir) => path.startsWith(`${dir}/`)),
+    );
+    expect(outside.length).toBeGreaterThan(0);
+    for (const path of outside) {
       expect(pushPaths).toContain(path);
     }
   });
@@ -265,7 +269,7 @@ describe("the project site's addresses", () => {
       "site/about.md": "about.md",
       "site/who-it-is-for.md": "who-it-is-for.md",
       "site/contact.md": "contact.md",
-      "docs/guides/index.md": "guides.md",
+      "site/guides/index.md": "guides.md",
     });
     const addresses = Object.values(siteConfig.rewrites);
     expect(new Set(addresses).size).toBe(addresses.length);
@@ -276,7 +280,7 @@ describe("the project site's addresses", () => {
       section.pages.map((page) => page.path),
     );
     const sitePages = Object.keys(siteConfig.rewrites).filter((path) =>
-      path.startsWith("site/"),
+      /^site\/[^/]+\.md$/.test(path),
     );
     expect(sitePages.length).toBeGreaterThan(0);
     for (const path of sitePages) expect(listed).toContain(path);

@@ -162,7 +162,7 @@ You should see: `exchange complete: 10 records matched, result written to` the r
 - **The run is interrupted:** it may print `Retry the exchange with the same key file; if authentication fails on retry, ask your partner for a new invitation.` Either way, run again with the same key file.
 - **Any other failure** prints the error and the next step, and exits with a code from [Exit codes](./cli-schedule.md#exit-codes).
 
-More detail: [Everything the terms display can show](../CLI.md#what-the-display-shows-in-order), [Every connection setting by channel](../EXCHANGE_REFERENCE.md#connection-blocks-by-channel).
+More detail: [Everything the terms display can show](../../docs/CLI.md#what-the-display-shows-in-order), [Every connection setting by channel](../../docs/EXCHANGE_REFERENCE.md#connection-blocks-by-channel).
 
 ## What you get
 

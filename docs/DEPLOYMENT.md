@@ -415,7 +415,7 @@ The test suite's own SFTP servers are for testing, not a production reference; s
 
 ## Docker deployment
 
-The published image runs in either of two roles depending on its first argument; there is no separate console image. It is published as `docker.io/gumdi/alcove` on Docker Hub and as `ghcr.io/georgetown-mdi/alcove` on the GitHub Container Registry, the same image under the same digest. Every command in this document names the Docker Hub copy; where Docker Hub is refused, put the ghcr.io name in its place (see [Install](guides/cli-install.md#install)).
+The published image runs in either of two roles depending on its first argument; there is no separate console image. It is published as `docker.io/gumdi/alcove` on Docker Hub and as `ghcr.io/georgetown-mdi/alcove` on the GitHub Container Registry, the same image under the same digest. Every command in this document names the Docker Hub copy; where Docker Hub is refused, put the ghcr.io name in its place (see [Install](../site/guides/cli-install.md#install)).
 
 It publishes two variants, differing only in what serves the cryptography. The unsuffixed tags (`X.Y.Z`, `X.Y`, `latest`) are the default and the one every command in this document names. The `-fips` tags (`X.Y.Z-fips`, `X.Y-fips`, `latest-fips`) include a CMVP-validated OpenSSL FIPS provider instead, at roughly 1.8x the size and with the SFTP restrictions in [FIPS_SFTP_PROFILE.md](FIPS_SFTP_PROFILE.md); take one only under a FIPS obligation. Which artifact has which posture is in [RELEASES.md](RELEASES.md#which-image-has-which-posture), and what may be claimed of the variant is in [COMPLIANCE.md](COMPLIANCE.md#fips-140). Everything below holds for both.
 

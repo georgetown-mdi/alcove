@@ -609,7 +609,10 @@ describe("the check against the pull request as it stands now", () => {
       fileURLToPath(new URL("..", import.meta.url)),
       ".github/workflows/pr_checklist.yaml",
     );
-    expect(workflow.on.pull_request["paths-ignore"]).toEqual(["site/**"]);
+    expect(workflow.on.pull_request["paths-ignore"]).toEqual([
+      "site/*.md",
+      "site/img/**",
+    ]);
     expect(workflow.on.pull_request.paths).toBeUndefined();
   });
 });

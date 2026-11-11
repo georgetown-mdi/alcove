@@ -1,7 +1,7 @@
 // The names and anchors a Markdown heading takes, for the checks that resolve
 // a link or citation against a document's headings. `slugify` follows GitHub's
 // rule: `npm run linkcheck` checks every `#anchor` link against it, and the
-// project site (docs/.vitepress/config.mjs) gives its headings the same
+// project site (site/.vitepress/config.mjs) gives its headings the same
 // anchors, so a link that resolves on GitHub resolves on the site.
 
 import { stripFences } from "./markdownFences.mjs";

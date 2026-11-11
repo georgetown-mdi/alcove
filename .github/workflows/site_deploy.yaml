@@ -1,7 +1,7 @@
 name: Deploy the Project Site
 
 # Builds the project site from docs/ and site/ (`npm run site:build`,
-# configured in docs/.vitepress/config.mjs) and uploads it to its own
+# configured in site/.vitepress/config.mjs) and uploads it to its own
 # Cloudflare Pages project by direct upload, the way pages_deploy.yaml uploads the web app. A
 # pull request builds the site and uploads nothing; a push to staging uploads a
 # preview deployment on the `staging` branch alias. Production is uploaded only
@@ -86,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: docs/.vitepress/dist
+          path: site/.vitepress/dist
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error

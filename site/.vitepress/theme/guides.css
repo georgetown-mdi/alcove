@@ -1,4 +1,4 @@
-/* The guides under docs/guides/, drawn by GuideLayout.mjs: a warm ground
+/* The guides under site/guides/, drawn by GuideLayout.mjs: a warm ground
    holding the page on a ruled sheet, the rail of pages on the left and the
    page ledger on the right. Every rule is scoped to .guide-site, so the
    reference pages keep the default theme; the default theme's reset still
@@ -24,10 +24,11 @@
   --plate: #041e42;
   --shadow: 0 1px 3px rgba(26, 28, 26, 0.1);
   --serif: "Source Serif 4 Variable", "Iowan Old Style", Georgia, serif;
-  --sans: "Public Sans Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+  --sans:
+    "Public Sans Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
-  --mono: "Inconsolata Variable", Consolas, "Lucida Console", ui-monospace,
-    monospace;
+  --mono:
+    "Inconsolata Variable", Consolas, "Lucida Console", ui-monospace, monospace;
   color-scheme: light;
 }
 .dark .guide-site {
@@ -610,11 +611,7 @@ body:has(.guide-site) {
   background: var(--accent);
 }
 .guide-site .guide-step[data-party="both"] > h3::before {
-  background: linear-gradient(
-    135deg,
-    var(--accent) 0 50%,
-    var(--column) 50%
-  );
+  background: linear-gradient(135deg, var(--accent) 0 50%, var(--column) 50%);
 }
 .guide-site .guide-step h3 .guide-num {
   font: 700 15px var(--mono);
@@ -645,11 +642,7 @@ body:has(.guide-site) {
   background: var(--accent);
 }
 .guide-site .guide-mark[data-party="both"] {
-  background: linear-gradient(
-    135deg,
-    var(--accent) 0 50%,
-    var(--column) 50%
-  );
+  background: linear-gradient(135deg, var(--accent) 0 50%, var(--column) 50%);
 }
 
 /* Screen header over a step, matching the product's own step header */

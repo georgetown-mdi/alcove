@@ -173,14 +173,14 @@ When you start the console again and open it in the same browser, it shows **Fil
 A WebRTC exchange's `alcove.yaml` and `.alcove.key` stay in your working folder. Move both out before you start a new WebRTC exchange.
 An SFTP connection you set up is forgotten when the console stops; set it up again.
 
-More detail: [What the console keeps after a restart](../CONSOLE.md#restarting-cancels-and-forgets-the-exchange), [Every setting the console takes at start](../CONSOLE.md#turning-the-job-api-on).
+More detail: [What the console keeps after a restart](../../docs/CONSOLE.md#restarting-cancels-and-forgets-the-exchange), [Every setting the console takes at start](../../docs/CONSOLE.md#turning-the-job-api-on).
 
 ## Use the launcher for a network folder
 
 Docker cannot mount a mapped drive (`Z:\Exchange`) or a network path (`\\fileserver\exchange`).
 If your working folder or shared folder is on one, use the launcher instead of the command. It asks for your folders, checks them, starts the console and opens it in your browser.
 
-Download it from the assets of the latest Alcove release ([Where the releases are](../index.md#releases)): `Start-Alcove.ps1` with `Setup-AlcoveFileDrop.ps1` beside it on Windows, or `start-alcove.sh` on macOS or Linux.
+Download it from the assets of the latest Alcove release ([Where the releases are](../../docs/index.md#releases)): `Start-Alcove.ps1` with `Setup-AlcoveFileDrop.ps1` beside it on Windows, or `start-alcove.sh` on macOS or Linux.
 Only a release copy runs.
 
 ::: tabs platform
@@ -205,4 +205,4 @@ bash start-alcove.sh
 
 :::
 
-More detail: [What the launcher sets up for a network folder](../DEPLOYMENT.md#the-user-the-image-runs-as).
+More detail: [What the launcher sets up for a network folder](../../docs/DEPLOYMENT.md#the-user-the-image-runs-as).

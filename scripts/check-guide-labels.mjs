@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Guide UI label check; scripts/run-checks.mjs lists it.
 //
-// WHAT IS HELD. Every bold span in a Markdown file under docs/guides/ names a
+// WHAT IS HELD. Every bold span in a Markdown file under site/guides/ names a
 // label the reader finds on screen, so each one must match a string in the
 // TypeScript sources of the web app, the console server, the CLI, or core
 // (LABEL_SOURCE_DIRS). Every string literal and JSX text there counts: shown
@@ -23,7 +23,7 @@
 // is a safety check against drift, not proof the label is on screen.
 //
 // INCLUDES. Every `<!--@include: path#region-->` in a Markdown file under
-// docs/ must resolve, because VitePress builds the site without a word when
+// docs/ or site/ must resolve, because VitePress builds the site without a word when
 // one does not: an include naming a missing file is dropped, and one naming a
 // region the file does not define pulls in the whole file. The grammar below
 // is what a real VitePress build resolved, tried case by case (the tests pin
@@ -55,7 +55,7 @@ import { lineOf } from "./lib/text.mjs";
 const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..");
 
 /** The guides whose bold spans are held. */
-export const GUIDES_DIR = "docs/guides";
+export const GUIDES_DIR = "site/guides";
 
 /** The trees a label may come from, read for their TypeScript sources. */
 export const LABEL_SOURCE_DIRS = [
@@ -297,8 +297,8 @@ export function guideLabelFailures(guides, index, notLabels = NOT_LABELS) {
   return failures;
 }
 
-/** The pages whose includes are held. */
-export const DOCS_DIR = "docs";
+/** The directories whose pages' includes are held. */
+export const INCLUDE_DIRS = ["docs", "site"];
 
 const INCLUDE = /<!--\s*@include:\s*(.*?)\s*-->/g;
 const INCLUDE_TARGET = /^(.*?)(?:#([\w-]+))?(?:\{\d*,\d*\})?$/;
@@ -387,7 +387,7 @@ export function checkTree(root, notLabels = NOT_LABELS) {
     (sum, { file, text }) => sum + boldLabels(text, file).length,
     0,
   );
-  const pages = filesUnder(resolve(root, DOCS_DIR))
+  const pages = INCLUDE_DIRS.flatMap((dir) => filesUnder(resolve(root, dir)))
     .filter(
       (file) =>
         file.endsWith(".md") && !/\/(node_modules|\.vitepress)\//.test(file),
@@ -430,6 +430,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   console.log(
-    `Guide label check passed: ${labels} bold label(s) across ${guides} guide(s), matched against ${strings} app string(s); ${NOT_LABELS.length} listed as not labels; ${includes} include(s) under ${DOCS_DIR} resolve.`,
+    `Guide label check passed: ${labels} bold label(s) across ${guides} guide(s), matched against ${strings} app string(s); ${NOT_LABELS.length} listed as not labels; ${includes} include(s) under ${INCLUDE_DIRS.join(" and ")} resolve.`,
   );
 }

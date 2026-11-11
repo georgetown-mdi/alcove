@@ -95,7 +95,7 @@ Two outcomes have no `results.csv`:
 
 To run the same exchange again with this partner, follow [Run it on a schedule](./web-schedule.md) before you leave this screen: the save offer appears only here.
 
-More detail: [How to check a record against your files later](../WEB_APP.md#checking-a-record-later).
+More detail: [How to check a record against your files later](../../docs/WEB_APP.md#checking-a-record-later).
 
 ## If the link does not open
 

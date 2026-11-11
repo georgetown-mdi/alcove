@@ -1,7 +1,7 @@
 // @ts-check
 // The project site, built by VitePress from the Markdown under docs/ and site/
 // and a few files at the repository root, in place: `npm run site:build` writes
-// docs/.vitepress/dist, which site_deploy.yaml (the staging preview) and
+// site/.vitepress/dist, which site_deploy.yaml (the staging preview) and
 // site_publish.yaml (production) upload to Cloudflare Pages.
 // What the site is and how it deploys: infra/hosted/README.md, "The project site".
 
@@ -47,7 +47,7 @@ const srcExclude = readdirSync(repoRoot, { withFileTypes: true })
       !ROOT_PAGES.includes(entry.name),
   )
   .map((entry) => (entry.isDirectory() ? `${entry.name}/**` : entry.name))
-  .concat(["**/node_modules/**", "docs/.vitepress/**", GUIDE_INCLUDES]);
+  .concat(["**/node_modules/**", "site/.vitepress/**", GUIDE_INCLUDES]);
 
 // The project pages and the guides are served at the site root, the overview
 // beside the documentation index, and each directory's README at the
@@ -172,7 +172,7 @@ function dropHtmlComments(md) {
 function page(text, path) {
   if (!isSitePage(path)) {
     throw new Error(
-      `docs/.vitepress/config.mjs names ${path} in a menu, which is not a page the site renders. Correct the path or remove the entry.`,
+      `site/.vitepress/config.mjs names ${path} in a menu, which is not a page the site renders. Correct the path or remove the entry.`,
     );
   }
   return { text, link: siteAddress(path) };
@@ -201,7 +201,7 @@ export default {
   ],
   // With srcDir at the repository root, the default public directory would be
   // a top-level public/; the site's static files sit beside this config.
-  vite: { publicDir: resolve(repoRoot, "docs/.vitepress/public") },
+  vite: { publicDir: resolve(repoRoot, "site/.vitepress/public") },
   markdown: {
     // Raw HTML is shown as text, and HTML comments are dropped
     // (dropHtmlComments): a `<name>` placeholder in prose would otherwise reach

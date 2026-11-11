@@ -111,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: docs/.vitepress/dist
+          path: site/.vitepress/dist
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error

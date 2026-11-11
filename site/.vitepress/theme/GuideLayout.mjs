@@ -1,8 +1,8 @@
 // @ts-check
-// The layout of the guides under docs/guides/ and the project pages under
+// The layout of the guides under site/guides/ and the project pages under
 // site/: a top bar, the rail of pages, the page on its sheet and the page
 // ledger beside it. The menus list those pages and, under About, one link to
-// the documentation; docs/.vitepress/guides.mjs writes the page markup and the
+// the documentation; site/.vitepress/guides.mjs writes the page markup and the
 // ledger's HTML, and config.mjs passes the menu as `themeConfig.guideSections`.
 
 import { Content, useData, useRouter } from "vitepress";
@@ -129,31 +129,27 @@ export default defineComponent({
             },
           },
           sections.value.map((section) =>
-            h(
-              "optgroup",
-              { label: section.group },
-              [
-                ...section.pages.map((page) =>
-                  h(
-                    "option",
-                    {
-                      value: page.link,
-                      selected: page.path === guide.value.path,
-                    },
-                    page.title,
-                  ),
+            h("optgroup", { label: section.group }, [
+              ...section.pages.map((page) =>
+                h(
+                  "option",
+                  {
+                    value: page.link,
+                    selected: page.path === guide.value.path,
+                  },
+                  page.title,
                 ),
-                ...(hasDocumentationLink(section)
-                  ? [
-                      h(
-                        "option",
-                        { value: DOCUMENTATION_LINK.link, selected: false },
-                        DOCUMENTATION_LINK.title,
-                      ),
-                    ]
-                  : []),
-              ],
-            ),
+              ),
+              ...(hasDocumentationLink(section)
+                ? [
+                    h(
+                      "option",
+                      { value: DOCUMENTATION_LINK.link, selected: false },
+                      DOCUMENTATION_LINK.title,
+                    ),
+                  ]
+                : []),
+            ]),
           ),
         ),
       ]);

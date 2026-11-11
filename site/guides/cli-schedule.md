@@ -16,7 +16,7 @@ Run the exchange on a cadence from cron or the Windows Task Scheduler, and act o
 - **The scheduling account** must own the folder and the key file, and must find `docker`: give its full path, or put it on that account's `PATH`.
 - **The shared secret does not expire between runs**, however long the gap, unless `authentication.token_max_age_days` is set in `alcove.yaml`. If you set it, make it longer than two intervals.
 - **Each period, put the new `input.csv` in the folder** before the scheduled time, under the same column names. A run with none exits 66.
-- **On SFTP or a shared folder, each of you names your side.** Under `connection` in `alcove.yaml`, add an `options:` block if there is none, and under it add `peer_id:` with a name for your side, different from your partner's, and set `timestamp_in_filename: true`. If `options` already lists `timestamp_in_filename: false`, change that line: the same key twice stops the run. `peer_id` without `timestamp_in_filename: true` stops the run with exit 64. With both set, a file a killed run left behind stops the next run with the file named. If your partner's file transfer refuses a file name it has passed before, add [fields](../EXCHANGE_REFERENCE.md#fields-in-peer_id) Alcove fills in for each run, as in `peer_id: agency-a_%Y%m%d-%H%M%S`; in a crontab line that passes `--peer-id`, write each `%` as `\%`.
+- **On SFTP or a shared folder, each of you names your side.** Under `connection` in `alcove.yaml`, add an `options:` block if there is none, and under it add `peer_id:` with a name for your side, different from your partner's, and set `timestamp_in_filename: true`. If `options` already lists `timestamp_in_filename: false`, change that line: the same key twice stops the run. `peer_id` without `timestamp_in_filename: true` stops the run with exit 64. With both set, a file a killed run left behind stops the next run with the file named. If your partner's file transfer refuses a file name it has passed before, add [fields](../../docs/EXCHANGE_REFERENCE.md#fields-in-peer_id) Alcove fills in for each run, as in `peer_id: agency-a_%Y%m%d-%H%M%S`; in a crontab line that passes `--peer-id`, write each `%` as `\%`.
 - **If the machine cannot be on at that hour**, run `alcove exchange input.csv ./` by hand at the agreed time each period instead.
 
 ## Cadences
@@ -101,7 +101,7 @@ The first scheduled run also prints the display of what it sends, about 40 to 45
 
 With `--log-file`, the `exchange complete` line goes only to `exchange.log`, and paths there start `/work`, which is your folder as the container sees it.
 
-More detail: [What a scheduled run refuses rather than asks](../CLI.md#what-an-unattended-run-refuses-rather-than-asking), [The key file on the scheduling machine](../CLI.md#the-key-file-on-the-scheduling-machine).
+More detail: [What a scheduled run refuses rather than asks](../../docs/CLI.md#what-an-unattended-run-refuses-rather-than-asking), [The key file on the scheduling machine](../../docs/CLI.md#the-key-file-on-the-scheduling-machine).
 
 ## What you get
 
@@ -148,4 +148,4 @@ Act on the exit code alone. A `69` that comes quickly (the server or folder was 
 > [!WARNING]
 > Never retry `65`, `70`, `73`, `76` or `77`. A re-run of `73` runs a second exchange and sends your records again.
 
-More detail: [Every exit code and its cases](../CLI.md#exit-codes), [Recovering an out-of-step secret](../CLI.md#out-of-sync-tokens).
+More detail: [Every exit code and its cases](../../docs/CLI.md#exit-codes), [Recovering an out-of-step secret](../../docs/CLI.md#out-of-sync-tokens).
