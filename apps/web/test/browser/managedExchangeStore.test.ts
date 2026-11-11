@@ -374,10 +374,8 @@ const NEXT_BUILD_IDB_VERSION = IDB_VERSION + 1;
  * Shift the store module's opens of the managed-exchange database to
  * {@link NEXT_BUILD_IDB_VERSION}, so a connection held at {@link IDB_VERSION}
  * blocks them the way an old tab's connection blocks a later build's
- * version-change open. Only a version-change open is ever blocked, and while
- * this build opens at version 1 -- the lowest a database can hold -- nothing can
- * hold a connection below it, so the block is staged from this side instead.
- * Every other open is passed through untouched. Returns the restore, which the
+ * version-change open. Only a version-change open is ever blocked, so the block
+ * is staged from this side, one version above this build's. Every other open is passed through untouched. Returns the restore, which the
  * caller runs before the test ends; the database is left at the shifted version,
  * so the caller deletes it too.
  */

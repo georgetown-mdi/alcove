@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-11-10"
+last_reviewed: "2026-11-11"
 ---
 
 # Alcove security
@@ -396,6 +396,18 @@ A run with nobody present writes its results file into the working folder it rea
 - **The clear is the operator's own control over what is at rest.** It removes the rows, the notes of results written to a granted folder, and the states recorded where results were not kept -- everything this exchange's runs left, in one step, and the key itself, so no envelope stays behind. What is in the operator's own folder is theirs to remove there.
 
 An operator who does not want linkage results at rest in a browser has two options: keep the working folder writable, where the rows land in their own filesystem, or run the exchange attended, where the results go to the download the operator takes -- and into the working folder too, where one is granted -- and nothing of them is kept in the browser. The second holds on every browser; the first depends on a File System Access API the browser may not offer.
+
+### The SFTP client key at rest
+
+A recurring SFTP exchange saved in the browser has its own key pair, which the browser uses to log in to the SFTP server. The browser generates it when the exchange is saved, keeps it with the exchange, and deletes it when the exchange is removed. The server's administrator adds its public key to the exchange's SFTP account.
+
+- **What someone with the browser profile can do.** Script running in the app's origin, or anyone who opens the browser profile in the browser, can use the key to log in as the exchange's SFTP account, from that profile, for as long as the server accepts the key.
+- **What the browser does not let them do.** The private key is created so that the browser never hands it out: no page or script can export or copy it.
+- **What reading the disk gives.** Someone who reads the profile's files directly, from a disk image, a profile backup, or a second account with access, can recover the private key and use it from another machine. Chromium stores the key's bytes unencrypted in its browser storage files.
+- **What bounds it.** Removing the exchange removes the key from the browser. Removing the key from the server's account refuses any later login with it, from a copy too; that is the remedy for a suspected exposure.
+- **A stated limit.** No page saves an SFTP exchange with a key yet; the page that runs a browser SFTP exchange is a later stage.
+
+How the key is generated and stored: [CREDENTIAL_STORAGE.md](spec/CREDENTIAL_STORAGE.md#browser-sftp-client-key).
 
 ### Egress hardening and its limits
 
