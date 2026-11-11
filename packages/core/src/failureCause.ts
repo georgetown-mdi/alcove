@@ -678,7 +678,7 @@ function singlePassOverLimitSentence(
         `${counted(cause.limitSlots, "value slot")} per party in an exchange ` +
         "with a browser" +
         (breach === "partner"
-          ? `, while your own ${counted(valueSlots(local), "value slot")} are within it.`
+          ? `, while your own ${counted(valueSlots(local), "value slot")} ${valueSlots(local) === 1 ? "is" : "are"} within it.`
           : ".")
       );
     }
