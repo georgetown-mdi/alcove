@@ -591,15 +591,13 @@ describe("a console run that failed on a catalog cause", () => {
     const swept = timedOut({ channel: "filedrop", sweepExchangeFiles: true });
     expect(swept.title).toBe("Your partner did not answer");
     expect(swept.message).toBe(
-      `Your partner did not answer in time. ${BOTH_SWEPT} Then try again.`,
+      `Your partner did not answer in time. ${BOTH_SWEPT}`,
     );
     expect(swept.message).not.toContain("--inactivity-timeout");
     expect(swept.reportedCause).toBeUndefined();
     expect(
       timedOut({ channel: "sftp", sweepExchangeFiles: true }).message,
-    ).toBe(
-      `Your partner did not answer in time. ${BOTH_SWEPT} Then try again.`,
-    );
+    ).toBe(`Your partner did not answer in time. ${BOTH_SWEPT}`);
     for (const context of [
       { channel: "filedrop" },
       { channel: "filedrop", sweepExchangeFiles: false },

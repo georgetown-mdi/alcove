@@ -258,8 +258,6 @@ export function consoleSweptHandshakeTimeout(
     return undefined;
   return {
     title: "Your partner did not answer",
-    message:
-      "Your partner did not answer in time. " +
-      `${BOTH_SWEPT_LINE} Then try again.`,
+    message: `Your partner did not answer in time. ${BOTH_SWEPT_LINE}`,
   };
 }
