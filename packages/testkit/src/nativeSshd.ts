@@ -164,17 +164,22 @@ const CHROOT_CONFINEMENT_DIRECTIVES = [
   "X11Forwarding no",
 ];
 
-async function resolveSshd(): Promise<string> {
+/** The sshd this backend runs, or `null` when this machine has none. */
+export function findSshd(): string | null {
   for (const candidate of SSHD_CANDIDATES) {
     if (existsSync(candidate)) return candidate;
   }
-  try {
-    const { stdout } = await execFileAsync("sh", ["-c", "command -v sshd"]);
-    const found = stdout.trim();
-    if (found) return found;
-  } catch {
-    // fall through to the error below
+  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (directory === "") continue;
+    const candidate = path.join(directory, "sshd");
+    if (existsSync(candidate)) return candidate;
   }
+  return null;
+}
+
+function resolveSshd(): string {
+  const found = findSshd();
+  if (found !== null) return found;
   throw new Error(
     "The native sshd test backend requires OpenSSH's sshd on PATH " +
       "(install openssh-server); none was found.",
@@ -391,7 +396,7 @@ export async function startNativeSshdServer(
     }
   }
 
-  const sshd = await resolveSshd();
+  const sshd = resolveSshd();
   const osUser = os.userInfo().username;
 
   const workDir = await fsp.mkdtemp(

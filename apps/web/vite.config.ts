@@ -19,6 +19,7 @@ import { loadServerConfig } from "./src/utils/serverConfig.ts";
 // Type-only imports, erased before either config loader resolves anything.
 import type * as liveWebrtcLeg from "./test/liveWebrtc/legCommands.ts";
 import type * as relayTls from "./test/devServer/relayTls.ts";
+import type * as sshTarget from "./test/devServer/sshTargetCommands.ts";
 import type { ConfigEnv, Plugin, ProxyOptions } from "vite";
 import type { Vitest } from "vitest/node";
 
@@ -41,6 +42,22 @@ const liveWebrtcLegCommands = underVitest
         ).href
       )) as typeof liveWebrtcLeg
     ).liveWebrtcLegCommands
+  : {};
+
+// The native sshd behind the SFTP relay that the browser SSH client cases
+// dial, registered as browser commands on the `browser` project and loaded
+// the way the leg's commands are above.
+const sshTargetCommands = underVitest
+  ? (
+      (await import(
+        pathToFileURL(
+          path.resolve(
+            import.meta.dirname,
+            "test/devServer/sshTargetCommands.ts",
+          ),
+        ).href
+      )) as typeof sshTarget
+    ).sshTargetCommands
   : {};
 
 // The switch that has the test Chromium accept the certificate its WebSocket
@@ -87,6 +104,62 @@ export const srcAliases = {
 // duplicated. Dev/test only; the production build code-splits the worker and inlines
 // its WASM, so `optimizeDeps` never affects `vite build`.
 const psiWorkerWasmEngine = "@openmined/psi.js/psi_wasm_worker";
+
+const browserSshStubs = path.resolve(
+  import.meta.dirname,
+  "src/psi/transport/browserSsh/stubs",
+);
+
+/**
+ * The browser SSH client's stand-ins for three packages its SSH library
+ * requires: `diffie-hellman`, called only for a finite-field key exchange the
+ * client never offers; `node-rsa`, required undeclared on the library's Node
+ * path; and `vscode-jsonrpc`'s main entry, which cannot load in a browser, for
+ * the two of its modules the library uses. Every config that bundles for a
+ * browser puts these in its `resolve.alias`; `hosted/moduleGraphGuard.ts`
+ * fails a build that bundles the real `diffie-hellman` chain anyway. Exact
+ * matches, so `vscode-jsonrpc/lib/...` still reaches the package.
+ */
+export const browserSshDependencyAliases = [
+  {
+    find: /^diffie-hellman$/,
+    replacement: path.join(browserSshStubs, "diffieHellman.ts"),
+  },
+  {
+    find: /^node-rsa$/,
+    replacement: path.join(browserSshStubs, "nodeRsa.ts"),
+  },
+  {
+    find: /^vscode-jsonrpc$/,
+    replacement: path.join(browserSshStubs, "vscodeJsonrpc.ts"),
+  },
+];
+
+/** {@link srcAliases} in the array form `resolve.alias` takes beside regexes. */
+export const srcAliasEntries = Object.entries(srcAliases).map(
+  ([find, replacement]) => ({ find, replacement }),
+);
+
+/**
+ * One `buffer` for the SSH library and the client's own code: both resolve it
+ * from this app, where it is declared at the library's major version, rather
+ * than the library's nested copy and the root's newer one.
+ */
+export const browserSshDedupe = ["buffer"];
+
+// The SSH library modules src/psi/transport/browserSsh/sshLibrary.ts imports,
+// pre-bundled on the browser project, whose startup scan does not reach them.
+const browserSshLibraryEntries = [
+  "buffer",
+  "@microsoft/dev-tunnels-ssh/algorithms/sshAlgorithms",
+  "@microsoft/dev-tunnels-ssh/events/sshAuthenticatingEventArgs",
+  "@microsoft/dev-tunnels-ssh/io/bigInt",
+  "@microsoft/dev-tunnels-ssh/io/sshData",
+  "@microsoft/dev-tunnels-ssh/messages/connectionMessages",
+  "@microsoft/dev-tunnels-ssh/sshClientSession",
+  "@microsoft/dev-tunnels-ssh/sshSessionConfiguration",
+  "@microsoft/dev-tunnels-ssh/streams",
+];
 
 // The features Playwright disables for test stability, in its own order. The
 // installed package exports no entry point reaching them, so they are copied
@@ -492,18 +565,24 @@ export default defineConfig((configEnv) => {
               // page.viewport and restores this default afterwards.
               viewport: { width: 1280, height: 800 },
               instances: [{ browser: "chromium" }],
+              commands: sshTargetCommands,
             },
           },
           // Component browser tests import app sources that use the `@`-prefixed
           // aliases (e.g. `@components/*`, `@psi/*`); like the unit project, the
           // browser project must resolve them since the inline projects do not
           // inherit the root `resolve`.
-          resolve: { alias: srcAliases },
+          resolve: {
+            alias: [...srcAliasEntries, ...browserSshDependencyAliases],
+            dedupe: browserSshDedupe,
+          },
           // Pre-bundle the PSI worker engine here too: this project runs the tests
           // that spawn the crypto worker (exchangeLifecycle, psiCryptoWorker), and it
           // does not inherit the root `optimizeDeps`, so without this its first spawn
           // reloads the run on a cold optimizer cache (see psiWorkerWasmEngine).
-          optimizeDeps: { include: [psiWorkerWasmEngine] },
+          optimizeDeps: {
+            include: [psiWorkerWasmEngine, ...browserSshLibraryEntries],
+          },
           plugins: [failOnDependencyReload()],
         },
         {
@@ -568,7 +647,8 @@ export default defineConfig((configEnv) => {
     ],
     resolve: {
       tsconfigPaths: true,
-      alias: srcAliases,
+      alias: [...srcAliasEntries, ...browserSshDependencyAliases],
+      dedupe: browserSshDedupe,
     },
     optimizeDeps: {
       // Pre-bundle the PSI worker engine for the dev server (`npm run dev`) so a first

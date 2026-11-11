@@ -4,6 +4,8 @@ import {
 } from "@alcove/testkit/prerequisiteGate";
 import { loopbackTlsCert } from "@alcove/testkit/loopbackTlsCert";
 
+import { sshTargetAvailable } from "./devServer/sshTargetCommands.ts";
+
 export { ALLOW_MISSING_PREREQUISITES_ENV, prerequisitesAreRequired };
 
 // A suite that skips when a tool the environment did not supply is missing is
@@ -82,6 +84,13 @@ export function webTestPrerequisites(): Array<TestPrerequisite> {
       covers: "the WebSocket relay fallback cases over wss",
       remedy:
         "an `openssl` that mints a self-signed EC certificate (`openssl req -x509 -newkey ec ...`); a LibreSSL build takes those flags differently",
+    },
+    {
+      name: "OpenSSH sshd",
+      available: sshTargetAvailable(),
+      covers: "the browser SSH client cases against a real sshd",
+      remedy:
+        "OpenSSH's server (the `openssh-server` package); on Linux, also its privilege-separation directory (`sudo mkdir -p /run/sshd`)",
     },
   ];
 }

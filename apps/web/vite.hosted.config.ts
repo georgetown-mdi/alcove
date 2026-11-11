@@ -7,15 +7,17 @@ import viteReact from "@vitejs/plugin-react";
 import { bundleNoticesFile } from "../../scripts/lib/bundleNotices.mjs";
 
 import {
+  browserSshDedupe,
+  browserSshDependencyAliases,
+  requireHostedSignalingServer,
+  requireValidDefaultRelay,
+  srcAliasEntries,
+} from "./vite.config.ts";
+import {
   gitHeadCommit,
   hostedBuildIdentity,
   hostedBuildIdentityDefines,
 } from "./hosted/buildIdentity.ts";
-import {
-  requireHostedSignalingServer,
-  requireValidDefaultRelay,
-  srcAliases,
-} from "./vite.config.ts";
 import { clientModuleGraphGuard } from "./hosted/moduleGraphGuard.ts";
 import { deployGraphRecorderFromEnv } from "./hosted/deployGraphRecorder.ts";
 import { hostedHeadersFile } from "./hosted/headersFile.ts";
@@ -62,11 +64,10 @@ const hostedConfig = {
   resolve: {
     alias: [
       { find: /^\.\/routeTree\.gen$/, replacement: hostedRouteTree },
-      ...Object.entries(srcAliases).map(([find, replacement]) => ({
-        find,
-        replacement,
-      })),
+      ...srcAliasEntries,
+      ...browserSshDependencyAliases,
     ],
+    dedupe: browserSshDedupe,
   },
   build: {
     outDir: "dist/hosted",

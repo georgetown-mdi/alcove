@@ -8,7 +8,12 @@ import {
   bundleNotices,
   bundleNoticesFile,
 } from "../../scripts/lib/bundleNotices.mjs";
-import { srcAliases } from "./vite.config.ts";
+
+import {
+  browserSshDedupe,
+  browserSshDependencyAliases,
+  srcAliasEntries,
+} from "./vite.config.ts";
 import { withColorSchemeScript } from "./src/utils/colorSchemeScript.ts";
 
 import type { Plugin } from "vite";
@@ -64,11 +69,10 @@ export default defineConfig(({ isSsrBuild }) => ({
   resolve: {
     alias: [
       { find: /^\.\/routeTree\.gen$/, replacement: consoleRouteTree },
-      ...Object.entries(srcAliases).map(([find, replacement]) => ({
-        find,
-        replacement,
-      })),
+      ...srcAliasEntries,
+      ...browserSshDependencyAliases,
     ],
+    dedupe: browserSshDedupe,
   },
   ...(isSsrBuild
     ? {
