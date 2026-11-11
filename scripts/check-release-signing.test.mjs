@@ -26,6 +26,7 @@ import {
   parseSignerWorkflow,
   publishSequenceViolations,
   publishedCertificatePair,
+  refPatternAlternatives,
   refPatternForTagFilter,
   releaseSigningReport,
   signerWorkflows,
@@ -55,6 +56,12 @@ const releasesDocSource = readRoot(RELEASES_DOC);
 const [IDENTITY] = certificateFlags(releasesDocSource).identities;
 const [SIGNER_WORKFLOW] = signerWorkflows(releasesDocSource);
 const TAG_FILTER = "v[0-9]+.[0-9]+.[0-9]+";
+const TAG_FILTERS = [
+  TAG_FILTER,
+  `${TAG_FILTER}-beta.[0-9]+`,
+  `${TAG_FILTER}-rc.[0-9]+`,
+];
+const REF_PATTERN = "v[0-9]+\\.[0-9]+\\.[0-9]+(-(beta|rc)\\.[0-9]+)?";
 
 const buildStep = (id, push) =>
   [
@@ -106,7 +113,7 @@ const attestStep = (id) =>
     `          subject-digest: \${{ steps.${id}.outputs.digest }}`,
   ].join("\n");
 
-const workflow = ({ tags = [TAG_FILTER], steps }) =>
+const workflow = ({ tags = TAG_FILTERS, steps }) =>
   [
     "name: Release",
     "on:",
@@ -306,7 +313,7 @@ describe("the signer a published identity names", () => {
     expect(parseSignerIdentity(IDENTITY)).toEqual({
       repository: "georgetown-mdi/alcove",
       workflowPath: RELEASE_WORKFLOW,
-      refPattern: "v[0-9]+\\.[0-9]+\\.[0-9]+",
+      refPattern: REF_PATTERN,
     });
   });
 
@@ -369,9 +376,55 @@ describe("a tag filter as a regular expression", () => {
   });
 });
 
+describe("the alternatives an identity's tag pattern names", () => {
+  it("expands the committed pattern into a release and the two prerelease forms", () => {
+    expect(refPatternAlternatives(REF_PATTERN)).toEqual({
+      alternatives: TAG_FILTERS.map(
+        (filter) => refPatternForTagFilter(filter).pattern,
+      ),
+    });
+  });
+
+  it("expands a non-capturing group, a nested optional group, and an empty branch", () => {
+    expect(refPatternAlternatives("v1(?:-(a|b)(\\.x)?|)")).toEqual({
+      alternatives: ["v1-a", "v1-a\\.x", "v1-b", "v1-b\\.x", "v1"],
+    });
+  });
+
+  it("keeps a character class whole, parentheses inside it included", () => {
+    expect(refPatternAlternatives("v[()|]")).toEqual({
+      alternatives: ["v[()|]"],
+    });
+  });
+
+  it("refuses a `|` outside a group, which unanchors the identity", () => {
+    // `^...@refs/tags/v1|.*$` is `(^...v1)|(.*$)`: its second half accepts a
+    // certificate naming any ref of any repository.
+    expect(refPatternAlternatives("v1|.*").problem).toContain(
+      "outside a group",
+    );
+  });
+
+  it("refuses a quantified group, a lookaround, and an unbalanced group", () => {
+    for (const pattern of [
+      "v(1|2)+",
+      "v(1|2)*",
+      "v(1|2){2}",
+      "v(1|2)?+",
+      "v(?=1)1",
+      "v(1",
+      "v1)",
+      "v[]1]",
+      "v[1",
+    ]) {
+      expect(refPatternAlternatives(pattern).problem, pattern).toBeDefined();
+    }
+  });
+});
+
 describe("the tag trigger a workflow declares", () => {
   it("reads the committed release trigger", () => {
-    expect(tagFiltersIn(releaseWorkflowSource)).toEqual([TAG_FILTER]);
+    expect(tagFiltersIn(releaseWorkflowSource)).toEqual(TAG_FILTERS);
   });
 
   it("reads a scalar filter and an absent trigger", () => {
@@ -420,13 +473,75 @@ describe("the coupling between the published commands and the signer", () => {
     expect(violation).toContain("`*`");
   });
 
-  it("fails a trigger having no filter or several", () => {
-    for (const tags of [[], [TAG_FILTER, "v[0-9]+.[0-9]+"]]) {
-      const [violation] = coupling({
-        workflowSource: workflow({ tags, steps: orderedSteps }),
-      });
-      expect(violation).toContain("tag filters");
-    }
+  it("passes the filters in any order", () => {
+    expect(
+      coupling({
+        workflowSource: workflow({
+          tags: [...TAG_FILTERS].reverse(),
+          steps: orderedSteps,
+        }),
+      }),
+    ).toEqual([]);
+  });
+
+  it("fails a trigger having no filter", () => {
+    const [violation, ...rest] = coupling({
+      workflowSource: workflow({ tags: [], steps: orderedSteps }),
+    });
+    expect(rest).toEqual([]);
+    expect(violation).toContain("no tag filter");
+  });
+
+  it("fails a filter the identity does not admit", () => {
+    // A release run from `v1.2` signs an image the published command refuses.
+    const [violation, ...rest] = coupling({
+      workflowSource: workflow({
+        tags: [...TAG_FILTERS, "v[0-9]+.[0-9]+"],
+        steps: orderedSteps,
+      }),
+    });
+    expect(rest).toEqual([]);
+    expect(violation).toContain("`v[0-9]+.[0-9]+`");
+    expect(violation).toContain("does not admit");
+  });
+
+  it("fails an identity admitting a prerelease form no filter triggers on", () => {
+    // Dropping the rc filter leaves the published pattern accepting an rc ref
+    // no release runs from.
+    const [violation, ...rest] = coupling({
+      workflowSource: workflow({
+        tags: TAG_FILTERS.slice(0, 2),
+        steps: orderedSteps,
+      }),
+    });
+    expect(rest).toEqual([]);
+    expect(violation).toContain("-rc\\.[0-9]+");
+    expect(violation).toContain("no tag filter triggers on");
+  });
+
+  it("fails an identity widened past the filters, in the document and the workflow alike", () => {
+    const widened = IDENTITY.replace("(beta|rc)", "(alpha|beta|rc)");
+    expect(widened).not.toBe(IDENTITY);
+    const [violation, ...rest] = coupling({
+      workflowSource: workflow({
+        steps: orderedSteps.map((step) => step.replace(IDENTITY, widened)),
+      }),
+      docSource: doc({ identity: widened }),
+    });
+    expect(rest).toEqual([]);
+    expect(violation).toContain("-alpha\\.[0-9]+");
+  });
+
+  it("fails an identity with a `|` outside a group", () => {
+    const unanchored = IDENTITY.replace(/\$$/, "|.*$");
+    const [violation, ...rest] = coupling({
+      workflowSource: workflow({
+        steps: orderedSteps.map((step) => step.replace(IDENTITY, unanchored)),
+      }),
+      docSource: doc({ identity: unanchored }),
+    });
+    expect(rest).toEqual([]);
+    expect(violation).toContain("outside a group");
   });
 
   it("fails a self-verify step having a different identity from the document", () => {
@@ -576,7 +691,7 @@ describe("the attestation command the document publishes", () => {
 });
 
 describe("the publish sequence", () => {
-  const sequence = (steps, tags = [TAG_FILTER]) =>
+  const sequence = (steps, tags = TAG_FILTERS) =>
     publishSequenceViolations(
       workflow({ tags, steps }),
       "fixture.yaml",

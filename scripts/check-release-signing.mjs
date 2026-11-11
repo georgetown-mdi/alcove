@@ -10,9 +10,13 @@
 //      `^https://github\.com/<owner>/<repo>/<workflow path>@refs/tags/<tag>$`,
 //      its workflow-path segment is the signing workflow's path, and that
 //      segment contains no regular-expression metacharacter.
-//   3. Its tag pattern is the workflow's `on.push.tags` filter. A filter is
-//      translated only over letters, digits and `_ - / . + [ ]`, with `.`
-//      escaped; any other character, `*` and `?` above all, fails.
+//   3. Its tag pattern and the workflow's `on.push.tags` filters admit the
+//      same tags. The pattern is expanded over its groups -- `(a|b)` and an
+//      optional `(...)?`, nothing else -- into alternatives, and that set must
+//      equal the set of filters, each translated only over letters, digits
+//      and `_ - / . + [ ]`, with `.` escaped; any other filter character, `*`
+//      and `?` above all, fails, as does a `|` outside a group or a
+//      quantifier other than `?` on a group.
 //   4. Every step that pushes an image is followed by its own cosign sign,
 //      cosign verify and attest steps before any later image build.
 //   5. Each of those verify steps passes both `--certificate-` arguments, with
@@ -264,6 +268,97 @@ export function refPatternForTagFilter(filter) {
     }
   }
   return { pattern: filter.replace(/\./g, "\\.") };
+}
+
+// Above this many alternatives an identity's tag pattern is compared by hand.
+const MAX_REF_ALTERNATIVES = 64;
+
+/**
+ * The alternatives a published identity's tag pattern matches, each a
+ * regular-expression fragment with no group, or a `{problem}` naming the
+ * construct this cannot expand. Only a group of `|` alternatives, optionally
+ * followed by `?`, is expanded; text outside a group is kept verbatim.
+ */
+export function refPatternAlternatives(refPattern) {
+  let index = 0;
+  const product = (left, right) =>
+    left.flatMap((head) => right.map((tail) => head + tail));
+
+  // One `|`-separated list of branches up to the closing `)` or the end, each
+  // branch expanded to its alternatives.
+  const parseBranches = (depth) => {
+    const branches = [];
+    let current = [""];
+    while (index < refPattern.length) {
+      const character = refPattern[index];
+      if (character === ")") {
+        if (depth === 0) return { problem: "has an unmatched `)`" };
+        break;
+      }
+      if (character === "|") {
+        if (depth === 0) {
+          return {
+            problem:
+              "has a `|` outside a group, which splits the anchored pattern into halves that are not anchored at both ends",
+          };
+        }
+        branches.push(current);
+        current = [""];
+        index += 1;
+        continue;
+      }
+      if (character === "(") {
+        index += 1;
+        if (refPattern.startsWith("?:", index)) index += 2;
+        else if (refPattern[index] === "?") {
+          return { problem: "has a `(?` group this check does not expand" };
+        }
+        const inner = parseBranches(depth + 1);
+        if (inner.problem !== undefined) return inner;
+        if (refPattern[index] !== ")")
+          return { problem: "has an unclosed `(`" };
+        index += 1;
+        let group = inner.alternatives;
+        if (refPattern[index] === "?") {
+          group = ["", ...group];
+          index += 1;
+        }
+        if (/[?*+{]/.test(refPattern[index] ?? "")) {
+          return {
+            problem: `quantifies a group with \`${refPattern[index]}\`, which this check does not expand`,
+          };
+        }
+        current = product(current, group);
+        if (current.length > MAX_REF_ALTERNATIVES) {
+          return {
+            problem: `expands to more than ${MAX_REF_ALTERNATIVES} alternatives`,
+          };
+        }
+        continue;
+      }
+      let text = character;
+      if (character === "\\") {
+        text = refPattern.slice(index, index + 2);
+      } else if (character === "[") {
+        // Go, which cosign is written in, reads a `]` opening a class as a
+        // member of it; JavaScript reads it as the end of an empty class.
+        if (refPattern[index + 1] === "]") {
+          return { problem: "opens a character class with `]`" };
+        }
+        const close = refPattern.indexOf("]", index + 1);
+        if (close === -1) return { problem: "has an unclosed `[`" };
+        text = refPattern.slice(index, close + 1);
+      }
+      current = current.map((head) => head + text);
+      index += text.length;
+    }
+    branches.push(current);
+    return { alternatives: branches.flat() };
+  };
+
+  const result = parseBranches(0);
+  if (result.problem !== undefined) return result;
+  return { alternatives: [...new Set(result.alternatives)] };
 }
 
 /** The tag filters a parsed workflow's `on.push.tags` trigger holds. */
@@ -613,23 +708,50 @@ export function couplingViolations({
   }
 
   const filters = tagFilters(parseWorkflow(workflowPath, workflowSource));
-  if (filters.length !== 1) {
+  if (filters.length === 0) {
     violations.push(
-      `${workflowPath} triggers on ${filters.length} tag filters${filters.length === 0 ? "" : ` (${list(filters)})`}, and this check holds the published identity against exactly one. Either the workflow lost the tag trigger the signer identity is made of, or the identity now covers a set of filters that has to be compared by hand.`,
+      `${workflowPath} triggers on no tag filter, so the signer identity is made of a tag trigger the workflow no longer has. Restore the trigger, or update the published identity and this check together.`,
     );
     return violations;
   }
 
-  const translated = refPatternForTagFilter(filters[0]);
-  if (translated.problem !== undefined) {
+  const translated = [];
+  for (const filter of filters) {
+    const result = refPatternForTagFilter(filter);
+    if (result.problem !== undefined) {
+      violations.push(
+        `${workflowPath} triggers on tags matching \`${filter}\`, which this check cannot compare against the published identity: ${result.problem}. Compare the two by hand and narrow the filter, or widen this check.`,
+      );
+      return violations;
+    }
+    translated.push(result.pattern);
+  }
+
+  const expanded = refPatternAlternatives(identity.refPattern);
+  if (expanded.problem !== undefined) {
     violations.push(
-      `${workflowPath} triggers on tags matching \`${filters[0]}\`, which this check cannot compare against the published identity: ${translated.problem}. Compare the two by hand and narrow the filter, or widen this check.`,
+      `The published signer identity's tag pattern \`${identity.refPattern}\` ${expanded.problem}, so this check cannot compare it with ${workflowPath}'s tag filters. Compare the two by hand and simplify the pattern, or widen this check.`,
     );
     return violations;
   }
-  if (translated.pattern !== identity.refPattern) {
+  const admitted = new Set(expanded.alternatives);
+  const triggered = new Set(translated);
+  const unsigned = filters.filter((_, at) => !admitted.has(translated[at]));
+  const unrun = expanded.alternatives.filter((ref) => !triggered.has(ref));
+  if (unsigned.length > 0 || unrun.length > 0) {
+    const parts = [];
+    if (unsigned.length > 0) {
+      parts.push(
+        `${workflowPath} triggers on ${list(unsigned)}, which the pattern does not admit, so a release run from such a tag signs an image the published command refuses`,
+      );
+    }
+    if (unrun.length > 0) {
+      parts.push(
+        `the pattern admits ${list(unrun)}, which no tag filter triggers on, so it accepts a signature from a ref no release runs from`,
+      );
+    }
     violations.push(
-      `The published signer identity pins refs matching \`${identity.refPattern}\`, but ${workflowPath} triggers on tags matching \`${filters[0]}\` -- \`${translated.pattern}\` as a regular expression. Every release run outside the published pattern signs an image the published command refuses, and every ref inside it that the trigger no longer admits is a signature the pattern would accept from somewhere else.`,
+      `The published signer identity pins refs matching \`${identity.refPattern}\`, and the tags ${workflowPath} triggers on, as regular expressions, are ${list(translated)}: ${parts.join("; and ")}.`,
     );
   }
   return violations;

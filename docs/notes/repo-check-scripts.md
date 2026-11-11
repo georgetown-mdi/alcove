@@ -448,7 +448,7 @@ and each sink must have at least one render going through it.
 Keyless signing leaves no public key to fetch,
 so what the `cosign verify` command in [RELEASES.md](../RELEASES.md) pins is the release workflow's Sigstore identity:
 this repository's path to the workflow file, plus the ref the run came from.
-Both halves are properties of the workflow, its filename and its `on.push.tags` filter,
+Both halves are properties of the workflow, its filename and its `on.push.tags` filters,
 and neither a rename nor a widened trigger touches the document.
 The drift costs in both directions.
 A published pattern that no longer describes the signer refuses the signature a real release produced,
@@ -468,6 +468,9 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
 ### Why each rule
 
 - The identity's workflow-path segment may hold no regular-expression metacharacter, so a pattern loosened by unescaping a `.` fails rather than being treated as a rename.
+- The identity's tag pattern is expanded into the alternatives its groups name, and that set must equal the set of tag filters, one filter for a release and one for each prerelease form.
+  A filter with no alternative is a release the published command refuses; an alternative with no filter accepts a signature from a ref no release runs from.
+  A `|` outside a group fails, since it splits the pattern into halves each anchored at one end only.
 - Every image push is followed by its own sign, verify and attest steps before the next image build, because a second image's push between the first one's push and its signing leaves the first published under `latest` and unsigned for as long as that build runs,
   and permanently if the build fails.
 - Each verify step carries both certificate arguments in its own run text, because the one-identity comparison reads the whole workflow file at once and the step-order rule credits a step by the digest it names,
@@ -482,7 +485,7 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
 ### What it does not cover
 
 - Whether the identity is the one a run produces.
-  The check compares the published pattern against this repository's workflow path and tag filter, so the two being wrong together passes.
+  The check compares the published pattern against this repository's workflow path and tag filters, so the two being wrong together passes.
   What Fulcio writes into the certificate was driven rather than inferred, in [cosign-keyless-signing.md](cosign-keyless-signing.md).
 - The `<owner>/<repo>` segment of either command, which nothing in the tree derives.
   A fork publishing the document unchanged passes, and the two commands' copies of that segment are not compared with each other.
@@ -490,6 +493,7 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
   The tag-pattern comparison compares text under a stated correspondence rather than modelling them:
   over the accepted character class a filter and a regular expression agree character for character, except that `.` is literal in a filter.
   Any other character, `*` and `?` above all, fails rather than being translated on a guess.
+  GitHub's matcher runs only on a tag push, so whether the filters start a run for each tag form is outside this check.
 - Whether any of it verifies.
   Only a release run signs anything; the self-verify step measures that, and this check keeps that step's two arguments the published ones.
 - The release's hosted web application manifest.

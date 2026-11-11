@@ -19,6 +19,8 @@ import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isPublishedVersion } from "./lib/releaseManifest.mjs";
+
 /** The `format` value every manifest this script writes or reads names. */
 export const MANIFEST_FORMAT = "alcove-hosted-site-manifest";
 
@@ -31,7 +33,6 @@ export const MANIFEST_FORMAT_VERSION = 1;
  */
 export const PAGES_CONFIGURATION_FILES = ["_headers", "_redirects"];
 
-const RELEASE_VERSION = /^\d+\.\d+\.\d+$/;
 const FULL_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const SITE_NAME = /^[a-z][a-z0-9-]*$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -89,8 +90,10 @@ export function treeEntries(dir) {
  * Throws on a malformed version, commit or site name, or an empty tree.
  */
 export function buildManifest({ version, commit, sites }) {
-  if (!RELEASE_VERSION.test(version ?? "")) {
-    fail(`the version ${JSON.stringify(version)} is not X.Y.Z.`);
+  if (!isPublishedVersion(version)) {
+    fail(
+      `the version ${JSON.stringify(version)} is not X.Y.Z, X.Y.Z-beta.N or X.Y.Z-rc.N.`,
+    );
   }
   if (!FULL_COMMIT.test(commit ?? "")) {
     fail(`the commit ${JSON.stringify(commit)} is not a full commit id.`);
@@ -166,8 +169,8 @@ export function parseManifest(text) {
       `the manifest's format_version is ${JSON.stringify(manifest.format_version)}, and this script reads ${MANIFEST_FORMAT_VERSION}.`,
     );
   }
-  if (!RELEASE_VERSION.test(String(manifest.version))) {
-    fail("the manifest's version is not X.Y.Z.");
+  if (!isPublishedVersion(manifest.version)) {
+    fail("the manifest's version is not X.Y.Z, X.Y.Z-beta.N or X.Y.Z-rc.N.");
   }
   if (!FULL_COMMIT.test(String(manifest.commit))) {
     fail("the manifest's commit is not a full commit id.");

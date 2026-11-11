@@ -62,12 +62,12 @@ Each registry holds the release's signature. To check that an image is the one t
 
 ```sh
 cosign verify \
-  --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
+  --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   docker.io/gumdi/alcove:X.Y.Z
 
 cosign verify \
-  --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
+  --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ghcr.io/georgetown-mdi/alcove:X.Y.Z
 ```

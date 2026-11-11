@@ -486,6 +486,13 @@ describe("accept kit, checking the image", () => {
       }
   });
 
+  test("a prerelease build verifies its own image with the same command", () => {
+    for (const version of ["0.9.0-beta.1", "0.9.0-rc.2"])
+      expect(verifyLine(sheet(SFTP, version))).toBe(
+        publishedVerifyCommand().replace("X.Y.Z", version),
+      );
+  });
+
   test("a build with no version verifies the floating tag", () => {
     const text = buildAcceptKit({
       endpoint: SFTP,
@@ -515,7 +522,7 @@ describe("accept kit, checking the image", () => {
         "verify",
         "--certificate-identity-regexp",
         "^https://github\\.com/georgetown-mdi/alcove/\\.github/workflows/" +
-          "release\\.yaml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "release\\.yaml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(-(beta|rc)\\.[0-9]+)?$",
         "--certificate-oidc-issuer",
         "https://token.actions.githubusercontent.com",
         "docker.io/gumdi/alcove:1.4.2",

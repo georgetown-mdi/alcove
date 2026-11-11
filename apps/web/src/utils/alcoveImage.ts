@@ -91,7 +91,7 @@ export function imageReference(
  * `cosign verify` command `docs/RELEASES.md` publishes pins them; a unit test
  * holds the two to that command. */
 const RELEASE_SIGNER_IDENTITY_REGEXP =
-  "^https://github\\.com/georgetown-mdi/alcove/\\.github/workflows/release\\.yaml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$";
+  "^https://github\\.com/georgetown-mdi/alcove/\\.github/workflows/release\\.yaml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(-(beta|rc)\\.[0-9]+)?$";
 const RELEASE_SIGNER_OIDC_ISSUER =
   "https://token.actions.githubusercontent.com";
 

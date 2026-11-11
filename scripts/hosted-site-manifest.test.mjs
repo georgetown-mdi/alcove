@@ -170,6 +170,33 @@ describe("the manifest of a built tree", () => {
     symlinkSync(join(linked, "index.html"), join(linked, "link.html"));
     expect(() => listTree(linked)).toThrow(/neither a file nor a directory/);
   });
+
+  it("names a prerelease version, which main holds once promoted to one", () => {
+    const dir = freshTree("prerelease");
+    for (const version of ["0.9.0-beta.1", "0.9.0-rc.12"]) {
+      const manifest = buildManifest({
+        version,
+        commit: COMMIT,
+        sites: { site: dir },
+      });
+      expect(parseManifest(serializeManifest(manifest)).version).toBe(version);
+    }
+  });
+
+  it("refuses a prerelease outside the beta.N and rc.N forms", () => {
+    const dir = freshTree("malformed-prerelease");
+    for (const version of [
+      "0.9.0-beta",
+      "0.9.0-beta1",
+      "0.9.0-alpha.1",
+      "0.9.0-rc.0",
+      "0.9.0+build.1",
+    ]) {
+      expect(() =>
+        buildManifest({ version, commit: COMMIT, sites: { site: dir } }),
+      ).toThrow(/not X\.Y\.Z/);
+    }
+  });
 });
 
 describe("comparing a tree against a manifest", () => {
@@ -234,6 +261,11 @@ describe("reading a manifest", () => {
     other.format_version = 2;
     expect(() => parseManifest(JSON.stringify(other))).toThrow(
       /format_version/,
+    );
+    const alpha = good();
+    alpha.version = "0.9.0-alpha.1";
+    expect(() => parseManifest(JSON.stringify(alpha))).toThrow(
+      /version is not X\.Y\.Z/,
     );
   });
 
@@ -420,6 +452,42 @@ describe("the release workflow's one build", () => {
       )
       .map((step) => step.with?.path);
     expect(paths).toEqual([write.env.SITE_DIR, write.env.DEMO_DIR]);
+  });
+
+  it("writes it for a release tag and a prerelease tag, and refuses a malformed one", () => {
+    const write = jobs["hosted-manifest"].steps.find(
+      (step) => step.id === "write",
+    );
+    const runFor = (tag) => {
+      const temp = mkdtempSync(join(scratch, "write-step-"));
+      const output = join(temp, "github-output");
+      writeFileSync(output, "");
+      const result = spawnSync("bash", ["-c", write.run], {
+        cwd: repoRoot,
+        encoding: "utf8",
+        env: {
+          PATH: process.env.PATH,
+          RUNNER_TEMP: temp,
+          GITHUB_SHA: COMMIT,
+          GITHUB_OUTPUT: output,
+          ALCOVE_REF_TYPE: "tag",
+          ALCOVE_REF_NAME: tag,
+          SITE_DIR: freshTree(`step-site-${tag}`),
+          DEMO_DIR: freshTree(`step-demo-${tag}`, { "index.html": "demo" }),
+        },
+      });
+      return { ...result, output: readFileSync(output, "utf8") };
+    };
+    for (const tag of ["v0.9.0", "v0.9.0-beta.1", "v0.9.0-rc.2"]) {
+      const result = runFor(tag);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.output).toContain(
+        `file=alcove-hosted-web-${tag.slice(1)}.manifest.json`,
+      );
+    }
+    for (const tag of ["v0.9.0-beta", "v0.9.0-beta1", "v0.9.0-alpha.1"]) {
+      expect(runFor(tag).status).not.toBe(0);
+    }
   });
 
   it("signs, verifies and attests the file the manifest job wrote", () => {

@@ -16,9 +16,10 @@
 // Two rules, read from the tag the run was triggered by and the manifest in the
 // same checkout:
 //
-//   A. The tag names a release version: `vX.Y.Z`, the shape release.yaml's own
-//      trigger filter admits. A tag this cannot parse names no version to
-//      compare, so it fails rather than passing a comparison it never made.
+//   A. The tag names a release version: `vX.Y.Z`, `vX.Y.Z-beta.N` or
+//      `vX.Y.Z-rc.N`, the shapes release.yaml's own trigger filters admit. A
+//      tag this cannot parse names no version to compare, so it fails rather
+//      than passing a comparison it never made.
 //   B. That version and the manifest's are the same string, and the manifest
 //      has one at all. Each failure names both values: which of the two is
 //      wrong is the maintainer's call.
@@ -56,7 +57,7 @@ export function agreementViolations(tag, version) {
   const tagged = taggedVersion(tag);
   if (tagged === undefined) {
     return [
-      `the pushed tag "${tag}" is not a release tag (vX.Y.Z), so it names no version to check against ${RELEASE_MANIFEST}, which carries ${version === undefined ? "none" : version}`,
+      `the pushed tag "${tag}" is not a release tag (vX.Y.Z, vX.Y.Z-beta.N or vX.Y.Z-rc.N), so it names no version to check against ${RELEASE_MANIFEST}, which carries ${version === undefined ? "none" : version}`,
     ];
   }
   if (version === undefined) {

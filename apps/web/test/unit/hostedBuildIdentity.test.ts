@@ -28,7 +28,19 @@ describe("hostedBuildIdentity", () => {
     ).toEqual({ version: "0.9.0", commit: "0123456" });
   });
 
-  test.each([
+  test.each(["v0.9.0-beta.1", "v0.9.0-rc.2"])(
+    "a run on the prerelease tag %s names its prerelease version",
+    (tag) => {
+      expect(
+        hostedBuildIdentity(
+          { GITHUB_REF_TYPE: "tag", GITHUB_REF_NAME: tag, GITHUB_SHA: COMMIT },
+          noHead,
+        ),
+      ).toEqual({ version: tag.slice(1), commit: "0123456" });
+    },
+  );
+
+  test.each<[string, Record<string, string>]>([
     ["a branch", { GITHUB_REF_TYPE: "branch", GITHUB_REF_NAME: "staging" }],
     [
       "a branch named like a release tag",
@@ -38,10 +50,12 @@ describe("hostedBuildIdentity", () => {
       "a tag outside the release shape",
       { GITHUB_REF_TYPE: "tag", GITHUB_REF_NAME: "broker-core-build" },
     ],
-    [
-      "a prerelease tag",
-      { GITHUB_REF_TYPE: "tag", GITHUB_REF_NAME: "v0.9.0-rc.1" },
-    ],
+    ...["v0.9.0-beta", "v0.9.0-beta1", "v0.9.0-alpha.1", "v0.9.0-rc.0"].map(
+      (tag): [string, Record<string, string>] => [
+        `the malformed prerelease tag ${tag}`,
+        { GITHUB_REF_TYPE: "tag", GITHUB_REF_NAME: tag },
+      ],
+    ),
   ])("a run on %s names no version", (_label, ref) => {
     expect(hostedBuildIdentity({ ...ref, GITHUB_SHA: COMMIT }, noHead)).toEqual(
       { version: "", commit: "0123456" },
