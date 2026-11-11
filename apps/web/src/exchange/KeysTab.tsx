@@ -339,7 +339,7 @@ export function KeysTab({
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);
           const lessCertain = linkageKeyIsLessCertain(entry.key, keyFields);
-          const oneField = linkageKeyUsesOneField(entry.key);
+          const oneField = linkageKeyUsesOneField(entry.key, keyFields);
           const oneFieldId = `${oneFieldIdPrefix}-${index}`;
           const checkbox = (explanationId?: string) => (
             <Checkbox

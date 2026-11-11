@@ -987,7 +987,7 @@ export const ONE_FIELD_KEY_COPY = {
   termsLine:
     "Some of the matching keys use one field, so your partner could guess " +
     "values and learn which are in your file. Open Matching strategies to " +
-    "see which.",
+    "see which keys use one field.",
 } as const;
 
 /**

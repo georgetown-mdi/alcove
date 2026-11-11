@@ -316,7 +316,7 @@ export function ExpertKeyEditor({
           const keyId = idFor(keyIds.current, key);
           const keyOpen = expandedKeys.has(keyId);
           const keyBodyId = `key-body-${keyId}`;
-          const keyUsesOneField = linkageKeyUsesOneField(key);
+          const keyUsesOneField = linkageKeyUsesOneField(key, declaredFields);
           const keyOneFieldId = `key-one-field-${keyId}`;
           // One swap option per element, keyed by its identifier, deduplicated by
           // value: two elements can transiently share an identifier mid-edit (e.g.

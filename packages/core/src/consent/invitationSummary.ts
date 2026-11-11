@@ -359,10 +359,10 @@ export interface InvitationKeySummary {
    */
   lessCertainHeaderMarker?: Displayable;
   /**
-   * Whether every element of the key reads the same field
-   * (`linkageKeyUsesOneField`), so a partner could test guessed values of
-   * that field against this party's file. A surface marks it with
-   * `ONE_FIELD_KEY_COPY` (`consentFacts.ts`).
+   * Whether the key's elements could all read one input column under the
+   * default binding (`linkageKeyUsesOneField`), so a partner could test
+   * guessed values of that column against this party's file. A surface
+   * marks it with `ONE_FIELD_KEY_COPY` (`consentFacts.ts`).
    */
   oneField: boolean;
   /**
@@ -1172,7 +1172,7 @@ function summarizeKey(
     lessCertainHeaderMarker: lessCertain
       ? displayText`(less certain)`
       : undefined,
-    oneField: linkageKeyUsesOneField(key),
+    oneField: linkageKeyUsesOneField(key, fields),
     ...(condition !== undefined && { condition }),
   };
 }

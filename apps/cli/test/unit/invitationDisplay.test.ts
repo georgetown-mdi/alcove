@@ -2291,6 +2291,32 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
     expect(lines.join("\n")).not.toContain(LESS_CERTAIN_REMEDY.invitation);
   });
 
+  test("displayInvitation: warns under a partner key of two field names of one type", () => {
+    const log = getLogger("accept-display-one-field-same-type-test");
+    log.setLevel("silent");
+    const token = oneFieldToken([
+      { name: "two ssns", elements: [{ field: "tax_id" }, { field: "ssn" }] },
+      SSN_AND_DOB,
+    ]);
+    const lines = renderDisplayInvitation(log, {
+      ...token,
+      linkageTerms: {
+        ...token.linkageTerms,
+        linkageFields: [
+          ...token.linkageTerms.linkageFields,
+          { name: "ssn", type: "ssn" as const },
+        ],
+      },
+    }).split("\n");
+
+    const keyAt = lines.indexOf("    - two ssns");
+    expect(lines[keyAt + 2]).toBe(`      ${ONE_FIELD_KEY_COPY.keyLine}`);
+    expect(
+      lines.filter((line) => line === `      ${ONE_FIELD_KEY_COPY.keyLine}`),
+    ).toHaveLength(1);
+    expect(lines).toContain(`  ${ONE_FIELD_NOTE_LABEL}:`);
+  });
+
   test("displayInvitation: prints no one-field warning where every key reads two fields", () => {
     const log = getLogger("accept-display-no-one-field-test");
     log.setLevel("silent");
