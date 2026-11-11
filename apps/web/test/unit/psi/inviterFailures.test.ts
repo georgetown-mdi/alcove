@@ -365,7 +365,8 @@ describe("failureFor", () => {
         expect(failure.message).not.toMatch(/try again/i);
         expect(failure.message).not.toContain("temporary");
         expect(failure.message).toContain("what to do next");
-        expect(failure.reportedCause).toBe(sanitizeForDisplay(text));
+        // Printable text, so the report shows as sent, its line break kept.
+        expect(failure.reportedCause).toBe(text);
       },
     );
 

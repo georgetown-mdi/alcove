@@ -15,6 +15,7 @@ import {
   redactAndFitUnescaped,
   sanitizeErrorChainLinks,
   sanitizeForDisplay,
+  sanitizeKeepingLineBreaks,
 } from "@alcove/core";
 
 import {
@@ -659,7 +660,8 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
 
 /**
  * The relayed `error` event's chain field, split from the report its `message`
- * states, and its `nextStep`, escaped at the composed-message cap: the step
+ * states, and its `nextStep`, each escaped line by line at the composed-message
+ * cap with the CLI's own line breaks kept: the step
  * crosses only where `message` is the report, a line break and that step
  * (docs/spec/CLI_EVENTS.md, the `error` event), and the chain is then split
  * from the report alone. Otherwise the whole `message` is split and no step
@@ -678,9 +680,10 @@ function relayedErrorReport(
     [ERROR_MESSAGE_CHAIN_FIELD]: sanitizeErrorChainLinks(
       message.slice(0, message.length - step.length - 1),
     ),
-    [ERROR_NEXT_STEP_FIELD]: sanitizeForDisplay(step, {
-      maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
-    }),
+    [ERROR_NEXT_STEP_FIELD]: sanitizeKeepingLineBreaks(
+      step,
+      COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
+    ),
   };
 }
 

@@ -632,10 +632,10 @@ describe("keepFirstPartyLineBreaks", () => {
       ),
     );
     expect(rendered).toBe("head\nsecond line\ncaused by: the step");
-    // A boundary reading rendered TEXT has no mark to read, so it escapes the
-    // break it receives; the link boundary is the one it still reads.
+    // A boundary reading rendered TEXT keeps the link's own break, which the
+    // renderer placed after escaping every byte of the link.
     expect(sanitizeErrorChainLinks(rendered)).toEqual([
-      "head\\x0asecond line",
+      "head\nsecond line",
       "the step",
     ]);
   });
@@ -939,6 +939,41 @@ describe("sanitizeErrorChainLinks", () => {
 
   test("returns a lone message as one link", () => {
     expect(sanitizeErrorChainLinks("no chain here")).toEqual(["no chain here"]);
+  });
+
+  test("keeps a first-party break and opens no line on a partner's", () => {
+    const lines = ["the count failed", "while counting the second key"];
+    const partner = new Error("the partner sent: name\nINJECTED line");
+    const rendered = sanitizeErrorForDisplay(
+      keepFirstPartyLineBreaks(
+        new Error(lines.join("\n"), { cause: partner }),
+        lines,
+      ),
+    );
+    const links = sanitizeErrorChainLinks(rendered);
+    expect(links[0]).toBe(lines.join("\n"));
+    // The partner's break was escaped before the join, so it opens no line.
+    expect(links[1]).not.toContain("\n");
+    expect(links[1]).toContain("INJECTED line");
+    expect(joinErrorCauseChain(links).split("\n")).not.toContain(
+      "INJECTED line",
+    );
+  });
+
+  test("charges a link's lines one budget and marks the lines it drops", () => {
+    const line = "z".repeat(300);
+    const [link] = sanitizeErrorChainLinks(Array(10).fill(line).join("\n"));
+    const kept = link.split("\n");
+    expect(kept.length).toBeLessThan(10);
+    expect(link.endsWith(DISPLAY_TRUNCATION_MARKER)).toBe(true);
+    expect(link.length).toBeLessThanOrEqual(
+      COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH + DISPLAY_TRUNCATION_MARKER.length,
+    );
+  });
+
+  test("escapes control characters inside each line of a link", () => {
+    const [link] = sanitizeErrorChainLinks("first\x1b[2J\nsecond\r‮");
+    expect(link).toBe("first\\x1b[2J\nsecond\\x0d\\u202e");
   });
 });
 

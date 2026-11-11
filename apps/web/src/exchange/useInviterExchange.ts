@@ -22,6 +22,7 @@ import {
   prepareForExchange,
   sanitizeErrorChainLinks,
   sanitizeForDisplay,
+  sanitizeKeepingLineBreaks,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
 import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
@@ -254,9 +255,10 @@ export function sanitizedFailureMessage(error: unknown): string {
   const report = relayedReport(error);
   return error.nextStep === undefined
     ? report
-    : `${report}\n${sanitizeForDisplay(error.nextStep, {
-        maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
-      })}`;
+    : `${report}\n${sanitizeKeepingLineBreaks(
+        error.nextStep,
+        COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
+      )}`;
 }
 
 /**

@@ -43,7 +43,7 @@ On the LOG, console and prompt route the call site takes `redactAndRenderOperato
 Both entry points take the MARK rather than a string, so on either route the claim "the operator chose these bytes" is a value the composition site builds and a plain string or a `PartnerOriginText` is a compile error at the sink; a value that reaches one unmarked regardless is escaped rather than rendered as given.
 Two limits are measured rather than assumed.
 The mark is a registered symbol property, so no value a partner sends can ask for the treatment -- no parse produces a symbol key -- and it is read only where its spans join back to the link's own message, so a mark describing other text costs a doubled backslash rather than a wrong rendering; a link that also kept its own line breaks renders through that form instead, which escapes every span.
-And a boundary holding a chain as rendered TEXT has no mark to read: `sanitizeErrorChainLinks` escapes each link whole, so an operator's path relayed to the console arrives there with its separators doubled.
+And a boundary holding a chain as rendered TEXT has no mark to read: `sanitizeErrorChainLinks` escapes each line of a link, so an operator's path relayed to the console arrives there with its separators doubled.
 `packages/core/test/utils/operatorSuppliedText.test.ts` pins the rendered output of a message carrying an operator path beside a partner-chosen fragment, and `packages/core/test/utils/logger.test.ts` pins the two on one log line.
 
 Which sites are on the mark is held by a check over the names it can recognize rather than by a roster.

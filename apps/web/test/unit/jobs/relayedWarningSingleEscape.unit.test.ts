@@ -25,6 +25,7 @@ import {
   createFetchJobApiClient,
   createServerJobReattachDriver,
 } from "@psi/jobClient/serverJobExchangeDriver";
+import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
 import { JobManager } from "@jobs/jobManager";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 
@@ -391,8 +392,13 @@ describe("no relayed field reaches a seat unescaped", () => {
     ]) {
       const event = validateAndSanitizeEvent(source);
       expect(event).not.toBeNull();
-      for (const { at, text } of stringsOf(event, "event"))
-        expect(text, at).toMatch(PRINTABLE);
+      for (const { at, text } of stringsOf(event, "event")) {
+        // A chain link keeps the raw breaks its text holds, each line escaped.
+        const lines = at.startsWith(`event.${ERROR_MESSAGE_CHAIN_FIELD}`)
+          ? text.split("\n")
+          : [text];
+        for (const line of lines) expect(line, at).toMatch(PRINTABLE);
+      }
     }
   });
 });

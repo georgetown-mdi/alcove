@@ -3,9 +3,11 @@ import { describe, expect, test } from "vitest";
 import {
   KEX_HANDSHAKE_TIMEOUT_MESSAGE,
   PeerAbortError,
+  errorWithPartnerCauseLinks,
   failureCauseFromUntrusted,
   failureCauseSentence,
   keepFirstPartyLineBreaks,
+  partnerOriginText,
   sanitizeErrorForDisplay,
   setOverLimitError,
   setOverLimitRemedy,
@@ -939,9 +941,41 @@ describe("a console run that failed on a catalog cause", () => {
         exitCode: 64,
       }),
     );
-    // The relay escapes the link's own break; both lines reach the report.
-    expect(failure.reportedCause).toBe(lines.join("\\x0a"));
+    expect(failure.reportedCause).toBe(lines.join("\n"));
+    expect(failure.reportedCause).not.toContain("x0a");
     expect(failure.reportedCause).not.toContain(setOverLimitRemedy(cause));
+  });
+
+  test("a partner's value holding a line break opens no line of the report", () => {
+    const cause = {
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "uncounted",
+    } as const;
+    const err = setOverLimitError(cause, {
+      cause: errorWithPartnerCauseLinks(
+        "Map maximum size exceeded",
+        "partner value: ",
+        partnerOriginText("email\nINJECTED line"),
+      ),
+    });
+    const failure = failureFor(
+      "exchange",
+      relayedFromCli({
+        report: sanitizeErrorForDisplay(err),
+        nextStep: setOverLimitRemedy(cause),
+        cause,
+        exitCode: 64,
+      }),
+    );
+    const shown = failure.reportedCause?.split("\n") ?? [];
+    expect(shown).toContain("Map maximum size exceeded");
+    const partnerLine = shown.find((line) => line.includes("INJECTED line"));
+    // Control-replaced by core before the CLI placed its breaks.
+    expect(partnerLine).toBe(
+      "caused by: partner value: email<0a>INJECTED line",
+    );
+    expect(shown.some((line) => line.startsWith("INJECTED"))).toBe(false);
   });
 
   test("an uncounted set whose report holds no chain shows no report", () => {
@@ -985,9 +1019,22 @@ describe("the CLI's next step, relayed in its own field", () => {
     });
     expect(error.nextStep).toBeUndefined();
     expect(error.message).toBe(
-      "the exchange stopped\ncaused by: the partner refused\\x0aContact " +
+      "the exchange stopped\ncaused by: the partner refused\nContact " +
         "your partner before running again.",
     );
+  });
+
+  test("keeps a line break inside the step", () => {
+    const termsStep =
+      "Agree on the linkage terms with your partner, then run again.\n" +
+      'Your file\'s column "email" (email) is matched on.';
+    const failure = failureFor(
+      "exchange",
+      relayedFromCli({ report, nextStep: termsStep, exitCode: 69 }),
+      { channel: "filedrop" },
+    );
+    expect(failure.reportedCause).toBe(`${report}\n${termsStep}`);
+    expect(failure.reportedCause).not.toContain("x0a");
   });
 
   test("leaves the partner refusal's report without the step, which the console's copy states", () => {
