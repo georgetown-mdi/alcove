@@ -76,6 +76,31 @@ The survey names no other run-ending remedy the failure site writes itself. Acro
   - Turning a core remedy constant into a catalog cause adds a `cause` kind (`packages/cli-contract/src/failureCauses.ts` and the event spec's table), additive under `v: 1`. The event's `message` keeps its text, with the remedy on a line of its own after core's sentence, and `recoveryHint` stays set. The web app then needs a remedy for each new kind, since it shows core's sentence and remedy together as core wrote them.
 - **The remedy-type guard.** A type only the remedy maps can produce is not built while most of the sites above write their advice inline: every sink would need an exception until its sites move. It fits the last stage, once the maps hold every run-ending remedy.
 
+### Core's remedy constants as causes, in parts
+
+_Plan as of 2026-11-11, not yet built._ Turning every core constant above into a cause in one change comes to roughly 1,500 added or changed non-test lines (an estimate, agent-written): a sentence in the catalog for each of about thirty raise sites, a validator and a stream row per kind, a remedy in each app's map, and a remedy map the public web app does not have yet. So the work lands in three parts, grouped by what the failure is, each sized at about 450 to 550 lines.
+
+Every part follows one shape:
+
+- The raise site throws an error whose message is core's sentence, tagged with the cause, the facts the message states today as its fields. The kind is added to `packages/cli-contract/src/failureCauses.ts` and the table in [CLI_EVENTS.md](../spec/CLI_EVENTS.md#the-failure-cause), additive under `v: 1`.
+- The CLI states its remedy through `failureRemedy`, so stderr and the `error` event's `message` show the remedy on its own line beneath core's sentence rather than at the end of it. That line break is the one copy change; the words stay the same. `recoveryHint` stays set, since `nextStepBeneathFailure` returns the remedy.
+- An error marked by `markStatesItsOwnNextStep` keeps the mark, which also keeps the key-file state line and the generic post-handshake advice from printing beneath it.
+- The console binds the remedy in `consoleFailureCause.ts`, and the public web app in its own map, keyed on `FailureCauseKind` and applied where it shows a core error's message (`failureContentFor` in `useInviterExchange.ts`, and the managed failure copy). The first part builds that map. A file-sync failure reaches the CLI and the console only, since the public web app conducts WebRTC exchanges alone (`CLAUDE.md`, Applications).
+
+The parts:
+
+- **Part 1, set-size refusals.** `SPLIT_INPUT_REMEDY` and `PARTNER_CEILING_REMEDY` become one kind, whose facts are the value count, the limit, whose limit it is (one PSI set, or the partner's stated ceiling), which rounds the count covers, and whether anything was sent. Sites: `exchange/firstRoundCapacity.ts` (four refusals), `psi/psiSetParts.ts` (two), and the remedy's home in `connection/fileSyncOutboundBound.ts`.
+- **Part 2, single-pass and matched-list ceilings.** `SINGLE_PASS_LOCAL_REMEDY` (the browser pre-flight in `exchange.ts`, three sites in `psi/link.ts`, one of which joins it with a fan-out clause and the partner's remedy) and `TOO_MANY_MATCHES_REMEDY` (`psi/matchedListParts.ts`, whose refusal text its two callers pass in).
+- **Part 3, run-ending refusals outside the data.** The expired and malformed shared secret that end with `NEW_INVITATION_REMEDY` (`auth.ts` twice, `protocolSetup.ts`), `PARTNER_STOPPED_AT_MATCHING_REMEDY` (`exchange/stillWorking.ts`, which the web app's managed copy and between-visit notice read), `CLEAN_DIRECTORY_RESTART_REMEDY` (three sites in `connection/fileSyncMessageLoop.ts`), and `SHARED_PEER_ID_LIKELY_CAUSE` (`connection/fileSyncRendezvous.ts`), which removes the CLI's copied sentence.
+
+Left as they are:
+
+- Refusals of a file or document the operator supplied, raised as validation issues before any run, by the rule in [Core](#core) for configuration refusals: the format-version remedies `INVITATION_NEWER_REMEDY`, `TERMS_UPDATE_NEWER_REMEDY`, `KEY_FILE_NEWER_REMEDY` and `RECORD_MIGRATION_REMEDY`, the key-file schema's malformed-secret message (`config/keyFile.ts`, a schema issue with no error to tag), and `EMPTY_MATCHING_DELIMITER_REMEDY`, which a step editor also shows as its field error.
+- `RELAY_NOT_REACHED_REMEDY`, which ends no run: it is a diagnostic line the CLI's doctor and the web app's relay check share, naming no flag or control.
+- `NEW_INVITATION_REMEDY` stays exported for the CLI's key-file steps, which no cause names ([States no cause names](#states-no-cause-names)).
+
+The remedy-type guard follows the three parts.
+
 ## Formatting the facts
 
 A wait is stated by `formatWaitDuration` in the largest whole unit that states it exactly, and every count goes through `formatCount` (`packages/core/src/utils/formatCount.ts`), whose explicit locale keeps the digit separator ASCII for the CLI's console check. An OS error code goes in parentheses after the path or host it concerns. A fact the raise site cannot know -- a channel or a wait when the connection holds no configuration -- is left out of the sentence rather than guessed. Internal tags such as a `[role]` prefix stay in debug logs.
