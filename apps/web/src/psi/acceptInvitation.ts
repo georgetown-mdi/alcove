@@ -111,7 +111,7 @@ function endpointDrivableHere(
  * Build the data-preparation spec an acceptor runs against its own CSV: the
  * inviter's terms with this party's identity and mirrored output and payload
  * ({@link deriveAcceptedLinkageTerms}), plus the acceptor's own edits when it
- * made any (docs/COMMUNICATION.md, "Running the agreed terms"). Without edits,
+ * made any (docs/spec/WEB_ACCEPTANCE.md, "Running the agreed terms"). Without edits,
  * `prepareForExchange` infers metadata and standardization from the CSV. Also
  * backs the CLI acceptor.
  *
