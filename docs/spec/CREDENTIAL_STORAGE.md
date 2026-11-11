@@ -25,7 +25,9 @@ same principle without taking that construction, and each is specified where it
 diverges: the result CSV, streamed to the temp file and renamed onto its
 destination when the stream closes ([Result CSV output](#result-csv-output)), and the `--log-file` descriptor,
 opened in append mode and given the extended-ACL strip at that open
-([macOS extended-ACL strip](#macos-extended-acl-strip)). This document does not
+([macOS extended-ACL strip](#macos-extended-acl-strip)). The browser's SFTP
+client key is kept in browser storage, not a file, and is specified in
+[Browser SFTP client key](#browser-sftp-client-key). This document does not
 cover what the files contain or the threat model (see
 [SECURITY_DESIGN.md](../SECURITY_DESIGN.md)). Intended readers are security
 auditors and implementors.
@@ -595,8 +597,59 @@ container boundary, where the CLI's own fd 1 is a pipe to the runtime -- is
 undetectable and does not fire, so the absence of the notice is not a guarantee
 the output is owner-only.
 
+## Browser SFTP client key
+
+A browser party's recurring SFTP exchange authenticates to the SFTP server with
+a client key the web application generates and keeps in browser storage, not in
+a file. The code is `apps/web/src/psi/managed/managedSftpClientKey.ts`.
+
+- **Generation.** `createManagedSftpExchange` generates one ECDSA P-256 key
+  pair (`ecdsa-sha2-nistp256`) for each exchange it saves, through WebCrypto,
+  with the private key not extractable. It refuses an exchange whose connection
+  is not `sftp`.
+- **Storage.** The two `CryptoKey` objects are kept in the `sftpClientKeys`
+  object store of the managed-exchange IndexedDB database, under the exchange
+  record's `id`, and written in the same transaction as the record. IndexedDB
+  stores a `CryptoKey` by structured clone, which keeps its non-extractable
+  flag. The key is not part of the record and never enters the export artifact,
+  so an exchange imported from a backup has no key.
+- **The public key.** It is given as one OpenSSH `authorized_keys` line,
+  `ecdsa-sha2-nistp256 <base64 public-key blob> alcove-exchange-<id>`, for the
+  server's administrator to add to the exchange's account. The comment names
+  the exchange by its random record `id`, never by its label, which is the
+  operator's own text.
+- **No export path.** WebCrypto refuses `exportKey` and `wrapKey` on the private
+  key. `getManagedSftpClientKey` returns the key as
+  `NonExtractableEcdsaP256KeyPair`, which signs through `crypto.subtle.sign` and
+  returns only public parameters. A stored pair whose private key is
+  extractable is refused rather than used.
+- **Removal.** `deleteManagedExchange` deletes the key in the same transaction
+  as the record, and `clearManagedExchanges` clears every key.
+- **What it exposes.** Script running in the application's origin, or anyone
+  who opens the browser profile in the browser, can sign with the key, and so
+  authenticate as the exchange's SFTP account for as long as the server lists
+  it. They cannot read the private key out through the browser. Someone who
+  reads the profile's files on disk can: Chromium writes the private key's bytes
+  unencrypted into its IndexedDB files (driven on 2026-11-11 against Playwright's
+  Chromium; other browsers not measured). The overview is in
+  [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#the-sftp-client-key-at-rest).
+- **A stated limit: no page saves an SFTP exchange with a key yet.** The browser
+  SFTP driver stage adds the save, which calls `createManagedSftpExchange` where
+  the exchange pages' manage offer (`manageExchange` in
+  `apps/web/src/exchange/InviterScreen.tsx` and `AcceptorScreen.tsx`) calls
+  `createManagedExchange` for a WebRTC exchange, and shows the
+  `authorized_keys` line it returns.
+
+**Held by**: `apps/web/test/unit/psi/managedSftpClientKey.test.ts` (generation
+on save, the key read back after the store module is loaded again, deletion,
+the `authorized_keys` line imported as a P-256 key, and every export path
+refused); `apps/web/test/browser/managedSftpClientKey.test.ts` (the same in
+Chromium's IndexedDB, and the saved line accepted by OpenSSH's sshd with the key
+read back from the store).
+
 ## See also
 
 - [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#key-file-security) - what these files protect, and the operator-facing permissions, warnings, and remediation
 - [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md) - the self-attested record whose two-file write relies on the cross-write crash-ordering guarantee
 - [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md) - the rotated token this write path persists
+- [SFTP_CONNECTION.md](SFTP_CONNECTION.md#sftp-host-key-verification) - the browser SFTP path the client key authenticates on

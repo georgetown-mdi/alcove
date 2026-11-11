@@ -43,6 +43,11 @@ export function sshMpint(unsigned: Uint8Array): Uint8Array {
   return sshString(body);
 }
 
+/** A new WebCrypto ECDSA P-256 pair whose private key is not extractable. */
+export async function generateNonExtractableEcdsaP256CryptoKeyPair(): Promise<CryptoKeyPair> {
+  return await crypto.subtle.generateKey(ECDSA_P256, false, ["sign", "verify"]);
+}
+
 /**
  * The client's ECDSA P-256 key, held as a WebCrypto key pair whose private
  * key is not extractable. It signs only through `crypto.subtle.sign`, and no
@@ -69,11 +74,9 @@ export class NonExtractableEcdsaP256KeyPair implements KeyPair {
 
   /** A new pair, generated with its private key not extractable. */
   static async generate(): Promise<NonExtractableEcdsaP256KeyPair> {
-    const pair = await crypto.subtle.generateKey(ECDSA_P256, false, [
-      "sign",
-      "verify",
-    ]);
-    return await NonExtractableEcdsaP256KeyPair.fromCryptoKeyPair(pair);
+    return await NonExtractableEcdsaP256KeyPair.fromCryptoKeyPair(
+      await generateNonExtractableEcdsaP256CryptoKeyPair(),
+    );
   }
 
   /** Wrap an existing P-256 pair; refuses one whose private key is extractable. */

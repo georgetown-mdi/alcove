@@ -134,11 +134,20 @@ export const MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME = "disclosures";
  */
 export const MANAGED_EXCHANGE_RESULTS_STORE_NAME = "results";
 
+/**
+ * The object store holding the client key pair an SFTP exchange authenticates
+ * to its server with, as the two `CryptoKey` objects, keyed by the record's
+ * `id`. A separate store because the key is not a document field and cannot be
+ * written into the export artifact: its private key is not extractable. Its
+ * shape is governed by {@link ./managedSftpClientKey.ts}.
+ */
+export const MANAGED_EXCHANGE_SFTP_KEY_STORE_NAME = "sftpClientKeys";
+
 /** The database schema version this build opens. Bump only for an IndexedDB
  * structural migration (a new object store or index), never for a change to the
  * record's own `schemaVersion`, which the record schema governs.
  * @internal */
-export const IDB_VERSION = 1;
+export const IDB_VERSION = 2;
 
 /**
  * Open (creating or upgrading) the managed-exchange database. The records store is
@@ -165,6 +174,8 @@ export function openManagedExchangeDatabase(): Promise<IDBDatabase> {
         db.createObjectStore(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME);
       if (!db.objectStoreNames.contains(MANAGED_EXCHANGE_RESULTS_STORE_NAME))
         db.createObjectStore(MANAGED_EXCHANGE_RESULTS_STORE_NAME);
+      if (!db.objectStoreNames.contains(MANAGED_EXCHANGE_SFTP_KEY_STORE_NAME))
+        db.createObjectStore(MANAGED_EXCHANGE_SFTP_KEY_STORE_NAME);
     };
     request.onsuccess = () => {
       const db = request.result;
@@ -1874,21 +1885,22 @@ async function replaceStoredCopy(
   );
 }
 
-/** The four object stores a delete or a clear spans. */
+/** The five object stores a delete or a clear spans. */
 const EVERY_MANAGED_STORE = [
   MANAGED_EXCHANGE_STORE_NAME,
   MANAGED_EXCHANGE_LOCAL_STORE_NAME,
   MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
   MANAGED_EXCHANGE_RESULTS_STORE_NAME,
+  MANAGED_EXCHANGE_SFTP_KEY_STORE_NAME,
 ];
 
 /**
  * Delete a managed exchange in one step, removing everything the browser holds
  * for it -- the record, the secret, the working-folder grant, the schedule, the run bookkeeping, the local sibling state (the backup
  * and import markers and any terms proposal), its accounting of disclosures and the note of any
- * run that could not be filed into it, AND the results a scheduled run parked
- * for the operator -- so nothing is left behind. All of it is removed in one
- * transaction spanning the four stores, so a delete cannot leave a stranded
+ * run that could not be filed into it, the results a scheduled run parked
+ * for the operator, AND an SFTP exchange's client key -- so nothing is left behind. All of it is removed in one
+ * transaction spanning the five stores, so a delete cannot leave a stranded
  * sibling entry. Idempotent: a delete of a missing id resolves without error.
  *
  * The accounting goes with the exchange: it is this exchange's own disclosure
@@ -1912,6 +1924,7 @@ export async function deleteManagedExchange(id: string): Promise<void> {
     disclosures.delete(id);
     disclosures.delete(unfiledDisclosureKey(id));
     store(MANAGED_EXCHANGE_RESULTS_STORE_NAME).delete(id);
+    store(MANAGED_EXCHANGE_SFTP_KEY_STORE_NAME).delete(id);
     return () => undefined;
   });
   await clearUnfiledExchangeFlag(id);
@@ -1919,8 +1932,8 @@ export async function deleteManagedExchange(id: string): Promise<void> {
 
 /**
  * Delete every managed exchange record, all local sibling state, every accounting
- * of disclosures with the unfiled-run notes beside them, and every scheduled
- * run's parked results. Used to reset the store; all four stores are cleared in
+ * of disclosures with the unfiled-run notes beside them, every scheduled
+ * run's parked results, and every SFTP client key. Used to reset the store; all five stores are cleared in
  * one transaction, so no sibling entry outlives the records it belonged to. The
  * notes' localStorage fallback flags go too, on the same terms the single delete
  * clears one: after the transaction, so nothing is dropped for a clear that did
