@@ -4,10 +4,18 @@ title: "TURN Provisioning and Partner Governance"
 
 # TURN provisioning, against what partners' governance will accept
 
-_Status: surveyed, with a recommendation per profile; nothing here is decided
-or built, and the configuration shape is left to separate work. The relay
-measurement answered what a relay costs and whether it works; this record is the
-other half of the same decision -- what an organization can run, and what its
+_Status: surveyed, with a recommendation per profile; decided and built for an
+inviter-run relay. Per-session logging stays off and the relay host's journal
+is kept about 90 days
+([Logging and data handling](webrtc-relay-deployment.md#logging-and-data-handling));
+the invitation names the inviter's relay and both parties derive its
+credential from the shared secret
+([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-invitations-relay-locator));
+and what a relay from the unmodified template logs, keeps, and does is stated
+in [infra/relay/README.md](../../infra/relay/README.md#what-a-relay-from-this-template-logs-keeps-and-does).
+The credential-service profile has no support: `ice_provision` is refused. The
+relay measurement answered what a relay costs and whether it works; this
+record is the other half of the same decision -- what an organization can run, and what its
 partners' security and governance teams will accept relaying through. Nothing
 here is normative: the transport's ICE rules are in
 [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#ice), the confidentiality
@@ -280,16 +288,31 @@ set on every call.
 
 ### What an inviter-run relay must log, retain, and attest
 
-**Log.** coturn writes a usage line when a session closes, naming the realm, the
-authenticated username, and the packets and bytes received and sent [V13]. A
-credential minted per exchange has a per-exchange name, which makes that
-line attributable to one exchange. The standing relay's bring-up did not observe
-these lines in its container logs
-([webrtc-relay-deployment.md](webrtc-relay-deployment.md#what-the-standing-deployment-carried)),
-so the reference does not yet demonstrably produce the record a partner would
-ask for.
+The decided posture: per-session logging stays off, and the relay host's
+journal is kept about 90 days (owner rulings of 2026-10-04 and 2026-10-05).
+What a relay from the unmodified template logs, keeps, and does, each fact
+with the setting behind it and the check that keeps it true, is in
+[infra/relay/README.md](../../infra/relay/README.md#what-a-relay-from-this-template-logs-keeps-and-does);
+the measurements behind it are in
+[webrtc-relay-deployment.md](webrtc-relay-deployment.md#logging-and-data-handling).
 
-**Retain.** No framework found sets one number for a relay.
+**Log.** coturn writes a usage line when a session closes, naming the realm, the
+authenticated username, and the packets and bytes received and sent [V13], but
+only under `verbose`, which the template does not set. At the template's
+settings coturn writes no line for a successful session
+([What the relay host keeps](webrtc-relay-deployment.md#what-the-relay-host-keeps)).
+The registrar writes one line for each registration of an exchange's key,
+naming the exchange and the time and not the caller. Abuse is detected from
+first-party and aggregate signals rather than session records. Where a
+partner's incident-response requirement asks for session records, `verbose` is
+turned on for that deployment only
+([Verbose logging for incident response](webrtc-relay-deployment.md#verbose-logging-for-incident-response)),
+and the README's statement does not describe that relay.
+
+**Retain.** An entry in the relay host's journal is deleted about 90 days
+after the newest entry in its file, set in
+[`journald-alcove-relay.conf`](../../infra/relay/journald-alcove-relay.conf).
+No framework found sets one number for a relay.
 
 - HIPAA's six-year retention applies to "the documentation required by
   paragraph (b)(1)" -- written policies and required records of actions and
@@ -298,9 +321,9 @@ ask for.
 - CIS Safeguard 8.10: "Retain audit logs across enterprise assets for a minimum
   of 90 days" [F7].
 
-**Advisory:** plan for at least 90 days of the relay's session logs, and expect a
-partner's agreement to ask for incident notification within a set window and
-for the relay's logs on request.
+The 90-day period meets the CIS minimum. **Advisory:** expect a partner's
+agreement to ask for incident notification within a set window and for the
+relay's logs on request.
 
 **Attest.** What an operator can state to a partner, each point backed by
 something checkable:
@@ -310,6 +333,7 @@ something checkable:
 | The relay forwards DTLS without terminating it, and sees addresses, timing, and volume | [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security) and the relay measurement |
 | Peer ranges are denied, so the relay cannot reach its own network | `verify.sh`, which passes only on an observed refusal ([`infra/relay/`](../../infra/relay/README.md)) |
 | Credentials are minted per exchange and expire in an hour | `mint-credential.sh` and the rendered configuration |
+| The relay logs no successful session, and its journal is kept about 90 days | The README's statement and `scripts/relay-logging-posture.test.mjs` |
 | The relay is patched | The deployed image's version against the project's advisories, below |
 
 Patch currency is a standing obligation, not a one-time statement. coturn's
@@ -483,13 +507,12 @@ browser's relay entry can come only from the deployment.
 
 ## What this record leaves to separate work
 
-- **The concrete configuration shape.** What the keys and defaults look like and
-  where each party's relay entry lives -- the invitation, the connection block,
-  the web client -- is decided separately. That includes whether an invitation
-  may name a relay or an endpoint without contradicting the credential-free
-  invitation, how an endpoint authenticates a partner, and what the web client's
-  ICE list holds. This record states what organizations will tolerate; it
-  decides none of that.
+- **The concrete configuration shape**, decided and built separately: the
+  invitation names the inviter's relay, and both parties derive its credential
+  from the shared secret
+  ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-invitations-relay-locator)).
+  How a credential-service endpoint would authenticate a partner is not
+  decided, and `ice_provision` is refused.
 - **The browser-side relay entry**, a disclosure decision the relay record
   raises.
 - **Delivery at rendezvous**, which would be a protocol change and belongs to
@@ -504,7 +527,6 @@ browser's relay entry can come only from the deployment.
 | Whether a gateway gives a new subdomain its parent domain's category | A gateway vendor's statement, or a test against one |
 | Whether a TURN relay's operator is a HIPAA conduit for a given exchange | The deploying agency's own determination; no guidance found names TURN |
 | How long each managed vendor keeps relay metadata | The vendors' answers; none of their documentation states a period |
-| Whether the reference relay writes per-session usage lines | A relayed exchange against it with its logging checked |
 | Whether Twilio offers TLS on 443 in its credential response | A live credential response; its examples show TCP only |
 | The scope of Cloudflare's and AWS's HIPAA coverage for their relays | Each vendor's confirmation |
 | What HHS's 405(d) practices (2023 edition), NIST SP 800-66 Rev. 2, the CalHHS Data Exchange Framework safeguards policy, and the Medi-Cal managed care contract's security exhibit say on relay egress and log retention | A read of each primary text; only secondary summaries were reached in the time box |

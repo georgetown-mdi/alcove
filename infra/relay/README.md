@@ -36,6 +36,42 @@ data path. A party that will not accept a relay it does not operate can run this
 one itself, which is the whole reason a self-hosted reference exists beside the
 managed option.
 
+## What a relay from this template logs, keeps, and does
+
+For an operator to give a partner's security team. It covers a relay installed
+from this directory unmodified. A changed setting, and anything the host adds,
+such as log forwarding or backups, is the operator's to state.
+
+- **coturn logs no successful session** and no byte or packet count. It logs a
+  failed login with the credential's username, a refused peer address, and a
+  socket error with the client's address and port
+  ([measured](../../docs/notes/webrtc-relay-deployment.md#what-the-relay-host-keeps)).
+  Setting: `log-file=stdout` and no `verbose` in
+  [`turnserver.conf.tmpl`](turnserver.conf.tmpl). Check:
+  [`scripts/relay-logging-posture.test.mjs`](../../scripts/relay-logging-posture.test.mjs).
+- **The registrar**, where the host runs one, logs one line for each request
+  and one for each key it registers or revokes, with no IP address, key or
+  token. Setting: [`registrar.py`](registrar.py). Check:
+  [`scripts/relay-exchange-keys.test.mjs`](../../scripts/relay-exchange-keys.test.mjs).
+- **The 443 front** writes no access log; its error log keeps warnings and
+  above, which can name a client's address. Setting: `access_log off` and
+  `error_log /dev/stderr warn` in [`front.conf.tmpl`](front.conf.tmpl). Check:
+  [`scripts/relay-front.test.mjs`](../../scripts/relay-front.test.mjs).
+- **Every line is kept** in the host's journal and deleted about 90 days after
+  the newest entry in its file, or sooner at journald's default size limits.
+  Setting: [`journald-alcove-relay.conf`](journald-alcove-relay.conf),
+  installed by `install.sh`. Check: `scripts/relay-logging-posture.test.mjs`.
+- **The relay refuses to reach private, loopback and link-local addresses**,
+  the cloud metadata endpoint among them. Setting: the `denied-peer-ip` lines
+  in `turnserver.conf.tmpl`. Check: `scripts/relay-front.test.mjs`, and
+  `verify.sh` against the running relay daily.
+- **443 refuses TLS below 1.2.** Setting: `ssl_protocols` in
+  `front.conf.tmpl`. Check: `scripts/relay-front.test.mjs`, and `verify.sh`
+  daily.
+
+Turning on coturn's `verbose` for an incident adds each session's client
+address and byte counts, and this section does not describe that relay.
+
 ## Design records and tests
 
 This reference is verified this far, and a claim beyond it is one to check in

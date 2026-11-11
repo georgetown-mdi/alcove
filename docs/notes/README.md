@@ -90,7 +90,7 @@ a restatement.
 | [site-layout.md](site-layout.md) | A layout for the site's sources | built |
 | [standing-relay-delivery.md](standing-relay-delivery.md) | How the standing relay is delivered | built |
 | [terms-comparison.md](terms-comparison.md) | Comparing the two parties' linkage terms | built |
-| [turn-provisioning-governance.md](turn-provisioning-governance.md) | TURN provisioning against partners' governance | open |
+| [turn-provisioning-governance.md](turn-provisioning-governance.md) | TURN provisioning against partners' governance | built |
 | [vendored-broker-rewrite.md](vendored-broker-rewrite.md) | Keeping the vendored PeerJS broker rather than rewriting it | built |
 | [wasm-parallel-evaluation.md](wasm-parallel-evaluation.md) | Parallelizing the WebAssembly PSI backend | built |
 | [web-server-runtime-role.md](web-server-runtime-role.md) | The web server's runtime role | built |
