@@ -9,7 +9,7 @@ The relay is first-party and fixed-target, by the maintainer's ruling of 2026-10
 Spike S8 drove three browser SSH clients: `@microsoft/dev-tunnels-ssh` passed with three additions in the spike's own code, `ssh2` bundled for the browser passed only against a server that also offers an ECDSA host key, and `@verdigris/libssh2.js` failed.
 The browser SSH client is `@microsoft/dev-tunnels-ssh`, chosen by the maintainer on 2026-10-29 and conditional on a dependency check and a sizing, measured on 2026-10-30: the licence check passes, the maintenance check does not, and the client is sized ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
 Its session layer is built (`apps/web/src/psi/transport/browserSsh/`), with `diffie-hellman` stubbed and ECDH the only key exchange offered, and completes a session through the relay against OpenSSH's sshd, measured on 2026-11-11 ([What it adds to the browser bundle](#what-it-adds-to-the-browser-bundle)).
-No shipped page loads it, and the SFTP client over it is not built.
+The SFTP client over it is built, and no shipped page loads either.
 The note frames what a browser SFTP path would need, recommends where it can, and lists the choices left open for the maintainer.
 Nothing here is normative: the channel-security rules are in
 [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it),
@@ -23,8 +23,8 @@ See [docs/notes/README.md](README.md)._
 
 A browser cannot open a raw TCP connection, so a browser party that wants to reach an SFTP server needs a WebSocket-to-TCP proxy between them
 ([COMMUNICATION.md](../COMMUNICATION.md#websocket-to-tcp-proxy)).
-No browser SFTP client is built.
-The proxy is, as the first-party SFTP relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)), with no client that uses it:
+The browser SFTP client is built, and no page loads it yet.
+The proxy is, as the first-party SFTP relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)), with no page that uses it:
 
 - The public web application runs WebRTC exchanges only.
   For the SFTP and shared-folder channels it writes an exchange file the command line application runs
@@ -281,7 +281,7 @@ In total: 11 request types (INIT, OPEN, CLOSE, READ, WRITE, OPENDIR, READDIR, RE
 S8's client sent five of them: INIT, OPEN, WRITE, READ and CLOSE.
 The CLI adapter sets no SFTP packet-length bound of its own; the listing bound leans on the SSH transport's maximum packet size for one READDIR reply ([TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#directory-listing-bound)).
 The browser's SFTP client (`apps/web/src/psi/transport/browserSsh/sftp/`) sends these requests and reads these replies over the channel the SSH client opens; no page loads it yet.
-It reassembles SFTP packets from channel data itself, and each packet declares its own length, so it caps that length at the DATA reply to its largest READ, 261,129 bytes ([TRANSPORT_BOUNDS.md, Browser SFTP packet bound](../spec/TRANSPORT_BOUNDS.md#browser-sftp-packet-bound)).
+It reassembles SFTP packets from channel data itself, and each packet declares its own length, so it caps that length at the DATA reply to its largest READ ([TRANSPORT_BOUNDS.md, Browser SFTP packet bound](../spec/TRANSPORT_BOUNDS.md#browser-sftp-packet-bound)).
 That cap is a frame-size control, which puts the SFTP client under security review in its own right.
 The bounds in the table above are the file transport's, not the SFTP client's.
 

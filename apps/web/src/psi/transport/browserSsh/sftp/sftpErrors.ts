@@ -88,7 +88,7 @@ export class SftpFailureError extends SftpStatusError {
       serverMessage,
       operation,
       `The SFTP server could not complete the ${describe(operation)}${withServerMessage(serverMessage)}. ` +
-        "Check that the path is in the state the operation needs, then try again.",
+        "Check the path on the server, for example that a file being created or renamed to does not already exist, then try again.",
     );
   }
 }
@@ -136,8 +136,8 @@ export class SftpProtocolError extends Error {
   override readonly name = "SftpProtocolError";
   constructor(readonly detail: string) {
     super(
-      `The SFTP server sent a reply this client cannot accept (${detail}), so the session was ended. ` +
-        "Connect again; if it repeats, ask the server's administrator to check the server.",
+      `The SFTP server sent a packet this client cannot read (${detail}), so the session was ended. ` +
+        "If it happens again, give this message to the server's administrator.",
     );
   }
 }
@@ -151,7 +151,7 @@ export class SftpPacketTooLargeError extends Error {
   ) {
     super(
       `The SFTP server sent a packet of ${declaredLength} bytes, over this client's limit of ${maxLength}, so the session was ended. ` +
-        "Connect again; if it repeats, the server is not one this client can use.",
+        `Give this message to the server's administrator: the server must send packets of at most ${maxLength} bytes to be used from the browser.`,
     );
   }
 }
