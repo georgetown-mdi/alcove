@@ -53,4 +53,17 @@ export const REPRESENTATIVE_FAILURE_CAUSES: {
     matchCount: 9_000_000,
     limitMatches: 8_388_607,
   },
+  "shared-secret-unusable": {
+    kind: "shared-secret-unusable",
+    problem: "expired",
+    expires: "2026-07-08T19:32:00.000Z",
+    stage: "before-handshake",
+  },
+  "partner-stopped-at-matching": { kind: "partner-stopped-at-matching" },
+  "message-write-unconfirmed": {
+    kind: "message-write-unconfirmed",
+    failure: "sequence-spent",
+    seq: 4,
+  },
+  "shared-name-at-entry": { kind: "shared-name-at-entry" },
 };

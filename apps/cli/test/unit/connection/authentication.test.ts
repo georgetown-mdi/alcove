@@ -198,7 +198,7 @@ test("authentication throws for a token that is not 43 base64url characters", as
       { history: [] },
     ),
   ).rejects.toThrow(
-    "the key file's sharedSecret must be a base64url-encoded 32-byte value",
+    "The key file's sharedSecret is not a base64url-encoded 32-byte value",
   );
 });
 
@@ -211,7 +211,7 @@ test("authentication throws for a token containing non-base64url characters", as
       history: [],
     }),
   ).rejects.toThrow(
-    "the key file's sharedSecret must be a base64url-encoded 32-byte value",
+    "The key file's sharedSecret is not a base64url-encoded 32-byte value",
   );
 });
 
@@ -226,7 +226,7 @@ test("authentication throws for a token with valid base64url characters but wron
       history: [],
     }),
   ).rejects.toThrow(
-    "the key file's sharedSecret must be a base64url-encoded 32-byte value",
+    "The key file's sharedSecret is not a base64url-encoded 32-byte value",
   );
 });
 

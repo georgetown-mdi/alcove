@@ -270,6 +270,18 @@ test("every emitted cause passes the allowlist a consumer checks it against", ()
       matchCount: 5,
       limitMatches: 4,
     },
+    { kind: "shared-secret-unusable", problem: "malformed" },
+    {
+      kind: "shared-secret-unusable",
+      problem: "expired",
+      expires: "2026-07-08T19:32:00.000Z",
+      stage: "before-next-saved",
+    },
+    { kind: "partner-stopped-at-matching" },
+    { kind: "message-write-unconfirmed", failure: "rename-unconfirmed" },
+    { kind: "message-write-unconfirmed", failure: "write-incomplete" },
+    { kind: "message-write-unconfirmed", failure: "sequence-spent", seq: 4 },
+    { kind: "shared-name-at-entry" },
   ];
   expect(new Set(emitted.map((cause) => cause.kind))).toEqual(
     new Set(FAILURE_CAUSE_KINDS),

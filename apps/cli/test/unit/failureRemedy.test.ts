@@ -115,6 +115,21 @@ const SAMPLES: {
     },
   ],
   "matches-over-limit": [{ kind: "matches-over-limit", list: "grouping" }],
+  "shared-secret-unusable": [
+    { kind: "shared-secret-unusable", problem: "malformed" },
+    {
+      kind: "shared-secret-unusable",
+      problem: "expired",
+      expires: "2026-07-08T19:32:00.000Z",
+      stage: "before-next-saved",
+    },
+  ],
+  "partner-stopped-at-matching": [{ kind: "partner-stopped-at-matching" }],
+  "message-write-unconfirmed": [
+    { kind: "message-write-unconfirmed", failure: "rename-unconfirmed" },
+    { kind: "message-write-unconfirmed", failure: "sequence-spent", seq: 4 },
+  ],
+  "shared-name-at-entry": [{ kind: "shared-name-at-entry" }],
 };
 
 const ARRIVAL_WAITS: ArrivalWait[] = ["exchange", "online-invitation"];
@@ -182,6 +197,47 @@ test("a single-pass refusal and a matched-list refusal state core's sentence wit
       "told your partner.\nThis usually means many records on both sides " +
       "share a key value. Use a more distinctive key or split the data into " +
       "smaller batches.",
+  );
+});
+
+test("an unusable shared secret states core's sentence with the new-invitation step beneath", () => {
+  const remedy =
+    "Ask your partner for a new invitation, or create one with 'alcove " +
+    "invite' and have your partner accept it.";
+  expect(rendered(SAMPLES["shared-secret-unusable"][0])).toBe(
+    "The key file's sharedSecret is not a base64url-encoded 32-byte value " +
+      `(43 base64url characters).\n${remedy}`,
+  );
+  expect(rendered(SAMPLES["shared-secret-unusable"][1])).toBe(
+    "The shared secret expired at 2026-07-08T19:32:00.000Z, before the next " +
+      `one was saved.\n${remedy}`,
+  );
+});
+
+test("a partner stop at matching and an unconfirmed write state core's remedy beneath", () => {
+  expect(rendered(SAMPLES["partner-stopped-at-matching"][0])).toBe(
+    "Matching could not start because your partner's run stopped.\nMake " +
+      "sure you both run the current version of Alcove, then run the " +
+      "exchange again.",
+  );
+  expect(rendered(SAMPLES["message-write-unconfirmed"][1])).toBe(
+    "Cannot send: sequence number 4 was spent on a write the transport could " +
+      "not confirm, so the partner may already hold a message under it.\n" +
+      "Re-run the exchange in a clean directory; both parties must start the " +
+      "new exchange fresh.",
+  );
+});
+
+test("a file of this side's name at entry names peer_id and the sweep flag", () => {
+  expect(rendered(SAMPLES["shared-name-at-entry"][0])).toBe(
+    "The exchange directory holds a hello file with this side's name, so " +
+      "this run takes it for its own leftover.\n" +
+      "The likely cause is that both parties set the same peer_id: set a " +
+      "different peer_id on one side, changing its text rather than only " +
+      "fields such as %Y or %K. If instead the listed files are left over " +
+      "from an earlier run of this party, remove them after confirming no " +
+      "other session is using this path, or re-run with " +
+      "--sweep-exchange-files to clear every protocol file.",
   );
 });
 

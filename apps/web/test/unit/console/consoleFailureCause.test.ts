@@ -22,6 +22,10 @@ import {
   PEER_TIMEOUT_LABEL,
 } from "@console/connectionTuningModel";
 import {
+  RUN_DIAGNOSTICS_HEADING,
+  SWEEP_CONTROL_LABEL,
+} from "@psi/runDiagnosticsModel";
+import {
   RelayedSelfExplainingError,
   RelayedTerminalError,
 } from "@psi/jobClient/serverJobExchangeDriver";
@@ -134,6 +138,21 @@ const SAMPLES: {
     },
   ],
   "matches-over-limit": [{ kind: "matches-over-limit", list: "grouping" }],
+  "shared-secret-unusable": [
+    { kind: "shared-secret-unusable", problem: "malformed" },
+    {
+      kind: "shared-secret-unusable",
+      problem: "expired",
+      expires: "2026-07-08T19:32:00.000Z",
+      stage: "before-handshake",
+    },
+  ],
+  "partner-stopped-at-matching": [{ kind: "partner-stopped-at-matching" }],
+  "message-write-unconfirmed": [
+    { kind: "message-write-unconfirmed", failure: "write-incomplete" },
+    { kind: "message-write-unconfirmed", failure: "sequence-spent", seq: 4 },
+  ],
+  "shared-name-at-entry": [{ kind: "shared-name-at-entry" }],
 };
 
 /** A relayed failure as the job client builds it off the CLI's event. */
@@ -170,8 +189,115 @@ describe("a console run that failed on a catalog cause", () => {
     expect(failure.message).not.toContain("the CLI's text");
     expect(failure.reportedCause).toBeUndefined();
     expect(failure.title).not.toBe("Exchange failed");
-    expect(failure.retry).toBe("offered");
+    expect(failure.retry).toBe(
+      cause.kind === "partner-stopped-at-matching" ? "withheld" : "offered",
+    );
   });
+
+  test("an unusable shared secret asks for a new invitation without naming a command", () => {
+    const [malformed, expired] = SAMPLES["shared-secret-unusable"];
+    const step =
+      "Ask your partner for a new invitation, or start over and create one " +
+      "for your partner to accept.";
+    const shown = (cause: FailureCause) =>
+      failureFor(
+        "exchange",
+        relayed("the CLI's text", { failureCause: cause, exitCode: 69 }),
+      );
+    expect(shown(malformed)).toMatchObject({
+      title: "This invitation's shared secret is not valid",
+      message: `${failureCauseSentence(malformed)} ${step}`,
+    });
+    expect(shown(expired)).toMatchObject({
+      title: "This invitation can no longer be used",
+      message: `The shared secret expired at 2026-07-08T19:32:00.000Z. ${step}`,
+    });
+    expect(shown(expired).message).not.toContain("alcove invite");
+  });
+
+  test("a partner stop at matching keeps the partner-refusal disposition", () => {
+    const failure = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["partner-stopped-at-matching"][0],
+        exitCode: 69,
+      }),
+    );
+    expect(failure).toMatchObject({
+      title: "Matching could not start",
+      message:
+        "Matching could not start because your partner's run stopped. Make " +
+        "sure you both run the current version of Alcove, then run the " +
+        "exchange again.",
+      category: "config",
+      settingsCannotResolve: true,
+      retry: "withheld",
+    });
+  });
+
+  test("a file of this side's name at entry names the name control and the sweep control", () => {
+    const failure = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["shared-name-at-entry"][0],
+        exitCode: 64,
+      }),
+      { channel: "filedrop" },
+    );
+    expect(failure.title).toBe("Both sides may be using the same name");
+    expect(failure.message).toBe(
+      "The exchange directory holds a hello file with this side's name, so " +
+        "this run takes it for its own leftover. The likely cause is that " +
+        'both sides set the same name: change "Name for this side" under ' +
+        '"How files are handled" so the two names differ. If instead the ' +
+        "listed files are left over from an earlier run of this side, remove " +
+        "them after confirming no other session is using this folder, or " +
+        `turn on "${SWEEP_CONTROL_LABEL}" under "${RUN_DIAGNOSTICS_HEADING}", ` +
+        "then run again.",
+    );
+    expect(failure.sharedName).toBe(true);
+  });
+
+  // The CLI writes its remedy beneath the chain, and the relay escapes that
+  // break into the last link: the report ends before it.
+  test.each([
+    [
+      "an unconfirmed write",
+      { kind: "message-write-unconfirmed", failure: "rename-unconfirmed" },
+      "the file may or may not have reached the partner. Destination: " +
+        "/x/a-1.json",
+      "Re-run the exchange in a clean directory; both parties must start " +
+        "the new exchange fresh.",
+    ],
+    [
+      "a file of this side's name at entry",
+      { kind: "shared-name-at-entry" },
+      "1 unexpected protocol file(s) in /x: site-hello-0.json",
+      "The likely cause is that both parties set the same peer_id: set a " +
+        "different peer_id on one side, changing its text rather than only " +
+        "fields such as %Y or %K. If instead the listed files are left over " +
+        "from an earlier run of this party, remove them after confirming no " +
+        "other session is using this path, or re-run with " +
+        "--sweep-exchange-files to clear every protocol file.",
+    ],
+  ] as const)(
+    "%s, relayed as the CLI reports it, keeps the chain and shows no escaped break",
+    (_, cause, link, cliRemedy) => {
+      const cliMessage = `${failureCauseSentence(cause)}\ncaused by: ${link}\n${cliRemedy}`;
+      const relayedMessage = joinErrorCauseChain(
+        sanitizeErrorChainLinks(cliMessage),
+      );
+      expect(relayedMessage).toContain("\\x0a");
+      const failure = failureFor(
+        "exchange",
+        relayed(relayedMessage, { failureCause: cause, exitCode: 64 }),
+      );
+      expect(failure.reportedCause).toBe(link);
+      expect(`${failure.message}\n${failure.reportedCause}`).not.toContain(
+        "x0a",
+      );
+    },
+  );
 
   // The CLI's suite drives the same causes (runEndingRemedy.test.ts) and holds
   // its message to core's sentence first, so the two state the cause alike.

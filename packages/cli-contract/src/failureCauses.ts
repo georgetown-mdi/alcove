@@ -179,6 +179,27 @@ export const FAILURE_CAUSE_STREAM_FIELDS: {
     kind: "matches-over-limit",
     ...matchesFailureFields(cause),
   }),
+  "shared-secret-unusable": (cause) =>
+    cause.problem === "malformed"
+      ? { kind: "shared-secret-unusable", problem: cause.problem }
+      : {
+          kind: "shared-secret-unusable",
+          problem: cause.problem,
+          expires: redactAndSanitizeForDisplay(cause.expires),
+          stage: cause.stage,
+        },
+  "partner-stopped-at-matching": () => ({
+    kind: "partner-stopped-at-matching",
+  }),
+  "message-write-unconfirmed": (cause) =>
+    cause.failure === "sequence-spent"
+      ? {
+          kind: "message-write-unconfirmed",
+          failure: cause.failure,
+          seq: toStreamCount(cause.seq),
+        }
+      : { kind: "message-write-unconfirmed", failure: cause.failure },
+  "shared-name-at-entry": () => ({ kind: "shared-name-at-entry" }),
 };
 
 /** Every cause kind the stream states: the keys of {@link FAILURE_CAUSE_STREAM_FIELDS}. */

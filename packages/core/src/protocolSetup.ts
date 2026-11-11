@@ -32,7 +32,7 @@ import {
   MAX_RECORD_COUNT,
 } from "./connection/frameSize";
 import { fromBase64Url, randomBytes, toBase64Url } from "./utils/crypto";
-import { NEW_INVITATION_REMEDY, isExpired } from "./auth";
+import { isExpired, sharedSecretUnusableError } from "./auth";
 import {
   WRAPPED_ROTATION_VALUE_BYTES,
   deriveNextSecret,
@@ -56,7 +56,6 @@ import {
   InternalConsistencyError,
   PartnerProtocolRefusalError,
   ProtocolRefusalError,
-  markStatesItsOwnNextStep,
 } from "./errors";
 import type { OlderVersionSide } from "./errors";
 import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
@@ -975,12 +974,12 @@ async function refuseIfSecretExpired(
 ): Promise<void> {
   if (expires === undefined || !isExpired(expires, Date.now())) return;
   await sendTermsAbort(conn, [SHARED_SECRET_EXPIRED_ABORT_REASON], abortTerms);
-  throw markStatesItsOwnNextStep(
-    new Error(
-      `the shared secret expired at ${expires}, before the next one was ` +
-        `saved. ${NEW_INVITATION_REMEDY}`,
-    ),
-  );
+  throw sharedSecretUnusableError({
+    kind: "shared-secret-unusable",
+    problem: "expired",
+    expires,
+    stage: "before-next-saved",
+  });
 }
 
 /** Await `rotation.store`, telling the partner when it fails. */

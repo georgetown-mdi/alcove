@@ -264,14 +264,14 @@ const CAUSE_CHAIN_SEPARATOR = joinErrorCauseChain(["", ""]);
 const RELAYED_LINE_BREAK = sanitizeForDisplay("\n");
 
 /**
- * What the CLI's report of a refused set adds to core's sentence and the
+ * What the CLI's report of a catalog cause adds to core's sentence and the
  * remedy the console shows beside it: the cause chain behind the sentence,
  * without the remedy line the CLI writes beneath it. The relay escapes that
  * line's break into the chain's last link and may cut the remedy after it, so
  * the last link ends at its first escaped break, before the links are escaped
  * for display. Empty where the report holds no chain.
  */
-function setOverLimitReport(error: RelayedTerminalError): string {
+function causeChainReport(error: RelayedTerminalError): string {
   const reported = error.message;
   const lastLinkAt = reported.lastIndexOf(CAUSE_CHAIN_SEPARATOR);
   if (lastLinkAt === -1) return "";
@@ -873,14 +873,23 @@ function failureContentFor(
   ) {
     const cause = error.failureCause;
     return {
-      category,
+      // The partner's run stopped: a retry and a settings change both meet
+      // it again, as for any other partner refusal.
+      ...(cause.kind === "partner-stopped-at-matching"
+        ? { category: "config" as const, settingsCannotResolve: true as const }
+        : { category }),
       ...consoleFailureForCause(cause, { thisSideNamed }),
-      ...(cause.kind === "partner-never-arrived" && cause.sharedName === true
+      ...((cause.kind === "partner-never-arrived" &&
+        cause.sharedName === true) ||
+      cause.kind === "shared-name-at-entry"
         ? { sharedName: true }
         : {}),
-      // Why the count failed is in the CLI's report alone.
-      ...(cause.kind === "set-over-limit" && cause.limit === "uncounted"
-        ? reportedCauseFields(setOverLimitReport(error))
+      // What only the CLI's report states: why the count failed, the
+      // transport's own error, or the files the entry check found.
+      ...((cause.kind === "set-over-limit" && cause.limit === "uncounted") ||
+      cause.kind === "message-write-unconfirmed" ||
+      cause.kind === "shared-name-at-entry"
+        ? reportedCauseFields(causeChainReport(error))
         : {}),
     };
   }

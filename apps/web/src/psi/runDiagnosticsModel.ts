@@ -23,6 +23,9 @@ export const RUN_DIAGNOSTICS_DEFAULT: RunDiagnosticsDraft = {
   sweepConfirmed: false,
 };
 
+/** The card's heading, which the console's shared-name remedy quotes. */
+export const RUN_DIAGNOSTICS_HEADING = "Diagnostics and recovery";
+
 /** The sweep control's visible label, which the rendezvous preflight's
  * leftover-files warning quotes. */
 export const SWEEP_CONTROL_LABEL =

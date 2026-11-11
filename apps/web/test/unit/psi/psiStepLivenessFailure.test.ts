@@ -2,7 +2,6 @@ import {
   ConnectionError,
   LOCAL_FAULT_ABORT_REASON,
   OLDER_PARTNER_AT_MATCHING_MESSAGE,
-  PARTNER_STOPPED_AT_MATCHING_MESSAGE,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   PeerAbortError,
   failureCauseSentence,
@@ -76,10 +75,14 @@ function olderPartnerError(): Error {
  * local-fault abort, built as the still-working layer builds it, bare and
  * behind the transport wrap the message bridge adds. */
 function stopAtMatchingStartErrors(): Array<Error> {
+  const cause = { kind: "partner-stopped-at-matching" } as const;
   const bare = markStatesItsOwnNextStep(
-    new PartnerProtocolRefusalError(PARTNER_STOPPED_AT_MATCHING_MESSAGE, {
-      cause: new PeerAbortError({}, LOCAL_FAULT_ABORT_REASON),
-    }),
+    markFailureCause(
+      new PartnerProtocolRefusalError(failureCauseSentence(cause), {
+        cause: new PeerAbortError({}, LOCAL_FAULT_ABORT_REASON),
+      }),
+      cause,
+    ),
   );
   return [
     bare,

@@ -39,6 +39,7 @@ export type { ConnectionErrorKind } from "./errors";
 export { annotate, annotationKey, annotationOf } from "./failureAnnotation";
 export { ISSUES_URL, PROJECT_SITE_URL, SOURCE_CODE_URL } from "./projectLinks";
 export {
+  CLEAN_DIRECTORY_RESTART_REMEDY,
   FAILURE_CAUSE_PATH_MAX_LENGTH,
   failureCauseFromUntrusted,
   failureCauseOf,
@@ -46,6 +47,7 @@ export {
   formatWaitDuration,
   markFailureCause,
   MATCHES_OVER_LIMIT_REMEDY,
+  PARTNER_STOPPED_AT_MATCHING_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   relayRegistrarUnreachableRemedy,
   setOverLimitError,
@@ -59,10 +61,12 @@ export type {
   FolderMissingCode,
   IgnoredUnansweredHello,
   MatchesOverLimitFailure,
+  MessageWriteUnconfirmedFailure,
   RelayRegistrarUnreachableFailure,
   RoundSetScope,
   SetOverLimitFailure,
   SetOverLimitStage,
+  SharedSecretUnusableFailure,
   SinglePassOverLimitFailure,
 } from "./failureCause";
 export {
@@ -195,8 +199,6 @@ export {
   OLDER_PARTNER_AT_MATCHING_MESSAGE,
   PARTNER_PROGRESS_MIN_GAP_MS,
   PARTNER_SILENCE_BOUND_MS,
-  PARTNER_STOPPED_AT_MATCHING_MESSAGE,
-  PARTNER_STOPPED_AT_MATCHING_REMEDY,
   STILL_WORKING_INTERVAL_MS,
 } from "./exchange/stillWorking";
 export type { PartnerProgressReporter } from "./exchange/stillWorking";

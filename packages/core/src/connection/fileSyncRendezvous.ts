@@ -551,11 +551,6 @@ function isOwnPatternHelloName(
   return id !== undefined && isOwnId(id);
 }
 
-const SHARED_PEER_ID_LIKELY_CAUSE =
-  "The likely cause is that both parties set the same peer_id: set a " +
-  "different peer_id on one side, changing its text rather than only " +
-  "fields such as %Y or %K.";
-
 // The writer id of a hello or joining sentinel a scan has already matched by
 // name, so it parses.
 const controlWriterId = (name: string): string =>
@@ -1493,16 +1488,13 @@ export class FileSyncRendezvous {
         ({ file, dir }) =>
           dir === inboundPath && isOwnPatternHelloName(file.name, deps.isOwnId),
       );
-      if (unexpectedProtocol.length > 0)
-        throw entryGuardRefusal(
+      if (unexpectedProtocol.length > 0) {
+        // The shared-name refusal is a catalog cause: each app's remedy map
+        // names its setting and its way to clear the files.
+        const sharedName = { kind: "shared-name-at-entry" } as const;
+        const refusal = entryGuardRefusal(
           holdsOwnPatternHello
-            ? "the exchange directory holds a hello file whose id fits this " +
-                "party's own peer_id, so this run takes it for its own " +
-                `leftover. ${SHARED_PEER_ID_LIKELY_CAUSE} If instead the ` +
-                "listed files are left over from an earlier run of this " +
-                "party, remove them after confirming no other session is " +
-                "using this path, or re-run with --sweep-exchange-files to " +
-                "clear every protocol file."
+            ? failureCauseSentence(sharedName)
             : "the exchange directory must be empty except for a single " +
                 "peer hello, but holds unexpected protocol files. Remove them " +
                 "after confirming no other session is using this path, or " +
@@ -1515,6 +1507,10 @@ export class FileSyncRendezvous {
           dirsDisplay,
           unexpectedProtocol.map((e) => e.file.name),
         );
+        throw holdsOwnPatternHello
+          ? markFailureCause(refusal, sharedName)
+          : refusal;
+      }
 
       if (peerHellos.length > 1)
         throw entryGuardRefusal(

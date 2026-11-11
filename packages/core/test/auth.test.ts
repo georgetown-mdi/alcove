@@ -8,6 +8,7 @@ import {
   deriveAeadKey,
 } from "../src/auth";
 import { createMessagePipe } from "../src/connection/messageConnection";
+import { failureCauseOf, failureCauseSentence } from "../src/failureCause";
 import type { MessageConnection } from "../src/connection/messageConnection";
 import { EncryptedMessageConnection } from "../src/connection/encryptedMessageConnection";
 import type { Authentication } from "../src/config/connection";
@@ -120,18 +121,25 @@ test("both pre-handshake refusals mark themselves as having emitted a recovery h
   }
 });
 
-test("both pre-handshake refusals end on the step they mark themselves as stating", () => {
+test("both pre-handshake refusals state core's sentence, tagged with the cause each app's remedy map words", () => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW_MS);
-  // Written out rather than imported: a comparison against the imported
-  // constant passes whatever text the constant has.
-  const remedy =
-    "Ask your partner for a new invitation, or create one with 'alcove " +
-    "invite' and have your partner accept it.";
-  for (const authentication of [
-    { sharedSecret: "" },
-    authenticationExpiringAt(0),
-  ]) {
+  const expires = new Date(NOW_MS).toISOString();
+  for (const [authentication, cause] of [
+    [
+      { sharedSecret: "" },
+      { kind: "shared-secret-unusable", problem: "malformed" },
+    ],
+    [
+      authenticationExpiringAt(0),
+      {
+        kind: "shared-secret-unusable",
+        problem: "expired",
+        expires,
+        stage: "before-handshake",
+      },
+    ],
+  ] as const) {
     let thrown: unknown;
     try {
       assertSharedSecretReadyForHandshake(authentication);
@@ -139,7 +147,9 @@ test("both pre-handshake refusals end on the step they mark themselves as statin
       thrown = err;
     }
     expect(thrown).toBeInstanceOf(Error);
-    expect((thrown as Error).message.endsWith(`. ${remedy}`)).toBe(true);
+    expect(failureCauseOf(thrown)).toEqual(cause);
+    expect((thrown as Error).message).toBe(failureCauseSentence(cause));
+    expect(statesItsOwnNextStep(thrown)).toBe(true);
   }
 });
 

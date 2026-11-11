@@ -8,6 +8,7 @@ import {
   PartnerProtocolRefusalError,
   PeerAbortError,
 } from "../errors.js";
+import { failureCauseSentence, markFailureCause } from "../failureCause.js";
 import {
   connectionLayer,
   isPartnerAbortFrame,
@@ -66,23 +67,6 @@ const STILL_WORKING_FRAME_BYTES: ReadonlyArray<number> = [
 export const OLDER_PARTNER_AT_MATCHING_MESSAGE =
   "Matching could not start, most likely because your partner runs an " +
   "older version of Alcove. Ask them to update Alcove, then run again.";
-
-/**
- * What to do after a partner's first frame of the PSI phase was its
- * local-fault abort. An older build sends one after reading this party's first
- * still-working frame as a protocol error, and a partner on this build sends
- * one when its run faults before its first still-working frame, so the step
- * names no party as the one to update.
- */
-export const PARTNER_STOPPED_AT_MATCHING_REMEDY =
-  "Make sure you both run the current version of Alcove, then run the " +
-  "exchange again.";
-
-/** The refusal of a partner whose first frame of the PSI phase is its
- * local-fault abort ({@link PARTNER_STOPPED_AT_MATCHING_REMEDY}). */
-export const PARTNER_STOPPED_AT_MATCHING_MESSAGE =
-  "Matching could not start because your partner's run stopped. " +
-  PARTNER_STOPPED_AT_MATCHING_REMEDY;
 
 function hasWorkingKey(frame: unknown): boolean {
   return (
@@ -326,12 +310,17 @@ export function stillWorkingLayer(
       if (
         abort instanceof PeerAbortError &&
         abort.partnerReason === LOCAL_FAULT_ABORT_REASON
-      )
+      ) {
+        const cause = { kind: "partner-stopped-at-matching" } as const;
         throw markStatesItsOwnNextStep(
-          new PartnerProtocolRefusalError(PARTNER_STOPPED_AT_MATCHING_MESSAGE, {
-            cause: abort,
-          }),
+          markFailureCause(
+            new PartnerProtocolRefusalError(failureCauseSentence(cause), {
+              cause: abort,
+            }),
+            cause,
+          ),
         );
+      }
     }
   };
 

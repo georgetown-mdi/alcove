@@ -9,12 +9,12 @@ import {
   TransportWriteIndeterminateError,
   UsageError,
   getLogger,
-  sanitizeErrorForDisplay,
 } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import { runProtocol, type ProtocolConnectionConfig } from "../../src/protocol";
 import { loadKeyFile, saveKeyFile } from "../../src/keyFile";
+import { renderFailureForOperator } from "../../src/util/exit";
 import { startInProcessSftpServer } from "../sftpServer";
 import { serverAuth } from "../sftpServer/testContext";
 import type { InProcessSftpServer } from "../sftpServer/types";
@@ -159,7 +159,7 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
       return { party, ok: true };
     } catch (error: unknown) {
       // exitWithError's two observable effects, minus the process.exit.
-      const rendered = sanitizeErrorForDisplay(error);
+      const rendered = renderFailureForOperator(error);
       getLogger(`${tag}-${party}`).error(rendered);
       return {
         party,
@@ -277,16 +277,14 @@ inProcessOnly(
       expect(writerOutput).not.toContain(GENERIC_RETRY_ADVISORY);
       expect(first.logs.join("\n")).not.toContain(GENERIC_RETRY_ADVISORY);
 
-      // The remedy reaches the operator whole. Asserted at the rendering
-      // boundary, which caps each link of the cause chain: the mark above is what
-      // makes this the only next step printed, so a remedy falling past the cap
-      // would leave no next step at all.
+      // The remedy reaches the operator whole, on its own line beneath the
+      // cause chain, and is the only next step printed.
+      expect(writer!.rendered!.split("\n").at(-1)).toBe(REMEDY);
       const [writeLink, ...causeLinks] =
         writer!.rendered!.split("\ncaused by: ");
       expect(writeLink).toContain(
-        "the message may or may not have reached the partner",
+        "The message may or may not have reached the partner",
       );
-      expect(writeLink).toContain(REMEDY);
       expect(writeLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
       // The transport's own rejection keeps its own link and its own budget, so
       // the destination and the SFTP status are still there.
