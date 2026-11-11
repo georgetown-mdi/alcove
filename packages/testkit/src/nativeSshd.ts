@@ -8,9 +8,50 @@ import { promisify } from "node:util";
 
 import { computeHostKeyFingerprint } from "@alcove/core/testing";
 
-import type { SftpServerHandle, SftpTestServer } from "./types";
-
 const execFileAsync = promisify(execFile);
+
+/** One client party's login to the native server. */
+export interface NativeSshdCredentials {
+  /** The OS user every key maps to. */
+  username: string;
+  /** The party's OpenSSH-format ed25519 private key. */
+  privateKey: string;
+  /** The server's host-key fingerprint, as `handle.hostKeyFingerprint`. */
+  hostKeyFingerprint: string;
+}
+
+/** The host-key types the backend can serve. */
+export type NativeSshdHostKeyType = "ed25519" | "ecdsa-p256";
+
+/** A running server's connection details, plain data a `provide` can pass. */
+export interface NativeSshdHandle {
+  /** Loopback host the server listens on. */
+  host: string;
+  /** Ephemeral port the server listens on. */
+  port: number;
+  usera: NativeSshdCredentials;
+  userb: NativeSshdCredentials;
+  /** The OpenSSH SHA256 fingerprint of the first host key the server serves. */
+  hostKeyFingerprint: string;
+  /** The fingerprint of each host key the server serves, by type. */
+  hostKeyFingerprints: Partial<Record<NativeSshdHostKeyType, string>>;
+  /** Host filesystem root the server serves. */
+  backingDir: string;
+  /** The same root as an SFTP path. */
+  remoteRoot: string;
+}
+
+/** A started native server. */
+export interface NativeSshdServer {
+  handle: NativeSshdHandle;
+  /**
+   * Append one `authorized_keys` line, which sshd reads again on each
+   * authentication attempt, so it takes effect on the next connection.
+   */
+  authorizeKey(line: string): Promise<void>;
+  /** Stop sshd and remove its keys and served directory. */
+  stop(): Promise<void>;
+}
 
 // The OpenSSH SHA256 host-key fingerprint from a `.pub` line ("ssh-ed25519
 // <base64-blob> comment"): the base64 blob is the SSH wire-format public key,
@@ -73,6 +114,13 @@ export const NATIVE_PROFILES: readonly NativeProfile[] = [
 export interface NativeSshdOptions {
   /** Which hardened configuration to run; defaults to `baseline`. */
   profile?: NativeProfile;
+  /** The host keys to serve, in order; defaults to `["ed25519"]`. */
+  hostKeyTypes?: ReadonlyArray<NativeSshdHostKeyType>;
+  /**
+   * sshd directives appended after the profile's, each validated with the rest
+   * by `sshd -t` before the server starts.
+   */
+  extraDirectives?: ReadonlyArray<string>;
 }
 
 // A modern, narrow crypto policy. Every entry intersects what the
@@ -228,12 +276,19 @@ function sshBannerReady(port: number, timeoutMs: number): Promise<boolean> {
   });
 }
 
-async function keygen(keyPath: string): Promise<void> {
-  // OpenSSH's own ed25519 keys parse back reliably (unlike ssh2's generator), and
+const KEYGEN_TYPE_ARGS: Record<NativeSshdHostKeyType, ReadonlyArray<string>> = {
+  ed25519: ["-t", "ed25519"],
+  "ecdsa-p256": ["-t", "ecdsa", "-b", "256"],
+};
+
+async function keygen(
+  keyPath: string,
+  type: NativeSshdHostKeyType = "ed25519",
+): Promise<void> {
+  // OpenSSH's own keys parse back reliably (unlike ssh2's generator), and
   // -N "" leaves them passphrase-free for unattended auth.
   await execFileAsync("ssh-keygen", [
-    "-t",
-    "ed25519",
+    ...KEYGEN_TYPE_ARGS[type],
     "-f",
     keyPath,
     "-N",
@@ -308,13 +363,19 @@ interface NativeAttempt {
  *
  * The hardened profiles layer additional sshd directives onto that same
  * backend, each run against the unchanged conformance suite.
- *
- * @internal exported for testing
  */
 export async function startNativeSshdServer(
   options: NativeSshdOptions = {},
-): Promise<SftpTestServer> {
+): Promise<NativeSshdServer> {
   const profile = options.profile ?? "baseline";
+  const hostKeyTypes = options.hostKeyTypes ?? ["ed25519"];
+  if (
+    hostKeyTypes.length === 0 ||
+    new Set(hostKeyTypes).size !== hostKeyTypes.length
+  )
+    throw new Error(
+      `hostKeyTypes must name at least one host-key type, each once; got ${JSON.stringify(hostKeyTypes)}`,
+    );
   const isChroot = profile === "chroot";
   if (isChroot) {
     const cap = chrootCapability();
@@ -368,11 +429,14 @@ export async function startNativeSshdServer(
       remoteRoot = backingDir;
     }
 
-    const hostKeyPath = path.join(workDir, "ssh_host_ed25519_key");
+    const hostKeyPaths = hostKeyTypes.map((type) =>
+      path.join(workDir, `ssh_host_${type}_key`),
+    );
+    const hostKeyPath = hostKeyPaths[0]!;
     const useraKeyPath = path.join(workDir, "usera_id_ed25519");
     const userbKeyPath = path.join(workDir, "userb_id_ed25519");
     await Promise.all([
-      keygen(hostKeyPath),
+      ...hostKeyTypes.map((type, index) => keygen(hostKeyPaths[index]!, type)),
       keygen(useraKeyPath),
       keygen(userbKeyPath),
     ]);
@@ -384,9 +448,13 @@ export async function startNativeSshdServer(
       fsp.readFile(`${userbKeyPath}.pub`, "utf8"),
     ]);
 
-    const hostKeyFingerprint = await hostKeyFingerprintFromPub(
-      `${hostKeyPath}.pub`,
-    );
+    const hostKeyFingerprints: Partial<Record<NativeSshdHostKeyType, string>> =
+      {};
+    for (const [index, type] of hostKeyTypes.entries())
+      hostKeyFingerprints[type] = await hostKeyFingerprintFromPub(
+        `${hostKeyPaths[index]!}.pub`,
+      );
+    const hostKeyFingerprint = hostKeyFingerprints[hostKeyTypes[0]!]!;
 
     const authorizedKeysPath = path.join(workDir, "authorized_keys");
     // One key per line with an explicit separator, rather than relying on
@@ -410,7 +478,7 @@ export async function startNativeSshdServer(
         : `AllowUsers ${osUser}`;
     const directives = [
       "ListenAddress 127.0.0.1",
-      `HostKey ${hostKeyPath}`,
+      ...hostKeyPaths.map((keyPath) => `HostKey ${keyPath}`),
       "LogLevel ERROR",
       "UsePAM no",
       "PasswordAuthentication no",
@@ -441,6 +509,13 @@ export async function startNativeSshdServer(
       if (await sshdSupportsPerSourcePenalties(sshd, hostKeyPath, workDir)) {
         directives.push("PerSourcePenalties yes");
       }
+    }
+    for (const directive of options.extraDirectives ?? []) {
+      if (/[\r\n]/.test(directive))
+        throw new Error(
+          `an extra sshd directive must be one line; got ${JSON.stringify(directive)}`,
+        );
+      directives.push(directive);
     }
     const configBody = `${directives.join("\n")}\n`;
 
@@ -509,17 +584,26 @@ export async function startNativeSshdServer(
     const jailToClean = jailDir;
     // Build the handle now the bound port is known, rather than constructing it
     // with a placeholder and mutating it inside the retry loop.
-    const handle: SftpServerHandle = {
+    const handle: NativeSshdHandle = {
       host: "127.0.0.1",
       port: boundPort,
       backingDir,
       remoteRoot,
       hostKeyFingerprint,
+      hostKeyFingerprints,
       usera: { username: osUser, privateKey: useraPriv, hostKeyFingerprint },
       userb: { username: osUser, privateKey: userbPriv, hostKeyFingerprint },
     };
     return {
       handle,
+      async authorizeKey(line: string) {
+        const trimmed = line.trim();
+        if (trimmed === "" || /[\r\n]/.test(trimmed))
+          throw new Error(
+            "authorizeKey takes exactly one non-empty authorized_keys line",
+          );
+        await fsp.appendFile(authorizedKeysPath, `${trimmed}\n`);
+      },
       async stop() {
         await new Promise<void>((resolve) => {
           if (child.exitCode !== null || child.signalCode !== null)

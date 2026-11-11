@@ -69,7 +69,7 @@ const SSH_DISCONNECT_PROTOCOL_ERROR = 2;
 // test/sftpServer/types.ts), which is what the recovery re-dial needs.
 
 // The native harness's restricted-crypto profile accepts only curve25519 key
-// exchanges (test/sftpServer/nativeSshdServer.ts), so under the forced verdict
+// exchanges (@alcove/testkit/nativeSshd), so under the forced verdict
 // above there is nothing both ends can perform. That is not a failure of the
 // constraint but the permanent incompatibility it exists to name, which the last
 // describe drives on purpose against a server of its own. A dial that has to

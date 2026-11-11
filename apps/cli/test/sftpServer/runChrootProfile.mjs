@@ -7,7 +7,7 @@
 // runner, where it detects root and runs the suite green.
 //
 // The capability check is duplicated here (kept trivially in sync with
-// chrootCapability() in nativeSshdServer.ts) so the skip happens before vitest
+// chrootCapability() in @alcove/testkit/nativeSshd) so the skip happens before vitest
 // and the native backend are ever loaded; the backend keeps its own check as a
 // fallback for a direct ALCOVE_SFTP_NATIVE_PROFILE=chroot invocation.
 import { spawn } from "node:child_process";

@@ -8,6 +8,7 @@
   "type": "module",
   "exports": {
     "./loopbackTlsCert": "./src/loopbackTlsCert.ts",
+    "./nativeSshd": "./src/nativeSshd.ts",
     "./preflightInventory": "./src/preflightInventory.ts",
     "./prerequisiteGate": "./src/prerequisiteGate.ts",
     "./waitFor": "./src/waitFor.ts"

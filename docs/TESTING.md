@@ -62,10 +62,18 @@ sudo --preserve-env=PATH env "PATH=$PATH" npm run test:integration:native-chroot
 ```
 
 The harness itself is `apps/cli/test/sftpServer/`: `index.ts` selects the backend
-from the environment, `inProcessServer.ts` and `nativeSshdServer.ts` implement
+from the environment, `inProcessServer.ts` and the native backend implement
 the two, `globalSetup.ts` starts and stops the selected one, and `testContext.ts`
 hands each test its connection details, per-party credentials, and rendezvous
-paths. The in-process backend adds two surfaces a real `sshd` cannot offer:
+paths. The native backend is `@alcove/testkit/nativeSshd`
+(`packages/testkit/src/nativeSshd.ts`), shared with the web browser suite's
+SSH client cases (see [Browser suite](#browser-suite)). Beyond the profiles it
+serves an ECDSA P-256 host key beside or instead of the ed25519 one, appends
+caller-supplied sshd directives (validated by `sshd -t` with the rest), and
+authorizes a client key while it runs, which sshd reads on the next
+authentication attempt; `apps/cli/test/integration/nativeSshdOptions.test.ts`
+drives each of the three.
+The in-process backend adds two surfaces a real `sshd` cannot offer:
 
 - Fault injection -- a malformed NAME or DATA packet, a request accepted and
   never answered, transient RENAME failures or every RENAME refused, a write
