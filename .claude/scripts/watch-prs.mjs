@@ -132,8 +132,8 @@ function displayName(check) {
 /**
  * The CI result on the head the rollup describes: `pending` while a check has
  * not completed or none is registered, else `green` or `red` with the failed
- * check names, sorted, and a fingerprint of the runs. Only each check name's
- * latest run counts, as GitHub matches a required check by name.
+ * check names, sorted, and a fingerprint of the runs. Only the latest run of
+ * each check counts, a check being a workflow's job name or a status context.
  */
 export function ciResult(rollup) {
   const checks = rollup ?? [];
@@ -149,17 +149,18 @@ export function ciResult(rollup) {
       conclusion = check.conclusion;
     }
     const name = displayName(check);
+    const identity = `${check.workflowName ?? ""}\t${name}`;
     const finished = check.completedAt ?? check.startedAt ?? "";
-    const previous = latest.get(name);
+    const previous = latest.get(identity);
     if (previous === undefined || finished >= previous.finished) {
-      latest.set(name, { conclusion, finished });
+      latest.set(identity, { name, conclusion, finished });
     }
   }
   const failed = new Set();
   const runs = [];
-  for (const [name, { conclusion, finished }] of latest) {
+  for (const [identity, { name, conclusion, finished }] of latest) {
     if (!PASSING_CONCLUSIONS.has(conclusion)) failed.add(name);
-    runs.push(`${name}\t${conclusion}\t${finished}`);
+    runs.push(`${identity}\t${conclusion}\t${finished}`);
   }
   const fingerprint = createHash("sha256")
     .update(runs.sort().join("\n"))

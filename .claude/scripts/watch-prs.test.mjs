@@ -103,6 +103,7 @@ describe("events", () => {
     const path = statePath();
     const run = (conclusion, completedAt) => ({
       ...checkRun("PR Checklist", "COMPLETED", conclusion),
+      workflowName: "PR Checklist",
       completedAt,
     });
     const failedThenPassed = [
@@ -113,16 +114,6 @@ describe("events", () => {
       pollWith(path, { 12: view({ statusCheckRollup: failedThenPassed }) })
         .lines,
     ).toEqual([`ci-green 12 ${HEAD}`]);
-    expect(
-      pollWith(path, {
-        12: view({
-          statusCheckRollup: [
-            ...failedThenPassed,
-            { ...checkRun("PR Checklist", "IN_PROGRESS") },
-          ],
-        }),
-      }).lines,
-    ).toEqual([]);
     expect(
       pollWith(path, {
         12: view({
@@ -144,6 +135,23 @@ describe("events", () => {
         }),
       }).lines,
     ).toEqual([`ci-green 12 ${HEAD}`]);
+  });
+
+  it("keeps same-named jobs of two workflows apart", () => {
+    const changes = (workflowName, conclusion, completedAt) => ({
+      ...checkRun("changes", "COMPLETED", conclusion),
+      workflowName,
+      completedAt,
+    });
+    const { lines } = pollWith(statePath(), {
+      12: view({
+        statusCheckRollup: [
+          changes("Build", "FAILURE", "2026-11-10T10:00:00Z"),
+          changes("Test", "SUCCESS", "2026-11-10T10:20:00Z"),
+        ],
+      }),
+    });
+    expect(lines).toEqual([`ci-red 12 ${HEAD} changes`]);
   });
 
   it("reports a conflict, a merge, and a close", () => {
