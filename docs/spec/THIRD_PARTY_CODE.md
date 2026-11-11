@@ -1,8 +1,8 @@
 ---
-title: "npm Install Policy"
+title: "Third-Party Code"
 ---
 
-# npm install policy
+# Third-party code in builds and installs
 
 This document specifies how the vendored `@openmined/psi.js` addon is built, verified and re-vendored, which dependencies are inlined into a built artifact and how an advisory against one is remediated, and the install-script policy (`allowScripts` with `strict-allow-scripts`) and the check that holds it.
 It does not cover how the pinned packages are versioned and updated, the GitHub Action pin mirror, or the residuals npm's resolver leaves in this workspace (see [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md)), the SFTP and WebRTC stack upgrade checklists (see [SFTP_STACK.md](SFTP_STACK.md) and [WEBRTC_STACK.md](WEBRTC_STACK.md)), what the container images freeze and pin (see [CONTAINER_IMAGES.md](CONTAINER_IMAGES.md)), the ordered re-vendor runbook (see [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md)), or the dependency-review requirement (see [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy)).

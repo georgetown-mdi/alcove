@@ -23,7 +23,7 @@ COPY lib lib
 # tree.
 # The root .npmrc copied in above puts the install-script policy in force here as
 # it is locally and in CI; what that does and does not reach is in
-# docs/spec/NPM_INSTALL_POLICY.md.
+# docs/spec/THIRD_PARTY_CODE.md.
 RUN --mount=type=cache,target=/root/.npm \
   npm ci -w packages/core -w packages/peerjs-broker -w packages/cli-contract -w apps/cli -w apps/web
 

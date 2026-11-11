@@ -20,7 +20,7 @@ Alcove is a privacy-preserving record linkage (PPRL) tool that enables partner a
 | Operator running one exchange from a graphical console on their own machine | [CONSOLE.md](CONSOLE.md) | [CLI.md](CLI.md), [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) |
 | Operator running a recurring exchange from the browser | [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md) | [SECURITY_DESIGN.md](SECURITY_DESIGN.md), [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md) |
 | Developer contributing to the project | [DESIGN.md](DESIGN.md) | [PROTOCOL.md](spec/PROTOCOL.md), [COMMUNICATION.md](COMMUNICATION.md), [FILE_SYNC.md](spec/FILE_SYNC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), [TESTING.md](TESTING.md) |
-| Maintainer upgrading a pinned dependency | [CONTRIBUTING.md](../CONTRIBUTING.md#dependency-policy) | [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md), [SFTP_STACK.md](spec/SFTP_STACK.md), [WEBRTC_STACK.md](spec/WEBRTC_STACK.md), [NPM_INSTALL_POLICY.md](spec/NPM_INSTALL_POLICY.md), [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) |
+| Maintainer upgrading a pinned dependency | [CONTRIBUTING.md](../CONTRIBUTING.md#dependency-policy) | [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md), [SFTP_STACK.md](spec/SFTP_STACK.md), [WEBRTC_STACK.md](spec/WEBRTC_STACK.md), [THIRD_PARTY_CODE.md](spec/THIRD_PARTY_CODE.md), [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) |
 | Partner agency whose IT staff run the command line app | [CLI.md](CLI.md#your-first-recurring-exchange) | [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) |
 
 ## Glossary
@@ -103,7 +103,7 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 - [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md) - how the pinned packages are versioned, the GitHub Action pin mirror, and the residuals npm's resolver leaves
 - [SFTP_STACK.md](spec/SFTP_STACK.md) - the SFTP stack internals and the checklist to re-verify them when `ssh2` or `ssh2-sftp-client` is upgraded
 - [WEBRTC_STACK.md](spec/WEBRTC_STACK.md) - the WebRTC stack internals and the checklists to re-verify them when `peerjs`, `peerjs-js-binarypack` or `werift` is upgraded
-- [NPM_INSTALL_POLICY.md](spec/NPM_INSTALL_POLICY.md) - the vendored addon's integrity and provenance controls, the inlined dependencies, and the install-script policy
+- [THIRD_PARTY_CODE.md](spec/THIRD_PARTY_CODE.md) - the vendored addon's integrity and provenance controls, the inlined dependencies, and the install-script policy
 - [CONTAINER_IMAGES.md](spec/CONTAINER_IMAGES.md) - the standard and FIPS images: dependency pinning, the FIPS provider's CMVP certificate coverage, and the writable and setuid inventories
 
 ### Design notes ([`docs/notes/`](notes/README.md))

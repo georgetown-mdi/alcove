@@ -46,7 +46,7 @@ build time, letting two images of nominally the same release diverge. The
 vendored `@openmined/psi.js` tarball participates as the committed bytes in
 `lib/`, under the committed sha256 sidecar that stands in for a lockfile
 integrity hash (see
-[NPM_INSTALL_POLICY.md](NPM_INSTALL_POLICY.md#the-vendored-openminedpsijs-addon)).
+[THIRD_PARTY_CODE.md](THIRD_PARTY_CODE.md#the-vendored-openminedpsijs-addon)).
 
 The structural invariants are enforced by `scripts/dockerfile-freeze.test.mjs`
 (run by `npm run test:scripts`, a CI static check), over both `Dockerfile` and
@@ -135,7 +135,7 @@ literal moves in the same diff. The builder's `FROM` is held as tightly as the
 runtime stage's, because the npm that resolves the tree the runtime stage ships
 is the one the builder's base holds -- a property of the digest rather than of
 anything in this repository, recorded in
-[NPM_INSTALL_POLICY.md](NPM_INSTALL_POLICY.md#the-install-script-policy-allowscripts).
+[THIRD_PARTY_CODE.md](THIRD_PARTY_CODE.md#the-install-script-policy-allowscripts).
 
 **The one OS package the build fetches.** The runtime stage runs
 `apk add --no-cache samba-client`, which is a dependency resolved at image-build

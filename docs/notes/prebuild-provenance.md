@@ -11,7 +11,7 @@ attestation rather than npm provenance or a cosign blob signature, what the
 `.sha256` sidecar is re-scoped to, and why the check ships armed by a committed
 marker instead of unconditionally. The marker format and the exact verifier
 invocation are in
-[NPM_INSTALL_POLICY.md](../spec/NPM_INSTALL_POLICY.md#the-vendored-openminedpsijs-addon);
+[THIRD_PARTY_CODE.md](../spec/THIRD_PARTY_CODE.md#the-vendored-openminedpsijs-addon);
 the procedure and the reviewer's steps are in
 [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md). See
 [docs/notes/README.md](README.md)._

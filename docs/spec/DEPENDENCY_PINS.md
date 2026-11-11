@@ -6,7 +6,7 @@ title: "Pinned Dependency Internals and Upgrade Checklists"
 
 Two dependency stacks, the CLI's WebRTC peer and the browser SSH client's library are reached past their public
 APIs, so their internals are critical and each of their upgrades is reviewed on
-its own, with their assumptions and upgrade checklists in [SFTP_STACK.md](SFTP_STACK.md) and [WEBRTC_STACK.md](WEBRTC_STACK.md); a further dependency, the PSI crypto addon, is a vendored local fork, whose controls, the inlined dependencies and npm's install-script policy are in [NPM_INSTALL_POLICY.md](NPM_INSTALL_POLICY.md). This document records how
+its own, with their assumptions and upgrade checklists in [SFTP_STACK.md](SFTP_STACK.md) and [WEBRTC_STACK.md](WEBRTC_STACK.md); a further dependency, the PSI crypto addon, is a vendored local fork, whose controls, the inlined dependencies and npm's install-script policy are in [THIRD_PARTY_CODE.md](THIRD_PARTY_CODE.md). This document records how
 the pins are versioned and updated, and the install-time policies that stand
 beside them: the GitHub Action pin mirror, and the residuals npm's resolver leaves
 in this workspace. The review requirement itself is in
@@ -62,7 +62,7 @@ section each row links.
 
 | Pin | Where | Recorded as | Route | How it moves |
 | --- | --- | --- | --- | --- |
-| `@openmined/psi.js` | `lib/openmined-psi.js-<version>.tgz`, a `file:` dependency of `packages/core`, `apps/cli` and `apps/web` | Version in the file name, the sha256 sidecar, and the lockfile `integrity` | automatic | The `npm` block at `/` ignores every version update of it. `psi_revendor.yaml` reads the fork's latest GitHub Release daily and, when its version is newer than the vendored one, verifies the tarball's attestation and opens the re-vendor pull request into `staging` as a draft, by [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md), which stays the manual route. It pushes and opens it with the `ALCOVE_REVENDOR_TOKEN` secret, whose renewal is in [RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies). [The vendored @openmined/psi.js addon](NPM_INSTALL_POLICY.md#the-vendored-openminedpsijs-addon) states what a rebuild must keep. |
+| `@openmined/psi.js` | `lib/openmined-psi.js-<version>.tgz`, a `file:` dependency of `packages/core`, `apps/cli` and `apps/web` | Version in the file name, the sha256 sidecar, and the lockfile `integrity` | automatic | The `npm` block at `/` ignores every version update of it. `psi_revendor.yaml` reads the fork's latest GitHub Release daily and, when its version is newer than the vendored one, verifies the tarball's attestation and opens the re-vendor pull request into `staging` as a draft, by [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md), which stays the manual route. It pushes and opens it with the `ALCOVE_REVENDOR_TOKEN` secret, whose renewal is in [RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies). [The vendored @openmined/psi.js addon](THIRD_PARTY_CODE.md#the-vendored-openminedpsijs-addon) states what a rebuild must keep. |
 | npm registry packages | Every workspace `package.json` and the root `package-lock.json` | Ranges in the manifests apart from one exact version, versions and `integrity` in the lockfile | automatic | The `npm` block at `/`, weekly. The reviewed groups and the routine batch are in [How these packages are versioned](#how-these-packages-are-versioned). |
 | `vite` under `vitepress` | The root `package.json` `overrides` entry | The range `^6.4.5` | scheduled | The range admits a later 6.x release, which lands by `npm update vite --package-lock-only` ([The project site's vite override](#the-project-sites-vite-override)), run each release. A Dependabot pull request does not move it: measured 2026-11-10 with the Dependabot CLI 1.97.0, its `vite` bump leaves this entry and the nested copy as they were, with a later release in the range available. |
 | wrangler | `.github/wrangler/package.json` and its lockfile | The exact version `4.147.0` | automatic | The `npm` block at `/.github/wrangler`. The six `wranglerVersion` inputs move by hand in the same pull request ([The Pages deploy tool](#the-pages-deploy-tool)). |
@@ -171,7 +171,7 @@ request is held back with a range cap (`>=1.17.0 <1.18.0`) or a Dependabot
   fork vendored as a local `file:` tarball
   (`lib/openmined-psi.js-<version>.tgz`), whose path resolves to exactly the
   committed bytes. See
-  [The vendored @openmined/psi.js addon](NPM_INSTALL_POLICY.md#the-vendored-openminedpsijs-addon).
+  [The vendored @openmined/psi.js addon](THIRD_PARTY_CODE.md#the-vendored-openminedpsijs-addon).
 
 ## GitHub Action pins and the composite mirror
 
@@ -898,7 +898,7 @@ replaces -- and nothing in `image_smoke.yaml` prints or asserts either
 version. Read them before merging, the same way the smoke job reads a
 container's shell:
 `docker run --rm --entrypoint sh node:26-alpine@sha256:<new-digest> -c 'node --version && npm --version'`.
-The npm version is the one to read closely. [The npm floor](NPM_INSTALL_POLICY.md#the-install-script-policy-allowscripts)
+The npm version is the one to read closely. [The npm floor](THIRD_PARTY_CODE.md#the-install-script-policy-allowscripts)
 the `allowScripts` install-script policy needs is a property of exactly this
 digest, which is why that section states a measured bundled-npm value for the
 digest pinned at the time it was written rather than deriving it from

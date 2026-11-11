@@ -12,7 +12,7 @@ import type {
  * Loads the native N-API PSI addon when a prebuild is available for this
  * platform, or resolves `null` so the CLI falls back to WASM. The addon is a
  * performance accelerator only -- correctness never depends on it. Prebuild
- * resolution and the WASM-fallback contract: docs/spec/NPM_INSTALL_POLICY.md,
+ * resolution and the WASM-fallback contract: docs/spec/THIRD_PARTY_CODE.md,
  * "The vendored @openmined/psi.js addon".
  */
 async function loadNativePsiAddon(): Promise<PSILibrary | null> {
