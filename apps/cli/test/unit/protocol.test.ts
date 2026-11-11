@@ -448,6 +448,7 @@ import {
   OperatorConfigError,
   ReceiptVerificationError,
   isPeerWaitTimeout,
+  KEX_HANDSHAKE_TIMEOUT_MESSAGE,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
   describeEntityClusters,
@@ -2981,6 +2982,13 @@ test("the both-swept advice appears on a flagged run that fails in the key excha
   const err = await runPartyToKeyExchangeTimeout({ sweepExchangeFiles: true });
   expect((err as Error).message).toBe("key exchange handshake timed out");
   expect(mockState.errors).toContain(BOTH_SWEPT_GUIDANCE);
+  // The console reads the terminal event, which states no cause here: it
+  // recognizes this failure by the message's first line instead.
+  const event = buildErrorEvent(err, "prepare");
+  expect(event.message.split("\n")[0]).toBe(KEX_HANDSHAKE_TIMEOUT_MESSAGE);
+  expect(event.cause).toBeUndefined();
+  expect(event.recoveryHint).toBeUndefined();
+  expect(event.message).not.toContain(BOTH_SWEPT_GUIDANCE);
 }, 20_000);
 
 test("the both-swept advice is absent from an unflagged run that fails the same two ways", async () => {

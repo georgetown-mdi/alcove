@@ -59,13 +59,16 @@ import {
   NEWER_KEY_FILE_TITLE,
 } from "@console/mountedConfiguration";
 import {
+  consoleFailureForCause,
+  consoleSweptHandshakeTimeout,
+} from "@console/consoleFailureCause";
+import {
   discardServerJob,
   writeAttachment,
 } from "@psi/jobClient/consoleJobAttachment";
 import { AcceptedSignalingServerUnsetError } from "@psi/jobClient/signalingServerClient";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
 import { RunRelayWatch } from "@psi/transport/runRelayWatch";
-import { consoleFailureForCause } from "@console/consoleFailureCause";
 import { consoleJobColumnRefusalAlert } from "@psi/columnNames";
 import { consolePartnerCertificateRefusal } from "@console/partnerCertificateRefusal";
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
@@ -930,6 +933,17 @@ function failureContentFor(
         : {}),
     };
   }
+  // The CLI's report is left out for the reason above: it names a
+  // command-line flag.
+  const sweptHandshakeTimeout =
+    error instanceof RelayedTerminalError && category === "exchange"
+      ? consoleSweptHandshakeTimeout(error.message, {
+          channel,
+          deleteModeSweep: sweepExchangeFiles && !retainFiles,
+        })
+      : undefined;
+  if (sweptHandshakeTimeout !== undefined)
+    return { category, ...sweptHandshakeTimeout };
   // A console run the partner or the agreed terms refused (the CLI's exit 76):
   // the partner's refusal, which a retry and a change to this party's settings
   // both meet again, so it takes the config category and no retry.

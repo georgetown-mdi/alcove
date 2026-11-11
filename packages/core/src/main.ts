@@ -1021,9 +1021,14 @@ export {
 } from "./auth";
 export type { AuthResult, HandshakeSecretKind, RotationState } from "./auth";
 // The versions a build offers in its key-exchange hello, the most bytes a
-// key-exchange message holds, and the refusal both parties report when the two
-// offers share none in some layer.
-export { KEX_MESSAGE_MAX_BYTES, supportedVersions } from "./kex";
+// key-exchange message holds, the message of a silent peer's handshake
+// timeout, and the refusal both parties report when the two offers share none in
+// some layer.
+export {
+  KEX_HANDSHAKE_TIMEOUT_MESSAGE,
+  KEX_MESSAGE_MAX_BYTES,
+  supportedVersions,
+} from "./kex";
 export { NO_COMMON_VERSION_MESSAGE } from "./versionHello";
 export type {
   NegotiatedVersions,

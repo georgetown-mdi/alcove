@@ -7,6 +7,7 @@
 
 import {
   CLEAN_DIRECTORY_RESTART_REMEDY,
+  KEX_HANDSHAKE_TIMEOUT_MESSAGE,
   MATCHES_OVER_LIMIT_REMEDY,
   PARTNER_STOPPED_AT_MATCHING_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
@@ -62,12 +63,25 @@ const WAIT_SETTING =
 // file at entry and writes nothing, so this side waits with no file to report.
 const SET_NAMES_DIFFER_CLAUSE = `If both sides set a name under "${EXCHANGE_FILES_HEADING}", check that the names differ.`;
 
-// The line a swept no-show leads with: two sides that both sweep at entry can
-// each delete the other's hello, so neither sees the other arrive.
+// The line a swept run's peer-wait timeout leads its remedy with, on either
+// side: the second side to clear files at entry deletes the first side's, so
+// the second times out at the rendezvous and the first in the key exchange.
 const BOTH_SWEPT_LINE =
-  "You cleared leftover files first, and your partner may have done the " +
-  `same, removing each other's files. Both of you turn off ` +
-  `"${SWEEP_CONTROL_LABEL}" and run again.`;
+  "If your partner also cleared leftover files when starting, one of you " +
+  "may have removed the other's files. Both of you turn off " +
+  `"${SWEEP_CONTROL_LABEL}" before the next run.`;
+
+// The check a run on a shared location ends with, before the retry.
+const sharedLocationCheck = (
+  channel: "filedrop" | "sftp" | "webrtc" | undefined,
+): string =>
+  channel === "filedrop"
+    ? "Check that you and your partner use the same shared folder and " +
+      "that it is syncing, then try again."
+    : channel === "sftp"
+      ? "Check that you and your partner use the same server and " +
+        "folder, then try again."
+      : "Check that your partner has started their side, then try again.";
 
 const SHARED_NAME_TITLE = "Both sides may be using the same name";
 
@@ -115,14 +129,7 @@ const partnerNeverArrived = (
     };
   if (ignoredHello !== undefined)
     return { title: IGNORED_HELLO_TITLE, remedy: IGNORED_HELLO_REMEDY };
-  const check =
-    channel === "filedrop"
-      ? "Check that you and your partner use the same shared folder and " +
-        "that it is syncing, then try again. "
-      : channel === "sftp"
-        ? "Check that you and your partner use the same server and " +
-          "folder, then try again. "
-        : "Check that your partner has started their side, then try again. ";
+  const check = `${sharedLocationCheck(channel)} `;
   const names =
     thisSideNamed === true && channel !== "webrtc"
       ? `${SET_NAMES_DIFFER_CLAUSE} `
@@ -224,4 +231,35 @@ export function consoleFailureForCause(
     ) => ConsoleFailureRemedy
   )(cause, context);
   return { title, message: `${failureCauseSentence(cause)} ${remedy}` };
+}
+
+/**
+ * The console's account of a key-exchange handshake timeout on a filedrop or
+ * SFTP run that cleared leftover files in delete mode, recognized by the first
+ * line of the CLI's report, `failureText`; undefined for any other failure or
+ * run. The handshake timeout states no catalog cause, so the side that entered
+ * first in a both-swept collision gets the line here.
+ */
+export function consoleSweptHandshakeTimeout(
+  failureText: string,
+  {
+    channel,
+    deleteModeSweep,
+  }: {
+    readonly channel: string | undefined;
+    readonly deleteModeSweep: boolean;
+  },
+): { title: string; message: string } | undefined {
+  if (
+    !deleteModeSweep ||
+    (channel !== "filedrop" && channel !== "sftp") ||
+    failureText.split("\n")[0] !== KEX_HANDSHAKE_TIMEOUT_MESSAGE
+  )
+    return undefined;
+  return {
+    title: "Your partner did not answer",
+    message:
+      "Your partner did not answer in time. " +
+      `${BOTH_SWEPT_LINE} ${sharedLocationCheck(channel)}`,
+  };
 }

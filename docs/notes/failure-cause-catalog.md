@@ -70,7 +70,7 @@ The survey names no other run-ending remedy the failure site writes itself. Acro
 
 - Neither line has a second copy: the signal handler states only the key-file state line, and the `error` event states neither, as `protocol.test.ts` checks. The key-file state line stays out of the terminal event as well.
 - The console reads the `error` event, and the CLI's stderr only when no terminal event arrives, so it reaches neither line and holds no copy of either.
-- On a run that cleared leftover files in delete mode and then timed out waiting for the partner, both apps state the both-swept line: the CLI's stderr beneath its no-show remedy, the console in its own words ahead of its no-show remedy (`consoleFailureCause.ts`). The console's line covers the rendezvous wait only: a key-exchange handshake timeout carries no cause on the `error` event, so it never reaches the console's `partner-never-arrived` remedy, while the CLI's line covers both.
+- On a run that cleared leftover files in delete mode and then timed out waiting for the partner, both apps state the both-swept line: the CLI's stderr beneath its no-show remedy, the console in its own words ahead of its no-show remedy (`consoleFailureCause.ts`). Both apps cover both timeouts: the rendezvous wait, which the side that cleared files second meets, and the key-exchange handshake, which the side that entered first meets. The handshake timeout states no cause on the `error` event, so the console recognizes it by the first line of the event's `message`, core's `KEX_HANDSHAKE_TIMEOUT_MESSAGE`, which `protocol.test.ts` pins on the event the CLI builds.
 
 ### What the survey decides
 

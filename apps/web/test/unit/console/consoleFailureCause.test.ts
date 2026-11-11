@@ -1,10 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  PARTNER_REFUSED_EXIT_CODE,
-  failureCauseStreamField,
-} from "@alcove/cli-contract";
-import {
+  KEX_HANDSHAKE_TIMEOUT_MESSAGE,
   PeerAbortError,
   failureCauseFromUntrusted,
   failureCauseSentence,
@@ -14,6 +11,10 @@ import {
   setOverLimitError,
   setOverLimitRemedy,
 } from "@alcove/core";
+import {
+  PARTNER_REFUSED_EXIT_CODE,
+  failureCauseStreamField,
+} from "@alcove/cli-contract";
 import { REPRESENTATIVE_FAILURE_CAUSES } from "@alcove/core/testing";
 
 import {
@@ -36,6 +37,7 @@ import type {
   FailureCauseKind,
   FailureCauseOfKind,
 } from "@alcove/core";
+import type { FailureContext } from "@exchange/useInviterExchange";
 
 // Every kind is a key, so a cause core adds fails to compile here until it
 // has samples, and the checks below run over its copy.
@@ -165,6 +167,11 @@ function relayed(
   error.exitCode = fields.exitCode;
   return error;
 }
+
+const BOTH_SWEPT =
+  "If your partner also cleared leftover files when starting, one of you " +
+  "may have removed the other's files. Both of you turn off " +
+  `"${SWEEP_CONTROL_LABEL}" before the next run.`;
 
 const CLI_NO_SHOW_MESSAGE =
   "Your partner did not arrive in the shared folder within 90 seconds.\n" +
@@ -528,10 +535,6 @@ describe("a console run that failed on a catalog cause", () => {
   });
 
   test("a no-show after a delete-mode sweep leads with the both-swept line", () => {
-    const BOTH_SWEPT =
-      "You cleared leftover files first, and your partner may have done " +
-      "the same, removing each other's files. Both of you turn off " +
-      `"${SWEEP_CONTROL_LABEL}" and run again.`;
     const noShow = (
       cause: FailureCauseOfKind<"partner-never-arrived">,
       sweep: { sweepExchangeFiles?: boolean; retainFiles?: boolean },
@@ -569,6 +572,58 @@ describe("a console run that failed on a catalog cause", () => {
         { kind: "partner-never-arrived", channel: "webrtc" },
         { sweepExchangeFiles: true },
       ).message,
+    ).not.toContain(BOTH_SWEPT);
+  });
+
+  test("the first entrant's handshake timeout after a delete-mode sweep shows the both-swept line", () => {
+    // The CLI's report for this failure, as apps/cli's protocol.test.ts pins
+    // its first line: no cause, no recoveryHint, exit 69.
+    const handshakeTimeout = () => {
+      const error = new RelayedTerminalError(
+        `${KEX_HANDSHAKE_TIMEOUT_MESSAGE}\ncaused by: no message arrived ` +
+          "within 30000 ms; run again with a longer --inactivity-timeout.",
+      );
+      error.exitCode = 69;
+      return error;
+    };
+    const timedOut = (context: FailureContext) =>
+      failureFor("exchange", handshakeTimeout(), context);
+    const swept = timedOut({ channel: "filedrop", sweepExchangeFiles: true });
+    expect(swept.title).toBe("Your partner did not answer");
+    expect(swept.message).toBe(
+      `Your partner did not answer in time. ${BOTH_SWEPT} ` +
+        "Check that you and your partner use the same shared folder and " +
+        "that it is syncing, then try again.",
+    );
+    expect(swept.message).not.toContain("--inactivity-timeout");
+    expect(swept.reportedCause).toBeUndefined();
+    expect(
+      timedOut({ channel: "sftp", sweepExchangeFiles: true }).message,
+    ).toBe(
+      `Your partner did not answer in time. ${BOTH_SWEPT} ` +
+        "Check that you and your partner use the same server and folder, " +
+        "then try again.",
+    );
+    for (const context of [
+      { channel: "filedrop" },
+      { channel: "filedrop", sweepExchangeFiles: false },
+      { channel: "filedrop", sweepExchangeFiles: true, retainFiles: true },
+      { channel: "sftp", sweepExchangeFiles: true, retainFiles: true },
+      { channel: "webrtc", sweepExchangeFiles: true },
+    ] satisfies Array<FailureContext>) {
+      const unswept = timedOut(context);
+      expect(unswept.title).toBe("Exchange failed");
+      expect(unswept.message).not.toContain(BOTH_SWEPT);
+    }
+    // Only the handshake timeout's own first line is recognized.
+    const otherFailure = new RelayedTerminalError(
+      `the exchange stopped\ncaused by: ${KEX_HANDSHAKE_TIMEOUT_MESSAGE}`,
+    );
+    expect(
+      failureFor("exchange", otherFailure, {
+        channel: "filedrop",
+        sweepExchangeFiles: true,
+      }).message,
     ).not.toContain(BOTH_SWEPT);
   });
 
