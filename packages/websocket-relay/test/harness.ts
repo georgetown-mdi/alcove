@@ -19,7 +19,7 @@ import type { Duplex } from "node:stream";
 import type { RelayKeyTable } from "../src/keyTable.ts";
 import type { WebSocketRelay, WebSocketRelayOptions } from "../src/relay.ts";
 
-/** The relay key of the secret of bytes 0x00..0x1f (docs/spec/PROTOCOL.md). */
+/** The relay key of the secret of bytes 0x00..0x1f (docs/spec/RELAY_CREDENTIALS.md). */
 export const RELAY_KEY =
   "1d970dcfd9f445a4c83c4ee3b03845209f891b2931e8b7bb2b41a17dd2249a9e";
 

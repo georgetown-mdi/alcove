@@ -1,5 +1,5 @@
 /**
- * The managed exchange's relay key registration (docs/spec/PROTOCOL.md,
+ * The managed exchange's relay key registration (docs/spec/RELAY_CREDENTIALS.md,
  * "Registering the rotated relay key"): which runs register, the retry before
  * a run connects of a registration the registrar did not confirm, the signed
  * registration of the rotated key after a run, and the enrollment made with

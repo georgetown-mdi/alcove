@@ -295,7 +295,7 @@ credential can open an allocation, which coturn 4.18.0 refuses once the expiry
 has passed; an allocation opened within that window lasts as long as its
 holder refreshes it, within the relay's quotas ([Quotas against one
 exchange](#quotas-against-one-exchange)), since coturn accepts the refreshes
-under the expired credential ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)).
+under the expired credential ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation)).
 
 Ephemeral provisioning stays worth revisiting for one case this run did not
 need: a deployment that must hold no address between exchanges. If it is
@@ -844,7 +844,7 @@ change to the drop-in.
 | Whether the account's real cost matches the computed figure | reading Cost Explorer a day later, once its lag has passed |
 | The managed vendor's own charge | the vendor's bill, which never appears on this account |
 | The standing broker on 443, and across a reboot, repeated crashes and memory pressure | the broker on 443 through [the 443 front](#one-listener-on-443), and an instance reboot, a repeatedly killed broker and an exchange under memory pressure, each observed on the standing deployment ([Does the coordination server leave the web app's deployment](#does-the-coordination-server-leave-the-web-apps-deployment)) |
-| A relayed exchange longer than `max-allocate-lifetime` | a browser's relayed run past 600 s, which shows whether the browser refreshes its allocation; every relayed run measured here took seconds. werift's refreshes, past the relay's stale nonce, were measured against a local coturn 4.18.0 for 1,620 s, and past the TURN credential's expiry for 1,140 s ([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#the-behavioural-assumptions), [PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)) |
+| A relayed exchange longer than `max-allocate-lifetime` | a browser's relayed run past 600 s, which shows whether the browser refreshes its allocation; every relayed run measured here took seconds. werift's refreshes, past the relay's stale nonce, were measured against a local coturn 4.18.0 for 1,620 s, and past the TURN credential's expiry for 1,140 s ([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#the-behavioural-assumptions), [RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation)) |
 | Whether coturn reports usage or metrics mid-session for a long or high-volume allocation | one relayed session longer than `max-allocate-lifetime`, with its usage and `/metrics` read while it is open; the host run's sessions were short |
 | Published rates | a credential with pricing-API access; no rate behind any figure here was confirmed from AWS's own API |
 
@@ -892,11 +892,11 @@ change to the drop-in.
 The per-exchange credential this record recommends has a specified derivation:
 each party derives a relay key from the exchange's shared secret and mints its
 time-limited relay credentials from that key
-([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)). The
+([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation)). The
 invitation may name the inviter's relay, addresses only, and the accepting
 party relays through it; each party's own relay is the fallback where the
 invitation names none
-([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)). The relay's
+([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-invitations-relay-locator)). The relay's
 per-exchange key table, with registering and revoking a key, follows it.
 
 The next step is the browser's own TURN entry, which

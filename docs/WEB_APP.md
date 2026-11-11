@@ -129,7 +129,7 @@ Each exchange has its own **Connection settings**: on the **Review & create** st
 - **What to do.** Each line says what the check saw and a step you can take on the page, such as Relay registration or a Connection setting, or ask your partner to take. It names no command-line command.
 - **On an invitation you create.** The share screen offers it until your partner connects, where the exchange uses a WebSocket relay, and again after **Try again**. It reads the connections your page already holds open for your partner and contacts nothing else. It reports whether each WebSocket relay accepts the exchange from your page, and shows one that does as waiting for your partner. It does not check your partner's side, or a TURN relay, which your page first uses when your partner connects; it lists this site's TURN relay only where this site's relay server did not set up the exchange. To change a relay, choose **Replace this invitation**: the Connection settings are fixed once you create the invitation, so a remedy that changes them goes through it.
 
-The protocol and its limits: [PROTOCOL.md](spec/PROTOCOL.md#the-web-applications-relay-check).
+The protocol and its limits: [RELAY_CREDENTIALS.md](spec/RELAY_CREDENTIALS.md#the-web-applications-relay-check).
 
 ### Allowed relays
 

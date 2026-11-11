@@ -1,5 +1,5 @@
 // The enrollment a run makes, before it dials, at the registrar its
-// invitation's relay names (docs/spec/PROTOCOL.md, "Enrolling at a default
+// invitation's relay names (docs/spec/RELAY_CREDENTIALS.md, "Enrolling at a default
 // relay"): one attempt without a token, its wait bounded, and a failure
 // reported while the run goes on. The attempt is core's
 // `enrollRelayKeyWithinWait`; the browser's counterpart is

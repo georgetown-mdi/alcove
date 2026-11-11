@@ -88,7 +88,7 @@ The SFTP server's own SSH authentication applies through any raw relay, so the p
   The token sits in browser storage.
 - **A per-exchange credential.**
   Derived from the exchange's shared secret and registered with the proxy, as a TURN relay credential is
-  ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)).
+  ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation)).
   It scopes access to one exchange's parties, and a quick exchange, which has no shared secret, cannot use it.
 
 The recommendation is the origin check on every proxy shape; whether to add a token is open.

@@ -596,7 +596,7 @@ describe("the retry before a run connects", () => {
   /**
    * A registrar holding the relay key of `heldSecret` for {@link REGISTRAR}'s
    * exchange, answering a `PUT` by the verification rule of
-   * docs/spec/PROTOCOL.md, "The registrar request proof": a body naming the
+   * docs/spec/RELAY_CREDENTIALS.md, "The registrar request proof": a body naming the
    * key it holds is a renewal; otherwise the proof must verify under the key
    * it holds, and the body's key replaces it; anything else is 409.
    */

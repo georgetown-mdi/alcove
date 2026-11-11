@@ -149,7 +149,7 @@ export async function hmacSha256(
 
 /**
  * Compute HMAC-SHA-1 of `data` under `key`. Used only for the TURN relay
- * credential, whose format the relay server fixes (docs/spec/PROTOCOL.md,
+ * credential, whose format the relay server fixes (docs/spec/RELAY_CREDENTIALS.md,
  * "Relay credential derivation"); use {@link hmacSha256} for anything else.
  */
 export async function hmacSha1(

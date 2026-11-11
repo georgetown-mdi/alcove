@@ -222,7 +222,7 @@ export interface RelayWithDefault {
  * the wait the registrar asked for, through `onRunNotice`, once, before this
  * returns; a cancelled one shows nothing.
  * A default relay neither of whose urls the run uses and `allowedRelays`
- * keeps is not enrolled at (docs/spec/PROTOCOL.md, "Enrolling at a default
+ * keeps is not enrolled at (docs/spec/RELAY_CREDENTIALS.md, "Enrolling at a default
  * relay"); unset keeps both.
  *
  * With `previousSharedSecret`, where the run uses the WebSocket relay url,

@@ -765,7 +765,7 @@ that began and has not saved its rotated secret.
 The key file holds a fourth, optional field: `relayRegistrationPendingSince`,
 an ISO 8601 UTC instant. It records that the secret the file holds has not
 been confirmed at the relay registrar a run registers at
-([PROTOCOL.md, Registering the rotated relay key](PROTOCOL.md#registering-the-rotated-relay-key)).
+([RELAY_CREDENTIALS.md, Registering the rotated relay key](RELAY_CREDENTIALS.md#registering-the-rotated-relay-key)).
 
 - **Write order.** A run that registers its relay key stores it in the
   rotation write itself (`authenticateRun` in `apps/cli/src/protocol.ts`), so

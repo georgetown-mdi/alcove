@@ -2,7 +2,7 @@
  * Why the default relay's registrar did not enroll a run, read from its
  * answer, and how the app states it. The registrar's own text is never shown:
  * a known reason picks one of the app's fixed sentences, and any other answer
- * is stated as a refusal with no reason given (docs/spec/PROTOCOL.md,
+ * is stated as a refusal with no reason given (docs/spec/RELAY_CREDENTIALS.md,
  * Enrolling at a default relay).
  */
 

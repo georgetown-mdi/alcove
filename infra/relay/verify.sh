@@ -28,7 +28,7 @@
 #   secrets table two keys registered for this run both allocate, a key never
 #                 registered is refused, a credential keyed with a registered
 #                 key's 32 decoded bytes rather than its 64 hex characters is
-#                 refused (docs/spec/PROTOCOL.md, Relay credential derivation),
+#                 refused (docs/spec/RELAY_CREDENTIALS.md, Relay credential derivation),
 #                 and a revoked key's new allocation is refused
 #   registrar     where the host holds a registrar token: a call without the
 #                 token, or with a wrong one, is refused and writes nothing, and

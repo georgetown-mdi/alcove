@@ -20,7 +20,7 @@ Nothing here is normative: the wrap rule is in
 the transport's bounds and budgets in
 [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#budgets),
 and the relay credential in
-[PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation).
+[RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation).
 The earlier design of the SFTP proxy is [browser-sftp-proxy.md](browser-sftp-proxy.md).
 See [docs/notes/README.md](README.md)._
 
@@ -54,10 +54,10 @@ The pieces a WebSocket path would build on, with where each is stated:
 - **Every web WebRTC exchange has a shared secret.**
   No secret-less rendezvous is offered on the web ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)), so a session key exists for the wrap on every browser exchange this note concerns.
 - **A per-exchange relay key exists.**
-  `relay_key = HKDF(secret, "alcove-relay-key-v2")`, registered at the relay's table per exchange, from which each party mints a time-limited TURN credential without contacting the relay ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation); `packages/core/src/relayCredential.ts`).
-  The registrar's proof shows the pattern for a second use of the key under its own label ([PROTOCOL.md](../spec/PROTOCOL.md#the-registrar-request-proof)).
+  `relay_key = HKDF(secret, "alcove-relay-key-v2")`, registered at the relay's table per exchange, from which each party mints a time-limited TURN credential without contacting the relay ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation); `packages/core/src/relayCredential.ts`).
+  The registrar's proof shows the pattern for a second use of the key under its own label ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-registrar-request-proof)).
   Enrolling an exchange needs the relay-owner token: the CLI's `alcove enroll-relay`, or a saved exchange's page in the browser ([MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#when-your-relay-runs-a-registrar)); a one-shot browser exchange enrolls nothing ([PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe), the registrar row).
-- **The invitation carries the inviter's relay locator**, TURN and STUN urls and no credential, and the acceptor relays through it ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)).
+- **The invitation carries the inviter's relay locator**, TURN and STUN urls and no credential, and the acceptor relays through it ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-invitations-relay-locator)).
   The browser keeps its own relay setting in `localStorage` (`apps/web/src/psi/transport/ownRelaySetting.ts`).
 - **What the project operates for the hosted application:** the broker behind an nginx TLS front on port **8443**, beside coturn on the same host, and one listener on 443, the relay's 443 front, which routes each connection by the server name it asks for: to the broker's front unopened, or to coturn, terminating the TURN client's TLS itself ([DEPLOYMENT.md](../DEPLOYMENT.md#what-the-deployment-logs); [infra/broker/README.md](../../infra/broker/README.md#port-8443-and-443-through-the-relays-front)).
   The front closes a WebSocket idle for 300 s; the PeerJS heartbeat every 5 s keeps a signaling socket alive.
@@ -119,9 +119,9 @@ The relay below is that shape with binary frames, pause-and-resume forwarding, p
 **One connection per party, paired by the exchange's relay key.**
 
 - A party opens `wss://<relay name>/<fixed path>` and sends one hello frame: its role (`inviter` or `acceptor`) and a credential.
-- The credential is a proof under a key derived from the exchange's relay key under a label of its own, in the [domain-separation label space](../spec/PROTOCOL.md#relay-credential-derivation), with an expiry in the signed message, as the registrar's proof is built ([PROTOCOL.md](../spec/PROTOCOL.md#the-registrar-request-proof)).
+- The credential is a proof under a key derived from the exchange's relay key under a label of its own, in the [domain-separation label space](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), with an expiry in the signed message, as the registrar's proof is built ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-registrar-request-proof)).
   A key of its own, rather than coturn's HMAC-SHA-1 credential reused, so a captured relay hello mints no TURN credential and a captured TURN credential opens no relay socket.
-  The derivation and the proof are specified in [PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof).
+  The derivation and the proof are specified in [RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-websocket-relay-proof).
 - The relay looks up the one key the hello names by exchange id, and verifies the proof against it -- the same SQLite table coturn reads, written by the same registrar ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)) -- and pairs the two sockets that verified under one key with opposite roles.
   A second socket with a role already held under that key is refused, which is the broker's `ID-TAKEN` for this path.
   The hello, the start and the close codes are specified in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md).
@@ -152,7 +152,7 @@ Each is a working value reviewed against the largest exchange, as the relay's ar
 **How the parties choose it.**
 Two steps, the second designed with the first so the first does not foreclose it:
 
-1. **Explicit.** The inviter's relay locator in the invitation gains the relay's `wss` url beside its TURN and STUN urls ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)); the browser's Relay settings page and the CLI's connection block each gain the same entry for a party's own relay, listed beside the invitation's as `selectRunRelay` lists TURN and STUN (`packages/core/src/relayCredential.ts`).
+1. **Explicit.** The inviter's relay locator in the invitation gains the relay's `wss` url beside its TURN and STUN urls ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-invitations-relay-locator)); the browser's Relay settings page and the CLI's connection block each gain the same entry for a party's own relay, listed beside the invitation's as `selectRunRelay` lists TURN and STUN (`packages/core/src/relayCredential.ts`).
    No setting names the relay as the only path: by the maintainer's ruling of 2026-10-17, no relay-only mode is assumed, and a party reaches the relay only through the fallback of step 2, where work that shortens the wait before it falls back is in scope.
    The entry names where the relay is; the CLI's is `connection.websocket_relay` ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectionwebsocket_relay)).
 2. **Automatic fallback.** Each party opens its relay socket as it starts the WebRTC rendezvous and sends its hello; the relay pairs the two sockets and forwards nothing until both have sent a start frame.
@@ -566,7 +566,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    The rulings below are paraphrased, except for the quoted sentence, which is the maintainer's own words:
 
    - The project's standing relay (`turns:turn.data-bridge.org:443?transport=tcp`) is a public default, used by the production web application; this reverses the "No public relay" direction ([turn-provisioning-governance.md](turn-provisioning-governance.md#what-this-record-assumes)).
-   - The browser enrolls the exchange's relay key ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)) at the registrar without the relay-owner token, bounded by per-address enrollment limits, short key lifetimes and the relay's quotas; enrollment can happen when the invitation is created.
+   - The browser enrolls the exchange's relay key ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation)) at the registrar without the relay-owner token, bounded by per-address enrollment limits, short key lifetimes and the relay's quotas; enrollment can happen when the invitation is created.
    - The relay is always in the browser's ICE servers, not added on a retry: "I want the production site to work without frictions, so whatever that takes."
    - The relay is monitored for abuse.
 
@@ -582,7 +582,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
 
    What follows from it:
 
-   - **The relay admits any exchange with a registered key, one-shot included.** It checks each party's proof against the key the exchange enrolled ([PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof)); one-shot admission is decided by this ruling, not weighed after S3.
+   - **The relay admits any exchange with a registered key, one-shot included.** It checks each party's proof against the key the exchange enrolled ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-websocket-relay-proof)); one-shot admission is decided by this ruling, not weighed after S3.
    - **It is part of the production default**, as the TURN relay is.
      Superseded 2026-10-22: both are off on production and staging until a party turns them on, and on by default on the demo site alone ([turn-provisioning-governance.md](turn-provisioning-governance.md#what-this-record-assumes)).
    - **The relay-restriction setting covers it.** The configuration's `connection.allowed_relays` and the browser's Allowed relays setting name the relays a party's data may cross and govern this relay as they govern the TURN relays ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectionallowed_relays); [WEB_APP.md](../WEB_APP.md#allowed-relays)).

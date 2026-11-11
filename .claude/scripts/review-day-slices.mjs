@@ -113,6 +113,8 @@ export const BOUNDARIES = [
     except: [],
     specs: [
       "PROTOCOL",
+      "SHARED_SECRET_ROTATION",
+      "RELAY_CREDENTIALS",
       "CANONICAL_ENCODING",
       "INVITATION_TOKEN",
       "CHANNEL_SECURITY",

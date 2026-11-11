@@ -481,7 +481,7 @@ export const AuthenticationSchema: z.ZodType<Authentication> = z.strictObject({
  * A TURN server used when a direct peer-to-peer connection cannot be
  * established. `username` and `credential` are set together or both left
  * out: an entry with neither is presented a credential minted from the
- * exchange's current shared secret on each run (docs/spec/PROTOCOL.md, "Relay
+ * exchange's current shared secret on each run (docs/spec/RELAY_CREDENTIALS.md, "Relay
  * credential derivation").
  */
 interface TurnServer {
@@ -1298,7 +1298,7 @@ function relayExchangeIdSchema(name: string): z.ZodType<string> {
  * token. An invitation's webrtc endpoint may name one, and the accepting side
  * keeps it on its connection as {@link WebRTCConnectionConfig.invitationRelay}.
  * Each party mints the TURN credential from the exchange's shared secret
- * (docs/spec/PROTOCOL.md, "Relay credential derivation"), so the locator has no
+ * (docs/spec/RELAY_CREDENTIALS.md, "Relay credential derivation"), so the locator has no
  * username or credential field.
  */
 export interface RelayLocator {
@@ -1315,14 +1315,14 @@ export interface RelayLocator {
    * The exchange id the {@link websocket} relay holds the exchange's relay key
    * under, where the inviter enrolled it under one of its own rather than the
    * id derived from the secret; a run's proof to that relay names it
-   * (docs/spec/PROTOCOL.md, "The WebSocket relay proof"). Present only beside
+   * (docs/spec/RELAY_CREDENTIALS.md, "The WebSocket relay proof"). Present only beside
    * `websocket`.
    */
   websocketExchangeId?: string;
   /**
    * The `https://` address of a registrar, naming only a host and an optional
    * port, where a run enrolls the exchange's relay key without a token before
-   * it dials (docs/spec/PROTOCOL.md, "Enrolling at a default relay"). Held as
+   * it dials (docs/spec/RELAY_CREDENTIALS.md, "Enrolling at a default relay"). Held as
    * its origin; present only beside `turn` or `websocket`. It enrolls the key
    * of the locator's TURN relay, and of its WebSocket relay where the locator
    * names no `websocketExchangeId`.
@@ -1729,7 +1729,7 @@ export interface WebRTCConnectionConfig {
    * (docs/spec/WEBSOCKET_RELAY.md), which a run proves the exchange's relay
    * key to with a proof made from the shared secret, under
    * {@link relayRegistrar}'s exchange id when one is set and otherwise the id
-   * derived from the secret (docs/spec/PROTOCOL.md, "The WebSocket relay
+   * derived from the secret (docs/spec/RELAY_CREDENTIALS.md, "The WebSocket relay
    * proof"). An invitation this party creates names it as its relay
    * locator's `websocket` where {@link allowedRelays} keeps it, with
    * {@link relayRegistrar}'s exchange id as its `websocketExchangeId` where

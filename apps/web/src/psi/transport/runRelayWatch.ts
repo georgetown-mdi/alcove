@@ -2,7 +2,7 @@
  * What an inviter's run shows of its own relay connections while it waits for
  * the partner: the default relay's enrollment and each WebSocket relay
  * socket it holds. The share screen's relay check reads it, and opens no
- * connection of its own (docs/spec/PROTOCOL.md, The web application's relay
+ * connection of its own (docs/spec/RELAY_CREDENTIALS.md, The web application's relay
  * check).
  */
 

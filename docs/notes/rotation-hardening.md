@@ -41,7 +41,7 @@ What the operator sees today:
 Four properties of the code fix what a mechanism can do.
 
 1. **On `webrtc`, two different secrets never meet.**
-   The peer ids, the relay key and the token-less exchange id all derive from the current secret ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)).
+   The peer ids, the relay key and the token-less exchange id all derive from the current secret ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation)).
    Anything compared in the handshake is compared only between parties that already share a secret.
 2. **On `sftp` and `filedrop`, they do meet.**
    The rendezvous is the configured folder, and each party names its files under a fresh random id (`uuidv4()` in `FileSyncConnection`, `packages/core/src/connection/fileSyncConnection.ts`), so two parties on different secrets reach the key exchange and fail there.
@@ -232,7 +232,7 @@ On `webrtc` the roles are fixed, the acceptor always the initiator ([WEBRTC_TRAN
 
 ### What it does to the values derived from the secret
 
-- **The rendezvous peer ids, the relay key and the token-less exchange id** derive from the current secret ([PROTOCOL.md](../spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation), [Relay credential derivation](../spec/PROTOCOL.md#relay-credential-derivation)) and move at each rotation, to values independent of the previous ones.
+- **The rendezvous peer ids, the relay key and the token-less exchange id** derive from the current secret ([PROTOCOL.md](../spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation), [Relay credential derivation](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation)) and move at each rotation, to values independent of the previous ones.
   Each is a key derivation from the secret that does not replace it, not a key update.
   Each derives from the stored secret whichever way that secret was made, so the rules in [Meeting on WebRTC](#meeting-on-webrtc) and [The relay](#the-relay) apply to them as written.
 - **The relay key's registration** sends the new key to the registrar under a proof made under the old relay key, as today; the relay key authorizes use of the relay and nothing else.
@@ -313,24 +313,24 @@ The coordination server can see that one party offers to both ids, which links t
 
 ### The relay
 
-The registrar replaces the relay key at each rotation the relay's party registers ([PROTOCOL.md](../spec/PROTOCOL.md#registering-the-rotated-relay-key)), so a relay credential derived from the previous secret is refused by that party's relay.
-The credential only authorizes use of the relay; the exchange's authentication rests on the key exchange ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)).
+The registrar replaces the relay key at each rotation the relay's party registers ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#registering-the-rotated-relay-key)), so a relay credential derived from the previous secret is refused by that party's relay.
+The credential only authorizes use of the relay; the exchange's authentication rests on the key exchange ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation)).
 So the relay key and the handshake secret are decoupled:
 
 - **A party's credential for its own relay** is minted from the key its registrar holds: the key of its stored current secret, whichever secret the handshake uses, once any pending registration has landed (next bullet).
   The ahead side holds that key, so its own allocation works in a heal run.
 - **A registration the cut run did not confirm.** Where the cut run stopped before its registrar confirmed the rotated key, the key file or record holds `relayRegistrationPendingSince`, and the registrar may still hold the key of the previous secret.
-  Today the retry before the next run dials signs under the current secret's key ([PROTOCOL.md](../spec/PROTOCOL.md#registering-the-rotated-relay-key), The retry before the next run dials), which that registrar refuses, so the heal run would end with exit 77 before any contact.
+  Today the retry before the next run dials signs under the current secret's key ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#registering-the-rotated-relay-key), The retry before the next run dials), which that registrar refuses, so the heal run would end with exit 77 before any contact.
   While a previous secret is held, the retry is signed under the previous secret's relay key instead, the request the cut run would have sent.
-  A registrar still holding that key verifies the proof and takes the rotation; one already holding the current key, because the rotation landed and only its answer was lost, takes the request as a renewal, which it accepts under a proof made under the key it replaced ([PROTOCOL.md](../spec/PROTOCOL.md#the-registrar-request-proof), Verification).
+  A registrar still holding that key verifies the proof and takes the rotation; one already holding the current key, because the rotation landed and only its answer was lost, takes the request as a renewal, which it accepts under a proof made under the key it replaced ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-registrar-request-proof), Verification).
   Neither the wire nor the registrar changes.
   A party holding no previous secret retries as today.
   That includes a side whose last store it made as responder, since that store keeps no previous secret ([the store order](#what-it-does-to-the-one-sided-rotation)): a side stopped between such a store and its registrar's answer ends its next run with the re-enrollment step, as any party stopped there does today.
 - **Its registration after a heal run** is signed under the key its registrar holds, the key of the current secret at the run's start, and not under the key of the secret the handshake used.
-  Both apps already sign with the secret held at the run's start: the command line with the secret it loaded (`registerRotatedRelayKey` in `apps/cli/src/relayKeyRotation.ts`), the browser with its copy of the record read inside the run+rotate lock ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator), The run credential).
+  Both apps already sign with the secret held at the run's start: the command line with the secret it loaded (`registerRotatedRelayKey` in `apps/cli/src/relayKeyRotation.ts`), the browser with its copy of the record read inside the run+rotate lock ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-invitations-relay-locator), The run credential).
   The build keeps that true when the handshake used the previous secret.
 - **The behind side's own relay** holds the key of the secret the behind side stored, since a side registers only a rotation it stored (`registerRotatedRelayKey` returns without registering when the key file still holds the run's starting secret), so its own allocation works too.
-- **A token-less default relay** ([PROTOCOL.md](../spec/PROTOCOL.md#enrolling-at-a-default-relay)) enrolls a row per derived exchange id.
+- **A token-less default relay** ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#enrolling-at-a-default-relay)) enrolls a row per derived exchange id.
   A party holding a previous secret enrolls the key and id of both secrets, two of the ten rows the registrar allows each client address, in the unconfirmed state only.
   The behind side's enrollment repeats the ahead side's row for the previous secret, which the registrar answers 200.
 - **The WebSocket relay** follows the same rules: a party's own relay under the key its registrar holds, a derived exchange id under both secrets.

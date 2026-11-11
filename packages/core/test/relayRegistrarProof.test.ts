@@ -10,18 +10,19 @@ import {
 } from "../src/relayRegistrarProof";
 import { toHex } from "../src/utils/crypto";
 
-const PROTOCOL = fileURLToPath(
-  new URL("../../../docs/spec/PROTOCOL.md", import.meta.url),
+const RELAY_CREDENTIALS = fileURLToPath(
+  new URL("../../../docs/spec/RELAY_CREDENTIALS.md", import.meta.url),
 );
 
-// The vector block under PROTOCOL.md's "The registrar request proof": a group
-// of shared fields, then one group per request, groups split by blank lines.
+// The vector block under RELAY_CREDENTIALS.md's "The registrar request proof":
+// a group of shared fields, then one group per request, groups split by blank
+// lines.
 function protocolVectors(): {
   shared: Record<string, string>;
   requests: Record<string, string>[];
 } {
-  const text = readFileSync(PROTOCOL, "utf8");
-  const section = text.slice(text.indexOf("\n### The registrar request proof"));
+  const text = readFileSync(RELAY_CREDENTIALS, "utf8");
+  const section = text.slice(text.indexOf("\n## The registrar request proof"));
   const open = section.indexOf("\n```text\n");
   const block = section.slice(open + 9, section.indexOf("\n```", open + 9));
   const groups = block.split("\n\n").map((group) =>
@@ -51,7 +52,7 @@ describe("relayRegistrarAuthorization", () => {
   });
 
   test.each(requests)(
-    "matches PROTOCOL.md's $method vector",
+    "matches RELAY_CREDENTIALS.md's $method vector",
     async ({ method, body, authorization, mac }) => {
       const header = await relayRegistrarAuthorization({
         relayKey: shared.relay_key,

@@ -226,7 +226,7 @@ the per-session byte counts it measured, are in
 ## Per-exchange keys
 
 Each exchange has its own relay key, derived from the exchange's shared secret
-([PROTOCOL.md, Relay credential derivation](../../docs/spec/PROTOCOL.md#relay-credential-derivation)).
+([RELAY_CREDENTIALS.md, Relay credential derivation](../../docs/spec/RELAY_CREDENTIALS.md#relay-credential-derivation)).
 The relay holds one row per registered exchange in coturn's `turn_secret` table,
 in the SQLite file `/var/lib/alcove-relay/turndb` (mounted at
 `/var/lib/coturn/turndb`), and accepts a credential minted under any row.
@@ -396,7 +396,7 @@ whose operator gave it none; that is turned on in `relay.env` -- see
     shows the caller holds the key the exchange has registered, and rotates
     (`PUT`) or revokes (`DELETE`) that exchange. Its format, the key it is
     signed under, and test vectors are in
-    [PROTOCOL.md, The registrar request proof](../../docs/spec/PROTOCOL.md#the-registrar-request-proof);
+    [RELAY_CREDENTIALS.md, The registrar request proof](../../docs/spec/RELAY_CREDENTIALS.md#the-registrar-request-proof);
     core's `relayRegistrarAuthorization` makes one. It holds no token, so the
     routine calls after enrollment never need the token.
 
@@ -587,7 +587,7 @@ start: to turn it off, set it to `off` and
 - **What it writes.** As the token's enrollment, for an id not yet enrolled:
   the key's row and the exchange's mapping. Any id in the registrar's id
   space is accepted; the exchange id a browser exchange uses is
-  [PROTOCOL.md](../../docs/spec/PROTOCOL.md)'s to state.
+  [RELAY_CREDENTIALS.md](../../docs/spec/RELAY_CREDENTIALS.md)'s to state.
 - **The lapse is the registrar's.** The body must send `"maxAgeDays": null`;
   any other value is answered 400 and nothing is written. The row lapses
   4200 s (70 minutes) after the enrollment (`TOKENLESS_LIFETIME_SECONDS`), and

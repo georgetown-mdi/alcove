@@ -8,7 +8,7 @@ never the command line. Opens two TLS connections to <host>:<port> with
 <server-name> as their server name, verifying the certificate for that name
 against the system's authorities or --cafile, and upgrades each to a WebSocket
 at /relay. One sends the inviter's hello and the other the acceptor's, each
-with a proof made under the relay key (docs/spec/PROTOCOL.md, The WebSocket
+with a proof made under the relay key (docs/spec/RELAY_CREDENTIALS.md, The WebSocket
 relay proof) and its start, as docs/spec/WEBSOCKET_RELAY.md specifies. Once
 both are paired and started, the inviter sends one 32-byte binary message,
 which the acceptor must receive unchanged, then closes with 1000, which the
