@@ -68,13 +68,14 @@ import {
 } from "@alcove/cli-contract";
 
 import { LocalFSClient } from "./connection/localFSClient";
-import { raiseInactivityLimit } from "./connection/timeoutGuidance";
 import {
+  bothSweptStep,
   isConfigAppearedLate,
   keyFileStateStep,
   keyFileWriteFailure,
   markArrivalWait,
   markKeyFileSavedConfigNotWritten,
+  missingReceiptWarning,
   type ArrivalWait,
   type KeyFileSavedConfigNotWritten,
   type OnlineSetupConfiguration,
@@ -144,7 +145,6 @@ import {
 } from "./eventStream";
 
 import {
-  BOTH_SWEPT_GUIDANCE,
   partnerCertificatePinnedNotice,
   TERMINATED_RECORD_UNBUILT_WARNING,
   UNNAMED_PARTNER_ACCOUNTING_NOTE,
@@ -2611,17 +2611,9 @@ export async function runProtocol(
     const errIsPeerAbort = (e: unknown): boolean =>
       causeChainSome(e, (link) => link instanceof PeerAbortError);
 
-    // Missing-receipt observability: this side configured a signed receipt
-    // but the exchange failed before runExchange returned (exchangeComplete
-    // false), not with a receipt verification error (a distinct security
-    // event already reported by that error's own kind/message), and not with
-    // this party's own local certificate/terms refusal (a config fault this
-    // party's operator caused). A partner presenting no signing certificate,
-    // or one this build cannot read, is refused at the terms exchange as a
-    // receipt verification error, so what is left here is a run whose signed
-    // path had no complaint of its own: the swap is the last step of
-    // runExchange, and this side parks on that receive until the peer
-    // timeout, a drop otherwise indistinguishable from generic peer-silence.
+    // The swap is the last step of runExchange, and this side parks on that
+    // receive until the peer timeout, so a drop there is otherwise
+    // indistinguishable from generic peer-silence (missingReceiptWarning).
     // Walks the `cause` chain for a ReceiptVerificationError, so a future wrap
     // of the security failure cannot downgrade it to this softer warn.
     const isReceiptVerificationFailure = (e: unknown): boolean =>
@@ -2633,21 +2625,13 @@ export async function runProtocol(
     // isReceiptVerificationFailure above.
     const isLocalConfigRefusal = (e: unknown): boolean =>
       causeChainSome(e, (link) => link.constructor === OperatorConfigError);
-    if (
-      signing !== null &&
-      !run.exchangeComplete &&
-      !isReceiptVerificationFailure(err) &&
-      !isLocalConfigRefusal(err)
-    )
-      log.warn(
-        "A signed receipt was configured for this exchange, but no receipt " +
-          "reached this side before the exchange ended and the receipt swap " +
-          "did not complete. A partner that presents no signing certificate " +
-          "is refused earlier, at the authenticated setup step, so check the " +
-          "transport and the peer's own logs rather than the partner's " +
-          "signing configuration. If the peer was still working when the " +
-          `exchange ended, ${raiseInactivityLimit(false)}.`,
-      );
+    const receiptWarning = missingReceiptWarning({
+      receiptConfigured: signing !== null,
+      exchangeComplete: run.exchangeComplete,
+      receiptRefused: isReceiptVerificationFailure(err),
+      localConfigRefused: isLocalConfigRefusal(err),
+    });
+    if (receiptWarning !== undefined) log.warn(receiptWarning);
 
     // The disclosure a terminated run already made outlives the failure that
     // stopped it: a run past its own payload send has handed this party's payload
@@ -2700,13 +2684,14 @@ export async function runProtocol(
     // peer-wait or key-exchange timeout comes before either side can store,
     // so no rotation line follows it today; the order puts the specific
     // likely cause first if one does.
-    if (
-      connection.channel !== "webrtc" &&
-      fileSyncRuntime.sweepExchangeFiles === true &&
-      connection.options?.retainFiles !== true &&
-      isPeerWaitTimeout(err)
-    )
-      log.error(BOTH_SWEPT_GUIDANCE);
+    const bothSwept = bothSweptStep({
+      deleteModeSweep:
+        connection.channel !== "webrtc" &&
+        fileSyncRuntime.sweepExchangeFiles === true &&
+        connection.options?.retainFiles !== true,
+      peerWaitTimedOut: isPeerWaitTimeout(err),
+    });
+    if (bothSwept !== undefined) log.error(bothSwept);
 
     // The rotation line below states what the store order leaves the two
     // parties holding (rotationStanding), at error level because the

@@ -37,18 +37,6 @@ export const entryHelloResidueGuidance = (helloName: string): string =>
   helloName;
 
 /**
- * Guidance for a run that swept the shared folder at entry and then timed out
- * waiting for the partner, the result of both sides sweeping at once. Both
- * sides get the same text and action, so recovery needs no contact. Only a
- * clean delete-mode sweep reaches it, since it says the folder is empty:
- * docs/EXCHANGE_REFERENCE.md#directory-exclusivity.
- */
-export const BOTH_SWEPT_GUIDANCE =
-  "Both sides appear to have cleared the folder at the same time, removing " +
-  "each other's files. The folder should be empty now. Run the exchange " +
-  "again on both sides, without --sweep-exchange-files.";
-
-/**
  * The remedy a refused rename of this party's own temporary file ends on,
  * after core's "The server may not allow renames.": the flag and the
  * configuration key that turn on writing without renaming.

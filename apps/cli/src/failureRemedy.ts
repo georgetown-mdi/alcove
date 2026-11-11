@@ -3,8 +3,9 @@
 // sentence states what happened (failureCauseSentence); this map is total over
 // FailureCauseKind, so a cause core adds fails to compile here until bound.
 // Also the steps for states only the CLI reaches: what a run left its key file
-// holding when it failed or was interrupted (keyFileStateStep), and the
-// failure of a write to the key file (keyFileWriteFailure).
+// holding when it failed or was interrupted (keyFileStateStep), the failure of
+// a write to the key file (keyFileWriteFailure), and the lines the failure site
+// logs beside a failure (bothSweptStep, missingReceiptWarning).
 
 import {
   failureCauseOf,
@@ -26,6 +27,7 @@ import {
   annotationOf,
 } from "@alcove/core";
 
+import { raiseInactivityLimit } from "./connection/timeoutGuidance";
 import { OUT_OF_SYNC_TOKENS_DOC_URL } from "./docLinks";
 
 /**
@@ -540,6 +542,80 @@ export function keyFileWriteFailure(
   )}${after}`;
   return markStatesItsOwnNextStep(
     keepOperatorSuppliedText(new Error(message.text), message),
+  );
+}
+
+/**
+ * Guidance for a run that swept the shared folder at entry and then timed out
+ * waiting for the partner, the result of both sides sweeping at once. Both
+ * sides get the same text and action, so recovery needs no contact. Only a
+ * clean delete-mode sweep reaches it, since it says the folder is empty:
+ * docs/EXCHANGE_REFERENCE.md#directory-exclusivity.
+ */
+export const BOTH_SWEPT_GUIDANCE =
+  "Both sides appear to have cleared the folder at the same time, removing " +
+  "each other's files. The folder should be empty now. Run the exchange " +
+  "again on both sides, without --sweep-exchange-files.";
+
+/** What the failure site knows of a failed run for {@link bothSweptStep}. */
+export interface SweptRunFacts {
+  /** The file-sync run swept the shared folder at entry in delete mode. */
+  readonly deleteModeSweep: boolean;
+  /**
+   * The run then timed out waiting for the partner, at the rendezvous or the
+   * key exchange. A sweep that failed part-way raises its own error instead.
+   */
+  readonly peerWaitTimedOut: boolean;
+}
+
+/**
+ * The line the failure site logs beside a peer-wait timeout on a run that
+ * swept the folder first ({@link BOTH_SWEPT_GUIDANCE}), else `undefined`.
+ */
+export function bothSweptStep(run: SweptRunFacts): string | undefined {
+  return run.deleteModeSweep && run.peerWaitTimedOut
+    ? BOTH_SWEPT_GUIDANCE
+    : undefined;
+}
+
+/** What the failure site knows of a failed run for {@link missingReceiptWarning}. */
+export interface SignedRunFacts {
+  /** This side configured a signed receipt for the exchange. */
+  readonly receiptConfigured: boolean;
+  /** The exchange itself completed, so the failure came after it. */
+  readonly exchangeComplete: boolean;
+  /**
+   * The failure is a receipt verification refusal, a security failure its own
+   * message reports.
+   */
+  readonly receiptRefused: boolean;
+  /** The failure is this party's own local configuration refusal. */
+  readonly localConfigRefused: boolean;
+}
+
+/**
+ * The warning the failure site logs for a run that configured a signed receipt
+ * and failed before the receipt swap completed with no complaint of its own
+ * about the receipt, else `undefined`. A partner presenting no signing
+ * certificate is refused at the terms exchange as a receipt verification
+ * failure, so what is left is a drop during the swap.
+ */
+export function missingReceiptWarning(run: SignedRunFacts): string | undefined {
+  if (
+    !run.receiptConfigured ||
+    run.exchangeComplete ||
+    run.receiptRefused ||
+    run.localConfigRefused
+  )
+    return undefined;
+  return (
+    "A signed receipt was configured for this exchange, but no receipt " +
+    "reached this side before the exchange ended and the receipt swap " +
+    "did not complete. A partner that presents no signing certificate " +
+    "is refused earlier, at the authenticated setup step, so check the " +
+    "transport and the peer's own logs rather than the partner's " +
+    "signing configuration. If the peer was still working when the " +
+    `exchange ended, ${raiseInactivityLimit(false)}.`
   );
 }
 

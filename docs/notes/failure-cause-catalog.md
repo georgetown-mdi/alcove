@@ -45,7 +45,7 @@ The rule this section measures against: core states causes and facts, and each a
 
 ### The CLI
 
-- **`protocol.ts`, the lines the failure site logs itself.** `runProtocol`'s catch writes `BOTH_SWEPT_GUIDANCE` (`run/notices.ts`) for a peer-wait timeout after a sweep, and the signed-receipt advisory, which names `raiseInactivityLimit` (`connection/timeoutGuidance.ts`). Its key-file state line, and the signal handler's, come from `keyFileStateStep` ([States no cause names](#states-no-cause-names)), and its key-file write failures from `keyFileWriteFailure`.
+- **`protocol.ts`, the lines the failure site logs itself.** None is written outside the remedy module: [Stage 2: the failure site's own lines](#stage-2-the-failure-sites-own-lines) lists them.
 - **The command boundary and the terminal event.** Both go through `renderFailureForOperator` and `nextStepBeneathFailure` (`util/exit.ts`), which take the fixed steps (`INTERNAL_FAULT_NEXT_STEP`, `PARTNER_REFUSED_NEXT_STEP`, `termsRefusalNextStep` in `termsRefusalRemedy.ts`), the catalog remedy (`failureRemedy`), and the online-setup state. So the `error` event's `message` states the same step as stderr's error line. The lines the failure site logs, the key-file state line among them, reach stderr only, and an interrupt emits no terminal event.
 - **Command-local remedy constants.** About forty constants across the commands and their helpers (`commands/*.ts`, `config/exchangeConfig.ts`, `config/persist.ts`, `keyFile.ts`, `fileUtils.ts`, `allowedRelays.ts`, `invitationRelayEnrollment.ts`, `relayKeyRotation.ts`, `signingIdentityDivergence.ts`, `termsUpdateFiles.ts`), and seven CLI errors marked as stating their own step (`psiMemoryBudget.ts`, `termsChange.ts`, `relayKeyRotation.ts`, and the WebRTC broker and relay clients). Each refuses a command's own input before a run starts, and no second app reports it.
 
@@ -55,6 +55,20 @@ The rule this section measures against: core states causes and facts, and each a
 - **Copy keyed on message text.** `partnerCertificateRefusal.ts` matches core's five `PARTNER_CERTIFICATE_REFUSAL_MESSAGES` by text to replace their configuration-key remedy with the receipts card's controls: a cause the catalog does not name, read back from its sentence.
 - **Copy keyed on error class and exit code.** `failureContentFor` writes about forty titled accounts by error class, category and exit code, the partner refusal (exit 76) and the security fallback among them, beside the relayed message where the event holds `recoveryHint`.
 - **The public web app** runs core in the browser and shows core's messages, so every core constant above reaches it as written; its no-show and managed-run copy (`useInviterExchange.ts`, `psi/managed/managedFailureCopy.ts`) does not draw on the catalog.
+
+### Stage 2: the failure site's own lines
+
+This stage of the refactor routes the lines `runProtocol`'s catch (`apps/cli/src/protocol.ts`) logs beside a failure through the CLI's remedy module, `apps/cli/src/failureRemedy.ts`. The catch passes each function the facts it knows, and the function returns the line or `undefined`:
+
+- `bothSweptStep` writes `BOTH_SWEPT_GUIDANCE` for a peer-wait timeout on a run that swept the shared folder in delete mode first.
+- `missingReceiptWarning` writes the signed-receipt warning for a run that configured a signed receipt and failed before the receipt swap completed, naming the inactivity limit through `raiseInactivityLimit` (`connection/timeoutGuidance.ts`).
+- The key-file state line (`keyFileStateStep`) and the key-file write failures (`keyFileWriteFailure`) come from the same module since stage 1 ([States no cause names](#states-no-cause-names)).
+
+The survey names no other run-ending remedy the failure site writes itself. What the stage found:
+
+- Neither line has a second copy: the signal handler states only the key-file state line, and the `error` event states neither, as `protocol.test.ts` checks. The key-file state line stays out of the terminal event as well.
+- The console reads the `error` event, and the CLI's stderr only when no terminal event arrives, so it reaches neither line and holds no copy of either.
+- One cause therefore reads differently by app, left as it is: on a swept peer-wait timeout the CLI's stderr adds the both-swept line beneath its no-show remedy, while the console shows its own no-show remedy alone (`consoleFailureCause.ts`). Whether the console states it too is owner copy.
 
 ### What the survey decides
 

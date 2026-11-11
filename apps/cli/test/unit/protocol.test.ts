@@ -494,7 +494,6 @@ import {
 } from "../../src/run/prepare";
 import {
   peerSilenceGuidance,
-  BOTH_SWEPT_GUIDANCE,
   SIGNING_WITHOUT_RECORD_WARNING,
   TERMINATED_RECORD_UNBUILT_WARNING,
   UNNAMED_PARTNER_ACCOUNTING_NOTE,
@@ -503,6 +502,7 @@ import {
   payloadSendBeyondConfigurationNotice,
 } from "../../src/run/notices";
 import {
+  buildErrorEvent,
   reportPersistenceLoss,
   type EventStreamEmitter,
 } from "../../src/eventStream";
@@ -532,6 +532,7 @@ import {
 import { termsChangeHandler } from "../../src/termsChange";
 import { LocalFSClient } from "../../src/connection/localFSClient";
 import {
+  BOTH_SWEPT_GUIDANCE,
   configAppearedLateStepShown,
   markConfigAppearedLate,
 } from "../../src/failureRemedy";
@@ -2970,6 +2971,10 @@ test("the both-swept advice appears on a flagged run that fails waiting for the 
   });
   expect((err as Error).message).toContain("Your partner did not arrive");
   expect(mockState.errors).toContain(BOTH_SWEPT_GUIDANCE);
+  // The console reads the terminal event, which states the cause alone.
+  expect(buildErrorEvent(err, "run").message).not.toContain(
+    BOTH_SWEPT_GUIDANCE,
+  );
 });
 
 test("the both-swept advice appears on a flagged run that fails in the key exchange", async () => {
@@ -5044,6 +5049,12 @@ test(
           m.includes("inactivity_timeout_ms"),
       ),
     ).toBe(true);
+    // The console reads the terminal event, which does not state the warning.
+    for (const result of [resultA, resultB])
+      expect(
+        buildErrorEvent((result as PromiseRejectedResult).reason, "run")
+          .message,
+      ).not.toContain(MISSING_RECEIPT_WARNING);
   },
 );
 
