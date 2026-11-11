@@ -114,7 +114,11 @@ export async function getManagedSftpClientKey(
     !isCryptoKeyOfType(privateKey, "private") ||
     !isCryptoKeyOfType(publicKey, "public")
   )
-    throw new Error("The saved SFTP client key is not a key pair.");
+    throw new Error(
+      "The saved SFTP client key is not a key pair. Remove this exchange and " +
+        "save it again, then ask the server's administrator to replace the " +
+        "authorized_keys line with the new one.",
+    );
   const key = await NonExtractableEcdsaP256KeyPair.fromCryptoKeyPair({
     privateKey,
     publicKey,
