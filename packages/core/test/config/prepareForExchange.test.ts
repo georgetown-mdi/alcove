@@ -22,10 +22,11 @@ import {
   StandardizationTermsError,
   UsageError,
 } from "../../src/errors";
+import { singlePassDatasetExceedsCap } from "../../src/psi/singlePassSizing";
 import {
-  SINGLE_PASS_LOCAL_REMEDY,
-  singlePassDatasetExceedsCap,
-} from "../../src/psi/singlePassSizing";
+  failureCauseOf,
+  singlePassOverLimitRemedy,
+} from "../../src/failureCause";
 import {
   declaredEffectiveKeyCount,
   FAN_OUT_CANDIDATES_PER_ELEMENT,
@@ -706,6 +707,14 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
       undefined,
       TEST_CEILING,
     );
+  const refusalCause = (prepare: () => unknown) => {
+    try {
+      prepare();
+    } catch (err) {
+      return failureCauseOf(err);
+    }
+    throw new Error("the preparation was not refused");
+  };
 
   test("an over-ceiling dataset declaring no fan-out is refused with the remedies that fit it", () => {
     const prepare = () =>
@@ -718,12 +727,25 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
     // within it, the member both front ends render to the operator.
     expect(prepare).toThrow(OperatorConfigError);
     expect(prepare).toThrow(/exceed the single-pass limit/);
-    expect(prepare).not.toThrow(/Removing a step that splits values/);
+    const cause = refusalCause(prepare);
+    expect(cause).toMatchObject({
+      kind: "single-pass-over-limit",
+      limit: "browser-dataset",
+    });
+    expect(cause).not.toHaveProperty("fansOut");
     // The pre-flight and the authoritative two-party gate state one remedy, so an
     // acceptor is not told here to narrow keys it did not choose and told the
     // opposite mid-run.
-    expect(prepare).toThrow(SINGLE_PASS_LOCAL_REMEDY);
-    expect(prepare).not.toThrow(/Reduce the number of linkage keys/);
+    if (cause?.kind !== "single-pass-over-limit") throw new Error("no cause");
+    expect(singlePassOverLimitRemedy(cause)).toBe(
+      singlePassOverLimitRemedy({
+        kind: "single-pass-over-limit",
+        limit: "value-slots",
+        local: { effectiveKeyCount: 1, recordCount: 2 },
+        partner: { effectiveKeyCount: 1, recordCount: 1 },
+        limitSlots: 1,
+      }),
+    );
   });
 
   test("an over-ceiling fan-out config is offered the fan-out remedy the ceiling has for it", () => {
@@ -757,7 +779,7 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
       );
     expect(prepare).toThrow(OperatorConfigError);
     expect(prepare).toThrow(/exceed the single-pass limit/);
-    expect(prepare).toThrow(/Removing a step that splits values/);
+    expect(refusalCause(prepare)).toMatchObject({ fansOut: true });
   });
 
   test("a command-line party has no size refusal before contact", () => {

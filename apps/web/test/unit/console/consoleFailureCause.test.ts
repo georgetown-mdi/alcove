@@ -119,6 +119,21 @@ const SAMPLES: {
     { kind: "set-over-limit", stage: "before-contact", limit: "uncounted" },
     { kind: "set-over-limit", stage: "after-terms", limit: "uncounted" },
   ],
+  "single-pass-over-limit": [
+    {
+      kind: "single-pass-over-limit",
+      limit: "frame",
+      frame: "request",
+      frameBytes: 70_001,
+      limitBytes: 65_536,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "distinct-values",
+      limitValues: 122_713_351,
+    },
+  ],
+  "matches-over-limit": [{ kind: "matches-over-limit", list: "grouping" }],
 };
 
 /** A relayed failure as the job client builds it off the CLI's event. */
@@ -394,6 +409,43 @@ describe("a console run that failed on a catalog cause", () => {
     // Only a relayed failure takes the console's remedy.
     const failure = failureFor("exchange", new PeerAbortError());
     expect(failure.title).toBe("Exchange failed");
+  });
+
+  test("a single-pass or matched-list refusal takes a title naming the limit and core's remedy", () => {
+    const [frame, distinct] = SAMPLES["single-pass-over-limit"];
+    const tooLargeFrame = failureFor(
+      "exchange",
+      relayed("the CLI's text", { failureCause: frame, exitCode: 64 }),
+    );
+    expect(tooLargeFrame.title).toBe(
+      "This exchange is too large for single-pass linkage",
+    );
+    expect(tooLargeFrame.message).toBe(
+      "The single-pass request came to 70,001 bytes, above the 65,536 bytes " +
+        "one encrypted message can hold, so the exchange stopped and your " +
+        "partner was told. Reduce the record count or split the dataset into " +
+        "smaller batches, or agree on new terms with fewer linkage keys with " +
+        "your partner.",
+    );
+    expect(
+      failureFor(
+        "exchange",
+        relayed("the CLI's text", { failureCause: distinct, exitCode: 64 }),
+      ).title,
+    ).toBe("Your file is too large to send");
+    const matches = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["matches-over-limit"][0],
+        exitCode: 64,
+      }),
+    );
+    expect(matches.title).toBe(
+      "This exchange found more matches than it can send",
+    );
+    expect(matches.message).toMatch(
+      /told your partner\. This usually means many records on both sides share a key value\./,
+    );
   });
 
   test("a set too large to send takes the browser's title for it and core's remedy", () => {

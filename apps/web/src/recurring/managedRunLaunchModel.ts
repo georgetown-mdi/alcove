@@ -1128,7 +1128,8 @@ export function managedRunCausePlacement(
 /**
  * A classified state with `error` shown where `placement` puts it. The decision
  * is passed in rather than read here so it stays at the single site above and
- * this stays the mechanism: the escape at the display boundary, and the empty
+ * this stays the mechanism: the escape at the display boundary, with the web
+ * app's remedy for a catalog cause the error holds, and the empty
  * cause that gets no block promising an account the state has none of. A
  * rejection that is not an `Error` has no chain to show.
  *
@@ -1141,7 +1142,7 @@ export function withShownCause(
 ): ManagedRunFailure {
   const cause: string =
     placement === "attributed" && error instanceof Error
-      ? sanitizeErrorForDisplay(error)
+      ? webFailureMessage(error)
       : "";
   if (cause.trim() === "") return failure;
   return { ...failure, reportedCause: cause };

@@ -19,6 +19,8 @@ import {
   FAN_OUT_CANDIDATES_PER_ELEMENT,
 } from "../src/fanOutFunctions";
 import { BROWSER_PSI_SET_MAX_ELEMENTS } from "../src/connection/frameSize";
+import { failureCauseOf, singlePassOverLimitRemedy } from "../src/failureCause";
+import { formatCount } from "../src/utils/formatCount";
 import {
   singlePassReplyByteCap,
   singlePassRequestByteCap,
@@ -781,21 +783,23 @@ test("an over-ceiling fan-out exchange aborts on both sides before any frame mov
     );
     await expect(run).rejects.toThrow(UsageError);
     await expect(run).rejects.toThrow(
-      /this exchange is too large for single-pass linkage/,
+      /This exchange is too large for single-pass linkage/,
     );
     // The fan-out that overflows the budget is the PARTNER's declaration in this
     // fixture, so both the cause and the fan-out remedy are attributed there, and
     // the value slot product the gate weighed is the one stated.
     await expect(run).rejects.toThrow(
-      new RegExp(
-        `your partner declared ${FAN_OUT_CANDIDATES_PER_ELEMENT} effective ` +
-          `linkage key\\(s\\) across ${overWithFanOut} record\\(s\\), which is ` +
-          `${FAN_OUT_CANDIDATES_PER_ELEMENT * overWithFanOut} value slot\\(s\\)`,
-      ),
+      `your partner declared ${FAN_OUT_CANDIDATES_PER_ELEMENT} effective ` +
+        `linkage keys across ${formatCount(overWithFanOut)} records, which ` +
+        `is ${formatCount(FAN_OUT_CANDIDATES_PER_ELEMENT * overWithFanOut)} ` +
+        "value slots",
     );
-    await expect(run).rejects.toThrow(
-      /Your partner can also remove a step that splits values or expands a key/,
-    );
+    const cause = failureCauseOf(await run.catch((e: unknown) => e));
+    expect(cause).toMatchObject({
+      kind: "single-pass-over-limit",
+      limit: "value-slots",
+      partnerFansOut: true,
+    });
     await expect(run).rejects.not.toThrow(/cascade/);
   }
   expect(overWithFanOut).toBeLessThan(rowsWithinPlainBudget);
@@ -847,11 +851,19 @@ test("a party over the ceiling on its own cleaning alone is offered the fan-out 
     -1,
   );
   await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(
-    /Removing a step that splits values or expands a key also lowers the count/,
+  const cause = failureCauseOf(await run.catch((e: unknown) => e));
+  expect(cause).toMatchObject({
+    kind: "single-pass-over-limit",
+    limit: "value-slots",
+    localFansOut: true,
+  });
+  if (cause?.kind !== "single-pass-over-limit") throw new Error("no cause");
+  const remedy = singlePassOverLimitRemedy(cause);
+  expect(remedy).toContain(
+    "Removing a step that splits values or expands a key also lowers the count",
   );
   // The breach is this party's alone, so the partner is offered nothing.
-  await expect(run).rejects.not.toThrow(/the partner's fan-out/);
+  expect(remedy).not.toMatch(/your partner to reduce/);
 });
 
 test("a row realizing more candidates than the party declared is refused, not shipped", async () => {

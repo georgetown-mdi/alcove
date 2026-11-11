@@ -177,23 +177,18 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
     file: "packages/core/src/exchange.ts",
     anchor: "prepareForExchange",
     raises: "OperatorConfigError",
-    interpolates: [
-      "SINGLE_PASS_LOCAL_REMEDY",
-      "declaredRecordCount",
-      "linkageTerms.linkageKeys.length",
-    ],
+    interpolates: ["failureCauseSentence(cause)"],
     provenance:
-      "no partner-AUTHORED text: `declaredRecordCount` is this party's own " +
-      "record count times a build constant, and " +
-      "`linkageTerms.linkageKeys.length` a COUNT off the agreed terms, which " +
-      "the accept path does adopt from the invitation. The count is the " +
-      "verdict's whole basis -- what the content rule excludes is text another " +
-      "party wrote, and a cardinality includes none of it, whichever document it " +
-      "was read off. Interpolating a NAME from those same terms here would not " +
-      "inherit this reasoning. `SINGLE_PASS_LOCAL_REMEDY` " +
-      "(psi/singlePassSizing.ts) is a module constant of fixed prose, shared " +
-      "with the two-party gate's message so the two state one remedy; it quotes " +
-      "no value at all.",
+      "no partner-AUTHORED text: the `single-pass-over-limit` cause built " +
+      "beside the throw holds `declaredRecordCount`, this party's own record " +
+      "count times a build constant, `linkageTerms.linkageKeys.length`, a " +
+      "COUNT off the agreed terms, which the accept path does adopt from the " +
+      "invitation, and a fan-out flag; `failureCauseSentence` " +
+      "(failureCause.ts) composes those counts with fixed prose. The count is " +
+      "the verdict's whole basis -- what the content rule excludes is text " +
+      "another party wrote, and a cardinality includes none of it, whichever " +
+      "document it was read off. Putting a NAME from those same terms in the " +
+      "cause would not inherit this reasoning.",
   },
   {
     file: "packages/core/src/exchange.ts",

@@ -82,7 +82,6 @@ import {
 import {
   partyFansOut,
   psiElementBounds,
-  SINGLE_PASS_LOCAL_REMEDY,
   singlePassDatasetExceedsCap,
   singlePassIrreducibleReplyBytes,
   singlePassReplyByteCap,
@@ -90,6 +89,7 @@ import {
   singlePassValueSlotCeiling,
   valueSlots,
 } from "./psi/singlePassSizing.js";
+import { failureCauseSentence, markFailureCause } from "./failureCause.js";
 import type { InboundPsiFrameUse } from "./connection/inboundFrameMemory.js";
 import {
   preparePayload,
@@ -157,7 +157,7 @@ import {
   resolvePayloadDisclosureOrAbort,
 } from "./exchange/termsRefusals.js";
 import { buildOwedExchangeRecord } from "./exchange/owedRecord.js";
-import { psiParticipantId, runPsiPhase } from "./exchange/psiPhase.js";
+import { runPsiPhase } from "./exchange/psiPhase.js";
 import {
   stillWorkingLayer,
   type PartnerProgressReporter,
@@ -848,17 +848,20 @@ export function prepareForExchange(
       singlePassValueSlotCeiling,
     )
   ) {
-    throw new OperatorConfigError(
-      `this dataset is too large for single-pass linkage in a browser: ` +
-        `${declaredRecordCount} declared record(s) across ` +
-        `${linkageTerms.linkageKeys.length} linkage key(s) exceed the ` +
-        `single-pass limit. ${SINGLE_PASS_LOCAL_REMEDY}` +
-        (partyFansOut(linkageRounds(linkageTerms.linkageKeys).length, {
-          effectiveKeyCount,
-        }) || dataset.declaresFanOut
-          ? " Removing a step that splits values or expands a key also " +
-            "lowers the count."
-          : ""),
+    const cause = {
+      kind: "single-pass-over-limit",
+      limit: "browser-dataset",
+      recordCount: declaredRecordCount,
+      linkageKeyCount: linkageTerms.linkageKeys.length,
+      ...(partyFansOut(linkageRounds(linkageTerms.linkageKeys).length, {
+        effectiveKeyCount,
+      }) || dataset.declaresFanOut
+        ? { fansOut: true as const }
+        : {}),
+    } as const;
+    throw markFailureCause(
+      new OperatorConfigError(failureCauseSentence(cause)),
+      cause,
     );
   }
 
@@ -2001,7 +2004,6 @@ export async function runExchange(
     // memory check that would ask for more memory.
     if (!fileSync)
       refuseSinglePassOverCeiling(
-        psiParticipantId(isReceiver),
         keyCount,
         localSize,
         partyFansOut(keyCount, { effectiveKeyCount }) || localFactor > 1,

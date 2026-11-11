@@ -11,6 +11,7 @@ import {
   failureCauseOf,
   keepOperatorSuppliedText,
   markStatesItsOwnNextStep,
+  MATCHES_OVER_LIMIT_REMEDY,
   messageWithOperatorText,
   NEW_INVITATION_REMEDY,
   operatorSuppliedText,
@@ -18,6 +19,7 @@ import {
   redactAndRenderOperatorSuppliedText,
   relayRegistrarUnreachableRemedy,
   setOverLimitRemedy,
+  singlePassOverLimitRemedy,
   IGNORE_FILES_OLDER_THAN_KEY,
   type FailureCause,
   type FailureCauseKind,
@@ -133,6 +135,8 @@ export const CLI_FAILURE_REMEDIES: {
   },
   "partner-stopped-responding": () => PARTNER_STOPPED_RESPONDING_REMEDY,
   "set-over-limit": setOverLimitRemedy,
+  "single-pass-over-limit": singlePassOverLimitRemedy,
+  "matches-over-limit": () => MATCHES_OVER_LIMIT_REMEDY,
 };
 
 /** The CLI's remedy sentence for `cause` on a run described by `context`. */

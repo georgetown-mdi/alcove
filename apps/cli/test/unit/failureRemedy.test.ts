@@ -98,6 +98,23 @@ const SAMPLES: {
     },
     { kind: "set-over-limit", stage: "before-contact", limit: "uncounted" },
   ],
+  "single-pass-over-limit": [
+    {
+      kind: "single-pass-over-limit",
+      limit: "value-slots",
+      local: { effectiveKeyCount: 2, recordCount: 5 },
+      partner: { effectiveKeyCount: 2, recordCount: 2 },
+      limitSlots: 6,
+    },
+    {
+      kind: "single-pass-over-limit",
+      limit: "frame",
+      frame: "reply",
+      frameBytes: 70_000,
+      limitBytes: 65_536,
+    },
+  ],
+  "matches-over-limit": [{ kind: "matches-over-limit", list: "grouping" }],
 };
 
 const ARRIVAL_WAITS: ArrivalWait[] = ["exchange", "online-invitation"];
@@ -148,6 +165,23 @@ test("a set-size refusal states core's sentence with the remedy beneath, after t
       "send, so it cannot confirm one PSI set can hold them, and nothing was " +
       "sent.\ncaused by: Map maximum size exceeded\n" +
       "Split the input into smaller files and run one exchange for each.",
+  );
+});
+
+test("a single-pass refusal and a matched-list refusal state core's sentence with the remedy beneath", () => {
+  expect(rendered(SAMPLES["single-pass-over-limit"][0])).toBe(
+    "This dataset is too large for single-pass linkage: you declared 2 " +
+      "effective linkage keys across 5 records, which is 10 value slots, " +
+      "above the single-pass limit of 6 value slots per party in an exchange " +
+      "with a browser.\nReduce the record count or split the dataset into " +
+      "smaller batches, or agree on new terms with fewer linkage keys with " +
+      "your partner.",
+  );
+  expect(rendered(SAMPLES["matches-over-limit"][0])).toBe(
+    "This exchange found more matches than it can send, so it stopped and " +
+      "told your partner.\nThis usually means many records on both sides " +
+      "share a key value. Use a more distinctive key or split the data into " +
+      "smaller batches.",
   );
 });
 

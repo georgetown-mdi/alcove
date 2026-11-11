@@ -38,7 +38,11 @@ import {
   MAX_FRAME_SIZE_BYTES,
 } from "../../src/connection/frameSize";
 import {
-  SINGLE_PASS_LOCAL_REMEDY,
+  failureCauseOf,
+  singlePassOverLimitRemedy,
+} from "../../src/failureCause";
+import { formatCount } from "../../src/utils/formatCount";
+import {
   singlePassCeilingBreach,
   singlePassDatasetExceedsCap,
   singlePassReplyByteCap,
@@ -861,10 +865,7 @@ test("the resolved table is sent only if its parts total within one frame's boun
       outboundWebRtcFrameBound: () => 64,
     };
     const column = Array.from({ length: pairs }, (_, k) => k);
-    const outcome = await sendResolvedTable(conn, "client", [
-      column,
-      column,
-    ]).then(
+    const outcome = await sendResolvedTable(conn, [column, column]).then(
       () => undefined,
       (e: unknown) => e,
     );
@@ -881,11 +882,15 @@ test("the resolved table is sent only if its parts total within one frame's boun
   ]);
   expect(over.outcome).toBeInstanceOf(UsageError);
   expect((over.outcome as Error).message).toBe(
-    "client: This exchange found 5 matches, more than the 4 it can send. It " +
-      "stopped, and your partner was told. This usually means many records " +
-      "on both sides share a key value. Use a more distinctive key or split " +
-      "the data into smaller batches.",
+    "This exchange found 5 matches, more than the 4 it can send, so it " +
+      "stopped and told your partner.",
   );
+  expect(failureCauseOf(over.outcome)).toStrictEqual({
+    kind: "matches-over-limit",
+    list: "resolved",
+    matchCount: 5,
+    limitMatches: 4,
+  });
 });
 
 // --- single-pass reply codec and the receiver's frame-length tie --------------
@@ -1380,8 +1385,13 @@ test("a party with more distinct values than one set holds is refused before mas
   expect((refusal as Error).message).toBe(
     "Too large to send: your records give more than 3 distinct linkage key " +
       "values, the most one single-pass set can hold, so the exchange " +
-      `stopped before masking them and told your partner. ${SINGLE_PASS_LOCAL_REMEDY}`,
+      "stopped before masking them and told your partner.",
   );
+  expect(failureCauseOf(refusal)).toStrictEqual({
+    kind: "single-pass-over-limit",
+    limit: "distinct-values",
+    limitValues: 3,
+  });
 });
 
 test("single-pass receiver rejects a reply whose index table contradicts its record count", async () => {
@@ -1447,6 +1457,20 @@ test("single-pass receiver rejects a reply whose sender count contradicts the ex
   await expect(run).rejects.toThrow(/declares 4 sender record/);
 });
 
+// A single-pass refusal's message followed by the remedy every app states for
+// its cause.
+async function singlePassRefusal(run: Promise<unknown>): Promise<string> {
+  const error = await run.then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  expect(error).toBeInstanceOf(UsageError);
+  const cause = failureCauseOf(error);
+  if (cause?.kind !== "single-pass-over-limit")
+    throw new Error("the refusal holds no single-pass cause");
+  return `${(error as Error).message} ${singlePassOverLimitRemedy(cause)}`;
+}
+
 test("single-pass aborts symmetrically when the exchange exceeds the ceiling", async () => {
   // Both parties compute the over-ceiling verdict from the exchanged counts alone,
   // before any single-pass frame moves, and both abort -- with guidance that does
@@ -1472,29 +1496,26 @@ test("single-pass aborts symmetrically when the exchange exceeds the ceiling", a
     false,
     -1,
   );
-  await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(
-    /this exchange is too large for single-pass linkage/,
-  );
-  await expect(run).rejects.toThrow(
-    new RegExp(
-      `your partner declared 1 effective linkage key\\(s\\) across ` +
-        `${CEILING + 1} record\\(s\\), which is ` +
-        `${CEILING + 1} value slot\\(s\\), above the ` +
-        `single-pass limit of ${CEILING} value slot\\(s\\) per party in an ` +
-        `exchange with a browser`,
-    ),
+  const text = await singlePassRefusal(run);
+  expect(text).toContain("This exchange is too large for single-pass linkage");
+  expect(text).toContain(
+    "your partner declared 1 effective linkage key across " +
+      `${formatCount(CEILING + 1)} records, which is ` +
+      `${formatCount(CEILING + 1)} value slots, above the single-pass limit ` +
+      `of ${formatCount(CEILING)} value slots per party in an exchange with ` +
+      "a browser",
   );
   // This party's own size is named as being within the ceiling, and it is not
   // offered the local dataset remedies: nothing it can change under these terms
   // moves the limit the partner's declaration reached. The scope is stated too --
   // the linkage keys are an agreed term, so a re-agreed narrower set is a change
   // this message does not speak to.
-  await expect(run).rejects.toThrow(
-    /Your own 2 value slot\(s\) are within the limit\. Ask your partner to reduce their record count or split their dataset\./,
+  expect(text).toContain(
+    "while your own 2 value slots are within it. Ask your partner to reduce " +
+      "their record count or split their dataset.",
   );
-  await expect(run).rejects.not.toThrow(/Reduce the record count/);
-  await expect(run).rejects.not.toThrow(/cascade/);
+  expect(text).not.toMatch(/Reduce the record count/);
+  expect(text).not.toMatch(/cascade/);
   // The abort happened before any frame was exchanged: the peer saw nothing.
   void peer;
 });
@@ -1518,18 +1539,14 @@ test("single-pass aborts symmetrically from the starter side too", async () => {
     false,
     -1,
   );
-  await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(
-    /this exchange is too large for single-pass linkage/,
+  const text = await singlePassRefusal(run);
+  expect(text).toContain("This exchange is too large for single-pass linkage");
+  expect(text).toContain(
+    "your partner declared 1 effective linkage key across " +
+      `${formatCount(CEILING + 1)} records`,
   );
-  await expect(run).rejects.toThrow(
-    new RegExp(
-      `your partner declared 1 effective linkage key\\(s\\) across ` +
-        `${CEILING + 1} record\\(s\\)`,
-    ),
-  );
-  await expect(run).rejects.not.toThrow(/Reduce the record count/);
-  await expect(run).rejects.not.toThrow(/cascade/);
+  expect(text).not.toMatch(/Reduce the record count/);
+  expect(text).not.toMatch(/cascade/);
   // The starter aborted before receiving the request: the peer saw nothing.
   void peer;
 });
@@ -1559,26 +1576,24 @@ test("a run whose own declared size is over the ceiling keeps the local diagnosi
     false,
     -1,
   );
-  await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(
-    /this dataset is too large for single-pass linkage/,
+  const text = await singlePassRefusal(run);
+  expect(text).toContain("This dataset is too large for single-pass linkage");
+  expect(text).toContain(
+    `you declared ${FAN_OUT_CANDIDATES_PER_ELEMENT} effective linkage keys ` +
+      `across ${formatCount(localRecords)} records, which is ` +
+      `${formatCount(FAN_OUT_CANDIDATES_PER_ELEMENT * localRecords)} value slots`,
   );
-  await expect(run).rejects.toThrow(
-    new RegExp(
-      `you declared ${FAN_OUT_CANDIDATES_PER_ELEMENT} effective linkage ` +
-        `key\\(s\\) across ${localRecords} record\\(s\\), which is ` +
-        `${FAN_OUT_CANDIDATES_PER_ELEMENT * localRecords} value slot\\(s\\)`,
-    ),
-  );
-  await expect(run).rejects.toThrow(SINGLE_PASS_LOCAL_REMEDY);
   // The keys are an agreed term, so the remedy states narrowing them as a
   // renegotiation rather than as an edit this operator could make alone.
-  await expect(run).rejects.not.toThrow(/Reduce the number of linkage keys/);
-  await expect(run).rejects.toThrow(
-    /Removing a step that splits values or expands a key also lowers the count/,
+  expect(text).toContain(
+    "agree on new terms with fewer linkage keys with your partner",
   );
-  await expect(run).rejects.not.toThrow(/your partner declared/);
-  await expect(run).rejects.not.toThrow(/cascade/);
+  expect(text).not.toMatch(/Reduce the number of linkage keys/);
+  expect(text).toContain(
+    "Removing a step that splits values or expands a key also lowers the count",
+  );
+  expect(text).not.toMatch(/your partner declared/);
+  expect(text).not.toMatch(/cascade/);
   void peer;
 });
 
@@ -1626,14 +1641,12 @@ test("a file-sync request too large for one message stops there, naming its size
     false,
     -1,
   );
-  await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(
-    /the single-pass request came to \d+ byte\(s\), above the 64 byte\(s\) one encrypted message can hold/,
+  const text = await singlePassRefusal(run);
+  expect(text).toMatch(
+    /The single-pass request came to [\d,]+ bytes, above the 64 bytes one encrypted message can hold/,
   );
-  await expect(run).rejects.toThrow(SINGLE_PASS_LOCAL_REMEDY);
-  await expect(run).rejects.not.toThrow(
-    /per party in an exchange with a browser/,
-  );
+  expect(text).toContain("Reduce the record count or split the dataset");
+  expect(text).not.toMatch(/per party in an exchange with a browser/);
   expect(await peer.receive()).toEqual({
     decision: "abort",
     abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON],
@@ -1660,13 +1673,14 @@ test("a file-sync reply too large for one message stops before it is written, an
     false,
     -1,
   );
-  await expect(sender).rejects.toThrow(
-    /the single-pass reply came to \d+ byte\(s\), above the 300 byte\(s\)/,
+  const text = await singlePassRefusal(sender);
+  expect(text).toMatch(
+    /The single-pass reply came to [\d,]+ bytes, above the 300 bytes/,
   );
-  await expect(sender).rejects.toThrow(
-    /To shrink it, either party can reduce its record count or split its dataset into smaller batches/,
+  expect(text).toContain(
+    "To shrink it, either party can reduce its record count or split its dataset into smaller batches",
   );
-  await expect(sender).rejects.not.toThrow(SINGLE_PASS_LOCAL_REMEDY);
+  expect(text).not.toContain("Reduce the record count");
   await expect(receiver).rejects.toBeInstanceOf(PeerAbortError);
 });
 
@@ -1699,7 +1713,7 @@ test("a WebRTC receiver past a browser party's ceiling passes where no ceiling i
       -1,
     ),
   ).rejects.toThrow(
-    new RegExp(`single-pass limit of ${CEILING} value slot\\(s\\) per party`),
+    `single-pass limit of ${formatCount(CEILING)} value slots per party`,
   );
 });
 
@@ -1727,25 +1741,20 @@ test("an exchange over the ceiling on both sides names both declarations", async
     false,
     -1,
   );
-  await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(
-    /this exchange is too large for single-pass linkage/,
+  const text = await singlePassRefusal(run);
+  expect(text).toContain("This exchange is too large for single-pass linkage");
+  expect(text).toContain(
+    `you declared ${formatCount(CEILING)} effective linkage keys across 2 ` +
+      `records, which is ${formatCount(CEILING * 2)} value slots, and your ` +
+      `partner declared ${formatCount(CEILING)} effective linkage keys ` +
+      `across ${formatCount(localRecords)} records, which is ` +
+      `${formatCount(CEILING * localRecords)} value slots`,
   );
-  await expect(run).rejects.toThrow(
-    new RegExp(
-      `you declared ${CEILING} effective linkage ` +
-        `key\\(s\\) across 2 record\\(s\\), which is ` +
-        `${CEILING * 2} value slot\\(s\\), and your partner ` +
-        `declared ${CEILING} effective linkage key\\(s\\) ` +
-        `across ${localRecords} record\\(s\\), which is ` +
-        `${CEILING * localRecords} value slot\\(s\\)`,
-    ),
+  expect(text).toContain("Reduce the record count or split the dataset");
+  expect(text).not.toMatch(/Reduce the number of linkage keys/);
+  expect(text).toContain(
+    "Ask your partner to reduce their record count or split their dataset too.",
   );
-  await expect(run).rejects.toThrow(SINGLE_PASS_LOCAL_REMEDY);
-  await expect(run).rejects.not.toThrow(/Reduce the number of linkage keys/);
-  await expect(run).rejects.toThrow(
-    /Ask your partner to reduce their record count or split their dataset too\./,
-  );
-  await expect(run).rejects.not.toThrow(/cascade/);
+  expect(text).not.toMatch(/cascade/);
   void peer;
 });

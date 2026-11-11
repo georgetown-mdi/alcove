@@ -82,15 +82,6 @@ export function singlePassDatasetExceedsCap(
 }
 
 /**
- * The remedy both over-ceiling refusals state, so the pre-flight and the gate
- * cannot differ. The linkage keys are an agreed term, so the remedy names new
- * terms with the partner rather than an edit.
- */
-export const SINGLE_PASS_LOCAL_REMEDY =
-  "Reduce the record count or split the dataset into smaller batches, or " +
-  "agree on new terms with fewer linkage keys with your partner.";
-
-/**
  * Which side of an exchange breached the single-pass ceiling, named from the point
  * of view of the party asking. See {@link singlePassCeilingBreach}.
  */

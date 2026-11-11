@@ -4,12 +4,14 @@
 // `undefined` binds a kind whose failure this app states in copy of its own.
 
 import {
+  MATCHES_OVER_LIMIT_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   failureCauseOf,
   relayRegistrarUnreachableRemedy,
   sanitizeErrorForDisplay,
   sanitizeErrorForDisplayWithStep,
   setOverLimitRemedy,
+  singlePassOverLimitRemedy,
 } from "@alcove/core";
 
 import type {
@@ -29,6 +31,8 @@ const WEB_FAILURE_REMEDIES: {
   "relay-registrar-unreachable": relayRegistrarUnreachableRemedy,
   "partner-stopped-responding": () => PARTNER_STOPPED_RESPONDING_REMEDY,
   "set-over-limit": setOverLimitRemedy,
+  "single-pass-over-limit": singlePassOverLimitRemedy,
+  "matches-over-limit": () => MATCHES_OVER_LIMIT_REMEDY,
 };
 
 /** The web app's remedy for `cause`, else `undefined`. */
