@@ -1490,7 +1490,7 @@ export async function exchangeBootstrapSecret(
 
 // The count-only round's report frame, over which the receiver reports its
 // tally to the sender. The bound the caller supplies as `maxCount`, and what
-// it does and does not buy, are in docs/spec/PROTOCOL.md ("Count reporting
+// it does and does not buy, are in docs/spec/PSI_C.md ("Count reporting
 // and entitlement").
 const countReportMessage = (maxCount: number) =>
   z.object({ intersectionCount: recordCountField.max(maxCount) });
@@ -1505,7 +1505,7 @@ const countReportMessage = (maxCount: number) =>
  * `validateCompatibility`), so the receiver's decision to send and the
  * sender's decision to await are always the same verdict. Why the frame is
  * suppressed entirely in the one-sided case rather than sent empty:
- * docs/spec/PROTOCOL.md ("Count reporting and entitlement").
+ * docs/spec/PSI_C.md ("Count reporting and entitlement").
  */
 export function reportsCountToSender(
   localExpectsOutput: boolean,

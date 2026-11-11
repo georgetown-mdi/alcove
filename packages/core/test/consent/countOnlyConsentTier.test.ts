@@ -20,7 +20,7 @@ import type {
 
 /**
  * The basis each count-only fact has, checked against the per-party
- * learn-basis rows of docs/spec/PROTOCOL.md's PSI-C section rather than
+ * learn-basis rows of docs/spec/PSI_C.md's PSI-C section rather than
  * against what the table happens to say. Stated as a literal expectation
  * so a row reclassified in the table alone -- an enforced marker put on a
  * half that rests on the partner -- fails here rather than reaching an

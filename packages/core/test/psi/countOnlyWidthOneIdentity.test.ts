@@ -26,7 +26,7 @@ import type { MessageConnection } from "../../src/connection/messageConnection";
 
 // A count-only exchange whose every round has width 1 in both roles sends the
 // frames and reaches the count the construction with one element per record
-// sends and reaches (docs/spec/PROTOCOL.md, PSI-C, Candidate sets under
+// sends and reaches (docs/spec/PSI_C.md, PSI-C, Candidate sets under
 // count-only). The digests below are of that construction's frames, taken
 // from the engines with no width under fixed keys and a seeded platform
 // generator; a frame or a random draw the block layout adds at width 1

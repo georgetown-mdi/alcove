@@ -25,7 +25,7 @@ import type { DraftKey } from "./advancedInviteTypes";
 /** The control's label, description and empty-choice placeholder. Under
  * `psi` a match tells whoever receives the result which record lacked the
  * field; a count-only exchange writes no result, but the software computing
- * the count learns the same (docs/spec/PROTOCOL.md, PSI-C, What each party
+ * the count learns the same (docs/spec/PSI_C.md, PSI-C, What each party
  * learns, and on what basis). */
 export const KEY_CONDITION_CONTROL = {
   label: "Match only where a field is missing",

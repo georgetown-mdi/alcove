@@ -22,7 +22,7 @@ import { runCascade, tablesOf } from "../utils/support";
 
 // The count-only construction over every agreed key against a one-to-one
 // `psi` cascade over the same keys and data, two in-memory parties each
-// (docs/spec/PROTOCOL.md, PSI-C, Computing the count, "Comparability with
+// (docs/spec/PSI_C.md, PSI-C, Computing the count, "Comparability with
 // `psi`"): equal where no key value repeats within either party's dataset,
 // and different only through a repeated value an earlier key leaves unique
 // among the unmatched records, where the count is the reference replay's.
@@ -191,7 +191,7 @@ const CONFLICT_SECOND: Records = [
 // A value one dataset holds twice for the second key, one of whose holders
 // the first key matches. The psi cascade tests uniqueness over the unmatched
 // records, so the other holder takes part and matches; psi-c gives both a
-// dummy (PROTOCOL.md, Uniqueness over every record the round is built for).
+// dummy (PSI_C.md, Uniqueness over every record the round is built for).
 const REPEAT_FIRST: Records = [
   ["a0", "p"],
   ["a1", "p"],

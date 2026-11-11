@@ -2,7 +2,7 @@
 // surface states, and the caveat copy each surface renders for them. Both surfaces
 // read this one table so a fact cannot take two classifications or two caveats, a
 // divergence the consent-coverage check cannot see. The `countOnly*` bases follow
-// docs/spec/PROTOCOL.md's PSI-C learn-basis rows. All copy is fixed first-party
+// docs/spec/PSI_C.md's PSI-C learn-basis rows. All copy is fixed first-party
 // text, so a surface may render it verbatim. Rationale:
 // docs/notes/shared-consent-summary.md.
 
@@ -111,7 +111,7 @@ export const CONSENT_FACTS = {
    * table pairing its own request slots with sender pseudonyms; with its own
    * records' key coverage, a slot that matched on a set of keys narrows to the
    * receiver's records holding values for all of them, or names one
-   * (docs/spec/PROTOCOL.md, PSI-C, What each party learns). None of it needs a
+   * (docs/spec/PSI_C.md, PSI-C, What each party learns). None of it needs a
    * deviation from the protocol and none of it is shown to the operator, so
    * this sits in the run's register rather than the partner's - the same one as
    * the own-membership disclosure a one-sided `psi` exchange carries.
@@ -136,7 +136,7 @@ export const CONSENT_FACTS = {
    * counts the size of a largest one-to-one pairing of its candidate pairs, the
    * number of pairs a `psi` round accepts. The receiver's software derives,
    * from genuine inputs, how many sender pseudonyms each of its slots matched
-   * and how many candidates each matched pair shares (docs/spec/PROTOCOL.md,
+   * and how many candidates each matched pair shares (docs/spec/PSI_C.md,
    * PSI-C, What each party learns), which needs no deviation from the protocol
    * and is shown to no operator, so it sits in the run's register beside the
    * per-key counts. A receiver choosing its input can also place up to the
@@ -270,7 +270,7 @@ export const CONSENT_FACTS = {
    * the ALGORITHM: no `psi-c` exchange states it at all, since the role rule
    * makes the non-receiving party of a count-only run the sender - which
    * computes nothing from the round and is sent no count-report frame
-   * (docs/spec/PROTOCOL.md, PSI-C), so it learns no membership to state, and
+   * (docs/spec/PSI_C.md, PSI-C), so it learns no membership to state, and
    * what a count-only run does disclose is the `countOnly*` tier's. Within
    * `psi` it is the case where that half is returned at all: a single-pass run
    * that withholds the partner's half discloses no membership either, and
@@ -983,7 +983,7 @@ export const LESS_CERTAIN_KEY_COPY = {
  * same number of elements for each record, so its count tells the partner
  * nothing, but the software of the party computing the count learns, for
  * each match through the key, which of the two records lacked the field
- * (docs/spec/PROTOCOL.md, Keys with a missing-field condition, and PSI-C,
+ * (docs/spec/PROTOCOL.md, Keys with a missing-field condition, and docs/spec/PSI_C.md,
  * What each party learns, and on what basis).
  * `field` names the field's type in lowercase words
  * (`MISSING_FIELD_CONDITION_TYPE_WORDS`, linkageKeyCondition.ts). `keyCount`
@@ -1022,7 +1022,7 @@ export function missingFieldConditionStatement(
  * single-pass disclosure note, and in authoring, beside the strategy choice in
  * place of each option's description. The run takes the cascade's rounds
  * whichever strategy the terms name, so the strategy changes nothing either
- * party learns (docs/spec/PROTOCOL.md, A declared `single-pass` runs the same
+ * party learns (docs/spec/PSI_C.md, A declared `single-pass` runs the same
  * rounds).
  */
 export const COUNT_ONLY_DECLARED_STRATEGY_STATEMENT =

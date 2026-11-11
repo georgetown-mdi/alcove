@@ -9,7 +9,7 @@ import type { PreparedExchange } from "../../src/exchange";
 
 // A key with a missing-field condition under the every-key count-only
 // construction, run through the PSI phase both parties enter once the agreed
-// terms are resolved (docs/spec/PROTOCOL.md, PSI-C: "A key with a
+// terms are resolved (docs/spec/PSI_C.md, PSI-C: "A key with a
 // missing-field condition", "Uniqueness over every record the round is built
 // for"). The terms-exchange parse still refuses these terms under psi-c, so the
 // phase is driven directly, each party's role fixed by the test.

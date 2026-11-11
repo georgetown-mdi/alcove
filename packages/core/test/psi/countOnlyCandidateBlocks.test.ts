@@ -46,7 +46,7 @@ import { fixedKeyPsiLibrary, psiTestKey } from "../utils/fixedKeyPsiLibrary";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 
-// Count-only rounds over blocks of the declared widths (docs/spec/PROTOCOL.md,
+// Count-only rounds over blocks of the declared widths (docs/spec/PSI_C.md,
 // Candidate sets under count-only): the sender's setup of `n_S * w_S`
 // elements and its index table naming each pseudonym `w_S` times, the
 // receiver's request of `n_R * w_R` elements answered slot by slot under `pi`

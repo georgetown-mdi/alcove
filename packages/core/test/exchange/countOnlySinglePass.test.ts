@@ -15,7 +15,7 @@ import { phaseResult, runPsiPhasePair } from "../utils/psiPhasePair";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 
 // Count-only terms declaring single-pass under the every-key construction run
-// the cascade's rounds (docs/spec/PROTOCOL.md, PSI-C: "A declared
+// the cascade's rounds (docs/spec/PSI_C.md, PSI-C: "A declared
 // `single-pass` runs the same rounds"). The terms-exchange parse still refuses
 // these terms under psi-c, so the PSI phase both parties enter once the agreed
 // terms are resolved is driven directly, each party's role fixed by the test.

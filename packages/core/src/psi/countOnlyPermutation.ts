@@ -7,7 +7,7 @@ import {
 import { maximumMatchingSize } from "./roundResolution";
 
 // The secret state of a count-only exchange under the sender's permutation
-// (docs/spec/PROTOCOL.md, PSI-C): the sender's `pi` and `sigma`, and the
+// (docs/spec/PSI_C.md, PSI-C): the sender's `pi` and `sigma`, and the
 // receiver's replay over each round's (slot, pseudonym) pairs. Both stay
 // inside the PSI engine that holds them and are discarded with it.
 
@@ -117,7 +117,7 @@ export class HeldPermutation {
 /**
  * Refuses, as a protocol error naming `engineId`, an index table in which a
  * pseudonym from `0` to its length over `width`, minus one, does not occur
- * exactly `width` times (docs/spec/PROTOCOL.md, Candidate sets under
+ * exactly `width` times (docs/spec/PSI_C.md, Candidate sets under
  * count-only): at `width` 1, a table that is not a permutation of `0` to its
  * length minus one. An entry that is not an integer is refused whatever the
  * array type.
@@ -172,7 +172,7 @@ export function atWidth(width: number): string {
 
 /**
  * A count-only round's index table as its frame sends it: one little-endian
- * `Int32` per setup position (docs/spec/PROTOCOL.md, PSI-C).
+ * `Int32` per setup position (docs/spec/PSI_C.md, PSI-C).
  *
  * @internal
  */
@@ -313,7 +313,7 @@ function compareElementsAt(bytes: Uint8Array, a: number, b: number): number {
 
 /**
  * The receiver's replay of the one-to-one cascade in the permuted space
- * (docs/spec/PROTOCOL.md, Computing the count, and Candidate sets under
+ * (docs/spec/PSI_C.md, Computing the count, and Candidate sets under
  * count-only): round by round, the round's graph is its pairs whose slot and
  * pseudonym are both still in candidacy; the round adds the size of a maximum
  * matching of that graph, and every slot and pseudonym in it leaves

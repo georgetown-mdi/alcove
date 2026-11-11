@@ -28,7 +28,7 @@ export type CountOnlyShapeViolation = "deduplicate" | "payload";
 
 /**
  * The refusal message per count-only shape rule, read by every enforcement
- * point so each states the same thing (docs/spec/PROTOCOL.md#psi-c). Fixed
+ * point so each states the same thing (docs/spec/PSI_C.md#psi-c). Fixed
  * literals only: a `psi-c` document can arrive on a partner's invitation, and
  * the parse-error path is not sanitized.
  */
@@ -54,7 +54,7 @@ export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
 /**
  * The refusal for a fan-out step in this party's own standardization under
  * `psi-c`, which declares no width a count-only block can be laid out by
- * (docs/spec/PROTOCOL.md#refusals-under-count-only). `step` names the step's
+ * (docs/spec/PSI_C.md#refusals-under-count-only). `step` names the step's
  * function, matched against the fan-out function list, and the standardization
  * output it cleans, both read off this party's own standardization; without
  * it the message names neither.
@@ -86,7 +86,7 @@ export function countOnlyStandardizationFanOutMessage(step?: {
  * The first count-only shape rule a terms document breaks, in the
  * specification's order, or `undefined` (always for a `psi` document). The one
  * reading the schema, the asserts and both front ends share
- * (docs/spec/PROTOCOL.md#psi-c).
+ * (docs/spec/PSI_C.md#psi-c).
  */
 export function countOnlyShapeViolation(
   terms: LinkageTerms,
@@ -212,7 +212,7 @@ export function runsSinglePassLink(
 /**
  * Whether an exchange on these terms resolves the candidate sets their keys
  * declare: a count-only (`psi-c`) exchange always does, over blocks of the
- * declared width (docs/spec/PROTOCOL.md, Candidate sets under count-only),
+ * declared width (docs/spec/PSI_C.md, Candidate sets under count-only),
  * and a `psi` exchange where its strategy does
  * ({@link candidateSetIsImplementedForStrategy}).
  */

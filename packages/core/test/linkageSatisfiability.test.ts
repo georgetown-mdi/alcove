@@ -1913,7 +1913,7 @@ describe("assertFanOutImplemented", () => {
     "under the count-only algorithm admits a key's candidate set and refuses only its own standardization's fan-out (%s)",
     (linkageStrategy) => {
       // A count-only round counts over blocks of the width the terms declare
-      // (docs/spec/PROTOCOL.md, Candidate sets under count-only); a fan-out in a
+      // (docs/spec/PSI_C.md, Candidate sets under count-only); a fan-out in a
       // party's own standardization declares no width, so it stays refused.
       const countOnly: LinkageTerms = {
         ...minimalTerms,

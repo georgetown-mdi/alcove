@@ -105,7 +105,8 @@ Agencies evaluating Alcove for operational use are responsible for their own ris
 
 # See also
 
-- [PROTOCOL.md](spec/PROTOCOL.md) - PSI and PSI-C algorithm details and post-linkage steps
+- [PROTOCOL.md](spec/PROTOCOL.md) - PSI algorithm details and post-linkage steps
+- [PSI_C.md](spec/PSI_C.md) - PSI-C algorithm details
 - [SECURITY_DESIGN.md](SECURITY_DESIGN.md) - threat model, authentication design, and channel security
 - [COMMUNICATION.md](COMMUNICATION.md) - communication channels and supporting services
 - [CLI.md](CLI.md) - full CLI command reference and configuration guide

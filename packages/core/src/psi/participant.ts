@@ -941,7 +941,7 @@ export class PSIParticipant {
 
   /**
    * Runs one round of the count-only construction over every agreed key
-   * (docs/spec/PROTOCOL.md, PSI-C, The frames of one round): the sender's
+   * (docs/spec/PSI_C.md, PSI-C, The frames of one round): the sender's
    * setup and index table, the receiver's request, the sender's permuted
    * response. `set` has one block of its width's elements per record of this
    * party, the receiver's blocks in its request order. Each partner set is

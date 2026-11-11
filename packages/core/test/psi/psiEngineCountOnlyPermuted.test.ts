@@ -36,7 +36,7 @@ import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import { withUnknownField } from "../utils/paddedPsiRequest";
 
 // The count-only-permuted engine mode at the PsiEngine boundary
-// (docs/spec/PROTOCOL.md, PSI-C: the sender's permutation, the index table,
+// (docs/spec/PSI_C.md, PSI-C: the sender's permutation, the index table,
 // and the receiver's engine returning only the count). No hook reads the
 // sender's `pi` or `sigma`: a test recovers them from the wire, by comparing
 // the permuted frames with those an identifier-revealing engine built from
@@ -61,7 +61,7 @@ function dummy(): string {
   );
 }
 
-// A round's set as PROTOCOL.md, The count-only rounds, builds it: one element
+// A round's set as PSI_C.md, The count-only rounds, builds it: one element
 // per record in record order, the round value `k:value` where the record has
 // a value no other record has, a fresh dummy otherwise.
 function roundSet(records: Records, round: number): Array<string> {
@@ -201,7 +201,7 @@ interface RoundFrames {
   readonly response: Uint8Array;
 }
 
-// One round in the frame order PROTOCOL.md gives: setup, index table,
+// One round in the frame order PSI_C.md gives: setup, index table,
 // request, response; the receiver's engine keeps what the match finds.
 async function runRound(
   sender: PsiEngine,

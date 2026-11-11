@@ -464,7 +464,7 @@ not compute.
 
 ### The bases are the specification's, not this display's
 
-[PROTOCOL.md](../spec/PROTOCOL.md#psi-c) assigns, per party, which halves of the
+[PSI_C.md](../spec/PSI_C.md#psi-c) assigns, per party, which halves of the
 count-only claim the run holds and which rest on the partner, in this display's own
 `enforced` / `trust-contingent` vocabulary. Each fact takes the row it belongs to
 rather than a judgment made here, so a row reclassified in the specification and
@@ -498,7 +498,7 @@ partner receives no result, so nothing is transmitted to it. Under `psi-c` that
 reasoning does not reach the fact: the algorithm includes no payload in either
 direction whichever party the terms entitle to the count, and the refusal of a
 terms document declaring one is fail-closed at three points
-([PROTOCOL.md](../spec/PROTOCOL.md#psi-c)). So the slot states the algorithm as
+([PSI_C.md](../spec/PSI_C.md#psi-c)). So the slot states the algorithm as
 the reason, and the sentence is a fact of the tier rather than a second reading of
 the entitlement one. Stating the refusal where the operator is deciding what
 leaves their machine is also where the specification puts it -- at the choice, not
@@ -549,7 +549,7 @@ fact in the run's register and on both surfaces wherever the partner receives no
 result. A one-sided `psi-c` exchange discloses nothing of the kind: by the role
 rule the entitled party IS the receiver, so the non-receiving partner is the
 sender, and a count-only sender computes nothing from the round and is sent no
-count-report frame ([PROTOCOL.md](../spec/PROTOCOL.md#psi-c)). Stated there, the
+count-report frame ([PSI_C.md](../spec/PSI_C.md#psi-c)). Stated there, the
 fact would tell an acceptor that a disclosure happens which the algorithm
 forecloses -- directly under a headline saying only the count is revealed.
 

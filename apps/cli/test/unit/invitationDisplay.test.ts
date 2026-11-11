@@ -710,7 +710,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
 
   test("displayInvitation: count-only terms declaring single-pass state it without the single-pass disclosure", () => {
     // A count-only run takes the cascade's rounds whichever strategy its terms
-    // name (docs/spec/PROTOCOL.md, PSI-C).
+    // name (docs/spec/PSI_C.md, PSI-C).
     const log = getLogger("accept-display-count-only-strategy-test");
     log.setLevel("silent");
     const shown = renderDisplayInvitation(log, {
@@ -1793,7 +1793,7 @@ describe("the count-only tier", () => {
     expect(countOnly).toContain(
       "  the inviting party will receive the result (enforced): no",
     );
-    // What replaces it, from docs/spec/PROTOCOL.md's PSI-C learn-basis rows rather
+    // What replaces it, from docs/spec/PSI_C.md's PSI-C learn-basis rows rather
     // than from a softened version of the claim: the enforced half that hands neither
     // party a pairing, and what the rounds disclose beside the count.
     expect(countOnly).toContain(`    ${CONSENT_FACTS.countOnlyResult.note}`);
@@ -1820,7 +1820,7 @@ describe("the count-only tier", () => {
   });
 
   test("a count-only exchange states its disclosure tier on the register the protocol assigns each half", () => {
-    // Each line's marker is the one docs/spec/PROTOCOL.md's PSI-C section assigns
+    // Each line's marker is the one docs/spec/PSI_C.md's PSI-C section assigns
     // that row: a party's own
     // count-only outcome and its view of what the partner receives are held by the
     // run, the count a both-entitled party did not compute is the other's report,
@@ -1882,7 +1882,7 @@ describe("the count-only tier", () => {
   test("a count-only rendering refuses terms that declare a payload column", () => {
     // The mirror of the check above, on the partner's side of it: the invitation is
     // partner-controlled, and a psi-c document declaring a send or a receive is one
-    // the spec refuses (docs/spec/PROTOCOL.md, PSI-C). Printed, the tier's no-payload
+    // the spec refuses (docs/spec/PSI_C.md, PSI-C). Printed, the tier's no-payload
     // sentence would stand above this same prompt's blocks listing the columns that
     // invitation will send or asks for -- a guarantee stated over the declaration
     // contradicting it. Driven on each direction with the flag forced on, so the check

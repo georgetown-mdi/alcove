@@ -1748,7 +1748,7 @@ export async function linkViaPSI(
  * The count-only (`psi-c`) counterpart to {@link linkViaPSI}, resolving to the
  * size of the intersection and to nothing that names a match: one round for
  * each entry of `data`, in order, each set holding one block of the round's
- * width per record, under the sender's permutation (docs/spec/PROTOCOL.md,
+ * width per record, under the sender's permutation (docs/spec/PSI_C.md,
  * PSI-C, The count-only rounds, and Candidate sets under count-only).
  *
  * Returns the count this party holds at the end of the rounds, or

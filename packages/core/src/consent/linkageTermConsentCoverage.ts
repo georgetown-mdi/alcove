@@ -336,7 +336,7 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
 /**
  * {@link CONSENT_PROBE_TERMS} stripped to what a count-only exchange
  * accepts, `psi` still: no payload in either direction, which a psi-c
- * document is refused for (docs/spec/PROTOCOL.md, PSI-C). Every key stays,
+ * document is refused for (docs/spec/PSI_C.md, PSI-C). Every key stays,
  * with its swapped order, fuzzy expansion and missing-field condition, as do
  * the cascade strategy and `deduplicate: false`.
  *

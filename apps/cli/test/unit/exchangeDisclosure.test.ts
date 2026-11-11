@@ -1248,7 +1248,7 @@ test("single-pass linkage states the disclosure it trades for its round trip", (
 
 test("count-only terms declaring single-pass state it without the single-pass disclosure", () => {
   // A count-only run takes the cascade's rounds whichever strategy its terms
-  // name (docs/spec/PROTOCOL.md, PSI-C).
+  // name (docs/spec/PSI_C.md, PSI-C).
   const lines = rendered({
     ...localTerms,
     algorithm: "psi-c",

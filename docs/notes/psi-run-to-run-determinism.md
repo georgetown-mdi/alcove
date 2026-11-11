@@ -93,7 +93,7 @@ so a variant can collide with another of a party's own records only when that pa
 Code: `expandsOnReceiverOnly` and `expandFuzzyComparisons` (`packages/core/src/fuzzyComparisons.ts`);
 the drop in `removeDuplicatesAndUndefineds` and `RoundValueParticipation` (`packages/core/src/psi/link.ts`).
 Spec: the stated limit in [Which party expands](../spec/PROTOCOL.md#which-party-expands-full-variant-and-deletion-neighbourhood-expansions),
-and its count-only reading in [Candidate sets under count-only](../spec/PROTOCOL.md#candidate-sets-under-count-only).
+and its count-only reading in [Candidate sets under count-only](../spec/PSI_C.md#candidate-sets-under-count-only).
 
 **Driven inputs.**
 

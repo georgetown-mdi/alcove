@@ -216,7 +216,7 @@ export function ownResultColumnNames(
 /**
  * Whether this party's input metadata would transmit a column under a
  * count-only (`psi-c`) algorithm -- the fifth count-only shape rule
- * (docs/spec/PROTOCOL.md, PSI-C), the one no linkage-terms document
+ * (docs/spec/PSI_C.md, PSI-C), the one no linkage-terms document
  * has, so it lives here beside {@link isDisclosedToPartner}.
  *
  * False for every `psi` exchange and for an absent metadata block. The

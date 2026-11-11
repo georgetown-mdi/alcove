@@ -970,7 +970,7 @@ describe("the abort frame a local fault sends", () => {
 });
 
 describe("in a count-only exchange", () => {
-  // Every round's set holds one value per record (docs/spec/PROTOCOL.md,
+  // Every round's set holds one value per record (docs/spec/PSI_C.md,
   // PSI-C), so a party is weighed at its record count however many of its
   // records share a value.
   const countOnly = { algorithm: "psi-c" as const };

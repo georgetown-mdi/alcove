@@ -712,7 +712,7 @@ export function logDecisionFacts(
   // an assumed non-empty disclosure.
   const outboundLabel = marked("columns you will send", "outboundSend");
   const countOnly = summary.algorithm === "psi-c";
-  // psi-c admits no payload in either direction (docs/spec/PROTOCOL.md,
+  // psi-c admits no payload in either direction (docs/spec/PSI_C.md,
   // PSI-C); the accept path already refuses a resolved metadata set that
   // disagrees (`assertCountOnlyTransmitsNoColumn`, applied in
   // validateAccept). This throw is the render-side safety check behind
@@ -919,7 +919,7 @@ export function displayInvitation(params: {
   // thing the acceptor consents to here -- so show it as written plus the
   // note for what the run does with it: the disclosure-tradeoff note for a
   // single-pass run, never for count-only terms, which run the cascade's
-  // rounds (docs/spec/PROTOCOL.md, PSI-C). The value is a schema enum, not
+  // rounds (docs/spec/PSI_C.md, PSI-C). The value is a schema enum, not
   // partner free text; the note is shared with the inviter's selection
   // surface so both parties read identical framing.
   emit(
@@ -958,7 +958,7 @@ export function displayInvitation(params: {
   //
   // Gated on the algorithm: by the role rule the non-receiving party of a
   // count-only run is the SENDER, which computes nothing from the round
-  // and is sent no count-report frame (docs/spec/PROTOCOL.md, PSI-C), so
+  // and is sent no count-report frame (docs/spec/PSI_C.md, PSI-C), so
   // it learns no membership of its own records. What a count-only run
   // does disclose is the tier `logDecisionFacts` prints above.
   //

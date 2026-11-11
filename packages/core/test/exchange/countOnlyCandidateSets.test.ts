@@ -39,7 +39,7 @@ import type { PsiProgress } from "../../src/psi/participant";
 // Count-only terms whose keys declare candidate sets -- a fuzzy comparison, a
 // fan-out -- beside a swapped key order, run through the PSI phase both parties enter
 // once the agreed terms are resolved, against a `psi` run over the same terms
-// and data (docs/spec/PROTOCOL.md, PSI-C, Candidate sets under count-only:
+// and data (docs/spec/PSI_C.md, PSI-C, Candidate sets under count-only:
 // "Each round adds what the `psi` round accepts").
 
 const wasm = await PSI();
