@@ -2,11 +2,18 @@ import type { Argv, Arguments } from "yargs";
 import logLibrary from "loglevel";
 
 import {
+  providerTurnEntryToMint,
   redactAndSanitizeForDisplay,
   relayHostStatement,
   relayHostStatementLines,
 } from "@alcove/core";
+import type { WebRTCConnectionConfig } from "@alcove/core";
 
+import {
+  mintProviderTurn,
+  providerTurnMintStatement,
+} from "../connection/webrtc/providerTurn";
+import type { ProviderTurnRun } from "../connection/webrtc/providerTurn";
 import {
   gatherRelayCandidate,
   relayCredentialForRun,
@@ -92,7 +99,10 @@ export interface RelayCheckOptions {
   gather?: RelayCandidateGathering;
   /** Asks each WebSocket relay whether it admits the run's proof. */
   askWebSocket?: WebSocketRelayAsking;
-  /** The fetch the enrollment at the invitation relay's registrar sends with. */
+  /**
+   * The fetch the enrollment at the invitation relay's registrar, and the
+   * mint of a provider turn entry's servers, send with.
+   */
   fetch?: typeof globalThis.fetch;
   now?: Date;
   boundMs?: number;
@@ -115,25 +125,30 @@ export async function checkRelay(
     configFile: options.configFile,
     keyFile: options.keyFile,
   });
-  const connection = relayCheckConnection(loaded);
-  const role = connection.role;
+  // Every refusal the configuration alone decides comes before the mint, the
+  // first request; a minted url never takes the run's derived credential and
+  // the mint leaves the WebSocket relays as they are.
+  const configured = relayCheckConnection(loaded);
+  const role = configured.role;
   const websocketDials =
     role === undefined
       ? []
       : await webSocketRelayDialsFor(
-          connection,
+          configured,
           authentication.sharedSecret,
           role,
         );
-  const plan = relayCheckPlan(
-    connection,
-    await relayCredentialForRun(
-      connection,
-      authentication.sharedSecret,
-      options.now ?? new Date(),
-    ),
-    websocketDials,
+  const runRelayCredential = await relayCredentialForRun(
+    configured,
+    authentication.sharedSecret,
+    options.now ?? new Date(),
   );
+  const minted = await mintProviderTurnStated(configured, options);
+  const connection =
+    minted === undefined
+      ? configured
+      : relayCheckConnection(minted.connection, minted.provider);
+  const plan = relayCheckPlan(connection, runRelayCredential, websocketDials);
   for (const line of relayHostStatementLines(
     relayHostStatement(plan, connection),
   ))
@@ -152,6 +167,24 @@ export async function checkRelay(
     options.boundMs,
     enrollment,
     options.askWebSocket,
+  );
+}
+
+/**
+ * Mint the provider `turn` entry a run of `connection` mints, as the run
+ * mints it, after a statement line naming the provider the mint contacts.
+ * `undefined`, with nothing written or contacted, where the run mints none.
+ */
+async function mintProviderTurnStated(
+  connection: WebRTCConnectionConfig,
+  options: Pick<RelayCheckOptions, "writeStatementLine" | "fetch">,
+): Promise<ProviderTurnRun | undefined> {
+  const entry = providerTurnEntryToMint(connection);
+  if (entry === undefined) return undefined;
+  options.writeStatementLine(providerTurnMintStatement(entry.provider));
+  return mintProviderTurn(
+    connection,
+    options.fetch === undefined ? {} : { fetch: options.fetch },
   );
 }
 

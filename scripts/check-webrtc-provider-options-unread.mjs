@@ -40,6 +40,7 @@ export const CLI_FILES = [
   "apps/cli/src/connection/webrtc/brokerClient.ts",
   "apps/cli/src/connection/webrtc/framedTransport.ts",
   "apps/cli/src/connection/webrtc/iceDiagnostics.ts",
+  "apps/cli/src/connection/webrtc/providerTurn.ts",
   "apps/cli/src/connection/webrtc/relayFallback.ts",
   "apps/cli/src/connection/webrtc/signalingTls.ts",
   "apps/cli/src/connection/webrtc/webrtcMessageConnection.ts",

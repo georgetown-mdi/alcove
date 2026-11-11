@@ -6,6 +6,7 @@ import YAML from "yaml";
 import {
   DEFAULT_MAX_DISPLAY_LENGTH,
   deriveRelayExchangeId,
+  getLogger,
   redactAndSanitizeForDisplay,
   UsageError,
 } from "@alcove/core";
@@ -25,8 +26,10 @@ import {
   ENROLLMENT_FAILED_ACTION,
   NOT_CONTACTED_ACTION,
   RELAY_CHECK_NO_RELAY,
+  RELAY_CHECK_ROLE_REQUIRED,
   RELAY_CHECK_WEBRTC_ONLY,
   RELAY_NOT_REACHED_REMEDY,
+  relayCheckAllLeftOutMessage,
   relayCheckPlan,
   runRelayCheck,
   turnUrlTransport,
@@ -1258,4 +1261,181 @@ test.each([
   ["turns:relay.example.org:443?transport=tcp", "tls"],
 ] as const)("%s names %s", (url, transport) => {
   expect(turnUrlTransport(url)).toBe(transport);
+});
+
+// --- a turn entry naming Cloudflare ---------------------------------------------
+
+const CLOUDFLARE_ENTRY = {
+  provider: "cloudflare",
+  key_id: "0123456789abcdef0123456789abcdef",
+  api_token: "placeholder-turn-api-token-4444",
+};
+const MINTED_443 = "turns:turn.cloudflare.com:443?transport=tcp";
+
+/** A stubbed minting API, recording every request it is sent. */
+function mintingApi(urls: string[] = [MINTED_443]) {
+  const calls: string[] = [];
+  const fetch: typeof globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return new Response(
+      JSON.stringify({
+        iceServers: [
+          { urls, username: "minted-user", credential: "minted-credential" },
+        ],
+      }),
+      { status: 201 },
+    );
+  };
+  return { calls, fetch };
+}
+
+async function refusalOf(
+  api: ReturnType<typeof mintingApi>,
+  lines: string[],
+): Promise<Error> {
+  try {
+    await checkRelay({
+      configFile,
+      keyFile,
+      writeStatementLine: (line) => lines.push(line),
+      fetch: api.fetch,
+      gather: scriptedGathering({}, []),
+    });
+  } catch (err) {
+    return err as Error;
+  }
+  throw new Error("expected the check to be refused");
+}
+
+test("a provider entry with a WebSocket relay and no role is refused before Cloudflare is asked", async () => {
+  writeConfig({
+    channel: "webrtc",
+    server: { host: "peers.example.org" },
+    turn: [CLOUDFLARE_ENTRY],
+    websocket_relay: "wss://own-relay.example.org/relay",
+  });
+  const api = mintingApi();
+  const lines: string[] = [];
+
+  const failure = await refusalOf(api, lines);
+
+  expect(failure).toBeInstanceOf(UsageError);
+  expect(failure.message).toBe(RELAY_CHECK_ROLE_REQUIRED);
+  expect(api.calls).toEqual([]);
+  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(lines).toEqual([]);
+});
+
+test("a provider entry allowed_relays leaves out is refused by its host before Cloudflare is asked", async () => {
+  writeConfig(
+    webrtcConnection({
+      turn: [CLOUDFLARE_ENTRY],
+      allowed_relays: ["relay.example.org"],
+    }),
+  );
+  const api = mintingApi();
+  const lines: string[] = [];
+
+  const failure = await refusalOf(api, lines);
+
+  expect(failure.message).toBe(
+    relayCheckAllLeftOutMessage(["turn.cloudflare.com"]),
+  );
+  expect(api.calls).toEqual([]);
+  expect(lines).toEqual([]);
+});
+
+test("a token that holds a space is refused at load before Cloudflare is asked", async () => {
+  writeConfig(
+    webrtcConnection({
+      turn: [{ ...CLOUDFLARE_ENTRY, api_token: "Pq7xZr Wk3mNb" }],
+    }),
+  );
+  const api = mintingApi();
+  const lines: string[] = [];
+
+  const failure = await refusalOf(api, lines);
+
+  expect(failure).toBeInstanceOf(UsageError);
+  expect(failure.message).toContain("cannot contain");
+  expect(failure.message).not.toContain("Pq7xZr");
+  expect(failure.message).not.toContain("Wk3mNb");
+  expect(api.calls).toEqual([]);
+});
+
+test("a provider entry after a static entry is not minted, and the check asks the static entry", async () => {
+  writeConfig(
+    webrtcConnection({
+      turn: [
+        {
+          url: STATIC_TURN,
+          username: "static-user",
+          credential: "placeholder-not-a-secret",
+        },
+        CLOUDFLARE_ENTRY,
+      ],
+    }),
+  );
+  const api = mintingApi();
+  const lines: string[] = [];
+
+  const report = await checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: (line) => lines.push(line),
+    fetch: api.fetch,
+    gather: scriptedGathering({ [STATIC_TURN]: true }, []),
+  });
+
+  expect(api.calls).toEqual([]);
+  expect(lines.some((line) => line.includes("Cloudflare"))).toBe(false);
+  expect(checkFor(report, STATIC_TURN).status).toBe("ok");
+});
+
+test("an inline token warns, holding no part of it, and the check mints with it", async () => {
+  writeConfig(webrtcConnection({ turn: [CLOUDFLARE_ENTRY] }));
+  const api = mintingApi();
+  const lines: string[] = [];
+  const requests: RTCIceServer[] = [];
+  const warn = vi.spyOn(getLogger("exchange"), "warn");
+  try {
+    await checkRelay({
+      configFile,
+      keyFile,
+      writeStatementLine: (line) => lines.push(line),
+      fetch: api.fetch,
+      gather: scriptedGathering({ [MINTED_443]: true }, requests),
+    });
+    const warnings = warn.mock.calls.map((call) => call.join(" "));
+    expect(warnings.some((text) => text.includes("api_token"))).toBe(true);
+    for (const text of warnings)
+      expect(text).not.toContain(CLOUDFLARE_ENTRY.api_token);
+  } finally {
+    warn.mockRestore();
+  }
+  expect(api.calls).toHaveLength(1);
+  expect(lines[0]).toContain("Cloudflare");
+  expect(requests[0]).toMatchObject({
+    urls: MINTED_443,
+    credential: "minted-credential",
+  });
+});
+
+test("a minted url allowed_relays leaves out is refused after the mint, naming Cloudflare as contacted", async () => {
+  writeConfig(
+    webrtcConnection({
+      turn: [CLOUDFLARE_ENTRY],
+      allowed_relays: ["turn.cloudflare.com:5349"],
+    }),
+  );
+  const api = mintingApi();
+  const lines: string[] = [];
+
+  const failure = await refusalOf(api, lines);
+
+  expect(failure.message).toBe(
+    relayCheckAllLeftOutMessage([MINTED_443], "cloudflare"),
+  );
+  expect(failure.message).toContain("Only Cloudflare was contacted");
+  expect(api.calls).toHaveLength(1);
 });

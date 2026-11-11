@@ -41,6 +41,12 @@ export const ALLOWLIST = [
       "default public STUN server, the one third-party host the web app intends to reach; already named in PRIVACY.md's supporting-services table",
   },
   {
+    url: "https://rtc.live.cloudflare.com/v1/turn/keys",
+    match: "prefix",
+    reason:
+      "Cloudflare's TURN credential API, which the CLI calls only where a connection.turn entry names Cloudflare as its provider; named in PRIVACY.md's container connection list and supporting-services table",
+  },
+  {
     url: "https://psi.data-bridge.org",
     match: "exact",
     reason:

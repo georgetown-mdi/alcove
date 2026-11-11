@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 
-import { UsageError, parseExchangeSpec } from "@alcove/core";
+import { UsageError, parseExchangeSpec, turnServerEntries } from "@alcove/core";
 import type {
   ConnectionConfig,
   ExchangeSpec,
@@ -17,6 +17,7 @@ import {
   resolveAtSignRef,
   resolveAtSignRefs,
   resolveExchangeSpecRefs,
+  turnProviderTokenCharacterRefusal,
 } from "../../../src/util/atSignRefs";
 
 let dir: string;
@@ -391,7 +392,7 @@ test("resolveExchangeSpecRefs resolves @path turn credentials and provision auth
   });
   const conn = resolveExchangeSpecRefs(spec)
     .connection as WebRTCConnectionConfig;
-  expect(conn.turn?.[0].credential).toBe("TURNPW");
+  expect(turnServerEntries(conn.turn)[0]?.credential).toBe("TURNPW");
   expect(conn.server.provision?.auth?.bearer).toBe("WBEAR");
   expect(conn.providerOptions?.key).toBe("WOPAQUE");
 });
@@ -525,3 +526,94 @@ test("resolveExchangeSpecRefs leaves a turn entry with no credential without one
     throw new Error("expected webrtc");
   expect(resolved.connection.turn).toEqual([{ url: "turn:relay:3478" }]);
 });
+
+const TURN_TOKEN = "placeholder-turn-api-token-2222";
+
+function specWithTurnToken(apiToken: string): ExchangeSpec {
+  return parseSpec({
+    connection: {
+      channel: "webrtc",
+      server: { host: "peer" },
+      turn: [
+        {
+          provider: "cloudflare",
+          key_id: "0123456789abcdef0123456789abcdef",
+          api_token: apiToken,
+        },
+      ],
+    },
+  });
+}
+
+test("resolveExchangeSpecRefs reads a provider turn entry's api_token from its @-file", () => {
+  const resolved = resolveExchangeSpecRefs(
+    specWithTurnToken(atFile("turn-token", `${TURN_TOKEN}\n`)),
+  );
+  if (resolved.connection.channel !== "webrtc")
+    throw new Error("expected webrtc");
+  expect(resolved.connection.turn?.[0]).toMatchObject({ apiToken: TURN_TOKEN });
+});
+
+test("resolveExchangeSpecRefs refuses a missing or empty api_token file by its reference", () => {
+  const missing = `@${path.join(dir, "absent")}`;
+  expect(() => resolveExchangeSpecRefs(specWithTurnToken(missing))).toThrow(
+    `cannot read the @-file reference ${missing}`,
+  );
+  expect(() =>
+    resolveExchangeSpecRefs(specWithTurnToken(atFile("empty-token", "\n"))),
+  ).toThrow("resolved to an empty file");
+});
+
+test("resolveExchangeSpecRefs accepts an api_token written in the configuration", () => {
+  const resolved = resolveExchangeSpecRefs(
+    specWithTurnToken(` ${TURN_TOKEN} `),
+  );
+  if (resolved.connection.channel !== "webrtc")
+    throw new Error("expected webrtc");
+  expect(resolved.connection.turn?.[0]).toMatchObject({ apiToken: TURN_TOKEN });
+});
+
+function tokenRefusal(apiToken: string): Error {
+  try {
+    resolveExchangeSpecRefs(specWithTurnToken(apiToken));
+  } catch (err) {
+    return err as Error;
+  }
+  throw new Error("expected a refusal");
+}
+
+const UNSENDABLE_TOKENS = [
+  ["an inner newline", "Pq7xZr\nWk3mNb"],
+  ["a space", "Pq7xZr Wk3mNb"],
+  ["a non-ASCII character", "Pq7xZréWk3mNb"],
+] as const;
+
+test.each(UNSENDABLE_TOKENS)(
+  "resolveExchangeSpecRefs refuses an api_token file holding %s, naming the file and not the token",
+  (_label, token) => {
+    const reference = atFile("unsendable-token", `${token}\n`);
+    const failure = tokenRefusal(reference);
+    expect(failure).toBeInstanceOf(UsageError);
+    expect(failure.message).toBe(
+      turnProviderTokenCharacterRefusal("cloudflare", reference),
+    );
+    expect(failure.message).toContain(reference);
+    expect(failure.message).toContain("Cloudflare dashboard");
+    for (const part of token.split(/[^\x21-\x7E]/))
+      expect(failure.message).not.toContain(part);
+  },
+);
+
+test.each(UNSENDABLE_TOKENS)(
+  "resolveExchangeSpecRefs refuses an api_token written in the configuration holding %s, without repeating it",
+  (_label, token) => {
+    const failure = tokenRefusal(token);
+    expect(failure).toBeInstanceOf(UsageError);
+    expect(failure.message).toBe(
+      turnProviderTokenCharacterRefusal("cloudflare", undefined),
+    );
+    expect(failure.message).toContain("written in the configuration");
+    for (const part of token.split(/[^\x21-\x7E]/))
+      expect(failure.message).not.toContain(part);
+  },
+);

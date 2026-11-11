@@ -35,6 +35,12 @@ import {
   relayCredentialNotice,
   relayCredentialPerAttempt,
 } from "../connection/webrtc/weriftPeer";
+import {
+  mintProviderTurn,
+  providerTurnNotice,
+  providerTurnPerAttempt,
+} from "../connection/webrtc/providerTurn";
+import type { ProviderTurnRun } from "../connection/webrtc/providerTurn";
 import { assertFirstRoundFits } from "../firstRoundFits";
 import { preflightKeyFilePath } from "../keyFilePreflight";
 import type {
@@ -112,6 +118,12 @@ interface WebRtcDial {
   options: WebRtcPeerOptions & WebRtcMessageConnectionOptions;
   /** `WebSocketRelayDial.afterCutRotation` for each relay the run dials. */
   afterCutRotation?: boolean;
+  /**
+   * The connection the run's relays are selected from: the configured one,
+   * or after a mint the one with the minted servers in each provider
+   * entry's place ({@link webRtcDialWithProviderTurn}).
+   */
+  relayConnection: WebRTCConnectionConfig;
 }
 
 /**
@@ -161,6 +173,7 @@ export function webRtcDialFrom(
   const inactivityTimeoutMs = connection.options?.inactivityTimeoutMs;
   return {
     handshakeRole: handshakeRoleForRendezvousRole(role),
+    relayConnection: connection,
     options: {
       location,
       role,
@@ -181,6 +194,42 @@ export function webRtcDialFrom(
         rendezvousTimeoutMs: peerTimeoutMs,
       }),
       ...(inactivityTimeoutMs !== undefined && { inactivityTimeoutMs }),
+    },
+  };
+}
+
+/**
+ * `dial` with its relays selected from the connection `run` minted: the ICE
+ * servers, the urls `allowed_relays` left out, and each later attempt's
+ * servers, minted again for an attempt that would outlast their credential
+ * (`providerTurnPerAttempt`).
+ *
+ * @param runRelayCredential As for {@link webRtcDialFrom}: the run's derived
+ *   credential, minted again as each later attempt starts when given.
+ * @internal exported for testing
+ */
+export function webRtcDialWithProviderTurn(
+  dial: WebRtcDial,
+  run: ProviderTurnRun,
+  runRelayCredential: RelayCredential | undefined,
+): WebRtcDial {
+  const { turnLeftOut } = selectRunRelay(run.connection);
+  const { relaysLeftOut: _relaysLeftOut, ...options } = dial.options;
+  return {
+    ...dial,
+    relayConnection: run.connection,
+    options: {
+      ...options,
+      iceServers: iceServersFromConnection(run.connection, runRelayCredential),
+      attemptIceServers: providerTurnPerAttempt(
+        run,
+        runRelayCredential === undefined
+          ? undefined
+          : dial.options.sharedSecret,
+      ),
+      ...(turnLeftOut !== undefined && {
+        relaysLeftOut: turnLeftOut.map((server) => server.url),
+      }),
     },
   };
 }
@@ -752,11 +801,25 @@ export async function prepareTransport(
   if (connection.channel === "webrtc") {
     // The file-sync construction below has no webrtc counterpart: on this
     // channel there is no client to build.
-    build.webRtcDial = checked.webRtcDial;
+    // The one network contact of this stage, after every local refusal: a
+    // provider turn entry's servers are minted here, so the rendezvous and
+    // the notices below select from the minted connection.
+    const providerTurn = await mintProviderTurn(connection);
+    if (providerTurn !== undefined && checked.webRtcDial !== undefined)
+      build.webRtcDial = webRtcDialWithProviderTurn(
+        checked.webRtcDial,
+        providerTurn,
+        checked.runRelayCredential,
+      );
+    else build.webRtcDial = checked.webRtcDial;
+    const relayConnection = providerTurn?.connection ?? connection;
     if (connection.allowedRelays !== undefined)
-      log.info(allowedRelaysRunNotice(selectRunRelay(connection)));
+      log.info(allowedRelaysRunNotice(selectRunRelay(relayConnection)));
+    if (providerTurn !== undefined) log.info(providerTurnNotice(providerTurn));
     if (checked.runRelayCredential !== undefined)
-      log.info(relayCredentialNotice(connection, checked.runRelayCredential));
+      log.info(
+        relayCredentialNotice(relayConnection, checked.runRelayCredential),
+      );
   } else {
     const writeWithoutRenaming =
       connection.options?.writeWithoutRenaming === true;

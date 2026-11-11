@@ -725,6 +725,23 @@ connection:
 - A run with no shared secret refuses the entry, naming its url, before anything is dialed.
 - An invitation's relay is listed after these entries ([`invitation_relay`](EXCHANGE_REFERENCE.md#connectioninvitation_relay)). Which relay a run allocates on, and when it enrolls at the invitation's registrar: [the stated limit](spec/RELAY_CREDENTIALS.md#the-invitations-relay-locator).
 
+**An entry naming Cloudflare gets a credential minted from your Cloudflare account each run**, in place of one you mint by hand:
+
+```yaml
+  turn:
+    - provider: cloudflare
+      key_id: "0123456789abcdef0123456789abcdef"
+      api_token: "@/run/secrets/cloudflare-turn-token"
+```
+
+- Put the TURN key's API token in a file readable only by you and name it with `@`. A token written in the configuration works, with a warning to move it into a file. A token holding a space, a line break or a non-ASCII character is refused before Cloudflare is asked: copy it from the Cloudflare dashboard again.
+- A run mints only for the TURN entry it uses: the first one [`allowed_relays`](#using-only-the-relays-you-choose) keeps, where an entry naming Cloudflare counts as `turn.cloudflare.com`. An entry naming Cloudflare after another kept entry, or after a first one naming Cloudflare, is not minted.
+- The run uses Cloudflare's `turns:` urls on `turn.cloudflare.com`, port 443 first, with a credential valid for one hour, and states when it expires. A connection attempt that would outlast it gets a new one.
+- Cloudflare learns this machine's network address from the request, as it does from the relay.
+- If Cloudflare refuses, the run stops before anything is dialed and names the HTTP status: 401 or 403, check the token; 404, check `key_id`.
+- An invitation you create leaves the entry out, since your partner cannot mint under your account.
+- A run against Cloudflare's live API is not yet recorded for this form. The fields and limits: [`connection.turn`](EXCHANGE_REFERENCE.md#connectionturn).
+
 **A relayed exchange has been verified against the project's standing relay:** a CLI party with UDP blocked outright completed an authenticated exchange whose data-channel traffic the relay transported, over TURN-over-TLS on 443. werift verifies the TURN server's certificate, so a relay presenting a certificate the CLI host does not trust yields no relay candidate and no relayed path. Verify relayed connectivity in your own environment before depending on it. `ice_provision` (an ICE-credential API) is not supported by the CLI and is refused rather than ignored, so a connection that configures it does not silently fall back to the default.
 
 **A relay is a fallback.** A run gathers host, server-reflexive, and relay candidates, and ICE settles on whichever pair works first, which on a network where a direct path exists is a direct one. The relay carries the exchange where no direct path works.
@@ -1093,6 +1110,7 @@ alcove doctor relay
 
 - **It runs only when you name it.** `alcove doctor probe` and `alcove doctor mount` contact no relay. These are refused, exit 64, with nothing contacted: a configuration whose channel is not `webrtc`; one with no relay (no `turn` entry, no `websocket_relay`, and no turn or websocket url in [`invitation_relay`](EXCHANGE_REFERENCE.md#connectioninvitation_relay)); one whose every relay url [`allowed_relays`](#using-only-the-relays-you-choose) leaves out; and one that lists a WebSocket relay and sets no `role`, since the proof names your side's role.
 - **It contacts no host a run does not contact.** A run allocates on the first TURN url it lists ([RELAY_CREDENTIALS.md](spec/RELAY_CREDENTIALS.md#the-invitations-relay-locator)), so the check asks that TURN relay alone. A run dials every WebSocket relay it lists, so the check asks each of them. It enrolls at the registrar your partner's invitation names only where a run would ([RELAY_CREDENTIALS.md](spec/RELAY_CREDENTIALS.md#enrolling-at-a-default-relay)). It does not contact later TURN urls, your own [`relay_registrar`](EXCHANGE_REFERENCE.md#connectionrelay_registrar), or any coordination server.
+- **It mints first where a run would.** For a `turn` entry naming Cloudflare that a run mints, it first prints that it asks Cloudflare for a credential and that Cloudflare learns this machine's network address, then mints one as a run does and checks the relay Cloudflare's answer names. Each refusal above comes before that request; an entry naming Cloudflare counts as a relay on `turn.cloudflare.com`. A refused mint stops the check with the run's message, and so does an `allowed_relays` that leaves out every url Cloudflare's answer names, which states that only Cloudflare was contacted.
 - **It names the hosts first.** It prints the hosts it will contact -- the first TURN url with its transport and source, each WebSocket relay and its source, and the registrar where a run would enroll -- noting that whoever runs each learns this machine's network address, then each configured host it will not contact, with the reason. This statement goes to stderr or the `--log-file` at every `--log-level`, with or without `--json`.
 - **It enrolls first where a run would.** It enrolls the exchange's relay key at the invitation's registrar with no token, as a run does just before it connects, and prints `OK:` with the lapse the registrar states, or `WARN:` with the registrar's answer and the action to run the check again and, if it keeps failing, ask your partner whether the registrar is up. A run goes on without the enrollment, but the invitation's relay refuses the run's credential until either of you enrolls the exchange there. A failed enrollment does not stop the check: the relay is still asked, and where it is then not reached, its line names the failed enrollment as the likely cause. A registrar a run would not enroll at prints `SKIP:`.
 - **The first relay decides.** The check gathers relay candidates for that url alone, under one time limit, and prints `OK:` when the relay gave an address, or `FAIL:` with `no relay candidate gathered` and the remedy in [When a WebRTC exchange does not connect](#when-a-webrtc-exchange-does-not-connect). Each later url prints `SKIP:`, which does not block the result; to check one, list it first under [`turn`](#turn).

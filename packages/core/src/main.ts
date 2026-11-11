@@ -418,12 +418,15 @@ export {
   IGNORE_FILES_OLDER_THAN_KEY,
   generateSharedSecret,
   hasMintedTurnEntry,
+  isTurnProviderEntry,
   normalizeAllowedRelay,
   relayLocatorSchema,
   safeParseConnectionConfig,
   safeParseConnectionConfigAwaitingAddress,
   safeParseFileSyncOptions,
   statesServerHost,
+  TURN_PROVIDERS,
+  turnServerEntries,
   turnUrlIsAllowed,
   webSocketRelayUrlIsAllowed,
   webSocketRelayUrlSchema,
@@ -480,6 +483,8 @@ export type {
   RelayRegistrar,
   ServerProvision,
   SFTPConnectionConfig,
+  TurnEntry,
+  TurnProviderEntry,
   WebRTCConnectionConfig,
 } from "./config/connection";
 // Named for the same reason: ServerProvision's mode field is typed by it.
@@ -1058,6 +1063,24 @@ export type {
   RunTurnServer,
   RunWebSocketRelay,
 } from "./relayCredential";
+export {
+  CLOUDFLARE_TURN_HOST,
+  isKeptProviderTurnUrl,
+  mintProviderTurnCredential,
+  PROVIDER_TURN_CREDENTIAL_TTL_SECONDS,
+  providerTurnEntryToMint,
+  providerTurnServersFromAnswer,
+  TURN_PROVIDER_MINT_HOSTS,
+  TURN_PROVIDER_NAMES,
+  TURN_PROVIDER_REQUEST_TIMEOUT_MS,
+  turnProviderMintRequest,
+} from "./turnProvider";
+export type {
+  MintedTurnServer,
+  TurnProviderMintOutcome,
+  TurnProviderMintRequest,
+  TurnProviderTransport,
+} from "./turnProvider";
 export {
   INVITATION_RELAY_ENROLLMENT_WAIT_MS,
   invitationRelayEnrolledNotice,

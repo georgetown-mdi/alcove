@@ -425,8 +425,11 @@ test("the commented sections nested under an active block are valid when uncomme
     role: "inviter",
     server: { key: "peerjs" },
     stun: ["stun:stun.example.org:3478"],
-    turn: [{ url: "turns:relay.example.org:443?transport=tcp" }],
-    allowedRelays: ["relay.example.org"],
+    turn: [
+      { url: "turns:relay.example.org:443?transport=tcp" },
+      { provider: "cloudflare", keyId: "REPLACE_WITH_CLOUDFLARE_TURN_KEY_ID" },
+    ],
+    allowedRelays: ["relay.example.org", "turn.cloudflare.com"],
   });
 
   const unexpected = nested("unexpected_files: warn", "connection");

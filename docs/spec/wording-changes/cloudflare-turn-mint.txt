@@ -1,0 +1,48 @@
+# A turn entry naming Cloudflare: minted per run, left out of the invitation, minted first by doctor relay.
+- The check contacts no host a run of the configuration does not contact, and of a run's contacts only these: the first TURN url the run lists, every WebSocket relay the run dials, and the registrar `invitation_relay` names only where `runEnrollsAtInvitationRegistrar` is true for the configuration. -> The check contacts no host a run of the configuration does not contact, and of a run's contacts only these: the first TURN url the run lists, every WebSocket relay the run dials, and the registrar `invitation_relay` names only where `runEnrollsAtInvitationRegistrar` is true for the configuration, and, where a run of the configuration mints a provider entry's servers, that provider's minting API.
+- - -> For these refusals the provider entry a run mints (`providerTurnEntryToMint`) counts as a TURN url, and a provider entry `allowed_relays` leaves out is named by its provider's TURN host (`CLOUDFLARE_TURN_HOST`).
+- - -> **A provider entry.**
+- - -> Where a run of the configuration mints a provider entry's servers, the check first prints a line stating that it asks that provider for a TURN credential at its minting host, as a run does, and that the provider learns this machine's network address.
+- - -> It then mints as a run does ([RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#provider-minted-credentials)).
+- - -> Every refusal decided from the configuration and the key file comes before the mint.
+- - -> The one decided after it depends on the provider's answer: where `allowed_relays` leaves out every url the answer names and every other relay, the check is refused naming those urls, and the refusal states that only the provider was contacted.
+- - -> A failed mint ends the check with the run's failure.
+- - -> **The request.**
+- This document specifies how a party authenticates to the relays an exchange uses: the relay key and exchange id derived from the shared secret, the time-limited TURN credential, the relay locator an invitation carries and the relays a run lists, the registrar request proof and the WebSocket relay proof, enrolling and registering the relay key at a registrar, and the web application's relay check. -> This document specifies how a party authenticates to the relays an exchange uses: the relay key and exchange id derived from the shared secret, the time-limited TURN credential, a TURN credential minted from a relay provider's API, the relay locator an invitation carries and the relays a run lists, the registrar request proof and the WebSocket relay proof, enrolling and registering the relay key at a registrar, and the web application's relay check.
+- - -> So is a `turn` entry that names a provider ([Provider-minted credentials](#provider-minted-credentials)).
+- - -> Provider-minted credentials
+- - -> A connection's `turn` entry may name a relay provider in place of a server: `provider`, the provider's TURN key id (`key_id`) and that key's API token (`api_token`), and no url, username or credential (`TurnProviderEntry` in `packages/core/src/config/connection.ts`).
+- - -> `cloudflare` is the one provider.
+- - -> A CLI run mints the servers and credential of the one provider entry it uses from the provider's API under the operator's own account, lists them in that entry's place, and leaves out every other provider entry, so the rest of this document reads them as entries with a static pair (`mintProviderTurn` in `apps/cli/src/connection/webrtc/providerTurn.ts`).
+- - -> **Which entry a run mints.**
+- - -> The first `turn` entry `allowed_relays` keeps, where it names a provider: a provider entry is judged by the host its kept urls name, `turn.cloudflare.com` (`CLOUDFLARE_TURN_HOST`), on any port (`providerTurnEntryToMint` in `packages/core/src/turnProvider.ts`).
+- - -> A run allocates on the first TURN url alone ([the stated limit](#the-invitations-relay-locator)), so no request is made for a provider entry after a kept entry, and none for one `allowed_relays` leaves out.
+- - -> A `POST` to `https://rtc.live.cloudflare.com/v1/turn/keys/<key_id>/credentials/generate-ice-servers`, with the token as its bearer and the JSON body `{"ttl":3600}` (`turnProviderMintRequest` in `packages/core/src/turnProvider.ts`).
+- - -> Every request sets `ttl`, at `RELAY_CREDENTIAL_MAX_TTL_SECONDS` (**3600**), the one-hour ceiling of a relay credential a run presents, inside the 60 to 172800 s the endpoint accepts ([cloudflare-turn-sizing.md](../notes/cloudflare-turn-sizing.md#credential-lifetimes-the-minting-endpoint-accepts)).
+- - -> The key id is 1 to 128 of `[A-Za-z0-9_-]`, so it needs no escaping in the path.
+- - -> Redirects are not followed.
+- - -> A run waits `TURN_PROVIDER_REQUEST_TIMEOUT_MS` (**15000**) for the answer and reads at most 16384 bytes of it.
+- - -> **The urls kept.**
+- - -> Of the urls the answer lists, a run keeps each `turns:` url on Cloudflare's own host, `turn.cloudflare.com`, in the grammar of a `turn` entry's url, with the username and credential of the ICE server listing it (`providerTurnServersFromAnswer`), so the relay's TLS certificate is checked against the provider's name.
+- - -> A `turn:` url, a STUN url and a url on any other host are dropped.
+- - -> A run lists the kept url on port 443 first, since a CLI run allocates on the first TURN url alone ([the stated limit](#the-invitations-relay-locator)).
+- - -> An answer that lists no kept url fails the mint.
+- - -> **The lifetime.**
+- - -> The answer states none, so a run counts the credential's expiry from just before it sent the request.
+- - -> **When a run mints.**
+- - -> Once as the run is prepared, after every refusal decided from local inputs and before the rendezvous.
+- - -> A connection attempt after the first ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#connection-attempts)) mints again only where it would outlast the credential: where less is left of the credential's lifetime than `PROVIDER_TURN_ATTEMPT_LIFETIME_MS`, the longest attempt (1.5 times the 600000 ms attempt budget) and the 30000 ms channel-open budget after it.
+- - -> A credential is not renewed once the partner connects, so an exchange that connects late in a credential's hour can outlast it.
+- - -> **The token.**
+- - -> The CLI reads `api_token` from an `@`-file, or as written in the configuration, which it warns of as it loads the configuration, naming the `@`-file form.
+- - -> After trimming, a token holding a character outside visible ASCII (0x21 to 0x7E) is refused before any request, naming the `@`-file it was read from or the configuration.
+- - -> Neither the token nor a minted credential is written to the configuration, the key file, an event, a log line or an error message: a mint's outcome holds a status or a reason, never the answer's text or a network error's message.
+- - -> **A failed mint.**
+- - -> A mint that yields no server fails the run before anything is dialed, or ends the wait at a later attempt, naming the provider and, where it answered, the HTTP status.
+- - -> A 401, 403 or 404 is a usage error (exit 64), the token or key id to fix.
+- - -> Any other status, no answer, and an answer with no kept url is a transport failure.
+- - -> **Not in an invitation.**
+- - -> An inviter leaves a provider entry out of its invitation's relay locator, as it leaves out an entry with a static credential, since the partner cannot mint under the inviter's account (`endpointFromConnection`).
+- - -> **Stated limits.**
+- - -> A run against the real minting endpoint is not recorded for this path: the request and the handling of its answer are tested against a stubbed API.
+- - -> The web application does not mint.

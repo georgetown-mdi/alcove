@@ -1,9 +1,11 @@
-import type { HttpAuth } from "@alcove/core";
+import type { ConnectionConfig, HttpAuth } from "@alcove/core";
 import {
   decodeUrlComponent,
   getLogger,
+  isTurnProviderEntry,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
+  TURN_PROVIDER_NAMES,
   UsageError,
 } from "@alcove/core";
 
@@ -247,6 +249,32 @@ export function savedLiteralCredentialWarning(
     "with a copy of the file can use it. Before you commit or share the " +
     "file, put the value in a file of its own and write its path with a " +
     `leading @ in its place, e.g. ${found[0].configExample}.`
+  );
+}
+
+/**
+ * The warning a loaded configuration gets when a provider `turn` entry holds
+ * its API token as typed rather than as an `@path`, or undefined when none
+ * does. It contains no part of the token.
+ */
+export function literalTurnProviderTokenWarning(
+  configPath: string,
+  connection: ConnectionConfig,
+): string | undefined {
+  if (connection.channel !== "webrtc") return undefined;
+  const typed = (connection.turn ?? [])
+    .filter(isTurnProviderEntry)
+    .find((entry) => !entry.apiToken.startsWith("@"));
+  if (typed === undefined) return undefined;
+  const shownPath = redactAndRenderOperatorSuppliedText(
+    operatorSuppliedText(configPath),
+  );
+  return (
+    `the configuration ${shownPath} holds a ` +
+    `${TURN_PROVIDER_NAMES[typed.provider]} API token as typed in the ` +
+    "api_token of a connection.turn entry, and anyone with a copy of the " +
+    "file can use it. Put the token in a file of its own and write its path " +
+    `with a leading @ in its place, e.g. api_token: "@./${typed.provider}-api-token.txt".`
   );
 }
 

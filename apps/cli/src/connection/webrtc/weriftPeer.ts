@@ -772,9 +772,19 @@ export function relayCredentialAttemptNotice(
   reason: AttemptStartReason,
 ): string {
   return (
-    `${attemptStartCause(reason)}, so a new connection attempt starts` +
-    `${attemptPurposeSuffix(reason)} with a ` +
+    `${newAttemptClause(reason)} with a ` +
     `new relay credential that expires at ${credential.expiresAt.toISOString()}`
+  );
+}
+
+/**
+ * The opening of the line a run prints when a connection attempt after the
+ * first starts: what ended the last one, and that a new one starts.
+ */
+export function newAttemptClause(reason: AttemptStartReason): string {
+  return (
+    `${attemptStartCause(reason)}, so a new connection attempt starts` +
+    attemptPurposeSuffix(reason)
   );
 }
 

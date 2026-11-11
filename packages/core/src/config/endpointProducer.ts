@@ -5,7 +5,11 @@ import {
   relayLocatorFromOwnRelay,
 } from "./invitation.js";
 import type { ConnectionEndpoint } from "./invitation.js";
-import { turnUrlIsAllowed, webSocketRelayUrlIsAllowed } from "./connection.js";
+import {
+  turnServerEntries,
+  turnUrlIsAllowed,
+  webSocketRelayUrlIsAllowed,
+} from "./connection.js";
 import type { ConnectionConfig } from "./connection.js";
 
 /**
@@ -65,6 +69,7 @@ export const PLACEHOLDER_SSH_USERNAME = "REPLACE_WITH_SSH_USERNAME";
  * {@link relayLocatorFromOwnRelay}. A `turn` entry with a static username and
  * credential is left out whole: the partner cannot authenticate to it, so
  * naming it would only show the partner's address to that relay's operator.
+ * A `turn` entry naming a provider is left out for the same reason.
  * A `turn` entry or a `websocketRelay` the connection's `allowedRelays` does
  * not name is left out too. Everything else (`key`, `username`, `secure`, `provision`,
  * `invitationRelay`) is left behind: those are either not a public locator or
@@ -144,8 +149,8 @@ export function endpointFromConnection(
     requireFits("connection host", server.host, MAX_ENDPOINT_HOST_LENGTH);
     requireFits("connection path", server.path, MAX_ENDPOINT_PATH_LENGTH);
     const relay = relayLocatorFromOwnRelay({
-      turn: connection.turn
-        ?.filter(
+      turn: turnServerEntries(connection.turn)
+        .filter(
           (entry) =>
             entry.username === undefined &&
             entry.credential === undefined &&

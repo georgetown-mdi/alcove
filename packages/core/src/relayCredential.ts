@@ -7,6 +7,7 @@ import {
 } from "./utils/crypto.js";
 import {
   SHARED_SECRET_REGEX,
+  turnServerEntries,
   turnUrlIsAllowed,
   webSocketRelayUrlIsAllowed,
 } from "./config/connection.js";
@@ -260,7 +261,10 @@ export type RunRelayConnection = Pick<
 /**
  * Choose the relay servers a webrtc run uses (see {@link RunRelaySelection}).
  * A connection with no `invitationRelay` selects exactly its own `stun` and
- * `turn`, so a run from an invitation that named no relay is unchanged.
+ * `turn`, so a run from an invitation that named no relay is unchanged. A
+ * `turn` entry naming a provider names no url until a run mints its servers,
+ * so it is not listed: a run selects from the connection with the minted
+ * servers in that entry's place.
  */
 export function selectRunRelay(
   connection: RunRelayConnection,
@@ -278,14 +282,16 @@ export function selectRunRelay(
     selection.stun = stun;
   }
   if (connection.turn !== undefined || invitation?.turn !== undefined) {
-    const turn: RunTurnServer[] = (connection.turn ?? []).map((server) => ({
-      source: "own",
-      url: server.url,
-      ...(server.username !== undefined && { username: server.username }),
-      ...(server.credential !== undefined && {
-        credential: server.credential,
+    const turn: RunTurnServer[] = turnServerEntries(connection.turn).map(
+      (server) => ({
+        source: "own",
+        url: server.url,
+        ...(server.username !== undefined && { username: server.username }),
+        ...(server.credential !== undefined && {
+          credential: server.credential,
+        }),
       }),
-    }));
+    );
     const listed = new Set(turn.map((server) => server.url));
     for (const url of invitation?.turn ?? []) {
       if (listed.has(url)) continue;

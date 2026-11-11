@@ -841,6 +841,31 @@ connection:
     - url: "turns:relay.example.org:443?transport=tcp"
 ```
 
+**An entry naming a provider.** An entry may name Cloudflare's TURN service in place of a server. Each run then mints a credential from your own Cloudflare account and uses Cloudflare's relay in that entry's place, so you need not mint one by hand before each exchange. Honored by the CLI only.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `provider` | enum | yes | `cloudflare` |
+| `key_id` | string | yes | The TURN key's id, from your Cloudflare dashboard: 1 to 128 letters, digits, hyphens or underscores |
+| `api_token` | string | yes | The TURN key's API token, as an `@`-file: `@` followed by the path of a file holding the token. A token written in the configuration itself is used, with a warning to move it into a file. A token holding a space, a line break or a non-ASCII character is refused |
+
+```yaml
+connection:
+  turn:
+    - provider: cloudflare
+      key_id: "0123456789abcdef0123456789abcdef"
+      api_token: "@/run/secrets/cloudflare-turn-token"
+```
+
+- **Which entry is minted.** Only the TURN entry the run uses: the first one [`allowed_relays`](#connectionallowed_relays) keeps, where an entry naming Cloudflare counts as `turn.cloudflare.com`. An entry naming Cloudflare after another kept entry is not minted, and Cloudflare is not asked.
+- **What the run uses.** Each run asks Cloudflare for a credential valid for one hour and uses only the `turns:` urls on `turn.cloudflare.com` from the answer, port 443 first, so the relay's certificate is checked against Cloudflare's name. The run states when the credential expires.
+- **Waiting for the partner.** A connection attempt that would outlast the credential starts with a newly minted one. Once the partner connects the credential is not renewed.
+- **What is never written.** The token and the minted credential are never written to the configuration, the key file, the event stream, the log, or an error message.
+- **Refused.** An entry naming a provider sets no `url`, `username`, `credential` or `credential_type`; each is refused beside it. A `provider` other than `cloudflare` is refused too.
+- **When Cloudflare refuses.** The run stops before anything is dialed, naming Cloudflare and the HTTP status it answered: 401 or 403 means the token is not the TURN key's, and 404 means the key id names no key on the account.
+- **Not in your invitation.** Your partner cannot mint under your account, so an invitation you create leaves this entry out.
+- **Limits.** A run against Cloudflare's live API is not yet recorded for this form, and the web app does not mint. The request, the credential's lifetime and the urls kept: [RELAY_CREDENTIALS.md](spec/RELAY_CREDENTIALS.md#provider-minted-credentials).
+
 ### `connection.invitation_relay`
 
 *Type:* object  
@@ -866,6 +891,7 @@ What the relay's and the registrar's operators learn, including on an [`alcove d
 An inviter names its relay from its own settings: the `url` of each `turn` entry that sets no `username` or `credential`, its `stun` list, and its `websocket_relay`. The invitation never holds a username, a credential, or anything derived from the shared secret.
 
 - **A `turn` entry with a static `username` and `credential` is left out**, since your partner cannot authenticate to it. Your own runs still use it.
+- **A `turn` entry naming a provider is left out** for the same reason: your partner cannot mint under your account. Your own runs still use it.
 - **`alcove invite` over a `ws://` or `wss://` URL** takes the relay from `--turn` and `--stun` ([CLI.md](CLI.md#inviting-over-webrtc)), and the configuration it writes holds them as url-only `turn` entries and a `stun` list.
 - **An offline `alcove invite` from a configuration whose connection is `webrtc`** names that connection's coordination server and its relay, from `turn` and `stun` as above. A configuration with neither names no relay.
 

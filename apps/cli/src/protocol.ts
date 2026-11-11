@@ -793,11 +793,12 @@ async function openRunTransport(params: {
     // that url is one the invitation names, or when the run dials the
     // invitation's WebSocket relay under the derived id.
     const invitationRegistrar = connection.invitationRelay?.registrar;
-    const enrolls = runEnrollsAtInvitationRegistrar(connection);
-    const allocatingTurn = selectRunRelay(connection).turn?.[0];
+    const { relayConnection } = build.webRtcDial;
+    const enrolls = runEnrollsAtInvitationRegistrar(relayConnection);
+    const allocatingTurn = selectRunRelay(relayConnection).turn?.[0];
     if (
       invitationRegistrar !== undefined &&
-      allowedRelaysLeaveOutInvitationRelay(connection)
+      allowedRelaysLeaveOutInvitationRelay(relayConnection)
     )
       log.info(
         "the relay registrar that your partner's invitation names was not " +
@@ -822,7 +823,7 @@ async function openRunTransport(params: {
     else if (
       invitationRegistrar !== undefined &&
       !enrolls &&
-      (selectRunRelay(connection).websocket ?? []).some(
+      (selectRunRelay(relayConnection).websocket ?? []).some(
         (relay) =>
           relay.url === connection.invitationRelay?.websocket &&
           relay.exchangeId !== undefined,

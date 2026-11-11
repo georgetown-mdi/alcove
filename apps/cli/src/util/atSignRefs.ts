@@ -5,10 +5,13 @@ import type {
   ExchangeSpec,
   HttpAuth,
   ServerProvision,
+  TurnProviderEntry,
 } from "@alcove/core";
 import {
   HOST_KEY_FINGERPRINT_REGEX,
   InternalConsistencyError,
+  isTurnProviderEntry,
+  TURN_PROVIDER_NAMES,
   UsageError,
 } from "@alcove/core";
 
@@ -96,7 +99,8 @@ export function resolveAtSignRefs(obj: unknown): unknown {
  * live under `connection`: the SFTP `server.password`, `server.privateKey`, and
  * `server.privateKeyPassphrase`, the HTTP-auth `bearer` / `password` on the
  * `server.provision` and `iceProvision` endpoints, each WebRTC
- * `turn[].credential`, and the opaque `providerOptions` map. Every other field
+ * `turn[].credential`, a provider `turn` entry's `apiToken`, and the opaque
+ * `providerOptions` map. Every other field
  * is left verbatim, so a free-text value with a literal leading `@` (`linkageTerms.identity`,
  * `retentionDisposition`, ...) passes through unread rather than exfiltrating
  * a local file into the self-attested exchange record. A local-path field such as
@@ -141,7 +145,9 @@ function resolveConnectionAtSignRefs(
       resolveHttpAuthAtSignRefs(resolved.iceProvision?.auth);
       if (resolved.turn !== undefined)
         for (const turn of resolved.turn)
-          turn.credential = resolveOptionalAtSignRef(turn.credential);
+          if (isTurnProviderEntry(turn))
+            turn.apiToken = resolveTurnProviderToken(turn);
+          else turn.credential = resolveOptionalAtSignRef(turn.credential);
       resolveProviderOptionsAtSignRefs(resolved);
       break;
     case "filedrop":
@@ -149,6 +155,47 @@ function resolveConnectionAtSignRefs(
       break;
   }
   return resolved;
+}
+
+// The characters an `Authorization` header value can hold that a provider's
+// API token is made of: visible ASCII, no space.
+const SENDABLE_API_TOKEN = /^[\x21-\x7E]+$/;
+
+/**
+ * The refusal of a provider `turn` entry's API token, once trimmed, holding a
+ * character no request can send. `reference` is the `@`-file it was read
+ * from, absent for a token written in the configuration. It contains no part of
+ * the token.
+ */
+export function turnProviderTokenCharacterRefusal(
+  provider: TurnProviderEntry["provider"],
+  reference: string | undefined,
+): string {
+  const name = TURN_PROVIDER_NAMES[provider];
+  const where =
+    reference === undefined
+      ? "the api_token written in the configuration"
+      : `the API token read from ${reference}`;
+  const into = reference === undefined ? "" : " into that file";
+  return (
+    `${where} holds a character an API token cannot contain. Copy the ` +
+    `token from the ${name} dashboard again${into}, and run the command again.`
+  );
+}
+
+// A token written in the configuration is accepted; the loader warns of it
+// (`literalTurnProviderTokenWarning`).
+function resolveTurnProviderToken(entry: TurnProviderEntry): string {
+  const reference = entry.apiToken.startsWith("@") ? entry.apiToken : undefined;
+  const token =
+    reference === undefined
+      ? entry.apiToken.trim()
+      : resolveAtSignRef(reference);
+  if (!SENDABLE_API_TOKEN.test(token))
+    throw new UsageError(
+      turnProviderTokenCharacterRefusal(entry.provider, reference),
+    );
+  return token;
 }
 
 function resolveOptionalAtSignRef(

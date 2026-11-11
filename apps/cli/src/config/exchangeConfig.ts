@@ -28,6 +28,7 @@ import {
   warnUnsupportedWebRTCServerFlags,
   type CommonBootstrapOptions,
 } from "../optionDefinitions";
+import { literalTurnProviderTokenWarning } from "../literalCredentials";
 import type { AuthPersist, ProtocolConnectionConfig } from "../protocol";
 import { resolveExchangeSpecRefs } from "../util/atSignRefs";
 
@@ -272,6 +273,11 @@ function readExchangeConfig(
   // string values, so resolving after the parse loses no validation. Scoped to
   // the documented @-file fields under `connection`; a free-text field such as
   // linkageTerms.identity keeps a literal `@`.
+  const typedTokenWarning = literalTurnProviderTokenWarning(
+    options.configFile,
+    parsedSpec.connection,
+  );
+  if (typedTokenWarning !== undefined) log.warn(typedTokenWarning);
   const resolvedSpec = resolveExchangeSpecRefs(parsedSpec);
   const {
     connection: baseConn,
