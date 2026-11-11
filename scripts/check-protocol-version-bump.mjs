@@ -172,7 +172,7 @@ export const UNCOVERED_VECTORS = [
   {
     vectors: "webrtc-interop-vectors.json",
     versionedBy:
-      "the invitation-token `version` (docs/spec/FILE_SYNC.md), which covers the invitation encoding and the rendezvous derivation these pin.",
+      "the invitation-token `version` (docs/spec/INVITATION_TOKEN.md, Version policy), which covers the invitation encoding and the rendezvous derivation these pin.",
   },
 ];
 
