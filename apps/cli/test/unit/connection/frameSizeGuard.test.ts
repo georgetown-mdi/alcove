@@ -133,7 +133,7 @@ describe("createCappedSink", () => {
   });
 
   // A single-pass party moves a message's buffer to the PSI worker
-  // (docs/spec/FILE_SYNC.md, The hand-off over file-sync), so the buffer
+  // (docs/spec/FILE_SYNC_MEMORY.md, The hand-off over file-sync), so the buffer
   // must hold that message alone, not the chunks it was read in.
   test("resolves a message past Node's Buffer pool into a buffer of its own", async () => {
     const bytes = 1 << 20;

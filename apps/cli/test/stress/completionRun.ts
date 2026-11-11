@@ -64,7 +64,7 @@ export const GB = 1e9;
 
 /**
  * The main thread's peak beside the PSI worker: 11.78 GiB at 2^24 records, the
- * prepared input and the first-round count's index (docs/spec/FILE_SYNC.md,
+ * prepared input and the first-round count's index (docs/spec/FILE_SYNC_MEMORY.md,
  * Preparing the input at 2^24).
  */
 export const MAIN_THREAD_BYTES_PER_RECORD = 754;

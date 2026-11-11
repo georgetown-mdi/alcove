@@ -36,7 +36,7 @@ const MODE = (process.env.PSI_STRESS_WALLS_MODE ??
 // Estimated, not measured: both workers hold their engine's linear memory,
 // which never shrinks, while the starter builds the response; 1,400 bytes an
 // element rounds up the command-line joiner's measured 1,176
-// (docs/spec/FILE_SYNC.md, The measured costs) for the second worker.
+// (docs/spec/FILE_SYNC_MEMORY.md, The measured costs) for the second worker.
 function expectedNeedBytes(elements: number): number {
   return 1_400 * elements + GIB;
 }

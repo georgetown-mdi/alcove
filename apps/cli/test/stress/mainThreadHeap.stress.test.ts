@@ -19,7 +19,7 @@ import { stressMemory } from "./stressMemory";
 // The main thread's heap check against the wall it guards: at Node's default
 // heap, an input of the records the check admits is read, prepared and
 // counted through the first round without running out of heap
-// (docs/spec/FILE_SYNC.md, "The main thread's heap"). The probe runs in its
+// (docs/spec/FILE_SYNC_MEMORY.md, "The main thread's heap"). The probe runs in its
 // own process, started with no heap option and NODE_OPTIONS cleared. About 13
 // minutes and 4.4 GB resident on the measured host.
 

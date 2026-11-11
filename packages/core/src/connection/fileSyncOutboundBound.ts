@@ -1,4 +1,4 @@
-// The file-sync send side of the inbound frame bound (docs/spec/FILE_SYNC.md,
+// The file-sync send side of the inbound frame bound (docs/spec/FILE_SYNC_MEMORY.md,
 // "Round set size limits"): the size of the message file a frame is written
 // as, against which psi/psiSetParts.ts sizes each part a round sends to
 // `MAX_FRAME_SIZE_BYTES`, the bound every file-sync receiver applies.

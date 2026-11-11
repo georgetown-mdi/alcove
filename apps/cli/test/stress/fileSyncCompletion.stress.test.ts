@@ -33,7 +33,7 @@ import {
 import type { PartyRun } from "./completionRun";
 
 // The built `alcove` exchanging over a synced folder or an SFTP server at 2^24
-// records a side, to completion (docs/spec/FILE_SYNC.md, Measured runs at
+// records a side, to completion (docs/spec/FILE_SYNC_MEMORY.md, Measured runs at
 // 2^24). Half of each side's input is shared with the other, one distinct SSN
 // a record, so each party's result is known without running the exchange: the
 // shared half, row for row, less the rows whose SSN the built-in
@@ -63,12 +63,12 @@ const SHARED = Math.floor(ROWS / 2);
 
 type PartyName = "starter" | "joiner";
 
-// The starter's round from the measured costs (docs/spec/FILE_SYNC.md, The
+// The starter's round from the measured costs (docs/spec/FILE_SYNC_MEMORY.md, The
 // measured costs): 983 bytes an element over a 62 MB baseline and an 80 MB
 // intercept. The joiner's is the CLI's own budget, the costlier role.
 const STARTER_BYTES_PER_ELEMENT = 983;
 const STARTER_FIXED_BYTES = 142_000_000;
-// The starter's measured peak a record: docs/spec/FILE_SYNC.md, Measured runs at 2^24.
+// The starter's measured peak a record: docs/spec/FILE_SYNC_MEMORY.md, Measured runs at 2^24.
 const STARTER_MEASURED_PEAK_BYTES_PER_RECORD = 29_913_112_576 / 2 ** 24;
 // 5% is an arbitrary working margin, raised or lowered on request.
 const STARTER_PEAK_MARGIN = 1.05;

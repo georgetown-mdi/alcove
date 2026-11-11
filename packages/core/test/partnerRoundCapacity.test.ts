@@ -64,7 +64,7 @@ import type { Algorithm } from "../src/types";
 import { prepared } from "./utils/support";
 
 // The checks a party makes once the terms are exchanged and before any PSI set
-// moves: its own capacity against the partner's round (docs/spec/FILE_SYNC.md,
+// moves: its own capacity against the partner's round (docs/spec/FILE_SYNC_MEMORY.md,
 // "The partner's round"), and its own first round against the receive ceiling
 // the partner stated (docs/spec/PROTOCOL.md, "The receive ceiling").
 

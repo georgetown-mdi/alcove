@@ -104,7 +104,7 @@ export interface MessageConnection {
    * Optional: the message-file bound the partner's file-sync read gate
    * applies, or `undefined` for a transport with no such bound. A round sizes
    * the parts of each PSI set it sends so each part's message file fits it
-   * (`psiSetPartPayloadBytes`). See docs/spec/FILE_SYNC.md ("Round set size
+   * (`psiSetPartPayloadBytes`). See docs/spec/FILE_SYNC_MEMORY.md ("Round set size
    * limits").
    */
   outboundFileSyncFrameBound?(): number | undefined;

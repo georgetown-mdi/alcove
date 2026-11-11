@@ -214,7 +214,7 @@ describe("the main thread's heap check", () => {
   });
 
   it("admits fewer records at the measured default heap than the largest input measured to complete there", () => {
-    // docs/spec/FILE_SYNC.md, "The main thread's heap": 6,500,000 records
+    // docs/spec/FILE_SYNC_MEMORY.md, "The main thread's heap": 6,500,000 records
     // completed at a heap_size_limit of 4,395,630,592 bytes; 6,750,000 did not.
     expect(
       Math.floor(4_395_630_592 / MAIN_THREAD_HEAP_BYTES_PER_RECORD),

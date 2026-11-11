@@ -782,7 +782,7 @@ counts the inviter resolves as the PSI sender. Each run checks the role each
 party logs against the one it was weighed at.
 
 **The CLI's own check.** The pre-contact check and the partner's-round check
-([FILE_SYNC.md, Memory a PSI round needs](FILE_SYNC.md#memory-a-psi-round-needs))
+([FILE_SYNC_MEMORY.md, Memory a PSI round needs](FILE_SYNC_MEMORY.md#memory-a-psi-round-needs))
 weigh the PSI round alone, `271,000,000 + 1,176 * n` bytes, which is 50% to
 73% of every fitted WebRTC peak. It is a lower bound by its own statement, and
 it leaves out the main thread on every channel, so a WebRTC party it admits

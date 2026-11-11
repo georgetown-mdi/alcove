@@ -2032,7 +2032,7 @@ function relieveTransientMemory(): void {
 
 // A file-sync message is read into a buffer of its own, which the connection
 // keeps no hold on once it delivers it, so the partner's request or reply is
-// moved to the engine rather than copied (docs/spec/FILE_SYNC.md, The hand-off
+// moved to the engine rather than copied (docs/spec/FILE_SYNC_MEMORY.md, The hand-off
 // over file-sync). Elsewhere a frame may share its buffer.
 function handOffOverFileSync(fileSync: boolean): PsiFrameHandOff | undefined {
   return fileSync ? { transfer: true } : undefined;
@@ -2915,7 +2915,7 @@ export function getDistinctValuesAndIndices(
   slotCount: number;
 } {
   // Looked up by hash, as no Map or Set is asked about the value itself
-  // (docs/spec/FILE_SYNC.md, The practical input bound).
+  // (docs/spec/FILE_SYNC_MEMORY.md, The practical input bound).
   const valueIds = new DistinctValues({ shardEntries });
   const distinctValues = valueIds.values;
   const columns: Array<LocalKeyColumn> = [];

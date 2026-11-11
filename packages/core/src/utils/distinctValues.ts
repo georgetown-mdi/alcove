@@ -25,7 +25,7 @@ export function valueHash(value: string): number {
  * Distinct strings in first-seen order, each found by its position, with no
  * `Map` or `Set` lookup on the string itself. V8 adds any string a `Map` or
  * `Set` is asked about to its string table, whose lookups slow about fiftyfold
- * once it holds about 2^24 strings of 9 digits (docs/spec/FILE_SYNC.md, The
+ * once it holds about 2^24 strings of 9 digits (docs/spec/FILE_SYNC_MEMORY.md, The
  * practical input bound); a cleaned SSN per record reaches that. Values are
  * indexed by {@link valueHash} and compared in full on a hit, so two values
  * are one entry exactly where `===` equates them; a value whose hash another
