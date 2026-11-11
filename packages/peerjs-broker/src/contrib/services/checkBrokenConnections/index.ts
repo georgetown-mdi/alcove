@@ -1,5 +1,4 @@
 import type { IConfig } from "../../config/index.ts";
-import type { IClient } from "../../models/client.ts";
 import type { IRealm } from "../../models/realm.ts";
 
 const DEFAULT_CHECK_INTERVAL = 300;
@@ -11,22 +10,18 @@ export class CheckBrokenConnections {
   private timeoutId: NodeJS.Timeout | null = null;
   private readonly realm: IRealm;
   private readonly config: CustomConfig;
-  private readonly onClose?: (client: IClient) => void;
 
   constructor({
     realm,
     config,
     checkInterval = DEFAULT_CHECK_INTERVAL,
-    onClose,
   }: {
     realm: IRealm;
     config: CustomConfig;
     checkInterval?: number;
-    onClose?: (client: IClient) => void;
   }) {
     this.realm = realm;
     this.config = config;
-    this.onClose = onClose;
     this.checkInterval = checkInterval;
   }
 
@@ -86,8 +81,6 @@ export class CheckBrokenConnections {
         this.realm.removeClient(client);
 
         client.setSocket(null);
-
-        this.onClose?.(client);
       }
     }
   }

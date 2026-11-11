@@ -34,7 +34,6 @@
     "ws": "^8.22.1"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
     "@types/ws": "^8.18.2",
     "tsx": "^4.23.15"
   }

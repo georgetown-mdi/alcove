@@ -143,11 +143,6 @@ export const NODE_CRYPTO_USES = [
       "digests naming an invitation and a file's contents in the console's local state",
   },
   {
-    file: "packages/peerjs-broker/src/contrib/models/realm.ts",
-    members: ["randomUUID"],
-    reason: "the broker's client ids",
-  },
-  {
     file: "support/fips-probe/engagement.mjs",
     members: ["createHash", "getFips"],
     reason:
