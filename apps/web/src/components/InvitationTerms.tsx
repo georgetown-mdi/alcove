@@ -79,6 +79,18 @@ export const LESS_CERTAIN_TERMS_LINE =
   "Some of the matching keys are marked less certain. Open Matching " +
   "strategies to see which.";
 
+/** The warning for a key with one element (`InvitationKeySummary.oneElement`):
+ * `keyLine` under the key in the collapsed key list, and `termsLine` outside
+ * it, followed there by the screen's remedy. */
+export const ONE_ELEMENT_KEY_TERMS_COPY = {
+  keyLine:
+    "Uses one field, so your partner could try guessed values and learn " +
+    "which ones are in your file.",
+  termsLine:
+    "Some of the matching keys use one field, so your partner could try " +
+    "guessed values and learn which ones are in your file.",
+} as const;
+
 /** The count phrase every payload-column notice states its magnitude with ("1 data
  * column", "3 data columns"). Shared so the outbound-send, egress-request, and
  * ingress lines cannot drift in wording or in the singular/plural form they take at
@@ -371,6 +383,11 @@ function MatchKeyDisclosure({
       ) : (
         subline
       )}
+      {summary.oneElement && (
+        <Text size="xs" c="warn">
+          {ONE_ELEMENT_KEY_TERMS_COPY.keyLine}
+        </Text>
+      )}
       {/* What a match through this key discloses, so it stays visible with the
           key rather than inside the collapsed detail. Core's fixed copy. */}
       {summary.condition !== undefined && (
@@ -599,9 +616,10 @@ export function InvitationTerms({
    * cannot drop it by leaving the prop out. */
   allowedRelays: ReadonlyArray<string> | undefined;
   /** What the reader of this screen does to leave out a key marked less
-   * certain, shown after the reason for the mark: by default the accepting
-   * party's, who takes the invitation's keys whole. The console's quick
-   * exchange confirm passes its own. Fixed copy, never partner text. */
+   * certain or one with one element, shown after the reason for the mark: by
+   * default the accepting party's, who takes the invitation's keys whole.
+   * The console's quick exchange confirm passes its own. Fixed copy, never
+   * partner text. */
   lessCertainRemedy?: string;
 }) {
   const summary = summarizeInvitation({
@@ -1301,6 +1319,11 @@ export function InvitationTerms({
             <LessCertainInfo remedy={lessCertainRemedy}>
               <Text size="sm">{LESS_CERTAIN_TERMS_LINE}</Text>
             </LessCertainInfo>
+          )}
+          {summary.linkageKeys.some((key) => key.oneElement) && (
+            <Text size="sm" c="warn">
+              {`${ONE_ELEMENT_KEY_TERMS_COPY.termsLine} ${lessCertainRemedy}`}
+            </Text>
           )}
           {/* Outside the collapse as well: what a match through a key with a
               missing-field condition discloses, once per condition. Keyed by

@@ -409,6 +409,27 @@ export const LESS_CERTAIN_REMEDY = {
 } as const;
 
 /**
+ * The line each CLI terms display prints under a key with one element
+ * (`InvitationKeySummary.oneElement`): the warning, then the action that
+ * leaves the key out from where its reader stands.
+ */
+export const ONE_ELEMENT_KEY_COPY = {
+  warning:
+    "Uses one field, so your partner could try guessed values and learn " +
+    "which ones are in your file.",
+  remedy: {
+    invitation:
+      "To leave it out, ask your partner for an invitation without it.",
+    update:
+      "To leave it out, do not apply this update, and ask your partner for " +
+      "one without it.",
+  },
+} as const satisfies {
+  warning: string;
+  remedy: Record<ConsentSurfaceKind, string>;
+};
+
+/**
  * The explanation of the less certain mark, printed once beneath a key list
  * holding a key marked so, in the words the web screens show behind their
  * info button, followed by `remedy`, one of {@link LESS_CERTAIN_REMEDY}.
@@ -550,6 +571,7 @@ export function logCandidateFacts(
 function displayLinkageKey(
   emit: ConsentSurfaceSink,
   key: InvitationKeySummary,
+  surface: ConsentSurfaceKind,
 ): void {
   emit(`    - ${key.name}`);
   // The derived field one-liner, above the declared rules: the only other
@@ -565,6 +587,10 @@ function displayLinkageKey(
         ? ` ${key.lessCertainHeaderMarker}`
         : ""),
   );
+  if (key.oneElement)
+    emit(
+      `      ${ONE_ELEMENT_KEY_COPY.warning} ${ONE_ELEMENT_KEY_COPY.remedy[surface]}`,
+    );
   if (key.condition !== undefined) emit(`      ${key.condition}`);
   emit("      elements:");
   for (const element of key.elements) {
@@ -1057,7 +1083,7 @@ export function displayInvitation(params: {
   // the one that scrolls the first off the screen.
   displayLinkageFields(emit, summary);
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
-  for (const key of summary.linkageKeys) displayLinkageKey(emit, key);
+  for (const key of summary.linkageKeys) displayLinkageKey(emit, key, surface);
   if (summary.linkageKeys.some((key) => key.lessCertain))
     displayLessCertainNote(emit, LESS_CERTAIN_REMEDY[surface]);
 

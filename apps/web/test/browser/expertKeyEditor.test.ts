@@ -21,7 +21,10 @@ import {
 import { KEY_CONDITION_CONTROL } from "@psi/authoring/keyCondition";
 import { REMOVE_ALL_KEYS_STATEMENT } from "@psi/inviterEditor";
 
-import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
+import {
+  ExpertKeyEditor,
+  ONE_ELEMENT_KEY_EDITOR_LINE,
+} from "@components/ExpertKeyEditor";
 
 import { activate, control } from "./keyboardOnly";
 import { restoreMatchMedia, stubReducedMotion } from "./reducedMotion";
@@ -392,6 +395,68 @@ describe("ExpertKeyEditor: the per-key badges", () => {
           .first(),
       )
       .toMatchTextContent("your file supplies it");
+  });
+});
+
+describe("ExpertKeyEditor: a key with one element", () => {
+  function LiveEditor({ initial }: { initial: AdvancedInviteDraft }) {
+    const [draft, setDraft] = useState(initial);
+    return createElement(ExpertKeyEditor, {
+      draft,
+      declaredFields: authoredLinkageFields(
+        draft.metadata,
+        draft.standardization,
+      ),
+      keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
+      onChange: setDraft,
+      announce: () => undefined,
+    });
+  }
+
+  const warnings = () =>
+    Array.from(app.container.querySelectorAll("p")).filter(
+      (el) => el.textContent === ONE_ELEMENT_KEY_EDITOR_LINE,
+    );
+
+  test("shows the warning under a key just added, collapsed or not, and drops it once a second element is added", async () => {
+    expect(ONE_ELEMENT_KEY_EDITOR_LINE).toBe(
+      "Uses one field, so your partner could try guessed values and learn " +
+        "which ones are in your file.",
+    );
+    const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
+    app.render(createElement(LiveEditor, { initial: draft }));
+    await expect
+      .element(page.getByRole("button", { name: "Add a key" }))
+      .toBeInTheDocument();
+    // Every built-in key has two or more elements.
+    expect(warnings()).toHaveLength(0);
+
+    await userEvent.click(page.getByRole("button", { name: "Add a key" }));
+    await expect
+      .element(page.getByText(ONE_ELEMENT_KEY_EDITOR_LINE, { exact: true }))
+      .toBeVisible();
+    expect(warnings()).toHaveLength(1);
+
+    // On the card, beside the key's header and outside its collapsed body.
+    const card = warnings()[0].closest("li")!;
+    const toggle = card.querySelector<HTMLElement>(
+      '[aria-controls^="key-body-"]',
+    )!;
+    const body = document.getElementById(
+      toggle.getAttribute("aria-controls")!,
+    )!;
+    expect(body.contains(warnings()[0])).toBe(false);
+    await userEvent.click(toggle);
+    await expect.element(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect
+      .element(page.getByText(ONE_ELEMENT_KEY_EDITOR_LINE, { exact: true }))
+      .toBeVisible();
+
+    await userEvent.click(toggle);
+    await userEvent.click(
+      page.elementLocator(card).getByRole("button", { name: "Add an element" }),
+    );
+    await expect.poll(() => warnings().length).toBe(0);
   });
 });
 

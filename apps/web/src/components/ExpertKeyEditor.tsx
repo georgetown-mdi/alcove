@@ -24,7 +24,7 @@ import {
 } from "@tabler/icons-react";
 import { useReducedMotion } from "@mantine/hooks";
 
-import { sanitizeForDisplay } from "@alcove/core";
+import { linkageKeyHasOneElement, sanitizeForDisplay } from "@alcove/core";
 
 import {
   KEY_CONDITION_CONTROL,
@@ -91,6 +91,11 @@ function keyVerdictBadge(verdict: KeyVerdict): {
       };
   }
 }
+
+/** The warning under a key with one element (`linkageKeyHasOneElement`). */
+export const ONE_ELEMENT_KEY_EDITOR_LINE =
+  "Uses one field, so your partner could try guessed values and learn " +
+  "which ones are in your file.";
 
 /** Plain-language label for every fuzzy-comparison expansion an element can
  * declare. Keyed by the core union rather than listed as an array, so an
@@ -396,6 +401,13 @@ export function ExpertKeyEditor({
                     </ActionIcon>
                   </Group>
                 </Group>
+                {/* Under the header rather than in its no-wrap group, and
+                    outside the collapsed body, so it shows on a collapsed key. */}
+                {linkageKeyHasOneElement(key) && (
+                  <Text size="xs" c="warn">
+                    {ONE_ELEMENT_KEY_EDITOR_LINE}
+                  </Text>
+                )}
 
                 <div id={keyBodyId}>
                   <Collapse expanded={keyOpen}>

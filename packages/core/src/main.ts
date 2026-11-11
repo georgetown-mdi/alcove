@@ -525,6 +525,7 @@ export type {
   PrecisionFloorSelection,
 } from "./defaults/builtInLinkageTerms";
 export { linkageKeyIsLessCertain } from "./consent/lessCertainKey";
+export { linkageKeyHasOneElement } from "./consent/singleElementKey";
 export {
   admitsMissingFieldConditionType,
   keyConditionRefusal,

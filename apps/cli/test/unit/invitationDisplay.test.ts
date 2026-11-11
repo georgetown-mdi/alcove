@@ -55,6 +55,7 @@ import {
   invitationRelayRegistrarLine,
   LESS_CERTAIN_REMEDY,
   logDecisionFacts,
+  ONE_ELEMENT_KEY_COPY,
 } from "../../src/invitationDisplay";
 import {
   FUTURE,
@@ -2208,6 +2209,79 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
       `    ${LESS_CERTAIN_KEY_COPY.explanation} ${LESS_CERTAIN_REMEDY.update}`,
     );
     expect(lines.join("\n")).not.toContain(LESS_CERTAIN_REMEDY.invitation);
+  });
+
+  function oneElementToken() {
+    const token = lessCertainToken();
+    return {
+      ...token,
+      linkageTerms: {
+        ...token.linkageTerms,
+        linkageKeys: [
+          { name: "ssn alone", elements: [{ field: "tax_id" }] },
+          { name: "dob alone", elements: [{ field: "born" }] },
+          {
+            name: "authored with ssn",
+            elements: [{ field: "tax_id" }, { field: "born" }],
+          },
+        ],
+      },
+    };
+  }
+
+  test("displayInvitation: warns under each one-element key, with the acceptor's remedy", () => {
+    const log = getLogger("accept-display-one-element-test");
+    log.setLevel("silent");
+    const lines = renderDisplayInvitation(log, oneElementToken()).split("\n");
+
+    expect(ONE_ELEMENT_KEY_COPY.warning).toBe(
+      "Uses one field, so your partner could try guessed values and learn " +
+        "which ones are in your file.",
+    );
+    expect(ONE_ELEMENT_KEY_COPY.remedy.invitation).toBe(
+      "To leave it out, ask your partner for an invitation without it.",
+    );
+    const warning = `      ${ONE_ELEMENT_KEY_COPY.warning} ${ONE_ELEMENT_KEY_COPY.remedy.invitation}`;
+    const keyAt = (keyName: string) => lines.indexOf(`    - ${keyName}`);
+    expect(lines[keyAt("ssn alone") + 1]).toBe("      matches on: SSN");
+    expect(lines[keyAt("ssn alone") + 2]).toBe(warning);
+    // A lone date of birth is both less certain and one-element.
+    expect(lines[keyAt("dob alone") + 1]).toBe(
+      "      matches on: date of birth (less certain)",
+    );
+    expect(lines[keyAt("dob alone") + 2]).toBe(warning);
+    expect(lines[keyAt("authored with ssn") + 2]).toBe("      elements:");
+    expect(lines.filter((line) => line === warning)).toHaveLength(2);
+  });
+
+  test("displayInvitation: a terms update warns of a one-element key with the update's remedy", () => {
+    const lines: string[] = [];
+    displayInvitation({
+      token: oneElementToken(),
+      ownOutboundSend: undefined,
+      emit: (line) => {
+        lines.push(line);
+      },
+      promptFollows: true,
+      surface: "update",
+    });
+    expect(ONE_ELEMENT_KEY_COPY.remedy.update).toBe(
+      "To leave it out, do not apply this update, and ask your partner for " +
+        "one without it.",
+    );
+    expect(lines).toContain(
+      `      ${ONE_ELEMENT_KEY_COPY.warning} ${ONE_ELEMENT_KEY_COPY.remedy.update}`,
+    );
+    expect(lines.join("\n")).not.toContain(
+      ONE_ELEMENT_KEY_COPY.remedy.invitation,
+    );
+  });
+
+  test("displayInvitation: prints no one-element warning where every key has two elements", () => {
+    const log = getLogger("accept-display-no-one-element-test");
+    log.setLevel("silent");
+    const out = renderDisplayInvitation(log, lessCertainToken());
+    expect(out).not.toContain(ONE_ELEMENT_KEY_COPY.warning);
   });
 
   test("displayInvitation: prints no less certain note where no key is marked", () => {

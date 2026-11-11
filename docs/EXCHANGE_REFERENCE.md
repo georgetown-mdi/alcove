@@ -95,6 +95,14 @@ Three of the rules broader matching adds match on a name and a date of birth wit
   - In a configuration `alcove init` wrote, delete them from `linkage_keys` before an invitation is made from it. Once the configuration serves a partnership, delete them, run `alcove update`, and have your partner run `alcove apply` on what it prints ([Changing the terms of an established partnership](CLI.md#changing-the-terms-of-an-established-partnership)).
   - An accepting party takes the invitation's keys whole, so it asks its partner for an invitation without them, and does not apply a terms update that contains them.
 
+#### Keys on one field
+
+A key with one element lets a partner fill its input with guessed values of that field, such as every date of birth in a range, and learn which of them your file holds ([Threat model](SECURITY_DESIGN.md#threat-model)). No built-in rule has one element; a key written by hand can.
+
+- The acceptance screen in the web app and the console, the CLI's acceptance and `alcove apply` displays, and the expert key editor show a one-line warning under each such key, including a key just added in the editor. A lone first name, last name, or date of birth is also marked `(less certain)`.
+- The warning never stops an exchange, and no run checks the size of either input.
+- An accepting party asks its partner for an invitation without the key, and does not apply a terms update that contains it.
+
 A `zip` column must hold the ZIP code of the person's own address. A site's or agency's ZIP code, and likewise a staff or agency phone number, matches unrelated people served at that site. Give such a column `role: ignored` in `metadata`; in a quick exchange, which has no `metadata` block, remove it from the file: a renamed header is sent to your partner.
 
 The built-in keys' validation, the criticisms recorded against them, and what a quick exchange rests on are in [default-linkage-rule-set.md](notes/default-linkage-rule-set.md).
