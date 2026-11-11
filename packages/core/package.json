@@ -46,7 +46,7 @@
     "dist"
   ],
   "dependencies": {
-    "@openmined/psi.js": "file:../../lib/openmined-psi.js-2.0.6-seclink.7.tgz",
+    "@openmined/psi.js": "file:../../lib/openmined-psi.js-2.0.6-alcove.1.tgz",
     "canonicalize": "^5.1.0",
     "eventemitter3": "^5.0.1",
     "loglevel": "^1.9.2",
