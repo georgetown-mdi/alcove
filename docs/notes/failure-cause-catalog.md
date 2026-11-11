@@ -54,8 +54,8 @@ The rule this section measures against: core states causes and facts, and each a
 
 ### The console and the web app
 
-- **The console's remedy map** is `consoleFailureCause.ts`, reached from `failureContentFor` in `apps/web/src/exchange/useInviterExchange.ts` for a relayed `error` event holding a `cause`.
-- **Copy keyed on message text.** `partnerCertificateRefusal.ts` matches core's five `PARTNER_CERTIFICATE_REFUSAL_MESSAGES` by text to replace their configuration-key remedy with the receipts card's controls: a cause the catalog does not name, read back from its sentence.
+- **The console's remedy map** is `consoleFailureCause.ts`, reached from `failureContentFor` in `apps/web/src/exchange/useInviterExchange.ts` for a relayed `error` event holding a `cause`, and by its `consoleSweptHandshakeTimeout` for the one event without a cause (below).
+- **Copy keyed on message text.** `partnerCertificateRefusal.ts` matches core's five `PARTNER_CERTIFICATE_REFUSAL_MESSAGES` by text to replace their configuration-key remedy with the receipts card's controls: a cause the catalog does not name, read back from its sentence. `consoleSweptHandshakeTimeout` in `consoleFailureCause.ts` matches the first line of the key-exchange handshake timeout's message the same way.
 - **Copy keyed on error class and exit code.** `failureContentFor` writes about forty titled accounts by error class, category and exit code, the partner refusal (exit 76) and the security fallback among them, beside the relayed message where the event holds `recoveryHint`.
 - **The public web app** runs core in the browser and shows core's messages, so every core constant above reaches it as written. Its remedy map, `exchange/webFailureRemedy.ts`, writes the remedy for a set too large to send, the single-pass and matched-list refusals, an unusable shared secret and a partner stopped at matching, wherever it shows a failure raised in the browser: the one-shot exchange's alert (`useInviterExchange.ts`) and a managed run's launch state (`recurring/managedRunLaunchModel.ts`); its no-show and managed-run copy (`useInviterExchange.ts`, `psi/managed/managedFailureCopy.ts`) does not draw on the catalog.
 
@@ -70,7 +70,7 @@ The survey names no other run-ending remedy the failure site writes itself. Acro
 
 - Neither line has a second copy: the signal handler states only the key-file state line, and the `error` event states neither, as `protocol.test.ts` checks. The key-file state line stays out of the terminal event as well.
 - The console reads the `error` event, and the CLI's stderr only when no terminal event arrives, so it reaches neither line and holds no copy of either.
-- One cause therefore reads differently by app, left as it is: on a swept peer-wait timeout the CLI's stderr adds the both-swept line beneath its no-show remedy, while the console shows its own no-show remedy alone (`consoleFailureCause.ts`). Whether the console states it too is owner copy.
+- On a run that cleared leftover files in delete mode and then timed out waiting for the partner, both apps state the both-swept line: the CLI's stderr beneath its no-show remedy, the console in its own words ahead of its no-show remedy (`consoleFailureCause.ts`). Both apps cover both timeouts: the rendezvous wait, which the side that cleared files second meets, and the key-exchange handshake, which the side that entered first meets. The handshake timeout states no cause on the `error` event, so the console recognizes it by the first line of the event's `message`, core's `KEX_HANDSHAKE_TIMEOUT_MESSAGE`, which `protocol.test.ts` pins on the event the CLI builds.
 
 ### What the survey decides
 

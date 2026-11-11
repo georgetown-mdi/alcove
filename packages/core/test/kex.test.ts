@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 import {
+  KEX_HANDSHAKE_TIMEOUT_MESSAGE,
   KEX_MESSAGE_MAX_BYTES,
   runKex,
   computeKexKeys,
@@ -46,6 +47,7 @@ import {
   fromEventConnection,
   type MessageConnection,
 } from "../src/connection/messageConnection";
+import { failureCauseOf } from "../src/failureCause";
 
 import { PassthroughConnection } from "./utils/passthroughConnection";
 
@@ -1010,6 +1012,10 @@ test("the handshake times out if the peer never responds", async () => {
   // Tagged as a peer-wait timeout so a consumer that also knows the run swept
   // the shared folder at entry can offer that as the likely cause.
   expect(isPeerWaitTimeout(err)).toBe(true);
+  // The console recognizes this failure by its message, having no catalog
+  // cause to read (docs/notes/failure-cause-catalog.md).
+  expect((err as Error).message).toBe(KEX_HANDSHAKE_TIMEOUT_MESSAGE);
+  expect(failureCauseOf(err)).toBeUndefined();
 });
 
 test("a transport refusal during the handshake is reported as itself, not as a timeout", async () => {

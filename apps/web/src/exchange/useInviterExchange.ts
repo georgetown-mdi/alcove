@@ -59,13 +59,16 @@ import {
   NEWER_KEY_FILE_TITLE,
 } from "@console/mountedConfiguration";
 import {
+  consoleFailureForCause,
+  consoleSweptHandshakeTimeout,
+} from "@console/consoleFailureCause";
+import {
   discardServerJob,
   writeAttachment,
 } from "@psi/jobClient/consoleJobAttachment";
 import { AcceptedSignalingServerUnsetError } from "@psi/jobClient/signalingServerClient";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
 import { RunRelayWatch } from "@psi/transport/runRelayWatch";
-import { consoleFailureForCause } from "@console/consoleFailureCause";
 import { consoleJobColumnRefusalAlert } from "@psi/columnNames";
 import { consolePartnerCertificateRefusal } from "@console/partnerCertificateRefusal";
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
@@ -337,6 +340,11 @@ export interface FailureContext {
   singleColumnInput?: boolean;
   /** Whether this side set a name for itself under the exchange-files card. */
   thisSideNamed?: boolean;
+  /** Whether the run cleared leftover files at entry. */
+  sweepExchangeFiles?: boolean;
+  /** Whether the run kept its exchange files, which turns the sweep's
+   * deletion off. */
+  retainFiles?: boolean;
 }
 
 /** @internal */
@@ -646,6 +654,8 @@ function failureContentFor(
     identityLocationPicked = false,
     singleColumnInput = false,
     thisSideNamed = false,
+    sweepExchangeFiles = false,
+    retainFiles = false,
   }: FailureContext = {},
 ): Omit<RunFailure, "retry"> {
   // The console already holds an exchange (its single slot is occupied), so the
@@ -905,7 +915,10 @@ function failureContentFor(
       cause.kind === "message-write-unconfirmed"
         ? { category: "config" as const, settingsCannotResolve: true as const }
         : { category }),
-      ...consoleFailureForCause(cause, { thisSideNamed }),
+      ...consoleFailureForCause(cause, {
+        thisSideNamed,
+        deleteModeSweep: sweepExchangeFiles && !retainFiles,
+      }),
       ...((cause.kind === "partner-never-arrived" &&
         cause.sharedName === true) ||
       cause.kind === "shared-name-at-entry"
@@ -920,6 +933,17 @@ function failureContentFor(
         : {}),
     };
   }
+  // The CLI's report is left out for the reason above: it names a
+  // command-line flag.
+  const sweptHandshakeTimeout =
+    error instanceof RelayedTerminalError && category === "exchange"
+      ? consoleSweptHandshakeTimeout(error.message, {
+          channel,
+          deleteModeSweep: sweepExchangeFiles && !retainFiles,
+        })
+      : undefined;
+  if (sweptHandshakeTimeout !== undefined)
+    return { category, ...sweptHandshakeTimeout };
   // A console run the partner or the agreed terms refused (the CLI's exit 76):
   // the partner's refusal, which a retry and a change to this party's settings
   // both meet again, so it takes the config category and no retry.
@@ -1709,6 +1733,8 @@ export function useInviterExchange({
             receipts?.signing?.identityLocation !== undefined,
           singleColumnInput: minted.columns.length === 1,
           thisSideNamed: options?.peerId !== undefined,
+          sweepExchangeFiles: runDiagnostics?.sweepExchangeFiles === true,
+          retainFiles: options?.retainFiles === true,
         }),
       );
       setRun((current) => runWithFailure(current));
