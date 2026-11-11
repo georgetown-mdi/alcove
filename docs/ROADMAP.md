@@ -17,8 +17,7 @@ No work is listed as required before the 1.0 release.
 - Screen-reader passes (NVDA, VoiceOver) over the web application, and a Voluntary Product Accessibility Template (VPAT) built on the [accessibility self-assessment](ACCESSIBILITY.md)
 - PSI-Sum
 - Browser SFTP in the public web application, after 1.0 unless there is time before it (the first-party relay it needs is built; the browser client is not)
-- Provisioning of supporting services (peer coordination, STUN/TURN, SFTP, WebSocket-to-TCP proxy)
-- Reference configurations and deployment guides for each supporting service; the section pointers in [DEPLOYMENT.md](DEPLOYMENT.md) will be replaced with concrete guidance
+- A published image of the SFTP relay, the WebSocket-to-TCP proxy, which an operator builds from a checkout ([DEPLOYMENT.md](DEPLOYMENT.md#websocket-to-tcp-proxy))
 - Metadata classification
 
 ## Possible later work
