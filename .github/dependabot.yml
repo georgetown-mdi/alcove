@@ -91,8 +91,11 @@ updates:
           ]
 
   # The base images of the two Dockerfiles at the repository root: the default
-  # image's node base, and the FIPS variant's Amazon Linux base, which the
-  # ignore entry below holds out of this ecosystem.
+  # image's node base and the FIPS variant's Amazon Linux base, neither ignored
+  # under any name. A FIPS base bump moves only the FROM digest, so it is taken
+  # through "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md, which
+  # moves the pins coupled to it on that branch, rather than merged as filed.
+  # The cooldown does not delay that bump: ECR Public reports no publish date.
   - package-ecosystem: docker
     directory: "/"
     target-branch: "staging"
@@ -104,33 +107,6 @@ updates:
       # Only default-days is valid for the docker and github-actions
       # ecosystems; the semver-*-days keys are supported for npm only.
       default-days: 7
-    ignore:
-      # The default image's node base is NOT here: its digest-only bumps are the
-      # mechanical class this block exists for, and the freeze test in
-      # scripts/dockerfile-freeze.test.mjs is what forces the mirrored literal
-      # to be reconciled on the same pull request.
-      #
-      # The FIPS variant's Amazon Linux base is the opposite case, because a
-      # move of it is not a one-line digest edit. Dockerfile.fips's FROM digest,
-      # its AL2023_RELEASEVER snapshot and the certified provider's NVR pins
-      # have to name one Amazon Linux release between them -- the coupling the
-      # release-coupling comment above that FROM states and the nodebase stage
-      # asserts -- and it also carries a FIPS re-measurement obligation. A
-      # version comparison over tag components sees none of that, so this base
-      # moves as a coordinated, human-reviewed change worked through
-      # "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md, and the
-      # digest freeze stays the pinning mechanism meanwhile.
-      #
-      # The entry names no update-types at all rather than listing the semver
-      # ones: this pin is a tag@sha256: digest, so the bump it receives is a
-      # digest move rather than a version change, and exempting no update type
-      # is the one shape that cannot leave that case uncovered.
-      - dependency-name: "amazonlinux"
-      # The same base under the registry-qualified name Dockerfile.fips's FROM
-      # spells, held out for the same reason as the entry above.
-      - dependency-name: "public.ecr.aws/amazonlinux/amazonlinux"
-      # The name Dependabot gives that ECR Public reference when it files a bump.
-      - dependency-name: "amazonlinux/amazonlinux"
 
   # The relay reference's base image. infra/relay/Dockerfile is a single pinned
   # FROM and nothing else -- the digest's only home, since every other file there

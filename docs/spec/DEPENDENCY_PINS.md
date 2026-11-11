@@ -34,9 +34,9 @@ what it does not cover.
 That form is for npm packages only, because every name in such a heading is read
 as one and looked up in the npm groups. A checklist for a pin in another
 ecosystem therefore has a heading of another shape -- "Bumping the FIPS base
-image" below is a docker-ecosystem pin, which the update config holds out of
-Dependabot entirely. Renaming one of those to `Upgrading ...` fails the check
-with a message asking for an npm exclude entry that would be false.
+image" below is a docker-ecosystem pin, which no npm group can hold. Renaming
+one of those to `Upgrading ...` fails the check with a message asking for an npm
+exclude entry that would be false.
 
 ## Every pin's update route
 
@@ -45,7 +45,8 @@ pins, as surveyed on 2026-11-10, with the route that offers it for upgrade:
 
 - **automatic**: a block in `.github/dependabot.yml` reaches the pin and opens
   a pull request.
-- **scheduled**: a documented manual cadence moves the pin. No pin has one.
+- **scheduled**: a documented manual cadence moves the pin. Only the FIPS
+  image's Node runtime has one: each FIPS base pull request moves it.
 - **planned**: an automatic or scheduled route for the pin is planned and not
   yet in place.
 - **none**: nothing offers an upgrade, and the pin moves only when someone
@@ -63,8 +64,8 @@ section each row links.
 | wrangler | `.github/wrangler/package.json` and its lockfile | The exact version `4.147.0` | automatic | The `npm` block at `/.github/wrangler`. The six `wranglerVersion` inputs move by hand in the same pull request ([The Pages deploy tool](#the-pages-deploy-tool)). |
 | `sharp` and `undici` under wrangler | The `.github/wrangler/package.json` `overrides` entry | The exact versions `0.35.5` and `7.30.2` | none | Each comes out when a wrangler bump resolves that release or a later one. Whether a Dependabot pull request moves either is unmeasured. |
 | Default image base | `Dockerfile`, both stages | The `node:26-alpine` index digest | automatic | The `docker` block at `/`. The freeze literal and the attribution list move in the same diff ([Bumping the default base image](#bumping-the-default-base-image)). |
-| FIPS image base | `Dockerfile.fips` | The ECR Public `amazonlinux` index digest, `AL2023_RELEASEVER`, and the certified provider's NVR pins | planned | The `docker` block at `/` ignores its three names. The procedure is [Bumping the FIPS base image](#bumping-the-fips-base-image). |
-| FIPS image Node runtime | `Dockerfile.fips` | `ARG NODE_VERSION` (`v26.13.0`) and the two tarball sha256 values | planned | No Dependabot block reads it. It moves in the same diff as the FIPS base, under the same planned cadence. |
+| FIPS image base | `Dockerfile.fips` | The ECR Public `amazonlinux` index digest, `AL2023_RELEASEVER`, and the certified provider's NVR pins | automatic | The `docker` block at `/`, weekly, opens a pull request moving the digest. That pull request is taken through [Bumping the FIPS base image](#bumping-the-fips-base-image), which moves the other pins on it. |
+| FIPS image Node runtime | `Dockerfile.fips` | `ARG NODE_VERSION` (`v26.13.0`) and the two tarball sha256 values | scheduled | No Dependabot block reads it. Each FIPS base pull request moves it to the current Node 26 release ([Bumping the FIPS base image](#bumping-the-fips-base-image)), so a Node release waits for the next base rebuild. |
 | SFTP relay image base | `packages/sftp-relay/Dockerfile`, both stages | The `node:26-alpine` index digest | automatic | The `docker` block at `/packages/sftp-relay`. |
 | TURN relay image | `infra/relay/Dockerfile` | The `coturn/coturn:4.18.0` index digest | automatic | The `docker` block at `/infra/relay`. |
 | Broker TLS front image | `infra/broker/Dockerfile` | The `nginx:1.31-alpine` index digest | automatic | The `docker` block at `/infra/broker`. |
@@ -883,50 +884,54 @@ each of those pins is, and how the current values were resolved, is in
 [CONTAINER_IMAGES.md](CONTAINER_IMAGES.md#the-fips-variant-images-pins); what
 follows is the procedure that keeps them together.
 
-**No mechanical arrival signal, by configuration.** The docker ecosystem block
-in `.github/dependabot.yml` ignores `amazonlinux/amazonlinux`, so once that entry sits on
-the branch Dependabot reads its configuration from (below), nothing opens a pull
-request when the tag is rebuilt onto a newer rootfs. The four values below have
-to name one release between them and the move imposes a re-measurement
-obligation besides, none of which a version comparison over tag components can
-see -- so this base moves as a coordinated, human-reviewed change or not at all,
-and the digest freeze in `scripts/dockerfile-freeze.test.mjs` is what pins it
-meanwhile. The default image's `node:26-alpine` base has no such entry, and
-its digest-only bumps do arrive on that block's weekly schedule; the two pins'
-treatments differ by design, and
-[Bumping the default base image](#bumping-the-default-base-image) is the other
-one. Why the split was taken is in
-[fips-variant-image.md](../notes/fips-variant-image.md#why-the-base-is-held-out-of-dependabot).
+**The cadence and the arrival signal.** The `docker` block at `/` in
+`.github/dependabot.yml` (weekly on Monday, targeting `staging`) opens a pull
+request when it finds a newer digest for this base, as it does for the default
+image's. That pull request is the offer to upgrade, and it is taken through
+this procedure rather than merged as filed or closed unmerged.
 
-**Which branch that entry is read from.** Dependabot resolves
+- **Weekly, because the block is shared.** Both `Dockerfile` and
+  `Dockerfile.fips` sit at the repository root, which that one block covers. A
+  monthly schedule for this base alone would take a second `docker` block at
+  `/` naming only it. Whether Dependabot accepts two blocks with the same
+  ecosystem, directory and target branch has not been driven, so the base takes
+  the shared block's schedule.
+- **No cooldown applies.** Dependabot's own pull requests for this base, #2539
+  and #2608, each warn that the cooldown could not be applied because the
+  registry gave no publication date. A pull request can therefore arrive in the
+  first weekly run after ECR Public publishes a rootfs.
+- **No name is ignored.** The block has no `ignore` entry under any of the
+  base's three names: `amazonlinux`, Docker Hub's name for the image, which no
+  `FROM` here spells; `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public
+  name `Dockerfile.fips` spells; and `amazonlinux/amazonlinux`, the name
+  Dependabot files the bump under (PRs #2539 and #2608).
+- **It arrives red.** Dependabot's commit moves the `FROM` digest alone
+  (PR #2608), so the `nodebase` stage's release assertion, the freeze test and
+  the attribution check fail until the rest of this procedure lands. Push that
+  work as commits onto the Dependabot branch, as PR #2539 landed.
+
+The default image's base arrives on the same block with no procedure beyond
+its literals ([Bumping the default base image](#bumping-the-default-base-image)).
+Why this one takes more is in
+[fips-variant-image.md](../notes/fips-variant-image.md#why-a-dependabot-bump-of-the-base-is-not-merged-as-filed).
+
+**Which branch the configuration is read from.** Dependabot resolves
 `.github/dependabot.yml` from the repository's default branch (`main`) rather
-than from the branch an update targets, so an entry merged to `staging`
-suppresses nothing until a release promotion moves it to `main`. Observed
-2026-08-31, with the `amazonlinux` entry on `staging` and `main`'s copy of the
-file with none: a docker-ecosystem run triggered by hand showed
-`"ignore-conditions": []` in its update-job definition and filed a bump of this
-base's digest against `staging` (PR #1166). The same default-branch evaluation
-governs Dependabot's security alerts, which
+than from the branch an update targets, so a change to that file takes effect
+only once a release promotion moves it to `main`. Observed 2026-08-31, with an
+`ignore` entry for this base on `staging` and `main`'s copy of the file with
+none: a docker-ecosystem run triggered by hand showed `"ignore-conditions": []`
+in its update-job definition and filed a bump of this base's digest against
+`staging` (PR #1166). While `main`'s copy carries an `ignore` entry naming the
+base, a run's update-job definition lists that name under
+`ignore-conditions` and no pull request is filed for it. The same
+default-branch evaluation governs Dependabot's security alerts, which
 [RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies) records for
 triage and whose pull requests against `main` it handles in
 [A security update opened against
-main](../RELEASES.md#a-security-update-opened-against-main). The
-entry is on `main`. What shows it in force is a docker-ecosystem run whose
-update-job definition has an `ignore-conditions` entry naming `amazonlinux/amazonlinux`
-instead of an empty list. While the list reads empty the entry is
-inert and an `amazonlinux` pull request that arrives is closed unmerged -- what
-the entry removes is a filing, and the digest freeze plus the procedure below is
-what holds the base either way.
+main](../RELEASES.md#a-security-update-opened-against-main).
 
-The block ignores three names for this base: `amazonlinux`, Docker Hub's name
-for the image; `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public name
-`Dockerfile.fips` spells; and `amazonlinux/amazonlinux`, the name Dependabot
-gives that reference when it files a bump. Observed 2026-11-02 with both other
-entries on `main`: Dependabot filed this base's bump as
-`amazonlinux/amazonlinux` (PR #2608). A pull request that arrives for it is
-closed unmerged, as above.
-
-**What shows a base worth moving to**, in the absence of a filed bump:
+**What else shows a base worth moving to**, between filed pull requests:
 
 - The Trivy scan the release workflow runs over the built variant,
   which gates every publish, so a snapshot with fixable high or critical
@@ -990,6 +995,36 @@ Take each hash from that release's `SHASUMS256.txt` and confirm it by running
 `sha256sum` over the downloaded tarball. No Dependabot entry tracks the tarball,
 so a Node security release between base bumps is caught only by a dependency
 survey.
+
+**Security review or the mechanical checks.** Diff the regenerated
+`NOTICE-os-packages-fips.tsv` (5 above) against the list it replaces. A move
+whose diff adds, drops or changes the version of any of these gets a security
+review under [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy) before
+it merges:
+
+- OpenSSL: `openssl` and `openssl-libs`.
+- The FIPS provider: `openssl-fips-provider-certified` and
+  `openssl-fips-provider-certified-so`, or whichever package (4) above names.
+- The other packages the closure carries for cryptography or trust:
+  `crypto-policies`, `gnutls`, `libgcrypt`, `libgpg-error`, `nettle`,
+  `libxcrypt`, `libtasn1`, `krb5-libs`, `keyutils-libs`, `cyrus-sasl-lib`,
+  `cryptsetup-libs`, `gpgme`, `python3-gpg`, `gpg-pubkey`, `p11-kit`,
+  `p11-kit-trust` and `ca-certificates`, and any other package of that kind,
+  whether a new snapshot adds it or the list already carries it.
+
+Any other move is reviewed by the mechanical checks: the build's assertions,
+the freeze test, the attribution check, and the `image_smoke.yaml` legs and
+Trivy gate below. The reviewer reads the trigger off the list diff; no check
+computes it.
+
+**Re-check the open Dependabot alerts that have no fix.** On each base move,
+read the repository's open Dependabot alerts in the Security tab, which are
+evaluated against `main`
+([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)). For each alert
+with no patched version, check whether a fixed release has since been
+published. One that has is taken as its own bump, not folded into the base
+move. One that still has none stays open rather than dismissed, so the next
+base move reads it again.
 
 **The re-measurement obligation.** The variant's published FIPS claims rest on
 measurements of one base rootfs and one provider build. Those taken by hand are
@@ -1081,9 +1116,9 @@ covers and why the base is pinned by digest rather than by tag is in
 (`.github/dependabot.yml`, weekly on Monday, targeting `staging`) tracks the
 digest in the `FROM` and opens a pull request of its own when the
 `node:26-alpine` tag is rebuilt onto a newer image. That block declares no
-groups, so the bump is never batched. This is the base image that block covers:
-[the FIPS variant's](#bumping-the-fips-base-image) is held out of it by an
-`ignore` entry, and moves by hand instead. Its weekly cadence is the accepted
+groups, so the bump is never batched. The same block files
+[the FIPS variant's](#bumping-the-fips-base-image) base, which is taken through
+its own procedure. The block's weekly cadence is the accepted
 latency here -- nothing polls the registry more often, and a rebuild is what
 this waits for rather than something this repository can provoke.
 Dependabot's own commit edits only the `Dockerfile` `FROM` lines; nothing
