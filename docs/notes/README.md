@@ -35,7 +35,7 @@ a restatement.
 | [claude-md-spawn-cost.md](claude-md-spawn-cost.md) | CLAUDE.md's per-spawn cost and its split | built |
 | [cli-webrtc-attempt-cycle.md](cli-webrtc-attempt-cycle.md) | The CLI's WebRTC partner wait in bounded attempts | built |
 | [cli-webrtc-stack.md](cli-webrtc-stack.md) | The CLI's WebRTC library | built |
-| [cloudflare-turn-sizing.md](cloudflare-turn-sizing.md) | One relayed run through Cloudflare TURN | measured |
+| [cloudflare-turn-sizing.md](cloudflare-turn-sizing.md) | Two relayed runs through Cloudflare TURN | measured |
 | [column-name-display.md](column-name-display.md) | Showing the operator's own column names | built |
 | [comment-history-narration-check.md](comment-history-narration-check.md) | The comment history narration check | built |
 | [connect-timeout-prior-art.md](connect-timeout-prior-art.md) | What a connect timeout bounds | built |
