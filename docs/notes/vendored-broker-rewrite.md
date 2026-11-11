@@ -155,14 +155,12 @@ Upstream has changed no server behavior since December 2023 and nothing has ever
   The standing deployment ([webrtc-relay-deployment.md, The recommendation](webrtc-relay-deployment.md#the-recommendation)) does not need it.
 - **Upstream ships a server change Alcove needs.**
 
-## Proposed follow-on
+## Follow-on
 
 All three are built.
 The broker's unit tests run in `packages/peerjs-broker/test/`, apart from the two that read the web client's heartbeat cadence, which stay in `apps/web/test/unit/psi/signalingReaping.test.ts`.
 
 1. **Delete the unread upstream code**: the seven `IConfig` fields, `Realm.generateClientId`, the commented-out builder and events interface, the empty `close` listener and `onClose`, the second `defaultConfig` merge, and `@types/cors`.
-   About -120 lines, checked by a typecheck across every workspace.
-   Sequenced after any open work on `models/realm.ts`.
 2. **Retire the vendoring rules**: lint `messageHandler/` and `models/message.ts` like the rest, and correct the package README's provenance paragraph, which states about a third of the tree is this project's.
    The MIT license beside the tree and the package's `Apache-2.0 AND MIT` stay, since the code is still derived from upstream.
    Renaming or flattening `contrib/` is optional, and costs churn in the nine test files and the spec paragraphs that cite its paths.
