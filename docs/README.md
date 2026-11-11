@@ -91,6 +91,7 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 - [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md) - the exchange record: its files, the commitment scheme, governance metadata, and privacy properties
 - [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md) - the exchange file the web app downloads, its versioning, the invitation channel-binding rule, and key file provisioning
 - [INVITATION_TOKEN.md](spec/INVITATION_TOKEN.md) - the invitation token's encoding, fields, size bounds, and the checks on minting and accepting it
+- [WEB_ACCEPTANCE.md](spec/WEB_ACCEPTANCE.md) - what the web app shows an accepting party before it consents, the consent gate, the column checks before launch, and the terms the exchange then runs
 - [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md) - the default cleaning per data type, and the column-name table behind the inferred defaults
 - [CANONICAL_ENCODING.md](spec/CANONICAL_ENCODING.md) - the RFC 8785 encoding that receipts, record commitments, and the agreed-terms hash are computed over
 - [CREDENTIAL_STORAGE.md](spec/CREDENTIAL_STORAGE.md) - how the key file, signing identity, exchange record, and result CSV are written owner-only and durably
