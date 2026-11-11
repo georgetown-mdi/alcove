@@ -54,7 +54,6 @@ This changelog is a reader's summary of what Alcove does and how that changes pe
 - BREAKING: `alcove verify-receipt` exits 65 (`EX_DATAERR`) on a definite verification failure instead of 1, so a script can tell a bad receipt from an uncaught fault, which still exits 1. See `docs/CLI.md`.
 - BREAKING: when an `alcove exchange` run stops after one party saved the rotated shared secret and before the other did, the next run completes without a new invitation, and the exit codes of those save failures change. See `docs/CLI.md`.
 - BREAKING: the dual-signed receipt format holds the partner's linkage terms, so verifying a receipt needs no partner terms document beside it; a receipt in an earlier format is refused. See `docs/spec/EXCHANGE_RECORD.md`.
-- The default `email_address` cleaning removes dots and a plus tag from a gmail.com or googlemail.com address and writes the domain as gmail.com, so the spellings of one Gmail mailbox match; both parties need a release with this default for those addresses to match each other. See `docs/spec/DEFAULT_STANDARDIZATION.md`.
 - BREAKING: the web app and the CLI apply application-layer encryption on every WebRTC exchange, so a web app build from before this change cannot complete a WebRTC exchange with a current CLI or web app. See `docs/spec/CHANNEL_SECURITY.md`.
 
 ### Fixed
