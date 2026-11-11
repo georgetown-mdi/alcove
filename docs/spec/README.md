@@ -126,7 +126,7 @@ is deliberate and recorded: do **not** "tidy" the filename grammar down into
 FILE_SYNC.md defers to it; moving it would silently break FILE_SYNC's invariant
 references.
 
-### Maintainer-runbook exception: DEPENDENCY_PINS.md and CONTAINER_IMAGES.md
+### Maintainer-runbook exception: DEPENDENCY_PINS.md, SFTP_STACK.md and CONTAINER_IMAGES.md
 
 [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md), [SFTP_STACK.md](SFTP_STACK.md) and
 [CONTAINER_IMAGES.md](CONTAINER_IMAGES.md) bend the two tier rules above, on

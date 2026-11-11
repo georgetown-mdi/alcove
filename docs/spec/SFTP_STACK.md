@@ -8,13 +8,13 @@ This document records the internal assumptions the CLI's SFTP adapter makes abou
 It does not cover how the other pinned stacks and the install-time policies are upgraded (see [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md)), the controls the adapter implements on top of these assumptions (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md), [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md), [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md), [SFTP_CONNECTION.md](SFTP_CONNECTION.md) and [SFTP_SESSION_RECOVERY.md](SFTP_SESSION_RECOVERY.md)), or the dependency-review requirement (see [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy)).
 Intended readers are maintainers upgrading a pinned dependency, security auditors, and developers.
 
-The channel-security bounds specified in [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md), [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md), [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md), [SFTP_CONNECTION.md](SFTP_CONNECTION.md) and [SFTP_SESSION_RECOVERY.md](SFTP_SESSION_RECOVERY.md) reach past the public `ssh2-sftp-client` API and drive ssh2 internals directly (`apps/cli/src/connection/ssh2SftpAdapter.ts`), so they rest on assumptions about ssh2's internal behavior that an upgrade can silently break. Re-verify the following on any `ssh2` or `ssh2-sftp-client` version bump, before the bump merges.
+The channel-security bounds those documents specify reach past the public `ssh2-sftp-client` API and drive ssh2 internals directly (`apps/cli/src/connection/ssh2SftpAdapter.ts`), so they rest on assumptions about ssh2's internal behavior that an upgrade can silently break. Re-verify the following on any `ssh2` or `ssh2-sftp-client` version bump, before the bump merges.
 
 **Which of these assumptions a check holds, and which stay prose.** An assumption
 earns a check when a run can assert it at the layer it is stated and the failure
 names the assumption that moved; otherwise it stays re-verify-on-upgrade prose,
 which at least fires at the one moment it matters. Importance does not decide it
--- everything in this section is critical or it would not be here -- and
+-- everything in this document is critical or it would not be here -- and
 neither does cost alone. What decides it is whether the assumption is separable from
 the adapter behavior built on it: a break that an adapter-level test can only
 report as an opaque timeout leaves a bumper reading this document anyway, so
@@ -38,7 +38,7 @@ own check. Three classes stay prose:
 
 Which class an assumption falls in is decided at the assumption, not here: a bullet that
 names its check, or gives its reason for having none, has been through this;
-where a bullet does neither, the section's re-verify instruction is what stands.
+where a bullet does neither, this document's re-verify instruction is what stands.
 
 ## The internal assumptions the adapter relies on
 
