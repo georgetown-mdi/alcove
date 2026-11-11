@@ -22,6 +22,7 @@
 
 import {
   ExchangeSpecSchema,
+  HOST_KEY_FINGERPRINT_REGEX,
   InternalConsistencyError,
   KEY_FILE_FIELD_SCHEMAS,
   MAX_REGISTRAR_RETRY_AFTER_SECONDS,
@@ -1962,6 +1963,52 @@ export function applyManagedExchangeSentColumns(
         current.linkageTerms,
         metadata,
       ),
+    },
+  });
+}
+
+/**
+ * Pin `fingerprint` as a host key the record's SFTP server may present, in
+ * its document's `connection.server.host_key_fingerprint`, so every later
+ * run checks the server against it. Where pins are already set it is added
+ * beside them, as a rotated key is staged; one already pinned changes
+ * nothing. The input record is not mutated.
+ *
+ * @throws {UsageError} where the record is not an SFTP exchange or
+ *   `fingerprint` is not a SHA256 host-key fingerprint.
+ * @throws {ZodError} if the resulting record is invalid.
+ */
+export function applyManagedExchangeHostKeyPin(
+  record: ManagedExchangeRecord,
+  fingerprint: string,
+): ManagedExchangeRecord {
+  const { connection } = record.exchangeFile;
+  if (connection.channel !== "sftp")
+    throw new UsageError(
+      "this exchange does not connect to an SFTP server, so it has no host " +
+        "key to pin",
+    );
+  if (!HOST_KEY_FINGERPRINT_REGEX.test(fingerprint))
+    throw new UsageError(
+      "the host key to pin is not a SHA256 fingerprint; enter it as the " +
+        "server's administrator gives it",
+    );
+  const current = connection.server.hostKeyFingerprint;
+  const pins =
+    current === undefined ? [] : Array.isArray(current) ? current : [current];
+  if (pins.includes(fingerprint)) return record;
+  return parseManagedExchangeRecord({
+    ...record,
+    exchangeFile: {
+      ...record.exchangeFile,
+      connection: {
+        ...connection,
+        server: {
+          ...connection.server,
+          hostKeyFingerprint:
+            pins.length === 0 ? fingerprint : [...pins, fingerprint],
+        },
+      },
     },
   });
 }

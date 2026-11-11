@@ -51,6 +51,41 @@ export interface BrowserSshConnectOptions {
   createSocket?: (url: string) => RelaySocket;
 }
 
+/**
+ * A host-key verifier in the shape core's file-sync connection installs as
+ * `hostVerifier`: its pin check, its no-pin refusal, or its first-use capture
+ * (docs/spec/SFTP_CONNECTION.md, SFTP host-key verification).
+ */
+export type BrowserSshHostVerifier = (
+  keyBlob: Uint8Array,
+  verdict: (permitted: boolean) => void,
+) => void;
+
+/**
+ * The `onHostKey` that asks `verify` about the server's key, so the session
+ * continues only on its verdict. A verifier that throws, or returns a promise
+ * that rejects, refuses the key.
+ */
+export function onHostKeyFromVerifier(
+  verify: BrowserSshHostVerifier,
+): BrowserSshConnectOptions["onHostKey"] {
+  return (hostKey) =>
+    new Promise<boolean>((resolve) => {
+      try {
+        const returned: unknown = verify(hostKey.blob, resolve);
+        if (
+          typeof (returned as PromiseLike<unknown> | undefined)?.then ===
+          "function"
+        )
+          (returned as PromiseLike<unknown>).then(undefined, () =>
+            resolve(false),
+          );
+      } catch {
+        resolve(false);
+      }
+    });
+}
+
 /** An authenticated session with the `sftp` subsystem started on a channel. */
 export interface BrowserSshSftpSession {
   /** The channel the SFTP protocol runs over. */

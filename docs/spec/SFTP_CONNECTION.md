@@ -178,7 +178,7 @@ What that costs is operator confusion, not disclosure -- the bytes are the serve
 Each pinned fingerprint may be supplied as an `@`-file reference (`@/path/to/fingerprint`) for operators who keep it in a read-only secrets mount; in a list, entries may freely mix literals and `@`-file references.
 Because `@`-file resolution runs after parsing, a literal `@path` -- which cannot match the `SHA256:` format -- is exempt from the parse-time format check, and each resolved file's contents are re-validated against `HOST_KEY_FINGERPRINT_REGEX` at resolution: a malformed or empty secrets file fails as a `UsageError` (exit 64) naming the offending reference, rather than as a confusing host-key mismatch at connect time.
 
-Verification applies to the CLI `sftp` channel only.
+Verification applies to the CLI `sftp` channel and to the browser SFTP path (*The browser SFTP path* below).
 A file-drop makes no SSH connection, so it runs no ssh2 `hostVerifier`.
 An attacker cannot induce the unpinned state to inject their own key, because the pin is configured out-of-band (or established on first use, below) and the invitation endpoint schema rejects a `host_key_fingerprint` field outright (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#transport-layer-authentication)).
 
@@ -307,10 +307,46 @@ This is the post-authentication, in-band complement to the endpoint decision in 
 The comparison is a verbatim string equality on the fingerprint (a host key and its fingerprint are both public, and the result drives only a warning, not a trust decision, so no constant-time compare).
 It reports a divergence -- never an abort, in keeping with the honest-but-curious model -- as a warning naming *both* observed fingerprints, with wording that distinguishes the two cases the difference can represent: when the key *types* match, the difference is narrowed to a server rekey between the two setups or a one-sided interception.
 When the key types differ, the message additionally reports the benign multiple-host-key case, because a server that presents more than one host key may legitimately show each party a different one, so a type difference alone is not evidence of an attack.
-A party that observed no host key (a file-drop mount or the browser/proxy SFTP path) advertises nothing, and a one-sided absence reconciles to no divergence rather than a false positive.
+A party that observed no host key (a file-drop mount, a path through a proxy that terminates SSH, or a browser run, under *The browser SFTP path* below) advertises nothing, and a one-sided absence reconciles to no divergence rather than a false positive.
 The advertised field is fail-soft: a malformed or over-bound `hostKey` (reachable only from a non-conforming or future-versioned peer, since the field rides the AEAD) is read as absent rather than aborting the linkage, so this advisory check can never turn a valid exchange into a hard failure.
 That drop is silent toward the protocol, but `exchangeTerms` still distinguishes a present-but-malformed advertisement (a `hostKey` on the wire that fails validation) from a genuine absence and reports it out as `partnerHostKeyMalformed`.
 The CLI logs the malformed case at debug, so an operator can tell a non-conforming peer from one that simply observed no host key (a file-drop or proxy path), while the benign no-host-key path stays quiet and the level stays low enough that a version-skew does not warn on every exchange.
 The dropped bytes are not logged -- they are unusable and partner-controlled, so echoing them would widen disclosure and risk log injection.
 Both parties' key types are the server's choice, and each of the four values the warning names is redacted and fitted to the per-value display budget before it enters the warning, which is composed raw and escaped once at each sink that shows it (see [Display sanitization escape format](DISPLAY_ESCAPE.md#display-sanitization-escape-format)): the locally observed key type has passed the charset and length bound above, while the partner's advertised one is bounded in length alone.
 As net-new security behavior layered on the host-key control, this reconciliation is in scope for the explicit security review required by [CONTRIBUTING](../../CONTRIBUTING.md#dependency-policy) before release.
+
+**The browser SFTP path.**
+A browser party reaches an SFTP server through an [SFTP relay](INVITATION_TOKEN.md#the-sftp-relay-url), with SSH running end to end through it, and its host-key rules are the CLI's above apart from the differences stated here.
+The page that runs this path is a later stage, the browser SFTP driver.
+
+- **The check.**
+  The browser SSH client (`apps/web/src/psi/transport/browserSsh/browserSshClient.ts`) passes the server's host key to its `onHostKey` hook after the key exchange has verified that the server has the key, and before it signs anything; a `false` answer ends the session there, so no credential is presented.
+  `onHostKeyFromVerifier` answers that hook with core's verifier, the one `FileSyncConnection` installs as `hostVerifier`, so the browser path runs the enforcing, fail-closed, and capture verifiers above unchanged.
+  The fingerprint comparison, the multiple pins for rotation, the mismatch refusal naming the presented fingerprint with the pinned ones on a cause link of their own, and the recorded `observedHostKey` are therefore the CLI's.
+  A verifier that throws, or returns a promise that rejects, refuses the key.
+  A verifier that never answers is bounded by the caller: `connectBrowserSsh` stops only on its `AbortSignal`, so the browser SFTP driver stage must pass a signal that sets the connect deadline.
+- **Where the pin is kept.**
+  The pin is the exchange document's `connection.server.host_key_fingerprint`, as on the CLI, so it is kept per exchange rather than per host.
+  A recurring exchange's document is stored whole in its [managed record](MANAGED_EXCHANGE_RECORD.md), so every later run reads the pin with it.
+  `persistManagedExchangeHostKeyPin` (`apps/web/src/psi/managed/managedExchangeStore.ts`) writes a first-use pin there, or stages a rotated key beside the pins already set; a pin already present changes nothing.
+  A one-off exchange keeps the pin in the page's memory for the run.
+- **First use.**
+  `establishBrowserHostKeyTrust` (`apps/web/src/psi/transport/browserSsh/browserHostKeyTrust.ts`) decides the pin a run connects with.
+  A connection with a pin is returned unchanged, and its connect checks the server against it.
+  An empty `host_key_fingerprint` list, which the CLI rejects at parse, is treated here as no pin.
+  With no pin, a scheduled run, which has no one to ask, refuses before contacting the server, as a non-interactive CLI run does.
+  Through an SFTP relay the party set itself, an attended run probes as the CLI does, with core's capture verifier through the hook, shows the fingerprint and key type, and pins the key on the operator's yes.
+  Through the relay the invitation names, the run does not probe: that relay's operator, not the invitation, chooses the server it connects to, so the first key it shows is never pinned.
+  The operator enters the server's fingerprint as its administrator gives it, checked against `HOST_KEY_FINGERPRINT_REGEX`, and the connect then checks the server against it.
+  That is the CLI's out-of-band pin (`--server-host-key-fingerprint`), required on this route because the invitation has no expected key.
+- **A pin given as a file reference is refused by name.**
+  The CLI resolves a `host_key_fingerprint` entry that starts with `@` by reading the named file (`apps/cli/src/util/atSignRefs.ts`), and a browser keeps such a value as text and never resolves it ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md)).
+  `establishBrowserHostKeyTrust` refuses, before contacting the server, an exchange any entry of whose `host_key_fingerprint` starts with `@`, saying the fingerprint is given as a file reference the browser cannot read and that the operator should enter the fingerprint itself, a `SHA256:` value, in the exchange's connection settings.
+  Without that refusal the connect would compare the server's key with the literal path and report a mismatch.
+- **A stated limit: the refusal's recovery step is the CLI's.**
+  A mismatch is refused with core's message, whose recovery step names a configuration edit or an interactive re-run; a page that shows it to a browser party states the browser's own step instead.
+- **A stated limit: no browser run advertises its observed key yet.**
+  Reconciliation needs no protocol or invitation change: a browser run on the authenticated path passes `FileSyncConnection.observedHostKey` to `runExchange`, as the CLI does in `apps/cli/src/protocol.ts`.
+  The browser SFTP driver stage makes that call; until a run makes it, a browser party advertises no host key, and the partner's check reconciles to no divergence.
+
+**Held by**: `apps/web/test/unit/psi/browserSsh/browserHostKeyPin.test.ts` (match, mismatch before any credential, rotation pin, no pin, first-use probe); `apps/web/test/unit/psi/browserSsh/browserHostKeyTrust.test.ts` (each first-use route); `apps/web/test/unit/psi/managedHostKeyPin.test.ts` (the stored pin); `apps/web/test/browser/browserHostKeyPin.test.ts` (mismatch, rotation pin, and probe against OpenSSH's sshd through the relay, with no signature made before the key is accepted).
