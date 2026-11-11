@@ -2105,12 +2105,13 @@ must itself state: bump the accounting `version`, which routes the new envelope
 through this direction split, or accept that pages of this build offer the
 reset over the value it writes.
 
-**An accounting filed before the exchange-record reset.** Release 0.9.0 reset
-the exchange-record format to `alcove-exchange-record/v1`. An entry a hosted
-build before that release filed names `v2` through `v12`, ordinals a later build
-reuses for other formats, so an entry's ordinal alone cannot tell an earlier
-build's entry from a later build's. The accounting's own `version` moved to
-`alcove-disclosure-accounting/v3` at the same release, so every such entry sits
+**An accounting filed before the exchange-record reset.** Release 0.9.0-beta.1,
+the first prerelease of 0.9.0, reset the exchange-record format to
+`alcove-exchange-record/v1`. An entry a hosted build before that prerelease filed
+names `v2` through `v12`, ordinals a later build reuses for other formats, so an
+entry's ordinal alone cannot tell an earlier build's entry from a later build's.
+The accounting's own `version` moved to `alcove-disclosure-accounting/v3` in the
+same prerelease, so every such entry sits
 in an envelope at `v2` or earlier, and no later build writes one there.
 
 - An envelope before `v3` is *unreadable*, whatever its entries name, and never
@@ -2194,7 +2195,7 @@ cannot read, below, and that state shows the refusal. A note at a later version
 than this build's is a stale page instead, whose surface states the reload. The
 table has one step, from `alcove-unfiled-disclosure/v2`, which moves the version
 alone: a note at `v2` was written before the exchange-record reset at release
-0.9.0, so each record it retained is one this build refuses, and the note reads
+0.9.0-beta.1, so each record it retained is one this build refuses, and the note reads
 as runs whose records cannot be filed.
 
 A later run that leaves a note merges into a note an earlier build wrote at `alcove-unfiled-disclosure/v2` and writes it back at v3, with that note's pre-reset records inside, so a v3 note can hold records from before the reset. A later exchange-record version bump that reuses the record-format ordinal of one of those pre-reset records reads such a record against its own schema.

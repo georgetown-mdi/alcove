@@ -9,9 +9,9 @@
 - One object per exchange: a `version` (`alcove-disclosure-accounting/v2`, its own literal) and `entries`, the exchange records oldest first. -> One object per exchange: a `version` (`alcove-disclosure-accounting/v3`, its own literal) and `entries`, the exchange records oldest first.
 - Neither table has a step yet. -> The envelope's table has one step, from `alcove-disclosure-accounting/v2`, which moves the version alone (see [What an exchange-record version bump does to a stored accounting](#what-an-exchange-record-version-bump-does-to-a-stored-accounting)); the exchange record's table has none.
 - - -> **An accounting filed before the exchange-record reset.**
-- - -> Release 0.9.0 reset the exchange-record format to `alcove-exchange-record/v1`.
-- - -> An entry a hosted build before that release filed names `v2` through `v12`, ordinals a later build reuses for other formats, so an entry's ordinal alone cannot tell an earlier build's entry from a later build's.
-- - -> The accounting's own `version` moved to `alcove-disclosure-accounting/v3` at the same release, so every such entry sits in an envelope at `v2` or earlier, and no later build writes one there.
+- - -> Release 0.9.0-beta.1, the first prerelease of 0.9.0, reset the exchange-record format to `alcove-exchange-record/v1`.
+- - -> An entry a hosted build before that prerelease filed names `v2` through `v12`, ordinals a later build reuses for other formats, so an entry's ordinal alone cannot tell an earlier build's entry from a later build's.
+- - -> The accounting's own `version` moved to `alcove-disclosure-accounting/v3` in the same prerelease, so every such entry sits in an envelope at `v2` or earlier, and no later build writes one there.
 - - -> An envelope before `v3` is *unreadable*, whatever its entries name, and never *stale-page*: its entries were filed by an earlier release, and no build reads them.
 - - -> The envelope step from `v2` moves the version alone, so the envelope-only parse still returns the stored entries and the export arm has them to hand over.
 - - -> An envelope holding no entry reads as an empty accounting.
@@ -19,6 +19,6 @@
 - - -> An envelope at `v3` or later keeps the direction split above.
 - **The recovery offered is export then reset**, in that order, from the unreadable state -- a failed migration or a damaged value, never an accounting a migration reads -- and it never removes the exchange: -> **The recovery offered is export then reset**, in that order, from the unreadable state -- a failed migration, a damaged value, or an accounting filed before the exchange-record reset, never an accounting a migration reads -- and it never removes the exchange:
 - One object per exchange: a `version` (`alcove-unfiled-disclosure/v2`, its own literal) and `entries`, oldest first. -> One object per exchange: a `version` (`alcove-unfiled-disclosure/v3`, its own literal) and `entries`, oldest first.
-- The table has no step yet. -> The table has one step, from `alcove-unfiled-disclosure/v2`, which moves the version alone: a note at `v2` was written before the exchange-record reset at release 0.9.0, so each record it retained is one this build refuses, and the note reads as runs whose records cannot be filed.
+- The table has no step yet. -> The table has one step, from `alcove-unfiled-disclosure/v2`, which moves the version alone: a note at `v2` was written before the exchange-record reset at release 0.9.0-beta.1, so each record it retained is one this build refuses, and the note reads as runs whose records cannot be filed.
 - - -> A later run that leaves a note merges into a note an earlier build wrote at `alcove-unfiled-disclosure/v2` and writes it back at v3, with that note's pre-reset records inside, so a v3 note can hold records from before the reset.
 - - -> A later exchange-record version bump that reuses the record-format ordinal of one of those pre-reset records reads such a record against its own schema.
