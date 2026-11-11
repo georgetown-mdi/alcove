@@ -5,9 +5,9 @@ import path from "node:path";
 import { getDefaultLinkageTerms } from "@alcove/core";
 import { parse as parseYaml } from "yaml";
 
-import { spawnExchangeJob, spawnZeroSetupJob } from "@jobs/cliDriver";
+import { waitFor } from "@alcove/testkit/waitFor";
 
-import { waitFor } from "./waitFor";
+import { spawnExchangeJob, spawnZeroSetupJob } from "@jobs/cliDriver";
 
 import type { CliRunControls, JobTerminalState } from "@jobs/cliDriver";
 import type {

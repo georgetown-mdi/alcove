@@ -20,9 +20,9 @@ import type { AddressInfo } from "node:net";
  * The standalone broker runner's operator surface, driven against the real
  * process: the address and port it binds, and the readiness probe a deployment
  * reads. What each setting resolves to from an argument vector and an
- * environment is checked without a process in the web workspace's unit suite
- * (test/unit/signalingStandaloneOptions.test.ts, where the broker's other unit
- * coverage sits); what this file adds is that the resolved values reach
+ * environment is checked without a process in the broker's own unit suite
+ * (packages/peerjs-broker/test/signalingStandaloneOptions.test.ts); what this
+ * file adds is that the resolved values reach
  * `listen`, that the probe answers on the running server, and that an option
  * the runner cannot act on stops it with a clear failure.
  *

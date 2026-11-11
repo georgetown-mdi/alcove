@@ -4,10 +4,10 @@ title: "Keeping the vendored PeerJS broker rather than rewriting it"
 
 # Keeping the vendored PeerJS broker rather than rewriting it
 
-_Status: decided, not built.
+_Status: built.
 The signaling broker in `packages/peerjs-broker` is kept, not replaced by a first-party two-peer rendezvous broker.
-What is retired is the vendoring discipline, not the code: the tree is to be treated as this project's own, and the upstream code nothing reads is to be deleted.
-The follow-on work at the end is a proposal for the owner, not filed or scheduled.
+What is retired is the vendoring discipline, not the code: the tree is treated as this project's own.
+The three follow-ons at the end are built; the optional renaming of `contrib/` is not taken.
 See [docs/notes/README.md](README.md)._
 
 Every figure below was measured at staging commit `013507bc4` on 2026-11-10.
@@ -157,7 +157,8 @@ Upstream has changed no server behavior since December 2023 and nothing has ever
 
 ## Proposed follow-on
 
-A proposal for the owner; nothing here is filed, scoped or scheduled.
+All three are built.
+The broker's unit tests run in `packages/peerjs-broker/test/`, apart from the two that read the web client's heartbeat cadence, which stay in `apps/web/test/unit/psi/signalingReaping.test.ts`.
 
 1. **Delete the unread upstream code**: the seven `IConfig` fields, `Realm.generateClientId`, the commented-out builder and events interface, the empty `close` listener and `onClose`, the second `defaultConfig` merge, and `@types/cors`.
    About -120 lines, checked by a typecheck across every workspace.

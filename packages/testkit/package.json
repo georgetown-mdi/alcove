@@ -9,6 +9,7 @@
   "exports": {
     "./loopbackTlsCert": "./src/loopbackTlsCert.ts",
     "./preflightInventory": "./src/preflightInventory.ts",
-    "./prerequisiteGate": "./src/prerequisiteGate.ts"
+    "./prerequisiteGate": "./src/prerequisiteGate.ts",
+    "./waitFor": "./src/waitFor.ts"
   }
 }

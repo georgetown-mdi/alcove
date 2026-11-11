@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { waitFor } from "../../utils/waitFor";
+import { waitFor } from "@alcove/testkit/waitFor";
 
 afterEach(() => {
   vi.useRealTimers();

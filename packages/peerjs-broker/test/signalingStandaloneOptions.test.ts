@@ -9,14 +9,14 @@ import {
   StandaloneOptionError,
   createStandaloneRequestHandler,
   resolveStandaloneOptions,
-} from "@alcove/peerjs-broker/standaloneOptions";
+} from "../src/standaloneOptions.ts";
 import {
   DEFAULT_DEPLOYED_MARKER_PATH,
   DEFAULT_PULL_STATUS_PATH,
   DEPLOYED_MARKER_ENV,
   PULL_STATUS_ENV,
   UNKNOWN_DEPLOYMENT_STATUS,
-} from "@alcove/peerjs-broker/deploymentStatus";
+} from "../src/deploymentStatus.ts";
 
 import type { AddressInfo } from "node:net";
 

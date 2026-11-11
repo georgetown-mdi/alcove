@@ -21,7 +21,7 @@ Alcove is organized as an npm workspaces monorepo. The workspaces and the suppor
 | Path             | Description                                                                                |
 | ---------------- | ------------------------------------------------------------------------------------------ |
 | `packages/core/` | Shared library: PSI primitive, exchange orchestration, file-sync transport, config schemas |
-| `packages/peerjs-broker/` | The PeerJS-compatible WebRTC signaling broker: vendored server source plus a standalone entry point (`npm start -w packages/peerjs-broker`). Ships TypeScript source with no build step of its own, reading `@alcove/core/untrusted-text` -- the whole of its reach into core -- from that workspace's `dist/`; the web app's dev loop and tests run it beside the dev server |
+| `packages/peerjs-broker/` | The PeerJS-compatible WebRTC signaling broker, derived from peerjs-server, and its standalone entry point (`npm start -w packages/peerjs-broker`). Ships TypeScript source with no build step of its own, reading `@alcove/core/untrusted-text` -- the whole of its reach into core -- from that workspace's `dist/`; the web app's dev loop and tests run it beside the dev server |
 | `packages/websocket-relay/` | The WebSocket relay that pairs two parties of one exchange by a per-exchange proof and forwards their frames unread, for networks that stop TURN (`npm start -w packages/websocket-relay`). Ships TypeScript source with no build step of its own, reading `@alcove/core/websocket-relay` -- the whole of its reach into core -- from that workspace's `dist/` |
 | `packages/sftp-relay/` | The SFTP relay an SFTP server's operator runs so a browser can reach that one server: it upgrades a WebSocket only from an allowed origin and forwards it, unread, to the target fixed at its start (`npm start -w packages/sftp-relay`). Ships TypeScript source, and a container image (`packages/sftp-relay/Dockerfile`) built from a bundle of it |
 | `packages/cli-contract/` | The CLI's machine interface (`@alcove/cli-contract`): the fd-3 event schema, warning sources, named exit codes and failure-cause field the CLI emits, specified in [docs/spec/CLI_EVENTS.md](docs/spec/CLI_EVENTS.md). Built to `dist/` by `tsc`, after core and before the CLI |
@@ -81,9 +81,10 @@ npm run site:build               # -> site/.vitepress/dist/, the project site bu
 ## Testing
 
 ```sh
-npm run test   # unit tests of core, cli-contract, the two relays, cli and web (not test:scripts); run before pushing a core change, since the apps mock core
+npm run test   # unit tests of core, cli-contract, the broker, the two relays, cli and web (not test:scripts); run before pushing a core change, since the apps mock core
 npm test -w packages/core
 npm test -w packages/cli-contract
+npm test -w packages/peerjs-broker
 npm test -w packages/websocket-relay
 npm test -w packages/sftp-relay
 npm run test:unit -w apps/cli

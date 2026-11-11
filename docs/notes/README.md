@@ -90,7 +90,7 @@ a restatement.
 | [standing-relay-delivery.md](standing-relay-delivery.md) | How the standing relay is delivered | built |
 | [terms-comparison.md](terms-comparison.md) | Comparing the two parties' linkage terms | built |
 | [turn-provisioning-governance.md](turn-provisioning-governance.md) | TURN provisioning against partners' governance | open |
-| [vendored-broker-rewrite.md](vendored-broker-rewrite.md) | Keeping the vendored PeerJS broker rather than rewriting it | decided |
+| [vendored-broker-rewrite.md](vendored-broker-rewrite.md) | Keeping the vendored PeerJS broker rather than rewriting it | built |
 | [wasm-parallel-evaluation.md](wasm-parallel-evaluation.md) | Parallelizing the WebAssembly PSI backend | built |
 | [web-server-runtime-role.md](web-server-runtime-role.md) | The web server's runtime role | built |
 | [web-websocket-transport.md](web-websocket-transport.md) | The WebSocket relay and the browser SFTP path | built |

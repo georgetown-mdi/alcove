@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import { stringify as stringifyYaml } from "yaml";
 
 import {
@@ -36,7 +38,6 @@ import {
   validIntent,
   validLinkageTerms,
 } from "../../utils/jobFixtures";
-import { waitFor } from "../../utils/waitFor";
 
 import type { RelayCheckOffer, RelayCheckResult } from "@jobs/relayCheck";
 

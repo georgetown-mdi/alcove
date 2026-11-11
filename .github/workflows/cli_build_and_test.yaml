@@ -50,8 +50,9 @@ jobs:
         uses: ./.github/actions/path-scope
         with:
           # The CLI's WebRTC signaling suite drives the PeerJS broker as a
-          # spawned process (apps/cli/test/signaling/brokerProcess.ts), so the
-          # broker workspace is in scope. The CLI's unit suite is driven by
+          # spawned process (apps/cli/test/signaling/brokerProcess.ts), and the
+          # broker's own suite runs on this gate, so the broker workspace is in
+          # scope. The CLI's unit suite is driven by
           # fixtures packages/testkit holds (docs/TESTING.md, Shared test
           # material), so a change confined to them re-runs the suites too, and
           # the CLI depends on packages/cli-contract, whose own unit suite runs
@@ -75,7 +76,7 @@ jobs:
             .github/actions/test-durations/**
             .github/workflows/cli_build_and_test.yaml
 
-  # The seven suites this gate runs share no mutable state, so they run as
+  # The suites this gate runs share no mutable state, so they run as
   # parallel legs of one matrix rather than as serial steps of one job, and the
   # gate's wall time is its slowest suite rather than their sum. Each leg is a
   # runner of its own, and within a leg each suite stands up everything it
@@ -155,6 +156,13 @@ jobs:
           # checks each proof with core's code, which this gate's scope covers.
           - suite: websocket relay
             command: npm run test:unit -w packages/websocket-relay
+          # The PeerJS broker (packages/peerjs-broker): its realm, queues,
+          # reaper and socket bounds, its options and its runner. Its suite
+          # stands up its servers on loopback ephemeral ports. It runs on this
+          # gate for the reason the relay's does: the gate runs on every pull
+          # request and every push to staging.
+          - suite: peerjs broker
+            command: npm run test:unit -w packages/peerjs-broker
           # The SFTP relay (packages/sftp-relay): its options and its runner
           # as a process. Its checks against the SFTP test server are in the
           # integration suite (test/integration/sftpRelay.test.ts), so they run

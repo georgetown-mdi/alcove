@@ -93,7 +93,7 @@ function armReleaseDeadline(onExpire: () => void): { cancel: () => void } {
 // defensively and its behavior is driven rather than assumed: the `instanceof`
 // makes a Node that stops setting it read as "nothing in flight" instead of as
 // some other object's field, and the pipelined-response check in
-// apps/web/test/unit/signalingServer.test.ts drives a real http.Server through
+// packages/peerjs-broker/test/signalingServer.test.ts drives a real http.Server through
 // the whole sequence -- so a Node that no longer sets it fails that check rather
 // than quietly reopening the misread its caller below exists to avoid.
 function responseStillWriting(socket: Duplex): OutgoingMessage | null {

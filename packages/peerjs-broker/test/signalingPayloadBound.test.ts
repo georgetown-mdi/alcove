@@ -8,14 +8,14 @@ import { JsonStructureBoundError } from "@alcove/core";
 import {
   MAX_SIGNALING_PAYLOAD_BYTES,
   WebSocketServer,
-} from "@alcove/peerjs-broker/services/webSocketServer/index";
-import { Realm } from "@alcove/peerjs-broker/models/realm";
+} from "../src/contrib/services/webSocketServer/index.ts";
+import { Realm } from "../src/contrib/models/realm.ts";
 
 import {
   KEY,
   connectRegistered,
   createSignalingHarness,
-} from "../utils/signalingHarness.ts";
+} from "./signalingHarness.ts";
 
 const { start: startHarness, clients } = createSignalingHarness(afterEach);
 

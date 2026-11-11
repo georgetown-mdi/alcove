@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import {
   getDefaultLinkageTerms,
   parseExchangeSpec,
@@ -38,7 +40,6 @@ import { relayedTermsChangeOf } from "@psi/jobClient/serverJobExchangeDriver";
 import { route as ApplyTermsRoute } from "../../server/console/routes/$jobId/apply-terms";
 
 import { awaitJobSucceeded } from "../utils/jobFixtures";
-import { waitFor } from "../utils/waitFor";
 
 import {
   cliEntry,

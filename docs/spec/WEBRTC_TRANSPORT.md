@@ -246,7 +246,7 @@ is the one above, and it is neither negotiated nor read by version:
   and no other member (`_onSocketConnection` in
   `packages/peerjs-broker/src/contrib/services/webSocketServer/index.ts`), so a
   registration that names another `version`, or none, is answered `OPEN` like any
-  other (`apps/web/test/unit/signalingServer.test.ts`).
+  other (`packages/peerjs-broker/test/signalingServer.test.ts`).
 - **The messages are PeerJS's.** The broker sends `OPEN`, `ID-TAKEN` and `ERROR`,
   reads `HEARTBEAT` without forwarding it, routes `OFFER`, `ANSWER`, `CANDIDATE`,
   `LEAVE` and `EXPIRE`, and sends `LEAVE` and `EXPIRE` itself when a destination

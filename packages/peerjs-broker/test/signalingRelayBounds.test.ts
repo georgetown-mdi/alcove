@@ -9,25 +9,25 @@ import WebSocket from "ws";
 import {
   MAX_OUTSTANDING_QUEUES,
   MAX_QUEUED_DESTINATIONS_PER_SENDER,
-} from "@alcove/peerjs-broker/models/realm";
+} from "../src/contrib/models/realm.ts";
 import {
   MAX_SIGNALING_PAYLOAD_BYTES,
   SOCKET_RELEASE_TIMEOUT_MS,
-} from "@alcove/peerjs-broker/services/webSocketServer/index";
-import { CreatePeerServerWSOnly } from "@alcove/peerjs-broker";
-import { MAX_RELAY_BUFFERED_BYTES } from "@alcove/peerjs-broker/messageHandler/handlers/transmission/index";
-import { MessageType } from "@alcove/peerjs-broker/enums";
+} from "../src/contrib/services/webSocketServer/index.ts";
+import { CreatePeerServerWSOnly } from "../src/contrib/index.ts";
+import { MAX_RELAY_BUFFERED_BYTES } from "../src/contrib/messageHandler/handlers/transmission/index.ts";
+import { MessageType } from "../src/contrib/enums.ts";
 
-import { KEY } from "../utils/signalingHarness";
-import { waitFor } from "../utils/waitFor";
+import { KEY } from "./signalingHarness.ts";
+import { waitFor } from "@alcove/testkit/waitFor";
 
 import type { AddressInfo } from "node:net";
-import type { IConfig } from "@alcove/peerjs-broker/config/index";
-import type { IRealm } from "@alcove/peerjs-broker/models/realm";
+import type { IConfig } from "../src/contrib/config/index.ts";
+import type { IRealm } from "../src/contrib/models/realm.ts";
 
 // The broker's bounds on what it holds for a peer, driven over real sockets
-// against the broker `CreatePeerServerWSOnly` builds -- the one the web app's
-// mount and the standalone runner both use -- so the message handler, the
+// against the broker `CreatePeerServerWSOnly` builds -- the one the standalone
+// runner uses -- so the message handler, the
 // realm and the socket server under test are the shipped ones.
 
 const SENDER_ID = "peer-sender";

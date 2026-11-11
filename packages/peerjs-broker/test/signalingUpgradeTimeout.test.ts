@@ -14,7 +14,7 @@ import {
   SIGNALING_HEADERS_TIMEOUT_MS,
   SIGNALING_REQUEST_TIMEOUT_MS,
   hardenUpgradeSurface,
-} from "@alcove/peerjs-broker/standaloneUpgradeBounds";
+} from "../src/standaloneUpgradeBounds.ts";
 
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";

@@ -99,7 +99,7 @@ describe("requireTestPrerequisites", () => {
 describe("webTestPrerequisites", () => {
   // The suites skip on the certificate being null; the guard has to read that
   // same value, or a run could skip them with nothing declared missing.
-  test("declares the loopback TLS certificate the signaling suites skip on", () => {
+  test("declares the loopback TLS certificate the relay suites skip on", () => {
     const certificate = webTestPrerequisites().find(
       (prerequisite) => prerequisite.name === "loopback TLS certificate",
     );

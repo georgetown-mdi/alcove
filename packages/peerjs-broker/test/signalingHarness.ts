@@ -2,11 +2,11 @@ import { createServer } from "node:http";
 
 import WebSocket from "ws";
 
-import { Realm } from "@alcove/peerjs-broker/models/realm";
-import { WebSocketServer } from "@alcove/peerjs-broker/services/webSocketServer/index";
+import { Realm } from "../src/contrib/models/realm.ts";
+import { WebSocketServer } from "../src/contrib/services/webSocketServer/index.ts";
 
 import type { AddressInfo } from "node:net";
-import type { IRealm } from "@alcove/peerjs-broker/models/realm";
+import type { IRealm } from "../src/contrib/models/realm.ts";
 import type { Server } from "node:http";
 
 // The signaling server's default authentication gate: the well-known PeerJS key,
@@ -32,7 +32,7 @@ export interface SignalingHarnessFixture {
 
 /** Register the shared `afterEach` that terminates every dialed client and closes
  * the active harness's HTTP server, and return a `start` that stands up the
- * vendored WebSocketServer on a fresh loopback HTTP server (wiring the same
+ * broker's WebSocketServer on a fresh loopback HTTP server (wiring the same
  * `error` handler the real instance does) and records it for that teardown. */
 export function createSignalingHarness(
   afterEach: (fn: () => Promise<void>) => void,

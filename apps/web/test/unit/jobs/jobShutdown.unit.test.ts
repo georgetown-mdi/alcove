@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import { stringify as stringifyYaml } from "yaml";
 
 import { snakeizeKeys } from "@alcove/core";
@@ -24,7 +26,6 @@ import {
   validIntent,
   validLinkageTerms,
 } from "../../utils/jobFixtures";
-import { waitFor } from "../../utils/waitFor";
 
 import type { JobFiledropExchangeIntent } from "@jobContract/intentSchemas";
 import type { JobRecord } from "@jobs/jobManager";

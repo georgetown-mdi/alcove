@@ -9,7 +9,7 @@ import {
   SIGNALING_PREHANDSHAKE_IDLE_MS,
   SIGNALING_REQUEST_TIMEOUT_MS,
   applyStandaloneUpgradeBounds,
-} from "@alcove/peerjs-broker/standaloneUpgradeBounds";
+} from "../src/standaloneUpgradeBounds.ts";
 
 import type { AddressInfo } from "node:net";
 

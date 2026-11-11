@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import {
   TEARDOWN_LEFTOVER_FILES_CLAUSE,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -20,8 +22,6 @@ import {
   validIntent,
   validLinkageTerms,
 } from "../../utils/jobFixtures";
-
-import { waitFor } from "../../utils/waitFor";
 
 import type {
   FinalRunStatus,

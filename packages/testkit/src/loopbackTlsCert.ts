@@ -22,9 +22,10 @@ export interface LoopbackTlsCert {
  *
  * `null` here is a prerequisite the environment did not supply. What that costs
  * is the caller's to declare -- `apps/web/test/requireTestPrerequisites.ts` for
- * the web signaling suites, the leg's own gate for the CLI's live one-command
- * acceptance -- so the run names what it lost and fails where the environment
- * was supposed to supply it.
+ * the web suites, `packages/peerjs-broker/test/requireLoopbackTlsCert.ts` for
+ * the broker's, the leg's own gate for the CLI's live one-command acceptance --
+ * so the run names what it lost and fails where the environment was supposed
+ * to supply it.
  *
  * The certificate holds both loopback names in its subject alternative name,
  * so it serves a client that dials `localhost` and one that dials `127.0.0.1`

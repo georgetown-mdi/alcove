@@ -13,20 +13,20 @@ import {
   DIAGNOSTIC_DETAIL_MAX_LENGTH,
   DIAGNOSTIC_RATE_LIMIT_WINDOW_MS,
   attachSignalingDiagnostics,
-} from "@alcove/peerjs-broker/diagnostics";
+} from "../src/diagnostics.ts";
 import {
   SOCKET_RELEASE_TIMEOUT_MS,
   WebSocketServer,
-} from "@alcove/peerjs-broker/services/webSocketServer/index";
-import { CreatePeerServerWSOnly } from "@alcove/peerjs-broker";
-import { Realm } from "@alcove/peerjs-broker/models/realm";
+} from "../src/contrib/services/webSocketServer/index.ts";
+import { CreatePeerServerWSOnly } from "../src/contrib/index.ts";
+import { Realm } from "../src/contrib/models/realm.ts";
 
-import { brokerDiagnosticSink } from "../utils/brokerDiagnosticSink";
-import { waitFor } from "../utils/waitFor";
+import { brokerDiagnosticSink } from "./brokerDiagnosticSink.ts";
+import { waitFor } from "@alcove/testkit/waitFor";
 
 import type { AddressInfo } from "node:net";
 import type { DiagnosticSink } from "@alcove/core";
-import type { IRealm } from "@alcove/peerjs-broker/models/realm";
+import type { IRealm } from "../src/contrib/models/realm.ts";
 
 // The sink behind the signaling server's `error` event: that a released socket
 // reaches an operator-readable log line at all, that the line says which release
@@ -49,7 +49,6 @@ const FIXED_LINE_ALLOWANCE = 200;
 /** A C0 control byte, none of which may survive to a line the sink wrote: CR/LF
  * would end it and let whatever follows head a line of its own, and ESC would
  * open an ANSI sequence in the operator's terminal. */
-// eslint-disable-next-line no-control-regex -- the control bytes are the subject
 const CONTROL_BYTE = /[\u0000-\u001f]/;
 
 /** A payload that is not JSON and whose bytes the parser quotes back in its own

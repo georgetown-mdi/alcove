@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import { JobManager } from "@jobs/jobManager";
 
 import {
@@ -12,7 +14,6 @@ import {
   validSftpIntent,
   validZeroSetupSftpIntent,
 } from "../utils/jobFixtures";
-import { waitFor } from "../utils/waitFor";
 
 import { cliEntry } from "./cliParty";
 

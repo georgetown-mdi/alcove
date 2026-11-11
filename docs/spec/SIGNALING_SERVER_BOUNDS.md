@@ -39,8 +39,6 @@ Under the 256 KiB byte cap the two halves overlap only in part:
 - `MAX_JSON_NESTING_DEPTH` = 4096 is exceeded in 8194 bytes (4097 nested `[` and their closers), so the depth ceiling is what the structural half adds over the byte cap today.
 
 The structural half is where the bound belongs regardless of that arithmetic: it holds whatever the byte cap is later set to, and it puts the broker inside the same ESLint ban on a raw `JSON.parse` that `packages/core/src` and `apps/web/src` sit inside (`eslint.config.mjs`, and for the web app `apps/web/eslint.config.js`), so a parse added to this server later is bounded by default rather than by being noticed.
-Two vendored paths sit outside that ban, exempted by the repo-wide lint ignores so their history against upstream stays readable: `packages/peerjs-broker/src/contrib/messageHandler/` and `packages/peerjs-broker/src/contrib/models/message.ts`.
-They are pinned instead by a check that scans them for a parse call in any shape the ban refuses and fails if one appears (`scripts/eslint-broker-parse-bans.test.mjs`).
 A structural refusal throws `JsonStructureBoundError`, whose message holds no input bytes, and the handler routes it to the `client-frame` diagnostic with every other parse failure.
 The relay's reconnect queue reconstitutes a held payload through the same chokepoint (`packages/peerjs-broker/src/contrib/models/messageQueue.ts`), so the delivery leg is bounded as well as the receive leg.
 
@@ -147,7 +145,7 @@ That attach detaches whatever socket the client was holding, and every in-applic
 It terminates rather than closes: a close handshake releases the socket once the peer answers the close frame or, for a peer that never answers, once `ws` gives up on its own close timer -- measured at 30 seconds of retained socket per detach on the pinned `ws`.
 The detached socket is being replaced by that same peer's newer one and so has nothing to negotiate.
 The invariant is that no registered client retains more than one socket, so the sockets this surface holds on behalf of registered clients are bounded by the `concurrent_limit` the realm enforces rather than by how many times a peer chooses to attach.
-Two unit checks pin it (`test/unit/signalingServer.test.ts`): repeated attaches under one id and token leave the live socket set at one and the registration intact -- the registration belongs to the client rather than to any one socket, so a detached socket's close leaves it alone.
+Two unit checks pin it (`packages/peerjs-broker/test/signalingServer.test.ts`): repeated attaches under one id and token leave the live socket set at one and the registration intact -- the registration belongs to the client rather than to any one socket, so a detached socket's close leaves it alone.
 A detached socket is no longer relayed as its client, the server stamping every relayed frame with the client's id.
 
 **No socket outlives its registration.**
@@ -161,8 +159,8 @@ Every path that removes a client's registration also ends its socket, so the rea
 - A frame is relayed only from the socket its client holds while the realm holds that client.
   `ws` can still deliver a frame it read off a socket before terminating it, and such a frame is dropped rather than relayed under the id.
 
-Unit checks in `apps/web/test/unit/signalingRelayBounds.test.ts` pin a client leaving with no destination being disconnected with no socket left held, a frame sent behind that `LEAVE` not being relayed, and a reaped peer that answers nothing being released within `SOCKET_RELEASE_TIMEOUT_MS`.
-One in `apps/web/test/unit/signalingServer.test.ts` pins a late close leaving a newer registration of the same id in place.
+Unit checks in `packages/peerjs-broker/test/signalingRelayBounds.test.ts` pin a client leaving with no destination being disconnected with no socket left held, a frame sent behind that `LEAVE` not being relayed, and a reaped peer that answers nothing being released within `SOCKET_RELEASE_TIMEOUT_MS`.
+One in `packages/peerjs-broker/test/signalingServer.test.ts` pins a late close leaving a newer registration of the same id in place.
 
 **Bounded release of a refused or unanswered socket.**
 Every other exit that leaves this server holding a socket it will not go on to serve releases it within **1 second** of the point that socket becomes nobody's (`SOCKET_RELEASE_TIMEOUT_MS`, in the vendored `services/webSocketServer/index.ts`) -- a bound on the window the exit opens, not on the connection that brought the peer there.
@@ -225,10 +223,10 @@ Every handle the window installs comes off with the window, whichever way it end
 So past the bound an adopted socket holds that listener's bookkeeping and none of this server's.
 The deadline itself is armed as a handle disposed of exactly once -- expiring or cancelled, never both -- so no release path retires a timer another already retired.
 
-Unit checks pin every refusal path, both co-resident outcomes with the co-resident listener registered after this server and before it, a declined upgrade on a connection the server had already answered an ordinary request on, one pipelined behind a response the server was still writing, a peer resetting inside the window, and a peer resetting in the residual stretch, once an adopter has answered and before the bound (`test/unit/signalingServer.test.ts`).
+Unit checks pin every refusal path, both co-resident outcomes with the co-resident listener registered after this server and before it, a declined upgrade on a connection the server had already answered an ordinary request on, one pipelined behind a response the server was still writing, a peer resetting inside the window, and a peer resetting in the residual stretch, once an adopter has answered and before the bound (`packages/peerjs-broker/test/signalingServer.test.ts`).
 Each drives a hand-rolled socket that answers nothing at all, so what they measure is the server's own release rather than a `ws` client's cooperation.
 A further check counts the socket's listeners across a hand-off: past the bound an adopted socket holds the adopter's own and nothing the window added.
-The sink behind those reports is pinned separately (`test/unit/signalingDiagnosticsSink.test.ts`): a real unanswered upgrade and a real reset inside the window arrive through `CreatePeerServerWSOnly` under their two attributions and not each other's, and a peer's frame reaches the log with its ESC and CR/LF escaped and its forged context trailing the first-party fields.
+The sink behind those reports is pinned separately (`packages/peerjs-broker/test/signalingDiagnosticsSink.test.ts`): a real unanswered upgrade and a real reset inside the window arrive through `CreatePeerServerWSOnly` under their two attributions and not each other's, and a peer's frame reaches the log with its ESC and CR/LF escaped and its forged context trailing the first-party fields.
 It also pins that a `message` listener that throws on a frame that parsed is reported apart from the parse while a malformed frame from the same client is still the peer's, and that a thousand-report flood raised alongside two released sockets is shed to the budget with its shed counts written per source on the following window.
 It pins that a clock stepped a whole window backwards goes on shedding until it has caught back up, and that a raise having a source of another type is written under the unattributed arm on the budget slot it spent rather than dropped.
 It also pins that one having a hostile string source is written with no control byte and none of that source's own bytes on the line.
@@ -253,7 +251,7 @@ A relayed frame is the server's re-serialization of what it parsed, which can be
 A frame is at most `MAX_SIGNALING_PAYLOAD_BYTES` (256 KiB) on the wire, within which `parseBoundedJson`'s structural bounds admit any shape.
 Re-serialization grows it by at most 4.4 times: a number reprints in its shortest round-trip form, which for `1e20` is its 21 digits, so `1e20,` becomes 22 bytes; a string byte grows at most threefold (an invalid UTF-8 byte of a binary frame becomes a three-byte U+FFFD).
 With the stamped `src` of at most 256 escaped code units, one relayed frame is under **1.11 MiB**, and a socket's buffer under **2.11 MiB**.
-Unit checks in `apps/web/test/unit/signalingRelayBounds.test.ts` pin four cases: a destination that stops reading is dropped with its socket's buffer no more than one frame past the bound, and its socket is released; a reader receives three times the bound in total and stays connected; and a frame that decoding triples, and a maximal frame of `1e20` values that relays at more than the bound, each reach an idle recipient that stays connected.
+Unit checks in `packages/peerjs-broker/test/signalingRelayBounds.test.ts` pin four cases: a destination that stops reading is dropped with its socket's buffer no more than one frame past the bound, and its socket is released; a reader receives three times the bound in total and stays connected; and a frame that decoding triples, and a maximal frame of `1e20` values that relays at more than the bound, each reach an idle recipient that stays connected.
 
 **Relay queue bounds.**
 When a client addresses a signaling message to a destination id that is not currently registered, the relay holds it briefly in a per-destination queue for a reconnect.
@@ -264,7 +262,7 @@ A client removed from the realm -- by `LEAVE`, socket close, the liveness reaper
 All three sit far above any legitimate rendezvous, which queues at most a handful of frames for the one partner it is waiting for.
 
 A frame past any queue bound -- these three or the byte cap below -- is not held, and the relay answers its sender at once with the `EXPIRE` the expiry sweep would otherwise have sent, so a dialer learns the destination is unavailable without waiting out the hold.
-Unit checks pin the per-sender budget and each refusal against the realm (`apps/web/test/unit/psi/signalingReaping.test.ts`), and over real sockets the immediate `EXPIRE` for a frame refused by the per-sender budget and by the shared cap, with another sender's hold left in place, and a client that leaves having its held frames dropped and its budget cleared for the next client on its id (`apps/web/test/unit/signalingRelayBounds.test.ts`).
+Unit checks pin the per-sender budget and each refusal against the realm (`packages/peerjs-broker/test/signalingReaping.test.ts`), and over real sockets the immediate `EXPIRE` for a frame refused by the per-sender budget and by the shared cap, with another sender's hold left in place, and a client that leaves having its held frames dropped and its budget cleared for the next client on its id (`packages/peerjs-broker/test/signalingRelayBounds.test.ts`).
 
 The message-count cap alone, though, leaves a queue's resident ceiling high: a frame is capped at 256 KiB on the wire (`MAX_SIGNALING_PAYLOAD_BYTES`), but V8 stores a JavaScript string as two bytes per character whenever it holds any non-Latin1 character (>= U+0100).
 So one buffered frame can occupy roughly **512 KiB** of heap -- about **50 MiB** per queue (100 frames), **50 GiB** across the full 1,000 -- since a flood of max-size frames is bounded only in count, not bytes.

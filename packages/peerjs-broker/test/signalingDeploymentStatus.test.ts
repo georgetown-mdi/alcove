@@ -22,16 +22,16 @@ import {
   createDeploymentStatusReader,
   deploymentStatusHeaders,
   readDeploymentStatus,
-} from "@alcove/peerjs-broker/deploymentStatus";
+} from "../src/deploymentStatus.ts";
 import {
   READINESS_BODY,
   createStandaloneRequestHandler,
-} from "@alcove/peerjs-broker/standaloneOptions";
+} from "../src/standaloneOptions.ts";
 
 import type {
   DeploymentStatusPaths,
   DeploymentStatusReader,
-} from "@alcove/peerjs-broker/deploymentStatus";
+} from "../src/deploymentStatus.ts";
 import type { AddressInfo } from "node:net";
 
 // What the standalone broker's readiness endpoint publishes about the host
@@ -183,7 +183,7 @@ describe("readDeploymentStatus", () => {
   // the nightly deployment check red for a reason it cannot name.
   test("accepts exactly the outcomes pull.sh records", () => {
     const pullScript = readFileSync(
-      new URL("../../../../infra/host-pull/pull.sh", import.meta.url),
+      new URL("../../../infra/host-pull/pull.sh", import.meta.url),
       "utf8",
     );
     const recorded = new Set(

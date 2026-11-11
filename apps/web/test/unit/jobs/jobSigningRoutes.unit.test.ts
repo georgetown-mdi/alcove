@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import {
   generateSigningIdentity,
   serializeSigningIdentity,
@@ -34,7 +36,6 @@ import {
   validIntent,
   validZeroSetupIntent,
 } from "../../utils/jobFixtures";
-import { waitFor } from "../../utils/waitFor";
 
 import type { JobCreateIntent } from "@jobContract/intentSchemas";
 

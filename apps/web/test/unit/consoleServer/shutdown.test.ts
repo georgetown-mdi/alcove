@@ -2,14 +2,14 @@ import http from "node:http";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import {
   DEFAULT_SHUTDOWN_TIMEOUT_MS,
   createCloseHooks,
   installGracefulShutdown,
   shutdownTimeoutMs,
 } from "../../../server/console/shutdown";
-
-import { waitFor } from "../../utils/waitFor";
 
 import type { AddressInfo } from "node:net";
 
