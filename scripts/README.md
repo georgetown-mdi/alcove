@@ -10,6 +10,8 @@ check off it. Beside them:
 - `stryker-security.mjs`, the mutation run;
 - `verify-prebuild-provenance.mjs` and `check-release-version.mjs`, the release
   and provenance verifiers;
+- `revendor-psi.mjs`, the tree rewrite of a PSI re-vendor that
+  `psi_revendor.yaml` runs;
 - `npm-audit-retry.mjs`, the production-scope dependency audit with a bounded
   retry, the blocking audit step of `static_checks.yaml`;
 - `check-node-modules-drift.mjs`, the dependency-drift check

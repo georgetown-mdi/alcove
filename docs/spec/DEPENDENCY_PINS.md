@@ -43,8 +43,8 @@ exclude entry that would be false.
 Every image, package, vendored module and exact tool version the repository
 pins, as surveyed on 2026-11-10, with the route that offers it for upgrade:
 
-- **automatic**: a block in `.github/dependabot.yml` reaches the pin and opens
-  a pull request.
+- **automatic**: a block in `.github/dependabot.yml`, or a scheduled workflow
+  the row names, reaches the pin and opens a pull request.
 - **scheduled**: a documented manual cadence moves the pin. The dependency
   step of the release checklist
   ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)) bumps the
@@ -61,7 +61,7 @@ section each row links.
 
 | Pin | Where | Recorded as | Route | How it moves |
 | --- | --- | --- | --- | --- |
-| `@openmined/psi.js` | `lib/openmined-psi.js-2.0.6-alcove.1.tgz`, a `file:` dependency of `packages/core`, `apps/cli` and `apps/web` | Version in the file name, the sha256 sidecar, and the lockfile `integrity` | planned | The `npm` block at `/` ignores every version update of it. The planned route is a fork release workflow that opens the re-vendor pull request here. A rebuild follows [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md), and [The vendored @openmined/psi.js addon](#the-vendored-openminedpsijs-addon) states what it must keep. |
+| `@openmined/psi.js` | `lib/openmined-psi.js-<version>.tgz`, a `file:` dependency of `packages/core`, `apps/cli` and `apps/web` | Version in the file name, the sha256 sidecar, and the lockfile `integrity` | automatic | The `npm` block at `/` ignores every version update of it. `psi_revendor.yaml` reads the fork's latest GitHub Release daily and, when its version is not the vendored one, verifies the tarball's attestation and opens the re-vendor pull request into `staging` as a draft, by [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md), which stays the manual route. It pushes and opens it with the `ALCOVE_REVENDOR_TOKEN` secret, whose renewal is in [RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies). [The vendored @openmined/psi.js addon](#the-vendored-openminedpsijs-addon) states what a rebuild must keep. |
 | npm registry packages | Every workspace `package.json` and the root `package-lock.json` | Ranges in the manifests apart from one exact version, versions and `integrity` in the lockfile | automatic | The `npm` block at `/`, weekly. The reviewed groups and the routine batch are in [How these packages are versioned](#how-these-packages-are-versioned). |
 | `vite` under `vitepress` | The root `package.json` `overrides` entry | The range `^6.4.5` | scheduled | The range admits a later 6.x release, which lands by `npm update vite --package-lock-only` ([The project site's vite override](#the-project-sites-vite-override)), run each release. A Dependabot pull request does not move it: measured 2026-11-10 with the Dependabot CLI 1.97.0, its `vite` bump leaves this entry and the nested copy as they were, with a later release in the range available. |
 | wrangler | `.github/wrangler/package.json` and its lockfile | The exact version `4.147.0` | automatic | The `npm` block at `/.github/wrangler`. The six `wranglerVersion` inputs move by hand in the same pull request ([The Pages deploy tool](#the-pages-deploy-tool)). |
@@ -251,7 +251,7 @@ The stop at a chunk boundary and at a match's response piece boundary in both ma
 | Build provenance on the tarball, signed only by a dispatched `Native prebuilds` run | `npm run check:prebuild-provenance` here, above |
 | Workflows: read-only top-level `permissions`, `persist-credentials: false` on every checkout, and the Windows leg's `node.lib` and Swift installer checked against pinned sha256 values | The fork's workflow files, in review of each change to them |
 
-The fork has no release branch. A release is a dispatched `Native prebuilds` run, and the marker names `refs/heads/master` as `source_ref`, so an attestation from a run on any other ref fails the armed check.
+The fork has no release branch. A release is a `Native prebuilds` run dispatched on `master` with `release` checked, which publishes the attested tarball and its sha256 as the GitHub Release `v<version>`, and the marker names `refs/heads/master` as `source_ref`, so an attestation from a run on any other ref fails the armed check.
 
 **The fork's maintenance.** Dependabot opens the fork's npm and Actions updates weekly, after its cooldown. The fork's `DEPENDENCY_PINS.md` lists every other pinned build input -- Bazel, the Bazel modules, emsdk, the toolchains, `node.lib`, the Swift installer -- with its manual update route. `CI` runs on every push to `master` and weekly, and `Native prebuilds` runs weekly, so a broken default branch shows within a week even when nothing merges.
 

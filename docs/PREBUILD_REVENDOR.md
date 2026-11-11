@@ -56,6 +56,13 @@ marker stays disarmed.
 
 ## Procedure
 
+`.github/workflows/psi_revendor.yaml` runs these steps when the fork
+publishes a Release (a `Native prebuilds` dispatch on `master` with `release`
+checked), leaving step 6's build and test run to the pull request's CI, and
+opens the pull request as a draft for the reviewer below. The steps here are
+its manual fallback, for a build the fork attests but does not release, or a
+run of the workflow that fails.
+
 Run the fork's `Native prebuilds` workflow (`workflow_dispatch`) and note the
 run's commit. Then, from a branch in this repository:
 
