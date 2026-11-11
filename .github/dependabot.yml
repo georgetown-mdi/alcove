@@ -240,3 +240,55 @@ updates:
         patterns:
           - "*"
         update-types: ["minor", "patch"]
+
+  # Tool versions a workflow input or a Dockerfile ARG names: the Cosign
+  # release the cosign-installer steps pass, the Python the re2js reference
+  # comparison sets up, and the development container's AWS CLI.
+  # .github/tool-versions/Dockerfile holds each as an image tag, since no
+  # Dependabot block reads those consumers; a bump here fails
+  # scripts/tool-versions.test.mjs until the same pull request moves the
+  # consumer by hand, and an AWS CLI bump also re-verifies the archive digests
+  # as .devcontainer/README.md describes.
+  - package-ecosystem: docker
+    directory: "/.github/tool-versions"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      # Only default-days is valid for the docker and github-actions
+      # ecosystems; the semver-*-days keys are supported for npm only.
+      default-days: 7
+    ignore:
+      # Python stays on its 3.12 line: a google-re2 release ships wheels for a
+      # fixed set of interpreters, and the comparison runs only on a re2js move,
+      # so a new minor would land unexercised. Moving it is a hand edit.
+      - dependency-name: "library/python"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+
+  # The google-re2 release the re2js reference comparison installs, read from
+  # scripts/re2-reference/requirements.txt by scripts/compare-regex-with-re2.mjs.
+  - package-ecosystem: pip
+    directory: "/scripts/re2-reference"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+
+  # The Cloudflare provider in infra/hosted/.terraform.lock.hcl. The opentofu
+  # ecosystem, not terraform: the lock file names the provider at
+  # registry.opentofu.org, which the terraform ecosystem does not read.
+  - package-ecosystem: opentofu
+    directory: "/infra/hosted"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7

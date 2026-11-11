@@ -174,6 +174,9 @@ ARG ALCOVE_INFRA=0
 # 0ACC 4672 475C. AWS publishes no checksum file, so the signature is the
 # provenance and the digest is what the build re-checks; re-verify the same way
 # when bumping the version (README.md beside this file, Infrastructure profile).
+# Dependabot raises the version in the aws-cli stage of
+# .github/tool-versions/Dockerfile; scripts/tool-versions.test.mjs holds
+# AWSCLI_VERSION to it.
 ARG AWSCLI_VERSION=2.36.38
 ARG AWSCLI_SHA256_AARCH64=52b045f09058a8e9f54976ec136bb2085463f4ce6db3008980d62381bfeccff5
 ARG AWSCLI_SHA256_X86_64=1056bc30b892f4a80e65b05eac856fbf175d0c5aeda051d782450d2218db6657
