@@ -59,11 +59,12 @@ HKDF.
   Amazon Linux 2023 has no `node` account, the Node runtime here coming from a
   tarball rather than a package, so the variant creates one at the same uid and
   gid an operator is told to chown a bind mount to.
-- **The base moves by hand, not by Dependabot**, which the default image's does
-  not: its digest, its release snapshot and the certified provider's NVR pins
-  have to name one Amazon Linux release together, and a move obliges
-  re-measurement -- neither of which a mechanical bump can handle
-  ([below](#why-the-base-is-held-out-of-dependabot)).
+- **The base's Dependabot bump is a starting point, not a complete change**,
+  where the default image's is one: its digest, its release snapshot and the
+  certified provider's NVR pins have to name one Amazon Linux release together,
+  and a move obliges re-measurement -- neither of which a mechanical bump can
+  handle
+  ([below](#why-a-dependabot-bump-of-the-base-is-not-merged-as-filed)).
 
 ## What was rejected, and why
 
@@ -536,35 +537,31 @@ sufficient on its own:
   so the route rejected here trades a conformant construction for an approved
   service rather than closing a conformance gap.
 
-## Why the base is held out of Dependabot
+## Why a Dependabot bump of the base is not merged as filed
 
-The two images this repository publishes take opposite postures toward automatic
-base-image bumps, and the difference is the coupling above rather than a
-different appetite for churn. The default image's `node:26-alpine` digest is a
-single value: a mechanical pull request moving it, with the freeze test's
-mirrored literal reconciled on the same branch, is a complete change and lands
-as one. The variant's Amazon Linux base is not a single value. Its digest, the
-release snapshot every `dnf` transaction resolves against, and the certified
-provider's NVR pins have to name one release between them, and the tool that
-would open the pull request compares tag components -- which hold neither that
-coupling nor the chronology behind it, so a mechanically filed bump can name an
-*older* release than the one already pinned and still read as an upgrade.
+Dependabot files a digest bump for both images' bases from one weekly block,
+and the two pull requests need different amounts of work because of the
+coupling above. The default image's `node:26-alpine` digest is a single value:
+a mechanical pull request moving it, with the freeze test's mirrored literal
+reconciled on the same branch, is a complete change and lands as one. The
+variant's Amazon Linux base is not a single value. Its digest, the release
+snapshot every `dnf` transaction resolves against, and the certified provider's
+NVR pins have to name one release between them, and Dependabot's commit moves
+the digest alone.
 
-So `.github/dependabot.yml` ignores `amazonlinux` outright, and the base moves
-as a coordinated, human-reviewed change worked through
-[the procedure in DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image).
-Three things make that the cheap posture rather than an expensive one:
+So the variant's pull request is the offer to upgrade, not the upgrade: it is
+taken through
+[the procedure in DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image),
+which moves the other pins on the same branch. Three things keep a filed bump
+from landing half-done or unexamined:
 
-- **The pinning mechanism is unaffected.** The digest freeze in
-  `scripts/dockerfile-freeze.test.mjs` is what holds this base, and it holds it
-  the same whether a pull request arrives or not. What the ignore entry removes
-  is a filing, not a control.
-- **The build refuses the failure mode the filing would introduce.** A digest
-  moved on its own reddens the `nodebase` stage's release assertion, and a
-  package layer that drifted under the certificate pins reddens the `rpm -qf`
-  and `openssl list` assertions. The coordinated bump is what a green build
-  requires, so automating the first step of it buys nothing a person then has to
-  finish.
+- **The pinning mechanism is the freeze, not the filing.** The digest freeze in
+  `scripts/dockerfile-freeze.test.mjs` holds this base whether a pull request
+  arrives or not, and a filed bump fails it until the mirrored literal moves.
+- **The build refuses a digest moved on its own.** It reddens the `nodebase`
+  stage's release assertion, and a package layer that drifted under the
+  certificate pins reddens the `rpm -qf` and `openssl list` assertions. The
+  coordinated bump is what a green build requires.
 - **A base move brings a re-measurement obligation a pull request cannot
   discharge.** The figures this note and
   [CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-fips-reference-builds-inventory)
@@ -573,16 +570,13 @@ Three things make that the cheap posture rather than an expensive one:
   alternative -- were measured against one snapshot by hand, and are archived
   outside this repository. Nothing in the tree re-derives them and no check
   reddens when they go stale, so the obligation travels with whoever takes the
-  bump. Which measurements a move disturbs is enumerated in the same procedure.
+  bump. Which measurements a move disturbs, and when its package-list diff
+  calls for a security review, is in the same procedure.
 
-The cost is that nothing files a pull request. The signals that do show a base
-worth moving to are listed in
-[the procedure in DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image),
-and one of them arrives weekly rather than filed: `image_smoke.yaml`'s scheduled
-run scans the built variant and reports what it finds as code-scanning alerts.
-That scan gates, on the schedule and on a pull request alike, so a finding
-against a pin nothing has touched reddens the weekly run rather than waiting for
-a release to refuse it.
+Between filed bumps, `image_smoke.yaml`'s scheduled run scans the built variant
+and reports what it finds as code-scanning alerts. That scan gates, on the
+schedule and on a pull request alike, so a finding against a pin nothing has
+touched reddens the weekly run rather than waiting for a release to refuse it.
 
 ## Why the base comes from ECR Public
 
@@ -600,9 +594,9 @@ reaches a pinnable rootfs sooner.
 What moves with it: the digest is ECR Public's own, since the two registries
 give one release different digests, and the procedure resolves it there
 ([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image)).
-The Dependabot block ignores Docker Hub's name, ECR Public's, and
-`amazonlinux/amazonlinux`, the name Dependabot gives the ECR Public reference
-when it files a bump; the digest freeze pins the base either way.
+Dependabot files the bump of the ECR Public reference under the name
+`amazonlinux/amazonlinux`, and the digest freeze pins the base whichever name
+a bump carries.
 
 ## What it costs
 
