@@ -12,15 +12,17 @@
 // Reported events are recorded in the state file, one key per line:
 // `<owner/repo>#<n> <event> <sha>`, the sha the head's (or, for `merged`, the
 // merge commit's), so a re-armed watch does not report them again and a new
-// head reports its own CI result. A conflict is suppressed while any conflict
-// key for its PR is recorded; seeing the PR mergeable deletes those keys.
-// Seeing a head's checks pending deletes that head's ci keys, so a rerun's
-// result on the same head is reported. A poll re-reads the file before writing
-// and applies only its own additions and deletions, so watches can share it.
+// head reports its own CI result. A ci key adds a hash of the head's completed
+// check runs with their completion times, so a rerun on the same head is
+// reported. A conflict is suppressed while any conflict key for its PR is
+// recorded; seeing the PR mergeable deletes those keys. Concurrent watches
+// merge their writes: a poll re-reads the file and applies only its own
+// additions and deletions, but a write racing another can still lose one.
 //
 // Exit 0 an event was printed; 2 a usage error or an unusable state file.
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +40,7 @@ export const PASSING_CONCLUSIONS = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 const USAGE_EXIT = 2;
 const MAX_INTERVAL_SECONDS = 3600;
 const GH_TIMEOUT_MS = 60_000;
+const FINGERPRINT_LENGTH = 12;
 const PENDING_STATUS_STATES = new Set(["PENDING", "EXPECTED"]);
 const PR_ARGUMENT = /^(?:([\w.-]+\/[\w.-]+)#)?([1-9]\d*)$/;
 const PR_URL = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/\d+/;
@@ -129,12 +132,13 @@ function displayName(check) {
 /**
  * The CI result on the head the rollup describes: `pending` while a check has
  * not completed or none is registered, else `green` or `red` with the failed
- * check names, sorted and deduplicated.
+ * check names, sorted and deduplicated, and a fingerprint of the completed runs.
  */
 export function ciResult(rollup) {
   const checks = rollup ?? [];
   if (checks.length === 0) return { result: "pending" };
   const failed = new Set();
+  const runs = [];
   for (const check of checks) {
     let conclusion;
     if (check.__typename === "StatusContext" || check.status === undefined) {
@@ -144,10 +148,17 @@ export function ciResult(rollup) {
       if (check.status !== "COMPLETED") return { result: "pending" };
       conclusion = check.conclusion;
     }
-    if (!PASSING_CONCLUSIONS.has(conclusion)) failed.add(displayName(check));
+    const name = displayName(check);
+    if (!PASSING_CONCLUSIONS.has(conclusion)) failed.add(name);
+    const finished = check.completedAt ?? check.startedAt ?? "";
+    runs.push(`${name}\t${conclusion}\t${finished}`);
   }
-  if (failed.size === 0) return { result: "green" };
-  return { result: "red", failed: [...failed].sort() };
+  const fingerprint = createHash("sha256")
+    .update(runs.sort().join("\n"))
+    .digest("hex")
+    .slice(0, FINGERPRINT_LENGTH);
+  if (failed.size === 0) return { result: "green", fingerprint };
+  return { result: "red", failed: [...failed].sort(), fingerprint };
 }
 
 function repoOf(pr, view) {
@@ -193,20 +204,15 @@ export function prEvents(pr, view) {
   if (ci.result === "green") {
     events.push({
       line: `ci-green ${pr.label} ${head}`,
-      key: `${prKey} ci-green ${head}`,
+      key: `${prKey} ci-green ${head} ${ci.fingerprint}`,
     });
   } else if (ci.result === "red") {
     events.push({
       line: `ci-red ${pr.label} ${head} ${ci.failed.join(", ")}`,
-      key: `${prKey} ci-red ${head}`,
+      key: `${prKey} ci-red ${head} ${ci.fingerprint}`,
     });
   }
-  return {
-    prKey,
-    mergeable: view.mergeable === "MERGEABLE",
-    events,
-    pendingHead: ci.result === "pending" ? head : undefined,
-  };
+  return { prKey, mergeable: view.mergeable === "MERGEABLE", events };
 }
 
 /** The recorded keys in the state file; an absent file records none. */
@@ -252,9 +258,8 @@ export function ghView({ repo, number }) {
 }
 
 /**
- * One poll over every PR: the new events' lines, after recording their keys,
- * deleting the conflict keys of a PR seen mergeable, and deleting the ci keys
- * of a head seen pending.
+ * One poll over every PR: the new events' lines, after recording their keys
+ * and deleting the conflict keys of a PR seen mergeable.
  */
 export function poll({ prs, statePath, view = ghView, warn }) {
   let keys = readState(statePath);
@@ -278,13 +283,6 @@ export function poll({ prs, statePath, view = ghView, warn }) {
     }
     const conflictPrefix = `${shown.prKey} conflict `;
     if (shown.mergeable) remove((key) => key.startsWith(conflictPrefix));
-    if (shown.pendingHead !== undefined) {
-      const ciKeys = new Set([
-        `${shown.prKey} ci-green ${shown.pendingHead}`,
-        `${shown.prKey} ci-red ${shown.pendingHead}`,
-      ]);
-      remove((key) => ciKeys.has(key));
-    }
     for (const event of shown.events) {
       const reported = event.conflict
         ? keys.some((key) => key.startsWith(conflictPrefix))

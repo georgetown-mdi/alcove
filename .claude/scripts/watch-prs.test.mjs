@@ -165,24 +165,26 @@ describe("reported events", () => {
     ).toEqual([`ci-green 12 ${NEW_HEAD}`]);
   });
 
-  it("reports ci-red again on the same head after a rerun", () => {
+  it("reports a rerun that finished red between two polls", () => {
     const path = statePath();
-    const red = view({
-      statusCheckRollup: [checkRun("unit", "COMPLETED", "FAILURE")],
-    });
-    expect(pollWith(path, { 12: red }).lines).toEqual([
+    const redAt = (completedAt) =>
+      view({
+        statusCheckRollup: [
+          { ...checkRun("unit", "COMPLETED", "FAILURE"), completedAt },
+          {
+            ...checkRun("lint", "COMPLETED", "SUCCESS"),
+            completedAt: "2026-11-10T10:00:00Z",
+          },
+        ],
+      });
+    const first = redAt("2026-11-10T10:05:00Z");
+    expect(pollWith(path, { 12: first }).lines).toEqual([
       `ci-red 12 ${HEAD} unit`,
     ]);
-    expect(pollWith(path, { 12: red }).lines).toEqual([]);
-    expect(
-      pollWith(path, {
-        12: view({ statusCheckRollup: [checkRun("unit", "IN_PROGRESS")] }),
-      }).lines,
-    ).toEqual([]);
-    expect(readFileSync(path, "utf8")).toBe("");
-    expect(pollWith(path, { 12: red }).lines).toEqual([
-      `ci-red 12 ${HEAD} unit`,
-    ]);
+    expect(pollWith(path, { 12: first }).lines).toEqual([]);
+    expect(pollWith(path, { 12: redAt("2026-11-10T10:30:00Z") }).lines).toEqual(
+      [`ci-red 12 ${HEAD} unit`],
+    );
   });
 
   it("keeps the keys of a watch that wrote while another poll ran", () => {
