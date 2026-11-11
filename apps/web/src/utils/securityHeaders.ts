@@ -8,14 +8,12 @@ export const COLOR_SCHEME_SCRIPT_HASH_SOURCE =
 
 /**
  * The `script-src` the production build runs under, measured through a full
- * exchange (docs/SECURITY_DESIGN.md, The shipped script policy). The PSI
- * engine's Emscripten glue builds functions from strings, so `'unsafe-eval'`
- * stays until that glue is rebuilt without it; `'wasm-unsafe-eval'` keeps
- * WebAssembly compiling once it goes.
+ * exchange (docs/SECURITY_DESIGN.md, The shipped script policy). No script
+ * turns a string into code, so there is no `'unsafe-eval'`;
+ * `'wasm-unsafe-eval'` lets the PSI engine compile its WebAssembly.
  */
 const SCRIPT_SOURCES = [
   "'self'",
-  "'unsafe-eval'",
   "'wasm-unsafe-eval'",
   COLOR_SCHEME_SCRIPT_HASH_SOURCE,
 ];

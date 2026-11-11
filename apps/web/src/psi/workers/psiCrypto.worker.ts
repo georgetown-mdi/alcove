@@ -1,3 +1,5 @@
+import "../../utils/zodJitless";
+
 // @ts-ignore this is really there
 import PSI from "@openmined/psi.js/psi_wasm_worker";
 

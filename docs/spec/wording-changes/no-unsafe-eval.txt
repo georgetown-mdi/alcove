@@ -1,0 +1,7 @@
+# The macOS prebuilds' minimum macOS version, per architecture.
+- Both macOS prebuilds are built for macOS 15.5 or later, so a Mac at that version loads the native addon and an older one falls back to WASM. -> The darwin-arm64 prebuild is built for macOS 11.0 or later and the darwin-x64 prebuild for macOS 10.15 or later, a floor the fork's prebuild workflow checks; an older Mac falls back to WASM.
+# The engine's link flag the shipped script policy needs, and its check.
+- - -> **The engine's WebAssembly glue.**
+- - -> The web app's script policy admits no `'unsafe-eval'` ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#the-shipped-script-policy)), so the fork links its Emscripten targets (`psi_wasm_web.js`, `psi_wasm_worker.js`, `psi_wasm_node.js`) with `-sDYNAMIC_EXECUTION=0`, which builds the embind bindings without `new Function`.
+- - -> A re-vendored build that drops the flag has its bindings refused in the browser, and no exchange runs.
+- - -> `apps/web/test/integration/contentSecurityPolicyExchange.test.ts` holds this: it runs an exchange against the built site under the shipped policy and fails on any report or console message naming the policy.
