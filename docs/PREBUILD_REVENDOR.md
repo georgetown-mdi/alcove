@@ -61,8 +61,8 @@ run's commit. Then, from a branch in this repository:
 
 1. **Download the tarball** from the run's `openmined-psi-tarball` artifact into
    `lib/`, and delete the tarball it replaces along with its `.sha256` and
-   `.provenance.json`. Give a rebuild its own `seclink` suffix --
-   `2.0.6-seclink.4` rather than a second `2.0.6-seclink.3` -- so byte-distinct
+   `.provenance.json`. Give a rebuild its own `alcove` suffix --
+   `2.0.6-alcove.2` rather than a second `2.0.6-alcove.1` -- so byte-distinct
    tarballs never share a version string: it costs one digit and removes the
    condition step 5 has to work around, though what guarantees the new bytes
    install is the lockfile integrity that step brings onto them, not this

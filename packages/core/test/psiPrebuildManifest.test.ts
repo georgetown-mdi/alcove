@@ -56,7 +56,7 @@ const linuxPlatforms = [...new Set(linuxPrebuilds.map((p) => p.platform))];
 describe("vendored PSI prebuild tarball manifest", () => {
   test("names the one tarball the apps install, the sidecar pins, and lib/ holds", () => {
     // Without this, the guard could validate an artifact the app never
-    // loads: a seclink.N bump that updates package.json but leaves the
+    // loads: an alcove.N bump that updates package.json but leaves the
     // old .tgz in lib/ (a forgotten `git rm`) would have this suite check
     // the stale file green.
     const libFiles = readdirSync(`${repoRoot}lib`);

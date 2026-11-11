@@ -1,9 +1,9 @@
 {
   "attestation_expected": true,
-  "artifact": "openmined-psi.js-2.0.6-seclink.7.tgz",
-  "sha256": "177674e6ff282da5ee0519108a3ad5513f25bc1e63db3804340bdaa33f165479",
+  "artifact": "openmined-psi.js-2.0.6-alcove.1.tgz",
+  "sha256": "beb51f0fff241f3df20222664a389ed36c980d089106722c095b95b112994d7d",
   "producer_repository": "georgetown-mdi/OpenMinedPSI",
   "signer_workflow": "georgetown-mdi/OpenMinedPSI/.github/workflows/native-prebuilds.yml",
   "source_ref": "refs/heads/master",
-  "source_digest": "c8fd4b79eca6eeedf14e4866c15c6d52cd405ff8"
+  "source_digest": "ae36a1ba5e8d2561818e284c63dce7ad5c50c328"
 }
