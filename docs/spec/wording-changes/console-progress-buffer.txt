@@ -1,0 +1,7 @@
+- Every job retains its complete event list in memory for its lifetime. -> Every job retains its event list in memory for its lifetime, except that each `partnerProgress` event replaces the one before it (see Buffer cap below).
+- Because the full history is retained, a reconnect resumes losslessly. -> Because every event but a superseded progress figure is retained, a reconnect resumes losslessly: a reader holding an older progress event receives the latest figure under a new id, once, among the later events.
+- **A partner can fill the buffer.** -> -
+- A partner that keeps alternating still-working frames with and without a figure adds at most one `partnerProgress` figure per 15 s and one clear after each, 480 events an hour, so the buffer fills after about 21 h of such a wait and the job ends with the overflow terminal above. -> -
+- This is accepted: such a partner can already hold the wait open with no upper bound ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)), so the outcome is a failed job rather than a hung one. -> -
+- - -> The one exception to retention is `partnerProgress`: a new one removes the buffered one and is appended under the next id, so progress never counts toward the cap and a partner's figures cannot fill it.
+- - -> Event ids rise but skip a replaced event's id, and the status body's `eventCount` is the buffered count.
