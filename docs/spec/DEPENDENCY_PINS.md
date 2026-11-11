@@ -254,7 +254,7 @@ The fork has no release branch. A release is a dispatched `Native prebuilds` run
 
 **The fork's maintenance.** Dependabot opens the fork's npm and Actions updates weekly, after its cooldown. The fork's `DEPENDENCY_PINS.md` lists every other pinned build input -- Bazel, the Bazel modules, emsdk, the toolchains, `node.lib`, the Swift installer -- with its manual update route. `CI` runs on every push to `master` and weekly, and `Native prebuilds` runs weekly, so a broken default branch shows within a week even when nothing merges.
 
-Upstream `OpenMined/PSI` is checked at each fork release. What it has that the fork lacks is taken in a fork pull request that merges it, keeping the fork's pins and package version; the commands are in the fork's `DEPENDENCY_PINS.md`, Upstream OpenMined/PSI. An upstream merge is a rebuild, re-vendored here as above.
+Upstream `OpenMined/PSI` is checked at each Alcove release, in the release checklist ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)), and at each fork release. What it has that the fork lacks is taken in a fork pull request that merges it, keeping the fork's pins and package version; the commands are in the fork's `DEPENDENCY_PINS.md`, Upstream OpenMined/PSI. An upstream merge is a rebuild, re-vendored here as above.
 
 ## Inlined dependencies and their remediation path
 
