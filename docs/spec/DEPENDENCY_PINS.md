@@ -6,9 +6,9 @@ title: "Pinned Dependency Internals and Upgrade Checklists"
 
 Two dependency stacks, the CLI's WebRTC peer and the browser SSH client's library are reached past their public
 APIs, so their internals are critical and each of their upgrades is reviewed on
-its own; a further dependency, the PSI crypto addon, is a vendored local fork. This document records the internal
-assumptions each rests on, except the SFTP stack's and the WebRTC stack's (in [SFTP_STACK.md](SFTP_STACK.md) and [WEBRTC_STACK.md](WEBRTC_STACK.md)), the checklist to re-verify them before a bump merges,
-and the install-time policies that stand beside them: npm's install-script
+its own, with their assumptions and upgrade checklists in [SFTP_STACK.md](SFTP_STACK.md) and [WEBRTC_STACK.md](WEBRTC_STACK.md); a further dependency, the PSI crypto addon, is a vendored local fork. This document records how
+the pins are versioned and updated, the vendored addon, and the install-time
+policies that stand beside them: npm's install-script
 verdicts, the GitHub Action pin mirror, and the residuals npm's resolver leaves
 in this workspace. The review requirement itself is in
 [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy); this is the spec-tier

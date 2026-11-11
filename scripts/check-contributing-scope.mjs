@@ -85,7 +85,7 @@ export function scopeViolations(text) {
     }
     if (SOURCE_PATH.test(line)) {
       violations.push(
-        `line ${i + 1}: dependency source-path citation -- move it to docs/spec/DEPENDENCY_PINS.md`,
+        `line ${i + 1}: dependency source-path citation -- move it to the dependency's spec: docs/spec/SFTP_STACK.md, docs/spec/WEBRTC_STACK.md or docs/spec/DEPENDENCY_PINS.md`,
       );
     }
   });
