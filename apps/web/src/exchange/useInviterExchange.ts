@@ -264,21 +264,43 @@ const CAUSE_CHAIN_SEPARATOR = joinErrorCauseChain(["", ""]);
 const RELAYED_LINE_BREAK = sanitizeForDisplay("\n");
 
 /**
+ * The index of the first escape marker for a line break at or after `from`
+ * whose backslash is not itself escaped: an even number of backslashes
+ * before it. A break inside a file name reaches here escaped twice (`\\x0a`),
+ * and a name holding a backslash then `x0a` escaped twice reads `\\\\x0a`;
+ * neither is the break the CLI wrote.
+ */
+function indexOfRelayedLineBreak(text: string, from: number): number {
+  for (
+    let at = text.indexOf(RELAYED_LINE_BREAK, from);
+    at !== -1;
+    at = text.indexOf(RELAYED_LINE_BREAK, at + 1)
+  ) {
+    let backslashes = 0;
+    while (at - backslashes > from && text[at - backslashes - 1] === "\\")
+      backslashes += 1;
+    if (backslashes % 2 === 0) return at;
+  }
+  return -1;
+}
+
+/**
  * What the CLI's report of a catalog cause adds to core's sentence and the
  * remedy the console shows beside it: the cause chain behind the sentence,
  * without the remedy line the CLI writes beneath it. The relay escapes that
  * line's break into the chain's last link and may cut the remedy after it, so
- * the last link ends at its first escaped break, before the links are escaped
- * for display. Empty where the report holds no chain.
+ * the last link ends at its first unescaped break marker. The links are split
+ * off as the relay sent them, already escaped, and are not escaped again.
+ * Empty where the report holds no chain.
  */
 function causeChainReport(error: RelayedTerminalError): string {
   const reported = error.message;
   const lastLinkAt = reported.lastIndexOf(CAUSE_CHAIN_SEPARATOR);
   if (lastLinkAt === -1) return "";
-  const breakAt = reported.indexOf(RELAYED_LINE_BREAK, lastLinkAt);
-  const [, ...chain] = sanitizeErrorChainLinks(
-    breakAt === -1 ? reported : reported.slice(0, breakAt),
-  );
+  const breakAt = indexOfRelayedLineBreak(reported, lastLinkAt);
+  const [, ...chain] = (
+    breakAt === -1 ? reported : reported.slice(0, breakAt)
+  ).split(CAUSE_CHAIN_SEPARATOR);
   return joinErrorCauseChain(chain);
 }
 

@@ -303,6 +303,59 @@ describe("a console run that failed on a catalog cause", () => {
     },
   );
 
+  const SHARED_NAME_REMEDY =
+    "The likely cause is that both parties set the same peer_id: set a " +
+    "different peer_id on one side.";
+
+  function sharedNameReport(names: ReadonlyArray<string>): {
+    relayedMessage: string;
+    reportedCause: string | undefined;
+  } {
+    const cause = { kind: "shared-name-at-entry" } as const;
+    const link = `${names.length + 1} unexpected protocol file(s) in /x: ${names.join(", ")}, and 1 more`;
+    const cliMessage = sanitizeErrorForDisplay(
+      new Error(failureCauseSentence(cause), { cause: new Error(link) }),
+    );
+    const relayedMessage = joinErrorCauseChain(
+      sanitizeErrorChainLinks(`${cliMessage}\n${SHARED_NAME_REMEDY}`),
+    );
+    const failure = failureFor(
+      "exchange",
+      relayed(relayedMessage, { failureCause: cause, exitCode: 64 }),
+    );
+    return { relayedMessage, reportedCause: failure.reportedCause };
+  }
+
+  test.each([
+    ["a newline", "site-a\nINJECTED.json"],
+    ["a literal backslash then x0a", "site-a\\x0aINJECTED.json"],
+    ["a backslash before a newline", "site-a\\\nINJECTED.json"],
+  ])(
+    "a file name holding %s keeps every name and the count in the report",
+    (_, name) => {
+      const { relayedMessage, reportedCause } = sharedNameReport([
+        name,
+        "site-b.json",
+      ]);
+      expect(relayedMessage).toContain(SHARED_NAME_REMEDY);
+      expect(reportedCause).toContain("site-b.json, and 1 more");
+      expect(reportedCause).not.toContain(SHARED_NAME_REMEDY);
+      // eslint-disable-next-line no-control-regex
+      expect(reportedCause).not.toMatch(/[\x00-\x1f\x7f]/);
+    },
+  );
+
+  test("a file name holding an escape byte shows as the relay sent it", () => {
+    const { relayedMessage, reportedCause } = sharedNameReport([
+      "site-\x1b[31m.json",
+    ]);
+    const relayedLink = relayedMessage.split("\ncaused by: ")[1];
+    expect(relayedLink).toContain("\\x1b");
+    expect(reportedCause).toBe(relayedLink.split("\\x0a")[0]);
+    // eslint-disable-next-line no-control-regex
+    expect(reportedCause).not.toMatch(/[\x00-\x1f\x7f]/);
+  });
+
   // The CLI's suite drives the same causes (runEndingRemedy.test.ts) and holds
   // its message to core's sentence first, so the two state the cause alike.
   test.each(Object.values(REPRESENTATIVE_FAILURE_CAUSES))(
