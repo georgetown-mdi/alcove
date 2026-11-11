@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 
-import { linkageKeyHasOneElement } from "../../src/consent/singleElementKey.js";
+import { linkageKeyUsesOneField } from "../../src/consent/oneFieldKey.js";
 import { linkageKeyIsLessCertain } from "../../src/consent/lessCertainKey.js";
+import { ONE_FIELD_KEY_COPY } from "../../src/consent/consentFacts.js";
 import { summarizeInvitation } from "../../src/consent/invitationSummary.js";
 import {
   DEFAULT_LINKAGE_RULE_SET,
@@ -27,14 +28,14 @@ const key = (name: string, ...fields: Array<string>): LinkageKey => ({
   elements: fields.map((field) => ({ field })),
 });
 
-describe("linkageKeyHasOneElement", () => {
+describe("linkageKeyUsesOneField", () => {
   test("marks a key with one element", () => {
-    expect(linkageKeyHasOneElement(key("ssn", "tax_id"))).toBe(true);
+    expect(linkageKeyUsesOneField(key("ssn", "tax_id"))).toBe(true);
   });
 
   test("marks a one-element key whatever its transforms or fuzzy expansion", () => {
     expect(
-      linkageKeyHasOneElement({
+      linkageKeyUsesOneField({
         elements: [
           {
             field: "surname",
@@ -48,23 +49,40 @@ describe("linkageKeyHasOneElement", () => {
     ).toBe(true);
   });
 
-  test("leaves a key with two or more elements, or none, unmarked", () => {
-    expect(linkageKeyHasOneElement(key("two", "tax_id", "born"))).toBe(false);
+  test("marks a key repeating one field under an alias", () => {
     expect(
-      linkageKeyHasOneElement(key("three", "given", "surname", "born")),
+      linkageKeyUsesOneField({
+        elements: [{ field: "born" }, { field: "born", name: "born2" }],
+      }),
+    ).toBe(true);
+  });
+
+  test("leaves a key reading two or more fields, or none, unmarked", () => {
+    expect(linkageKeyUsesOneField(key("two", "tax_id", "born"))).toBe(false);
+    expect(
+      linkageKeyUsesOneField(key("three", "given", "surname", "born")),
     ).toBe(false);
-    expect(linkageKeyHasOneElement(key("empty"))).toBe(false);
+    expect(
+      linkageKeyUsesOneField({
+        elements: [
+          { field: "born" },
+          { field: "tax_id" },
+          { field: "born", name: "born2" },
+        ],
+      }),
+    ).toBe(false);
+    expect(linkageKeyUsesOneField(key("empty"))).toBe(false);
   });
 
   test("marks a lone date of birth, which is also less certain", () => {
     const lone = key("born", "born");
-    expect(linkageKeyHasOneElement(lone)).toBe(true);
+    expect(linkageKeyUsesOneField(lone)).toBe(true);
     expect(linkageKeyIsLessCertain(lone, FIELDS)).toBe(true);
   });
 });
 
-describe("the consent summary's one-element mark", () => {
-  test("marks the one-element keys and only them", () => {
+describe("the consent summary's one-field mark", () => {
+  test("marks the one-field keys and only them", () => {
     const terms: LinkageTerms = {
       ...getDefaultLinkageTerms(
         "Inviter",
@@ -80,10 +98,10 @@ describe("the consent summary's one-element mark", () => {
     const [ssnAlone, ssnAndDob, dobAlone] = summarizeInvitation({
       linkageTerms: terms,
     }).linkageKeys;
-    expect(ssnAlone.oneElement).toBe(true);
+    expect(ssnAlone.oneField).toBe(true);
     expect(ssnAlone.lessCertain).toBe(false);
-    expect(ssnAndDob.oneElement).toBe(false);
-    expect(dobAlone.oneElement).toBe(true);
+    expect(ssnAndDob.oneField).toBe(false);
+    expect(dobAlone.oneField).toBe(true);
     expect(dobAlone.lessCertain).toBe(true);
   });
 
@@ -91,7 +109,21 @@ describe("the consent summary's one-element mark", () => {
     const keys = DEFAULT_LINKAGE_RULE_SET.linkageKeys;
     expect(keys.length).toBeGreaterThan(0);
     expect(
-      keys.filter((k) => linkageKeyHasOneElement(k)).map((k) => k.name),
+      keys.filter((k) => linkageKeyUsesOneField(k)).map((k) => k.name),
     ).toStrictEqual([]);
+  });
+});
+
+describe("ONE_FIELD_KEY_COPY", () => {
+  test("states the risk with the key and, outside the key list, where to look", () => {
+    expect(ONE_FIELD_KEY_COPY).toStrictEqual({
+      keyLine:
+        "Uses one field, so your partner could guess values and learn which " +
+        "are in your file.",
+      termsLine:
+        "Some of the matching keys use one field, so your partner could " +
+        "guess values and learn which are in your file. Open Matching " +
+        "strategies to see which.",
+    });
   });
 });

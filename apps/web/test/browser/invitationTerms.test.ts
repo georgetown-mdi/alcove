@@ -19,6 +19,7 @@ import {
   LESS_CERTAIN_KEY_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
+  ONE_FIELD_KEY_COPY,
   PROPOSED_NOT_APPLIED_NOTES,
   UNRECOGNIZED_TRANSFORM_NOTE,
   builtInRuleChoiceStatement,
@@ -33,7 +34,6 @@ import {
 import {
   InvitationTerms,
   LESS_CERTAIN_TERMS_LINE,
-  ONE_ELEMENT_KEY_TERMS_COPY,
 } from "@components/InvitationTerms";
 import { DIRECT_LESS_CERTAIN_REMEDY } from "@exchange/directExchangeModel";
 import { lessCertainInfoLabel } from "@components/LessCertainInfo";
@@ -723,8 +723,8 @@ describe("InvitationTerms: a key on a name and a date of birth alone is marked l
   });
 });
 
-describe("InvitationTerms: a key with one element", () => {
-  const oneElementTerms: LinkageTerms = {
+describe("InvitationTerms: a key on one field", () => {
+  const oneFieldTerms: LinkageTerms = {
     ...terms,
     linkageKeys: [
       ...terms.linkageKeys,
@@ -742,25 +742,15 @@ describe("InvitationTerms: a key with one element", () => {
     return row!;
   }
 
-  test("warns under each one-element key, and once outside the collapsed key list with the acceptor's remedy", async () => {
-    expect(ONE_ELEMENT_KEY_TERMS_COPY).toStrictEqual({
-      keyLine:
-        "Uses one field, so your partner could try guessed values and " +
-        "learn which ones are in your file.",
-      termsLine:
-        "Some of the matching keys use one field, so your partner could " +
-        "try guessed values and learn which ones are in your file.",
-    });
-    await renderTerms(oneElementTerms, { perspective: "review" });
+  test("warns under each one-field key, and once outside the collapsed key list with the acceptor's remedy", async () => {
+    await renderTerms(oneFieldTerms, { perspective: "review" });
     await expect
       .element(toggle("Matching strategies"))
       .toHaveAttribute("aria-expanded", "false");
     await expect
       .element(
         page.getByText(
-          `${ONE_ELEMENT_KEY_TERMS_COPY.termsLine} ` +
-            "To leave them out, ask your partner for an invitation without " +
-            "them.",
+          `${ONE_FIELD_KEY_COPY.termsLine} ${LESS_CERTAIN_KEY_COPY.acceptorRemedy}`,
           { exact: true },
         ),
       )
@@ -770,26 +760,41 @@ describe("InvitationTerms: a key with one element", () => {
     await expect.element(toggle("SSN alone")).toBeInTheDocument();
     const lineIn = (name: string) =>
       Array.from(keyRow(name).querySelectorAll("p")).some(
-        (el) => el.textContent === ONE_ELEMENT_KEY_TERMS_COPY.keyLine,
+        (el) => el.textContent === ONE_FIELD_KEY_COPY.keyLine,
       );
     expect(lineIn("SSN alone")).toBe(true);
-    // A lone date of birth is both less certain and one-element.
+    // A lone date of birth is both less certain and on one field.
     expect(lineIn("DOB alone")).toBe(true);
-    await expect
-      .element(toggle("DOB alone"))
-      .toHaveAccessibleDescription("Matches on date of birth (less certain)");
     expect(lineIn("SSN + LN + DOB")).toBe(false);
     expect(lineIn("SSN + FN1")).toBe(false);
   });
 
-  test("keys of two or more elements show no warning", async () => {
+  test("reads the warning with the key", async () => {
+    await renderTerms(oneFieldTerms, { perspective: "review" });
+    await userEvent.click(toggle("Matching strategies"));
+    await expect
+      .element(toggle("SSN alone"))
+      .toHaveAccessibleDescription(
+        `Matches on SSN ${ONE_FIELD_KEY_COPY.keyLine}`,
+      );
+    await expect
+      .element(toggle("DOB alone"))
+      .toHaveAccessibleDescription(
+        `Matches on date of birth (less certain) ${ONE_FIELD_KEY_COPY.keyLine}`,
+      );
+    await expect
+      .element(toggle("SSN + FN1"))
+      .toHaveAccessibleDescription(/^Matches on [^.]*$/);
+  });
+
+  test("keys reading two or more fields show no warning", async () => {
     await renderTerms(terms, { perspective: "review" });
     await userEvent.click(toggle("Matching strategies"));
     await expect.element(toggle("SSN + FN1")).toBeInTheDocument();
-    expect(app.container.textContent).not.toContain("use one field");
     expect(app.container.textContent).not.toContain(
-      ONE_ELEMENT_KEY_TERMS_COPY.keyLine,
+      ONE_FIELD_KEY_COPY.termsLine,
     );
+    expect(app.container.textContent).not.toContain(ONE_FIELD_KEY_COPY.keyLine);
   });
 });
 

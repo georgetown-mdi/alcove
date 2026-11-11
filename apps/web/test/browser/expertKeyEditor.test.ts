@@ -11,7 +11,7 @@ import { createElement, useState } from "react";
 // below the viewport after the click, and the menu hides its detached dropdown.
 import "@mantine/core/styles.css";
 
-import { authoredLinkageFields } from "@alcove/core";
+import { ONE_FIELD_KEY_COPY, authoredLinkageFields } from "@alcove/core";
 
 import {
   addKey,
@@ -21,10 +21,7 @@ import {
 import { KEY_CONDITION_CONTROL } from "@psi/authoring/keyCondition";
 import { REMOVE_ALL_KEYS_STATEMENT } from "@psi/inviterEditor";
 
-import {
-  ExpertKeyEditor,
-  ONE_ELEMENT_KEY_EDITOR_LINE,
-} from "@components/ExpertKeyEditor";
+import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
 
 import { activate, control } from "./keyboardOnly";
 import { restoreMatchMedia, stubReducedMotion } from "./reducedMotion";
@@ -398,7 +395,7 @@ describe("ExpertKeyEditor: the per-key badges", () => {
   });
 });
 
-describe("ExpertKeyEditor: a key with one element", () => {
+describe("ExpertKeyEditor: a key on one field", () => {
   function LiveEditor({ initial }: { initial: AdvancedInviteDraft }) {
     const [draft, setDraft] = useState(initial);
     return createElement(ExpertKeyEditor, {
@@ -415,29 +412,26 @@ describe("ExpertKeyEditor: a key with one element", () => {
 
   const warnings = () =>
     Array.from(app.container.querySelectorAll("p")).filter(
-      (el) => el.textContent === ONE_ELEMENT_KEY_EDITOR_LINE,
+      (el) => el.textContent === ONE_FIELD_KEY_COPY.keyLine,
     );
 
-  test("shows the warning under a key just added, collapsed or not, and drops it once a second element is added", async () => {
-    expect(ONE_ELEMENT_KEY_EDITOR_LINE).toBe(
-      "Uses one field, so your partner could try guessed values and learn " +
-        "which ones are in your file.",
-    );
+  test("shows the warning under a key just added, collapsed or not, reads it with the key, and drops it once a second field is added", async () => {
     const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
     app.render(createElement(LiveEditor, { initial: draft }));
     await expect
       .element(page.getByRole("button", { name: "Add a key" }))
       .toBeInTheDocument();
-    // Every built-in key has two or more elements.
+    // Every built-in key reads two or more fields.
     expect(warnings()).toHaveLength(0);
 
     await userEvent.click(page.getByRole("button", { name: "Add a key" }));
     await expect
-      .element(page.getByText(ONE_ELEMENT_KEY_EDITOR_LINE, { exact: true }))
+      .element(page.getByText(ONE_FIELD_KEY_COPY.keyLine, { exact: true }))
       .toBeVisible();
     expect(warnings()).toHaveLength(1);
 
-    // On the card, beside the key's header and outside its collapsed body.
+    // On the card, beside the key's header and outside its collapsed body,
+    // and part of the collapse toggle's description.
     const card = warnings()[0].closest("li")!;
     const toggle = card.querySelector<HTMLElement>(
       '[aria-controls^="key-body-"]',
@@ -446,17 +440,31 @@ describe("ExpertKeyEditor: a key with one element", () => {
       toggle.getAttribute("aria-controls")!,
     )!;
     expect(body.contains(warnings()[0])).toBe(false);
+    expect(warnings()[0].id).not.toBe("");
+    expect(toggle.getAttribute("aria-describedby")).toBe(warnings()[0].id);
     await userEvent.click(toggle);
     await expect.element(toggle).toHaveAttribute("aria-expanded", "false");
     await expect
-      .element(page.getByText(ONE_ELEMENT_KEY_EDITOR_LINE, { exact: true }))
+      .element(page.getByText(ONE_FIELD_KEY_COPY.keyLine, { exact: true }))
       .toBeVisible();
 
     await userEvent.click(toggle);
     await userEvent.click(
       page.elementLocator(card).getByRole("button", { name: "Add an element" }),
     );
+    // The new element repeats the first one's field under an alias, so the
+    // key still matches on one field.
+    await expect
+      .element(page.elementLocator(card).getByLabelText("Field").nth(1))
+      .toBeInTheDocument();
+    expect(warnings()).toHaveLength(1);
+
+    await userEvent.click(
+      page.elementLocator(card).getByLabelText("Field").nth(1),
+    );
+    await userEvent.click(page.getByRole("option", { name: "Last name" }));
     await expect.poll(() => warnings().length).toBe(0);
+    expect(toggle.hasAttribute("aria-describedby")).toBe(false);
   });
 });
 

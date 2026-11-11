@@ -15,7 +15,7 @@ import {
   displayText,
 } from "../utils/sanitizeForDisplay.js";
 import { linkageKeyIsLessCertain } from "./lessCertainKey.js";
-import { linkageKeyHasOneElement } from "./singleElementKey.js";
+import { linkageKeyUsesOneField } from "./oneFieldKey.js";
 import { missingFieldConditionStatement } from "./consentFacts.js";
 import {
   admitsMissingFieldConditionType,
@@ -359,11 +359,12 @@ export interface InvitationKeySummary {
    */
   lessCertainHeaderMarker?: Displayable;
   /**
-   * Whether the key has exactly one element (`linkageKeyHasOneElement`), so a
-   * partner could test guessed values of that field against this party's
-   * file. Each surface states the warning in its own copy.
+   * Whether every element of the key reads the same field
+   * (`linkageKeyUsesOneField`), so a partner could test guessed values of
+   * that field against this party's file. A surface marks it with
+   * `ONE_FIELD_KEY_COPY` (`consentFacts.ts`).
    */
-  oneElement: boolean;
+  oneField: boolean;
   /**
    * The line stating the key's missing-field condition
    * (`missingFieldConditionStatement`, consentFacts.ts), present only for a
@@ -1171,7 +1172,7 @@ function summarizeKey(
     lessCertainHeaderMarker: lessCertain
       ? displayText`(less certain)`
       : undefined,
-    oneElement: linkageKeyHasOneElement(key),
+    oneField: linkageKeyUsesOneField(key),
     ...(condition !== undefined && { condition }),
   };
 }

@@ -24,7 +24,11 @@ import {
 } from "@tabler/icons-react";
 import { useReducedMotion } from "@mantine/hooks";
 
-import { linkageKeyHasOneElement, sanitizeForDisplay } from "@alcove/core";
+import {
+  ONE_FIELD_KEY_COPY,
+  linkageKeyUsesOneField,
+  sanitizeForDisplay,
+} from "@alcove/core";
 
 import {
   KEY_CONDITION_CONTROL,
@@ -91,11 +95,6 @@ function keyVerdictBadge(verdict: KeyVerdict): {
       };
   }
 }
-
-/** The warning under a key with one element (`linkageKeyHasOneElement`). */
-export const ONE_ELEMENT_KEY_EDITOR_LINE =
-  "Uses one field, so your partner could try guessed values and learn " +
-  "which ones are in your file.";
 
 /** Plain-language label for every fuzzy-comparison expansion an element can
  * declare. Keyed by the core union rather than listed as an array, so an
@@ -317,6 +316,8 @@ export function ExpertKeyEditor({
           const keyId = idFor(keyIds.current, key);
           const keyOpen = expandedKeys.has(keyId);
           const keyBodyId = `key-body-${keyId}`;
+          const keyUsesOneField = linkageKeyUsesOneField(key);
+          const keyOneFieldId = `key-one-field-${keyId}`;
           // One swap option per element, keyed by its identifier, deduplicated by
           // value: two elements can transiently share an identifier mid-edit (e.g.
           // an alias clears to a name another element already uses). Mantine's
@@ -341,6 +342,9 @@ export function ExpertKeyEditor({
                     onClick={() => toggleKeyExpanded(keyId)}
                     aria-expanded={keyOpen}
                     aria-controls={keyBodyId}
+                    aria-describedby={
+                      keyUsesOneField ? keyOneFieldId : undefined
+                    }
                     style={{ flex: 1, minWidth: 0 }}
                   >
                     <Group gap={4} wrap="nowrap">
@@ -403,9 +407,9 @@ export function ExpertKeyEditor({
                 </Group>
                 {/* Under the header rather than in its no-wrap group, and
                     outside the collapsed body, so it shows on a collapsed key. */}
-                {linkageKeyHasOneElement(key) && (
-                  <Text size="xs" c="warn">
-                    {ONE_ELEMENT_KEY_EDITOR_LINE}
+                {keyUsesOneField && (
+                  <Text id={keyOneFieldId} size="xs" c="warn">
+                    {ONE_FIELD_KEY_COPY.keyLine}
                   </Text>
                 )}
 

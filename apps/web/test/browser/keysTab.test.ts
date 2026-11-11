@@ -37,6 +37,7 @@ import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
   COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   LESS_CERTAIN_KEY_COPY,
+  ONE_FIELD_KEY_COPY,
   linkageKeyIsLessCertain,
   precisionFloorLabel,
 } from "@alcove/core";
@@ -900,6 +901,64 @@ describe("KeysTab: the built-in rule choice and the less certain mark", () => {
         }),
       )
       .toBeInTheDocument();
+  });
+
+  test("marks a key written in Expert authoring on one field, read with its checkbox", async () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const initial = editorWithAuthoredDraft(seeded, {
+      ...seeded.draft,
+      keys: [
+        {
+          enabled: true,
+          key: { name: "ssn4 alone", elements: [{ field: "ssn4" }] },
+        },
+        {
+          enabled: true,
+          key: {
+            name: "dob twice",
+            elements: [
+              { field: "date_of_birth" },
+              { field: "date_of_birth", name: "dob2" },
+            ],
+          },
+        },
+        {
+          enabled: true,
+          key: {
+            name: "ssn4 and dob",
+            elements: [{ field: "ssn4" }, { field: "date_of_birth" }],
+          },
+        },
+      ],
+    });
+    app.render(createElement(Harness, { initial }));
+
+    const ssn4Alone = page.getByRole("checkbox", {
+      name: "Key 1 - ssn4 alone",
+      exact: true,
+    });
+    await expect
+      .element(ssn4Alone)
+      .toHaveAccessibleDescription(ONE_FIELD_KEY_COPY.keyLine);
+    await expect
+      .element(
+        page.getByRole("checkbox", {
+          name: "Key 2 - dob twice (less certain)",
+          exact: true,
+        }),
+      )
+      .toHaveAccessibleDescription(ONE_FIELD_KEY_COPY.keyLine);
+    await expect
+      .element(
+        page.getByRole("checkbox", {
+          name: "Key 3 - ssn4 and dob",
+          exact: true,
+        }),
+      )
+      .toHaveAccessibleDescription("");
+    expect(
+      page.getByText(ONE_FIELD_KEY_COPY.keyLine, { exact: true }).elements(),
+    ).toHaveLength(2);
   });
 
   test("on keys an opened configuration states, the remedy is the configuration's update", async () => {

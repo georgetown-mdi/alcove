@@ -11,6 +11,7 @@ import {
   LEGAL_AGREEMENT_FIELD_NOT_STATED,
   LESS_CERTAIN_KEY_COPY,
   MAX_DECLARED_NAMES_SHOWN,
+  ONE_FIELD_KEY_COPY,
   PROPOSED_NOT_APPLIED_NOTES,
   redactAndSanitizeForDisplay,
   summarizeInvitation,
@@ -408,26 +409,8 @@ export const LESS_CERTAIN_REMEDY = {
     "prints.",
 } as const;
 
-/**
- * The line each CLI terms display prints under a key with one element
- * (`InvitationKeySummary.oneElement`): the warning, then the action that
- * leaves the key out from where its reader stands.
- */
-export const ONE_ELEMENT_KEY_COPY = {
-  warning:
-    "Uses one field, so your partner could try guessed values and learn " +
-    "which ones are in your file.",
-  remedy: {
-    invitation:
-      "To leave it out, ask your partner for an invitation without it.",
-    update:
-      "To leave it out, do not apply this update, and ask your partner for " +
-      "one without it.",
-  },
-} as const satisfies {
-  warning: string;
-  remedy: Record<ConsentSurfaceKind, string>;
-};
+/** The label above the remedy for keys on one field. */
+export const ONE_FIELD_NOTE_LABEL = "keys on one field";
 
 /**
  * The explanation of the less certain mark, printed once beneath a key list
@@ -571,7 +554,6 @@ export function logCandidateFacts(
 function displayLinkageKey(
   emit: ConsentSurfaceSink,
   key: InvitationKeySummary,
-  surface: ConsentSurfaceKind,
 ): void {
   emit(`    - ${key.name}`);
   // The derived field one-liner, above the declared rules: the only other
@@ -587,10 +569,7 @@ function displayLinkageKey(
         ? ` ${key.lessCertainHeaderMarker}`
         : ""),
   );
-  if (key.oneElement)
-    emit(
-      `      ${ONE_ELEMENT_KEY_COPY.warning} ${ONE_ELEMENT_KEY_COPY.remedy[surface]}`,
-    );
+  if (key.oneField) emit(`      ${ONE_FIELD_KEY_COPY.keyLine}`);
   if (key.condition !== undefined) emit(`      ${key.condition}`);
   emit("      elements:");
   for (const element of key.elements) {
@@ -1083,9 +1062,15 @@ export function displayInvitation(params: {
   // the one that scrolls the first off the screen.
   displayLinkageFields(emit, summary);
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
-  for (const key of summary.linkageKeys) displayLinkageKey(emit, key, surface);
+  for (const key of summary.linkageKeys) displayLinkageKey(emit, key);
   if (summary.linkageKeys.some((key) => key.lessCertain))
     displayLessCertainNote(emit, LESS_CERTAIN_REMEDY[surface]);
+  // A one-field key also marked less certain takes the remedy from the less
+  // certain note above.
+  if (summary.linkageKeys.some((key) => key.oneField && !key.lessCertain)) {
+    emit(`  ${ONE_FIELD_NOTE_LABEL}:`);
+    emit(`    ${LESS_CERTAIN_REMEDY[surface]}`);
+  }
 
   // What this party will RECEIVE: the inviter's `payload.send`, which an
   // acceptance mirrors into this party's `payload.receive` and every terms

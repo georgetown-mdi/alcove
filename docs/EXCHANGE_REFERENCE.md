@@ -97,9 +97,9 @@ Three of the rules broader matching adds match on a name and a date of birth wit
 
 #### Keys on one field
 
-A key with one element lets a partner fill its input with guessed values of that field, such as every date of birth in a range, and learn which of them your file holds ([Threat model](SECURITY_DESIGN.md#threat-model)). No built-in rule has one element; a key written by hand can.
+A key on one field - one whose elements all read the same field, such as one element, or one field repeated under an alias with different cleaning - lets a partner fill its input with guessed values of that field, such as every date of birth in a range, and learn which of them your file holds ([Threat model](SECURITY_DESIGN.md#threat-model)). No built-in rule uses one field; a key written by hand can.
 
-- The acceptance screen in the web app and the console, the CLI's acceptance and `alcove apply` displays, and the expert key editor show a one-line warning under each such key, including a key just added in the editor. A lone first name, last name, or date of birth is also marked `(less certain)`.
+- Matching keys and the acceptance screen in the web app and the console, the CLI's acceptance and `alcove apply` displays, and the expert key editor show a one-line warning under each such key, including a key just added in the editor. The CLI prints how to leave such keys out once under the key list, labeled `keys on one field:`, or in the less certain explanation when every such key is also less certain. A lone first name, last name, or date of birth is also marked `(less certain)`.
 - The warning never stops an exchange, and no run checks the size of either input.
 - An accepting party asks its partner for an invitation without the key, and does not apply a terms update that contains it.
 
