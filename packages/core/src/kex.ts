@@ -56,7 +56,7 @@ import {
 // under a previous secret -- is written here; every cryptographic operation is
 // a crypto.subtle call, and the full Noise framework is not implemented.
 // Construction, key schedule, wire format, and what the vectors pin:
-// docs/spec/PROTOCOL.md ("P-256 authenticated key exchange"). Decision and module boundary: docs/SECURITY_DESIGN.md
+// docs/spec/KEY_EXCHANGE.md ("P-256 authenticated key exchange"). Decision and module boundary: docs/SECURITY_DESIGN.md
 // ("Key-agreement design") and
 // docs/notes/key-establishment-fips-boundary.md.
 
@@ -66,7 +66,7 @@ const PSK_LEN = 32;
 // Wire encoding of an ephemeral public key: the SEC1 uncompressed point
 // `0x04 || X || Y`, 65 bytes over P-256. Enforcing it is this module's job,
 // not importKey's, which accepts other encodings of the same point and not
-// the same ones on every platform; docs/spec/PROTOCOL.md ("Curve and point
+// the same ones on every platform; docs/spec/KEY_EXCHANGE.md ("Curve and point
 // encoding") states the pin and what it rests on. kex.test.ts and the browser
 // suite drive importKey with the alternative encodings on their own platform,
 // so the divergence is measured rather than assumed.
@@ -84,7 +84,7 @@ const ECDH_P256 = { name: "ECDH", namedCurve: "P-256" } as const;
 const HASH_LEN = 32;
 
 // The Noise "protocol name", which is the initial handshake hash. When it
-// is bumped, docs/spec/PROTOCOL.md ("Protocol-version tag") is what governs:
+// is bumped, docs/spec/KEY_EXCHANGE.md ("Protocol-version tag") is what governs:
 // it states what the tag covers, what a bump is reserved for, and what a
 // mismatch does.
 const PROTOCOL_NAME = "alcove-kex-v3:NNpsk0_P256_SHA256";
@@ -125,7 +125,7 @@ export function offeredKexSuites(
 /**
  * The versions this build offers in its hello, per layer. A caller running
  * on the FIPS variant passes `approvedKexSuitesOnly`, which drops every
- * key-exchange suite that is not FIPS-approved (docs/spec/PROTOCOL.md, "The
+ * key-exchange suite that is not FIPS-approved (docs/spec/KEY_EXCHANGE.md, "The
  * version hello").
  */
 export function supportedVersions(
@@ -139,7 +139,7 @@ export function supportedVersions(
 }
 
 // Domain-separation labels for the derivations below, in the disjoint label
-// space docs/spec/PROTOCOL.md ("The domain-separation label space")
+// space docs/spec/KEY_EXCHANGE.md ("The domain-separation label space")
 // enumerates. Their namespace version does not track the suite tag above; the
 // two confirm labels are role-asymmetric.
 const SESSION_LABEL = "alcove-kex-v2:session";
@@ -151,7 +151,7 @@ const KEY_AGREEMENT_LABEL = "alcove-kex-v2:key-agreement";
 // The one message every authentication failure throws, and it must stay
 // non-oracular: no throw site may narrow it to the check that failed, and the
 // error's class, AuthenticationError, is what consumers classify on. What that
-// property covers and what it does not: docs/spec/PROTOCOL.md ("Failure
+// property covers and what it does not: docs/spec/KEY_EXCHANGE.md ("Failure
 // handling").
 const GENERIC_FAILURE = "key exchange authentication failed";
 const TIMEOUT_FAILURE = "key exchange handshake timed out";
@@ -180,7 +180,7 @@ const EMPTY = new Uint8Array(0);
 // --- Wire message schemas ----------------------------------------------------
 //
 // The three handshake messages, whose field encodings are in
-// docs/spec/PROTOCOL.md ("Message flow"). Every schema is `.strict()`, so an
+// docs/spec/KEY_EXCHANGE.md ("Message flow"). Every schema is `.strict()`, so an
 // unexpected key fails the parse rather than being silently stripped; keep it
 // that way, since the strictness is half of what makes a flag-unaware peer
 // fail closed rather than negotiate. Extension belongs in the hello, whose
@@ -319,7 +319,7 @@ interface SymmetricState {
  * `numOutputs` 32-byte blocks. It is issued as one `crypto.subtle`
  * `deriveBits` call rather than a chain of HMAC calls assembled here, so the
  * platform -- and any validated module beneath it -- serves the
- * extract-and-expand as a unit; docs/spec/PROTOCOL.md ("Key schedule") states
+ * extract-and-expand as a unit; docs/spec/KEY_EXCHANGE.md ("Key schedule") states
  * the equality that makes the two forms interchangeable. It differs from the
  * application-level {@link hkdfDerive} (zero salt, named info) because the
  * Noise schedule chains the salt.
@@ -409,7 +409,7 @@ async function mixKeyAndHash(
  * The pure NNpsk0 key schedule and key-confirmation derivation. Both peers
  * call this with identical arguments after the ephemeral exchange and get
  * identical outputs. The mixing order, what each derivation is taken over,
- * and why that is the critical invariant: docs/spec/PROTOCOL.md ("Key
+ * and why that is the critical invariant: docs/spec/KEY_EXCHANGE.md ("Key
  * schedule"), which the steps below implement in the order it states.
  *
  * @internal exported only for the known-answer-vector and RFC cross-check
@@ -537,7 +537,7 @@ async function generateEphemeral(): Promise<{
 // The single path from peer-supplied wire bytes to a usable public key,
 // returning undefined on every rejection so the caller applies its uniform
 // abort-and-fail handling. The two validation layers and the split between
-// them are docs/spec/PROTOCOL.md ("Peer-share validation"); kex.test.ts and
+// them are docs/spec/KEY_EXCHANGE.md ("Peer-share validation"); kex.test.ts and
 // the browser suite assert each rejection against the real crypto.subtle.
 async function importPeerShare(
   share: Uint8Array<ArrayBuffer>,
@@ -554,7 +554,7 @@ async function importPeerShare(
 // --- Key-agreement derivation ------------------------------------------------
 //
 // The one SP 800-56C two-step HKDF call over Z. Its FixedInfo layout, the
-// parameters, and what each output block feeds: docs/spec/PROTOCOL.md ("The
+// parameters, and what each output block feeds: docs/spec/KEY_EXCHANGE.md ("The
 // key-agreement derivation").
 
 // SHA-256's block length: the 56C default salt is this many zero bytes.
@@ -631,7 +631,7 @@ async function expandKeyAgreement(
  * derivation fails (the only step the peer's share can fail); a fault in the
  * HKDF steps is a local fault and rejects. The all-zero check compares the blocks, in constant time, against the same
  * derivation over a zero Z: a stated safety check, not the validation
- * (docs/spec/PROTOCOL.md, "Peer-share validation").
+ * (docs/spec/KEY_EXCHANGE.md, "Peer-share validation").
  *
  * @internal exported only for the tests' hand-rolled peers.
  */
@@ -728,7 +728,7 @@ interface KexResult {
    * The negotiated decision to wrap the post-handshake connection in an
    * additional application-encryption layer, identical on both ends. The
    * caller applies the extra AEAD layer when this is `true` and a session key
-   * is in hand. How it is negotiated and what binds it: docs/spec/PROTOCOL.md
+   * is in hand. How it is negotiated and what binds it: docs/spec/KEY_EXCHANGE.md
    * ("Request-encryption flag").
    */
   applyEncryption: boolean;
@@ -742,7 +742,7 @@ interface KexResult {
 
 /**
  * The secrets beyond the current one a handshake may complete under, and the
- * history it checks a peer's proof against (docs/spec/PROTOCOL.md, "Which
+ * history it checks a peer's proof against (docs/spec/KEY_EXCHANGE.md, "Which
  * secret a handshake uses").
  */
 export interface KexCandidates {
@@ -939,7 +939,7 @@ async function negotiateOrRefuse(
 /**
  * Executes a 3-message authenticated P-256 key exchange over an established
  * connection. Message flow, wire encoding, and construction:
- * docs/spec/PROTOCOL.md ("P-256 authenticated key exchange").
+ * docs/spec/KEY_EXCHANGE.md ("P-256 authenticated key exchange").
  *
  * The connection's inbound queue buffers any frame that arrives early, so a
  * fast peer cannot race ahead of a receive.

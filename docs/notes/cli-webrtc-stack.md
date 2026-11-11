@@ -10,7 +10,7 @@ spike that settled them, the alternatives weighed and declined, and the
 constraints and known costs the transport holds. Nothing here is normative:
 the wire the transport speaks is specified in
 [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md), the rendezvous derivation in
-[PROTOCOL.md](../spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation), and the
+[KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation), and the
 delivery guarantee its close must honor in
 [COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown). See
 [docs/notes/README.md](README.md).*
@@ -345,7 +345,7 @@ certificate handling drags in, not by media.
   budgets.
 - [COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown) -- the
   message-delivery contract the transport must honor.
-- [PROTOCOL.md](../spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation) -- the
+- [KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation) -- the
   normative rendezvous peer-id derivation the CLI must reproduce to meet a web
   peer.
 - [TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)

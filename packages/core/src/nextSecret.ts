@@ -44,7 +44,7 @@ export interface RotationValue {
  * never logged.
  */
 export interface NextSecretInputs {
-  /** `AuthResult.negotiated.protocol` (docs/spec/PROTOCOL.md, "The version
+  /** `AuthResult.negotiated.protocol` (docs/spec/KEY_EXCHANGE.md, "The version
    * hello"). */
   readonly negotiatedProtocolVersion: number;
   readonly sessionKey: Uint8Array<ArrayBuffer>;

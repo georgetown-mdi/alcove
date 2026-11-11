@@ -20,7 +20,7 @@ import type { RTCPeerConnection } from "werift";
 
 /**
  * The acceptor's wait while its key file holds a previous secret
- * (docs/spec/PROTOCOL.md, "WebRTC rendezvous peer-id derivation"): which ids
+ * (docs/spec/KEY_EXCHANGE.md, "WebRTC rendezvous peer-id derivation"): which ids
  * it registers under and offers to, which rendezvous carries the session, and
  * what ends the other. A scripted broker answers every registration, and a
  * scripted peer connection opens its channel on command.

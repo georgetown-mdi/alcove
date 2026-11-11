@@ -601,7 +601,7 @@ The encoded update is `BODY.MAC`, two base64url strings joined by `.`. Both are 
 
 The whole string is bounded by the invitation's encoded-length bound (`MAX_ENCODED_INVITATION_LENGTH`), checked before any decoding.
 
-Both derived values come from the decoded 32-byte shared secret, with the application HKDF (`hkdfDerive`: HKDF-SHA-256, zero salt) under labels in the [domain-separation label space](PROTOCOL.md#p-256-authenticated-key-exchange):
+Both derived values come from the decoded 32-byte shared secret, with the application HKDF (`hkdfDerive`: HKDF-SHA-256, zero salt) under labels in the [domain-separation label space](KEY_EXCHANGE.md#p-256-authenticated-key-exchange):
 
 ```
 partnership = base64url(HKDF(secret, "alcove-terms-update-v2:partnership", 16))
@@ -835,7 +835,7 @@ history it read, and the rotation write (`rotationWriteContents` in
 - **Over WebRTC.** A webrtc acceptor's run from a file holding a
   `previousSharedSecret` that has not expired also waits for its partner at
   the rendezvous ids that secret derives
-  ([PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation)); an
+  ([KEY_EXCHANGE.md](KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation)); an
   inviter's run waits at the current secret's ids alone.
 
 The web application keeps a rotation history on its managed record and no

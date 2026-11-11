@@ -412,7 +412,7 @@ export interface WebRtcPeerOptions {
    * after a run that stopped between the two saves of a rotation. While it
    * is given, the acceptor also waits for its partner at the pair of ids this
    * secret derives, where a partner that did not save the new secret waits
-   * (docs/spec/PROTOCOL.md, "WebRTC rendezvous peer-id derivation"). The
+   * (docs/spec/KEY_EXCHANGE.md, "WebRTC rendezvous peer-id derivation"). The
    * inviter ignores it.
    */
   previousSharedSecret?: string;

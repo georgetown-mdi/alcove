@@ -332,7 +332,7 @@ export function managedRelayCheckSubject(
  * An acceptor given `previousSharedSecret`
  * ({@link managedRendezvousPreviousSecret}) dials under both secrets at once
  * ({@link dialUnderBothSecrets}), where a partner that did not save the last
- * rotation waits (docs/spec/PROTOCOL.md, "WebRTC rendezvous peer-id
+ * rotation waits (docs/spec/KEY_EXCHANGE.md, "WebRTC rendezvous peer-id
  * derivation"); the relay credential is minted from the current secret on
  * both. The inviter ignores it.
  */

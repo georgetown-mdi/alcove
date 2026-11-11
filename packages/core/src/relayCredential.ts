@@ -16,7 +16,7 @@ import { InternalConsistencyError } from "./errors.js";
 
 /**
  * HKDF info label for the per-exchange relay key. A single fixed label in the
- * domain-separation label space (docs/spec/PROTOCOL.md, "The domain-separation
+ * domain-separation label space (docs/spec/KEY_EXCHANGE.md, "The domain-separation
  * label space").
  */
 const RELAY_KEY_INFO = "alcove-relay-key-v2";

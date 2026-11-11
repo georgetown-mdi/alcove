@@ -22,7 +22,7 @@ library choice and the alternatives weighed are in
 pin the libraries are in [WEBRTC_STACK.md](WEBRTC_STACK.md).
 
 It does not cover the rendezvous peer-id derivation (see
-[PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation), which is
+[KEY_EXCHANGE.md](KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation), which is
 normative for it), the inbound reassembly bound (see
 [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)) and the AEAD envelope (see
 [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)), the delivery contract every channel
@@ -56,7 +56,7 @@ with the request-encryption flag each side sends, `true` from either rendezvous 
 the cross-application conformance vectors at
 [`packages/core/test/vectors/webrtc-interop-vectors.json`](../../packages/core/test/vectors/webrtc-interop-vectors.json),
 which each application's own suite asserts its own side against. See
-[PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation) for what the
+[KEY_EXCHANGE.md](KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation) for what the
 file records.
 
 ## Broker socket
@@ -106,7 +106,7 @@ different socket than the CLI's own `wss://` default for a bare-host endpoint,
 while a production `https` deployment agrees with it. This is a remaining
 consumer-side default, not a gap this endpoint closes. Both mint directions are
 pinned by the cross-application conformance vectors (see
-[PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation)).
+[KEY_EXCHANGE.md](KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation)).
 
 The address is built through the URL API, with `path` assigned as a pathname
 rather than concatenated, so the scheme's default port is left implicit in it.
@@ -258,7 +258,7 @@ is the one above, and it is neither negotiated nor read by version:
   inbound frame size ([SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md)) are
   not tightened below what a supported release sends.
 - **The peer ids are opaque to it.** The labels that derive them
-  (`alcove-webrtc-peerid-v2:*`, [PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation))
+  (`alcove-webrtc-peerid-v2:*`, [KEY_EXCHANGE.md](KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation))
   are the clients'; the broker holds an id as an opaque string, checking its
   length and whether another token holds it.
 
@@ -1265,7 +1265,7 @@ What ends the wait on a partner that has gone is whichever comes first:
 
 ## See also
 
-- [PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation) - the
+- [KEY_EXCHANGE.md](KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation) - the
   normative rendezvous peer-id derivation both implementations reproduce.
 - [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound) -
   the inbound reassembly bound.

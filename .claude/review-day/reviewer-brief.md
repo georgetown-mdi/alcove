@@ -89,7 +89,7 @@ A statement you did not check is listed in the manifest as an unread spec range.
 A long spec may group repeated statements of one rule as one inventory line.
 
 A doc-fix or defect on a security-relevant statement (a bound, an authentication or authorization rule, what a party, relay or server may see or keep, what stored data may hold) is marked "security-scope": it goes to the security lens and the maintainer, never to a doc edit alone.
-Security-scope specs: CHANNEL_SECURITY, PROTOCOL, SHARED_SECRET_ROTATION, RELAY_CREDENTIALS, INVITATION_TOKEN, CREDENTIAL_STORAGE, PARSED_INPUT_BOUNDS, TRANSPORT_BOUNDS, SIGNALING_SERVER_BOUNDS, WEBSOCKET_RELAY, SFTP_RELAY, SERVER_JOB_API, DISPLAY_ESCAPE, DISPLAY_REDACTION.
+Security-scope specs: CHANNEL_SECURITY, PROTOCOL, KEY_EXCHANGE, SHARED_SECRET_ROTATION, RELAY_CREDENTIALS, INVITATION_TOKEN, CREDENTIAL_STORAGE, PARSED_INPUT_BOUNDS, TRANSPORT_BOUNDS, SIGNALING_SERVER_BOUNDS, WEBSOCKET_RELAY, SFTP_RELAY, SERVER_JOB_API, DISPLAY_ESCAPE, DISPLAY_REDACTION.
 
 ## Lens 2: security
 

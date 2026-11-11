@@ -495,7 +495,7 @@ the key-agreement derivation's 2048-bit output and the application derivations'
 key. The key-agreement derivation also takes the fixed-info pattern
 `uPartyInfo||vPartyInfo` with concatenation encoding, the pattern and encoding
 the CAVP record for A7440 lists, which the security policy does not reproduce
-([PROTOCOL.md](PROTOCOL.md#p-256-authenticated-key-exchange), The key-agreement
+([KEY_EXCHANGE.md](KEY_EXCHANGE.md#p-256-authenticated-key-exchange), The key-agreement
 derivation).
 
 **The HKDF row's name and its reference column disagree, and the policy settles

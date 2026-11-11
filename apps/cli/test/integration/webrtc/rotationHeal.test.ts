@@ -38,7 +38,7 @@ import type { Metadata, PreparedExchange } from "@alcove/core";
  * the repository's broker, from the key files such a cut leaves. The acceptor,
  * the side that saved first, holds the next secret and the one before it; the
  * inviter holds the one before it alone, and derives its rendezvous id from it
- * (docs/spec/PROTOCOL.md, "WebRTC rendezvous peer-id derivation").
+ * (docs/spec/KEY_EXCHANGE.md, "WebRTC rendezvous peer-id derivation").
  */
 
 snapshotDiagnosticSinkAndLevel();

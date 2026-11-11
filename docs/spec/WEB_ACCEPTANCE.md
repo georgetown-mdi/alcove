@@ -88,7 +88,7 @@ A sentence that qualifies a headline is shown at the same visibility level as th
 - Beside it: the matching rounds do bring the grouping to the accepting party's software, and it is the client, not the wire, that keeps it off that operator's screen.
 - Also beside it: accepting turns deduplication on for the inviting party alone, leaving the accepting party's own records ungrouped; more of the accepting party's records can match than in a plain one-to-one run, each disclosing its membership and any payload columns that party sends; and the per-party configuration sets the other direction.
 
-The rendezvous peer-id derivation that places the two parties on the connection is specified in [PROTOCOL.md](PROTOCOL.md).
+The rendezvous peer-id derivation that places the two parties on the connection is specified in [KEY_EXCHANGE.md](KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation).
 
 ## While the matching step runs
 

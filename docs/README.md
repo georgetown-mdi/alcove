@@ -72,7 +72,8 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 
 ### Technical specifications ([`docs/spec/`](spec/README.md))
 
-- [PROTOCOL.md](spec/PROTOCOL.md) - the PSI and PSI-C algorithms, linkage, the steps after linkage, and the P-256 key exchange
+- [PROTOCOL.md](spec/PROTOCOL.md) - the PSI and PSI-C algorithms, linkage, and the steps after linkage
+- [KEY_EXCHANGE.md](spec/KEY_EXCHANGE.md) - the P-256 authenticated key exchange and the derivation of the WebRTC rendezvous peer ids
 - [SHARED_SECRET_ROTATION.md](spec/SHARED_SECRET_ROTATION.md) - how the shared secret is replaced after each run, how a run cut between the two saves heals, and when a secret expires
 - [RELAY_CREDENTIALS.md](spec/RELAY_CREDENTIALS.md) - the relay credentials derived from the shared secret, the invitation's relay locator, the registrar and WebSocket relay proofs, and how a relay key is enrolled
 - [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the application-layer encryption and the authenticated abort marker

@@ -9,7 +9,7 @@ import {
 
 // The version hello each party sends at the key exchange, and the selection
 // both make from the two. Wire shape, what the transcript binds, the selection
-// rule and the refusal: docs/spec/PROTOCOL.md ("The version hello").
+// rule and the refusal: docs/spec/KEY_EXCHANGE.md ("The version hello").
 
 // The exchange-protocol version this build writes at the terms exchange and
 // offers in its hello. Bumping it is a change to the hello's offer, made

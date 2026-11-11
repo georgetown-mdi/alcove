@@ -32,7 +32,7 @@ import {
 // value, or that is not binary at all (a Uint8Array or an ArrayBuffer), is
 // rejected as a security failure rather than silently misparsed. A change to
 // the envelope layout (the IV/ciphertext/tag order or widths) is a new
-// envelope version offered in the hello (docs/spec/PROTOCOL.md, "The version
+// envelope version offered in the hello (docs/spec/KEY_EXCHANGE.md, "The version
 // hello").
 /** @internal */
 export const AEAD_ENVELOPE_VERSION = ENVELOPE_VERSION;
