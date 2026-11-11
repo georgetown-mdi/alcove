@@ -8,21 +8,21 @@ import { getDiagnosticSink, setDiagnosticSink } from "@alcove/core";
 import {
   MessageQueue,
   serializeFrame,
-} from "@alcove/peerjs-broker/models/messageQueue";
-import { CreatePeerServerWSOnly } from "@alcove/peerjs-broker";
-import { MAX_QUEUE_BYTES } from "@alcove/peerjs-broker/models/realm";
-import { MessageType } from "@alcove/peerjs-broker/enums";
+} from "../src/contrib/models/messageQueue.ts";
+import { CreatePeerServerWSOnly } from "../src/contrib/index.ts";
+import { MAX_QUEUE_BYTES } from "../src/contrib/models/realm.ts";
+import { MessageType } from "../src/contrib/enums.ts";
 
-import { brokerDiagnosticSink } from "../utils/brokerDiagnosticSink";
+import { brokerDiagnosticSink } from "./brokerDiagnosticSink.ts";
 
-import { KEY } from "../utils/signalingHarness";
-import { waitFor } from "../utils/waitFor";
+import { KEY } from "./signalingHarness.ts";
+import { waitFor } from "@alcove/testkit/waitFor";
 
 import type { AddressInfo } from "node:net";
 import type { DiagnosticSink } from "@alcove/core";
-import type { IMessage } from "@alcove/peerjs-broker/models/message";
-import type { IRealm } from "@alcove/peerjs-broker/models/realm";
-import type { SerializedFrame } from "@alcove/peerjs-broker/models/messageQueue";
+import type { IMessage } from "../src/contrib/models/message.ts";
+import type { IRealm } from "../src/contrib/models/realm.ts";
+import type { SerializedFrame } from "../src/contrib/models/messageQueue.ts";
 
 // The relay's hold-for-reconnect queue driven end to end over real sockets: a
 // signaling frame addressed to a peer that has dropped its socket is held and

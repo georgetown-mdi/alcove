@@ -2,11 +2,11 @@ import http from "node:http";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import { JOB_RESPONSE_HEADERS } from "@jobs/gate";
 
 import { defineJobRoute } from "../../../server/console/jobRoute";
-
-import { waitFor } from "../../utils/waitFor";
 
 import {
   enableJobApi,

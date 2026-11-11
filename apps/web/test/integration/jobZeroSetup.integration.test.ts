@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
-import { waitFor } from "../utils/waitFor";
+import { waitFor } from "@alcove/testkit/waitFor";
 
 import {
   getFreePort,

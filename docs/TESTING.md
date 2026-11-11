@@ -212,9 +212,9 @@ what `brokerStandaloneSurface.test.ts` beside it uses to drive the runner's
 operator surface -- the address and port it binds, the readiness probe a
 deployment reads, and the refusal an option it cannot act on produces. What each
 setting resolves to from an argument vector and an environment is checked
-without a process in `apps/web/test/unit/signalingStandaloneOptions.test.ts`,
-where the broker's other unit coverage sits: the package ships no test project
-of its own.
+without a process in
+`packages/peerjs-broker/test/signalingStandaloneOptions.test.ts`, beside the
+broker's other unit tests (`npm test -w packages/peerjs-broker`).
 
 One assumption the live suite cannot hold, and where it lives instead: werift
 inlines its ICE candidates in the SDP, so two peers connect on loopback even
@@ -761,8 +761,9 @@ a source since reverted to identical bytes.
 
 ### A missing environment prerequisite is named, and fails in CI
 
-Some legs need a tool the repository does not ship. The web signaling suites and
-the CLI's live one-command acceptance need a self-signed loopback certificate,
+Some legs need a tool the repository does not ship. The broker's HTTPS legs, the
+web relay fallback cases over `wss`, and the CLI's live one-command acceptance
+need a self-signed loopback certificate,
 which Node cannot issue, so `@alcove/testkit/loopbackTlsCert` shells out to
 `openssl` and those legs skip where it cannot create one (no `openssl`, or a
 LibreSSL one that takes the flags differently).
@@ -782,8 +783,9 @@ the legs that must have them are named individually:
 `ALCOVE_SFTP_CHROOT_REQUIRED=1` on the chroot profile, and the one-command
 acceptance leg's own `openssl`, which it creates its TLS front's certificate with.
 That leg reads `CI` and the same `ALCOVE_ALLOW_MISSING_TEST_PREREQUISITES`
-opt-out as the web gate, so an operator whose machine has no `openssl` sets one
-variable for both.
+opt-out as the web gate, and so does the broker suite's certificate gate
+(`packages/peerjs-broker/test/requireLoopbackTlsCert.ts`), so an operator whose
+machine has no `openssl` sets one variable for all three.
 
 ### Every skipped test is named
 
@@ -1048,7 +1050,7 @@ runner) and writes a text summary to the terminal plus a browsable HTML
 report and an `lcov.info` (for editors/tooling) under each workspace's
 `coverage/` directory. The denominator is scoped to product source under each
 `src/` tree, with the generated route tree excluded, so the numbers reflect
-hand-written product code; the vendored signaling broker is a workspace of
+hand-written product code; the signaling broker is a workspace of
 its own (`packages/peerjs-broker`) and runs no coverage, so it sits outside
 every denominator.
 

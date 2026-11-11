@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { MessageType } from "@alcove/peerjs-broker/enums";
-import { MessagesExpire } from "@alcove/peerjs-broker/services/messagesExpire/index";
-import { Realm } from "@alcove/peerjs-broker/models/realm";
+import { MessageType } from "../src/contrib/enums.ts";
+import { MessagesExpire } from "../src/contrib/services/messagesExpire/index.ts";
+import { Realm } from "../src/contrib/models/realm.ts";
 
-import type { IClient } from "@alcove/peerjs-broker/models/client";
-import type { IMessage } from "@alcove/peerjs-broker/models/message";
-import type { SerializedFrame } from "@alcove/peerjs-broker/models/messageQueue";
+import type { IClient } from "../src/contrib/models/client.ts";
+import type { IMessage } from "../src/contrib/models/message.ts";
+import type { SerializedFrame } from "../src/contrib/models/messageQueue.ts";
 
 // The expiry sweep behind the relay's hold-for-reconnect queues: a queue whose
 // destination never came back for it is cleared on a timer, and each sender is

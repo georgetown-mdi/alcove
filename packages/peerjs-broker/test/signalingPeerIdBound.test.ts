@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, test } from "vitest";
 import WebSocket from "ws";
 
-import { Errors } from "@alcove/peerjs-broker/enums";
-import { MAX_HANDSHAKE_PARAM_LENGTH } from "@alcove/peerjs-broker/services/webSocketServer/index";
+import { Errors } from "../src/contrib/enums.ts";
+import { MAX_HANDSHAKE_PARAM_LENGTH } from "../src/contrib/services/webSocketServer/index.ts";
 
 import {
   connectRegistered,
   createSignalingHarness,
   handshakeParamString,
-} from "../utils/signalingHarness.ts";
+} from "./signalingHarness.ts";
 
 const { start: startHarness, clients } = createSignalingHarness(afterEach);
 

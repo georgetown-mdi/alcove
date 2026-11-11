@@ -19,6 +19,8 @@
   },
   "scripts": {
     "start": "tsx src/standalone.ts",
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit",
     "type-check": "tsc --noEmit"
   },
   "files": [
@@ -34,7 +36,7 @@
     "ws": "^8.22.1"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
+    "@alcove/testkit": "file:../../packages/testkit",
     "@types/ws": "^8.18.2",
     "tsx": "^4.23.15"
   }

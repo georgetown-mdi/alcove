@@ -32,15 +32,14 @@ import {
 //
 // Two halves, because either alone can be satisfied while the reach is wide. The
 // first holds the broker's own source to `@alcove/core/untrusted-text`; it
-// scans every file under packages/peerjs-broker/src, including the vendored ones
-// the repo-wide eslint ignores leave unlinted, so a root import added there
-// fails here rather than passing unnoticed. The second measures what that
+// scans every file under packages/peerjs-broker/src, so a root import added
+// there fails here rather than passing unnoticed. The second measures what that
 // subpath resolves to once BUILT: an entry that re-exports from a module which
 // imports zod narrows nothing, and only the built graph shows it.
 //
 // The eslint ban beside them (eslint.config.mjs, the packages/peerjs-broker/src
-// block) is what a contributor meets first; it covers the linted tree only,
-// which is why the scan below does not lean on it.
+// block) is what a contributor meets first; the scan below reads the files
+// itself rather than leaning on it.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");

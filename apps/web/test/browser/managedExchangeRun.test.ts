@@ -3,6 +3,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import {
   deriveHistoryVerifier,
   generateSharedSecret,
@@ -37,7 +39,6 @@ import { getManagedLocalState } from "@psi/managed/managedLocalState";
 import { runManagedExchange } from "@psi/managed/managedExchangeRun";
 
 import { rotatingDataExchange } from "../utils/rotatingDataExchange";
-import { waitFor } from "../utils/waitFor";
 
 import type {
   ManagedExchangeRecord,

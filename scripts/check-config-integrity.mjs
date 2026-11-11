@@ -88,6 +88,7 @@ export const GUARDED_VITEST_CONFIGS = [
     projects: [
       "@alcove/core (unit)",
       "@alcove/cli-contract (unit)",
+      "@alcove/peerjs-broker (unit)",
       "@alcove/websocket-relay (unit)",
       "@alcove/sftp-relay (unit)",
       "alcove (unit)",
@@ -100,6 +101,7 @@ export const GUARDED_VITEST_CONFIGS = [
   },
   { directory: "packages/core", projects: ["unit", "stress"] },
   { directory: "packages/cli-contract", projects: ["unit"] },
+  { directory: "packages/peerjs-broker", projects: ["unit"] },
   { directory: "packages/websocket-relay", projects: ["unit"] },
   { directory: "packages/sftp-relay", projects: ["unit"] },
   {

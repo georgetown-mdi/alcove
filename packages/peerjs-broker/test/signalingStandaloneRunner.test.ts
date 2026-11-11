@@ -7,7 +7,7 @@ import {
   refuseToStart,
   writeDisplayableLine,
   writeLine,
-} from "@alcove/peerjs-broker/standaloneRunner";
+} from "../src/standaloneRunner.ts";
 import { sanitizeForDisplay } from "@alcove/core/untrusted-text";
 
 import type { Server } from "node:http";

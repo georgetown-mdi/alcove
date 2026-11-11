@@ -1,6 +1,5 @@
 import type { IMessageQueue } from "./messageQueue.ts";
 import { MessageQueue, serializeFrame } from "./messageQueue.ts";
-import { randomUUID } from "node:crypto";
 import type { IClient } from "./client.ts";
 import type { IMessage } from "./message.ts";
 
@@ -27,8 +26,6 @@ export interface IRealm {
   addMessageToQueue(id: string, message: IMessage): boolean;
 
   clearMessageQueue(id: string): void;
-
-  generateClientId(generateClientId?: () => string): string;
 }
 
 // Bounds on the relay's hold-for-reconnect queues. A registered client can
@@ -170,17 +167,5 @@ export class Realm implements IRealm {
       }
     }
     this.queuedDestinationsBySender.delete(sender);
-  }
-
-  public generateClientId(generateClientId?: () => string): string {
-    const generateId = generateClientId ? generateClientId : randomUUID;
-
-    let clientId = generateId();
-
-    while (this.getClientById(clientId)) {
-      clientId = generateId();
-    }
-
-    return clientId;
   }
 }

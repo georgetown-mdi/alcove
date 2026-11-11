@@ -3,6 +3,9 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import { stringify as stringifyYaml } from "yaml";
 
 import { getDefaultLinkageTerms, snakeizeKeys } from "@alcove/core";
@@ -54,8 +57,6 @@ import {
   validWebrtcIntent,
   validZeroSetupSftpIntent,
 } from "../../utils/jobFixtures";
-
-import { waitFor } from "../../utils/waitFor";
 
 import type {
   JobCreateIntent,

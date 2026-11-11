@@ -22,7 +22,7 @@ import type { Displayable } from "@alcove/core/untrusted-text";
 import type { AddressInfo } from "node:net";
 
 /**
- * The vendored PeerJS broker on an HTTP server of its own, as a process entry
+ * The PeerJS broker on an HTTP server of its own, as a process entry
  * point: `npm start -w packages/peerjs-broker`, or spawned under `tsx`.
  *
  * It is what makes the broker startable without an application around it, so a
@@ -35,8 +35,8 @@ import type { AddressInfo } from "node:net";
  *
  * It is also what the web app's dev server forwards its `/api/` to
  * (scripts/dev.mjs, apps/web/test/devServer/globalSetup.ts). In-process
- * consumers inside the web app's tests want its
- * `test/utils/signalingHarness.ts` instead: it builds the `WebSocketServer`
+ * consumers inside this package's tests want `test/signalingHarness.ts`
+ * instead: it builds the `WebSocketServer`
  * directly and hands back the realm. This runner goes through
  * `CreatePeerServerWSOnly`, the package's one builder, so what a spawning test
  * sees is the deployed wiring rather than a subset of it.

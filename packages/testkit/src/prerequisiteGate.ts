@@ -8,10 +8,11 @@ export const ALLOW_MISSING_PREREQUISITES_ENV =
  * failure; anywhere else it is a fact about the machine.
  *
  * Shared by every prerequisite gate that decides this the same way: the web
- * signaling suites' gate (`apps/web/test/requireTestPrerequisites.ts`) and the
- * CLI's live one-command acceptance leg, which reads it directly for its own
+ * suites' gate (`apps/web/test/requireTestPrerequisites.ts`), the broker
+ * suite's (`packages/peerjs-broker/test/requireLoopbackTlsCert.ts`) and the
+ * CLI's live one-command acceptance leg, which read it directly for their own
  * `openssl` prerequisite, so an operator whose machine cannot supply one sets
- * the single opt-out for both.
+ * the single opt-out for all three.
  */
 export function prerequisitesAreRequired(
   env: NodeJS.ProcessEnv = process.env,

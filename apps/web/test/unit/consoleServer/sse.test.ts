@@ -2,12 +2,12 @@ import http from "node:http";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { waitFor } from "@alcove/testkit/waitFor";
+
 import { JobManager } from "@jobs/jobManager";
 import { SSE_KEEPALIVE_FRAME } from "@jobs/sse";
 
 import { STUB_CLI_PATH, validIntent } from "../../utils/jobFixtures";
-
-import { waitFor } from "../../utils/waitFor";
 
 import {
   enableJobApi,

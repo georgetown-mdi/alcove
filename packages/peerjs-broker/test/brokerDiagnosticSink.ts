@@ -1,6 +1,6 @@
 import { getLogger } from "@alcove/core";
 
-import type { SignalingDiagnosticSink } from "@alcove/peerjs-broker";
+import type { SignalingDiagnosticSink } from "../src/contrib/index.ts";
 
 const log = getLogger("peerjs-broker");
 
