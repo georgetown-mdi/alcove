@@ -179,6 +179,20 @@ describe("the heading convention", () => {
   });
 });
 
+describe("pattern matching", () => {
+  it("reads * inclusively, across a subpath separator", () => {
+    expect(coversName("@types/*", "@types/node/sub")).toBe(true);
+    expect(coversName("@types/*", "@types/node")).toBe(true);
+    expect(coversName("@types/*", "@typescript-eslint/parser")).toBe(false);
+  });
+
+  it("matches an exact name and treats other characters literally", () => {
+    expect(coversName("ssh2", "ssh2")).toBe(true);
+    expect(coversName("ssh2", "ssh2-sftp-client")).toBe(false);
+    expect(coversName("left.pad", "leftXpad")).toBe(false);
+  });
+});
+
 describe("reading the npm groups out of the config", () => {
   it("takes the npm block's groups, not another ecosystem's", () => {
     expect(

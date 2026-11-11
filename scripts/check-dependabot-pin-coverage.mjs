@@ -16,8 +16,7 @@
 //      every other group of the same update block that would match it;
 //
 // or when a heading names no valid npm package. `*` in a pattern matches any
-// run of characters, as in scripts/check-dependabot-ignore-shape.mjs. What it
-// does not cover, and why each rule has its shape:
+// run of characters, `/` included. What it does not cover, and why each rule has its shape:
 // docs/notes/repo-check-scripts.md.
 
 import { globSync, readFileSync } from "node:fs";
@@ -26,9 +25,6 @@ import { fileURLToPath } from "node:url";
 
 import { parse } from "yaml";
 
-// Dependabot's `dependency-name` and a group's `patterns` share one glob
-// syntax, so the ignore-shape check's matcher serves both rather than being
-// written twice.
 import { coversDependencyName as coversName } from "./lib/dependabot.mjs";
 import { stripFences, UnterminatedFenceError } from "./lib/markdownFences.mjs";
 

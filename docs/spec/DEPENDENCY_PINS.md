@@ -71,7 +71,7 @@ section each row links.
 | Relay 443 front image | `infra/relay/front/Dockerfile` | The `nginx:1.31-alpine` index digest | automatic | The `docker` block at `/infra/relay/front`. |
 | BuildKit daemon image | The four `docker/setup-buildx-action` steps in `release.yaml` and `image_smoke.yaml` | The `moby/buildkit:v0.34.2` index digest in `driver-opts`, and in `.github/builder-images/Dockerfile` | automatic | No Dependabot block reads an action input, so the `docker` block at `/.github/builder-images` moves the Dockerfile's pin, and `scripts/dockerhub-login.test.mjs` fails until the same pull request moves the four inputs by hand. |
 | QEMU emulator image | The two `docker/setup-qemu-action` steps in `release.yaml` | The `tonistiigi/binfmt` index digest, and the `qemu-v10.2.3` tag with that digest in `.github/builder-images/Dockerfile` | automatic | The same block and test, for the two inputs. Whether Dependabot compares the `qemu-v` tags as versions is unmeasured until its first run on the block. |
-| Commit-pinned actions | Every remote action in `.github/workflows` and `.github/actions` | A commit, with its release tag in a trailing comment | automatic | The `github-actions` block at `/`, which has no ignore entry and groups every action update into one weekly pull request ([GitHub Action pins and the composite mirror](#github-action-pins-and-the-composite-mirror)). The composite occurrences follow the workflow pins ([The composite mirror](#the-composite-mirror)). No step passes `trivy-action` a `version` input, so the Trivy release it installs is the one the pinned commit selects. |
+| Commit-pinned actions | Every remote action in `.github/workflows` and `.github/actions` | A commit, with its release tag in a trailing comment | automatic | The `github-actions` block at `/`, which has no ignore entry and groups every minor and patch action update into one weekly pull request, each major bump opening its own ([GitHub Action pins and the composite mirror](#github-action-pins-and-the-composite-mirror)). The composite occurrences follow the workflow pins ([The composite mirror](#the-composite-mirror)). No step passes `trivy-action` a `version` input, so the Trivy release it installs is the one the pinned commit selects. |
 | Cosign release | The `cosign-release` input of two steps in `pages_deploy.yaml` and three in `release.yaml` | `v3.1.4` | none | A Dependabot bump moves `sigstore/cosign-installer`'s commit and not this input. `broker_core_build.yaml` passes no `cosign-release`, so its Cosign is the release the pinned installer selects. |
 | Python | The `actions/setup-python` step in `re2js_reference.yaml` | `python-version` `3.12.10` | none | Edited by hand. |
 | google-re2 | `GOOGLE_RE2_VERSION` in `scripts/compare-regex-with-re2.mjs` | `1.1.20251105` | none | Edited by hand. No Dependabot block covers a Python package. |
@@ -367,15 +367,18 @@ alike, the steps that run beside the release signing identity
 (`id-token: write`) or the Docker Hub publish token included. The
 `github-actions` block in `.github/dependabot.yml` is configured against
 `.github/workflows` and has no `ignore` entry, so a within-major release opens a
-pull request and moves the pin. One group holds every action update, so a weekly
-run opens one pull request.
+pull request and moves the pin. One group holds every minor and patch action
+update, so a weekly run opens one pull request for them, and each major bump
+opens its own.
 `scripts/signed-build-inputs.test.mjs` (run by `npm run test:scripts`, a CI
 static check) fails on a remote reference that is not a commit followed by its
 `# vX.Y.Z` tag.
+The same test fails on an `ignore` entry in that block that names a minor or
+patch update type, or names no update type, since such an entry would freeze
+every commit pin it covers.
 
-Two invariants keep that configuration accurate, each held by a check rather than
-by this document: the composite mirror below, and
-[the ignore list against the pin shapes it covers](#the-ignore-list-and-the-pin-shapes-it-covers).
+One more invariant keeps that configuration accurate, held by a check rather than
+by this document: the composite mirror below.
 
 ### The composite mirror
 
@@ -412,56 +415,6 @@ is outside the check, as is anything about which paths Dependabot in fact scans 
 it enforces this repo's mirror invariant and confirms no tool's coverage. It
 reads `uses:` references only, so an action reached another way is invisible to
 it, and its ref-agreement rule binds only actions appearing in both trees.
-
-### The ignore list and the pin shapes it covers
-
-An `ignore` entry suppressing within-major updates is only sound over pins that
-float within their major. An exact pin (`actions/checkout@v7.0.1`), a commit sha,
-or a branch name under a covered org would sit under an ignore that suppresses
-every update it could ever receive: frozen silently, with no pull request to
-include a fix that lands within the major. The block has no such entry today,
-because every pin is a commit and a commit pin needs every update; the check
-fails on any pin that an added entry suppressing within-major updates covers.
-
-`scripts/check-dependabot-ignore-shape.mjs`
-(`npm run check:dependabot-ignore-shape`, a CI static check in
-`static_checks.yaml`) holds that rather than prose. It reads the `ignore` entries
-out of the `github-actions` block -- the org list is not restated in code, so
-editing the config changes what is enforced -- and fails on any pin under
-`.github/workflows` or `.github/actions` whose name an entry covers and whose ref
-is not a bare `v<major>`. An entry counts as suppressing within-major updates
-when its `update-types` names `version-update:semver-minor` or
-`version-update:semver-patch`, or names no update type at all; one that suppresses
-neither imposes no shape requirement, and an entry naming an org with no pins in
-either tree is not a failure. The reference extraction is the pin-drift check's,
-so a reference naming no ref is that check's rule C rather than a second report
-here.
-
-The rule is a coherence property of this repository's configuration, not a
-prediction of Dependabot's behavior. Whether a `version-update:semver-minor` /
-`semver-patch` ignore does in fact suppress a `v7.0.1 -> v7.0.2` bump has not been
-driven against the real tool, and the check does not rest on it: a pin the
-config's own stated rationale assumes to be floating is worth holding to that
-shape either way. Two directions are outside it -- a bare-major pin
-from an org no entry names (the ignore list's completeness, which fails noisily
-rather than silently), and what a ref resolves to, since the ref is read as text.
-
-**Open assumption: `dependency-name: "github/*"` and subpath actions.** No
-`ignore` entry exists today, so this assumption is idle until one is added. Whether
-that pattern covers `github/codeql-action/init` is unsettled in two parts:
-whether the glob crosses `/` at all, and whether the dependency name Dependabot
-reports for a subpath action is the repository (`github/codeql-action`) or the
-full path. The check takes the inclusive reading -- `*` matches across `/` --
-which is the fail-closed direction, since it requires more pins to be bare
-majors and so stays correct if the narrower reading turns out to be
-Dependabot's. Under the narrower reading the ignore silently fails to apply and
-those pins draw within-major pull requests: drift in the noisy direction rather
-than the silent one. Determining it takes a run against the real service from
-outside this repository's firewalled development container -- a subpath action
-exact-pinned under a `github/*` ignore, and an observation of whether a bump
-opens. Observing this repository's own Dependabot pull requests does not
-determine it: its `github/codeql-action` pins are bare majors, so under either
-reading there may be nothing to open.
 
 ### The Pages deploy tool
 

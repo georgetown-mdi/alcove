@@ -29,7 +29,8 @@ import {
 //   - the deployed sites are built from a clean install, not a restored
 //     actions/cache entry, off a pull request;
 //   - the release publish job's image builds read no shared layer cache;
-//   - every remote action is pinned to a commit with its release tag beside it;
+//   - every remote action is pinned to a commit with its release tag beside it,
+//     and Dependabot holds back no within-major update of one;
 //   - each job taking a site from the web gate downloads it by the id its
 //     package job reported and checks it against that job's digest;
 //   - each wrangler-action step runs wrangler installed from the committed
@@ -147,6 +148,25 @@ describe("the actions in the signing and publishing jobs", () => {
       ({ text }) => !/@[0-9a-f]{40} # v\d+\.\d+\.\d+$/.test(text),
     );
     expect(unpinned).toEqual([]);
+  });
+
+  // A commit pin moves only by a Dependabot pull request, so an ignore entry
+  // holding back minor or patch updates would freeze every pin it covers.
+  it("has no Dependabot ignore entry holding back a within-major action update", () => {
+    const block = parse(
+      readFileSync(resolve(repoRoot, ".github/dependabot.yml"), "utf8"),
+    ).updates.find(
+      (candidate) => candidate["package-ecosystem"] === "github-actions",
+    );
+    expect(block).toBeDefined();
+    const withinMajor = (entry) =>
+      !Array.isArray(entry["update-types"]) ||
+      entry["update-types"].some((type) =>
+        ["version-update:semver-minor", "version-update:semver-patch"].includes(
+          type,
+        ),
+      );
+    expect((block.ignore ?? []).filter(withinMajor)).toEqual([]);
   });
 
   it("finds jobs holding the signing identity or the Docker Hub publish token, each using such an action", () => {

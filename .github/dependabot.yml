@@ -257,8 +257,10 @@ updates:
       default-days: 7
     # A commit pin never moves on its own, so no update type is ignored: a
     # within-major release is the only way a pin picks up a later fix. One group
-    # holds every action update, so a weekly run opens one pull request.
+    # holds every minor and patch action update, so a weekly run opens one pull
+    # request for them; each major bump opens its own.
     groups:
       github-actions:
         patterns:
           - "*"
+        update-types: ["minor", "patch"]

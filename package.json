@@ -40,7 +40,6 @@
     "check:action-pin-drift": "node scripts/check-action-pin-drift.mjs",
     "check:checkout-ref-override": "node scripts/check-checkout-ref-override.mjs",
     "check:merge-gate-identities": "node scripts/check-merge-gate-identities.mjs",
-    "check:dependabot-ignore-shape": "node scripts/check-dependabot-ignore-shape.mjs",
     "check:dependabot-pin-coverage": "node scripts/check-dependabot-pin-coverage.mjs",
     "check:nested-root-package": "node scripts/check-nested-root-package.mjs",
     "check:locked-dep-ranges": "node scripts/check-locked-dep-ranges.mjs",
