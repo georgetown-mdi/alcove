@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
+import { MAX_DIRECTORY_ENTRIES } from "@alcove/core";
+
 import {
   SFTP_MAX_INBOUND_PACKET_LENGTH,
   SFTP_MAX_OUTBOUND_PACKET_LENGTH,
@@ -8,6 +10,7 @@ import {
 } from "@psi/transport/browserSsh/sftp/sftpClient";
 import {
   SftpFailureError,
+  SftpNameCountOverCapError,
   SftpNoSuchFileError,
   SftpOperationUnsupportedError,
   SftpPacketTooLargeError,
@@ -393,6 +396,16 @@ describe("SftpClient refusals that end the session", () => {
     const error = await failure(outstanding);
     expect(error).toBeInstanceOf(SftpProtocolError);
     expect((error as SftpProtocolError).detail).toMatch(/request 9/);
+    expect(await client.ended).toBe(error);
+    expect(channel.closeCalls).toBe(1);
+  });
+
+  test("ends the session on a NAME declaring more names than a listing may hold", async () => {
+    const { channel, client } = await startClient();
+    const outstanding = client.readdir(HANDLE);
+    channel.deliver(packet(T.name, u32(1), u32(MAX_DIRECTORY_ENTRIES + 1)));
+    const error = await failure(outstanding);
+    expect(error).toBeInstanceOf(SftpNameCountOverCapError);
     expect(await client.ended).toBe(error);
     expect(channel.closeCalls).toBe(1);
   });

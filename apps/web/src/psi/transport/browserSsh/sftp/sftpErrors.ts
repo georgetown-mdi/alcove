@@ -142,6 +142,22 @@ export class SftpProtocolError extends Error {
   }
 }
 
+/**
+ * A NAME reply declared more names than one listing may hold. The session
+ * ends before any of the names is read.
+ */
+export class SftpNameCountOverCapError extends Error {
+  override readonly name = "SftpNameCountOverCapError";
+  constructor(
+    readonly declaredCount: number,
+    readonly maxCount: number,
+  ) {
+    super(
+      `The SFTP server declared ${declaredCount} names in one reply, over this client's limit of ${maxCount}, so the session was ended.`,
+    );
+  }
+}
+
 /** The server declared a packet longer than the client's inbound cap. */
 export class SftpPacketTooLargeError extends Error {
   override readonly name = "SftpPacketTooLargeError";

@@ -1,0 +1,45 @@
+- The three share one definition of that composition (`fittedCauseLink` in `apps/cli/src/connection/causeLink.ts`), so the order of its two transforms is stated once rather than re-derived per guard, which is the way it silently comes out wrong. -> The three share one definition of that composition (`fittedCauseLink` in `packages/core/src/connection/transportOperationBounds.ts`, which the browser SFTP transport's refusals compose with too), so the order of its two transforms is stated once rather than re-derived per guard, which is the way it silently comes out wrong.
+- This document specifies how the CLI's SFTP adapter recovers when the server drops its session mid-exchange, with the constant values and enforcement points: which losses are re-dialed and which stay terminal, the bounds on recovery and what each protects, what the accounting counts, how a torn operation is re-issued, the operations concurrent with a re-dial or a release, the outstanding-operation hold on an idle boundary, the deferred cleanup-delete record, the session-transition lock, and the connection's terminal close. -> This document specifies how the CLI's SFTP adapter recovers when the server drops its session mid-exchange, with the constant values and enforcement points: which losses are re-dialed and which stay terminal, the bounds on recovery and what each protects, what the accounting counts, how a torn operation is re-issued, the operations concurrent with a re-dial or a release, the outstanding-operation hold on an idle boundary, the deferred cleanup-delete record, the session-transition lock, the connection's terminal close, and how the browser SFTP transport differs.
+- - -> The browser SFTP transport
+- - -> The web app's SFTP file transport (`apps/web/src/psi/transport/browserSsh/browserSftpTransport.ts`) does not recover a dropped session, a stated limit.
+- - -> No page loads it yet ([TRANSPORT_BOUNDS.md, Browser SFTP transport bounds](TRANSPORT_BOUNDS.md#browser-sftp-transport-bounds)).
+- - -> **A drop ends the exchange.**
+- - -> Once the channel or the relay socket closes, the operation in flight and every later one reject with an `SftpSessionClosedError`, and none is re-dialed or re-issued.
+- - -> The file-sync connection reports the first such rejection, and the exchange fails with it rather than waiting out its inactivity budget.
+- - -> **One dial.**
+- - -> `connect()` makes one attempt, so `max_reconnect_attempts` bounds nothing on this transport.
+- - -> **No idle release.**
+- - -> The transport implements none of `releaseForIdle`, `ensureConnected`, and `beginTeardown`, so `connection_per_poll` has no effect and one session lasts the whole exchange.
+- - -> It sends no heartbeat either, so a server with a short idle cap can drop a session that has gone quiet.
+- - -> Recovery as this document states it for the CLI -- the re-dial and re-issue, the accounting, the deferred cleanup-delete record, the session-transition lock, and the idle release -- is a separate stage, projected at 1,000 to 1,500 changed non-test lines ([browser-sftp-proxy.md, Sizing](../notes/browser-sftp-proxy.md#sizing)).
+- This document specifies the memory bounds Alcove's transports hold against what a hostile party writes for them to read, with their constant values and enforcement points: the file-sync inbound frame-size bound and the per-exchange and per-part bounds beneath it, the browser SFTP client's packet bound, the directory-listing bound, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound. -> This document specifies the memory bounds Alcove's transports hold against what a hostile party writes for them to read, with their constant values and enforcement points: the file-sync inbound frame-size bound and the per-exchange and per-part bounds beneath it, the browser SFTP client's packet bound and its file transport's bounds, the directory-listing bound, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound.
+- - -> Browser SFTP transport bounds
+- - -> The web app's SFTP file transport (`apps/web/src/psi/transport/browserSsh/browserSftpTransport.ts`) runs a file-sync connection over the SFTP client above.
+- - -> No page loads it yet: `selectExchangeDriver` (`apps/web/src/psi/exchangeDriverSelection.ts`) selects no driver that builds it, so the shipped bundles do not change.
+- - -> It holds the CLI SFTP adapter's memory bounds at the same figures, read from core (`packages/core/src/connection/transportOperationBounds.ts`) rather than restated, and fails each with the same terminal error type.
+- - -> **Inbound frame size.**
+- - -> `get()` refuses a file once it holds more than the `maxBytes` its caller passes, with a `FrameSizeExceededError`, whatever size the listing reported.
+- - -> Each READ asks for no more than one byte past the cap, so the transport holds at most `maxBytes` bytes of the file.
+- - -> The caller's cap is the one the [frame-size bound](#inbound-frame-size-bound) sets for the CLI.
+- - -> **Directory listing.**
+- - -> `list()` reads one READDIR reply at a time and refuses more than **8,192 entries** (`MAX_DIRECTORY_ENTRIES`) or a name over **255 bytes** of UTF-8 (`MAX_FILE_NAME_BYTES`), with a `DirectoryListingBoundsError`, checking the entry count first as both CLI adapters do.
+- - -> One reply is itself bounded by the [packet bound](#browser-sftp-packet-bound).
+- - -> A reply declaring more than 8,192 names is refused from its count field, before any name is read, and `list()` reports it as the same `DirectoryListingBoundsError`, so it never holds more than 8,192 entries.
+- - -> Its liveness bounds are in [TRANSPORT_LIVENESS.md, Browser SFTP transport liveness](TRANSPORT_LIVENESS.md#browser-sftp-transport-liveness).
+- This document specifies the liveness bounds on Alcove's file-sync transport operations, with their constant values and enforcement points: the per-operation deadlines, the whole-exchange budget, the send-window guard, the connect-probe bound, the rule a consumer applies to a bound's refusal, and the slow-operation warning, together with the SFTP session heartbeat and TCP keepalive that keep a quiet session from being dropped. -> This document specifies the liveness bounds on Alcove's file-sync transport operations, with their constant values and enforcement points: the per-operation deadlines, the whole-exchange budget, the send-window guard, the connect-probe bound, the rule a consumer applies to a bound's refusal, the slow-operation warning, and the browser SFTP transport's counterparts of these bounds, together with the SFTP session heartbeat and TCP keepalive that keep a quiet session from being dropped.
+- - -> Browser SFTP transport liveness
+- - -> The web app's SFTP file transport ([TRANSPORT_BOUNDS.md, Browser SFTP transport bounds](TRANSPORT_BOUNDS.md#browser-sftp-transport-bounds)) holds the per-operation bounds above at the same figures, read from core (`packages/core/src/connection/transportOperationBounds.ts`).
+- - -> Each fails with a terminal `TransportOperationStalledError`.
+- - -> **`list()`**: **16,384 READDIR round-trips** and **60 seconds** over the whole listing.
+- - -> The directory handle is closed on failure, and one the server returns after the deadline is closed when it arrives.
+- - -> **`get()`**: **60 seconds** with no data, reset by each READ reply that holds data; an empty DATA reply is not progress.
+- - -> **`put()`**: **60 seconds** with no acknowledged **64 KiB** chunk, the closing CLOSE included.
+- - -> It does not retry a write the server refused.
+- - -> **`createExclusive()`, `rename()`, `delete()`, `safeDelete()`, `exists()`**: **60 seconds** for the whole operation, the follow-up STAT of an exclusive create included.
+- - -> The bounds only race: a request they abandon can still be answered, and its reply is then discarded.
+- - -> Its connect is bounded as the CLI's is, by `serverConnectTimeoutMs` (the dial's `readyTimeout`), in two windows.
+- - -> The first covers the relay socket, the key exchange, the host-key check, authentication and the `sftp` subsystem request; on expiry the transport closes the relay socket.
+- - -> The second covers SFTP's INIT and VERSION exchange.
+- - -> Either expiry rejects with a `BrowserSftpConnectTimeoutError`, a `TimeoutError` naming the phase.
+- - -> The transport makes one dial attempt, and `end()` closes the session and the relay socket at once without waiting on the server.
+- - -> It has no slow-operation warning, no heartbeat and no TCP keepalive, which a page cannot set.

@@ -9,7 +9,8 @@ The relay is first-party and fixed-target, by the maintainer's ruling of 2026-10
 Spike S8 drove three browser SSH clients: `@microsoft/dev-tunnels-ssh` passed with three additions in the spike's own code, `ssh2` bundled for the browser passed only against a server that also offers an ECDSA host key, and `@verdigris/libssh2.js` failed.
 The browser SSH client is `@microsoft/dev-tunnels-ssh`, chosen by the maintainer on 2026-10-29 and conditional on a dependency check and a sizing, measured on 2026-10-30: the licence check passes, the maintenance check does not, and the client is sized ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
 Its session layer is built (`apps/web/src/psi/transport/browserSsh/`), with `diffie-hellman` stubbed and ECDH the only key exchange offered, and completes a session through the relay against OpenSSH's sshd, measured on 2026-11-11 ([What it adds to the browser bundle](#what-it-adds-to-the-browser-bundle)).
-The SFTP client over it is built, and no shipped page loads either.
+The SFTP client over it is built, and so is the file transport over that, which completes a file-sync exchange through the relay against sshd ([TRANSPORT_BOUNDS.md, Browser SFTP transport bounds](../spec/TRANSPORT_BOUNDS.md#browser-sftp-transport-bounds)); no shipped page loads any of the three.
+The transport does not recover a dropped session, a stated limit ([SFTP_SESSION_RECOVERY.md, The browser SFTP transport](../spec/SFTP_SESSION_RECOVERY.md#the-browser-sftp-transport)); recovery is a separate stage.
 The note frames what a browser SFTP path would need, recommends where it can, and lists the choices left open for the maintainer.
 Nothing here is normative: the channel-security rules are in
 [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it),
@@ -284,9 +285,11 @@ The browser's SFTP client (`apps/web/src/psi/transport/browserSsh/sftp/`) sends 
 It reassembles SFTP packets from channel data itself, and each packet declares its own length, so it caps that length at the DATA reply to its largest READ ([TRANSPORT_BOUNDS.md, Browser SFTP packet bound](../spec/TRANSPORT_BOUNDS.md#browser-sftp-packet-bound)).
 That cap is a frame-size control, which puts the SFTP client under security review in its own right.
 The bounds in the table above are the file transport's, not the SFTP client's.
+The browser's file transport (`browserSftpTransport.ts`) takes each of them at core's figures, except the `put` retry and the heartbeat, and its `end` closes the session without waiting on the server ([TRANSPORT_LIVENESS.md, Browser SFTP transport liveness](../spec/TRANSPORT_LIVENESS.md#browser-sftp-transport-liveness)).
 
-Core's file-sync engine uses Node's global `Buffer` (`fileSyncConnection.ts`, `fileSyncFraming.ts`, `fileSyncMessageLoop.ts`, `abortMarker.ts`, `controlEnvelope.ts`), and the web application defines none.
-`FileSyncConnection` has never run in a browser, so whether it needs more than a `Buffer` global is not known.
+Core's file-sync engine uses Node's global `Buffer` (`fileSyncConnection.ts`, `fileSyncFraming.ts`, `fileSyncMessageLoop.ts`, `abortMarker.ts`, `controlEnvelope.ts`), and the web application defines none; the SSH client provides the `buffer` package as one.
+`FileSyncConnection` runs in a browser on that global with two Node-only calls replaced: a timer's `unref`, and the frame header's `writeBigUInt64BE`, which the `buffer` package lacks before version 6 (the web app resolves 5.7.1).
+Driven on 2026-11-11 by `apps/web/test/browser/browserSftpTransport.test.ts`: two parties in one page rendezvous, exchange a 600,000-byte message and a reply, and clean up.
 
 ### Sizing
 

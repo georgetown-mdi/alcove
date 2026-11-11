@@ -1,10 +1,9 @@
-import { NO_RELAY_CANDIDATE_GATHERED } from "@alcove/core";
+import { fittedCauseLink, NO_RELAY_CANDIDATE_GATHERED } from "@alcove/core";
 
 import {
   ALLOWED_RELAYS_REMEDY,
   LEFT_OUT_BY_ALLOWED_RELAYS,
 } from "../../allowedRelays";
-import { fittedCauseLink } from "../causeLink";
 
 import type { RTCPeerConnection } from "werift";
 
@@ -212,7 +211,7 @@ export function describeSelectedCandidatePair(
  * cannot be what the fitting below clips it away for.
  *
  * Each link is fitted at this composition site
- * ({@link ../causeLink.fittedCauseLink}), so the partner's candidate types can
+ * ({@link fittedCauseLink}), so the partner's candidate types can
  * only ever spend the budget of the link they sit alone on.
  */
 export function iceFailureDetails(

@@ -10,6 +10,7 @@ import {
   deserializeFileSyncMessage,
   IncompatibleEnvelopeVersionError,
 } from "../../src/connection/fileSyncFraming";
+import { InternalConsistencyError } from "../../src/errors";
 
 const textPayload = (s: string): Uint8Array => new TextEncoder().encode(s);
 
@@ -29,6 +30,23 @@ test("header is exactly MESSAGE_HEADER_BYTES with version || type || seq layout"
   expect(seq).toBe(258n);
   expect(header[8]).toBe(0x01);
   expect(header[9]).toBe(0x02);
+});
+
+test.each([-1, 2 ** 64, Number.MAX_SAFE_INTEGER + 1, 1.5, Number.NaN])(
+  "the header writer refuses the sequence number %s",
+  (seq) => {
+    expect(() =>
+      serializeFileSyncMessageHeader(MESSAGE_TYPE_BINARY, seq),
+    ).toThrow(InternalConsistencyError);
+  },
+);
+
+test("the header writer accepts the largest safe-integer sequence number", () => {
+  const header = serializeFileSyncMessageHeader(
+    MESSAGE_TYPE_BINARY,
+    Number.MAX_SAFE_INTEGER,
+  );
+  expect(header.readBigUInt64BE(2)).toBe(BigInt(Number.MAX_SAFE_INTEGER));
 });
 
 test("whole-message serialization is header || payload with the declared length", () => {

@@ -5,7 +5,24 @@ import {
   TimeoutError,
   withTimeout,
   retryPromise,
+  unrefTimer,
 } from "../../src/utils/promise";
+
+describe("unrefTimer", () => {
+  test("unrefs a Node timer and leaves a browser's numeric timer alone", () => {
+    const timer = setTimeout(() => {}, 1_000);
+    try {
+      expect(timer.hasRef()).toBe(true);
+      unrefTimer(timer);
+      expect(timer.hasRef()).toBe(false);
+    } finally {
+      clearTimeout(timer);
+    }
+    expect(() =>
+      unrefTimer(7 as unknown as ReturnType<typeof setTimeout>),
+    ).not.toThrow();
+  });
+});
 
 describe("TimeoutError", () => {
   test("is an Error subclass holding the message and a stable name", () => {

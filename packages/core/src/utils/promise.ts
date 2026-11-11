@@ -28,6 +28,23 @@ export class TimeoutError extends Error {
 export const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /**
+ * Keep `timer` from holding a Node process open. A browser timer is a number
+ * with no `unref`, so there it does nothing.
+ *
+ * @internal
+ */
+export function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+  const handle: unknown = timer;
+  if (
+    typeof handle === "object" &&
+    handle !== null &&
+    "unref" in handle &&
+    typeof handle.unref === "function"
+  )
+    handle.unref();
+}
+
+/**
  * Races `promise` against a `ms`-millisecond deadline. Rejects with a
  * {@link TimeoutError} holding `message` if the deadline fires first;
  * otherwise settles with `promise`'s own result. The timer is cleared when

@@ -411,8 +411,9 @@ production client, enrolls each exchange's key through a test route beside it,
 and reads back what the relay forwarded through another.
 
 The browser SSH client cases (`apps/web/test/browser/browserSshClient.test.ts`),
-and the SFTP client cases over its channel (`browserSftpClient.test.ts`, beside
-it), start OpenSSH's sshd (`@alcove/testkit/nativeSshd`) behind the SFTP relay
+the SFTP client cases over its channel (`browserSftpClient.test.ts`, beside
+it), and the file-sync exchange over the browser SFTP transport
+(`browserSftpTransport.test.ts`) start OpenSSH's sshd (`@alcove/testkit/nativeSshd`) behind the SFTP relay
 (`packages/sftp-relay`), both in the test runner's process, through browser
 commands (`apps/web/test/devServer/sshTargetCommands.ts`). The page passes its
 own origin, the one origin the relay admits, and sends the client's public key
