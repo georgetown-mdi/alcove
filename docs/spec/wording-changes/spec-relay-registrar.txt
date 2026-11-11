@@ -1,0 +1,229 @@
+# Move the relay registrar contract into its own spec: the text enters docs/spec/ from infra/relay/README.md as adds, the enrollment section of RELAY_CREDENTIALS.md shrinks to the client's view, and the indexes and citations are retargeted.
+- [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md) | How a party authenticates to the relays an exchange uses: the relay key and exchange id derived from the shared secret, the time-limited TURN credential, the relay locator an invitation carries and the relays a run lists, the registrar request proof and the WebSocket relay proof, enrolling and registering the relay key at a registrar, and the web application's relay check. | Security auditors, external implementors, developers | The key exchange and the label space the derivations sit in (see [PROTOCOL.md](PROTOCOL.md#p-256-authenticated-key-exchange)); the rotation that replaces the secret each run (see [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md)); the WebSocket relay's wire (see [WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md)); the registrar's operating contract (see [infra/relay/README.md](../../infra/relay/README.md#the-registrar)); the connection fields that name a relay (see [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md)) -> [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md) | How a party authenticates to the relays an exchange uses: the relay key and exchange id derived from the shared secret, the time-limited TURN credential, the relay locator an invitation carries and the relays a run lists, the registrar request proof and the WebSocket relay proof, enrolling and registering the relay key at a registrar, and the web application's relay check. | Security auditors, external implementors, developers | The key exchange and the label space the derivations sit in (see [PROTOCOL.md](PROTOCOL.md#p-256-authenticated-key-exchange)); the rotation that replaces the secret each run (see [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md)); the WebSocket relay's wire (see [WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md)); the registrar's HTTP contract (see [RELAY_REGISTRAR.md](RELAY_REGISTRAR.md)) and how a host runs it (see [infra/relay/README.md](../../infra/relay/README.md#the-registrar)); the connection fields that name a relay (see [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md))
+- It does not cover the P-256 authenticated key exchange and the label space the derivations sit in (see [PROTOCOL.md](PROTOCOL.md#p-256-authenticated-key-exchange)), the rotation that replaces the secret each run (see [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md)), the WebSocket relay's own wire protocol (see [WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md)), the registrar's operating contract (see [infra/relay/README.md](../../infra/relay/README.md#the-registrar)), or the connection fields that name a relay (see [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md)). -> It does not cover the P-256 authenticated key exchange and the label space the derivations sit in (see [PROTOCOL.md](PROTOCOL.md#p-256-authenticated-key-exchange)), the rotation that replaces the secret each run (see [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md)), the WebSocket relay's own wire protocol (see [WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md)), the registrar's HTTP contract (see [RELAY_REGISTRAR.md](RELAY_REGISTRAR.md)) and how a host runs it (see [infra/relay/README.md](../../infra/relay/README.md#the-registrar)), or the connection fields that name a relay (see [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md)).
+- The reference relay's registrar (`infra/relay/registrar.py`; its contract is `infra/relay/README.md`, The registrar) takes one of two credentials in the `Authorization` header. -> The reference relay's registrar (`infra/relay/registrar.py`; its contract is [RELAY_REGISTRAR.md](RELAY_REGISTRAR.md)) takes one of two credentials in the `Authorization` header.
+- A connection's request must arrive whole within a few seconds of the registrar accepting it ([infra/relay/README.md](../../infra/relay/README.md#the-registrar), Bounds on a connection). -> A connection's request must arrive whole within a few seconds of the registrar accepting it ([RELAY_REGISTRAR.md](RELAY_REGISTRAR.md#bounds-on-a-connection)).
+- A `PUT` under a proof on such a row, a renewal or a rotation, keeps that lapse whatever `maxAgeDays` its body names, so a row enrolled without a token is never extended past it; the key still authenticates until the next sweep removes the lapsed row, up to the sweep's interval later ([infra/relay/README.md](../../infra/relay/README.md#the-registrar)); only the relay-owner token's `PUT`, the operator's recovery route, replaces it. -> A `PUT` under a proof on such a row, a renewal or a rotation, keeps that lapse whatever `maxAgeDays` its body names, and only the relay-owner token's `PUT`, the operator's recovery route, replaces it.
+- The registrar limits enrollments without a token from each client address within a window, and answers one past the limit 429 with `Retry-After`, the seconds until the window ends, writing nothing. -> The registrar limits enrollments without a token for each client address, the rows an address holds that have not lapsed, and the rows it holds in all, and answers one past a limit 429 (the address's limits) or 503 (the total) with `Retry-After`, the seconds until the limit frees, writing nothing.
+- The registrar holds at most 70 rows enrolled without a token for each client address ([infra/relay/README.md](../../infra/relay/README.md#enrollment-without-a-token)), so a host running more exchanges at once than that can be refused. -> The registrar holds at most 70 rows enrolled without a token for each client address ([RELAY_REGISTRAR.md](RELAY_REGISTRAR.md#enrollment-without-a-token)), so a host running more exchanges at once than that can be refused.
+- A registrar whose operator turns it on (`infra/relay/README.md`, Enrollment without a token) also enrolls an exchange on a `POST /exchanges/<exchange_id>` that holds no `Authorization` header, so a party holding no relay-owner token can enroll the relay key it relays under. -> -
+- Its values are the registrar's (`infra/relay/README.md`, Enrollment without a token). -> -
+- The registrar holds at most a set number of rows enrolled without a token that have not lapsed for each client address, and answers an enrollment of an id not yet held past it 429 with `Retry-After`, the seconds until the first of that address's rows lapses, writing nothing; an enrollment naming the key an id already holds is still answered 200. -> -
+- The cap is a small fraction of the ceiling below at its default, so one address cannot fill the ceiling alone. -> -
+- Its value, and the prefix an IPv6 address counts under, are the registrar's (`infra/relay/README.md`, Enrollment without a token). -> -
+- The registrar does not check a request's `Origin`, and its CORS answers allow every origin, so any page a browser on a network loads can send enrollments without a token from that network's address. -> -
+- They count against that address's rate limit and its cap, and its own enrollments can then be refused 429 until the window ends or the rows lapse. -> -
+- The registrar holds at most a set number of rows enrolled without a token that have not lapsed, and answers an enrollment of an id not yet held past it 503 with `Retry-After`, the seconds until the first of those rows lapses, writing nothing; an enrollment naming the key an id already holds is still answered 200. -> -
+- Its value, derived from what each row adds to the relay's authentication of every credential, is the registrar's (`infra/relay/README.md`, Enrollment without a token). -> -
+- Many addresses, each at its cap, can still reach it. -> -
+- At the ceiling, a browser run that could not enroll dials without the default relay, with its other relays or by STUN alone, until rows lapse. -> -
+- A 2xx whose body is the registrar's answer ([infra/relay/README.md](../../infra/relay/README.md#the-registrar)): a JSON object of at most 4096 bytes stating `maxAgeDays`, a whole number or `null`, and `lapsesAt`, a UTC timestamp or `null`. -> -
+- - -> [RELAY_REGISTRAR.md](RELAY_REGISTRAR.md) | The relay registrar's HTTP contract: the relay-owner token and the proof as its two credentials, the calls and their answers, the bounds on a connection, the operator's recovery route, and enrollment without a token with its fixed lapse, rate limit, cap on each client and ceiling. | Implementors of a registrar client, whoever runs a relay, security auditors | The proof's format and the key it is signed under (see [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-registrar-request-proof)); what a client does with an answer (see [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#registering-the-rotated-relay-key)); where the registrar listens, who must reach it, what it logs and what it counts (see [infra/relay/README.md](../../infra/relay/README.md#the-registrar))
+- - -> **The registrar's calls and answers, its bounds on a connection, or the limits on enrollment without a token** -> [RELAY_REGISTRAR.md](RELAY_REGISTRAR.md).
+- - -> A registrar whose operator turns it on ([RELAY_REGISTRAR.md](RELAY_REGISTRAR.md#enrollment-without-a-token)) also enrolls an exchange on a `POST /exchanges/<exchange_id>` that holds no `Authorization` header, so a party holding no relay-owner token can enroll the relay key it relays under.
+- - -> **The limits.**
+- - -> An enrollment naming the key an id already holds is still answered 200.
+- - -> An enrollment naming the key an id already holds is still answered 200.
+- - -> An enrollment naming the key an id already holds is still answered 200.
+- - -> The values and where they come from are the registrar's ([RELAY_REGISTRAR.md](RELAY_REGISTRAR.md#enrollment-without-a-token)).
+- - -> Many addresses, each at its cap, can still reach the total, and a browser run that could not enroll then dials without the default relay, with its other relays or by STUN alone, until rows lapse.
+- - -> A 2xx whose body is the registrar's answer ([RELAY_REGISTRAR.md](RELAY_REGISTRAR.md#the-calls)): a JSON object of at most 4096 bytes stating `maxAgeDays`, a whole number or `null`, and `lapsesAt`, a UTC timestamp or `null`.
+- - -> title: "Relay Registrar"
+- - -> Relay registrar
+- - -> This document specifies the HTTP contract of the relay's registrar (`infra/relay/registrar.py`): the two credentials a request holds, the calls and their answers, the bounds on a connection, the operator's recovery route, and enrollment without a token with the limits on it.
+- - -> It is the implementation-level complement to [The registrar](../../infra/relay/README.md#the-registrar) in the relay's README, which says how a host turns the registrar on, where it listens, who must reach it, what it logs and what it counts.
+- - -> It does not cover the proof's format and the key it is signed under (see [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-registrar-request-proof)), what a client does with an answer (see [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#registering-the-rotated-relay-key) and [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#enrolling-at-a-default-relay)), or the secrets table the registrar writes ([Per-exchange keys](../../infra/relay/README.md#per-exchange-keys)).
+- - -> Intended readers are implementors of a registrar client, whoever runs a relay, and security auditors.
+- - -> Every constant below is in `infra/relay/registrar.py` unless another file is named.
+- - -> A value called arbitrary is a working value, raised on request.
+- - -> What it is
+- - -> The registrar is an HTTPS service beside coturn that enrolls, rotates and revokes an exchange's relay key, so a browser party can register the key it rotates to at the end of each run without shell access to the relay host.
+- - -> Its one path is `/exchanges/<exchange-id>`, and it takes `POST`, `PUT` and `DELETE`, with `OPTIONS` for a CORS preflight.
+- - -> It writes through `infra/relay/relay_table.py`, the one write path to the table coturn reads its per-exchange secrets from, and a write is one transaction.
+- - -> It is optional: `install.sh` runs it only on a host holding the relay-owner token.
+- - -> Authentication
+- - -> Every request but a CORS preflight holds one credential in its `Authorization` header, or, where enrollment without a token is on, holds none and enrolls ([Enrollment without a token](#enrollment-without-a-token)).
+- - -> **The relay-owner token.**
+- - -> `Authorization: Bearer <token>` enrolls an exchange the relay does not yet hold (`POST`).
+- - -> It also registers or revokes any exchange unconditionally (`PUT`, `DELETE`): that is the operator's recovery route ([Recovery is the operator's action](#recovery-is-the-operators-action)).
+- - -> **A proof.**
+- - -> `Authorization: Alcove-Relay-Proof ts=<unix-seconds>,mac=<hex64>` shows the caller holds the key the exchange has registered, and rotates (`PUT`) or revokes (`DELETE`) that exchange.
+- - -> Its format, the key it is signed under and test vectors are in [RELAY_CREDENTIALS.md, The registrar request proof](RELAY_CREDENTIALS.md#the-registrar-request-proof), and core's `relayRegistrarAuthorization` makes one.
+- - -> It holds no token, so the routine calls after enrollment never need the token.
+- - -> **A refused credential.**
+- - -> A request with neither credential, other than an enrollment without a token, a request with a wrong token, and a request with a malformed proof are each answered 401, and nothing is written.
+- - -> **A stale proof.**
+- - -> A proof whose `ts` is more than 300 s (`PROOF_WINDOW_SECONDS`) from the registrar's clock is answered 401 with `serverTime`, the registrar's Unix seconds, so a caller whose clock has drifted signs again.
+- - -> **A preflight.**
+- - -> A CORS preflight (`OPTIONS`) is answered 204 without a credential and does nothing.
+- - -> **Other methods.**
+- - -> Any method but `POST`, `PUT`, `DELETE` and `OPTIONS`, `GET`, `TRACE` and `PROPFIND` included, is answered 401 without a credential and 405 with one, in JSON, and writes nothing.
+- - -> **Nothing else authenticates.**
+- - -> Authentication reads the `Authorization` header and nothing else, no cookie and no query parameter.
+- - -> No answer carries `Access-Control-Allow-Credentials`, so a browser's ambient credentials never authenticate a cross-origin call, and `Access-Control-Allow-Origin: *` is safe for that reason.
+- - -> The calls
+- - -> request | credential | writes | answer
+- - -> `POST /exchanges/<exchange-id>` with `{"key": "<key-hex64>", "maxAgeDays": <days> \| null}` | token | the key's row and the exchange's mapping, for an id not yet enrolled | 200 and `{"message": ..., "maxAgeDays": ..., "lapsesAt": ...}`
+- - -> `PUT /exchanges/<exchange-id>` with the same body | proof | the new key in place of the one proven, or a renewal of the key held | as `POST`
+- - -> `DELETE /exchanges/<exchange-id>` | proof | what `revoke-exchange.sh <exchange-id>` writes | 200 and `{"message": ...}`
+- - -> `PUT` or `DELETE`, as above | token | what `register-exchange.sh <exchange-id> <days\|none>` or `revoke-exchange.sh <exchange-id>` writes, whatever key the exchange holds | as above
+- - -> `POST /exchanges/<exchange-id>` with `{"key": "<key-hex64>", "maxAgeDays": null}`, where enrollment without a token is on | none: no `Authorization` header | as the token's `POST`, the row lapsing at a time the registrar fixes | as `POST`, `maxAgeDays` `null` and `lapsesAt` the fixed lapse
+- - -> **Enrolling** is create-only.
+- - -> Enrolling an exchange again with the key it holds changes nothing and is answered 200 with the registration as held, so a caller can repeat a call whose answer it lost.
+- - -> Enrolling it with any other key is answered 409.
+- - -> **A rotation** replaces the key only if the proof verifies under the key the exchange holds when the write takes the table's lock.
+- - -> That is a compare-and-swap: of two rotations proven under one key only the first lands, and a proof made under a key since replaced is answered 409.
+- - -> **A renewal.**
+- - -> A `PUT` naming the key the exchange already holds renews it, whichever key its proof was made under, so the second party to register a rotated key renews the row rather than failing.
+- - -> The renewal restarts the lapse and takes `maxAgeDays` from the body.
+- - -> **A revocation** under a proof deletes the row only if the proof verifies under the key the exchange holds.
+- - -> A proof for an exchange not enrolled is answered 409.
+- - -> The two 409 messages tell a caller holding no key whether an id is enrolled, so exchange ids should reveal nothing about the parties.
+- - -> **`maxAgeDays`** is required: a whole number of days, or `null` for a row that never lapses.
+- - -> A body that leaves it out is refused, so a re-registration cannot clear a lapse by omission.
+- - -> The registrar checks the exchange id, the key and `maxAgeDays` against the rules of [Per-exchange keys](../../infra/relay/README.md#per-exchange-keys), The arguments, and answers a value that fails them 400 with a fixed message naming the field and never the value, before anything is written.
+- - -> **The answer** states the resulting lapse: `maxAgeDays` as registered, and `lapsesAt` as an ISO 8601 UTC time or `null`.
+- - -> **The reserved prefix.**
+- - -> An id starting with `alcove-verify-` is refused 400 unless the request carries `Alcove-Relay-Verify-Run: 1`, which `verify.sh` sends and which the preflight does not allow a browser to send.
+- - -> An enrollment without a token of such an id is also refused 400 unless its client address is loopback, since any other client can send that header.
+- - -> That address is the connection's own on the registrar's port, and the one the front's PROXY header names on the front's port.
+- - -> `verify.sh`, which runs on the relay host, sends those enrollments to `127.0.0.1`.
+- - -> **The body.**
+- - -> A body that is not that JSON object is answered 400, one over 1024 bytes (`MAX_BODY_BYTES`) 413, and one without a `Content-Length` 411.
+- - -> A revocation under a proof may send no body, which it signs as empty.
+- - -> **A malformed request.**
+- - -> A request line or header block the registrar cannot parse is answered in JSON with the connection closed, as is a request line over 4096 bytes (414, `MAX_REQUEST_LINE_BYTES`) and a request line and headers over 8192 bytes together (431, `MAX_HEAD_BYTES`).
+- - -> **A refusal on the exchange's state.**
+- - -> A key another exchange holds, an id not registered, and a proof that does not verify under the key held are each answered 409 with `{"error": ...}`, which never contains the key.
+- - -> **A table failure.**
+- - -> A table that cannot be read or written is answered 500 with one fixed message, and the cause, naming the table's file, goes to the registrar's journal only.
+- - -> **The order of work.**
+- - -> A proof is checked before the table is opened for writing, and one write runs at a time.
+- - -> Bounds on a connection
+- - -> **One request, within 3 s.**
+- - -> A connection's TLS handshake and its request, and on the front's port the PROXY header before them, must arrive whole within 3 s (`REQUEST_DEADLINE_SECONDS`) of the registrar accepting it, however the bytes are spaced, or the connection is closed.
+- - -> **One request a connection.**
+- - -> The registrar answers one request on a connection.
+- - -> Every answer holds `Connection: close` and the connection is closed after it, so each request is sent on a connection of its own.
+- - -> **Answering and the table.**
+- - -> Sending a response has its own 15 s bound (`RESPONSE_DEADLINE_SECONDS`).
+- - -> A write waits for the registrar's in-process lock no longer than what remains of its request's 3 s, and answers 503 with `Retry-After` and writes nothing past it.
+- - -> The SQLite lock wait inside the table open and transaction is bounded separately by `BUSY_TIMEOUT_SECONDS` (10 s, in `infra/relay/relay_table.py`), whatever the deadline.
+- - -> If an outside holder keeps that lock past it, the answer is the fixed 500, not a 503.
+- - -> **Connections at once.**
+- - -> At most 32 connections (`MAX_HANDLERS`) are served at once.
+- - -> Past that, up to 8 more (`MAX_BUSY_ANSWERS`) are answered 503 with `Retry-After: 3`, and any further ones are closed unanswered.
+- - -> A connection in that busy band gets the 503 only when it sends its request within 3 s (`BUSY_DEADLINE_SECONDS`, which follows the request's deadline), and one that stalls is closed unanswered.
+- - -> The `Retry-After` value is `RETRY_AFTER_SECONDS`, which follows the busy deadline.
+- - -> Every connection past the 32 is counted as `busy_refusals` ([What it counts](../../infra/relay/README.md#what-it-counts)).
+- - -> **What one address can still hold.**
+- - -> No address's connections are bounded, on either port.
+- - -> A connection that sends no request holds a slot for at most 3 s, so one address opening about 13 connections a second (40 slots / 3 s; arithmetic, not measured) can still hold every slot.
+- - -> While it does, every other client is answered 503 or closed unanswered.
+- - -> `busy_refusals` rises while that lasts, and its alarm ([Monitoring](../../infra/relay/README.md#the-alarms)) names the response.
+- - -> **The values.**
+- - -> These bounds, and the 4096 and 8192 byte limits above, are arbitrary working values.
+- - -> Recovery is the operator's action
+- - -> An exchange whose key nobody holds any more, a key lost or a registrar holding a key the caller no longer has, is recovered by the relay's operator, deliberately: the token on `PUT` or `DELETE`, or `register-exchange.sh` and `revoke-exchange.sh` on the host.
+- - -> A client never falls back to the token on its own when a proof is answered 401 or 409: a client that did would make the token the credential for every call again.
+- - -> Enrollment without a token
+- - -> A browser party enrolls the exchange it is about to run with no token: it holds none, and any token a served page held would be public.
+- - -> Where `ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT=on` in `relay.env`, the registrar takes a `POST` with no `Authorization` header as an enrollment.
+- - -> Off, or unset, it answers that `POST` 401.
+- - -> The setting is read at start, and a value other than `on` or `off` stops the registrar starting.
+- - -> **What it writes.**
+- - -> As the token's enrollment, for an id not yet enrolled: the key's row and the exchange's mapping.
+- - -> Any id in the registrar's id space is accepted.
+- - -> The exchange id a browser exchange uses is [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#relay-credential-derivation)'s to state.
+- - -> **The lapse is the registrar's.**
+- - -> The body must send `"maxAgeDays": null`, and any other value is answered 400 with nothing written.
+- - -> The row lapses 4200 s (70 minutes) after the enrollment (`TOKENLESS_LIFETIME_SECONDS`), and the answer states it: `maxAgeDays` `null` and `lapsesAt` that time.
+- - -> **Why 70 minutes.**
+- - -> They are what one browser exchange needs.
+- - -> The inviter enrolls right before its run contacts the coordination server and waits at most 10 minutes for its partner (`DEFAULT_PEER_WAIT_TIMEOUT_MS`, `apps/web/src/psi/transport/waitForConnection.ts`), and each party then mints a credential that lasts 3600 s (`RELAY_CREDENTIAL_MAX_TTL_SECONDS`, `packages/core/src/relayCredential.ts`), under which a new allocation needs the row.
+- - -> **How long a row lives.**
+- - -> A lapsed row authenticates until the sweep deletes it, within about eleven minutes of its lapse ([Per-exchange keys](../../infra/relay/README.md#per-exchange-keys), Lifetime), so a row lives at most about 81 minutes.
+- - -> **The same key again, and another key.**
+- - -> An enrollment of the key the id already holds is answered 200 with the registration as held, its lapse unchanged: both parties derive the same key from the same secret, and either may enroll.
+- - -> Another key is answered 409, so a caller cannot replace or revoke an exchange whose key it does not hold.
+- - -> That holds for an id the token enrolled too.
+- - -> **No extension past the lapse.**
+- - -> A `PUT` under a proof on a row enrolled without a token, a renewal or a rotation to a new key, keeps the row's lapse whatever `maxAgeDays` its body names, and the answer states that lapse.
+- - -> Only the relay-owner token's `PUT`, the operator's recovery route, replaces it with the lapse its body names.
+- - -> A `DELETE` under a proof revokes the row as for any other.
+- - -> **The client's address.**
+- - -> On the registrar's own port, the connection's address.
+- - -> Through the front, the address in its PROXY header, since every connection the front passes comes from `127.0.0.1` ([Where it listens](../../infra/relay/README.md#the-registrar)).
+- - -> For the rate limit, an IPv6 address counts as its /64, which one host commonly holds whole.
+- - -> For the cap on each client, below, it counts as its /48.
+- - -> At most 20 enrollments without a token from one client address in a window of 600 s from its first (`TOKENLESS_ENROLLMENTS_PER_WINDOW`, `TOKENLESS_WINDOW_SECONDS`, arbitrary).
+- - -> **Past it.**
+- - -> An enrollment is answered 429 with `Retry-After`, the seconds until the window ends, which the answer lets a browser's script read (`Access-Control-Expose-Headers`), and nothing is written.
+- - -> **What counts.**
+- - -> Each request is counted before its id or body is read, so a malformed one, or one probing whether an id is held, counts too.
+- - -> **Why 20.**
+- - -> One exchange costs at most two enrollments, the inviter's and its partner's, each sent once with no retry, so 20 in 10 minutes, the length of the inviter's wait, admits about ten exchanges set up at once behind one address, such as a facility's shared network address.
+- - -> The registrar reads no `Origin` header, and its CORS answers allow every origin, so any page a browser on a network loads can send enrollments without a token from that network's address.
+- - -> Those count against the address's rate limit and its cap on each client, so that address's own enrollments can be refused 429 until the window ends or the rows lapse.
+- - -> At most 70 rows enrolled without a token and not yet lapsed are held for one client address (`TOKENLESS_ROWS_PER_CLIENT`), counted inside the enrollment's own write.
+- - -> Past it, an enrollment of an id not yet held is answered 429 with `Retry-After`, the seconds until the first of that address's rows lapses, and nothing is written.
+- - -> A row revoked, or lapsed, no longer counts.
+- - -> **Why 70.**
+- - -> It is derived from the rate limit above and the row's lifetime, not measured: (20 enrollments per 600 s window / 2 enrollments per exchange) x (4200 s lifetime / 600 s window) = 10 x 7 = 70.
+- - -> The 2 counts the requests an exchange sends: the inviter's and its partner's, each a run's one enrollment under the exchange's current secret.
+- - -> The first creates the row, and the second repeats its key, is answered 200, and creates none, so an exchange holds one row whichever of its parties enrolls it.
+- - -> A row lives 4200 s (70 minutes) whether its exchange relays or not, which is seven windows.
+- - -> So 70 is the row count an address reaches enrolling at the rate limit for a row's whole life at two requests per exchange: 10 rows in each window, 70 in seven, with none yet lapsed.
+- - -> An address whose every request creates a row, as when each of its exchanges is enrolled from it by one party only or each request names a new id, creates 20 rows in a window and reaches 70 after 3.5 windows, 35 minutes.
+- - -> It is then refused (429) until its oldest rows lapse, though it is within the rate limit.
+- - -> The registrar computes the value from `TOKENLESS_ENROLLMENTS_PER_WINDOW`, `TOKENLESS_ENROLLMENTS_PER_EXCHANGE`, `TOKENLESS_LIFETIME_SECONDS` and `TOKENLESS_WINDOW_SECONDS`, so it follows them.
+- - -> For the default ceiling below, 1800, one address holds at most 70 / 1800 of it, about 3.9 percent.
+- - -> **IPv6.**
+- - -> The cap counts an IPv6 address as its /48, not its /64: a site is commonly assigned a /56 or a /48, so counting /64s would give one holder 256 to 65,536 caps.
+- - -> A site on IPv6 then shares one cap across its /48, as a facility on IPv4 shares one across its address.
+- - -> The reference deployment's names are DNS A records only ([aws/provision.md](../../infra/relay/aws/provision.md)), so there every client reaches the registrar, and is counted, by its IPv4 address.
+- - -> **Held in memory.**
+- - -> Which address enrolled each row is held in the registrar's memory and written nowhere.
+- - -> A row the registrar revokes is dropped at once, and a lapsed row is dropped only when a later enrollment without a token arrives.
+- - -> A restart of the registrar clears it, so after one an address can enroll up to 70 more while its earlier rows still hold, and the ceiling below still bounds them all.
+- - -> **How many addresses.**
+- - -> At most 4096 addresses' windows are held at once (`MAX_TRACKED_ADDRESSES`, arbitrary).
+- - -> With all of them taken, an enrollment from another address is answered 429, until the oldest window ends, and writes nothing.
+- - -> At most 1800 rows enrolled without a token and not yet lapsed are held in the realm at once (`ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING` in `relay.env`, 1800 where unset, a whole number of at least 1), counted inside the enrollment's own write.
+- - -> Past it, an enrollment of an id not yet held is answered 503 with `Retry-After`, the seconds until the first of those rows lapses, and nothing is written.
+- - -> Every such row is a secret in coturn's `turn_secret` for the realm, and coturn checks a credential against every secret the realm holds, so the ceiling bounds the work callers holding no credential can add to each authentication.
+- - -> **Where 1800 comes from.**
+- - -> From what a row costs, not from what the relay serves.
+- - -> **Authentication.**
+- - -> A request with a wrong credential is checked against every row.
+- - -> A model of one check, two HMAC-SHA1s and an MD5 in Python, measured about 5.5 microseconds a row on a development machine.
+- - -> The bound is a full scan of about 10 ms, an arbitrary working value, and 10 ms / 5.5 microseconds is about 1800 rows.
+- - -> **Size.**
+- - -> About 400 bytes a row in `turndb`, measured on the same machine, so 1800 rows add under 1 MB and 18,000 about 7 MB, small beside the instance's memory.
+- - -> The size does not set the ceiling.
+- - -> **Use.**
+- - -> Use at full relay capacity holds about 140 rows, under a tenth of the ceiling.
+- - -> `total-quota` (40, `ALCOVE_RELAY_TOTAL_QUOTA`) allows 20 relayed exchanges at once, at two allocations each.
+- - -> Taking `max-allocate-lifetime`'s 600 s as how long an exchange holds them, that is 2 exchanges a minute, each holding one row for 70 minutes.
+- - -> The formula is `total-quota x 3.5`: on raising the quota, keep the ceiling well above it.
+- - -> **On the relay host.**
+- - -> The cost of a row is an estimate, and the 2026-10-15 measurement on the relay host could not resolve it: each timed allocation included a client start of 11 to 17 s, and with no rows added, with 1800 and with 18,000 the times showed no difference beyond that noise.
+- - -> The default 1800 stays a modeled working value.
+- - -> A timing that leaves out the client's start confirms the ceiling, or lowers it to 10 ms over the measured cost of a row.
+- - -> **What a flood holds.**
+- - -> A lapsed row is not counted, and the sweep deletes it within about eleven minutes, so a flood holds at most about 1800 x 81 / 70, about 2100, such rows in the table.
+- - -> **The limit.**
+- - -> One address holds at most 70 rows, so filling the default ceiling takes 26 client addresses, IPv4 addresses or IPv6 /48s (1800 / 70, about 25.7), fewer by the rows legitimate use holds.
+- - -> Many addresses can still fill it.
+- - -> Then an enrollment without a token of a new id is refused until rows lapse, up to 70 minutes, and a browser run that could not enroll dials without the default relay, by STUN alone.
+- - -> A run that never relays still holds a row, so legitimate use setting up more than about 25 exchanges a minute reaches it too.
+- - -> Each refusal is counted ([What it counts](../../infra/relay/README.md#what-it-counts)), for the relay's monitoring.
+- - -> Tests
+- - -> **The registrar as a process.**
+- - -> `scripts/relay-exchange-keys.test.mjs` starts `registrar.py` on a fixture table and drives the calls, the statuses, the bounds and each limit above: the token and proof routes, the compare-and-swap, the renewal, the verify prefix, the body and head bounds, the connection deadline and slot caps, the front's PROXY header, and enrollment without a token with its lapse, rate limit, cap on each client and ceiling.
+- - -> **The authentication surface.**
+- - -> The same file reads `registrar.py` and holds `Authorization` to the one header authentication reads, and checks a preflight is answered without a credential and allows none.
+- - -> **The proof.**
+- - -> `scripts/relay-exchange-keys.test.mjs` and `packages/core/test/relayRegistrarProof.test.ts` each derive the proof of [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-registrar-request-proof)'s vectors.
+- - -> **The client.**
+- - -> `packages/core/test/relayRegistrarClient.test.ts` drives core's registrar client against recorded answers of the shapes above.

@@ -863,7 +863,7 @@ describe("registerRelayKey", () => {
 
 describe("enrollRelayKeyWithoutToken", () => {
   // What the registrar answers an enrollment without a token: the lapse is
-  // its own (infra/relay/README.md, Enrollment without a token).
+  // its own (docs/spec/RELAY_REGISTRAR.md, Enrollment without a token).
   const TOKENLESS_ANSWER = {
     message: "registered",
     maxAgeDays: null,

@@ -17,7 +17,7 @@ ceiling on all such rows. Any other request
 is answered 401 before its body is parsed. Authentication reads that header and nothing else, and no answer allows
 credentials, so a browser's cookies never authenticate a call. A write is one
 transaction through relay_table.py beside this file, the secrets table's one
-write path. infra/relay/README.md, The registrar, is the contract, and
+write path. docs/spec/RELAY_REGISTRAR.md is the contract, and
 docs/spec/RELAY_CREDENTIALS.md, The registrar request proof, the proof's format.
 
 Listens on ALCOVE_RELAY_REGISTRAR_PORT on every address, and, where the
@@ -65,7 +65,8 @@ REALM = os.environ.get("ALCOVE_RELAY_REALM") or ""
 NAME = os.environ.get("ALCOVE_RELAY_REGISTRAR_NAME") or ""
 FRONT_PORT = os.environ.get("ALCOVE_RELAY_REGISTRAR_FRONT_PORT") or "8445"
 TOKENLESS_SETTING = os.environ.get("ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT") or "off"
-# README.md, Enrollment without a token, The ceiling, derives the default.
+# docs/spec/RELAY_REGISTRAR.md, Enrollment without a token, The ceiling,
+# derives the default.
 DEFAULT_TOKENLESS_CEILING = 1800
 TOKENLESS_CEILING_SETTING = os.environ.get("ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING") or str(
     DEFAULT_TOKENLESS_CEILING
@@ -120,9 +121,10 @@ ISSUANCE_LINE = "credential issuance: exchange=%s time=%s outcome=%s authority=%
 AUTHORITY_TOKEN = "relay-owner-token"
 AUTHORITY_PROOF = "proof"
 AUTHORITY_NONE = "none"
-# Enrollment without a token; README.md, The registrar, derives each value. The
-# lapse outlasts the web app's 10-minute wait for its partner followed by the
-# 3600 s credential minted when the partner arrives.
+# Enrollment without a token; docs/spec/RELAY_REGISTRAR.md, Enrollment without
+# a token, derives each value. The lapse outlasts the web app's 10-minute wait
+# for its partner followed by the 3600 s credential minted when the partner
+# arrives.
 TOKENLESS_LIFETIME_SECONDS = 4200
 # Arbitrary working values, raised on request.
 TOKENLESS_ENROLLMENTS_PER_WINDOW = 20
@@ -290,7 +292,8 @@ def client_key(address):
 def site_key(address):
     """The key the cap on each client's rows counts `address` under: an IPv4
     address, or the /48 holding an IPv6 one, the prefix one site is commonly
-    assigned (README.md, Enrollment without a token, The cap on each client)."""
+    assigned (docs/spec/RELAY_REGISTRAR.md, Enrollment without a token, The cap
+    on each client)."""
     parsed = ipaddress.ip_address(address)
     if parsed.version == 6 and parsed.ipv4_mapped is not None:
         return str(parsed.ipv4_mapped)
