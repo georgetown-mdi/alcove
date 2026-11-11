@@ -34,3 +34,17 @@
 - - -> A frame with no figure, a data frame, and the end of the receive each clear a figure shown, so a figure is never left on screen after the wait.
 - - -> A figure read from the queue while the party computes is kept, and shown when the party next waits if nothing else is queued by then.
 - Such a refusal is a malformed frame of still-working length, the older-version reading, or a forged, replayed or altered envelope of still-working length. -> Such a refusal is a malformed frame of one of the still-working frame's lengths, the older-version reading, or a forged, replayed or altered envelope of one of those lengths.
+- - -> **What the partner learns.**
+- - -> The partner reads a figure, or none, from each frame, about every 30 s, so it learns when each of the sender's crypto operations in the PSI phase started and ended, and how far it had got at each frame, to within about one frame interval.
+- - -> On a PSI-C exchange that includes the receiver's match step ([What each party learns, and on what basis](#what-each-party-learns-and-on-what-basis)).
+- - -> The figure is computed only from the operation's processed and total value counts, and the processed count moves only at the chunk boundaries the engine splits the set at, which depend on the set's size and the party's memory budget, never on its values (`overChunks`, `packages/core/src/psi/psiEngine.ts`), so it carries no data value and no number of matches.
+- - -> **Each party learns when the other's crypto operations ran, and that is accepted.**
+- - -> On a WebRTC data channel or a WebSocket relay, each party's still-working frames state its progress through its current crypto operation about every 30 s ([The still-working frame](#the-still-working-frame)), so a sender running this protocol learns when the receiver's match step started and ended, to within about one frame interval.
+- - -> The figure carries no data value and no number of matches.
+- - -> The [threat-model scope](#threat-model-scope-of-the-count-only-claim) states what timing the match revealed when measured together with the receiver's masking, under the deviating sender's timing; the match step's duration on its own is not measured.
+- - -> A file-sync exchange sends no still-working frame.
+- An honest sender's own setup hides the match entirely. -> On a file-sync channel an honest sender's own setup hides the match entirely.
+- - -> On a WebRTC data channel or a WebSocket relay the receiver's still-working frames tell any sender, honest or not, when the match step started and ended, to within about one frame interval ([What each party learns, and on what basis](#what-each-party-learns-and-on-what-basis)).
+- - -> **A partner can fill the buffer.**
+- - -> A partner that keeps alternating still-working frames with and without a figure adds at most one `partnerProgress` figure per 15 s and one clear after each, 480 events an hour, so the buffer fills after about 21 h of such a wait and the job ends with the overflow terminal above.
+- - -> This is accepted: such a partner can already hold the wait open with no upper bound ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)), so the outcome is a failed job rather than a hung one.

@@ -908,6 +908,8 @@ Each of those values, and the preflight's own, is described in [Warning sources 
 
 **Buffer cap.** The event buffer is capped at 10,000 entries (a runaway safety check; a real CLI stream is dozens of lines). On overflow the job is failed rather than dropping events silently: a synthesized `error` terminal is appended, the child is `SIGKILL`ed, and status becomes `failed`, so a supervisor never observes a truncated history.
 
+**A partner can fill the buffer.** A partner that keeps alternating still-working frames with and without a figure adds at most one `partnerProgress` figure per 15 s and one clear after each, 480 events an hour, so the buffer fills after about 21 h of such a wait and the job ends with the overflow terminal above. This is accepted: such a partner can already hold the wait open with no upper bound ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-wait-through-a-partners-psi-step)), so the outcome is a failed job rather than a hung one.
+
 ## Exit-code reconciliation
 
 The child's exit is classified from the exit code and signal, per the CLI's terminal contract ([CLI_EVENTS.md](CLI_EVENTS.md#terminal-event-guarantees)): exit `0` is `succeeded`; an interrupt -- exit `130` or `143`, or death to `SIGINT`/`SIGTERM` -- is `cancelled`; exit `73` is `completedWithPersistenceLoss`; any other exit or signal is `failed`, with the exit code recorded. An interrupt legitimately produces no terminal fd-3 event, so a `cancelled` job's stream is not a broken one.
