@@ -461,7 +461,7 @@ describe("a certificate the wire format does not admit is refused at parse", () 
   for (const [label, identity] of cases)
     for (const refusingRole of ["initiator", "responder"] as const) {
       const overBound = {
-        version: "alcove-signing-cert/v3",
+        version: "alcove-signing-cert/v1",
         algorithm: "ecdsa-p256-sha256",
         identity,
         publicKey: identityB.certificate.publicKey,

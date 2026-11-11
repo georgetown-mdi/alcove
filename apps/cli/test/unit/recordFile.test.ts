@@ -65,7 +65,7 @@ afterEach(() => {
 
 // A minimal but schema-valid record + verification-keys pair to write to disk.
 const record: ExchangeRecord = {
-  version: "alcove-exchange-record/v12",
+  version: "alcove-exchange-record/v1",
   outcome: "completed",
   certificateMismatchObserved: false,
   createdAt: "2026-01-02T03:04:05.000Z",
@@ -93,7 +93,7 @@ const record: ExchangeRecord = {
 };
 
 const keys: VerificationKeys = {
-  version: "alcove-exchange-keys/v2",
+  version: "alcove-exchange-keys/v1",
   salts: {
     localPayloadSent: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
     partnerPayloadReceived: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",

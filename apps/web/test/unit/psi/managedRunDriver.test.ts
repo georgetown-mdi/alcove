@@ -1830,7 +1830,7 @@ describe("filing the run's disclosure", () => {
         audit: {
           record,
           keys: {
-            version: "alcove-exchange-keys/v2",
+            version: "alcove-exchange-keys/v1",
             salts: {
               localPayloadSent: "local-payload-salt",
               partnerPayloadReceived: "partner-payload-salt",
@@ -2053,7 +2053,7 @@ describe("filing a stopped run's disclosure", () => {
     return {
       record: await disclosureRecord({ outcome: "receipt-swap-terminated" }),
       keys: {
-        version: "alcove-exchange-keys/v2",
+        version: "alcove-exchange-keys/v1",
         salts: {
           localPayloadSent: "local-payload-salt",
           partnerPayloadReceived: "partner-payload-salt",
@@ -2126,7 +2126,7 @@ describe("filing a stopped run's disclosure", () => {
         partnerPayloadColumn: "ward",
       }),
       keys: {
-        version: "alcove-exchange-keys/v2",
+        version: "alcove-exchange-keys/v1",
         salts: {
           localPayloadSent: "local-payload-salt",
           partnerPayloadReceived: "partner-payload-salt",

@@ -40,9 +40,10 @@ import { CHECKS } from "./run-checks.mjs";
 /**
  * The two obligations the exchange-record literal holds. The bump rule's whole
  * value is that it fires on a move and on nothing else; the reset rule's two
- * halves bind at opposite ends of one release marker, and the repository sits on
- * the first half. So the move and the armed reset states are driven through the
- * real script against fixture trees, and the rules that read the tree as it
+ * halves bind at opposite ends of one release marker, and the repository has
+ * recorded the reset. So the move and the development states are driven
+ * through the real script, or a staged copy of it holding the development
+ * constants, against fixture trees, and the rules that read the tree as it
  * stands read the real sources rather than strings that look like them.
  */
 
@@ -99,8 +100,8 @@ function publishedState(overrides = {}) {
  * driven end to end through the real script.
  */
 function fixtureTree({
-  releaseVersion = INERT_RELEASE,
-  declared = DEVELOPMENT_VERSION,
+  releaseVersion = FIRST_RESET_RELEASE,
+  declared = RESET_RECORD_VERSION,
   recordSource,
   omitRecovery = null,
 } = {}) {
@@ -135,6 +136,53 @@ function runCheck(root, script = SCRIPT) {
   } catch (error) {
     return { status: error.status, stdout: error.stdout, stderr: error.stderr };
   }
+}
+
+/**
+ * A copy of the check with each `[from, to]` edit applied to its source, beside
+ * the modules it imports. Its two recorded constants are not inputs a fixture
+ * tree holds, so this is how a state of them other than the committed one is
+ * driven through the real script.
+ */
+function stagedCheck(edits) {
+  // Resolved, since the temporary directory can sit behind a symlink and the
+  // script runs its check only when started by the path it resolves to.
+  const scriptRoot = realpathSync(
+    mkdtempSync(resolve(tmpdir(), "alcove-record-version-script-")),
+  );
+  temporaryRoots.push(scriptRoot);
+  mkdirSync(resolve(scriptRoot, "scripts/lib"), { recursive: true });
+  for (const module of [
+    "scripts/lib/deferredObligation.mjs",
+    "scripts/lib/releaseManifest.mjs",
+  ]) {
+    copyFileSync(resolve(repoRoot, module), resolve(scriptRoot, module));
+  }
+  const staged = resolve(scriptRoot, CHECK_SOURCE);
+  writeFileSync(
+    staged,
+    edits.reduce((text, [from, to]) => {
+      expect(text).toContain(from);
+      return text.replace(from, to);
+    }, readRoot(CHECK_SOURCE)),
+  );
+  return staged;
+}
+
+const COMMITTED_PIN_LINE = `export const RECORD_VERSION_PIN = "${RECORD_VERSION_PIN}";`;
+
+/** The check as development left it: the development pin, no reset recorded. */
+function developmentCheck() {
+  return stagedCheck([
+    [
+      COMMITTED_PIN_LINE,
+      `export const RECORD_VERSION_PIN = "${DEVELOPMENT_VERSION}";`,
+    ],
+    [
+      `export const RESET_TAKEN_AT_RELEASE = "${RESET_TAKEN_AT_RELEASE}";`,
+      "export const RESET_TAKEN_AT_RELEASE = undefined;",
+    ],
+  ]);
 }
 
 describe("reading the declared record version", () => {
@@ -399,8 +447,9 @@ describe("the recorded reset discharge", () => {
     expect(violations[0].message).toContain("ahead of the");
   });
 
-  it("is unrecorded in the committed tree", () => {
-    expect(RESET_TAKEN_AT_RELEASE).toBeUndefined();
+  it("is recorded at 0.9.0 in the committed tree, with the pin at the reset value", () => {
+    expect(RESET_TAKEN_AT_RELEASE).toBe(FIRST_RESET_RELEASE);
+    expect(RECORD_VERSION_PIN).toBe(RESET_RECORD_VERSION);
   });
 });
 
@@ -411,7 +460,7 @@ describe("the check as CI runs it", () => {
     expect(status).toBe(0);
     expect(stdout).toContain(RECORD_VERSION_PIN);
     expect(stdout).toContain("recovery path");
-    expect(stdout).toContain("development counter");
+    expect(stdout).toContain(`taken at release ${FIRST_RESET_RELEASE}`);
     expect(stdout).toContain(RESET_RECORD_VERSION);
   });
 
@@ -428,6 +477,7 @@ describe("the check as CI runs it", () => {
         releaseVersion: FIRST_RESET_RELEASE,
         declared: "alcove-exchange-record/v13",
       }),
+      developmentCheck(),
     );
 
     expect(status).toBe(1);
@@ -451,9 +501,27 @@ describe("the check as CI runs it", () => {
       expect(stderr).toContain(`${omitted}: "${name}"`);
   });
 
+  it("passes a development tree through the staged development check, so that copy is faithful", () => {
+    const { status, stdout } = runCheck(
+      fixtureTree({
+        releaseVersion: INERT_RELEASE,
+        declared: DEVELOPMENT_VERSION,
+      }),
+      developmentCheck(),
+    );
+
+    expect(status).toBe(0);
+    expect(stdout).toContain(DEVELOPMENT_VERSION);
+    expect(stdout).toContain("development counter");
+  });
+
   it("fails a reset taken before the release that publishes it", () => {
     const { status, stderr } = runCheck(
-      fixtureTree({ declared: RESET_RECORD_VERSION }),
+      fixtureTree({
+        releaseVersion: INERT_RELEASE,
+        declared: RESET_RECORD_VERSION,
+      }),
+      developmentCheck(),
     );
 
     expect(status).toBe(1);
@@ -461,8 +529,12 @@ describe("the check as CI runs it", () => {
   });
 
   it("leaves the development counter alone on every release below 0.9.0", () => {
+    const script = developmentCheck();
     for (const releaseVersion of ["0.1.0", "0.8.0", "0.8.99"]) {
-      const { status, stdout } = runCheck(fixtureTree({ releaseVersion }));
+      const { status, stdout } = runCheck(
+        fixtureTree({ releaseVersion, declared: DEVELOPMENT_VERSION }),
+        script,
+      );
 
       expect(status).toBe(0);
       expect(stdout).toContain("development counter");
@@ -472,6 +544,7 @@ describe("the check as CI runs it", () => {
   it("fails a reset taken on a release below 0.9.0", () => {
     const { status, stderr } = runCheck(
       fixtureTree({ releaseVersion: "0.8.99", declared: RESET_RECORD_VERSION }),
+      developmentCheck(),
     );
 
     expect(status).toBe(1);
@@ -479,8 +552,12 @@ describe("the check as CI runs it", () => {
   });
 
   it("asks for the reset at 0.9.0 and every release above it", () => {
+    const script = developmentCheck();
     for (const releaseVersion of ["0.9.0", "0.10.0", "1.0.0"]) {
-      const { status, stderr } = runCheck(fixtureTree({ releaseVersion }));
+      const { status, stderr } = runCheck(
+        fixtureTree({ releaseVersion, declared: DEVELOPMENT_VERSION }),
+        script,
+      );
 
       expect(status).toBe(1);
       expect(stderr).toContain("Take the reset as one piece");
@@ -493,59 +570,45 @@ describe("the check as CI runs it", () => {
         releaseVersion: FIRST_RESET_RELEASE,
         declared: RESET_RECORD_VERSION,
       }),
+      stagedCheck([
+        [
+          `export const RESET_TAKEN_AT_RELEASE = "${RESET_TAKEN_AT_RELEASE}";`,
+          "export const RESET_TAKEN_AT_RELEASE = undefined;",
+        ],
+      ]),
     );
 
     expect(status).toBe(1);
     expect(stderr).toContain("records no RESET_TAKEN_AT_RELEASE");
   });
 
-  it("passes a published release whose recorded discharges retire both rules", () => {
-    // Both discharges driven through the real script, since each is a constant
-    // in the check rather than an input the fixture tree holds.
+  it("passes a forward bump after the recorded reset once its pin is recorded", () => {
     const moved = "alcove-exchange-record/v2";
-    // Resolved, since the temporary directory can sit behind a symlink and the
-    // script runs its check only when started by the path it resolves to.
-    const scriptRoot = realpathSync(
-      mkdtempSync(resolve(tmpdir(), "alcove-record-version-script-")),
-    );
-    temporaryRoots.push(scriptRoot);
-    mkdirSync(resolve(scriptRoot, "scripts/lib"), { recursive: true });
-    for (const module of [
-      "scripts/lib/deferredObligation.mjs",
-      "scripts/lib/releaseManifest.mjs",
-    ]) {
-      copyFileSync(resolve(repoRoot, module), resolve(scriptRoot, module));
-    }
-    const source = readRoot(CHECK_SOURCE);
-    const edits = [
-      [
-        "export const RESET_TAKEN_AT_RELEASE = undefined;",
-        `export const RESET_TAKEN_AT_RELEASE = "${FIRST_RESET_RELEASE}";`,
-      ],
-      [
-        `export const RECORD_VERSION_PIN = "${RECORD_VERSION_PIN}";`,
-        `export const RECORD_VERSION_PIN = "${moved}";`,
-      ],
-    ];
-    const staged = resolve(scriptRoot, CHECK_SOURCE);
-    writeFileSync(
-      staged,
-      edits.reduce((text, [from, to]) => {
-        expect(text).toContain(from);
-        return text.replace(from, to);
-      }, source),
-    );
-
     const { status, stdout } = runCheck(
       fixtureTree({
         releaseVersion: FIRST_RESET_RELEASE,
         declared: moved,
       }),
-      staged,
+      stagedCheck([
+        [COMMITTED_PIN_LINE, `export const RECORD_VERSION_PIN = "${moved}";`],
+      ]),
     );
 
     expect(status).toBe(0);
     expect(stdout).toContain(`taken at release ${FIRST_RESET_RELEASE}`);
+  });
+
+  it("fails a forward bump after the recorded reset until its pin is recorded", () => {
+    const { status, stderr } = runCheck(
+      fixtureTree({
+        releaseVersion: FIRST_RESET_RELEASE,
+        declared: "alcove-exchange-record/v2",
+      }),
+    );
+
+    expect(status).toBe(1);
+    expect(stderr).toContain("moved from");
+    expect(stderr).not.toContain("Take the reset as one piece");
   });
 
   it("fails a marker it cannot read rather than treating the reset as not due", () => {

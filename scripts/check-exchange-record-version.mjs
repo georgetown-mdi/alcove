@@ -63,7 +63,7 @@ export const CHECK_SOURCE = "scripts/check-exchange-record-version.mjs";
 
 /** The exchange-record version the recovery path has been driven against. Moving
  * it here is how the bump decision this check defers is recorded as taken. */
-export const RECORD_VERSION_PIN = "alcove-exchange-record/v12";
+export const RECORD_VERSION_PIN = "alcove-exchange-record/v1";
 
 /** The entry points the recovery from a version-invalidated accounting is built
  * on, per file. Named functions rather than a surface description: a declaration
@@ -92,7 +92,7 @@ export const CHECKLIST_STEP = `docs/RELEASES.md, "${CHECKLIST_HEADING}"`;
  * The release the reset was taken at, or undefined while it has not been taken.
  * Recording it here retires the reset rule.
  */
-export const RESET_TAKEN_AT_RELEASE = undefined;
+export const RESET_TAKEN_AT_RELEASE = "0.9.0";
 
 /**
  * The exchange-record version literal declared in the given source, or

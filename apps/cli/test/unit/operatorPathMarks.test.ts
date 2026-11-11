@@ -157,7 +157,7 @@ async function raised(act: () => unknown): Promise<unknown> {
 // --- the record and receipt writers ------------------------------------------
 
 const RECORD: ExchangeRecord = {
-  version: "alcove-exchange-record/v12",
+  version: "alcove-exchange-record/v1",
   outcome: "completed",
   certificateMismatchObserved: false,
   createdAt: "2026-01-02T03:04:05.000Z",
@@ -185,7 +185,7 @@ const RECORD: ExchangeRecord = {
 };
 
 const KEYS: VerificationKeys = {
-  version: "alcove-exchange-keys/v2",
+  version: "alcove-exchange-keys/v1",
   salts: {
     localPayloadSent: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
     partnerPayloadReceived: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
@@ -193,7 +193,7 @@ const KEYS: VerificationKeys = {
 };
 
 const CERTIFICATE = {
-  version: "alcove-signing-cert/v3" as const,
+  version: "alcove-signing-cert/v1" as const,
   algorithm: "ecdsa-p256-sha256" as const,
   identity: "Party A",
   publicKey: {
@@ -207,7 +207,7 @@ const CERTIFICATE = {
 };
 
 const DUAL_SIGNED_RECORD: DualSignedRecord = {
-  version: "alcove-signed-receipt/v4",
+  version: "alcove-signed-receipt/v1",
   content: {
     termsHash: "dGVybXNIYXNo",
     initiatorToResponderPayload: "aTJyUGF5bG9hZA",
