@@ -135,4 +135,4 @@ offer-following without rebuilding anything in place.
   lifetime. The werift refresh timer the measurement above found armed per
   attempt is disarmed by the close on the pinned werift (held by
   `webrtcTurnRefreshTimer.test.ts`;
-  [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#the-behavioural-assumptions)).
+  [WEBRTC_STACK.md](../spec/WEBRTC_STACK.md#the-behavioural-assumptions)).

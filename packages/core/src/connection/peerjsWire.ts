@@ -18,7 +18,7 @@ import { PEERJS_CHUNK_MTU } from "./webrtcOutboundBound";
  *
  * Every shape here was measured against the installed `peerjs` 1.5.5 and
  * `peerjs-js-binarypack` 2.1.0 rather than read off their sources, so each
- * upgrade of either is re-verified against them (docs/spec/DEPENDENCY_PINS.md). What was
+ * upgrade of either is re-verified against them (docs/spec/WEBRTC_STACK.md). What was
  * measured: the chunk envelope's four keys and their order, the 16,300-byte
  * chunking threshold, the close sentinel's exact object, the
  * truthy-`__peerData` receive dispatch, and the fact that `pack` encodes a

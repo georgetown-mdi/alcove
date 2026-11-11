@@ -47,7 +47,7 @@ What the figures decide:
   At the browser's ceiling one worker masks 1,677,722 elements a chunk: about 973 s between reports at 0.58 ms, and 1,017 s at the WebAssembly figure above.
   The message is therefore sent on a timer, and the progress count is not forwarded.
 - **The transports already detect a lost link.**
-  The CLI's peer reports a vanished partner in about 30 s by consent freshness (measured, [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#the-behavioural-assumptions)).
+  The CLI's peer reports a vanished partner in about 30 s by consent freshness (measured, [WEBRTC_STACK.md](../spec/WEBRTC_STACK.md#the-behavioural-assumptions)).
   The WebSocket relay pings every 30 s (`RELAY_PING_INTERVAL_MS`) and drops a socket 90 to 120 s after its last answer ([WEBSOCKET_RELAY.md, Keepalive](../spec/WEBSOCKET_RELAY.md#keepalive)).
   What none of them sees is a partner whose link is up and whose run has stopped: a frozen tab, or a page whose main thread no longer runs.
 - **Holds on the sending thread.**

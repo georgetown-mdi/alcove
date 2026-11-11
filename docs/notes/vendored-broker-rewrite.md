@@ -118,7 +118,7 @@ A wire-compatible rewrite needs none.
 The URL, the mount and the messages stay as they are, and the standing host takes the new code through [the host pull](../../infra/host-pull/README.md).
 Invitations and kept exchanges name the URL, which does not change.
 
-A replacement that changed the wire, for instance one built around exchange pairing rather than PeerJS ids, would break every browser party until the web app stopped using the stock PeerJS client, which it relies on for the data channel and its framing as well as for signaling ([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack)).
+A replacement that changed the wire, for instance one built around exchange pairing rather than PeerJS ids, would break every browser party until the web app stopped using the stock PeerJS client, which it relies on for the data channel and its framing as well as for signaling ([WEBRTC_STACK.md](../spec/WEBRTC_STACK.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack)).
 It would also break every CLI image already released, against [the compatibility policy](../RELEASES.md#compatibility-policy).
 That is outside what this decision could take on.
 

@@ -297,7 +297,7 @@ const RELAY_CORE_SUBPATH_MESSAGE =
   "Import what this workspace uses from @alcove/core/websocket-relay; the package root pulls core's whole dependency set into a network-facing process's runtime closure. A name the subpath lacks is added to packages/core/src/websocketRelay.ts.";
 
 const BINARYPACK_LIBRARY_IMPORT_MESSAGE =
-  "Do not import peerjs-js-binarypack here: Alcove's encoder and the structural pre-scan implement the wire format themselves, and the library is only the oracle their differential suites compare against (docs/spec/DEPENDENCY_PINS.md).";
+  "Do not import peerjs-js-binarypack here: Alcove's encoder and the structural pre-scan implement the wire format themselves, and the library is only the oracle their differential suites compare against (docs/spec/WEBRTC_STACK.md).";
 
 export default tseslint.config(
   {

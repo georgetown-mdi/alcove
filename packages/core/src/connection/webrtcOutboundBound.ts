@@ -11,7 +11,7 @@ import { PSI_ELEMENT_BYTES } from "./psiElementScan";
 
 /**
  * Byte length past which PeerJS splits a packed message into chunks: the
- * pinned `peerjs`'s `util.chunkedMTU` (docs/spec/DEPENDENCY_PINS.md).
+ * pinned `peerjs`'s `util.chunkedMTU` (docs/spec/WEBRTC_STACK.md).
  */
 export const PEERJS_CHUNK_MTU = 16_300;
 

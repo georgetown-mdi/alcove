@@ -15,7 +15,7 @@ import type { Packable } from "peerjs-js-binarypack";
 //
 // `peerjs-js-binarypack` is a dependency of THIS package
 // (packages/core/package.json), so a bump that moves the encoding fails here
-// rather than at a partner's browser (docs/spec/DEPENDENCY_PINS.md).
+// rather than at a partner's browser (docs/spec/WEBRTC_STACK.md).
 
 /** The real packer's bytes for `value`. `pack` returns a promise only for a
  * `Blob`, which no frame here is, so the synchronous branch is the only

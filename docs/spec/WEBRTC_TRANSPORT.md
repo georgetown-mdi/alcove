@@ -19,7 +19,7 @@ Alcove's own protocol to define -- it is PeerJS 1.5.5's, measured on the wire
 and recorded here because a second implementation has to match it exactly. The
 library choice and the alternatives weighed are in
 [cli-webrtc-stack.md](../notes/cli-webrtc-stack.md); the internal assumptions that
-pin the libraries are in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md).
+pin the libraries are in [WEBRTC_STACK.md](WEBRTC_STACK.md).
 
 It does not cover the rendezvous peer-id derivation (see
 [PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation), which is
@@ -468,7 +468,7 @@ arrives, independently of the others. werift spends 10 s on the mDNS lookup
 of a browser's `.local` host candidate that no host answers for, and whether
 `addIceCandidate` waits on that lookup depends on the release: 0.26.0's
 settles in about 2 ms, while 0.25.0's waited the whole 10 s
-([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)). Not
+([WEBRTC_STACK.md](WEBRTC_STACK.md#the-behavioural-assumptions)). Not
 waiting keeps a release that waits on the lookup from delaying every
 candidate behind it, and the answer, by that much.
 
@@ -574,7 +574,7 @@ All three values are arbitrary working values, raised or lowered on request.
 The window keeps the send path from depending on how werift handles an
 unpaced burst, which differs between releases; the measurements on each
 release and the re-check on a werift bump are in
-[DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-cli-webrtc-peer-werift).
+[WEBRTC_STACK.md](WEBRTC_STACK.md#upgrading-the-cli-webrtc-peer-werift).
 
 A send waiting on the window ends when the data channel leaves `open`, when the
 peer connection leaves `connected`, or when the connection closes, and the send
@@ -591,7 +591,7 @@ The CLI's peer runs on the process's main thread, and it answers its partner's
 ICE consent checks from that thread's event loop. Work that holds the thread
 therefore counts against the thirty seconds or so in which an unanswered
 partner calls the connection lost, and the two parties' holds add up
-([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)).
+([WEBRTC_STACK.md](WEBRTC_STACK.md#the-behavioural-assumptions)).
 
 - The PSI masking runs in a worker thread, off that event loop.
 - A cascade or count-only round builds its set, and a cascade round resolves
@@ -1140,7 +1140,7 @@ A configured relay leaves no timer behind on this side. werift keeps a TURN
 allocation alive by re-sending refresh on a timer armed from the lifetime the
 relay granted, and tearing the peer connection down disarms it, so a relayed
 run returns as an unrelayed one does
-([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)). The
+([WEBRTC_STACK.md](WEBRTC_STACK.md#the-behavioural-assumptions)). The
 relay holds each allocation until the lifetime it granted ends, about 600 s,
 since no teardown releases it: a CLI wait of several connection attempts leaves
 one or two at a time while attempts run the 10-minute attempt budget, and
@@ -1251,7 +1251,7 @@ What ends the wait on a partner that has gone is whichever comes first:
     long Chromium takes to report it mid-exchange is not measured.
   - On the CLI any departure from `connected` fails the connection, about 30 s
     after a partner disappears (measured,
-    [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)).
+    [WEBRTC_STACK.md](WEBRTC_STACK.md#the-behavioural-assumptions)).
   - Through the WebSocket relay, a partner whose socket ends closes this side
     with 4000 at once, and a lost socket is dropped 90 to 120 s after its last
     answer ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#keepalive)).
@@ -1272,7 +1272,8 @@ What ends the wait on a partner that has gone is whichever comes first:
 - [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md) - the AEAD envelope.
 - [COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown) - the
   delivery contract every channel owes.
-- [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md) - how `peerjs` and `werift` are
+- [WEBRTC_STACK.md](WEBRTC_STACK.md) and
+  [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#how-these-packages-are-versioned) - how `peerjs` and `werift` are
   versioned and upgraded, the behavioural assumptions they rest on, and how to re-verify them.
 - [cli-webrtc-stack.md](../notes/cli-webrtc-stack.md) - the library decision and
   the alternatives weighed.

@@ -12,7 +12,7 @@ This is design rationale. Nothing here binds an implementation; the normative
 rows -- the marker choices, the refusal, the internals the browser install
 assumes -- are in
 [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#outbound-encoding) and
-[DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack),
+[WEBRTC_STACK.md](../spec/WEBRTC_STACK.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack),
 and this note does not restate them.
 
 ## The ceiling

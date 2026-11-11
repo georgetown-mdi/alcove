@@ -15,7 +15,7 @@ import { expect, test } from "vitest";
  * MESSAGE-INTEGRITY, and a werift that refused that answer for its missing
  * integrity lost the relay path at the next refresh. Held here: werift sends
  * the REFRESH again under the 438's nonce, signed, as a new transaction, and
- * keeps the lifetime the relay grants it (docs/spec/DEPENDENCY_PINS.md).
+ * keeps the lifetime the relay grants it (docs/spec/WEBRTC_STACK.md).
  */
 
 type Address = ConstructorParameters<typeof TurnProtocol>[0];
