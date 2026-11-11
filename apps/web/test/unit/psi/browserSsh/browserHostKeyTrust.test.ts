@@ -10,7 +10,9 @@ import type { SFTPConnectionConfig } from "@alcove/core";
 const PRESENTED = `SHA256:${"P".repeat(42)}A`;
 const PUBLISHED = `SHA256:${"Q".repeat(42)}A`;
 
-function sftpConnection(hostKeyFingerprint?: string): SFTPConnectionConfig {
+function sftpConnection(
+  hostKeyFingerprint?: string | Array<string>,
+): SFTPConnectionConfig {
   return {
     channel: "sftp",
     server: {
@@ -34,6 +36,29 @@ function deps(
 }
 
 describe("establishBrowserHostKeyTrust", () => {
+  test.each([
+    ["a lone file reference", "@host_key.txt"],
+    ["a file reference beside a valid pin", [PUBLISHED, "@host_key.txt"]],
+  ])("refuses %s before reaching the server", async (_name, pin) => {
+    const steps = deps({ confirm: true, entered: PUBLISHED });
+    await expect(
+      establishBrowserHostKeyTrust(
+        sftpConnection(pin),
+        { attended: true, relay: "own" },
+        steps,
+      ),
+    ).rejects.toThrow(
+      new UsageError(
+        "The server's host key fingerprint is given as a file reference, " +
+          "which the browser cannot read. Enter the fingerprint itself, a " +
+          "SHA256: value, in the exchange's connection settings, then run " +
+          "the exchange again.",
+      ),
+    );
+    expect(steps.probe).not.toHaveBeenCalled();
+    expect(steps.enterServerFingerprint).not.toHaveBeenCalled();
+  });
+
   test("leaves a pinned connection as it is and asks nothing", async () => {
     const steps = deps();
     const connection = sftpConnection(PUBLISHED);
@@ -94,7 +119,7 @@ describe("establishBrowserHostKeyTrust", () => {
         { attended: true, relay: "own" },
         deps({ confirm: false }),
       ),
-    ).rejects.toThrow(/was not trusted, so nothing was sent/);
+    ).rejects.toThrow(/was not trusted\. Check its fingerprint/);
   });
 
   test("through the invitation's relay, pins the entered fingerprint and never the presented key", async () => {

@@ -62,9 +62,10 @@ export interface BrowserHostKeyTrust {
  * the server's fingerprint and the key the relay shows is never pinned. The
  * returned connection is a copy; `connection` is not changed.
  *
- * @throws {UsageError} when no pin is set and the run is unattended, the
- *   operator declines or cancels, or the entered text is not a fingerprint;
- *   nothing has been sent to the server.
+ * @throws {UsageError} when a pin is given as a file reference (an `@` entry),
+ *   which only the command line resolves; when no pin is set and the run is
+ *   unattended, the operator declines or cancels, or the entered text is not a
+ *   fingerprint.
  * @throws what `deps.probe` throws when it reads no key.
  */
 export async function establishBrowserHostKeyTrust(
@@ -72,7 +73,17 @@ export async function establishBrowserHostKeyTrust(
   context: BrowserHostKeyTrustContext,
   deps: BrowserHostKeyTrustDeps,
 ): Promise<BrowserHostKeyTrust> {
-  if (connection.server.hostKeyFingerprint !== undefined) return { connection };
+  const pinned = connection.server.hostKeyFingerprint;
+  if (pinned !== undefined) {
+    if ([pinned].flat().some((entry) => entry.startsWith("@")))
+      throw new UsageError(
+        "The server's host key fingerprint is given as a file reference, " +
+          "which the browser cannot read. Enter the fingerprint itself, a " +
+          "SHA256: value, in the exchange's connection settings, then run " +
+          "the exchange again.",
+      );
+    return { connection };
+  }
   if (!context.attended)
     throw new UsageError(
       "The SFTP server's host key is not pinned, so a scheduled run cannot " +
@@ -99,9 +110,8 @@ async function confirmedPresentedKey(
   const presented = await deps.probe(connection);
   if (!(await deps.confirmPresentedKey(presented)))
     throw new UsageError(
-      "The server's host key was not trusted, so nothing was sent to the " +
-        "server. Check its fingerprint with the server's administrator, then " +
-        "run the exchange again.",
+      "The server's host key was not trusted. Check its fingerprint with the " +
+        "server's administrator, then run the exchange again.",
     );
   return presented.fingerprint;
 }
@@ -112,9 +122,8 @@ async function enteredFingerprint(
   const entered = (await deps.enterServerFingerprint())?.trim();
   if (entered === undefined || entered === "")
     throw new UsageError(
-      "No host key fingerprint was entered, so nothing was sent to the " +
-        "server. Ask the server's administrator for its SHA256 fingerprint, " +
-        "then run the exchange again.",
+      "No host key fingerprint was entered. Ask the server's administrator " +
+        "for its SHA256 fingerprint, then run the exchange again.",
     );
   if (!HOST_KEY_FINGERPRINT_REGEX.test(entered))
     throw new UsageError(
