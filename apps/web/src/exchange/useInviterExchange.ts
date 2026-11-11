@@ -22,6 +22,7 @@ import {
   sanitizeErrorChainLinks,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
+  setOverLimitRemedy,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
 import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
@@ -136,6 +137,8 @@ import {
 import type { DataConnection } from "peerjs";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type Peer from "peerjs";
+
+import type { FailureCauseOfKind } from "@alcove/core";
 
 import type {
   Acquire,
@@ -258,6 +261,27 @@ export function sanitizedFailureMessage(error: unknown): string {
  */
 function reportedCauseFields(cause: string): Pick<RunFailure, "reportedCause"> {
   return cause.trim() === "" ? {} : { reportedCause: cause };
+}
+
+/**
+ * What the CLI's report of a refused set adds to core's sentence and the
+ * remedy the console shows beside it: the cause chain behind the sentence,
+ * without the remedy line the CLI writes beneath it. The relay escapes that
+ * line's break into the chain's last link, so it is cut from the relayed text,
+ * escaped or raw, before the links are escaped for display. Empty where the
+ * report holds no chain.
+ */
+function setOverLimitReport(
+  error: RelayedTerminalError,
+  cause: FailureCauseOfKind<"set-over-limit">,
+): string {
+  const remedyLine = `\n${setOverLimitRemedy(cause)}`;
+  const reported = [sanitizeForDisplay(remedyLine), remedyLine].reduce(
+    (text, line) => (text.endsWith(line) ? text.slice(0, -line.length) : text),
+    error.message,
+  );
+  const [, ...chain] = sanitizeErrorChainLinks(reported);
+  return joinErrorCauseChain(chain);
 }
 
 /** The failure for a quick exchange job create refused over the saved SFTP
@@ -858,7 +882,7 @@ function failureContentFor(
         : {}),
       // Why the count failed is in the CLI's report alone.
       ...(cause.kind === "set-over-limit" && cause.limit === "uncounted"
-        ? reportedCauseFields(sanitizedFailureMessage(error))
+        ? reportedCauseFields(setOverLimitReport(error, cause))
         : {}),
     };
   }

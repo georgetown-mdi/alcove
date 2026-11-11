@@ -8,6 +8,11 @@ import {
   PeerAbortError,
   failureCauseFromUntrusted,
   failureCauseSentence,
+  joinErrorCauseChain,
+  sanitizeErrorChainLinks,
+  sanitizeErrorForDisplay,
+  setOverLimitError,
+  setOverLimitRemedy,
 } from "@alcove/core";
 import { REPRESENTATIVE_FAILURE_CAUSES } from "@alcove/core/testing";
 
@@ -111,6 +116,8 @@ const SAMPLES: {
       valueCount: 16_777_217,
       limitValues: 16_777_216,
     },
+    { kind: "set-over-limit", stage: "before-contact", limit: "uncounted" },
+    { kind: "set-over-limit", stage: "after-terms", limit: "uncounted" },
   ],
 };
 
@@ -434,6 +441,55 @@ describe("a console run that failed on a catalog cause", () => {
       "The values built from your file could not be counted",
     );
     expect(failure.reportedCause).toContain("Map maximum size exceeded");
+  });
+
+  test.each(
+    SAMPLES["set-over-limit"].map(
+      (cause) => [JSON.stringify(cause), cause] as const,
+    ),
+  )(
+    "%s, relayed as the CLI reports it, shows core's sentence and the remedy once",
+    (_, cause) => {
+      const countFailure =
+        cause.limit === "uncounted"
+          ? { cause: new RangeError("Map maximum size exceeded") }
+          : undefined;
+      const err = setOverLimitError(cause, countFailure);
+      const cliMessage = `${sanitizeErrorForDisplay(err)}\n${setOverLimitRemedy(cause)}`;
+      const relayedMessage = joinErrorCauseChain(
+        sanitizeErrorChainLinks(cliMessage),
+      );
+      const failure = failureFor(
+        "exchange",
+        relayed(relayedMessage, { failureCause: cause, exitCode: 64 }),
+      );
+      const shown = `${failure.message}\n${failure.reportedCause ?? ""}`;
+      const times = (part: string): number => shown.split(part).length - 1;
+      expect(times(failureCauseSentence(cause))).toBe(1);
+      expect(times(setOverLimitRemedy(cause))).toBe(1);
+      expect(shown).not.toContain("\\x0a");
+      expect(failure.reportedCause).toBe(
+        countFailure === undefined ? undefined : "Map maximum size exceeded",
+      );
+    },
+  );
+
+  test("an uncounted set whose report holds no chain shows no report", () => {
+    const cause = {
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "uncounted",
+    } as const;
+    const relayedMessage = joinErrorCauseChain(
+      sanitizeErrorChainLinks(
+        `${failureCauseSentence(cause)}\n${setOverLimitRemedy(cause)}`,
+      ),
+    );
+    const failure = failureFor(
+      "exchange",
+      relayed(relayedMessage, { failureCause: cause, exitCode: 64 }),
+    );
+    expect(failure.reportedCause).toBeUndefined();
   });
 });
 
