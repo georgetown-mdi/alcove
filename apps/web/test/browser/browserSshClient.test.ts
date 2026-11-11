@@ -230,6 +230,46 @@ sshTest(
   },
 );
 
+sshTest(
+  "a host-key check accepted after an abort calls no further session step",
+  async () => {
+    const target = await startTarget();
+    const { key } = await authorizedKey(target);
+    const controller = new AbortController();
+    const reason = new Error("stopped");
+    const unhandled: Array<unknown> = [];
+    const onUnhandled = (event: PromiseRejectionEvent) => {
+      unhandled.push(event.reason);
+      event.preventDefault();
+    };
+    window.addEventListener("unhandledrejection", onUnhandled);
+    try {
+      let accept: ((accepted: boolean) => void) | undefined;
+      const failure = await connectBrowserSsh({
+        relayUrl: target.relayUrl,
+        username: target.username,
+        key,
+        onHostKey: () => {
+          queueMicrotask(() => controller.abort(reason));
+          return new Promise<boolean>((resolve) => (accept = resolve));
+        },
+        signal: controller.signal,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toBe(reason);
+      expect(accept).toBeDefined();
+      accept?.(true);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(unhandled).toEqual([]);
+      expect(signatures).toBe(0);
+    } finally {
+      window.removeEventListener("unhandledrejection", onUnhandled);
+    }
+  },
+);
+
 sshTest("names a key the server does not authorize", async () => {
   const target = await startTarget();
   const key = await NonExtractableEcdsaP256KeyPair.generate();

@@ -124,23 +124,31 @@ export async function connectBrowserSsh(
     channel: SshChannel;
     acceptedHostKey: BrowserSshHostKey;
   }> => {
+    // After an abort the session is disposed, and a step called on it raises
+    // an error nothing awaits, so each step first checks the signal.
     await session.connect(stream);
-    if (!(await session.authenticateServer()) || hostKey === undefined)
+    signal?.throwIfAborted();
+    const serverAccepted = await session.authenticateServer();
+    signal?.throwIfAborted();
+    if (!serverAccepted || hostKey === undefined)
       throw new BrowserSshHostKeyRefusedError();
     const acceptedHostKey = hostKey;
     const authenticated = await session.authenticateClient({
       username: options.username,
       publicKeys: [options.key],
     });
+    signal?.throwIfAborted();
     if (!authenticated)
       throw new BrowserSshAuthenticationRefusedError(options.username);
     const channel = await session.openChannel("session");
+    signal?.throwIfAborted();
     const request = new CommandRequestMessage();
     request.requestType = "subsystem";
     request.command = "sftp";
     request.wantReply = true;
-    if (!(await channel.request(request)))
-      throw new BrowserSshSubsystemRefusedError();
+    const subsystemStarted = await channel.request(request);
+    signal?.throwIfAborted();
+    if (!subsystemStarted) throw new BrowserSshSubsystemRefusedError();
     return { channel, acceptedHostKey };
   };
 
