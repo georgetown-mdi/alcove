@@ -16,7 +16,7 @@ const pkg = require("./package.json");
 // and the CJS output's default `interop` calls that namespace as the default
 // export, so an external build fails with "canonicalize is not a function".
 // `interop: "compat"` would fix that for every external; inlining the one
-// function is narrower. Measured: docs/spec/DEPENDENCY_PINS.md, "Inlined
+// function is narrower. Measured: docs/spec/NPM_INSTALL_POLICY.md, "Inlined
 // dependencies and their remediation path".
 const ALWAYS_BUNDLED = new Set(["@openmined/psi.js", "canonicalize"]);
 

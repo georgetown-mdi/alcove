@@ -27,7 +27,7 @@ At the first that fails, write `D/summary.md` naming it, and stop.
 - **Timeout command.** `command -v timeout gtimeout`. The testers' mail waits need one; on macOS it is `gtimeout`, from Homebrew coreutils.
 - **Browser CLI.** `npx --yes @playwright/cli@0.1.23 --version` prints `0.1.23`.
   The tool is pinned and run by npx, never added to a `package.json`: it enters no lockfile and no shipped artifact, so the new-dependency steps of `CONTRIBUTING.md`, Dependency Policy, do not apply.
-  It is Apache-2.0, and neither it nor the `playwright` and `playwright-core` releases it pins exactly declares an install script (read from the registry 2026-11-02), so it runs under the repository's `strict-allow-scripts` (`docs/spec/DEPENDENCY_PINS.md`, The install-script policy (`allowScripts`)).
+  It is Apache-2.0, and neither it nor the `playwright` and `playwright-core` releases it pins exactly declares an install script (read from the registry 2026-11-02), so it runs under the repository's `strict-allow-scripts` (`docs/spec/NPM_INSTALL_POLICY.md`, The install-script policy (`allowScripts`)).
   A version change edits this file and `.claude/agents/journey-tester.md` together.
 - **Staging.** `curl -sS -o /dev/null -w '%{http_code}\n' https://staging.data-bridge.org/` prints `200`.
   The target is staging, never production (`docs/DEPLOYMENT.md` names both).

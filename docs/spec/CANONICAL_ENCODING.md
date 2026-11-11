@@ -442,7 +442,7 @@ The chunked writer descends one call per nesting level where `canonicalize` keep
 The `canonicalize` package is inlined into `@alcove/core`'s built artifacts
 rather than resolved at runtime; why, and what that costs when an advisory
 lands against it, are in
-[DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#inlined-dependencies-and-their-remediation-path).
+[NPM_INSTALL_POLICY.md](NPM_INSTALL_POLICY.md#inlined-dependencies-and-their-remediation-path).
 
 ## See also
 

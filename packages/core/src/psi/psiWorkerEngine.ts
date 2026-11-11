@@ -144,7 +144,7 @@ export type PsiWorkerResponse =
  * collapse to one shape here and nothing above forks on runtime.
  *
  * `terminate` may defer the stop until the request in flight replies
- * (docs/spec/DEPENDENCY_PINS.md, "Terminating a worker during a masking call").
+ * (docs/spec/NPM_INSTALL_POLICY.md, "Terminating a worker during a masking call").
  *
  * `onError` reports the worker's own death -- an exit code, an uncaught worker
  * error, a reply that failed structured-clone delivery. Its message becomes the

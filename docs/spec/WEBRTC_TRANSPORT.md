@@ -808,7 +808,7 @@ sent after it.
   chunk during encryption, or one response piece during the match -- for a
   match whose response is one piece, the whole match. The worker is not terminated inside
   a native call, which aborts the process
-  ([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-vendored-openminedpsijs-addon)
+  ([NPM_INSTALL_POLICY.md](NPM_INSTALL_POLICY.md#the-vendored-openminedpsijs-addon)
   states the stop mechanism). A browser party without `SharedArrayBuffer`
   runs the step to its end before failing.
 

@@ -303,7 +303,7 @@ function analyze(file) {
 // put in it. It is a text comparison rather than a model of where a COPY's
 // sources land -- Docker copies a directory source's contents, so a file can
 // arrive without being named in the instruction at all, which this does not
-// reach and docs/spec/DEPENDENCY_PINS.md records as a limit.
+// reach and docs/spec/NPM_INSTALL_POLICY.md records as a limit.
 const EXPECTED_NPMRC_COPY = "COPY .npmrc package.json package-lock.json ./";
 
 // The builder's production install, frozen whole: its workspace scope decides
@@ -322,7 +322,7 @@ const SMOKE_SCOPE_STEP =
 // as a runtime stage's, because the npm that resolves the tree the runtime
 // stage ships is the one the builder's base has -- a property of the digest
 // rather than of anything in this repository, which
-// docs/spec/DEPENDENCY_PINS.md records.
+// docs/spec/NPM_INSTALL_POLICY.md records.
 const DEFAULT_BASE =
   "node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216";
 // The variant's base rootfs is coupled to the release snapshot its dnf lines
@@ -1118,7 +1118,7 @@ engine-strict=true
 # than npm's advisory warning, so a DECLARED install script cannot run first and
 # be noticed after -- npm's refusal is a pre-extraction preflight, so the
 # synthetic \`node-gyp rebuild\` a shipped binding.gyp earns is outside it (see
-# docs/spec/DEPENDENCY_PINS.md). Safe to set because the map covers every install
+# docs/spec/NPM_INSTALL_POLICY.md). Safe to set because the map covers every install
 # script the committed lockfile records -- completeness that
 # scripts/allow-scripts-policy.test.mjs holds as a check rather than prose.
 strict-allow-scripts=true
@@ -1129,7 +1129,7 @@ strict-allow-scripts=true
 # \`ignore-scripts\` skips the preflight so the package installs unreviewed. The
 # project file outranks the user file, so stating them here closes that route
 # (measured on npm 11.17.0). The environment outranks both and this file cannot
-# reach it; see docs/spec/DEPENDENCY_PINS.md.
+# reach it; see docs/spec/NPM_INSTALL_POLICY.md.
 ignore-scripts=false
 dangerously-allow-all-scripts=false
 `;
