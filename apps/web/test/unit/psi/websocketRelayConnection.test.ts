@@ -23,7 +23,7 @@ import type {
 import type { MessageConnection } from "@alcove/core";
 import type { PeerCloseOutcome } from "../../../src/psi/transport/waitForPeerClose.js";
 
-/** The relay key of the secret of bytes 0x00..0x1f (docs/spec/PROTOCOL.md). */
+/** The relay key of the secret of bytes 0x00..0x1f (docs/spec/RELAY_CREDENTIALS.md). */
 const RELAY_KEY =
   "1d970dcfd9f445a4c83c4ee3b03845209f891b2931e8b7bb2b41a17dd2249a9e";
 const RELAY_URL = "wss://relay.example/relay";

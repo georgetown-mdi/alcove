@@ -197,7 +197,7 @@ credential the project mints for its own coturn relay, and none names
 Cloudflare. Those sentences state that the expiry bounds when an allocation can
 be opened, "not how long it lasts"; that the relay, "not Alcove, decides which
 expiries it honors"; and that removing the key "does not end one already open"
-([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation), measured
+([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#relay-credential-derivation), measured
 against coturn on 2026-11-10). Files read for `ttl`, lifetime, expiry,
 per-exchange and credential:
 [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md) (its one-hour and 600 s

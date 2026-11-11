@@ -8,7 +8,7 @@ This document specifies the invitation token: the encoded string an inviting par
 It covers the encoding and its checksum, the token's fields and their rules, the connection endpoint's per-channel layout, the size bounds, the checks a minter applies, and the checks a receiver applies, in order, each with the constant or function that applies it.
 It is the implementation-level complement to [Invitation contents and confidentiality](../SECURITY_DESIGN.md#invitation-contents-and-confidentiality) in SECURITY_DESIGN.md, which covers what an invitation contains, why it is confidential, and its lifetime policy.
 It does not cover the fields of the linkage-terms document the token includes (see [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage-terms)) or that document's bounds (see [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md), [TRANSFORM_REGEX_DIALECT.md](TRANSFORM_REGEX_DIALECT.md) and [TRANSFORM_PARAMETER_BOUNDS.md](TRANSFORM_PARAMETER_BOUNDS.md)).
-It does not cover the split-directory role swap or the meaning of the retain-mode declaration (see [FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories)), the relay locator's url grammar (see [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)), how the shared secret is generated and rotated (see [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md)), or how an accepted token becomes a key file and a connection (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#channel-binding-semantics)).
+It does not cover the split-directory role swap or the meaning of the retain-mode declaration (see [FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories)), the relay locator's url grammar (see [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-invitations-relay-locator)), how the shared secret is generated and rotated (see [SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md)), or how an accepted token becomes a key file and a connection (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#channel-binding-semantics)).
 Intended readers are security auditors and implementors.
 
 The encoder and decoder are `encodeInvitation` and `decodeInvitation` in `packages/core/src/config/invitation.ts`, the module every constant and schema below is defined in unless another is named.
@@ -78,7 +78,7 @@ The token is versioned under the same rule as the exchange file ([EXCHANGE_FILE.
   A decoder of any version skips every member of it, a member it does not know included.
   Every other position is strict.
 
-Version 1 holds every member above, the split directory pair and the webrtc `relay` of the endpoint included ([FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories), [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)), except the one the version table lists:
+Version 1 holds every member above, the split directory pair and the webrtc `relay` of the endpoint included ([FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories), [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-invitations-relay-locator)), except the one the version table lists:
 
 | Version | Adds | The value its absence means to an older decoder |
 | --- | --- | --- |
@@ -105,7 +105,7 @@ Endpoint keys are not case-folded, so `inbound_path` is an unknown key and refus
   Port 0 is refused, which is stricter than the connection configuration, since an OS-assigned port is never a connect target.
 - `path`, `inboundPath` and `outboundPath` are each a string of 1 to `MAX_ENDPOINT_PATH_LENGTH` (**4096**) UTF-16 code units.
   They are not checked to be absolute here: the accepting party remaps the inviter's paths, and `packages/core/src/config/connection.ts` checks its own final configuration.
-- `relay` is the inviting party's relay locator, TURN and STUN urls, a WebSocket relay url with its exchange id, and a registrar url only (`relayLocatorSchema` in `packages/core/src/config/connection.ts`), with its grammar and bounds in [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator).
+- `relay` is the inviting party's relay locator, TURN and STUN urls, a WebSocket relay url with its exchange id, and a registrar url only (`relayLocatorSchema` in `packages/core/src/config/connection.ts`), with its grammar and bounds in [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-invitations-relay-locator).
 - `relayUrl` is the `wss://` url of the SFTP relay in front of the `sftp` endpoint's server; see [The SFTP relay url](#the-sftp-relay-url).
 
 `ConnectionEndpointSchema` then applies four rules to the `sftp` and `filedrop` endpoints, each at both encode and decode:
@@ -194,7 +194,7 @@ The checksum is no barrier to a crafted payload, so the per-field bounds below i
 | `MAX_RAW_INVITATION_LENGTH` | **131,072** characters | `stripInvitationWhitespace`, which leaves a longer input unscanned |
 | `MAX_ENDPOINT_HOST_LENGTH` | **256** UTF-16 code units | the `host` of a `webrtc` or `sftp` endpoint |
 | `MAX_ENDPOINT_PATH_LENGTH` | **4096** UTF-16 code units | each endpoint path |
-| `MAX_RELAY_LOCATOR_URLS`, `MAX_RELAY_LOCATOR_URL_LENGTH` | **8** urls per list, **1024** code units per url | the webrtc `relay` ([PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)) |
+| `MAX_RELAY_LOCATOR_URLS`, `MAX_RELAY_LOCATOR_URL_LENGTH` | **8** urls per list, **1024** code units per url | the webrtc `relay` ([RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-invitations-relay-locator)) |
 | `MAX_SFTP_RELAY_URL_LENGTH` | **1024** UTF-16 code units | the `relayUrl` of an `sftp` endpoint ([The SFTP relay url](#the-sftp-relay-url)) |
 | `parseBoundedJson` structure bounds | per object, per array, nesting depth | the decoded JSON, before `JSON.parse` ([PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds)) |
 | `camelizeKeys` bounds | nesting depth and total node count | the `linkageTerms` fold ([PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds)) |

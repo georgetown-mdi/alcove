@@ -56,7 +56,7 @@ export class WebSocketRelayProofRefusedError extends Error {
 
 /**
  * A party's proof to the WebSocket relay that it holds the exchange's relay
- * key. The format: docs/spec/PROTOCOL.md, "The WebSocket relay proof".
+ * key. The format: docs/spec/RELAY_CREDENTIALS.md, "The WebSocket relay proof".
  */
 export interface WebSocketRelayProof {
   role: RendezvousRole;
@@ -108,7 +108,7 @@ export interface BuildWebSocketRelayProofOptions {
 
 /**
  * Build the proof a party presents to the WebSocket relay for `role`, expiring
- * `ttlSeconds` after `now`. The format: docs/spec/PROTOCOL.md, "The WebSocket
+ * `ttlSeconds` after `now`. The format: docs/spec/RELAY_CREDENTIALS.md, "The WebSocket
  * relay proof".
  *
  * @throws {Error} if `relayKey` is not 64 lowercase hex characters, `role` is

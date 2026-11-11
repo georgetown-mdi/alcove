@@ -6,7 +6,7 @@ title: "WebSocket Relay"
 
 This document specifies the wire of the WebSocket relay (`packages/websocket-relay`): its endpoint, the frames a party and the relay exchange, how the relay pairs, forwards and closes, its close codes, its bounds, and the web application's and the command-line application's clients.
 It is the implementation-level complement to [WebSocket relay](../DESIGN.md#websocket-relay) in DESIGN.md, which says what the relay is for and what its operator is in a position to see.
-It does not cover the proof a hello presents (see [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof)) or the framing of the messages it forwards (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#framing)).
+It does not cover the proof a hello presents (see [The WebSocket relay proof](RELAY_CREDENTIALS.md#the-websocket-relay-proof)) or the framing of the messages it forwards (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#framing)).
 The design and the rulings behind it are in [web-websocket-transport.md](../notes/web-websocket-transport.md).
 Intended readers are implementors of a relay client, whoever deploys the relay, and security auditors.
 
@@ -38,7 +38,7 @@ The exchange's own messages are binary messages.
 
 ## The hello
 
-- **`exchangeId`.** The id the exchange's relay key is enrolled under, 1 to 128 of `[A-Za-z0-9._-]`, not starting with `-`: the key lookup of [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof).
+- **`exchangeId`.** The id the exchange's relay key is enrolled under, 1 to 128 of `[A-Za-z0-9._-]`, not starting with `-`: the key lookup of [The WebSocket relay proof](RELAY_CREDENTIALS.md#the-websocket-relay-proof).
 - **`role`.** The role the party claims, `inviter` or `acceptor`.
 - **`proof`.** The proof's signed message as a string: its three fields joined by LF, which JSON writes as `\n`.
 - **`tag`.** The proof's 32-byte tag as 64 lowercase hex characters.
@@ -48,7 +48,7 @@ It may send its start directly behind the hello; a second message before the rel
 
 The relay checks a hello in this order, refusing at the first check it fails with the code in brackets:
 
-1. **Its form.** Any other first message, a hello with another key or a value outside the forms above, and a hello whose proof does not parse ([What a check refuses](PROTOCOL.md#the-websocket-relay-proof)) are refused as malformed (4001).
+1. **Its form.** Any other first message, a hello with another key or a value outside the forms above, and a hello whose proof does not parse ([What a check refuses](RELAY_CREDENTIALS.md#the-websocket-relay-proof)) are refused as malformed (4001).
 2. **The key.** The relay reads the relay key enrolled under `exchangeId` ([The key table](#the-key-table)). No key is refused as not enrolled (4003). A hello the relay could not check is refused with 1011: its key table could not be read, the enrolled key is not 64 lowercase hex characters, or the check failed in some other way.
 3. **The proof.** The relay checks the proof under the proof key derived from that relay key, for the claimed role, against its own clock. A proof for the other role, or whose tag is not the proof key's, does not verify (4004). A proof whose expiry has passed is expired (4005). So is a proof that verifies but whose expiry is more than 305 seconds past the relay's clock: the proof's longest lifetime of 300 seconds (`RELAY_PROOF_MAX_LIFETIME_SECONDS`, core's `WEBSOCKET_RELAY_PROOF_MAX_TTL_SECONDS`) and 5 seconds of slack (`RELAY_PROOF_EXPIRY_SLACK_SECONDS`, an arbitrary working value). The close reason is the relay's current Unix second in decimal, so a party whose clock has drifted either way can make another.
 4. **The role.** A socket already holding the claimed role under that relay key refuses this one as role taken (4006), the broker's `ID-TAKEN` for this path.
@@ -60,7 +60,7 @@ Whatever clock made a proof, the relay takes it only in the 305 seconds of its o
 It exposes no data: the key exchange inside the relayed channel still needs the shared secret.
 
 **A stated limit: a refusal shows whether an id is enrolled.** The relay refuses a hello under an exchange id with no key as not enrolled (4003) before it checks the proof, and one under an enrolled id whose proof fails as 4004 or 4005.
-So anyone who can reach the relay learns from the close code whether an exchange id is enrolled there, as the registrar's answers show ([The registrar request proof](PROTOCOL.md#the-registrar-request-proof)).
+So anyone who can reach the relay learns from the close code whether an exchange id is enrolled there, as the registrar's answers show ([The registrar request proof](RELAY_CREDENTIALS.md#the-registrar-request-proof)).
 An exchange id an operator chooses should reveal nothing about the parties.
 
 ## The key table
@@ -214,7 +214,7 @@ Measured 2026-11-01 through probes outside the repository: Node's `ws` client (`
 The project's WebSocket relay keeps the wire of every supported release, the rule of [RELEASES.md, Project-run services](../RELEASES.md#compatibility-policy). It is neither negotiated nor read by version:
 
 - **No frame names a version.** The path is `/relay`, and a hello holds exactly the keys shown in [Frames](#frames) (`hasExactKeys` in `packages/websocket-relay/src/protocol.ts`), so a hello with a version member is refused as malformed (4001) today.
-- **The proof's version is its label.** `alcove-relay-websocket-v2:*` appears only inside the proof ([The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof)), which the relay checks under the one proof key it derives. Two builds that hold different labels derive different proof keys from one relay key, and the relay refuses the hello made under the label it does not check (4004).
+- **The proof's version is its label.** `alcove-relay-websocket-v2:*` appears only inside the proof ([The WebSocket relay proof](RELAY_CREDENTIALS.md#the-websocket-relay-proof)), which the relay checks under the one proof key it derives. Two builds that hold different labels derive different proof keys from one relay key, and the relay refuses the hello made under the label it does not check (4004).
 - **What is kept.** The frames, the close codes and the codes a client redials on, the bounds ([Quotas](#quotas)) and the proof's expiry window are the wire a supported release depends on, and none is changed in a way that refuses what a supported release sends.
 
 ## The web application's client
@@ -222,7 +222,7 @@ The project's WebSocket relay keeps the wire of every supported release, the rul
 The web application's relay transport (`apps/web/src/psi/transport/websocketRelayConnection.ts`) is one party's side of this wire.
 Its values are working values, as the relay's are.
 
-- **The hello.** It opens the relay's `wss` url and, on open, sends its hello. It refuses a url that has a fragment, which a WebSocket url cannot have, before opening a socket. Each socket it opens sends a hello with a new proof, which expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof) allows.
+- **The hello.** It opens the relay's `wss` url and, on open, sends its hello. It refuses a url that has a fragment, which a WebSocket url cannot have, before opening a socket. Each socket it opens sends a hello with a new proof, which expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](RELAY_CREDENTIALS.md#the-websocket-relay-proof) allows.
 - **The start, held.** It holds its start until the run sends it (`parkWebSocketRelayConnection`), on a socket the relay has paired or not, and sends it behind the hello on each socket that opens after that. Opened with the start already sent (`openWebSocketRelayConnection`), it sends its hello and then its start, with no wait between them.
 - **The partner's start first.** A start the relay sends while this side's own is held is kept, and this side's start then begins the exchange at once. Until the exchange begins, it refuses a binary message, a start before `paired`, a second `paired` or start, and any other text message, closing its socket with 4000. Once the exchange has begun, it refuses any text message.
 - **Dialing again.** Until the exchange begins and while the rendezvous budget below lasts, it opens a new socket 5 seconds after its socket closes with one of these codes (`RELAY_REDIAL_INTERVAL_MS`, an arbitrary working value):
@@ -246,7 +246,7 @@ Its values are working values, as the relay's are.
 The command-line application's relay transport (`apps/cli/src/connection/webrtc/websocketRelayConnection.ts`) is one party's side of this wire, on Node's own `WebSocket` client.
 Its values are working values, as the relay's are.
 
-- **The hello.** On open, it sends its hello. Each socket it opens sends a hello with a new proof, which expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](PROTOCOL.md#the-websocket-relay-proof) allows.
+- **The hello.** On open, it sends its hello. Each socket it opens sends a hello with a new proof, which expires 300 seconds after it is made, the longest lifetime [The WebSocket relay proof](RELAY_CREDENTIALS.md#the-websocket-relay-proof) allows.
 - **The start, held.** It holds its start until the run sends it (`parkWebSocketRelay`), on a socket the relay has paired or not, and sends it behind the hello on each socket that opens after that. Opened with the start already sent (`openWebSocketRelayMessageConnection`), it sends its hello and then its start, with no wait between them.
 - **The partner's start first.** A start the relay sends while this side's own is held is kept, and this side's start then begins the exchange at once. Until the exchange begins, it refuses a binary message, a start before `paired`, a second `paired` or start, and any other text message, closing its socket with 4000.
 - **Dialing again.** Until the exchange begins and while the rendezvous budget below lasts, it opens a new socket 5 seconds after its socket closes with one of these codes (`RELAY_REDIAL_INTERVAL_MS`, an arbitrary working value):

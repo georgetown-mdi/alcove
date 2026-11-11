@@ -18,7 +18,7 @@ is answered 401 before its body is parsed. Authentication reads that header and 
 credentials, so a browser's cookies never authenticate a call. A write is one
 transaction through relay_table.py beside this file, the secrets table's one
 write path. infra/relay/README.md, The registrar, is the contract, and
-docs/spec/PROTOCOL.md, The registrar request proof, the proof's format.
+docs/spec/RELAY_CREDENTIALS.md, The registrar request proof, the proof's format.
 
 Listens on ALCOVE_RELAY_REGISTRAR_PORT on every address, and, where the
 registrar has a name the 443 front routes to it, on 127.0.0.1 at
@@ -107,7 +107,7 @@ BODY_REFUSAL = 'the request body must be {"key": "<key-hex64>", "maxAgeDays": <d
 # The header verify.sh sends to register its own ids under the reserved prefix.
 # A browser cannot send it: the preflight does not allow it.
 VERIFY_RUN_HEADER = "Alcove-Relay-Verify-Run"
-# docs/spec/PROTOCOL.md, The registrar request proof.
+# docs/spec/RELAY_CREDENTIALS.md, The registrar request proof.
 PROOF_SCHEME = "Alcove-Relay-Proof"
 PROOF_KEY_LABEL = "alcove-relay-registrar-v2:proof-key"
 PROOF_MESSAGE_LABEL = "alcove-relay-registrar-v2:request"

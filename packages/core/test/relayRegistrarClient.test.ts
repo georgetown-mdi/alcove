@@ -469,7 +469,7 @@ describe("sendRelayRegistration", () => {
   });
 });
 
-// docs/spec/PROTOCOL.md, Registering the rotated relay key: Retries and What
+// docs/spec/RELAY_CREDENTIALS.md, Registering the rotated relay key: Retries and What
 // confirms.
 describe("the registrar client's bounds", () => {
   afterEach(() => {

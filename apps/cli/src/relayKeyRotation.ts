@@ -1,5 +1,5 @@
 // The registration a run makes after its shared secret rotates, signed with
-// the relay key the registrar holds (docs/spec/PROTOCOL.md, "Registering the
+// the relay key the registrar holds (docs/spec/RELAY_CREDENTIALS.md, "Registering the
 // rotated relay key"), and the retry of one the registrar did not confirm,
 // before the next run dials. The signed request and its retries are core's
 // `registerRelayKey`; this module holds the key file and exit-code halves.

@@ -3,7 +3,7 @@
 #
 #   register-exchange.sh <exchange-id> <max-age-days|none>   key on stdin
 #
-# The key is the exchange's relay key (docs/spec/PROTOCOL.md, Relay credential
+# The key is the exchange's relay key (docs/spec/RELAY_CREDENTIALS.md, Relay credential
 # derivation), read from standard input -- typed without echo at a terminal, or
 # piped -- so it is never on a command line. coturn reads the table per request,
 # so a credential minted under it authenticates from the next allocation on,

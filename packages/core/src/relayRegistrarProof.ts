@@ -3,7 +3,7 @@ import { InternalConsistencyError } from "./errors.js";
 
 /**
  * The `Authorization` scheme of a request to the relay registrar proving it
- * holds the exchange's registered relay key (docs/spec/PROTOCOL.md, "The
+ * holds the exchange's registered relay key (docs/spec/RELAY_CREDENTIALS.md, "The
  * registrar request proof").
  */
 export const RELAY_REGISTRAR_PROOF_SCHEME = "Alcove-Relay-Proof";
@@ -102,7 +102,7 @@ export async function deriveRelayRegistrarProofKey(
 /**
  * The `Authorization` header value proving a request to the relay registrar
  * holds `relayKey`: a rotation (`PUT`) or revocation (`DELETE`) of an enrolled
- * exchange. It holds no relay-owner token. The format: docs/spec/PROTOCOL.md,
+ * exchange. It holds no relay-owner token. The format: docs/spec/RELAY_CREDENTIALS.md,
  * "The registrar request proof".
  *
  * @throws {Error} if `relayKey` is not 64 lowercase hex characters, `method`

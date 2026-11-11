@@ -50,7 +50,7 @@ export interface RelayCredential {
  * Derive the per-exchange relay key from the exchange's current shared secret.
  * Both parties compute the same key; it is the secret the relay checks
  * credentials against and the key {@link mintRelayCredential} signs with. The
- * construction: docs/spec/PROTOCOL.md, "Relay credential derivation".
+ * construction: docs/spec/RELAY_CREDENTIALS.md, "Relay credential derivation".
  *
  * @param sharedSecret  The exchange's current base64url-encoded 32-byte shared
  *                      secret, matching {@link SHARED_SECRET_REGEX}.
@@ -71,7 +71,7 @@ export async function deriveRelayKey(sharedSecret: string): Promise<string> {
  * registrar that takes an enrollment without a token. Both parties compute the
  * same id from the exchange's current shared secret, and nobody without the
  * secret can predict it, so nobody else can enroll the id first. The
- * construction: docs/spec/PROTOCOL.md, "Relay credential derivation".
+ * construction: docs/spec/RELAY_CREDENTIALS.md, "Relay credential derivation".
  *
  * @param sharedSecret  The exchange's current base64url-encoded 32-byte shared
  *                      secret, matching {@link SHARED_SECRET_REGEX}.
@@ -121,7 +121,7 @@ export interface MintRelayCredentialOptions {
 /**
  * Mint a time-limited TURN credential under `key` without contacting the relay:
  * the relay recomputes the same HMAC when the credential is presented. The
- * format: docs/spec/PROTOCOL.md, "Relay credential derivation".
+ * format: docs/spec/RELAY_CREDENTIALS.md, "Relay credential derivation".
  *
  * @throws {Error} if `key` or `label` is empty, `label` contains `:`,
  *                 `ttlSeconds` is not a whole number of seconds from 1 to
@@ -365,7 +365,7 @@ export function allowedRelaysLeaveOutInvitationRelay(
  * WebSocket relay under the exchange id derived from the secret, the one an
  * enrollment without a token uses. Each is decided by the url, not the
  * entry's `source`, so an own entry naming the invitation's url enrolls too
- * (docs/spec/PROTOCOL.md, "Enrolling at a default relay").
+ * (docs/spec/RELAY_CREDENTIALS.md, "Enrolling at a default relay").
  */
 export function runEnrollsAtInvitationRegistrar(
   connection: RunRelayConnection,
@@ -430,7 +430,7 @@ export function webSocketRelayIsPartnersUnderInvitationExchangeId(
  * secret, for {@link RELAY_CREDENTIAL_MAX_TTL_SECONDS}, labelled
  * {@link RUN_RELAY_CREDENTIAL_LABEL}. A caller passes that secret even where
  * the handshake may complete under a previous one, since the relay key the
- * party's registrar holds is the current secret's (docs/spec/PROTOCOL.md,
+ * party's registrar holds is the current secret's (docs/spec/RELAY_CREDENTIALS.md,
  * "Relay credential derivation"). Nothing is stored; the next run mints again
  * from the secret it then holds.
  *

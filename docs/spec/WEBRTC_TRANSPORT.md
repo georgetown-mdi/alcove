@@ -422,7 +422,7 @@ that lists them races its listen or dial against them the same way, on
 [the web application's client](WEBSOCKET_RELAY.md#the-web-applications-client),
 so a CLI party and a browser party follow one set of rules on the wire. Which
 relays a run lists, and the exchange id it proves to each under:
-[PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator). A run that lists none
+[RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-invitations-relay-locator). A run that lists none
 dials no relay socket and opens WebRTC alone.
 
 - **Parked as the rendezvous starts.** The run dials every relay it lists, in parallel, as its first registration starts, and holds its start on each.

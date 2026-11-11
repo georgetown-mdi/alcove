@@ -2322,14 +2322,14 @@ registrar.RegistrarServer(("127.0.0.1", 0), registrar.RegistrarHandler, shared).
   });
 });
 
-// The vector block under docs/spec/PROTOCOL.md's "The registrar request
-// proof": a group of shared fields, then one group per request.
+// The vector block under docs/spec/RELAY_CREDENTIALS.md's "The registrar
+// request proof": a group of shared fields, then one group per request.
 const protocolVectors = () => {
   const text = readFileSync(
-    resolve(here, "..", "docs/spec/PROTOCOL.md"),
+    resolve(here, "..", "docs/spec/RELAY_CREDENTIALS.md"),
     "utf8",
   );
-  const section = text.slice(text.indexOf("\n### The registrar request proof"));
+  const section = text.slice(text.indexOf("\n## The registrar request proof"));
   const open = section.indexOf("\n```text\n");
   const block = section.slice(open + 9, section.indexOf("\n```", open + 9));
   const [shared, ...requests] = block.split("\n\n").map((group) =>
@@ -2345,7 +2345,7 @@ const protocolVectors = () => {
 };
 
 describe("registrar.py proof verifier", () => {
-  it("derives and checks PROTOCOL.md's vectors, and no other key's or request's proof", () => {
+  it("derives and checks RELAY_CREDENTIALS.md's vectors, and no other key's or request's proof", () => {
     const { shared, requests } = protocolVectors();
     expect(requests.map(({ method }) => method)).toEqual(["PUT", "DELETE"]);
     const result = python(

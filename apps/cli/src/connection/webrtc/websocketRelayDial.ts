@@ -44,7 +44,7 @@ export function websocketRelayNeedsSecretMessage(
  * shared secret, and the exchange id that key is enrolled under at that
  * relay, the one the connection or the invitation names for it and
  * otherwise the id derived from the secret, the one an enrollment without a
- * token uses (docs/spec/PROTOCOL.md, "Relay credential derivation"). Empty
+ * token uses (docs/spec/RELAY_CREDENTIALS.md, "Relay credential derivation"). Empty
  * when the run lists none.
  *
  * With `previousSharedSecret`, each relay dialed under the derived id is

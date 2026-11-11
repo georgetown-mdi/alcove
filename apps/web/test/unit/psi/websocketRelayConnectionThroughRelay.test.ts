@@ -26,7 +26,7 @@ import type { PeerCloseOutcome } from "../../../src/psi/transport/waitForPeerClo
 const SHARED_SECRET = Buffer.from(
   Array.from({ length: 32 }, (_, i) => i),
 ).toString("base64url");
-/** The relay key of {@link SHARED_SECRET} (docs/spec/PROTOCOL.md). */
+/** The relay key of {@link SHARED_SECRET} (docs/spec/RELAY_CREDENTIALS.md). */
 const RELAY_KEY =
   "1d970dcfd9f445a4c83c4ee3b03845209f891b2931e8b7bb2b41a17dd2249a9e";
 const OTHER_RELAY_KEY = "fedcba9876543210".repeat(4);

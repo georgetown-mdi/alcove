@@ -2,7 +2,7 @@
  * The web application's check of an exchange's relays: each relay a run of
  * the exchange lists, asked to carry one message between two connections of
  * this page under the exchange's own credential, with the run's enrollment
- * made first, as the run makes it. Contract: docs/spec/PROTOCOL.md, The web
+ * made first, as the run makes it. Contract: docs/spec/RELAY_CREDENTIALS.md, The web
  * application's relay check.
  */
 
