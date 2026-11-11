@@ -14,9 +14,10 @@
 // release, with no other release tag, is on the newest line.
 //
 // A prerelease tag (`vX.Y.Z-beta.N`, `vX.Y.Z-rc.N`) is never on the newest
-// line, so it moves neither production nor `latest`. The job reports it as a
-// prerelease too, which keeps the floating `X.Y` tags where they are and
-// marks its GitHub release as a prerelease.
+// line, so it does not move `latest`. It still redeploys production when main
+// is promoted to it. The job reports it as a prerelease too, which keeps
+// the floating `X.Y` tags where they are and marks its GitHub release as a
+// prerelease.
 //
 // What this cannot see:
 //   - A tag pushed after the job lists the tags: two release runs started at
@@ -83,7 +84,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { newest, prerelease } = releaseLine(tag, tags);
   console.error(
     prerelease
-      ? `${tag} is a prerelease: it is published under its own version alone, so it does not deploy production or move latest or the X.Y tags.`
+      ? `${tag} is a prerelease: it is published under its own version alone, so it does not move latest or the X.Y tags; it deploys production if main has been promoted to it.`
       : newest
         ? `${tag} is on the newest release line: no release tag names a higher version.`
         : `${tag} is on an older release line: a release tag names a higher version, so this release does not deploy production or move latest.`,
