@@ -454,9 +454,10 @@ export class FrameSizeExceededError extends UsageError {
 
 /**
  * A directory listing over its entry-count or filename-length bound, refused while
- * the adapter enumerates it, before the listing is held in memory. The bounds live
- * where they are enforced, `apps/cli/src/connection/listingGuard.ts`. Classified,
- * marked and composed as {@link FrameSizeExceededError} is; call sites pass the
+ * the adapter enumerates it, before the listing is held in memory. Its figures are
+ * in `connection/transportOperationBounds.ts`, enforced by the CLI adapters and the
+ * browser SFTP transport. Classified, marked and composed as
+ * {@link FrameSizeExceededError} is; call sites pass the
  * directory path and the offending entry name as `details` fragments.
  */
 export class DirectoryListingBoundsError extends UsageError {
@@ -477,8 +478,9 @@ export class DirectoryListingBoundsError extends UsageError {
 /**
  * A server-driven transport operation that made no progress within its liveness
  * bound: a hung or progress-free `list()`, `get()` or `createExclusive()` on the
- * SFTP adapter, bounded in `apps/cli/src/connection/sftpLivenessGuard.ts`.
- * Classified, marked and composed as {@link FrameSizeExceededError} is, but its
+ * SFTP adapter (`apps/cli/src/connection/sftpLivenessGuard.ts`) or the browser
+ * SFTP transport. Classified, marked and composed as
+ * {@link FrameSizeExceededError} is, but its
  * next step is a retry, since the server may recover. Call sites pass how the
  * operation stalled, its path, and any server message as `details` fragments.
  */

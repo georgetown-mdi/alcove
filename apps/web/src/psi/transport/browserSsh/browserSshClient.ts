@@ -93,6 +93,8 @@ export interface BrowserSshSftpSession {
   hostKey: BrowserSshHostKey;
   /** Close the channel, the session and the relay socket. */
   close: () => Promise<void>;
+  /** Close the session and the relay socket at once, without waiting on the server. */
+  dispose: () => void;
 }
 
 /**
@@ -211,6 +213,10 @@ export async function connectBrowserSsh(
       } catch {
         // The session may already be closed; closing it below ends the channel.
       }
+      session.dispose();
+      stream.dispose();
+    },
+    dispose() {
       session.dispose();
       stream.dispose();
     },
