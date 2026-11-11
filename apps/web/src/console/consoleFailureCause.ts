@@ -71,6 +71,14 @@ const BOTH_SWEPT_LINE =
   "may have removed the other's files. Both of you turn off " +
   `"${SWEEP_CONTROL_LABEL}" before the next run.`;
 
+/** The step the generic filedrop failure message ends with. */
+export const SHARED_FOLDER_SYNC_STEP =
+  "Check that the shared folder is in place and syncing, then try again.";
+
+/** What a connection-borne failure usually is. */
+export const TEMPORARY_CONNECTION_PROBLEM =
+  "a temporary connection problem rather than an issue with your data";
+
 // The check a run on a shared location ends with, before the retry.
 const sharedLocationCheck = (
   channel: "filedrop" | "sftp" | "webrtc" | undefined,
@@ -256,8 +264,14 @@ export function consoleSweptHandshakeTimeout(
     failureText.split("\n")[0] !== KEX_HANDSHAKE_TIMEOUT_MESSAGE
   )
     return undefined;
+  // The partner had already reached the shared location, so the step names
+  // syncing or the connection, not the location.
+  const step =
+    channel === "filedrop"
+      ? "Otherwise, check that the shared folder is in place and syncing, then try again."
+      : `Otherwise this is usually ${TEMPORARY_CONNECTION_PROBLEM}, so try again.`;
   return {
     title: "Your partner did not answer",
-    message: `Your partner did not answer in time. ${BOTH_SWEPT_LINE}`,
+    message: `Your partner did not answer in time. ${BOTH_SWEPT_LINE} ${step}`,
   };
 }

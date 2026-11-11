@@ -575,7 +575,7 @@ describe("a console run that failed on a catalog cause", () => {
     ).not.toContain(BOTH_SWEPT);
   });
 
-  test("the first entrant's handshake timeout after a delete-mode sweep shows the both-swept line", () => {
+  test("the first entrant's handshake timeout after a delete-mode sweep shows the both-swept line, then the channel's step", () => {
     // The CLI's report for this failure, as apps/cli's protocol.test.ts pins
     // its first line: no cause, no recoveryHint, exit 69.
     const handshakeTimeout = () => {
@@ -591,23 +591,41 @@ describe("a console run that failed on a catalog cause", () => {
     const swept = timedOut({ channel: "filedrop", sweepExchangeFiles: true });
     expect(swept.title).toBe("Your partner did not answer");
     expect(swept.message).toBe(
-      `Your partner did not answer in time. ${BOTH_SWEPT}`,
+      `Your partner did not answer in time. ${BOTH_SWEPT} ` +
+        "Otherwise, check that the shared folder is in place and syncing, then try again.",
     );
-    expect(swept.message).not.toContain("--inactivity-timeout");
     expect(swept.reportedCause).toBeUndefined();
-    expect(
-      timedOut({ channel: "sftp", sweepExchangeFiles: true }).message,
-    ).toBe(`Your partner did not answer in time. ${BOTH_SWEPT}`);
+    const sweptSftp = timedOut({ channel: "sftp", sweepExchangeFiles: true });
+    expect(sweptSftp.title).toBe("Your partner did not answer");
+    expect(sweptSftp.message).toBe(
+      `Your partner did not answer in time. ${BOTH_SWEPT} ` +
+        "Otherwise this is usually a temporary connection problem rather " +
+        "than an issue with your data, so try again.",
+    );
+    expect(sweptSftp.reportedCause).toBeUndefined();
+    // The partner had reached the shared location, and the wait setting does
+    // not bound the key exchange.
+    for (const { message } of [swept, sweptSftp]) {
+      expect(message).not.toContain("--inactivity-timeout");
+      expect(message).not.toContain("use the same");
+      expect(message).not.toContain(PEER_TIMEOUT_LABEL);
+    }
+    const plain = {
+      filedrop: timedOut({ channel: "filedrop" }),
+      sftp: timedOut({ channel: "sftp" }),
+      webrtc: timedOut({ channel: "webrtc" }),
+    };
+    expect(plain.filedrop.title).toBe("Exchange failed");
+    expect(plain.filedrop.message).not.toContain(BOTH_SWEPT);
+    expect(plain.sftp.message).not.toContain(BOTH_SWEPT);
     for (const context of [
-      { channel: "filedrop" },
       { channel: "filedrop", sweepExchangeFiles: false },
       { channel: "filedrop", sweepExchangeFiles: true, retainFiles: true },
+      { channel: "sftp", sweepExchangeFiles: false },
       { channel: "sftp", sweepExchangeFiles: true, retainFiles: true },
       { channel: "webrtc", sweepExchangeFiles: true },
-    ] satisfies Array<FailureContext>) {
-      const unswept = timedOut(context);
-      expect(unswept.title).toBe("Exchange failed");
-      expect(unswept.message).not.toContain(BOTH_SWEPT);
+    ] satisfies Array<FailureContext & { channel: keyof typeof plain }>) {
+      expect(timedOut(context)).toEqual(plain[context.channel]);
     }
     // Only the handshake timeout's own first line is recognized.
     const otherFailure = new RelayedTerminalError(
