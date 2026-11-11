@@ -1527,8 +1527,8 @@ export interface ManagedExchangeRunRotation extends ManagedExchangeRotation {
  * What a run's rotation write stores about the previous secret, given the
  * record the run read and which of its secrets this side's key exchange used:
  * on the initiator, the secret used and its own `expires` as the previous
- * secret; on the responder, none (docs/spec/PROTOCOL.md, "The previous
- * secret").
+ * secret; on the responder, none (docs/spec/SHARED_SECRET_ROTATION.md,
+ * "The previous secret").
  *
  * @throws {InternalConsistencyError} if the key exchange used a previous
  *   secret the record does not hold.

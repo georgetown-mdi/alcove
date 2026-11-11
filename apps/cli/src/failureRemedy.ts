@@ -340,7 +340,8 @@ export function keyFileNotSavedRemedy(ending: RunEnding): string {
 
 /**
  * Where a run's rotation left the two parties, read from how far it got in the
- * store order (docs/spec/PROTOCOL.md, "The rotation at the terms exchange"):
+ * store order (docs/spec/SHARED_SECRET_ROTATION.md,
+ * "The rotation at the terms exchange"):
  * - `unchanged`: neither side can have stored the next secret.
  * - `partner-may-lead`: this side, the responder, holds the secret the run
  *   authenticated with, and the initiator may hold the next one.

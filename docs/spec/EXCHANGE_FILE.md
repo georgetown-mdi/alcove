@@ -720,7 +720,7 @@ that began and has not saved its rotated secret.
   owner-only, atomic-rename write as the rotation itself, and only when the run
   is the responder: the initiator stores the next secret first, so only the
   responder can be left behind
-  ([PROTOCOL.md](PROTOCOL.md#the-rotation-at-the-terms-exchange)). The
+  ([SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md#the-rotation-at-the-terms-exchange)). The
   rotated-secret write the terms exchange makes (`buildRotatedKeyFile`) holds
   no marker, so the one atomic write that stores the new secret removes it. A
   marker already present keeps its first instant, and stays until a recorded
@@ -798,7 +798,7 @@ been confirmed at the relay registrar a run registers at
 
 The key file schema admits three more optional fields, for the handshake's
 previous secret and rotation history
-([PROTOCOL.md](PROTOCOL.md#the-previous-secret)):
+([SHARED_SECRET_ROTATION.md](SHARED_SECRET_ROTATION.md#the-previous-secret)):
 
 - **`previousSharedSecret`**: the secret a rotation this side stored as the
   initiator replaced, in the `sharedSecret` format, kept until the partner's

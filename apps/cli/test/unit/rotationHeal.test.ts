@@ -1,7 +1,7 @@
 // A one-sided rotation healed on the next run, and a stale key file refused,
 // over a real file-drop connection and a real key exchange: only the PSI
 // exchange is mocked, standing in for the terms exchange's store order
-// (docs/spec/PROTOCOL.md, "The rotation at the terms exchange").
+// (docs/spec/SHARED_SECRET_ROTATION.md, "The rotation at the terms exchange").
 
 import fs from "node:fs";
 import os from "node:os";

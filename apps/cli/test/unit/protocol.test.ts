@@ -3673,10 +3673,11 @@ function rotationLines(): string[] {
   );
 }
 
-// The store order (docs/spec/PROTOCOL.md, "The rotation at the terms
-// exchange"): the responder sends its value only in an agreeing terms message
-// 2, the initiator stores before it sends proceed, and the responder stores on
-// reading proceed. A run refused at the terms exchange rotates nobody.
+// The store order (docs/spec/SHARED_SECRET_ROTATION.md, "The rotation at
+// the terms exchange"): the responder sends its value only in an agreeing
+// terms message 2, the initiator stores before it sends proceed, and the
+// responder stores on reading proceed. A run refused at the terms exchange
+// rotates nobody.
 test("a refusal by the responder at terms message 2 rotates nobody: no rotated-token line on either side, and the responder's marker is removed", async () => {
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");

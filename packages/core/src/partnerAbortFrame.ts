@@ -55,8 +55,9 @@ export const PSI_RESPONSE_LENGTH_ABORT_REASON =
  * The abort reason a party sends when its write of the next shared secret
  * failed: the initiator as terms message 3, and the responder as its first
  * frame after it, which the initiator reads past the terms exchange
- * (docs/spec/PROTOCOL.md, "The rotation at the terms exchange"). A fixed
- * literal, as every abort reason must be (see `sendAbort`).
+ * (docs/spec/SHARED_SECRET_ROTATION.md, "The rotation at the terms
+ * exchange"). A fixed literal, as every abort reason must be (see
+ * `sendAbort`).
  */
 export const NEXT_SECRET_STORE_FAILED_ABORT_REASON =
   "the partner could not save the next shared secret";

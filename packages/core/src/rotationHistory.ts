@@ -9,7 +9,8 @@ import {
 
 // The rotation history: a verifier per retired secret, and the proofs and
 // behind notices the key exchange makes under them when no secret matches.
-// Construction and labels: docs/spec/PROTOCOL.md ("The rotation history").
+// Construction and labels: docs/spec/SHARED_SECRET_ROTATION.md ("The rotation
+// history").
 
 /**
  * The derivations of the `alcove-rotation-history-v2:` label family. Frozen
@@ -47,7 +48,7 @@ export interface RotationHistoryEntry {
  * newest entries of `history`, then the entries at the oldest end removed
  * while their `expires` is at or before `now`. An expired entry newer than one
  * still in force keeps its place, since the handshake counts rotations by
- * position (docs/spec/PROTOCOL.md, "The rotation history").
+ * position (docs/spec/SHARED_SECRET_ROTATION.md, "The rotation history").
  *
  * @param history     newest first, the entry of any secret the write retires
  *                    already at its head.

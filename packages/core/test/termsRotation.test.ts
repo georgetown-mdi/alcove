@@ -38,10 +38,10 @@ import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 import { recordingConnection } from "./utils/recordingConnection";
 
 // The rotation step of the terms exchange: the responder's value on terms
-// message 2, its rules, and the store order (docs/spec/PROTOCOL.md,
-// "Shared-secret rotation"). Each side's NextSecretInputs are fixed here, as a
-// completed key exchange would leave them, so the terms exchange is driven
-// alone.
+// message 2, its rules, and the store order
+// (docs/spec/SHARED_SECRET_ROTATION.md). Each side's NextSecretInputs are
+// fixed here, as a completed key exchange would leave them, so the terms
+// exchange is driven alone.
 
 const terms: LinkageTerms = {
   version: "1.0.0",

@@ -157,7 +157,7 @@ That property makes the ordering of persistence and success critical.
 
 Within a run, the rotated secret is written durably to the browser store, and the write is awaited to completion, **before** this party sends or reads any payload round.
 The protocol has no discrete "success" signal to hold back, and the exchange's terminal act is a fire-and-forget final send, so the data exchange itself is what the persist must precede.
-The write is made inside the terms exchange that follows the handshake, at this side's point in the store order: the initiator's before it confirms the terms, the responder's once it reads that confirmation ([The rotation at the terms exchange](../spec/PROTOCOL.md#the-rotation-at-the-terms-exchange)).
+The write is made inside the terms exchange that follows the handshake, at this side's point in the store order: the initiator's before it confirms the terms, the responder's once it reads that confirmation ([The rotation at the terms exchange](../spec/SHARED_SECRET_ROTATION.md#the-rotation-at-the-terms-exchange)).
 
 The order is:
 handshake completes,
@@ -335,7 +335,7 @@ The raise sites and what clears the condition are in [MANAGED_EXCHANGE_RECORD.md
 
 A grace-window mitigation for a rotation desync was deferred from the first managed release, and has since been built as the previous secret.
 The handshake also accepts the **previous** rotated secret, so a one-sided persist failure heals itself on the next run in place of forcing a re-invite.
-Core accepts it, the CLI keeps it in the key file, and a managed browser exchange keeps it in its record ([PROTOCOL.md](../spec/PROTOCOL.md#the-previous-secret)).
+Core accepts it, the CLI keeps it in the key file, and a managed browser exchange keeps it in its record ([SHARED_SECRET_ROTATION.md](../spec/SHARED_SECRET_ROTATION.md#the-previous-secret)).
 The first managed release shipped with implicit-only detection plus the explicit recovery, the re-invite with the rotation-in-flight marker naming a probable partial rotation, which still covers a cut run the previous secret cannot heal.
 
 The grace window belongs in core and not in the web app, and later and not first, because it is a threat-model change.
