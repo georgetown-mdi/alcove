@@ -4,7 +4,7 @@ title: "Transport Liveness Bounds"
 
 # Transport liveness bounds
 
-This document specifies the liveness bounds on Alcove's file-sync transport operations, with their constant values and enforcement points: the per-operation deadlines, the whole-exchange budget, the send-window guard, the connect-probe bound, the rule a consumer applies to a bound's refusal, and the slow-operation warning, together with the SFTP session heartbeat and TCP keepalive that keep a quiet session from being dropped.
+This document specifies the liveness bounds on Alcove's file-sync transport operations, with their constant values and enforcement points: the per-operation deadlines, the whole-exchange budget, the send-window guard, the connect-probe bound, the rule a consumer applies to a bound's refusal, the slow-operation warning, and the browser SFTP transport's counterparts of these bounds, together with the SFTP session heartbeat and TCP keepalive that keep a quiet session from being dropped.
 It is the implementation-level complement to the **Channel security** overview in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security), which covers what each control protects against and why the design is sufficient.
 It does not cover the memory bounds on what a transport reads (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)), the authenticated abort marker (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)), or SFTP session recovery (see [SFTP_SESSION_RECOVERY.md](SFTP_SESSION_RECOVERY.md)).
 Intended readers are security auditors and implementors.
@@ -140,6 +140,27 @@ It then lets the operation continue unchanged.
 It needs no duration estimate: a slow-but-honest transfer and an intentionally slow or withholding server are observationally identical (intent is not on the wire), so a false warning is cheap and the line reports observed signal for a human to judge.
 It does nothing on a headless run with no human watching - the whole-exchange budget defends that run - and it stays entirely outside the terminal-error paths, so it can never affect correctness or the liveness gate.
 It introduces no new required configuration.
+
+## Browser SFTP transport liveness
+
+The web app's SFTP file transport ([TRANSPORT_BOUNDS.md, Browser SFTP transport bounds](TRANSPORT_BOUNDS.md#browser-sftp-transport-bounds)) holds the per-operation bounds above at the same figures, read from core (`packages/core/src/connection/transportOperationBounds.ts`).
+Each fails with a terminal `TransportOperationStalledError`.
+
+- **`list()`**: **16,384 READDIR round-trips** and **60 seconds** over the whole listing.
+  The directory handle is closed on failure, and one the server returns after the deadline is closed when it arrives.
+- **`get()`**: **60 seconds** with no data, reset by each READ reply that holds data; an empty DATA reply is not progress.
+- **`put()`**: **60 seconds** with no acknowledged **64 KiB** chunk, the closing CLOSE included.
+  It does not retry a write the server refused.
+- **`createExclusive()`, `rename()`, `delete()`, `safeDelete()`, `exists()`**: **60 seconds** for the whole operation, the follow-up STAT of an exclusive create included.
+
+The bounds only race: a request they abandon can still be answered, and its reply is then discarded.
+
+Its connect is bounded as the CLI's is, by `serverConnectTimeoutMs` (the dial's `readyTimeout`), in two windows.
+The first covers the relay socket, the key exchange, the host-key check, authentication and the `sftp` subsystem request; on expiry the transport closes the relay socket.
+The second covers SFTP's INIT and VERSION exchange.
+Either expiry rejects with a `BrowserSftpConnectTimeoutError`, a `TimeoutError` naming the phase.
+The transport makes one dial attempt, and `end()` closes the session and the relay socket at once without waiting on the server.
+It has no slow-operation warning, no heartbeat and no TCP keepalive, which a page cannot set.
 
 ## SFTP session heartbeat and TCP keepalive
 

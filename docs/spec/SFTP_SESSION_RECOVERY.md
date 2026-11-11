@@ -4,7 +4,7 @@ title: "SFTP Session Recovery"
 
 # SFTP session recovery
 
-This document specifies how the CLI's SFTP adapter recovers when the server drops its session mid-exchange, with the constant values and enforcement points: which losses are re-dialed and which stay terminal, the bounds on recovery and what each protects, what the accounting counts, how a torn operation is re-issued, the operations concurrent with a re-dial or a release, the outstanding-operation hold on an idle boundary, the deferred cleanup-delete record, the session-transition lock, and the connection's terminal close.
+This document specifies how the CLI's SFTP adapter recovers when the server drops its session mid-exchange, with the constant values and enforcement points: which losses are re-dialed and which stay terminal, the bounds on recovery and what each protects, what the accounting counts, how a torn operation is re-issued, the operations concurrent with a re-dial or a release, the outstanding-operation hold on an idle boundary, the deferred cleanup-delete record, the session-transition lock, the connection's terminal close, and how the browser SFTP transport differs.
 It is the implementation-level complement to [Server-enforced session limits](../DEPLOYMENT.md#server-enforced-session-limits) in DEPLOYMENT.md and the `max_reconnect_attempts` and `connection_per_poll` settings in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md), which say when an operator needs them.
 It does not cover the heartbeat that keeps a quiet session from being dropped (see [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md#sftp-session-heartbeat-and-tcp-keepalive)), the crash safety on a fatal packet and the host-key verification (see [SFTP_CONNECTION.md](SFTP_CONNECTION.md)), or the file-sync state machine across an idle boundary (see [FILE_SYNC.md](FILE_SYNC.md#session-lifetime-across-an-idle-boundary)).
 Intended readers are security auditors and implementors.
@@ -477,3 +477,19 @@ Nothing on the forced path throws: core treats `end()` as best-effort and logs t
 The one informational line at default verbosity is the successful outcome's alone, and the close is not counted as a lost session and not folded into the idle release's forced-release total, which measures that mode's per-cycle boundary instead.
 Core keeps a safety check of its own: `end()` is the one transport call wrapped by the short teardown budget [FILE_SYNC.md](FILE_SYNC.md#phase-3----cleanup-and-close) specifies, rather than a fresh peer-inactivity budget.
 That safety check bounds core's wait for a transport it does not own; it cannot close anything, which is why the adapter-side destroy is what the guarantee rests on.
+
+## The browser SFTP transport
+
+The web app's SFTP file transport (`apps/web/src/psi/transport/browserSsh/browserSftpTransport.ts`) does not recover a dropped session, a stated limit.
+No page loads it yet ([TRANSPORT_BOUNDS.md, Browser SFTP transport bounds](TRANSPORT_BOUNDS.md#browser-sftp-transport-bounds)).
+
+- **A drop ends the exchange.**
+  Once the channel or the relay socket closes, the operation in flight and every later one reject with an `SftpSessionClosedError`, and none is re-dialed or re-issued.
+  The file-sync connection reports the first such rejection, and the exchange fails with it rather than waiting out its inactivity budget.
+- **One dial.**
+  `connect()` makes one attempt, so `max_reconnect_attempts` bounds nothing on this transport.
+- **No idle release.**
+  The transport implements none of `releaseForIdle`, `ensureConnected`, and `beginTeardown`, so `connection_per_poll` has no effect and one session lasts the whole exchange.
+  It sends no heartbeat either, so a server with a short idle cap can drop a session that has gone quiet.
+
+Recovery as this document states it for the CLI -- the re-dial and re-issue, the accounting, the deferred cleanup-delete record, the session-transition lock, and the idle release -- is a separate stage, projected at 1,000 to 1,500 changed non-test lines ([browser-sftp-proxy.md, Sizing](../notes/browser-sftp-proxy.md#sizing)).

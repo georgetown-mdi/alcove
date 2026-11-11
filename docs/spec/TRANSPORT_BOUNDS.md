@@ -4,7 +4,7 @@ title: "Transport Memory Bounds"
 
 # Transport memory bounds
 
-This document specifies the memory bounds Alcove's transports hold against what a hostile party writes for them to read, with their constant values and enforcement points: the file-sync inbound frame-size bound and the per-exchange and per-part bounds beneath it, the browser SFTP client's packet bound, the directory-listing bound, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound.
+This document specifies the memory bounds Alcove's transports hold against what a hostile party writes for them to read, with their constant values and enforcement points: the file-sync inbound frame-size bound and the per-exchange and per-part bounds beneath it, the browser SFTP client's packet bound and its file transport's bounds, the directory-listing bound, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound.
 It is the implementation-level complement to the **Channel security** overview in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security), which covers what each control protects against and why the design is sufficient.
 It does not cover how long a transport operation may take (see [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md)), the application-layer encryption (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)), the bounds on partner-parsed input (see [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md)), or the coordination server's bounds (see [SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md)).
 Intended readers are security auditors and implementors.
@@ -238,6 +238,22 @@ The cap is a fixed constant, for the same reason as the frame-size bound.
 The client holds at most one partial packet: it hands each data event back to the SSH channel's window once the event's complete packets are dispatched.
 It also ends the session on a reply to no outstanding request, an unknown or an already-answered id, and on a DATA reply longer than the READ asked for.
 It sends no packet declaring more than **262,144 bytes** (`SFTP_MAX_OUTBOUND_PACKET_LENGTH`), the max-packet-length in the same `limits@openssh.com` reply; in the same probe the server ended the session on a WRITE declaring 262,145 bytes.
+
+## Browser SFTP transport bounds
+
+The web app's SFTP file transport (`apps/web/src/psi/transport/browserSsh/browserSftpTransport.ts`) runs a file-sync connection over the SFTP client above.
+No page loads it yet: `selectExchangeDriver` (`apps/web/src/psi/exchangeDriverSelection.ts`) selects no driver that builds it, so the shipped bundles do not change.
+It holds the CLI SFTP adapter's memory bounds at the same figures, read from core (`packages/core/src/connection/transportOperationBounds.ts`) rather than restated, and fails each with the same terminal error type.
+
+- **Inbound frame size.**
+  `get()` refuses a file once it holds more than the `maxBytes` its caller passes, with a `FrameSizeExceededError`, whatever size the listing reported.
+  Each READ asks for no more than one byte past the cap, so the transport holds at most `maxBytes` bytes of the file.
+  The caller's cap is the one the [frame-size bound](#inbound-frame-size-bound) sets for the CLI.
+- **Directory listing.**
+  `list()` reads one READDIR reply at a time and refuses more than **8,192 entries** (`MAX_DIRECTORY_ENTRIES`) or a name over **255 bytes** of UTF-8 (`MAX_FILE_NAME_BYTES`), with a `DirectoryListingBoundsError`, checking the entry count first as both CLI adapters do.
+  One reply is itself bounded by the [packet bound](#browser-sftp-packet-bound).
+
+Its liveness bounds are in [TRANSPORT_LIVENESS.md, Browser SFTP transport liveness](TRANSPORT_LIVENESS.md#browser-sftp-transport-liveness).
 
 ## Directory-listing bound
 
