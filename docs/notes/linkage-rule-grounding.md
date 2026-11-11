@@ -544,9 +544,6 @@ These are requirements, not designs, sorted by whether Alcove builds them.
   cut point, as The Link King computes (Campbell et al. 2006). A general tool
   cannot define a common name except relative to a particular population, so
   the rule is parked.
-- **Email local-part canonicalization**, folding dots and plus tags. Email is
-  standardized by trimming and lowercasing only, so one mailbox written two ways
-  gives two values and a missed match, not a false one (reasoning).
 
 ## Name suffixes
 

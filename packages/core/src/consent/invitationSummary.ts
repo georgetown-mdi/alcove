@@ -157,6 +157,8 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
     "Replaces a US state, DC, or territory name with its two-letter postal abbreviation before matching, so a name and its abbreviation can match; any other value is dropped.",
   usps_street_name:
     "Writes a street name's suffix and directionals in their USPS forms before matching, abbreviating or spelling each out by its position, so Main Street North and Main St N can match.",
+  gmail_address:
+    "Removes dots and a plus tag from a gmail.com or googlemail.com address and writes its domain as gmail.com before matching, so Jane.Doe+news@googlemail.com and janedoe@gmail.com can match; any other address is kept as it is.",
   null_if: "Treats listed values as empty, dropping them from matching.",
   replace_regex:
     "Rewrites the parts of the value matching a pattern before matching.",

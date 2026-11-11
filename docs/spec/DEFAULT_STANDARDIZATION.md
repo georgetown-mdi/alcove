@@ -988,12 +988,14 @@ steps:
   - function: trim_whitespace
   - function: remove_non_ascii
   - function: to_lower_case
+  - function: gmail_address
   - function: filter_regex
     params:
       pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
 ```
 
-Result: a lowercased address of the shape `local@domain.tld`. The filter is a
+Result: a lowercased address of the shape `local@domain.tld`, with the
+spellings of one Gmail mailbox written one way. The filter is a
 shape test, not a validator: it requires one `@` with a dotted right-hand side
 and no whitespace, and admits addresses no mail system would accept. The
 engine's `\s` does not match a vertical tab (U+000B), so an address holding one
@@ -1007,10 +1009,30 @@ address is truncated to its ASCII characters. Both parties do the same, so such
 an address still matches itself; it does not match a partner's copy that was
 already stored in an ASCII form.
 
+`gmail_address` follows Google's normalization of a Gmail address
+([Google Ads API, Manage online click conversions](https://developers.google.com/google-ads/api/docs/conversions/upload-online)):
+
+- For a `gmail.com` or `googlemail.com` address, it removes every dot from the
+  part before the `@`, and a `+` with everything after it up to the `@`.
+- It writes `googlemail.com` as `gmail.com`, so `Jane.Doe+clinic@googlemail.com`
+  and `janedoe@gmail.com` clean to one value. Google's own example keeps the
+  `googlemail.com` domain; the two domains are one service, so this pipeline
+  joins them.
+- An address at any other domain keeps its dots and its plus tag: at most
+  providers they name a different mailbox.
+
+It runs before the filter, so a Gmail address left with nothing before the `@`,
+such as `+news@gmail.com`, is dropped.
+
 | Input | Result |
 | ----- | ------ |
 | `"  Jane.Doe@Example.COM  "` | `"jane.doe@example.com"` |
+| `"jane.doe+x@example.com"` | `"jane.doe+x@example.com"` |
+| `"Jane.Doe+clinic@googlemail.com"` | `"janedoe@gmail.com"` |
+| `"j.a.n.e.doe@gmail.com"` | `"janedoe@gmail.com"` |
+| `"janedoe+news@Gmail.com"` | `"janedoe@gmail.com"` |
 | `"a@b.c"` | `"a@b.c"` |
+| `"+news@gmail.com"` | `null` |
 | `"not-an-email"` | `null` |
 
 ### `street_number`

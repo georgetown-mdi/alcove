@@ -4401,6 +4401,7 @@ describe("buildKeyStrings", () => {
       zip3: undefined,
       state_code: undefined,
       usps_street_name: undefined,
+      gmail_address: undefined,
       null_if: { values: ["EXCLUDED"] },
       replace_regex: { pattern: "[A-Z]+", replacement: "" },
       extract_regex: { pattern: "([0-9]+)" },

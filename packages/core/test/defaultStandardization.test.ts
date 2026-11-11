@@ -1826,6 +1826,32 @@ describe("default email_address pipeline", () => {
     expect(run("user@nodot")).toBeNull();
   });
 
+  test("cleans the spellings of one Gmail mailbox to one value", () => {
+    expect(run("Jane.Doe+clinic@googlemail.com")).toBe("janedoe@gmail.com");
+    expect(run("janedoe@gmail.com")).toBe("janedoe@gmail.com");
+    expect(run(" J.A.N.E.Doe+news@GMAIL.COM ")).toBe("janedoe@gmail.com");
+  });
+
+  test("folds a Gmail address with dots and no plus tag", () => {
+    expect(run("jane.doe@gmail.com")).toBe("janedoe@gmail.com");
+  });
+
+  test("keeps the dots and plus tag of an address at another domain", () => {
+    expect(run("jane.doe+x@example.com")).toBe("jane.doe+x@example.com");
+    expect(run("jane.doe@gmail.co")).toBe("jane.doe@gmail.co");
+  });
+
+  test("drops a Gmail address the fold leaves with no local part", () => {
+    expect(run("+news@gmail.com")).toBeNull();
+    expect(run("...@googlemail.com")).toBeNull();
+  });
+
+  test("drops a value the shape check refuses, Gmail domain or not", () => {
+    expect(run("jane.doe@gmail")).toBeNull();
+    expect(run("jane.doe@x@gmail.com")).toBeNull();
+    expect(run("jane doe@gmail.com")).toBeNull();
+  });
+
   test("strips non-ASCII before the @-pattern filter (TRANSFORM_REGEX_DIALECT ordering claim)", () => {
     // The RE2 dialect's `\s` is ASCII-only, narrower than JavaScript's. The
     // email filter pattern uses `[^\s@]`, so TRANSFORM_REGEX_DIALECT.md relies on

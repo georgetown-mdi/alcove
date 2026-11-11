@@ -455,6 +455,7 @@ const VALUE_PRESERVING_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   "remove_accents",
   "remove_affixes",
   "usps_street_name",
+  "gmail_address",
   "pad_left",
   "replace_regex",
   "split_on",
