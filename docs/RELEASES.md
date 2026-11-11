@@ -241,12 +241,13 @@ A Dependabot alert in the repository's Security tab is evaluated against `main`,
 
 The same default-branch evaluation decides which `.github/dependabot.yml` Dependabot reads, so an `ignore` entry merged to `staging` suppresses no pull request until a promotion brings it to `main` ([DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image)).
 
-Then re-check what no Dependabot pull request moves: the pins whose route is scheduled in [Every pin's update route](spec/DEPENDENCY_PINS.md#every-pins-update-route), and upstream OpenMined/PSI:
+Then re-check what no Dependabot pull request moves: the pins whose route is scheduled in [Every pin's update route](spec/DEPENDENCY_PINS.md#every-pins-update-route), upstream OpenMined/PSI, and the expiry of the token the PSI route runs on:
 
 - **The FIPS image's base.** Bump it, with the Node runtime it carries, by [Bumping the FIPS base image](spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image), in a pull request into `staging` that merges before the release branch is cut or is brought onto it.
 - **The project site's `vite`.** Run `npm update vite --package-lock-only`, and keep the change when it moves the copy under `vitepress` ([The project site's vite override](spec/DEPENDENCY_PINS.md#the-project-sites-vite-override)).
 - **The wrangler overrides.** Remove the `sharp` or `undici` entry from `.github/wrangler/package.json` once the package depending on it in `.github/wrangler/package-lock.json` declares that release or a later one, then run `npm install --package-lock-only` in that directory.
 - **The runner labels.** Compare each `runs-on` label in `.github/workflows` with the runner images GitHub offers, and move a job whose label GitHub has deprecated.
+- **The PSI re-vendor token.** `psi_revendor.yaml` pushes its branch and opens the re-vendor pull request with the `ALCOVE_REVENDOR_TOKEN` Actions secret, a fine-grained token limited to this repository with Contents and Pull requests write. It expires on 2027-11-11. Before then, create its replacement with the same scope and set it as the secret's new value; once it lapses, the next fork Release fails the workflow's push step.
 - **Upstream OpenMined/PSI.** Check upstream `OpenMined/PSI` for commits the fork's `master` (`georgetown-mdi/OpenMinedPSI`) lacks, and when there are any, take them by the fork's upstream route ([DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md#the-vendored-openminedpsijs-addon)).
 
 ### 5. Run the full test suite

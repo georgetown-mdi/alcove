@@ -56,6 +56,24 @@ marker stays disarmed.
 
 ## Procedure
 
+`.github/workflows/psi_revendor.yaml` runs these steps when the fork
+publishes a Release (a `Native prebuilds` dispatch on `master` with `release`
+checked) newer than the vendored version, leaving step 6's build and test run
+to the pull request's CI, and opens the pull request as a draft for the
+reviewer below. Its job that holds the push token runs no npm and no
+repository script. Before pushing, it verifies the tarball against its
+sidecar, its marker and its attestation itself. It refuses a second tarball
+in `lib/`, a change to any file these steps do not write, and a change to
+`NOTICE`, `CONTRIBUTING.md` or the prebuild manifest other than the tarball's
+new file name. It also refuses a lockfile or `package.json` change other than
+the `@openmined/psi.js` version, path and integrity; those files are compared
+as JSON, so their formatting is not checked. It refuses a marker whose
+`attestation_expected` is not `true`; step 3 writes `true` once step 2 has
+verified. The pushed commit's author is the workflow's bot, and its message
+is the workflow's own. The steps here are its manual
+fallback, for a build the fork attests but does not release, or a run of the
+workflow that fails.
+
 Run the fork's `Native prebuilds` workflow (`workflow_dispatch`) and note the
 run's commit. Then, from a branch in this repository:
 

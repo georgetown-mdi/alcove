@@ -1,0 +1,457 @@
+name: PSI Re-vendor
+
+# Opens the re-vendor pull request into staging when the PSI fork,
+# georgetown-mdi/OpenMinedPSI, publishes a GitHub Release whose version is
+# newer than the one vendored in lib/: docs/PREBUILD_REVENDOR.md, Procedure, steps 1 to 5
+# and 7, in that order. The fork publishes the Release from a dispatched
+# `Native prebuilds` run (its `release` job); this side polls for it, so the
+# fork holds no secret of this repository.
+#
+# Three jobs, so the token that writes to this repository never shares a job
+# with a fetched install:
+#   check    reads the fork's latest Release and decides. Read-only.
+#   prepare  downloads the tarball, runs `gh attestation verify` before any
+#            file records its digest, rewrites the tree with
+#            scripts/revendor-psi.mjs, reinstalls with --ignore-scripts,
+#            confirms the installed prebuilds are the new bytes, runs the
+#            provenance checks, and hands the commit on as a patch. Read-only.
+#   publish  applies the patch to the same staging commit as the bot's own
+#            commit, refuses a second commit or any path outside the
+#            re-vendor's files, holds the lockfile, the package.json files
+#            (both compared as JSON), NOTICE, CONTRIBUTING.md and the prebuild
+#            manifest to the edits a re-vendor makes, checks the committed
+#            tarball against its sidecar, its marker and its attestation
+#            itself, then pushes the branch and opens the draft pull request
+#            with ALCOVE_REVENDOR_TOKEN: a pull request opened with
+#            GITHUB_TOKEN starts no workflow. It runs no npm and no repository
+#            script.
+#
+# Every value read from the Release is untrusted. None is interpolated into a
+# script; each reaches one through env:, and the version is held to the
+# pattern below, the VERSION of scripts/revendor-psi.mjs, before it names a
+# path or a branch.
+#
+# What CI runs on the pull request, which changes lib/**, package-lock.json and
+# the workspace manifests: the native parity and wire-vector suites
+# (packages/core/test/psi/psiParticipantNativeParity.test.ts and
+# psiEngineWireVectors.test.ts) on the `core` leg of web_build_and_test.yaml,
+# whose path scope names lib/**; the CLI suites of cli_build_and_test.yaml,
+# scoped the same way; the musl known-answer check of native_alpine.yaml,
+# scoped to lib/** and the wire vectors; scripts/vendored-psi-deps.test.mjs
+# and scripts/verify-prebuild-provenance.mjs in static_checks.yaml's
+# `npm run check:all`; the provenance check again in .github/actions/setup,
+# ahead of every install; and image_smoke.yaml, filtered on lib/**. The PR
+# Checklist waits until a reviewer marks the draft ready.
+#
+# An existing branch for the version means its pull request was opened: the
+# run does nothing, and deleting the branch has the next run open it again.
+# The token expires; docs/RELEASES.md, step 4, records the date and renewal.
+
+on:
+  schedule:
+    # 06:23 UTC daily, off the hour. A `schedule` trigger fires only from the
+    # workflow as it exists on the default branch, so the daily run starts once
+    # this file reaches main; dispatch it before then.
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+# One run at a time, never cancelled: a cancelled publish could leave a pushed
+# branch with no pull request.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions: {}
+
+# Explicit, so every script runs under -eo pipefail rather than -e alone.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: Compare the fork's latest Release with lib/
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+      base: ${{ steps.release.outputs.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: staging
+          persist-credentials: false
+      - name: Read the fork's latest Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORK: georgetown-mdi/OpenMinedPSI
+        run: |
+          tag=$(gh release list --repo "$FORK" --exclude-drafts --json tagName,isLatest \
+            --jq '[.[] | select(.isLatest)] | .[0].tagName // ""')
+          if [ -z "$tag" ]; then
+            echo "The fork has no latest Release; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          version_pattern='^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})-alcove\.([0-9]{1,4})$'
+          # Fixed-width digits, so the keys compared as integers order the versions.
+          order_key() {
+            [[ $1 =~ $version_pattern ]] || return 1
+            printf '%03d%03d%03d%04d' "$((10#${BASH_REMATCH[1]}))" "$((10#${BASH_REMATCH[2]}))" \
+              "$((10#${BASH_REMATCH[3]}))" "$((10#${BASH_REMATCH[4]}))"
+          }
+          if [[ $tag != v* ]] || ! release_key=$(order_key "${tag#v}"); then
+            echo "::error::The fork's latest Release tag is not v<upstream version>-alcove.<N>. Publish the release under such a tag, or re-vendor by hand (docs/PREBUILD_REVENDOR.md)."
+            exit 1
+          fi
+          version=${tag#v}
+
+          set -- lib/openmined-psi.js-*.tgz
+          if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::expected exactly one vendored tarball in lib/ on staging"
+            exit 1
+          fi
+          vendored=${1#lib/openmined-psi.js-}
+          vendored=${vendored%.tgz}
+          if ! vendored_key=$(order_key "$vendored"); then
+            echo "::error::The vendored version $vendored is not <upstream version>-alcove.<N>, so it cannot be ordered against v$version. Re-vendor by hand (docs/PREBUILD_REVENDOR.md)."
+            exit 1
+          fi
+          if [ "$release_key" = "$vendored_key" ]; then
+            echo "The fork's latest Release, v$version, is the vendored version; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          elif ((10#$release_key < 10#$vendored_key)); then
+            echo "::notice::The fork's latest Release, v$version, is older than the vendored $vendored; nothing to do."
+            echo "The fork's latest Release, v$version, is older than the vendored $vendored; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          branch="psi-revendor-$version"
+          status=0
+          git ls-remote --exit-code --heads origin "refs/heads/$branch" > /dev/null || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "Branch $branch exists, so its pull request was opened; delete the branch to open it again." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          elif [ "$status" -ne 2 ]; then
+            echo "::error::git ls-remote exited $status reading the branch list"
+            exit 1
+          fi
+
+          commit=$(gh api "repos/$FORK/commits/refs/tags/v$version" --jq .sha)
+          if ! [[ $commit =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the commit of tag v$version is not 40 hex characters"
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "commit=$commit"
+            echo "base=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Re-vendoring $vendored -> $version, fork commit $commit." >> "$GITHUB_STEP_SUMMARY"
+
+  prepare:
+    name: Verify the tarball and rewrite the tree
+    needs: check
+    if: needs.check.outputs.version != ''
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      COMMIT: ${{ needs.check.outputs.commit }}
+      FORK: georgetown-mdi/OpenMinedPSI
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.check.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+      - name: Download the tarball and remove the one it replaces
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tarball="openmined-psi.js-$VERSION.tgz"
+          download="$RUNNER_TEMP/release"
+          gh release download "v$VERSION" --repo "$FORK" --pattern "$tarball" --dir "$download"
+          if [ ! -f "$download/$tarball" ] || [ -L "$download/$tarball" ]; then
+            echo "::error::Release v$VERSION has no asset $tarball"
+            exit 1
+          fi
+          # git rm takes lib/ with its last file, so it is made again.
+          git rm -q -- 'lib/openmined-psi.js-*'
+          mkdir -p lib
+          cp "$download/$tarball" "lib/$tarball"
+      - name: Verify the tarball's build provenance
+        # docs/PREBUILD_REVENDOR.md, step 2, before any file records the digest.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify "lib/openmined-psi.js-$VERSION.tgz" \
+            --repo "$FORK" \
+            --signer-workflow "$FORK/.github/workflows/native-prebuilds.yml" \
+            --source-ref refs/heads/master \
+            --source-digest "$COMMIT" \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --deny-self-hosted-runners
+      - name: Write the marker, the sidecar, the lockfile and the references
+        run: node scripts/revendor-psi.mjs "$VERSION" "$COMMIT"
+      - name: Reinstall and confirm the installed prebuilds are the new bytes
+        # No install script runs: the addon resolves its prebuild at require time.
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          extracted="$(mktemp -d)"
+          tar -xzf "lib/openmined-psi.js-$VERSION.tgz" -C "$extracted"
+          packed=$(jq -r .version "$extracted/package/package.json")
+          if [ "$packed" != "$VERSION" ]; then
+            echo "::error::the tarball's package.json names version $packed, not $VERSION"
+            exit 1
+          fi
+          diff -r "$extracted/package/prebuilds" node_modules/@openmined/psi.js/prebuilds
+      - name: Run the provenance checks
+        # The scripts project's own config: the root one loads every
+        # workspace's, and apps/web's needs a built @alcove/core.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum -c lib/openmined-psi.js-*.tgz.sha256
+          npm run check:prebuild-provenance
+          npx vitest run --config scripts/vitest.config.mjs verify-prebuild-provenance.test.mjs vendored-psi-deps.test.mjs
+      - name: Commit and write the patch
+        run: |
+          git add -A
+          printf 'Re-vendor PSI as %s\n\nBuilt by the Native prebuilds run of the fork at commit\n%s,\nverified against its attestation.\n' \
+            "$VERSION" "$COMMIT" > "$RUNNER_TEMP/message.txt"
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -F "$RUNNER_TEMP/message.txt"
+          git format-patch -1 --binary --stdout > "$RUNNER_TEMP/revendor.patch"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: psi-revendor-patch
+          path: ${{ runner.temp }}/revendor.patch
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Push the branch and open the pull request
+    needs: [check, prepare]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      COMMIT: ${{ needs.check.outputs.commit }}
+      BASE: ${{ needs.check.outputs.base }}
+      FORK: georgetown-mdi/OpenMinedPSI
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.check.outputs.base }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: psi-revendor-patch
+          path: ${{ runner.temp }}/patch
+      - name: Apply the commit and hold it to the re-vendor's files
+        run: |
+          bot=(-c core.hooksPath=/dev/null
+            -c user.name="github-actions[bot]"
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com")
+          git "${bot[@]}" am -q "$RUNNER_TEMP/patch/revendor.patch"
+          # The pushed commit's author is the bot and its message is built
+          # here, not taken from the patch.
+          printf 'Re-vendor PSI as %s\n\nBuilt by the Native prebuilds run of the fork at commit\n%s,\nverified against its attestation.\n' \
+            "$VERSION" "$COMMIT" > "$RUNNER_TEMP/message.txt"
+          git "${bot[@]}" commit -q --amend --reset-author -F "$RUNNER_TEMP/message.txt"
+          commits=$(git rev-list --count "$BASE..HEAD")
+          if [ "$commits" -ne 1 ]; then
+            echo "::error::the patch holds $commits commits; prepare writes exactly one"
+            exit 1
+          fi
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              lib/openmined-psi.js-*.tgz | lib/openmined-psi.js-*.tgz.sha256 | lib/openmined-psi.js-*.tgz.provenance.json) ;;
+              package-lock.json | CONTRIBUTING.md | NOTICE) ;;
+              apps/cli/package.json | apps/web/package.json | packages/core/package.json) ;;
+              packages/core/test/vectors/psi-prebuild-manifest.json) ;;
+              *)
+                echo "::error::the re-vendor commit changes $path, outside the files a re-vendor writes"
+                exit 1
+                ;;
+            esac
+          done < <(git diff -z --no-renames --name-only "$BASE" HEAD)
+      - name: Hold the commit's files to the re-vendor's edits
+        # The allowlist above admits these files whole. These are the edits
+        # scripts/revendor-psi.mjs makes to them, and nothing else may differ:
+        # the lockfile and package.json files are compared as JSON, the other
+        # files byte for byte. The next step checks the sidecar and the rest of
+        # the marker.
+        run: |
+          old_dep=$(git show "$BASE:packages/core/package.json" | jq -r '.dependencies["@openmined/psi.js"]')
+          if ! [[ $old_dep =~ ^file:\.\./\.\./lib/openmined-psi\.js-(.+)\.tgz$ ]]; then
+            echo "::error::packages/core/package.json at $BASE names no lib/ tarball for @openmined/psi.js"
+            exit 1
+          fi
+          old_version=${BASH_REMATCH[1]}
+          tarball="lib/openmined-psi.js-$VERSION.tgz"
+          dep="file:../../$tarball"
+
+          extra=""
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              "$tarball" | "$tarball.sha256" | "$tarball.provenance.json") ;;
+              lib/openmined-psi.js-*) extra+=" $(printf '%q' "$path")" ;;
+            esac
+          done < <(git ls-tree -z --name-only HEAD lib/)
+          if [ ! -f "$tarball" ] || [ -n "$extra" ]; then
+            echo "::error::lib/ must hold $tarball, its sidecar and its marker alone; it also holds:${extra:- nothing, and lacks the tarball}"
+            exit 1
+          fi
+          if ! jq -e '.attestation_expected == true' "$tarball.provenance.json" > /dev/null; then
+            echo "::error::the provenance marker's attestation_expected is not true, as a re-vendor writes it"
+            exit 1
+          fi
+
+          # The first path at which two JSON files differ, empty when none.
+          first_difference() {
+            jq -rn --slurpfile want "$1" --slurpfile got "$2" '
+              def leaves:
+                [([[]] + [paths])[] as $p
+                 | {key: ($p | tojson),
+                    value: {v: (getpath($p) | if type == "object" or type == "array" then type else . end)}}]
+                | from_entries;
+              ($want[0] | leaves) as $w | ($got[0] | leaves) as $g
+              | [($w + $g) | keys[] | select($w[.] != $g[.])] | first // empty
+              | fromjson | map(if type == "number" then "[\(.)]" else "[\(tojson)]" end) | join("")
+              | if . == "" then "the top level" else . end'
+          }
+          hex=$(sha512sum < "$tarball" | cut -d' ' -f1)
+          escaped=""
+          for ((i = 0; i < ${#hex}; i += 2)); do escaped+="\\x${hex:i:2}"; done
+          integrity="sha512-$(printf '%b' "$escaped" | base64 | tr -d '\n')"
+          git show "$BASE:package-lock.json" | jq --arg old "$old_version" --arg version "$VERSION" \
+            --arg dep "$dep" --arg resolved "file:$tarball" --arg integrity "$integrity" '
+            .packages["apps/cli"].dependencies["@openmined/psi.js"] = $dep
+            | .packages["apps/web"].dependencies["@openmined/psi.js"] = $dep
+            | .packages["packages/core"].dependencies["@openmined/psi.js"] = $dep
+            | if .packages["node_modules/@openmined/psi.js"].version == $old then
+                .packages["node_modules/@openmined/psi.js"] += {version: $version, resolved: $resolved, integrity: $integrity}
+              else error("the base package-lock.json does not pin @openmined/psi.js at \($old)") end' \
+            > "$RUNNER_TEMP/expected-lock.json"
+          difference=$(first_difference "$RUNNER_TEMP/expected-lock.json" package-lock.json)
+          if [ -n "$difference" ]; then
+            echo "::error::package-lock.json differs from $BASE at $difference, beyond the @openmined/psi.js version, path and integrity a re-vendor writes"
+            exit 1
+          fi
+          for manifest in apps/cli/package.json apps/web/package.json packages/core/package.json; do
+            git show "$BASE:$manifest" | jq --arg dep "$dep" '.dependencies["@openmined/psi.js"] = $dep' \
+              > "$RUNNER_TEMP/expected-manifest.json"
+            difference=$(first_difference "$RUNNER_TEMP/expected-manifest.json" "$manifest")
+            if [ -n "$difference" ]; then
+              echo "::error::$manifest differs from $BASE at $difference, beyond its @openmined/psi.js dependency"
+              exit 1
+            fi
+          done
+          old_name="openmined-psi.js-$old_version.tgz"
+          new_name="openmined-psi.js-$VERSION.tgz"
+          for file in CONTRIBUTING.md NOTICE packages/core/test/vectors/psi-prebuild-manifest.json; do
+            git show "$BASE:$file" | jq -Rsj --arg old "$old_name" --arg new "$new_name" 'split($old) | join($new)' \
+              > "$RUNNER_TEMP/expected-reference"
+            if [ "$(sha256sum < "$RUNNER_TEMP/expected-reference")" != "$(sha256sum < "$file")" ]; then
+              echo "::error::$file differs from $BASE beyond the tarball's file name, $old_name -> $new_name"
+              exit 1
+            fi
+          done
+      - name: Verify the committed tarball, sidecar and marker
+        # Its own check of the bytes it pushes, against check's commit rather
+        # than anything prepare reported; gh, jq and coreutils only.
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tarball="lib/openmined-psi.js-$VERSION.tgz"
+          marker="$tarball.provenance.json"
+          sha256=$(sha256sum < "$tarball" | cut -d' ' -f1)
+          if [ "$(cat "$tarball.sha256")" != "$sha256  $tarball" ]; then
+            echo "::error::the sidecar does not record the committed tarball's sha256 $sha256"
+            exit 1
+          fi
+          expected=$(jq -n --arg artifact "${tarball#lib/}" --arg sha256 "$sha256" --arg fork "$FORK" --arg commit "$COMMIT" \
+            '{artifact: $artifact, sha256: $sha256, producer_repository: $fork,
+              signer_workflow: ($fork + "/.github/workflows/native-prebuilds.yml"),
+              source_ref: "refs/heads/master", source_digest: $commit}')
+          if ! jq -e --argjson expected "$expected" 'del(.attestation_expected) == $expected' "$marker" > /dev/null; then
+            echo "::error::the provenance marker does not name the committed tarball, its sha256, the fork's signer workflow on refs/heads/master and commit $COMMIT"
+            exit 1
+          fi
+          gh attestation verify "$tarball" \
+            --repo "$FORK" \
+            --signer-workflow "$FORK/.github/workflows/native-prebuilds.yml" \
+            --source-ref refs/heads/master \
+            --source-digest "$COMMIT" \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --deny-self-hosted-runners \
+            --format json > "$RUNNER_TEMP/attestation.json"
+          run_url=$(jq -r '.[0].verificationResult.signature.certificate.runInvocationURI' "$RUNNER_TEMP/attestation.json")
+          if ! [[ $run_url =~ ^https://github\.com/georgetown-mdi/OpenMinedPSI/actions/runs/[0-9]+/attempts/[0-9]+$ ]]; then
+            echo "::error::the verified attestation names no fork workflow run"
+            exit 1
+          fi
+          arming="armed (\`attestation_expected: true\`, \`source_ref\` \`refs/heads/master\`, \`source_digest\` \`$COMMIT\`)"
+          {
+            echo "sha256=$sha256"
+            echo "run-url=$run_url"
+            echo "arming=$arming"
+          } >> "$GITHUB_OUTPUT"
+      - name: Push the branch and open the draft pull request
+        env:
+          GH_TOKEN: ${{ secrets.ALCOVE_REVENDOR_TOKEN }}
+          SHA256: ${{ steps.verify.outputs.sha256 }}
+          RUN_URL: ${{ steps.verify.outputs.run-url }}
+          ARMING: ${{ steps.verify.outputs.arming }}
+        run: |
+          renew="Renew ALCOVE_REVENDOR_TOKEN if it has expired (docs/RELEASES.md, step 4)."
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::The ALCOVE_REVENDOR_TOKEN secret is not set. $renew"
+            exit 1
+          fi
+          branch="psi-revendor-$VERSION"
+          if ! git -c core.hooksPath=/dev/null -c credential.helper= \
+            -c 'credential.helper=!gh auth git-credential' \
+            push -q origin "HEAD:refs/heads/$branch"; then
+            echo "::error::Pushing $branch failed. $renew"
+            exit 1
+          fi
+
+          body="$RUNNER_TEMP/body.md"
+          {
+            printf '## Summary\n\n'
+            printf 'Re-vendors `@openmined/psi.js` as `%s`, from the fork Release `v%s`, opened by `psi_revendor.yaml`. The tarball verified against an attestation of the fork `Native prebuilds` workflow on `refs/heads/master` before any file recorded its digest. A rebuild of the native crypto is crypto-code review scope: work through docs/PREBUILD_REVENDOR.md, What the reviewer does, before marking this ready.\n\n' "$VERSION" "$VERSION"
+            printf -- '- Fork run: %s\n' "$RUN_URL"
+            printf -- '- Fork commit: https://github.com/georgetown-mdi/OpenMinedPSI/commit/%s\n' "$COMMIT"
+            printf -- '- New digest (sha256): `%s`\n' "$SHA256"
+            printf -- '- Arming state: %s\n\n' "$ARMING"
+            printf '## Changes\n\n'
+            printf -- '- `lib/`: the new tarball, its sha256 sidecar and its provenance marker, replacing the three files of the version before.\n'
+            printf -- '- `package-lock.json`: the version, path and sha512 `integrity` of the tarball, as `npm install` left them.\n'
+            printf -- '- The `package.json` of `packages/core`, `apps/cli` and `apps/web`, `packages/core/test/vectors/psi-prebuild-manifest.json`, `NOTICE` and `CONTRIBUTING.md`: the file name of the tarball.\n\n'
+            printf '## Test plan\n\n'
+            printf 'Ran in the workflow: `gh attestation verify` (docs/PREBUILD_REVENDOR.md, step 2), the reinstall confirmation (step 5), `sha256sum -c`, `npm run check:prebuild-provenance`, `scripts/verify-prebuild-provenance.test.mjs` and `scripts/vendored-psi-deps.test.mjs` (step 6).\n'
+            printf 'New tests cover: n/a -- a re-vendor; CI runs the native parity and wire-vector suites on it.\n\n'
+            printf '## Checklist\n\n'
+            printf -- '- [ ] Docs: enumerated `docs/` and `docs/spec/` and updated affected pages or added new ones at the appropriate level of detail for the document tier (`/docs` high level + design; `/docs/spec` low level + details) -- <which pages, or n/a: no documented behavior changed>\n'
+            printf -- '- [ ] `CHANGELOG.md` `[Unreleased]` updated -- <the entry, or n/a: not a major feature or breaking change>\n'
+            printf -- '- [ ] Security review of <sha> -- <type of review done, or n/a: none of the above touched>\n'
+          } > "$body"
+          if ! gh pr create --repo "$GITHUB_REPOSITORY" --base staging --head "$branch" --draft \
+            --title "Re-vendor PSI as $VERSION" --body-file "$body"; then
+            echo "::error::Opening the pull request for $branch failed after the push. Delete the branch, or open the pull request from it by hand, and check that the token can write pull requests. $renew"
+            exit 1
+          fi

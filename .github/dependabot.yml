@@ -82,8 +82,10 @@ updates:
           # docs/spec/DEPENDENCY_PINS.md.
           - "canonicalize"
     ignore:
-      # The OpenMined PSI module is vendored; updates require manual review
-      # of the tarball and NOTICE file before the lock file is updated.
+      # The OpenMined PSI module is vendored, not installed from the registry.
+      # Its route is .github/workflows/psi_revendor.yaml, which opens the
+      # re-vendor pull request when the fork publishes a Release; the manual
+      # route is docs/PREBUILD_REVENDOR.md.
       - dependency-name: "@openmined/psi.js"
         update-types:
           [
