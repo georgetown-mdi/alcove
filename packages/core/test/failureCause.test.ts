@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { RoundSetLimitError, statesItsOwnNextStep } from "../src/errors";
 import {
+  CLEAN_DIRECTORY_RESTART_REMEDY,
   FAILURE_CAUSE_KINDS,
   failureCauseError,
   failureCauseFromUntrusted,
@@ -10,6 +11,7 @@ import {
   formatFileAge,
   formatWaitDuration,
   MATCHES_OVER_LIMIT_REMEDY,
+  PARTNER_STOPPED_AT_MATCHING_REMEDY,
   relayRegistrarUnreachableRemedy,
   markFailureCause,
   setOverLimitError,
@@ -220,6 +222,28 @@ const SAMPLES: {
       limitMatches: 0,
     },
   ],
+  "shared-secret-unusable": [
+    { kind: "shared-secret-unusable", problem: "malformed" },
+    {
+      kind: "shared-secret-unusable",
+      problem: "expired",
+      expires: "2026-07-08T19:32:00.000Z",
+      stage: "before-handshake",
+    },
+    {
+      kind: "shared-secret-unusable",
+      problem: "expired",
+      expires: "2026-07-08T19:32:00Z",
+      stage: "before-next-saved",
+    },
+  ],
+  "partner-stopped-at-matching": [{ kind: "partner-stopped-at-matching" }],
+  "message-write-unconfirmed": [
+    { kind: "message-write-unconfirmed", failure: "rename-unconfirmed" },
+    { kind: "message-write-unconfirmed", failure: "write-incomplete" },
+    { kind: "message-write-unconfirmed", failure: "sequence-spent", seq: 4 },
+  ],
+  "shared-name-at-entry": [{ kind: "shared-name-at-entry" }],
 };
 
 const allSamples: FailureCause[] = Object.values(SAMPLES).flat();
@@ -308,6 +332,39 @@ describe("the failure-cause catalog", () => {
       "This exchange found 9,000,000 matches, more than the 8,388,607 it can send, so it stopped and told your partner.",
       "This exchange found 1 match, more than the 0 it can send, so it stopped and told your partner.",
     ]);
+    expect(
+      SAMPLES["shared-secret-unusable"].map((cause) =>
+        failureCauseSentence(cause),
+      ),
+    ).toEqual([
+      "The key file's sharedSecret is not a base64url-encoded 32-byte value (43 base64url characters).",
+      "The shared secret expired at 2026-07-08T19:32:00.000Z.",
+      "The shared secret expired at 2026-07-08T19:32:00Z, before the next one was saved.",
+    ]);
+    expect(
+      failureCauseSentence(SAMPLES["partner-stopped-at-matching"][0]),
+    ).toBe("Matching could not start because your partner's run stopped.");
+    expect(
+      SAMPLES["message-write-unconfirmed"].map((cause) =>
+        failureCauseSentence(cause),
+      ),
+    ).toEqual([
+      "The message may or may not have reached the partner: renaming its file into place was cut off before the server answered and could not be confirmed afterwards.",
+      "The message may or may not have reached the partner: its write did not complete.",
+      "Cannot send: sequence number 4 was spent on a write the transport could not confirm, so the partner may already hold a message under it.",
+    ]);
+    expect(failureCauseSentence(SAMPLES["shared-name-at-entry"][0])).toBe(
+      "The exchange directory holds a hello file with this side's name, so this run takes it for its own leftover.",
+    );
+  });
+
+  test("the remedies the apps share for the run-ending refusals name no setting", () => {
+    expect(PARTNER_STOPPED_AT_MATCHING_REMEDY).toBe(
+      "Make sure you both run the current version of Alcove, then run the exchange again.",
+    );
+    expect(CLEAN_DIRECTORY_RESTART_REMEDY).toBe(
+      "Re-run the exchange in a clean directory; both parties must start the new exchange fresh.",
+    );
   });
 
   test("the single-pass remedy names the party whose data is over the limit", () => {
@@ -866,6 +923,48 @@ describe("failureCauseFromUntrusted", () => {
     [
       "a resolved table with no limit figure",
       { kind: "matches-over-limit", list: "resolved", matchCount: 3 },
+    ],
+    [
+      "a shared-secret problem off the list",
+      { kind: "shared-secret-unusable", problem: "revoked" },
+    ],
+    [
+      "an expired secret with an empty expiry",
+      {
+        kind: "shared-secret-unusable",
+        problem: "expired",
+        expires: "",
+        stage: "before-handshake",
+      },
+    ],
+    [
+      "an expired secret with a numeric expiry",
+      {
+        kind: "shared-secret-unusable",
+        problem: "expired",
+        expires: 1_783_539_120_000,
+        stage: "before-handshake",
+      },
+    ],
+    [
+      "an expired secret with no stage",
+      {
+        kind: "shared-secret-unusable",
+        problem: "expired",
+        expires: "2026-07-08T19:32:00Z",
+      },
+    ],
+    [
+      "a message write failure off the list",
+      { kind: "message-write-unconfirmed", failure: "write-refused" },
+    ],
+    [
+      "a spent sequence number with no number",
+      { kind: "message-write-unconfirmed", failure: "sequence-spent" },
+    ],
+    [
+      "a negative spent sequence number",
+      { kind: "message-write-unconfirmed", failure: "sequence-spent", seq: -1 },
     ],
     ["an array", ["partner-never-arrived"]],
     ["a string", "partner-never-arrived"],

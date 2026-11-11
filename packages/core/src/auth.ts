@@ -15,8 +15,13 @@ import {
   InternalConsistencyError,
   markStatesItsOwnNextStep,
 } from "./errors.js";
+import { failureCauseSentence, markFailureCause } from "./failureCause.js";
+import type { FailureCauseOfKind } from "./failureCause.js";
 
-/** The remedy sentence every refusal of an unusable shared secret ends with. */
+/**
+ * The step for a shared secret no exchange can use: the CLI's remedy for the
+ * `shared-secret-unusable` cause, and its key-file steps.
+ */
 export const NEW_INVITATION_REMEDY =
   "Ask your partner for a new invitation, or create one with 'alcove " +
   "invite' and have your partner accept it.";
@@ -175,32 +180,41 @@ export function isExpired(expires: string, now: number): boolean {
  * only, so {@link runProtocol} runs it before opening a connection;
  * {@link authenticateConnection} runs it too.
  *
- * @throws {Error} (marked {@link markStatesItsOwnNextStep}, as each message
- *                 states its own remedy) if `sharedSecret` is absent or not a
- *                 base64url-encoded 32-byte value, or if `expires` is past.
+ * @throws {Error} ({@link sharedSecretUnusableError}) if `sharedSecret` is
+ *                 absent or not a base64url-encoded 32-byte value, or if
+ *                 `expires` is past.
  */
 export function assertSharedSecretReadyForHandshake(
   authentication: Authentication,
 ): asserts authentication is Authentication & { sharedSecret: string } {
   const { sharedSecret, expires } = authentication;
 
-  if (!sharedSecret || !SHARED_SECRET_REGEX.test(sharedSecret)) {
-    throw markStatesItsOwnNextStep(
-      new Error(
-        "the key file's sharedSecret must be a base64url-encoded 32-byte " +
-          "value (43 base64url characters; the final character must be in " +
-          `[AEIMQUYcgkosw048]). ${NEW_INVITATION_REMEDY}`,
-      ),
-    );
-  }
+  if (!sharedSecret || !SHARED_SECRET_REGEX.test(sharedSecret))
+    throw sharedSecretUnusableError({
+      kind: "shared-secret-unusable",
+      problem: "malformed",
+    });
 
-  if (expires !== undefined && isExpired(expires, Date.now())) {
-    throw markStatesItsOwnNextStep(
-      new Error(
-        `the shared secret expired at ${expires}. ${NEW_INVITATION_REMEDY}`,
-      ),
-    );
-  }
+  if (expires !== undefined && isExpired(expires, Date.now()))
+    throw sharedSecretUnusableError({
+      kind: "shared-secret-unusable",
+      problem: "expired",
+      expires,
+      stage: "before-handshake",
+    });
+}
+
+/**
+ * The refusal of a shared secret no exchange can use: core's sentence, tagged
+ * with `cause` and marked {@link markStatesItsOwnNextStep}, as each app's
+ * remedy map states the step.
+ */
+export function sharedSecretUnusableError(
+  cause: FailureCauseOfKind<"shared-secret-unusable">,
+): Error {
+  return markStatesItsOwnNextStep(
+    markFailureCause(new Error(failureCauseSentence(cause)), cause),
+  );
 }
 
 /**

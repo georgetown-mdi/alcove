@@ -36,7 +36,6 @@ import {
   OLDER_PARTNER_AT_MATCHING_MESSAGE,
   PARTNER_PROGRESS_MIN_GAP_MS,
   PARTNER_SILENCE_BOUND_MS,
-  PARTNER_STOPPED_AT_MATCHING_MESSAGE,
   STILL_WORKING_FRAME,
   STILL_WORKING_INTERVAL_MS,
   isStillWorkingFrame,
@@ -850,8 +849,11 @@ describe("a partner on an older version", () => {
     const refused = await layer.conn.receive().catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(PartnerProtocolRefusalError);
     expect((refused as Error).message).toBe(
-      PARTNER_STOPPED_AT_MATCHING_MESSAGE,
+      "Matching could not start because your partner's run stopped.",
     );
+    expect(failureCauseOf(refused)).toEqual({
+      kind: "partner-stopped-at-matching",
+    });
     expect(olderVersionOf(refused)).toBeUndefined();
     expect(isPartnerStopAtMatchingStart(refused)).toBe(true);
     expect(statesItsOwnNextStep(refused)).toBe(true);

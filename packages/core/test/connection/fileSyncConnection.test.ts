@@ -4368,7 +4368,7 @@ test.each(entryPreconditionCells)(
         "must be empty except for a single peer hello",
       );
       expect(err instanceof Error ? err.message : "").not.toContain(
-        "fits this party's own peer_id",
+        "a hello file with this side's name",
       );
       // Retain mode ignores what an earlier exchange left; it deletes nothing.
       if (retain)

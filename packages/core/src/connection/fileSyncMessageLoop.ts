@@ -34,6 +34,8 @@ import {
   errorMessage,
   markStatesItsOwnNextStep,
 } from "../errors";
+import { failureCauseSentence, markFailureCause } from "../failureCause";
+import type { FailureCauseOfKind } from "../failureCause";
 import { MAX_DERIVED_FRAME_BYTES, MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { inboundFrameReadBytes } from "./inboundFrameMemory";
 import { joinFileSyncPath } from "./fileSyncPath";
@@ -69,14 +71,17 @@ import {
 } from "./namedCountRead";
 import { INACTIVITY_TIMEOUT_KEY } from "../config/connection";
 
-// The single remedy for a message write the transport could not settle,
-// shared by the two places send() prescribes it: the write's own rejection,
-// and the refusal of the next send() over the seq slot it spent. Both messages
-// are marked, which suppresses the CLI's generic post-handshake advisory, so
-// this sentence must clear the display boundary's per-error cap on its own.
-const CLEAN_DIRECTORY_RESTART_REMEDY =
-  "Re-run the exchange in a clean directory; both parties must start the new " +
-  "exchange fresh.";
+// A message write the transport could not settle, and the refusal of the next
+// send() over the seq slot it spent: one `message-write-unconfirmed` cause,
+// whose remedy each app states. Marked, which suppresses the CLI's generic
+// post-handshake advisory; the transport's error is hung off `cause`.
+const messageWriteUnconfirmedError = <E extends Error>(
+  error: (message: string) => E,
+  cause: FailureCauseOfKind<"message-write-unconfirmed">,
+): E =>
+  markStatesItsOwnNextStep(
+    markFailureCause(error(failureCauseSentence(cause)), cause),
+  );
 
 const DELETE_NEXT_STEP =
   "In delete mode each message is deleted once read, so the account must be " +
@@ -553,21 +558,13 @@ export class FileSyncMessageLoop {
     // seq -- in delete mode it emits it as the next message. Which of the two
     // happened is not knowable from here, so the session cannot continue.
     //
-    // Marked (unlike its unmarked siblings in errors.ts), which suppresses
-    // the CLI's generic post-handshake advisory, so the restart prescribed
-    // here is the only next step an operator gets and must clear the display
-    // boundary's per-error cap on its own; the transport's error is hung off
-    // `cause`, rendered under its own cap.
-    if (this.indeterminateWrite !== undefined)
-      throw markStatesItsOwnNextStep(
-        new UsageError(
-          `cannot send: sequence number ${this.indeterminateWrite.seq} was ` +
-            `spent on a write the transport could not confirm, so the partner ` +
-            `may already hold a message under it. ` +
-            CLEAN_DIRECTORY_RESTART_REMEDY,
-          { cause: this.indeterminateWrite.error },
-        ),
+    if (this.indeterminateWrite !== undefined) {
+      const { seq, error } = this.indeterminateWrite;
+      throw messageWriteUnconfirmedError(
+        (message) => new UsageError(message, { cause: error }),
+        { kind: "message-write-unconfirmed", failure: "sequence-spent", seq },
       );
+    }
 
     if (this.seq > MAX_MESSAGE_SEQ)
       throw new UsageError(
@@ -755,17 +752,12 @@ export class FileSyncMessageLoop {
         this.indeterminateWrite = { seq, error: renameErr };
         // The transport's own rejection is caller-neutral (it names a write
         // and prescribes nothing, since the several writes reaching it
-        // share no remedy). This one has a remedy, restated here and marked
-        // to suppress the CLI's generic advisory; the transport's error
-        // stays as the `cause`, rendered on its own line under its own cap.
-        throw markStatesItsOwnNextStep(
-          new TransportWriteIndeterminateError(
-            `the message may or may not have reached the partner: renaming ` +
-              `its file into place was cut off before the server answered ` +
-              `and could not be confirmed afterwards. ` +
-              CLEAN_DIRECTORY_RESTART_REMEDY,
-            { cause: renameErr },
-          ),
+        // share no remedy). This one is a catalog cause; the transport's
+        // error stays as the `cause`, rendered on its own line.
+        throw messageWriteUnconfirmedError(
+          (message) =>
+            new TransportWriteIndeterminateError(message, { cause: renameErr }),
+          { kind: "message-write-unconfirmed", failure: "rename-unconfirmed" },
         );
       }
       if (!deps.options().retainFiles) deps.responsibleFiles.add(outName);
@@ -813,12 +805,10 @@ export class FileSyncMessageLoop {
           { cause: putErr },
         ),
       };
-      throw markStatesItsOwnNextStep(
-        new TransportWriteIndeterminateError(
-          `the message may or may not have reached the partner: its write ` +
-            `did not complete. ${CLEAN_DIRECTORY_RESTART_REMEDY}`,
-          { cause: putErr },
-        ),
+      throw messageWriteUnconfirmedError(
+        (message) =>
+          new TransportWriteIndeterminateError(message, { cause: putErr }),
+        { kind: "message-write-unconfirmed", failure: "write-incomplete" },
       );
     }
     this.lastSentFile = outName;

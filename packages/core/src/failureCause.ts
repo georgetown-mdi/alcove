@@ -180,6 +180,39 @@ export type MatchesOverLimitFailure =
       readonly limitMatches: number;
     };
 
+/** Every point at which an expired shared secret is refused. */
+export const SHARED_SECRET_EXPIRED_STAGES = [
+  "before-handshake",
+  "before-next-saved",
+] as const;
+
+/**
+ * What a shared-secret-unusable cause found: a secret that is not a
+ * base64url-encoded 32-byte value, or one whose expiry, `expires` as the key
+ * file states it, had passed before the handshake or before the next secret
+ * was saved.
+ */
+export type SharedSecretUnusableFailure =
+  | { readonly problem: "malformed" }
+  | {
+      readonly problem: "expired";
+      readonly expires: string;
+      readonly stage: (typeof SHARED_SECRET_EXPIRED_STAGES)[number];
+    };
+
+/**
+ * What a message-write-unconfirmed cause found on a file-sync connection:
+ *
+ * - `rename-unconfirmed`: renaming the message's file into place was cut off
+ *   before the server answered, and could not be confirmed afterwards.
+ * - `write-incomplete`: the message's direct write did not complete.
+ * - `sequence-spent`: a later send was refused, as sequence number `seq` was
+ *   spent on a write the transport could not confirm.
+ */
+export type MessageWriteUnconfirmedFailure =
+  | { readonly failure: "rename-unconfirmed" | "write-incomplete" }
+  | { readonly failure: "sequence-spent"; readonly seq: number };
+
 /**
  * A failure whose cause the catalog names. Members hold facts only: a channel,
  * a path, an errno code, a duration. A path is composed into the sentence raw
@@ -239,7 +272,26 @@ export type FailureCause =
   | ({
       /** This party found more matches than it can send its partner. */
       readonly kind: "matches-over-limit";
-    } & MatchesOverLimitFailure);
+    } & MatchesOverLimitFailure)
+  | ({
+      /** This party's shared secret cannot be used for an exchange. */
+      readonly kind: "shared-secret-unusable";
+    } & SharedSecretUnusableFailure)
+  | {
+      /** The partner's first message of matching was its local-fault abort. */
+      readonly kind: "partner-stopped-at-matching";
+    }
+  | ({
+      /** A file-sync message write may or may not have reached the partner. */
+      readonly kind: "message-write-unconfirmed";
+    } & MessageWriteUnconfirmedFailure)
+  | {
+      /**
+       * At entry, the exchange directory held a hello file with this side's
+       * name that this run takes for its own leftover.
+       */
+      readonly kind: "shared-name-at-entry";
+    };
 
 /** The discriminant of {@link FailureCause}. */
 export type FailureCauseKind = FailureCause["kind"];
@@ -263,6 +315,10 @@ export const FAILURE_CAUSE_KINDS = [
   "set-over-limit",
   "single-pass-over-limit",
   "matches-over-limit",
+  "shared-secret-unusable",
+  "partner-stopped-at-matching",
+  "message-write-unconfirmed",
+  "shared-name-at-entry",
 ] as const satisfies ReadonlyArray<FailureCauseKind>;
 
 const FAILURE_CAUSE = annotationKey<FailureCause>("failure cause");
@@ -499,6 +555,27 @@ const FROM_UNTRUSTED: {
       ? undefined
       : { kind: "matches-over-limit", ...failure };
   },
+  "shared-secret-unusable": ({ problem, expires, stage }) => {
+    if (problem === "malformed")
+      return { kind: "shared-secret-unusable", problem };
+    return problem === "expired" &&
+      typeof expires === "string" &&
+      expires.length > 0 &&
+      oneOf(SHARED_SECRET_EXPIRED_STAGES, stage)
+      ? { kind: "shared-secret-unusable", problem, expires, stage }
+      : undefined;
+  },
+  "partner-stopped-at-matching": () => ({
+    kind: "partner-stopped-at-matching",
+  }),
+  "message-write-unconfirmed": ({ failure, seq }) => {
+    if (failure === "rename-unconfirmed" || failure === "write-incomplete")
+      return { kind: "message-write-unconfirmed", failure };
+    return failure === "sequence-spent" && isWholeNumber(seq)
+      ? { kind: "message-write-unconfirmed", failure, seq }
+      : undefined;
+  },
+  "shared-name-at-entry": () => ({ kind: "shared-name-at-entry" }),
 };
 
 /**
@@ -735,6 +812,29 @@ const SENTENCES: {
       : `${counted(cause.matchCount, "match", "matches")}, more than the ` +
         `${formatCount(cause.limitMatches)} it can send`) +
     ", so it stopped and told your partner.",
+  "shared-secret-unusable": (cause) =>
+    cause.problem === "malformed"
+      ? "The key file's sharedSecret is not a base64url-encoded 32-byte " +
+        "value (43 base64url characters)."
+      : `The shared secret expired at ${cause.expires}` +
+        (cause.stage === "before-next-saved"
+          ? ", before the next one was saved."
+          : "."),
+  "partner-stopped-at-matching": () =>
+    "Matching could not start because your partner's run stopped.",
+  "message-write-unconfirmed": (cause) =>
+    cause.failure === "sequence-spent"
+      ? `Cannot send: sequence number ${cause.seq} was spent on a write the ` +
+        "transport could not confirm, so the partner may already hold a " +
+        "message under it."
+      : "The message may or may not have reached the partner: " +
+        (cause.failure === "rename-unconfirmed"
+          ? "renaming its file into place was cut off before the server " +
+            "answered and could not be confirmed afterwards."
+          : "its write did not complete."),
+  "shared-name-at-entry": () =>
+    "The exchange directory holds a hello file with this side's name, so " +
+    "this run takes it for its own leftover.",
 };
 
 /**
@@ -885,3 +985,23 @@ export function singlePassOverLimitRemedy(
 export const MATCHES_OVER_LIMIT_REMEDY =
   "This usually means many records on both sides share a key value. Use a " +
   "more distinctive key or split the data into smaller batches.";
+
+/**
+ * The remedy for a partner whose first message of matching was its
+ * local-fault abort. An older build sends one after reading this party's first
+ * still-working frame as a protocol error, and a partner on this build sends
+ * one when its run faults before its first still-working frame, so the step
+ * names no party as the one to update.
+ */
+export const PARTNER_STOPPED_AT_MATCHING_REMEDY =
+  "Make sure you both run the current version of Alcove, then run the " +
+  "exchange again.";
+
+/**
+ * The remedy for a file-sync message write the transport could not settle:
+ * the partner may hold a message under a spent sequence number, so the
+ * session cannot continue in that directory.
+ */
+export const CLEAN_DIRECTORY_RESTART_REMEDY =
+  "Re-run the exchange in a clean directory; both parties must start the new " +
+  "exchange fresh.";

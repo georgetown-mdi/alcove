@@ -6,7 +6,9 @@
 // compile here until bound.
 
 import {
+  CLEAN_DIRECTORY_RESTART_REMEDY,
   MATCHES_OVER_LIMIT_REMEDY,
+  PARTNER_STOPPED_AT_MATCHING_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   failureCauseSentence,
   relayRegistrarUnreachableRemedy,
@@ -16,8 +18,13 @@ import {
 
 import {
   PARTNER_STOPPED_RESPONDING_TITLE,
+  PARTNER_STOP_AT_MATCHING_START_TITLE,
   tooLargeFailureTitle,
 } from "@psi/managed/managedFailureCopy";
+import {
+  RUN_DIAGNOSTICS_HEADING,
+  SWEEP_CONTROL_LABEL,
+} from "@psi/runDiagnosticsModel";
 
 import {
   CONNECTION_TUNING_HEADING,
@@ -55,10 +62,24 @@ const SET_NAMES_DIFFER_CLAUSE = `If both sides set a name under "${EXCHANGE_FILE
 
 const SHARED_NAME_TITLE = "Both sides may be using the same name";
 
-const SHARED_NAME_REMEDY =
+const SAME_NAME_STEP =
   "The likely cause is that both sides set the same name: change " +
   `"${PEER_ID_LABEL}" under "${EXCHANGE_FILES_HEADING}" so the two names ` +
-  "differ, then run again.";
+  "differ";
+
+const SHARED_NAME_REMEDY = `${SAME_NAME_STEP}, then run again.`;
+
+// At entry the file may instead be this side's own leftover, which the
+// report beside the alert lists.
+const SHARED_NAME_AT_ENTRY_REMEDY =
+  `${SAME_NAME_STEP}. If instead the listed files are left over from an ` +
+  "earlier run of this side, remove them after confirming no other session " +
+  `is using this folder, or turn on "${SWEEP_CONTROL_LABEL}" under ` +
+  `"${RUN_DIAGNOSTICS_HEADING}", then run again.`;
+
+const NEW_INVITATION_STEP =
+  "Ask your partner for a new invitation, or start over and create one for " +
+  "your partner to accept.";
 
 const IGNORED_HELLO_TITLE = "Your partner's hello file may have been ignored";
 
@@ -150,6 +171,25 @@ const CONSOLE_FAILURE_REMEDIES: {
   "matches-over-limit": () => ({
     title: "This exchange found more matches than it can send",
     remedy: MATCHES_OVER_LIMIT_REMEDY,
+  }),
+  "shared-secret-unusable": ({ problem }) => ({
+    title:
+      problem === "expired"
+        ? "This invitation can no longer be used"
+        : "This invitation's shared secret is not valid",
+    remedy: NEW_INVITATION_STEP,
+  }),
+  "partner-stopped-at-matching": () => ({
+    title: PARTNER_STOP_AT_MATCHING_START_TITLE,
+    remedy: PARTNER_STOPPED_AT_MATCHING_REMEDY,
+  }),
+  "message-write-unconfirmed": () => ({
+    title: "A message may or may not have reached your partner",
+    remedy: CLEAN_DIRECTORY_RESTART_REMEDY,
+  }),
+  "shared-name-at-entry": () => ({
+    title: SHARED_NAME_TITLE,
+    remedy: SHARED_NAME_AT_ENTRY_REMEDY,
   }),
 };
 

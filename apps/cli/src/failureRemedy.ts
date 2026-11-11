@@ -8,6 +8,7 @@
 // logs beside a failure (bothSweptStep, missingReceiptWarning).
 
 import {
+  CLEAN_DIRECTORY_RESTART_REMEDY,
   failureCauseOf,
   keepOperatorSuppliedText,
   markStatesItsOwnNextStep,
@@ -15,6 +16,7 @@ import {
   messageWithOperatorText,
   NEW_INVITATION_REMEDY,
   operatorSuppliedText,
+  PARTNER_STOPPED_AT_MATCHING_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
   redactAndRenderOperatorSuppliedText,
   relayRegistrarUnreachableRemedy,
@@ -62,13 +64,22 @@ export const OLDER_KEY_FILE_NO_SHOW_REMEDY =
   "another machine: run from the newest copy, or ask your partner for a new " +
   "invitation.";
 
-// The remedy for a partner that never arrived while a file with this side's
-// name appeared: the wait was not the problem, so it names no timeout flag.
-// Worded as the start-up refusal of such a file words it.
-const SHARED_PEER_ID_REMEDY =
+// The step for a file with this side's name, met during the wait for a
+// partner that never arrived or at entry: the wait was not the problem, so it
+// names no timeout flag.
+const SAME_PEER_ID_STEP =
   "The likely cause is that both parties set the same peer_id: set a " +
   "different peer_id on one side, changing its text rather than only " +
-  "fields such as %Y or %K, then run again.";
+  "fields such as %Y or %K";
+
+const SHARED_PEER_ID_REMEDY = `${SAME_PEER_ID_STEP}, then run again.`;
+
+// At entry the file may instead be this side's own leftover.
+const SHARED_NAME_AT_ENTRY_REMEDY =
+  `${SAME_PEER_ID_STEP}. If instead the listed files are left over from an ` +
+  "earlier run of this party, remove them after confirming no other session " +
+  "is using this path, or re-run with --sweep-exchange-files to clear every " +
+  "protocol file.";
 
 const IGNORED_HELLO_REMEDY =
   "If the file this run ignored was your partner's, raise " +
@@ -137,6 +148,10 @@ export const CLI_FAILURE_REMEDIES: {
   "set-over-limit": setOverLimitRemedy,
   "single-pass-over-limit": singlePassOverLimitRemedy,
   "matches-over-limit": () => MATCHES_OVER_LIMIT_REMEDY,
+  "shared-secret-unusable": () => NEW_INVITATION_REMEDY,
+  "partner-stopped-at-matching": () => PARTNER_STOPPED_AT_MATCHING_REMEDY,
+  "message-write-unconfirmed": () => CLEAN_DIRECTORY_RESTART_REMEDY,
+  "shared-name-at-entry": () => SHARED_NAME_AT_ENTRY_REMEDY,
 };
 
 /** The CLI's remedy sentence for `cause` on a run described by `context`. */

@@ -44,6 +44,7 @@ import {
   TransportWriteIndeterminateError,
   statesItsOwnNextStep,
 } from "../../src/errors";
+import { failureCauseOf } from "../../src/failureCause";
 import { getLoggerForVerbosity } from "../../src/utils/logger";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
@@ -462,14 +463,6 @@ describe("FileSyncMessageLoop emit routing", () => {
   });
 });
 
-// The one recovery send() prescribes for a write the transport could not
-// settle. Spelled out here rather than imported so an edit to the module
-// constant has to be made in both places; the two messages that hold it are
-// asserted against this single literal, so they cannot silently diverge.
-const REMEDY =
-  "Re-run the exchange in a clean directory; both parties must start the new " +
-  "exchange fresh.";
-
 describe("FileSyncMessageLoop counter commit points", () => {
   test("seq advances only after the durable rename", async () => {
     const okFiles = new Map<string, Buffer>();
@@ -531,19 +524,19 @@ describe("FileSyncMessageLoop counter commit points", () => {
     expect([...f.responsibleFiles]).toEqual([]);
     expect([...files.keys()].filter((p) => p.endsWith(".tmp"))).toEqual([]);
 
-    // What the caller is told, read where the operator reads it. send() is
-    // the one write whose recovery is established, so it restates the
-    // transport's rejection, naming the message and stating that recovery,
-    // tagged to suppress the CLI's generic "retry without re-inviting"
-    // advisory. This remedy is the only next step printed, so it must end
-    // inside the renderer's per-link cap.
+    // send() restates the transport's rejection naming the message, tagged with
+    // the cause each app's remedy map words as a clean-directory restart, and
+    // marked to suppress the CLI's generic "retry without re-inviting" advisory.
     expect(statesItsOwnNextStep(rejected, { ownOnly: true })).toBe(true);
+    expect(failureCauseOf(rejected)).toEqual({
+      kind: "message-write-unconfirmed",
+      failure: "rename-unconfirmed",
+    });
     const writeRender = sanitizeErrorForDisplay(rejected);
     const [writeLink, ...writeCauseLinks] = writeRender.split("\ncaused by: ");
     expect(writeLink).toContain(
-      "the message may or may not have reached the partner",
+      "The message may or may not have reached the partner",
     );
-    expect(writeLink).toContain(REMEDY);
     expect(writeLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
     // The transport's own rejection stays as the cause, so the destination and the
     // status it names render on their own lines under their own caps.
@@ -564,21 +557,17 @@ describe("FileSyncMessageLoop counter commit points", () => {
       (e: unknown) => e,
     );
     expect(refused).toBeInstanceOf(UsageError);
-    // The refusal prescribes a clean-directory restart, so it is tagged to
-    // suppress the CLI's generic "retry without re-inviting" advisory: the two
-    // would otherwise print together and contradict each other.
+    // The same cause kind as the write's own rejection above, so each app words
+    // the same clean-directory restart for both: one condition, one recovery.
     expect(statesItsOwnNextStep(refused, { ownOnly: true })).toBe(true);
-    // Asserted where the operator reads it, not on the raw .message: the tag
-    // above is what makes this the only next step printed, and the renderer caps
-    // each link of the cause chain, so a refusal whose remedy falls past that cap
-    // leaves the operator no next step at all. The refusal's own link must
-    // therefore hold the whole remedy and end inside the cap.
+    expect(failureCauseOf(refused)).toEqual({
+      kind: "message-write-unconfirmed",
+      failure: "sequence-spent",
+      seq: 0,
+    });
     const rendered = sanitizeErrorForDisplay(refused);
     const [refusalLink, ...causeLinks] = rendered.split("\ncaused by: ");
-    expect(refusalLink).toContain("cannot send: sequence number 0 was spent");
-    // The SAME remedy the write's own rejection above gave: one condition, one
-    // recovery, so an operator who reads both is not told two different things.
-    expect(refusalLink).toContain(REMEDY);
+    expect(refusalLink).toContain("Cannot send: sequence number 0 was spent");
     expect(refusalLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
     // The write itself is identified by the transport's own error, which the
     // refusal hangs off `cause` so it renders under its own cap.

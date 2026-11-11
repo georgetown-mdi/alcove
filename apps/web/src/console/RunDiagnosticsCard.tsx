@@ -5,6 +5,7 @@ import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 
 import {
   DIAGNOSTIC_LOG_NOTICE,
+  RUN_DIAGNOSTICS_HEADING,
   SWEEP_CONFIRMATION_LABEL,
   SWEEP_CONFIRMATION_NOTICE,
   SWEEP_CONTROL_LABEL,
@@ -68,7 +69,7 @@ export function RunDiagnosticsCard({
 
   return (
     <DisclosureSection
-      label="Diagnostics and recovery"
+      label={RUN_DIAGNOSTICS_HEADING}
       summary={draftSummary(draft)}
       open={open}
       onToggle={setOpen}

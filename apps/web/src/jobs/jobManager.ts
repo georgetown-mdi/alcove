@@ -2622,12 +2622,16 @@ const STDERR_CAUSE_LABEL = "the CLI last wrote on stderr: ";
  * `keep: "end"` is what the tail needs of the fit: a run writes its diagnosis
  * last, so a cut taken from the front deletes exactly the line the link exists
  * to carry.
+ *
+ * The return type bars a `cause`: these links are composed raw, and a terminal
+ * carrying a cause would reach the seat as a failure cause whose report text
+ * is read as already escaped.
  */
 function diagnosedTerminal(
   category: "output" | "exchange",
   message: string,
   stderrTail: PartnerOriginText | null,
-): RelayEvent {
+): RelayEvent & { cause?: never } {
   const chain =
     stderrTail === null
       ? null

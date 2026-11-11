@@ -7,6 +7,7 @@ import {
   FileSyncConnection,
   TransportWriteIndeterminateError,
   UsageError,
+  failureCauseOf,
   sanitizeErrorForDisplay,
   statesItsOwnNextStep,
 } from "@alcove/core";
@@ -272,13 +273,6 @@ inProcessOnly(
   TEST_TIMEOUT_MS,
 );
 
-// The recovery both of the divergence's messages prescribe: the write's own
-// rejection and the refusal of the next send() over the slot it spent. Asserted
-// against this one literal in both places, so a drift between them fails here.
-const REMEDY =
-  "Re-run the exchange in a clean directory; both parties must start the new " +
-  "exchange fresh.";
-
 // How many times the divergence is driven. It is staged rather than swept -- the
 // tear cuts inside the rename handler once its filesystem work has landed, and the
 // sender's landed-confirmation probe of that destination is held until the
@@ -338,16 +332,18 @@ inProcessOnly(
         const rendered = sanitizeErrorForDisplay(outcome.sendRejection);
         const [writeLink, ...causeLinks] = rendered.split("\ncaused by: ");
         expect(writeLink).toContain(
-          "the message may or may not have reached the partner",
+          "The message may or may not have reached the partner",
         );
-        // The rejection holds the recovery, and is marked so the CLI's generic
-        // advisory does not print a contradicting one beside it -- which makes
-        // this the only next step the operator gets, and makes its survival of
-        // the cap critical.
+        // The rejection is tagged with the cause each app's remedy map words
+        // as a clean-directory restart, and marked so the CLI's generic
+        // advisory does not print a contradicting one beside it.
         expect(
           statesItsOwnNextStep(outcome.sendRejection, { ownOnly: true }),
         ).toBe(true);
-        expect(writeLink).toContain(REMEDY);
+        expect(failureCauseOf(outcome.sendRejection)).toEqual({
+          kind: "message-write-unconfirmed",
+          failure: "rename-unconfirmed",
+        });
         expect(writeLink).not.toContain(DISPLAY_TRUNCATION_MARKER);
         // The transport's own error keeps its own link and its own budget: the
         // destination it names is not spent out of the sentence above.
@@ -359,13 +355,16 @@ inProcessOnly(
       // number, because the partner has already delivered a message under it. A
       // send() that reused it would be treated as a second message rather than
       // as a retry of the first, so the next send() is refused instead. That
-      // refusal suppresses the CLI's generic advisory too, and prescribes the
-      // same recovery as the rejection above -- one condition, one remedy.
+      // refusal holds the same cause kind as the rejection above, so each app
+      // gives the same recovery -- one condition, one remedy.
       for (const outcome of outcomes) {
         expect(outcome.retryRejection).toBeInstanceOf(UsageError);
         const rendered = sanitizeErrorForDisplay(outcome.retryRejection);
-        expect(rendered).toContain("cannot send: sequence number");
-        expect(rendered.split("\ncaused by: ")[0]).toContain(REMEDY);
+        expect(rendered).toContain("Cannot send: sequence number");
+        expect(failureCauseOf(outcome.retryRejection)).toMatchObject({
+          kind: "message-write-unconfirmed",
+          failure: "sequence-spent",
+        });
       }
     } finally {
       await srv.stop();

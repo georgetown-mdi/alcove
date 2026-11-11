@@ -224,7 +224,11 @@ describe("the leftover-hello check at entry under a peer_id with fields", () => 
       const rendered = sanitizeErrorForDisplay(err);
       expect(rendered).toContain("unexpected protocol file");
       expect(rendered).toContain(leftover.name);
-      expect(rendered).toContain("--sweep-exchange-files");
+      // Only an own-pattern hello can be a partner's under the same name; any
+      // other leftover keeps the refusal that names the sweep itself.
+      if (leftover.kind === "hello")
+        expect(failureCauseOf(err)).toEqual({ kind: "shared-name-at-entry" });
+      else expect(rendered).toContain("--sweep-exchange-files");
       expect(written).toEqual(new Set());
       expect(files.has(`${DIR}/${leftover.name}`)).toBe(true);
     });
@@ -246,10 +250,6 @@ describe("the leftover-hello check at entry under a peer_id with fields", () => 
 });
 
 describe("a partner id that fits this party's peer_id", () => {
-  const SHARED_CAUSE =
-    "The likely cause is that both parties set the same peer_id: set a " +
-    "different peer_id on one side, changing its text rather than only " +
-    "fields such as %Y or %K.";
   const NEVER_ARRIVED =
     "Your partner did not arrive in the shared folder in the time this run " +
     "waited.";
@@ -265,7 +265,7 @@ describe("a partner id that fits this party's peer_id", () => {
       partnerId: "site_20261028-020000-89abcdef01234567",
     },
   ])
-    test(`the start-up refusal of its hello names the shared peer_id before any removal (${shape.name})`, async () => {
+    test(`the start-up refusal of its hello states the shared name, before any removal (${shape.name})`, async () => {
       const partnerHello = helloName(shape.partnerId);
       const files = new Map<string, Buffer>([
         [`${DIR}/${partnerHello}`, Buffer.from("{}")],
@@ -277,18 +277,11 @@ describe("a partner id that fits this party's peer_id", () => {
       );
       const err = await rejectionOf(conn.synchronize());
       expect(err).toBeInstanceOf(UsageError);
-      const message = (err as Error).message;
-      expect(message).toBe(
-        "the exchange directory holds a hello file whose id fits this " +
-          "party's own peer_id, so this run takes it for its own leftover. " +
-          `${SHARED_CAUSE} If instead the listed files are left over from ` +
-          "an earlier run of this party, remove them after confirming no " +
-          "other session is using this path, or re-run with " +
-          "--sweep-exchange-files to clear every protocol file.",
+      expect((err as Error).message).toBe(
+        "The exchange directory holds a hello file with this side's name, " +
+          "so this run takes it for its own leftover.",
       );
-      expect(message.indexOf(SHARED_CAUSE)).toBeLessThan(
-        message.indexOf("remove them"),
-      );
+      expect(failureCauseOf(err)).toEqual({ kind: "shared-name-at-entry" });
       expect(sanitizeErrorForDisplay(err)).toContain(partnerHello);
       expect(files.has(`${DIR}/${partnerHello}`)).toBe(true);
     });
