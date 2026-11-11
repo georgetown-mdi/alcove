@@ -84,7 +84,7 @@ export const CONSENT_FACTS = {
     basis: "enforced",
   },
   /**
-   * The half docs/spec/PROTOCOL.md assigns to the run rather than to the
+   * The half docs/spec/PSI_C.md assigns to the run rather than to the
    * partner: a party's own count-only outcome. Its engine is built count-only,
    * keeps every round's matches inside the engine and returns only the count,
    * and the operations returning matched positions or an association table

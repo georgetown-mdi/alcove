@@ -460,7 +460,7 @@ export interface InvitationSummary {
   /**
    * Whether the exchange matches on those candidates. True for either linkage
    * strategy under `psi` (docs/spec/PROTOCOL.md, Fan-out runs under both
-   * linkage strategies) and under `psi-c` (Candidate sets under count-only).
+   * linkage strategies) and under `psi-c` (docs/spec/PSI_C.md, Candidate sets under count-only).
    * Meaningful only with {@link fansOut}.
    */
   fanOutApplied: boolean;
