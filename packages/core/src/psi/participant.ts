@@ -22,8 +22,8 @@ import {
   ConnectionError,
   InternalConsistencyError,
   PartnerProtocolRefusalError,
-  RoundSetLimitError,
 } from "../errors";
+import { setOverLimitError } from "../failureCause";
 import { sendAbort } from "../protocolSetup";
 import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
@@ -47,8 +47,6 @@ import {
 } from "./psiEngine";
 import { PsiOperationStoppedError } from "./psiWorkerEngine";
 import {
-  ownSetOverPartnerCeilingMessage,
-  ownSetTooLargeMessage,
   psiSetByteBound,
   receivePsiSet,
   receivePsiSetInPieces,
@@ -513,15 +511,17 @@ export class PSIParticipant {
     if (elementCount <= Math.min(MAX_PSI_DECODE_ELEMENTS, partnerCeiling))
       return;
     await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
-    throw elementCount > MAX_PSI_DECODE_ELEMENTS
-      ? new RoundSetLimitError(
-          ownSetTooLargeMessage(elementCount),
-          "over-set-maximum",
-        )
-      : new RoundSetLimitError(
-          ownSetOverPartnerCeilingMessage(elementCount, partnerCeiling),
-          "over-partner-ceiling",
-        );
+    throw setOverLimitError({
+      kind: "set-over-limit",
+      stage: "in-round",
+      ...(elementCount > MAX_PSI_DECODE_ELEMENTS
+        ? ({
+            limit: "set-maximum",
+            limitValues: MAX_PSI_DECODE_ELEMENTS,
+          } as const)
+        : ({ limit: "partner-ceiling", limitValues: partnerCeiling } as const)),
+      valueCount: elementCount,
+    });
   }
 
   // Receive one of the round's PSI sets in its parts, joined. A request holds

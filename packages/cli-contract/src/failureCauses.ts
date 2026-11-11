@@ -11,6 +11,7 @@ import type {
   FailureCauseKind,
   FailureCauseOfKind,
   RelayRegistrarUnreachableFailure,
+  SetOverLimitFailure,
 } from "@alcove/core";
 
 /**
@@ -39,6 +40,18 @@ function relayRegistrarFailureFields(
           }
         : { failure: cause.failure, code: cause.code };
   }
+}
+
+function setOverLimitFailureFields(
+  cause: SetOverLimitFailure,
+): SetOverLimitFailure {
+  if (cause.limit === "uncounted") return { limit: cause.limit };
+  return {
+    limit: cause.limit,
+    valueCount: toStreamCount(cause.valueCount),
+    limitValues: toStreamCount(cause.limitValues),
+    ...(cause.scope !== undefined ? { scope: cause.scope } : {}),
+  };
 }
 
 /**
@@ -90,6 +103,11 @@ export const FAILURE_CAUSE_STREAM_FIELDS: {
   "partner-stopped-responding": ({ silentMs }) => ({
     kind: "partner-stopped-responding",
     silentMs: toStreamCount(silentMs),
+  }),
+  "set-over-limit": (cause) => ({
+    kind: "set-over-limit",
+    stage: cause.stage,
+    ...setOverLimitFailureFields(cause),
   }),
 };
 

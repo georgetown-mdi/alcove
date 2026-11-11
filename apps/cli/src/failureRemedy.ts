@@ -17,6 +17,7 @@ import {
   PARTNER_STOPPED_RESPONDING_REMEDY,
   redactAndRenderOperatorSuppliedText,
   relayRegistrarUnreachableRemedy,
+  setOverLimitRemedy,
   IGNORE_FILES_OLDER_THAN_KEY,
   type FailureCause,
   type FailureCauseKind,
@@ -131,6 +132,7 @@ export const CLI_FAILURE_REMEDIES: {
     }
   },
   "partner-stopped-responding": () => PARTNER_STOPPED_RESPONDING_REMEDY,
+  "set-over-limit": setOverLimitRemedy,
 };
 
 /** The CLI's remedy sentence for `cause` on a run described by `context`. */

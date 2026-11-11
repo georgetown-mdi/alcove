@@ -12,6 +12,7 @@ import {
   renderedDisplayCostKeepingLineBreaks,
   sanitizeErrorChainLinks,
   sanitizeErrorForDisplay,
+  sanitizeErrorForDisplayWithStep,
   redactAndFitUnescaped,
   redactAndSanitizeForDisplay,
   redactPrivateKeyMaterial,
@@ -25,6 +26,26 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   sanitizeForDisplay,
 } from "../../src/utils/sanitizeForDisplay";
+
+describe("sanitizeErrorForDisplayWithStep", () => {
+  test("puts the step after the error's own message and before its cause chain", () => {
+    const err = new Error("head", {
+      cause: new Error("middle\u001b[2J", { cause: new Error("tail") }),
+    });
+    const [head, ...chain] =
+      sanitizeErrorForDisplay(err).split("\ncaused by: ");
+    expect(sanitizeErrorForDisplayWithStep(err, "Do this.")).toBe(
+      joinErrorCauseChain([`${head} Do this.`, ...chain]),
+    );
+    expect(chain).toHaveLength(2);
+  });
+
+  test("appends the step to an error with no cause", () => {
+    expect(sanitizeErrorForDisplayWithStep(new Error("head"), "Do this.")).toBe(
+      "head Do this.",
+    );
+  });
+});
 
 describe("sanitizeErrorForDisplay", () => {
   test("passes an ordinary error message through unchanged", () => {

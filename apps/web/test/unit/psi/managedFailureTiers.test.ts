@@ -753,9 +753,12 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
   });
 
   test("a live launch shows the refusal's own message, on either side of the boundary", async () => {
-    for (const [error, dataExchangeStarted] of [
-      [await firstRoundRefusal(), false],
-      [roundRefusal, true],
+    // Core's tagged refusal takes the remedy this app binds to its cause.
+    const split =
+      " Split the input into smaller files and run one exchange for each.";
+    for (const [error, dataExchangeStarted, remedy] of [
+      [await firstRoundRefusal(), false, split],
+      [roundRefusal, true, ""],
     ] as const) {
       const stamped = record({ lastRun: failed("too-large") });
       const failure = classifyManagedRunFailure(
@@ -766,7 +769,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
         dataExchangeStarted,
       );
       expect(failure.kind).toBe("too-large");
-      expect(failure.message).toBe((error as Error).message);
+      expect(failure.message).toBe(`${(error as Error).message}${remedy}`);
       expect(failure.reportedCause).toBeUndefined();
       expect(managedRunRetryable(failure)).toBe(false);
     }

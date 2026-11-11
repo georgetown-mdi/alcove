@@ -9,9 +9,13 @@ import {
   PARTNER_STOPPED_RESPONDING_REMEDY,
   failureCauseSentence,
   relayRegistrarUnreachableRemedy,
+  setOverLimitRemedy,
 } from "@alcove/core";
 
-import { PARTNER_STOPPED_RESPONDING_TITLE } from "@psi/managed/managedFailureCopy";
+import {
+  PARTNER_STOPPED_RESPONDING_TITLE,
+  tooLargeFailureTitle,
+} from "@psi/managed/managedFailureCopy";
 
 import {
   CONNECTION_TUNING_HEADING,
@@ -123,6 +127,16 @@ const CONSOLE_FAILURE_REMEDIES: {
   "partner-stopped-responding": () => ({
     title: PARTNER_STOPPED_RESPONDING_TITLE,
     remedy: PARTNER_STOPPED_RESPONDING_REMEDY,
+  }),
+  "set-over-limit": (cause) => ({
+    title: tooLargeFailureTitle(
+      cause.limit === "uncounted"
+        ? { setUncounted: true }
+        : cause.limit === "partner-ceiling"
+          ? { tooLargeBound: "partner-ceiling" }
+          : {},
+    ),
+    remedy: setOverLimitRemedy(cause),
   }),
 };
 

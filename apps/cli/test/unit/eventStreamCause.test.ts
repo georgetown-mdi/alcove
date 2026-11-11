@@ -219,6 +219,22 @@ test("every emitted cause passes the allowlist a consumer checks it against", ()
       timedOutMs: 15_000,
     },
     { kind: "partner-stopped-responding", silentMs: 120_000 },
+    {
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "set-maximum",
+      valueCount: 301,
+      limitValues: 300,
+      scope: "first-key",
+    },
+    {
+      kind: "set-over-limit",
+      stage: "in-round",
+      limit: "partner-ceiling",
+      valueCount: 3,
+      limitValues: 2,
+    },
+    { kind: "set-over-limit", stage: "after-terms", limit: "uncounted" },
   ];
   expect(new Set(emitted.map((cause) => cause.kind))).toEqual(
     new Set(FAILURE_CAUSE_KINDS),

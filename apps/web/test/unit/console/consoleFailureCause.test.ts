@@ -87,6 +87,31 @@ const SAMPLES: {
   "partner-stopped-responding": [
     { kind: "partner-stopped-responding", silentMs: 120_000 },
   ],
+  "set-over-limit": [
+    {
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "set-maximum",
+      valueCount: 17_000_000,
+      limitValues: 16_777_216,
+      scope: "first-key",
+    },
+    {
+      kind: "set-over-limit",
+      stage: "after-terms",
+      limit: "partner-ceiling",
+      valueCount: 12,
+      limitValues: 11,
+      scope: "every-key",
+    },
+    {
+      kind: "set-over-limit",
+      stage: "in-round",
+      limit: "set-maximum",
+      valueCount: 16_777_217,
+      limitValues: 16_777_216,
+    },
+  ],
 };
 
 /** A relayed failure as the job client builds it off the CLI's event. */
@@ -359,10 +384,56 @@ describe("a console run that failed on a catalog cause", () => {
   });
 
   test("a failure this browser raised keeps its own copy whatever it holds", () => {
-    // Only a relayed failure takes the console's remedy: the public web app
-    // does not draw on the catalog.
+    // Only a relayed failure takes the console's remedy.
     const failure = failureFor("exchange", new PeerAbortError());
     expect(failure.title).toBe("Exchange failed");
+  });
+
+  test("a set too large to send takes the browser's title for it and core's remedy", () => {
+    const [overMaximum, overCeiling] = SAMPLES["set-over-limit"];
+    const tooLarge = failureFor(
+      "exchange",
+      relayed("the CLI's text", { failureCause: overMaximum, exitCode: 64 }),
+    );
+    expect(tooLarge.title).toBe("Your file is too large to send");
+    expect(tooLarge.message).toBe(
+      "Too large to send: the first linkage key gives you at least " +
+        "17,000,000 values to send, over the 16,777,216 one PSI set can " +
+        "hold, so nothing was sent. Split the input into smaller files and " +
+        "run one exchange for each.",
+    );
+    const forPartner = failureFor(
+      "exchange",
+      relayed("the CLI's text", { failureCause: overCeiling, exitCode: 64 }),
+    );
+    expect(forPartner.title).toBe(
+      "Your file is too large for your partner to receive",
+    );
+    expect(forPartner.message).toMatch(
+      /, or ask your partner to run the exchange with the command-line application\.$/,
+    );
+  });
+
+  test("an uncounted set keeps the CLI's report, which states why the count failed", () => {
+    const report =
+      "Alcove could not count the values the first linkage key gives you " +
+      "to send, so it cannot confirm one PSI set can hold them, and nothing " +
+      "was sent.\ncaused by: Map maximum size exceeded";
+    const failure = failureFor(
+      "exchange",
+      relayed(report, {
+        failureCause: {
+          kind: "set-over-limit",
+          stage: "before-contact",
+          limit: "uncounted",
+        },
+        exitCode: 64,
+      }),
+    );
+    expect(failure.title).toBe(
+      "The values built from your file could not be counted",
+    );
+    expect(failure.reportedCause).toContain("Map maximum size exceeded");
   });
 });
 

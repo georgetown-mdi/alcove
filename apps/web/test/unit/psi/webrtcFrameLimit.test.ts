@@ -10,13 +10,12 @@ import {
   MAX_WEBRTC_FRAME_BYTES,
   PEERJS_CHUNK_MTU,
   RoundSetLimitError,
+  setOverLimitError,
 } from "@alcove/core";
 import {
   PSIParticipant,
   PSI_SET_PART_HEADER_BYTES,
-  ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
   binaryPackByteStringLength,
-  roundOneSetOverPartnerCeilingMessage,
   webrtcFrameReceiveCharge,
 } from "@alcove/core/testing";
 
@@ -134,14 +133,27 @@ test("a set over the bound is handed to PeerJS in parts within the bound, holdin
 });
 
 test("a refusal over the partner's stated ceiling is shown as its own alert, with no retry", () => {
-  const message = roundOneSetOverPartnerCeilingMessage(9_000_000, 8_388_608);
   const own = failureFor(
     "exchange",
-    new RoundSetLimitError(message, "over-partner-ceiling"),
+    setOverLimitError({
+      kind: "set-over-limit",
+      stage: "after-terms",
+      limit: "partner-ceiling",
+      valueCount: 9_000_000,
+      limitValues: 8_388_608,
+      scope: "first-key",
+    }),
   );
   expect(own.category).toBe("config");
   expect(own.title).toBe("Your file is too large for your partner to receive");
-  expect(own.message).toBe(message);
+  expect(own.message).toBe(
+    "Too large for your partner: the first linkage key gives you at least " +
+      "9,000,000 values to send, over the 8,388,608 your partner can " +
+      "receive in one PSI set, so the exchange stopped before any linkage " +
+      "key was sent and told your partner. Split the input into smaller " +
+      "files and run one exchange for each, or ask your partner to run the " +
+      "exchange with the command-line application.",
+  );
   expect(own.reportedCause).toBeUndefined();
 });
 
@@ -164,9 +176,8 @@ test("a refusal over the per-set maximum is shown as the same alert, with no ret
 test("a first round the check cannot count is shown as its own alert, with no retry", () => {
   const failure = failureFor(
     "exchange",
-    new RoundSetLimitError(
-      ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
-      "uncounted",
+    setOverLimitError(
+      { kind: "set-over-limit", stage: "after-terms", limit: "uncounted" },
       { cause: new RangeError("Map maximum size exceeded") },
     ),
   );
@@ -174,10 +185,13 @@ test("a first round the check cannot count is shown as its own alert, with no re
   expect(failure.title).toBe(
     "The values built from your file could not be counted",
   );
-  expect(failure.message).toContain(
-    ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
+  expect(failure.message).toBe(
+    "Alcove could not count the values the first linkage key gives you to " +
+      "send, so it cannot confirm your partner can receive them, and the " +
+      "exchange stopped before any linkage key was sent and told your " +
+      "partner. Split the input into smaller files and run one exchange " +
+      "for each.\ncaused by: Map maximum size exceeded",
   );
-  expect(failure.message).toContain("Map maximum size exceeded");
   expect(failure.message).not.toMatch(/try again|temporary/i);
   expect(failure.reportedCause).toBeUndefined();
 });

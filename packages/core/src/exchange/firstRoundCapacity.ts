@@ -1,6 +1,6 @@
-import { SPLIT_INPUT_REMEDY } from "../connection/fileSyncOutboundBound.js";
 import { MAX_PSI_DECODE_ELEMENTS } from "../connection/frameSize.js";
 import { RoundSetLimitError, UsageError } from "../errors.js";
+import { setOverLimitError, type RoundSetScope } from "../failureCause.js";
 import {
   candidateSetIsImplementedForStrategy,
   runsSinglePassLink,
@@ -38,106 +38,9 @@ import type { PsiProgressReporter } from "../psi/participant.js";
 // that figure.
 
 /**
- * Which rounds a first-round refusal's figure covers: at least that many
- * values for the first key, exactly that many for every key of a count-only
- * exchange, or exactly that many for the widest key of a count-only exchange
- * whose keys differ in width.
- */
-export type RoundSetScope = "first-key" | "every-key" | "widest-key";
-
-function valuesToSend(elementCount: number, scope: RoundSetScope): string {
-  switch (scope) {
-    case "every-key":
-      return (
-        `a count-only exchange sends ${elementCount} values for every ` +
-        "linkage key"
-      );
-    case "widest-key":
-      return (
-        `a count-only exchange sends ${elementCount} values for its widest ` +
-        "linkage key"
-      );
-    case "first-key":
-      return `the first linkage key gives you at least ${elementCount} values to send`;
-  }
-}
-
-/**
- * The refusal an exchange raises at its start when this party's first round
- * holds more values than one PSI set can hold: `elementCount` is the values
- * that round sends (the fewest it can send, for the first key),
- * `maxValues` the protocol's per-set maximum, and `scope` the rounds the
- * figure covers.
- */
-export function roundOneSetOverMaximumMessage(
-  elementCount: number,
-  maxValues: number = MAX_PSI_DECODE_ELEMENTS,
-  scope: RoundSetScope = "first-key",
-): string {
-  return (
-    `Too large to send: ${valuesToSend(elementCount, scope)}, over the ` +
-    `${maxValues} one PSI set can hold. Nothing was sent. ${SPLIT_INPUT_REMEDY}`
-  );
-}
-
-/**
- * The refusal raised after the terms exchange, before any linkage key is
- * sent, when a round of a count-only exchange holds more values in the role
- * this party resolved to than one PSI set can hold. The arguments are
- * {@link roundOneSetOverMaximumMessage}'s.
- */
-export function roundOneSetOverMaximumAfterTermsMessage(
-  elementCount: number,
-  maxValues: number = MAX_PSI_DECODE_ELEMENTS,
-  scope: RoundSetScope = "every-key",
-): string {
-  return (
-    `Too large to send: ${valuesToSend(elementCount, scope)}, over the ` +
-    `${maxValues} one PSI set can hold, so the exchange stopped before any ` +
-    `linkage key was sent and told your partner. ${SPLIT_INPUT_REMEDY}`
-  );
-}
-
-/**
- * The refusal raised after the terms exchange, before any linkage key is
- * sent, when this party's first round holds more values than the partner
- * stated it can receive: `elementCount` is the values that round sends (the
- * fewest it can send, for the first key), `partnerReceiveCeiling` the
- * partner's stated ceiling. `scope` is
- * {@link roundOneSetOverMaximumMessage}'s.
- */
-export function roundOneSetOverPartnerCeilingMessage(
-  elementCount: number,
-  partnerReceiveCeiling: number,
-  scope: RoundSetScope = "first-key",
-): string {
-  return (
-    `Too large for your partner: ${valuesToSend(elementCount, scope)}, ` +
-    `over the ${partnerReceiveCeiling} your partner can receive in one PSI ` +
-    "set, so the exchange stopped before any linkage key was sent and told " +
-    `your partner. ${PARTNER_CEILING_REMEDY}`
-  );
-}
-
-/**
- * The refusal raised after the terms exchange when counting the values this
- * party's first round sends fails for a reason other than a refusal of its
- * own; the failure is the refusal's cause.
- */
-export const ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE =
-  "Alcove could not count the values the first linkage key gives you to " +
-  "send, so it cannot confirm your partner can receive them. The exchange " +
-  "stopped before any linkage key was sent and told your partner. " +
-  SPLIT_INPUT_REMEDY;
-
-const PARTNER_CEILING_REMEDY =
-  "Split the input into smaller files and run one exchange for each, or " +
-  "ask your partner to run the exchange with the command-line application.";
-
-/**
  * Refuse an exchange whose first round holds more values than one PSI set can
- * hold, before anything is sent: a {@link RoundSetLimitError} naming the
- * count, the bound, and the remedy. Call it at the start of an exchange on any
+ * hold, before anything is sent: a {@link RoundSetLimitError} tagged with the
+ * `set-over-limit` cause, naming the count and the bound. Call it at the start of an exchange on any
  * channel, once {@link prepareForExchange} has returned and before the
  * connection opens.
  *
@@ -180,17 +83,18 @@ export async function assertFirstRoundWithinSetMaximum(
   const maxValues = options.maxValues ?? MAX_PSI_DECODE_ELEMENTS;
   await assertFirstRoundFits(prepared, options, [false, true], {
     exceeds: (elementCount) => elementCount > maxValues,
-    tooLarge: (elementCount, scope) =>
-      new RoundSetLimitError(
-        roundOneSetOverMaximumMessage(elementCount, maxValues, scope),
-        "over-set-maximum",
-      ),
+    tooLarge: (valueCount, scope) =>
+      setOverLimitError({
+        kind: "set-over-limit",
+        stage: "before-contact",
+        limit: "set-maximum",
+        valueCount,
+        limitValues: maxValues,
+        scope,
+      }),
     uncounted: (failure) =>
-      new RoundSetLimitError(
-        "Alcove could not count the values the first linkage key gives " +
-          "you to send, so it cannot confirm one PSI set can hold them. " +
-          `Nothing was sent. ${SPLIT_INPUT_REMEDY}`,
-        "uncounted",
+      setOverLimitError(
+        { kind: "set-over-limit", stage: "before-contact", limit: "uncounted" },
         { cause: failure },
       ),
   });
@@ -245,28 +149,22 @@ export async function assertFirstRoundWithinPartnerCeiling(
   try {
     await assertFirstRoundFits(input, options, [isReceiver], {
       exceeds: (elementCount) => elementCount > ceiling,
-      tooLarge: (elementCount, scope) =>
-        elementCount > MAX_PSI_DECODE_ELEMENTS
-          ? new RoundSetLimitError(
-              roundOneSetOverMaximumAfterTermsMessage(
-                elementCount,
-                MAX_PSI_DECODE_ELEMENTS,
-                scope,
-              ),
-              "over-set-maximum",
-            )
-          : new RoundSetLimitError(
-              roundOneSetOverPartnerCeilingMessage(
-                elementCount,
-                ceiling,
-                scope,
-              ),
-              "over-partner-ceiling",
-            ),
+      tooLarge: (valueCount, scope) =>
+        setOverLimitError({
+          kind: "set-over-limit",
+          stage: "after-terms",
+          ...(valueCount > MAX_PSI_DECODE_ELEMENTS
+            ? ({
+                limit: "set-maximum",
+                limitValues: MAX_PSI_DECODE_ELEMENTS,
+              } as const)
+            : ({ limit: "partner-ceiling", limitValues: ceiling } as const)),
+          valueCount,
+          scope,
+        }),
       uncounted: (failure) =>
-        new RoundSetLimitError(
-          ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
-          "uncounted",
+        setOverLimitError(
+          { kind: "set-over-limit", stage: "after-terms", limit: "uncounted" },
           { cause: failure },
         ),
     });

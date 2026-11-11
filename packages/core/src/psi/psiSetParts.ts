@@ -12,10 +12,7 @@ import {
   MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
 } from "../connection/frameSize";
-import {
-  fileSyncMessageFileBytes,
-  SPLIT_INPUT_REMEDY,
-} from "../connection/fileSyncOutboundBound";
+import { fileSyncMessageFileBytes } from "../connection/fileSyncOutboundBound";
 import {
   binaryPackByteStringLength,
   PSI_ENCODED_ELEMENT_BYTES,
@@ -67,37 +64,6 @@ export function partnerSetOverCeilingMessage(ceilingElements: number): string {
     "partner. Ask your partner to split their input into smaller files and " +
     "run one exchange for each, or run this exchange with the command-line " +
     "application on a host with enough memory."
-  );
-}
-
-/**
- * The refusal a round raises, before building the set, on a set of this
- * party's own whose `elementCount` values exceed
- * {@link MAX_PSI_DECODE_ELEMENTS}, the most any receiver admits.
- */
-export function ownSetTooLargeMessage(elementCount: number): string {
-  return (
-    "Too large to send: the set you send for this linkage key " +
-    `holds ${elementCount} values, over the ${MAX_PSI_DECODE_ELEMENTS} one ` +
-    "set can hold, so the exchange stopped before sending it and told your " +
-    `partner. ${SPLIT_INPUT_REMEDY}`
-  );
-}
-
-/**
- * The refusal a round raises, before building the set, on a set of this
- * party's own whose `elementCount` values exceed `partnerCeiling`, the most
- * the partner stated on the terms exchange that it can receive.
- */
-export function ownSetOverPartnerCeilingMessage(
-  elementCount: number,
-  partnerCeiling: number,
-): string {
-  return (
-    "Too large for your partner: the set you send for this linkage " +
-    `key holds ${elementCount} values, over the ${partnerCeiling} your ` +
-    "partner can receive in one PSI set, so the exchange stopped before " +
-    `sending it and told your partner. ${SPLIT_INPUT_REMEDY}`
   );
 }
 

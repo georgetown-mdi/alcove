@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   failureCauseSentence,
   markFailureCause,
+  setOverLimitError,
   type FailureCause,
   type FailureCauseKind,
   type FailureCauseOfKind,
@@ -86,6 +87,17 @@ const SAMPLES: {
   "partner-stopped-responding": [
     { kind: "partner-stopped-responding", silentMs: 120_000 },
   ],
+  "set-over-limit": [
+    {
+      kind: "set-over-limit",
+      stage: "after-terms",
+      limit: "partner-ceiling",
+      valueCount: 12,
+      limitValues: 11,
+      scope: "first-key",
+    },
+    { kind: "set-over-limit", stage: "before-contact", limit: "uncounted" },
+  ],
 };
 
 const ARRIVAL_WAITS: ArrivalWait[] = ["exchange", "online-invitation"];
@@ -123,6 +135,19 @@ test("a file-drop no-show on alcove exchange names --peer-timeout only", () => {
       "waited.\n" +
       "Check that you and your partner use the same folder and that it is " +
       "syncing, then run again; --peer-timeout sets how long to wait.",
+  );
+});
+
+test("a set-size refusal states core's sentence with the remedy beneath, after the count's own failure", () => {
+  const err = setOverLimitError(
+    { kind: "set-over-limit", stage: "before-contact", limit: "uncounted" },
+    { cause: new RangeError("Map maximum size exceeded") },
+  );
+  expect(renderFailureForOperator(err)).toBe(
+    "Alcove could not count the values the first linkage key gives you to " +
+      "send, so it cannot confirm one PSI set can hold them, and nothing was " +
+      "sent.\ncaused by: Map maximum size exceeded\n" +
+      "Split the input into smaller files and run one exchange for each.",
   );
 });
 

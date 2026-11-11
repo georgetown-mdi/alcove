@@ -652,6 +652,22 @@ export function joinErrorCauseChain(links: ReadonlyArray<string>): string {
 }
 
 /**
+ * `err` as {@link sanitizeErrorForDisplay} renders it, with `step` after the
+ * error's own message and before its cause chain. `step` is fixed text of the
+ * caller's own, composed after the escape, so it is not escaped or capped.
+ */
+export function sanitizeErrorForDisplayWithStep(
+  err: unknown,
+  step: string,
+): string {
+  const rendered = sanitizeErrorForDisplay(err);
+  const at = rendered.indexOf(ERROR_CAUSE_SEPARATOR);
+  return at === -1
+    ? `${rendered} ${step}`
+    : `${rendered.slice(0, at)} ${step}${rendered.slice(at)}`;
+}
+
+/**
  * Take a chain {@link sanitizeErrorForDisplay} already rendered and return its
  * links, each escaped and bounded as that renderer bounds them (at most
  * {@link MAX_ERROR_CAUSE_DEPTH} links, each escaped at

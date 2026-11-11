@@ -8,9 +8,15 @@ import {
 } from "../../src/errors";
 import {
   assertFirstRoundWithinSetMaximum,
-  roundOneSetOverMaximumMessage,
   type FirstRoundCheckOptions,
 } from "../../src/exchange/firstRoundCapacity";
+import {
+  failureCauseOf,
+  failureCauseSentence,
+  setOverLimitError,
+  type FailureCauseOfKind,
+  type RoundSetScope,
+} from "../../src/failureCause";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
 import {
@@ -30,11 +36,30 @@ import {
 // before any connection. The per-set maximum is lowered so the boundary is
 // reached with a few hundred values.
 
+function overMaximum(
+  valueCount: number,
+  limitValues: number = MAX_PSI_DECODE_ELEMENTS,
+  scope: RoundSetScope = "first-key",
+): FailureCauseOfKind<"set-over-limit"> {
+  return {
+    kind: "set-over-limit",
+    stage: "before-contact",
+    limit: "set-maximum",
+    valueCount,
+    limitValues,
+    scope,
+  };
+}
+
+const roundOneSetOverMaximumMessage = (
+  ...args: Parameters<typeof overMaximum>
+): string => failureCauseSentence(overMaximum(...args));
+
 test("the check's bound is the protocol's per-set maximum", () => {
   expect(MAX_PSI_DECODE_ELEMENTS).toBe(2 ** 24);
   expect(roundOneSetOverMaximumMessage(MAX_PSI_DECODE_ELEMENTS + 1)).toContain(
-    `at least ${MAX_PSI_DECODE_ELEMENTS + 1} values to send, over the ` +
-      `${MAX_PSI_DECODE_ELEMENTS} one PSI set can hold`,
+    "at least 16,777,217 values to send, over the 16,777,216 one PSI set " +
+      "can hold",
   );
 });
 
@@ -74,8 +99,9 @@ test("the check refuses one value over the bound and admits one under and at it"
   expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
   expect((refusal as RoundSetLimitError).reason).toBe("over-set-maximum");
   expect((refusal as Error).message).toMatch(
-    /^Too large to send: .*at least 301 values to send, over the 300 one PSI set can hold\. Nothing was sent\. Split the input/,
+    /^Too large to send: .*at least 301 values to send, over the 300 one PSI set can hold, so nothing was sent\.$/,
   );
+  expect(failureCauseOf(refusal)).toEqual(overMaximum(301, 300));
 });
 
 test("the first-round check counts every distinct value a deduplicating party sends", async () => {
@@ -150,8 +176,9 @@ describe("in a count-only exchange", () => {
       roundOneSetOverMaximumMessage(301, 300, "every-key"),
     );
     expect((refusal as Error).message).toMatch(
-      /^Too large to send: a count-only exchange sends 301 values for every linkage key, over the 300 one PSI set can hold\. Nothing was sent\. Split the input/,
+      /^Too large to send: a count-only exchange sends 301 values for every linkage key, over the 300 one PSI set can hold, so nothing was sent\.$/,
     );
+    expect(failureCauseOf(refusal)).toEqual(overMaximum(301, 300, "every-key"));
   });
 
   test("the check weighs the record count without reading a record", async () => {
@@ -182,19 +209,16 @@ describe("in a count-only exchange", () => {
 
   test("the count-only refusal survives the display boundary whole at the real bound", () => {
     const shown = sanitizeErrorForDisplay(
-      new RoundSetLimitError(
-        roundOneSetOverMaximumMessage(
+      setOverLimitError(
+        overMaximum(
           MAX_PSI_DECODE_ELEMENTS * 10,
           MAX_PSI_DECODE_ELEMENTS,
           "every-key",
         ),
-        "over-set-maximum",
       ),
     );
     expect(shown).not.toContain(DISPLAY_TRUNCATION_MARKER);
-    expect(shown).toContain(
-      "Split the input into smaller files and run one exchange for each.",
-    );
+    expect(shown).toMatch(/so nothing was sent\.$/);
   });
 });
 
@@ -238,8 +262,13 @@ test("the check refuses, with the failure as its cause, when the count throws", 
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as RoundSetLimitError).reason).toBe("uncounted");
   expect((refusal as Error).message).toMatch(
-    /could not count .* one PSI set can hold them\. Nothing was sent\./,
+    /could not count .* one PSI set can hold them, and nothing was sent\.$/,
   );
+  expect(failureCauseOf(refusal)).toEqual({
+    kind: "set-over-limit",
+    stage: "before-contact",
+    limit: "uncounted",
+  });
   expect((refusal as Error).cause).toBe(failure);
 });
 
@@ -255,15 +284,10 @@ test("the check raises a refusal the count throws in both roles as it is", async
 });
 
 test("the refusal survives the display boundary whole at the real bound", () => {
-  // The remedy is the last sentence, and the render boundary truncates a link,
-  // so a message that grows past it loses the part the operator acts on.
-  const refusal = new RoundSetLimitError(
-    roundOneSetOverMaximumMessage(MAX_PSI_DECODE_ELEMENTS * 10),
-    "over-set-maximum",
-  );
+  // The render boundary truncates a link, so a sentence that grows past it
+  // loses the part the operator reads last.
+  const refusal = setOverLimitError(overMaximum(MAX_PSI_DECODE_ELEMENTS * 10));
   const shown = sanitizeErrorForDisplay(refusal);
   expect(shown).not.toContain(DISPLAY_TRUNCATION_MARKER);
-  expect(shown).toContain(
-    "Split the input into smaller files and run one exchange for each.",
-  );
+  expect(shown).toMatch(/so nothing was sent\.$/);
 });
