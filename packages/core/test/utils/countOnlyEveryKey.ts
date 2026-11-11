@@ -1,5 +1,5 @@
 // Fixtures and the reference replay for the count-only construction over
-// every agreed key (docs/spec/PROTOCOL.md, PSI-C: The count-only rounds,
+// every agreed key (docs/spec/PSI_C.md, PSI-C: The count-only rounds,
 // Computing the count).
 
 /**
@@ -45,7 +45,7 @@ export const RECEIVER: Records = [
 export const FIXTURE_COUNT = 2;
 
 /**
- * The count as PROTOCOL.md, Computing the count, states it, written over
+ * The count as PSI_C.md, Computing the count, states it, written over
  * records rather than slots: each round pairs the records holding a value no
  * other record of their party holds, and the replay accepts a pair whose two
  * records are both still free.

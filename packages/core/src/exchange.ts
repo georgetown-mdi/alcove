@@ -332,7 +332,7 @@ export function assertTermsRunnable(
 /**
  * Resolve whether this exchange runs the count-only (`psi-c`) path, from
  * both parties' agreed terms, and refuse a count-only exchange outside the
- * shape docs/spec/PROTOCOL.md (PSI-C) admits.
+ * shape docs/spec/PSI_C.md (PSI-C) admits.
  *
  * Symmetric: each party calls it with its own terms plus the partner's, so
  * a refusal aborts both parties at the same point rather than desyncing
@@ -989,7 +989,7 @@ export interface ExchangeResult {
    * the record's result size takes: a one-sided run's receiver holds a count
    * its own record omits (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c)
    * records). The sender's copy, when present, is the receiver's report, not a
-   * figure it computed itself (docs/spec/PROTOCOL.md, PSI-C).
+   * figure it computed itself (docs/spec/PSI_C.md, PSI-C).
    */
   intersectionCount: number | undefined;
   /**
@@ -1108,7 +1108,7 @@ export interface ExchangeResult {
  * report rather than as a figure this party computed. The receiver alone computes
  * the count; the sender's copy, when its terms entitle it to one, travels over the
  * count-report leg and is the receiver's word, which Alcove does not check against
- * a run of its own (docs/spec/PROTOCOL.md, PSI-C -- "The sender's knowledge of the
+ * a run of its own (docs/spec/PSI_C.md, PSI-C -- "The sender's knowledge of the
  * count is trust-contingent"). False for every party that computed its own count,
  * and false for a run that produced no count at all.
  *

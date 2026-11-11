@@ -4,7 +4,7 @@ title: "Count-Only Linkage (PSI-C): Construction, Provenance, and Reporting"
 
 # Count-only linkage: why psi-c counts every key under one permutation
 
-*Status: directed by the maintainer's rulings of 2026-10-26 and 2026-10-27, and built, candidate sets included. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#psi-c) and its record rows in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#count-only-psi-c-records). This note records why the construction has its shape, how the one-key construction came about, the alternatives weighed, and which key shapes the maintainer ruled count-only admits. See [docs/notes/README.md](README.md).*
+*Status: directed by the maintainer's rulings of 2026-10-26 and 2026-10-27, and built, candidate sets included. The construction is normatively specified in [PSI_C.md](../spec/PSI_C.md#psi-c) and its record rows in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#count-only-psi-c-records). This note records why the construction has its shape, how the one-key construction came about, the alternatives weighed, and which key shapes the maintainer ruled count-only admits. See [docs/notes/README.md](README.md).*
 
 This is design rationale. Nothing here binds an implementation; the normative rows live in the two spec documents linked above, and this note does not restate them.
 
@@ -28,7 +28,7 @@ The number is only useful if it is comparable to the linkage it is used to justi
 
 The design review's analysis was correct in its mechanism. A permutation held across rounds is a stable per-record pseudonym, and the receiver chooses its own inputs, so it can attribute slots to records. The cross-key count and that attribution are the same mechanism: there is no version of the construction that keeps the multi-key count and drops the vector, because the count is exactly what requires the pseudonym to be stable.
 
-It understated the scale. It described the attack as one value at a time, one record bound per round. A receiver that gives each of its records its own pattern of real values and dummies across the keys attributes most matched slots in one run, by leaving fields blank in its own input, with no modified software. And even from genuine inputs the receiver's own key coverage narrows a slot: a slot matched on a set of keys belongs to a record with values for all of them. [PROTOCOL.md](../spec/PROTOCOL.md#threat-model-scope-of-the-count-only-claim) states both.
+It understated the scale. It described the attack as one value at a time, one record bound per round. A receiver that gives each of its records its own pattern of real values and dummies across the keys attributes most matched slots in one run, by leaving fields blank in its own input, with no modified software. And even from genuine inputs the receiver's own key coverage narrows a slot: a slot matched on a set of keys belongs to a record with values for all of them. [PSI_C.md](../spec/PSI_C.md#threat-model-scope-of-the-count-only-claim) states both.
 
 What it decided was a scoping question, not a feasibility one: whether the comparable count is worth that disclosure. The review traded the count's comparability away on an unmeasured judgment that the pre-agreement question rarely needs more than one key. The maintainer made the opposite trade, and the spec states the disclosure in full rather than avoiding the construction that causes it.
 
@@ -85,7 +85,7 @@ Two things were not part of the ruling. `deduplicate` stays refused: what a coun
 
 ## Candidate sets: one count rule for psi and psi-c
 
-*Ruled by the maintainer; built for `psi` and `psi-c`.* The rule for `psi` is in [Record-level resolution](../spec/PROTOCOL.md#record-level-resolution-canonical-order-and-tiebreak), and the count-only construction in [Candidate sets under count-only](../spec/PROTOCOL.md#candidate-sets-under-count-only). This section records why, and does not restate either.
+*Ruled by the maintainer; built for `psi` and `psi-c`.* The rule for `psi` is in [Record-level resolution](../spec/PROTOCOL.md#record-level-resolution-canonical-order-and-tiebreak), and the count-only construction in [Candidate sets under count-only](../spec/PSI_C.md#candidate-sets-under-count-only). This section records why, and does not restate either.
 
 A candidate set -- a split surname, an adjacent or day/month-swapped date, a fuzzy variant -- lets one record match several partner records in one round, and a one-to-one rule has to choose among them.
 
@@ -116,7 +116,7 @@ A fan-out a party authors in its own data standardization stays refused: it decl
 
 ## Count reporting: who learns the number
 
-The receiver computes the count; the sender learns nothing about it from the rounds. Whether the number travels back is decided by the agreed output entitlement, and the specified rule is a single count-report frame from receiver to sender in the both-entitled case and no frame at all otherwise ([PROTOCOL.md](../spec/PROTOCOL.md#count-reporting-and-entitlement) has the normative rule).
+The receiver computes the count; the sender learns nothing about it from the rounds. Whether the number travels back is decided by the agreed output entitlement, and the specified rule is a single count-report frame from receiver to sender in the both-entitled case and no frame at all otherwise ([PSI_C.md](../spec/PSI_C.md#count-reporting-and-entitlement) has the normative rule).
 
 The consequence to state plainly is that the sender's copy of the count is the receiver's word. Alcove does not stop a receiver that reports a different number. That is the same posture as the association-table return leg under `psi`, where the sender's half of the pairing likewise arrives as the receiver's report, so this is not a new class of trust -- but it is stated rather than left for a reader to assume a mutually-computed figure.
 
@@ -130,13 +130,13 @@ It was not adopted, for two reasons. It doubles the elliptic-curve work of the e
 
 ## Why the threat-model scope is stated plainly
 
-The count-only property protects the sender against a receiver that contributes a genuine dataset, up to what that receiver's own key coverage narrows. It does not protect the sender against a receiver that chooses its input set: a pattern of real values and dummies across the keys attributes most matched records in one run, one live candidate padded with values the sender cannot hold turns a count of 0 or 1 into a membership answer, and two runs differing in one record do the same by subtraction. All three sit a step beyond honest-but-curious, all three are accepted rather than prevented, and [PROTOCOL.md](../spec/PROTOCOL.md#threat-model-scope-of-the-count-only-claim) says so in the specification rather than in a footnote.
+The count-only property protects the sender against a receiver that contributes a genuine dataset, up to what that receiver's own key coverage narrows. It does not protect the sender against a receiver that chooses its input set: a pattern of real values and dummies across the keys attributes most matched records in one run, one live candidate padded with values the sender cannot hold turns a count of 0 or 1 into a membership answer, and two runs differing in one record do the same by subtraction. All three sit a step beyond honest-but-curious, all three are accepted rather than prevented, and [PSI_C.md](../spec/PSI_C.md#threat-model-scope-of-the-count-only-claim) says so in the specification rather than in a footnote.
 
 Stating it there is by design. A count-only exchange reads, to a non-specialist, like the safe option -- and it is offered specifically to program officers weighing whether to share data at all, who are the readers least equipped to supply the missing caveat themselves. An algorithm whose selling point is "you learn only a number" has to state, in the same place, what a partner can do with the freedom to decide which numbers to ask for. The accurate framing is that psi-c bounds what the protocol shows the operator, not what a determined partner's software can arrange to learn.
 
 ## See also
 
-- [PROTOCOL.md](../spec/PROTOCOL.md#psi-c) - the normative construction, refusals, wire shape, and threat-model scope
+- [PSI_C.md](../spec/PSI_C.md#psi-c) - the normative construction, refusals, wire shape, and threat-model scope
 - [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#count-only-psi-c-records) - the count-only record rows and what the signed receipt attests
 - [one-sided-disclosure.md](one-sided-disclosure.md) - why a shuffle does not hide a party's own data from that party, and the one-sided disclosure tradeoffs psi shares
 - [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#threat-model) - the honest-but-curious model the scope above is stated against

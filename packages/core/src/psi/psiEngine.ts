@@ -70,7 +70,7 @@ const ENGINE_SETUP_INCOMPLETE = "server setup is incomplete";
  * - `identifier-revealing` -- the `psi` construction: the round resolves to
  *   matched positions and an association table.
  * - `count-only-permuted` -- the psi-c construction over every agreed key
- *   (docs/spec/PROTOCOL.md, PSI-C): the library's revealing mode, the sender
+ *   (docs/spec/PSI_C.md, PSI-C): the library's revealing mode, the sender
  *   reordering every response under one permutation it holds for the
  *   exchange and sending an index table of pseudonyms with every setup, and
  *   the receiver keeping every round's pairs and returning only the count.
@@ -85,7 +85,7 @@ export type PsiEngineMode = "identifier-revealing" | "count-only-permuted";
 /**
  * The library's reveal-intersection flag every engine's key objects are
  * created with. No mode runs the library's cardinality mode, the flag
- * cleared (docs/spec/PROTOCOL.md, PSI-C).
+ * cleared (docs/spec/PSI_C.md, PSI-C).
  *
  * @internal
  */
@@ -183,7 +183,7 @@ export interface PsiEngine {
    * Doubly-encrypts a deserialized-from-`requestBytes` client request under the
    * server key, returning the serialized response. Server role. A
    * count-only-permuted engine reads the request as one block of `width`
-   * elements per receiver record (docs/spec/PROTOCOL.md, Candidate sets under
+   * elements per receiver record (docs/spec/PSI_C.md, Candidate sets under
    * count-only) and reorders the response's blocks under `pi`, drawn on the
    * first request, so slot `s` answers request block `pi(s)`; within each
    * slot it orders the block's elements under a permutation it draws for that
@@ -751,7 +751,7 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     );
     // The request states the reveal flag, and the library refuses to serve a
     // request whose flag disagrees with the key this server was created
-    // under -- the wire-enforced mode agreement (docs/spec/PROTOCOL.md,
+    // under -- the wire-enforced mode agreement (docs/spec/PSI_C.md,
     // PSI-C). Read the flag and name both modes here, rather than leave the
     // library's refusal, which the frame boundary reports as a request that
     // failed to decode.

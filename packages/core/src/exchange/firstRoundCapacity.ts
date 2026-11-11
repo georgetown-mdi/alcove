@@ -66,7 +66,7 @@ import type { PsiProgressReporter } from "../psi/participant.js";
  *
  * Every round of a count-only (`psi-c`) exchange sends one block of this
  * party's width for the round for each of its declared records
- * (docs/spec/PROTOCOL.md, PSI-C), so that figure is checked for every round
+ * (docs/spec/PSI_C.md, PSI-C), so that figure is checked for every round
  * without reading the input, refused where the widest round is over the
  * maximum in both roles. Where its terms declare a candidate set, every
  * round is then read in both roles, so a refusal over this party's own rows
@@ -220,7 +220,7 @@ function assertCountOnlyRoundsFit(
  * key in both PSI roles before the connection opens, so a refusal building a
  * round's candidates -- a fuzzy exceedance, a record wider than its block --
  * is raised in front of this party's operator rather than ending a run its
- * partner has joined (docs/spec/PROTOCOL.md, Candidate sets under count-only).
+ * partner has joined (docs/spec/PSI_C.md, Candidate sets under count-only).
  * Each round and role read reports as the first-round count does
  * (`countFirstRoundValues`, {@link FirstRoundCheckOptions}).
  */

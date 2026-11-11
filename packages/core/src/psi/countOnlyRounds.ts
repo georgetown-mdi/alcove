@@ -1,5 +1,5 @@
 // The rounds of the count-only construction over every agreed linkage key
-// (docs/spec/PROTOCOL.md, PSI-C, The count-only rounds, and Candidate sets
+// (docs/spec/PSI_C.md, PSI-C, The count-only rounds, and Candidate sets
 // under count-only): each round's widths and set, one block per record, and
 // the receiver's request order, drawn once for the exchange.
 import {
@@ -149,7 +149,7 @@ export interface CountOnlyDeclaredCounts {
 }
 
 /**
- * A count-only round's widths (docs/spec/PROTOCOL.md, Candidate sets under
+ * A count-only round's widths (docs/spec/PSI_C.md, Candidate sets under
  * count-only): `w_R`, the elements in each block of the receiver's request,
  * and `w_S`, in each block of the sender's setup. Each is 1 in a round whose
  * key declares no candidate set.
@@ -166,7 +166,7 @@ export const ONE_ELEMENT_PER_RECORD: CountOnlyRoundWidths = {
 };
 
 /**
- * The widths of a count-only round of `key` (docs/spec/PROTOCOL.md, Candidate
+ * The widths of a count-only round of `key` (docs/spec/PSI_C.md, Candidate
  * sets under count-only): `w_R` is the width the agreed terms declare for the
  * key ({@link declaredKeyWidth}). `w_S` is the same product with the factor of
  * each expansion only the receiver executes taken as 1 -- a fuzzy kind

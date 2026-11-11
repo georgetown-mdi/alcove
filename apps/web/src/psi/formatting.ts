@@ -126,7 +126,7 @@ export const MATCHING_METHOD_LABELS: Record<Algorithm, string> = {
 };
 
 /** What choosing the count-only method does and what it still discloses, shown
- * beside the choice (docs/spec/PROTOCOL.md, PSI-C). */
+ * beside the choice (docs/spec/PSI_C.md, PSI-C). */
 export const COUNT_ONLY_CHOICE_CAVEAT =
   "Counts the records you have in common across every matching key, each " +
   "record once, and sends no data columns. Intended only for research: the " +

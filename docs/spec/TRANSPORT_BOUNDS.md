@@ -202,7 +202,7 @@ Each is the receiving engine's own call pattern:
   The association table the streamed match returns is put in the order the library's one-call match returns it before the joiner sends it.
 - **Nothing more is disclosed.**
   The count-only response, which holds the byte-order shuffle, is fed to the streamed match whole and in its own order; the engine counts the setup elements it marks once the whole response is fed, and no per-piece count leaves it.
-  The result equals the one-call result ([PROTOCOL.md, PSI-C](PROTOCOL.md#psi-c)).
+  The result equals the one-call result ([PSI_C.md, PSI-C](PSI_C.md#psi-c)).
 - **The engine reads the partner's bytes itself.**
   The streamed match's reader walks the setup and the response across piece boundaries and refuses any field but an element entry, an entry over 33 bytes, an over-wide length, bytes after the setup's one `Raw` data structure, and a setup or response ending inside an entry.
   A refused setup is discarded.

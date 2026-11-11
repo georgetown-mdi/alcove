@@ -44,7 +44,7 @@ import {
 } from "../utils/countOnlyEveryKey";
 
 // The count-only construction over every agreed key, run between two
-// in-memory parties through linkViaCountOnlyPSI (docs/spec/PROTOCOL.md,
+// in-memory parties through linkViaCountOnlyPSI (docs/spec/PSI_C.md,
 // PSI-C: The count-only rounds, Computing the count, Count reporting and
 // entitlement).
 

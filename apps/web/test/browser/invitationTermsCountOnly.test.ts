@@ -175,7 +175,7 @@ describe("InvitationTerms: the count-only tier a psi-c invitation renders", () =
     // The honest-helper membership fact is true of a one-sided `psi` exchange and
     // false here: by the role rule the entitled party IS the receiver, so the
     // partner receiving no count is the SENDER, which computes nothing from the
-    // round and is sent no count-report frame (docs/spec/PROTOCOL.md, PSI-C).
+    // round and is sent no count-report frame (docs/spec/PSI_C.md, PSI-C).
     renderCountOnly({
       output: { expectsOutput: false, shareWithPartner: true },
     });

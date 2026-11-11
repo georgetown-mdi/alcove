@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 // The count-only run driven end to end over a real message pipe and a real PSI
 // library, against the shipped build rather than a forced setting. Every property
-// asserted here is a normative row of docs/spec/PROTOCOL.md (PSI-C) or of
+// asserted here is a normative row of docs/spec/PSI_C.md (PSI-C) or of
 // docs/spec/EXCHANGE_RECORD.md (Count-only (psi-c) records), and the `psi` runs
 // beside them hold the comparison the count-only claim is stated against.
 
@@ -504,7 +504,7 @@ test("an algorithm divergence is refused at the agreed-terms run boundary", () =
 // not reach them: a partner's terms arrive through the terms-exchange parse and
 // this party's own through prepareForExchange, both applying the same rules
 // first. What the boundary covers alone is a PreparedExchange assembled or
-// mutated past that prepare step (docs/spec/PROTOCOL.md, PSI-C).
+// mutated past that prepare step (docs/spec/PSI_C.md, PSI-C).
 
 const agreedCountOnlyTerms = prepared("Initiator Co", initiatorRows, {
   terms: { algorithm: "psi-c" },
@@ -605,7 +605,7 @@ test("a count-only exchange whose metadata declares id sent is refused at prepar
 });
 
 test("a count-only run refuses an inbound payload column from a non-conforming partner", async () => {
-  // docs/spec/PROTOCOL.md (PSI-C, Refusals) refuses payload in either
+  // docs/spec/PSI_C.md (PSI-C, Refusals) refuses payload in either
   // direction; the record's payload commitments are fixed present-and-empty
   // (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c) records) regardless of
   // what a partner transmits. The outbound leg is closed structurally
@@ -678,7 +678,7 @@ test("a count-only run refuses an inbound payload column from a non-conforming p
 // --- The count-report frame on receipt ---------------------------------------
 // The one figure a partner supplies on a count-only run: the receiver's tally,
 // which the sender takes on trust as a NUMBER but not as an arbitrary value
-// (docs/spec/PROTOCOL.md, PSI-C). The bound is the smaller of the two exchanged
+// (docs/spec/PSI_C.md, PSI-C). The bound is the smaller of the two exchanged
 // record counts, authenticated session state on both sides. Each shape below is
 // refused as a protocol violation on receipt, and none resolves a count the
 // sender would go on to report as the run's result.

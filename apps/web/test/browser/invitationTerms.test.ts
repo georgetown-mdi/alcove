@@ -1044,7 +1044,7 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
   test("a one-sided count-only invitation states no membership disclosure", async () => {
     // The membership fact is scoped by the ALGORITHM: by the role rule a count-only
     // run's non-receiving party is the SENDER, which computes nothing from the round
-    // and is sent no count-report frame (docs/spec/PROTOCOL.md, PSI-C). The same
+    // and is sent no count-report frame (docs/spec/PSI_C.md, PSI-C). The same
     // output pair as the test above, so the difference measured is the algorithm's
     // alone.
     await renderTerms({
@@ -2632,7 +2632,7 @@ describe("InvitationTerms: the linkage strategy is shown at the consent point", 
   test("count-only terms declaring single-pass state it without the single-pass disclosure", async () => {
     // A count-only run takes the cascade's rounds whichever strategy its terms
     // name, so the strategy is stated as written and the psi single-pass
-    // disclosure is not (docs/spec/PROTOCOL.md, PSI-C).
+    // disclosure is not (docs/spec/PSI_C.md, PSI-C).
     await renderTerms({
       ...COUNT_ONLY_PROBE_TERMS,
       linkageStrategy: "single-pass",

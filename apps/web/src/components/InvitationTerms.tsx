@@ -711,7 +711,7 @@ export function InvitationTerms({
       : (outboundColumns ?? []);
   // psi-c admits no payload in either direction; a document or input metadata
   // declaring one is refused where the terms are authored and at the agreed-terms
-  // run boundary (docs/spec/PROTOCOL.md, PSI-C). This throw is the render-side
+  // run boundary (docs/spec/PSI_C.md, PSI-C). This throw is the render-side
   // safety check behind those refusals: rendering "no data columns in either
   // direction" over a column would take the operator's consent to a disclosure
   // that happens.
@@ -1203,7 +1203,7 @@ export function InvitationTerms({
             settled at exchange time. Mirrors the inviter's Alert and the CLI's
             linkageStrategyNote: count-only terms declaring single-pass run the
             cascade's rounds, so they state the strategy as written without the
-            single-pass disclosure (docs/spec/PROTOCOL.md, PSI-C). */}
+            single-pass disclosure (docs/spec/PSI_C.md, PSI-C). */}
         {summary.linkageStrategy === "single-pass" && (
           // No emphasis tag on the lead: the Term's bold "Linkage strategy"
           // caption already anchors the block, so a second bold restating it would

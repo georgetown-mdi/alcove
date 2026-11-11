@@ -26,7 +26,7 @@ import { assertAlgorithmImplemented } from "../../src/exchange";
 import { UsageError } from "../../src/errors";
 import { encodeRawInvitation } from "../utils/support";
 
-// The count-only shape refusals (docs/spec/PROTOCOL.md, PSI-C) are enforced
+// The count-only shape refusals (docs/spec/PSI_C.md, PSI-C) are enforced
 // at two points core owns -- every PARSE path (a partner's invitation is
 // refused as read) and the ACCEPT path (terms built or mutated without a
 // parse are refused before the mirror is derived) -- each rule exercised at

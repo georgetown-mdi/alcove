@@ -441,7 +441,7 @@ describe("prepareForExchange: a deduplicating term is read against the strategy"
 
 describe("prepareForExchange: a fan-out under psi-c", () => {
   // A count-only round counts over blocks of the width the terms declare
-  // (docs/spec/PROTOCOL.md, Candidate sets under count-only), so a fan-out in
+  // (docs/spec/PSI_C.md, Candidate sets under count-only), so a fan-out in
   // a key element's transform prepares. A fan-out in a party's own
   // standardization declares no width, so it is refused before any
   // connection. The base `terms` are already in the count-only shape apart

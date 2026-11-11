@@ -1293,7 +1293,7 @@ const linkageTermsSchema = (
     })
     // The count-only shape, one refine per rule so a document breaking one
     // is located by its own issue path and answered by its own message. The
-    // rules are docs/spec/PROTOCOL.md, PSI-C; placed here so EVERY parse
+    // rules are docs/spec/PSI_C.md, PSI-C; placed here so EVERY parse
     // path refuses -- parseLinkageTerms, the invitation-token decode, and
     // ExchangeSpecSchema. The verdict comes from the one shared reading
     // (countOnlyShapeViolation) rather than a second copy of the rule, so

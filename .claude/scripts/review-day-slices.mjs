@@ -114,6 +114,7 @@ export const BOUNDARIES = [
     specs: [
       "PROTOCOL",
       "KEY_EXCHANGE",
+      "PSI_C",
       "SHARED_SECRET_ROTATION",
       "RELAY_CREDENTIALS",
       "RELAY_REGISTRAR",

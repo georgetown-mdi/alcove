@@ -121,7 +121,7 @@ export async function runPsiPhase(p: {
     );
 
   // A count-only run takes its own rounds whichever strategy its terms declare
-  // (docs/spec/PROTOCOL.md, PSI-C). Otherwise single-pass is allowlisted, and
+  // (docs/spec/PSI_C.md, PSI-C). Otherwise single-pass is allowlisted, and
   // any other value (including the default) runs the cascade. No mismatch
   // guard needed here -- validateCompatibility already aborted upstream if the
   // two parties' strategies differ. Single-pass takes the exchanged bounds

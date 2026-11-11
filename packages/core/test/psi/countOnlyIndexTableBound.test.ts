@@ -32,7 +32,7 @@ import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { prepared } from "../utils/support";
 
 // A count-only round's index table goes in one frame of 4 * n_S bytes, not in
-// parts (docs/spec/PROTOCOL.md, PSI-C, The sender's pseudonyms and the index
+// parts (docs/spec/PSI_C.md, PSI-C, The sender's pseudonyms and the index
 // table). The sender sends it only for a setup it held to the per-set maximum
 // and the partner's ceiling, and the receiver reads it only after a setup of
 // n_S elements within its own ceiling, so no table either party handles has

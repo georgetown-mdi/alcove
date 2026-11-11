@@ -99,11 +99,11 @@ When public services facilitate scheduled exchanges, some metadata is leaked, su
 
 The count-only algorithm (PSI-C) reports the size of the overlap across every agreed key and no identifier, with three qualifications. PSI-C is intended only for research.
 
-**The party computing the count learns more than the count.** Its software, not its operator, learns how many records matched on each key and how many matched on each combination of keys. From which keys its own records have values for, a match narrows to the few of its own records that could have made it, and sometimes to one, which tells it that its partner holds that record. This needs no change to the software or the input, and it is accepted. [PROTOCOL.md](spec/PROTOCOL.md#what-each-party-learns-and-on-what-basis) states each part and its basis.
+**The party computing the count learns more than the count.** Its software, not its operator, learns how many records matched on each key and how many matched on each combination of keys. From which keys its own records have values for, a match narrows to the few of its own records that could have made it, and sometimes to one, which tells it that its partner holds that record. This needs no change to the software or the input, and it is accepted. [PSI_C.md](spec/PSI_C.md#what-each-party-learns-and-on-what-basis) states each part and its basis.
 
 Keys that match on several values per record add to what it learns (a split surname, a fuzzy date). Every record sends the same number of encrypted values for such a key, so the partner's frames say nothing about how many values a record has. The party computing the count also learns, for each such key, which matches conflicted and how many of a record's values matched, which can tell an exact match from a fuzzy one, and the blank-field pattern below has more to work with. A party whose own data such a key cannot use, such as a date that is not eight digits, is refused before the exchange connects, so its partner sees no exchange rather than one that stops partway.
 
-**The property holds only under the honest-but-curious model.** A party that receives the count also chooses what goes into its own side of the exchange. A set built as one live candidate padded with values the partner cannot hold turns the count into a yes-or-no answer about that candidate, and two runs whose sets differ in one value do the same by subtraction. Cheaper still, the party computing the count can leave a different set of fields blank on each of its records and read, from one run, which of its matched records the partner holds. Nothing on the wire distinguishes a crafted set from a genuine one. Like the record-count manipulation above, all three are accepted rather than prevented. The mechanism, and what each party may and may not claim as a result, are specified in [PROTOCOL.md](spec/PROTOCOL.md#threat-model-scope-of-the-count-only-claim).
+**The property holds only under the honest-but-curious model.** A party that receives the count also chooses what goes into its own side of the exchange. A set built as one live candidate padded with values the partner cannot hold turns the count into a yes-or-no answer about that candidate, and two runs whose sets differ in one value do the same by subtraction. Cheaper still, the party computing the count can leave a different set of fields blank on each of its records and read, from one run, which of its matched records the partner holds. Nothing on the wire distinguishes a crafted set from a genuine one. Like the record-count manipulation above, all three are accepted rather than prevented. The mechanism, and what each party may and may not claim as a result, are specified in [PSI_C.md](spec/PSI_C.md#threat-model-scope-of-the-count-only-claim).
 
 **PSI-C runs before the agreement this model assumes.** It is the algorithm used to establish the business case for a data-sharing agreement. Weigh a count-only exchange as a disclosure in its own right, against the partner's incentives at that point.
 
@@ -503,7 +503,8 @@ The [NIST SP 800-53 Rev. 5](https://doi.org/10.6028/NIST.SP.800-53r5) control ma
 
 The spec-tier counterparts that specify how these controls are built:
 
-- [PROTOCOL.md](spec/PROTOCOL.md) - the PSI/PSI-C algorithms
+- [PROTOCOL.md](spec/PROTOCOL.md) - the PSI algorithm
+- [PSI_C.md](spec/PSI_C.md) - the PSI-C count-only algorithm
 - [KEY_EXCHANGE.md](spec/KEY_EXCHANGE.md) - the P-256 key-exchange wire format
 - [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the AEAD construction
 - [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) and [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md) - the display-sanitization format, the private-key redaction, and the display budgets

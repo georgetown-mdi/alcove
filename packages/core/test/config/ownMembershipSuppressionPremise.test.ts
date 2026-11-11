@@ -8,7 +8,7 @@ import type { PsiRole } from "../../src/types.js";
 // Both acceptance surfaces withhold `partnerLearnsOwnMembership` from a
 // psi-c invitation based on role resolution: on a one-sided exchange the
 // non-entitled party is always the sender, and a count-only sender computes
-// nothing and gets no count-report frame (docs/spec/PROTOCOL.md, PSI-C), so
+// nothing and gets no count-report frame (docs/spec/PSI_C.md, PSI-C), so
 // it has no membership to disclose. This test pins that assumption directly,
 // since the render tests asserting the suppression cannot see it regress.
 
