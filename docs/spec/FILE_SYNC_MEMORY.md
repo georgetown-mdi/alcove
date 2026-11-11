@@ -6,7 +6,7 @@ title: "PSI round memory and set size limits"
 
 This document specifies the memory bounds of a PSI round on the command-line application: the one bound on a round's set size on the file-sync channels, the heap ceiling the PSI worker runs under, the checks that refuse a run before contact and before each frame is read, and the measured per-element costs those figures rest on.
 It does not cover the file-sync state machine, its filenames and its enforcement sites (see [FILE_SYNC.md](FILE_SYNC.md)), the transport-level frame and reassembly bounds (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)), or the single-pass and browser ceilings (see [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) and [PROTOCOL.md](PROTOCOL.md#what-a-browser-tab-can-match)).
-Intended readers are implementors and developers.
+Intended readers are developers and designers.
 
 ## Round set size limits
 
