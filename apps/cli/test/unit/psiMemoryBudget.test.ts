@@ -804,7 +804,7 @@ describe("the single-pass partner size at the terms exchange", () => {
     // The WebAssembly single runs, and the earlier batch's 2^22 run whose
     // creation peak sets the build figure, each beside this request: the
     // setup's elements, then its creation's peak and the masking's high-water
-    // mark beyond the run's baseline, in bytes (docs/spec/FILE_SYNC.md, "The
+    // mark beyond the run's baseline, in bytes (docs/spec/FILE_SYNC_MEMORY.md, "The
     // sender's own setup").
     it.each([
       [2 ** 20, 874_536_960, 4_088_532_992],
@@ -1030,7 +1030,7 @@ describe("the PSI worker's heap, from the counts", () => {
 
 describe("the main thread's heap, from this party's distinct values", () => {
   // The smallest heap limit a single-pass link completed under, both roles,
-  // from docs/spec/FILE_SYNC.md, "The main thread's heap, from the values".
+  // from docs/spec/FILE_SYNC_MEMORY.md, "The main thread's heap, from the values".
   const MEASURED: Array<[values: number, heapLimitMiB: number]> = [
     [500_000, 178],
     [1_000_000, 236],

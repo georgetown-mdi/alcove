@@ -1,6 +1,6 @@
 /**
  * The most entries one shard of a {@link ShardedMap} holds: a V8 `Map` holds
- * at most 2^24 (docs/spec/FILE_SYNC.md, Round set size limits), which the
+ * at most 2^24 (docs/spec/FILE_SYNC_MEMORY.md, Round set size limits), which the
  * stress tier checks against the running engine.
  *
  * @internal

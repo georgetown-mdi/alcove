@@ -14,7 +14,7 @@ import { stressMemory } from "./stressMemory";
 // The CLI's input preparation over 2^24 records, each with its own 9-digit
 // SSN, from reading the CSV to the first-round check: admitted at the per-set
 // maximum, and refused with the maximum one under the values the round sends,
-// a count that walks every record (docs/spec/FILE_SYNC.md, Preparing the
+// a count that walks every record (docs/spec/FILE_SYNC_MEMORY.md, Preparing the
 // input at 2^24).
 // The probe runs in its own process under the heap limit the container
 // images set, and reports each stage's time and the process's peak resident

@@ -496,7 +496,7 @@ export function reconstructCommittedData(
 
   // Each distinct identifier, and at the same position the input row it first
   // appears on. An input can hold more rows than the 2^24 entries a V8 Map
-  // holds, so the index is sharded (docs/spec/FILE_SYNC.md, Round set size
+  // holds, so the index is sharded (docs/spec/FILE_SYNC_MEMORY.md, Round set size
   // limits).
   let identifiers: DistinctValues | undefined;
   const firstRowOf: number[] = [];

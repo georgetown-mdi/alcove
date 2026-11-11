@@ -1,6 +1,6 @@
 // The file-sync read gate weighs each partner message file against the memory
 // the process has before it reads the file: the files read and not yet
-// received, and this one with its decryption (docs/spec/FILE_SYNC.md, Memory an
+// received, and this one with its decryption (docs/spec/FILE_SYNC_MEMORY.md, Memory an
 // inbound frame takes).
 
 import { describe, expect, test } from "vitest";

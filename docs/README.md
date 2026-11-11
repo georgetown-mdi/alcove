@@ -87,6 +87,7 @@ Step-by-step instructions for one reader's path through an exchange: agreeing on
 - [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md) - how private-key material is removed from what is shown, and the length budgets
 - [SIGNALING_SERVER_BOUNDS.md](spec/SIGNALING_SERVER_BOUNDS.md) - the bounds the coordination server holds against an unauthenticated client
 - [FILE_SYNC.md](spec/FILE_SYNC.md) - the `sftp` and `filedrop` channels: the shared folder as a state machine, file names, and preconditions
+- [FILE_SYNC_MEMORY.md](spec/FILE_SYNC_MEMORY.md) - the largest set a round holds, the heap the PSI worker runs under, and the memory checks that refuse a run before it starts
 - [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md) - the `webrtc` channel: rendezvous roles, signaling messages, data-channel framing and close, the ICE list rule, and limits
 - [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md) - the exchange record: its files, the commitment scheme, governance metadata, and privacy properties
 - [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md) - the exchange file the web app downloads, its versioning, the invitation channel-binding rule, and key file provisioning

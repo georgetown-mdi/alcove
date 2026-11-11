@@ -53,7 +53,7 @@ import type { RoundProbe } from "./browserSameSizeRound.page";
 // keeps the browser's output, V8's collection trace and any fatal message.
 //
 // Above about 6 million a side, run it as `node --max-old-space-size=19075`
-// (the command-line application's heap ceiling, docs/spec/FILE_SYNC.md): the
+// (the command-line application's heap ceiling, docs/spec/FILE_SYNC_MEMORY.md): the
 // Node partner's answer to the request outgrows Node's default heap.
 
 const WORKER_ENTRY = fileURLToPath(

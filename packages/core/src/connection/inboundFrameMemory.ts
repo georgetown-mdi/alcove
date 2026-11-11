@@ -1,5 +1,5 @@
 // The memory an inbound frame takes, per byte of the frame, while it is read
-// and handled. The figures and how each was measured: docs/spec/FILE_SYNC.md,
+// and handled. The figures and how each was measured: docs/spec/FILE_SYNC_MEMORY.md,
 // "Memory an inbound frame takes".
 
 import { CHUNKED_ENVELOPE_VERSION } from "./chunkedAead";
@@ -172,7 +172,7 @@ export function webRtcMessageSendBytes(
  * charged as the file-sync read gate charges it ({@link inboundFrameReadBytes}),
  * and of the frame held beside its hand-off
  * ({@link fileSyncSinglePassHandOffBytes}). The two do not add, since a
- * collection between them releases the read's copies (docs/spec/FILE_SYNC.md,
+ * collection between them releases the read's copies (docs/spec/FILE_SYNC_MEMORY.md,
  * "Memory an inbound frame takes").
  */
 export function inboundPsiFramePeakBytes(

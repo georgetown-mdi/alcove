@@ -4,7 +4,7 @@ title: "Keying Per-Record Value Lookups by Hash"
 
 # Keying per-record value lookups by hash
 
-_Status: decided and built. The lookup, the string-table collapse it avoids, and the limits it leaves are specified in [FILE_SYNC.md, The practical input bound](../spec/FILE_SYNC.md#the-practical-input-bound); this note records why a per-record value is looked up by a hash of it rather than by the string itself. See [docs/notes/README.md](README.md)._
+_Status: decided and built. The lookup, the string-table collapse it avoids, and the limits it leaves are specified in [FILE_SYNC_MEMORY.md, The practical input bound](../spec/FILE_SYNC_MEMORY.md#the-practical-input-bound); this note records why a per-record value is looked up by a hash of it rather than by the string itself. See [docs/notes/README.md](README.md)._
 
 On Node 26, V8 adds every string a `Map` or `Set` is asked about to its string table, and lookups in that table slow about fiftyfold once it holds about 2^24 strings of 9 decimal digits. Preparing a 2^24-record input asks about every record's values, so the key a lookup gives the `Map` decides whether preparation at that size finishes.
 

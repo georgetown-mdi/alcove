@@ -1332,7 +1332,7 @@ Every exchange-running command (the quick exchange, `alcove exchange`, the onlin
 memory: the PSI engine runs in a worker thread under a heap limit of 20.00 GB, and this process's main thread, which reads the input, under 20.10 GB; a round over this run's 1,000,000 records needs about 1.45 GB, and this process has 20.00 GB (host memory 25.42 GB, no container memory limit)
 ```
 
-What the run has is the least of the matching's heap limit, the machine's memory, and the container's memory limit. The need includes a fixed 271 MB, so a container memory limit below about 272 MB refuses every run without `--allow-memory-shortfall`. How the need is computed: [FILE_SYNC.md](spec/FILE_SYNC.md#memory-a-psi-round-needs).
+What the run has is the least of the matching's heap limit, the machine's memory, and the container's memory limit. The need includes a fixed 271 MB, so a container memory limit below about 272 MB refuses every run without `--allow-memory-shortfall`. How the need is computed: [FILE_SYNC_MEMORY.md](spec/FILE_SYNC_MEMORY.md#memory-a-psi-round-needs).
 
 **When the need is over what the run has**, the run exits 64 before any network contact, naming both figures. To go ahead:
 
@@ -1340,7 +1340,7 @@ What the run has is the least of the matching's heap limit, the machine's memory
 - **Split the input** and run one exchange per file.
 - **Pass `--allow-memory-shortfall`.** A warning names the shortfall on `stderr` and, with `--event-stream`, as `memoryShortfall`; the run may end with exit 134. The flag also covers the input-size check below.
 
-**On any channel**, the run also checks the memory available now before it works on each set of values your partner sends, and over a shared folder or SFTP before it reads each message from your partner. A single-pass exchange checks at its start for the largest message your partner's record count allows, including the work of masking it and, when you answer your partner's request, of masking your own values, and over WebRTC for the largest message it sends too. When the machine is short, the run stops (exit 64), and once the exchange is under way your partner is told. Give the run more memory, or pass `--allow-memory-shortfall` to go on with a warning. How the need is computed: [FILE_SYNC.md](spec/FILE_SYNC.md#memory-an-inbound-frame-takes).
+**On any channel**, the run also checks the memory available now before it works on each set of values your partner sends, and over a shared folder or SFTP before it reads each message from your partner. A single-pass exchange checks at its start for the largest message your partner's record count allows, including the work of masking it and, when you answer your partner's request, of masking your own values, and over WebRTC for the largest message it sends too. When the machine is short, the run stops (exit 64), and once the exchange is under way your partner is told. Give the run more memory, or pass `--allow-memory-shortfall` to go on with a warning. How the need is computed: [FILE_SYNC_MEMORY.md](spec/FILE_SYNC_MEMORY.md#memory-an-inbound-frame-takes).
 
 **An installed `alcove`** runs its main thread, which reads your input, under the heap limit `node` starts with -- at Node's default, about six million records of a four-column input. Set the container image's larger limit for a large input:
 
@@ -1349,7 +1349,7 @@ NODE_OPTIONS=--max-old-space-size=19075 alcove exchange input.csv ./results
 ```
 
 - **An input too large for the main thread's heap is refused** before it is read (exit 64), stating the record count and size, the heap needed, the limit, and the `NODE_OPTIONS` line to set. The check counts the file's lines; input from stdin is not checked and runs out of heap (exit 134) instead.
-- **A single-pass exchange checks the heap again** once it has gathered your distinct values, before it masks any, and stops (exit 64) with the `NODE_OPTIONS` line to set when the heap is too small. Your partner is told. How the need is computed: [FILE_SYNC.md](spec/FILE_SYNC.md#the-main-threads-heap-from-the-values).
+- **A single-pass exchange checks the heap again** once it has gathered your distinct values, before it masks any, and stops (exit 64) with the `NODE_OPTIONS` line to set when the heap is too small. Your partner is told. How the need is computed: [FILE_SYNC_MEMORY.md](spec/FILE_SYNC_MEMORY.md#the-main-threads-heap-from-the-values).
 - **A heap option you give is kept**, and the memory line states it.
 - **The figure assumes four columns a record**; an input with more or longer columns can run out of heap below the count the check admits.
 

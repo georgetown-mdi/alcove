@@ -22,7 +22,7 @@ import { readRuntimeEnv, type RuntimeEnvSnapshot } from "./util/runtimeEnv";
 // that this party's own input fits the memory the process has, and the same
 // check against the partner's round once the terms are exchanged. The
 // figures, their measurement, and the limits of the checks:
-// docs/spec/FILE_SYNC.md, "Memory a PSI round needs".
+// docs/spec/FILE_SYNC_MEMORY.md, "Memory a PSI round needs".
 
 /**
  * Peak process memory a PSI round holds per element of a set, in bytes: the
@@ -357,7 +357,7 @@ export interface SinglePassOwnSetupCost {
 /**
  * {@link SinglePassOwnSetupCost} on each library: the largest figure measured,
  * rounded up, at setups of 2^20 to 2^24 elements on the native library and
- * 2^20 to 2^23 on the WebAssembly library (docs/spec/FILE_SYNC.md, "The
+ * 2^20 to 2^23 on the WebAssembly library (docs/spec/FILE_SYNC_MEMORY.md, "The
  * sender's own setup").
  */
 export const SINGLE_PASS_OWN_SETUP_COST: Readonly<

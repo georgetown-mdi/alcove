@@ -110,9 +110,9 @@ Two command line parties, measured to completion; the runs at 1 to 4 million rec
 
 ### Command line app over SFTP or a shared folder
 
-- **A set holds at most 16,777,216 values**, the protocol's maximum ([Round set size limits](spec/FILE_SYNC.md#round-set-size-limits)). A single-pass exchange is held to its own limits instead ([The limits over file-sync](spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)), which no run past 16,777,216 values has measured.
-- **Measured to completion at that maximum, 16,777,216 records a side**, one party on each of two machines on one local network, one reaching the folder directly and the other over SFTP: about 64 minutes (3,826,025 ms and 3,760,626 ms), with a peak memory of 29.9 GB and at least 22.5 GB a party ([Measured runs at 2^24](spec/FILE_SYNC.md#measured-runs-at-224)).
-- **Preparing the input** at that size, from reading the file to the start of the first round, took within 27 s per million records on one 10-CPU machine ([Preparing the input at 2^24](spec/FILE_SYNC.md#preparing-the-input-at-224)).
+- **A set holds at most 16,777,216 values**, the protocol's maximum ([Round set size limits](spec/FILE_SYNC_MEMORY.md#round-set-size-limits)). A single-pass exchange is held to its own limits instead ([The limits over file-sync](spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)), which no run past 16,777,216 values has measured.
+- **Measured to completion at that maximum, 16,777,216 records a side**, one party on each of two machines on one local network, one reaching the folder directly and the other over SFTP: about 64 minutes (3,826,025 ms and 3,760,626 ms), with a peak memory of 29.9 GB and at least 22.5 GB a party ([Measured runs at 2^24](spec/FILE_SYNC_MEMORY.md#measured-runs-at-224)).
+- **Preparing the input** at that size, from reading the file to the start of the first round, took within 27 s per million records on one 10-CPU machine ([Preparing the input at 2^24](spec/FILE_SYNC_MEMORY.md#preparing-the-input-at-224)).
 - **Memory is checked before the run contacts anyone.** The matching needs about 271 MB plus 1.2 KB a record, and a run without that much stops with exit 64 naming both figures ([Memory for a large exchange](CLI.md#memory-for-a-large-exchange)). A whole run holds more than the matching alone, as the peak memory above shows.
 - **Smaller sizes over SFTP or a shared folder are not measured** as whole runs. Each round waits on the partner's files, so the folder's polling interval and sync delay add to every round ([`poll_interval_ms`](EXCHANGE_REFERENCE.md#connectionoptions)).
 
@@ -493,7 +493,7 @@ What the container needs to reach while it runs is in [Network requirements](#ne
 
 #### Giving a run more memory
 
-The image starts the CLI with `NODE_OPTIONS=--max-old-space-size=19075`, the heap limit [FILE_SYNC.md](spec/FILE_SYNC.md#memory-a-psi-round-needs) sizes, along with the memory a run needs. Before it connects, each exchange logs the memory its input needs and the memory it has, the least of that heap limit, the host's memory, and the container's `--memory` limit, and stops with exit 64 when the need is over it.
+The image starts the CLI with `NODE_OPTIONS=--max-old-space-size=19075`, the heap limit [FILE_SYNC_MEMORY.md](spec/FILE_SYNC_MEMORY.md#memory-a-psi-round-needs) sizes, along with the memory a run needs. Before it connects, each exchange logs the memory its input needs and the memory it has, the least of that heap limit, the host's memory, and the container's `--memory` limit, and stops with exit 64 when the need is over it.
 
 - **Raise or remove `--memory`** to give the run what it needs:
 

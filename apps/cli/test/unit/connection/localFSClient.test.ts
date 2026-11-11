@@ -381,7 +381,7 @@ test("get reads an existing file as a Buffer", async () => {
 });
 
 // A single-pass party moves a message's buffer to the PSI worker
-// (docs/spec/FILE_SYNC.md, The hand-off over file-sync), so the buffer must
+// (docs/spec/FILE_SYNC_MEMORY.md, The hand-off over file-sync), so the buffer must
 // hold that file alone.
 test("get reads a file past Node's Buffer pool into a buffer of its own", async () => {
   const filePath = path.join(dir, "message.bin");

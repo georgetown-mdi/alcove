@@ -21,9 +21,12 @@ import {
 } from "../../src/connection/encryptedMessageConnection";
 
 // Each multiple is a measured figure, stated with its measurement in the
-// table of docs/spec/FILE_SYNC.md, "Memory an inbound frame takes", whose
+// table of docs/spec/FILE_SYNC_MEMORY.md, "Memory an inbound frame takes", whose
 // rows name the constant they state.
-const SPEC = path.resolve(__dirname, "../../../../docs/spec/FILE_SYNC.md");
+const SPEC = path.resolve(
+  __dirname,
+  "../../../../docs/spec/FILE_SYNC_MEMORY.md",
+);
 
 function specMultiples(): Record<string, number> {
   const text = fs.readFileSync(SPEC, "utf8");

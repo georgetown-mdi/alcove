@@ -73,7 +73,7 @@ import type { PsiEngineMode } from "@alcove/core";
 // per-frame bound. --trace-out keeps the measured browser's output, V8's
 // collection trace and any fatal message. Above about 6 million a side, run it as
 // `node --max-old-space-size=19075` (the command-line application's heap
-// ceiling, docs/spec/FILE_SYNC.md), as browserSameSizeRound.ts says.
+// ceiling, docs/spec/FILE_SYNC_MEMORY.md), as browserSameSizeRound.ts says.
 
 const WORKER_ENTRY = fileURLToPath(
   new URL("../../src/psi/workers/psiCrypto.worker.ts", import.meta.url),
