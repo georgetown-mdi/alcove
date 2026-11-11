@@ -2648,6 +2648,36 @@ describe("recovering an accounting this version cannot read", () => {
     }
   });
 
+  test("the export of an accounting an earlier build filed names the version it was stored at", async () => {
+    const entries = await strandedEntries();
+    const downloads = captureDownloads();
+    try {
+      app.render(
+        managedDetail({
+          record: record("inviter"),
+          accountingRead: {
+            kind: "unreadable",
+            stored: { version: "alcove-disclosure-accounting/v2", entries },
+            fromEarlierRelease: true,
+          },
+        }),
+      );
+
+      await page
+        .getByRole("button", { name: /Download the stored records/ })
+        .click();
+
+      await downloads.settled();
+      expect(downloads.captured).toHaveLength(1);
+      expect(JSON.parse(downloads.captured[0].text)).toEqual({
+        version: "alcove-disclosure-accounting/v2",
+        entries,
+      });
+    } finally {
+      downloads.restore();
+    }
+  });
+
   test("the reset destroys nothing until the confirm is taken, and says what it destroys and keeps", async () => {
     const onResetAccounting = vi.fn(() => Promise.resolve());
     app.render(

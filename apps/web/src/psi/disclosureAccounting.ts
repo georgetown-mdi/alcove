@@ -99,6 +99,20 @@ export interface StoredDisclosureAccounting {
   entries: ReadonlyArray<unknown>;
 }
 
+/**
+ * A stored accounting as it is handed back to the operator: the entries exactly
+ * as they sit at rest, under the envelope version the browser actually stored.
+ * That version is not {@link DISCLOSURE_ACCOUNTING_VERSION} for an accounting an
+ * earlier build wrote, whose file must name the build that wrote it. Apart from
+ * {@link StoredDisclosureAccounting}, which an append writes back at the current
+ * version.
+ */
+export interface RecoveredDisclosureAccounting {
+  version: string;
+  /** The stored entries, unvalidated and in stored order. */
+  entries: ReadonlyArray<unknown>;
+}
+
 /** The envelope validator. The entries are validated one by one through core's own
  * {@link parseExchangeRecord} rather than a schema restated here, so a stored entry
  * is held to the exchange-record format itself and this module cannot drift from
@@ -153,7 +167,7 @@ export function parseStoredDisclosureAccounting(
  * a shape holding no canonical ordinal) is treated as not later.
  */
 export function storedEntriesAheadOfThisBuild(
-  stored: StoredDisclosureAccounting,
+  stored: Pick<StoredDisclosureAccounting, "entries">,
 ): boolean {
   return stored.entries.some((entry) =>
     formatVersionFollows(
@@ -210,7 +224,7 @@ export type RefusedDisclosureAccounting =
    * earlier release filed, which this build cannot read. */
   | {
       kind: "unreadable";
-      stored: StoredDisclosureAccounting | undefined;
+      stored: RecoveredDisclosureAccounting | undefined;
       migrationFailure?: FormatMigrationError;
       fromEarlierRelease?: true;
     }
@@ -223,18 +237,23 @@ export type RefusedDisclosureAccounting =
    * current build reads. `stored` is the same envelope-only value, since
    * handing back stored bytes claims nothing either way, and is `undefined`
    * where the envelope itself is the later one. */
-  | { kind: "stale-page"; stored: StoredDisclosureAccounting | undefined };
+  | { kind: "stale-page"; stored: RecoveredDisclosureAccounting | undefined };
 
 /** The stored value held only to its envelope, or `undefined` when even that
- * refuses. Never a rendering source: these are the entries the validating parse
- * declined to vouch for, fit for handing back to the operator as stored bytes and
- * for nothing else (see {@link parseStoredDisclosureAccounting}). */
+ * refuses, under the envelope version it was stored at. Never a rendering
+ * source: these are the entries the validating parse declined to vouch for, fit
+ * for handing back to the operator as stored bytes and for nothing else (see
+ * {@link parseStoredDisclosureAccounting}). */
 function recoverableStored(
   raw: unknown,
   migrations: FormatMigrations<string>,
-): StoredDisclosureAccounting | undefined {
+): RecoveredDisclosureAccounting | undefined {
   try {
-    return parseStoredDisclosureAccounting(raw, migrations);
+    const { entries } = parseStoredDisclosureAccounting(raw, migrations);
+    return {
+      version: (raw as Record<string, unknown>)["version"] as string,
+      entries,
+    };
   } catch {
     return undefined;
   }

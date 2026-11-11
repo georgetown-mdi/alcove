@@ -546,7 +546,7 @@ describe("an accounting a release before 0.9.0 filed", () => {
 
       expect(classifyRefusedDisclosureAccounting(raw, refusalOf(raw))).toEqual({
         kind: "unreadable",
-        stored: { version: DISCLOSURE_ACCOUNTING_VERSION, entries },
+        stored: { version: PRE_RESET_ACCOUNTING_VERSION, entries },
         fromEarlierRelease: true,
       });
     },

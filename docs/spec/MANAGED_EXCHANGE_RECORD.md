@@ -2159,6 +2159,8 @@ A bump is held to re-taking this decision by
 which pins the record version literal and fails the move rather than letting it
 ship past the obligation.
 
+A later run that leaves a note merges into a note an earlier build wrote at `alcove-unfiled-disclosure/v2` and writes it back at v3, with that note's pre-reset records inside, so a v3 note can hold records from before the reset. A later exchange-record version bump that reuses one of their ordinals reads such a record against its own schema.
+
 ### A run whose record was not filed
 
 A run that disclosed and did not file its entry -- the append refused it, or no

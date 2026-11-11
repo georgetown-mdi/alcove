@@ -41,7 +41,7 @@ import type {
 } from "@alcove/core";
 import type {
   DisclosureAccounting,
-  StoredDisclosureAccounting,
+  RecoveredDisclosureAccounting,
 } from "@psi/disclosureAccounting";
 import type { UnfiledDisclosure } from "@psi/unfiledDisclosure";
 
@@ -442,7 +442,7 @@ export const DISCLOSURE_STORED_EXPORT_MIME = "application/json";
  * a person may open.
  */
 export function storedDisclosureAccountingDocument(
-  stored: StoredDisclosureAccounting,
+  stored: RecoveredDisclosureAccounting,
 ): string {
   return `${JSON.stringify({ version: stored.version, entries: stored.entries }, undefined, 2)}\n`;
 }

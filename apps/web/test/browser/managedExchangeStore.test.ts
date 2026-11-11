@@ -1603,7 +1603,7 @@ describe("an accounting a release before 0.9.0 filed", () => {
 
     expect(await readDisclosureAccounting(created.id)).toEqual({
       kind: "unreadable",
-      stored: { version: DISCLOSURE_ACCOUNTING_VERSION, entries },
+      stored: { version: "alcove-disclosure-accounting/v2", entries },
       fromEarlierRelease: true,
     });
     const next = await disclosureRecord();

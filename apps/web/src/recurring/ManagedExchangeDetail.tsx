@@ -139,7 +139,7 @@ import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
 import type { ManagedRunHolder } from "./managedRunHolder";
 import type { ManagedRunSurfaceHost } from "./useManagedRunSurface";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
-import type { StoredDisclosureAccounting } from "@psi/disclosureAccounting";
+import type { RecoveredDisclosureAccounting } from "@psi/disclosureAccounting";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
 
 /**
@@ -1770,7 +1770,7 @@ function UnavailableAccountingNotice({
 /** Hand the stored accounting back as the file it is stored as. Shared by the two
  * states that hold a stored value, so what an operator downloads does not depend
  * on which one they reached it from. */
-function downloadStoredAccounting(stored: StoredDisclosureAccounting): void {
+function downloadStoredAccounting(stored: RecoveredDisclosureAccounting): void {
   triggerBlobDownload(
     storedDisclosureAccountingFileName(new Date()),
     storedDisclosureAccountingDocument(stored),
@@ -1806,7 +1806,7 @@ function downloadStoredAccounting(stored: StoredDisclosureAccounting): void {
 function StalePageAccountingNotice({
   stored,
 }: {
-  stored: StoredDisclosureAccounting | undefined;
+  stored: RecoveredDisclosureAccounting | undefined;
 }) {
   return (
     <>
@@ -1883,7 +1883,7 @@ function UnreadableAccountingRecovery({
   fromEarlierRelease,
   onReset,
 }: {
-  stored: StoredDisclosureAccounting | undefined;
+  stored: RecoveredDisclosureAccounting | undefined;
   migrationFailure: FormatMigrationError | undefined;
   fromEarlierRelease: boolean;
   onReset: () => Promise<void>;
