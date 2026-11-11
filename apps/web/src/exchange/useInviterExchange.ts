@@ -290,8 +290,10 @@ function indexOfRelayedLineBreak(text: string, from: number): number {
  * without the remedy line the CLI writes beneath it. The relay escapes that
  * line's break into the chain's last link and may cut the remedy after it, so
  * the last link ends at its first unescaped break marker. The links are split
- * off as the relay sent them, already escaped, and are not escaped again.
- * Empty where the report holds no chain.
+ * off as the relay sent them, already escaped, and are not escaped again; the
+ * return type of `diagnosedTerminal` in `@jobs/jobManager`, which bars a
+ * `cause` on the one terminal that composes its links raw, is what keeps that
+ * input escaped. Empty where the report holds no chain.
  */
 function causeChainReport(error: RelayedTerminalError): string {
   const reported = error.message;
