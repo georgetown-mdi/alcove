@@ -39,8 +39,12 @@ export interface BrowserSshConnectOptions {
   onHostKey: (hostKey: BrowserSshHostKey) => boolean | Promise<boolean>;
   /**
    * Stops the connection at any step, `onHostKey` included: it closes the relay
-   * socket and rejects with the signal's reason. It has no effect once the
-   * session is returned; close that with its own `close`.
+   * socket and rejects with the signal's reason, and nothing more reaches the
+   * server. The SSH library's own pending steps are not cancelled: one can
+   * still reject with nothing handling it, and once client authentication has
+   * begun the library can still sign with the client key, though the
+   * signature is never sent. It has no effect once the session is returned;
+   * close that with its own `close`.
    */
   signal?: AbortSignal;
   /** @internal */

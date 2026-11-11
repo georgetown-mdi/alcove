@@ -50,6 +50,10 @@
 - - -> **The host-key blob.**
 - - -> The library hands a host key's bytes to `setPublicKeyBytes` as a view of a packet buffer it reuses.
 - - -> The owned Ed25519 key copies them.
+- - -> **Abort and the library's pending steps.**
+- - -> Disposing a session does not cancel the library's own pending steps.
+- - -> An abort just after the version line leaves its version read rejected with nothing handling it.
+- - -> An abort once `authenticateClient` has started its un-awaited step can still sign with the client key; the send that would carry the signature throws on the disposed session, so nothing reaches the server, and that rejection also goes unhandled.
 - - -> Run `npx vitest run --project unit test/unit/psi/browserSsh test/unit/hostedModuleGraphGuard.test.ts` from `apps/web`.
 - - -> It covers:
 - - -> the stubs and the shim;
