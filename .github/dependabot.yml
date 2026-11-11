@@ -91,11 +91,8 @@ updates:
           ]
 
   # The base images of the two Dockerfiles at the repository root: the default
-  # image's node base and the FIPS variant's Amazon Linux base, neither ignored
-  # under any name. A FIPS base bump moves only the FROM digest, so it is taken
-  # through "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md, which
-  # moves the pins coupled to it on that branch, rather than merged as filed.
-  # The cooldown does not delay that bump: ECR Public reports no publish date.
+  # image's node base, and the FIPS variant's Amazon Linux base, which the
+  # ignore entries below hold out of this ecosystem.
   - package-ecosystem: docker
     directory: "/"
     target-branch: "staging"
@@ -107,6 +104,21 @@ updates:
       # Only default-days is valid for the docker and github-actions
       # ecosystems; the semver-*-days keys are supported for npm only.
       default-days: 7
+    ignore:
+      # The FIPS variant's Amazon Linux base is bumped per release, from the
+      # release checklist, and when the weekly image scan flags a base CVE with
+      # a fix, through "Bumping the FIPS base image" in
+      # docs/spec/DEPENDENCY_PINS.md. A Dependabot bump moves the FROM digest
+      # alone, while the digest, AL2023_RELEASEVER and the certified provider's
+      # NVR pins have to name one Amazon Linux release.
+      #
+      # No update-types are named: the pin is a tag@sha256: digest, so its bump
+      # is a digest move rather than a version change.
+      - dependency-name: "amazonlinux"
+      # The same base under the registry-qualified name Dockerfile.fips spells.
+      - dependency-name: "public.ecr.aws/amazonlinux/amazonlinux"
+      # The name Dependabot gives that ECR Public reference when it files a bump.
+      - dependency-name: "amazonlinux/amazonlinux"
 
   # The relay reference's base image. infra/relay/Dockerfile is a single pinned
   # FROM and nothing else -- the digest's only home, since every other file there
@@ -209,19 +221,21 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 5
 
-  # GitHub Actions used by the workflows in .github/workflows. Every remote
-  # action is pinned to a commit with its release tag in a trailing comment
-  # (e.g. actions/checkout@<commit> # v7.0.1), the form Dependabot reads and
-  # rewrites. This block is configured against that path.
+  # GitHub Actions used by the workflows in .github/workflows and the composite
+  # actions in .github/actions. Every remote action is pinned to a commit with
+  # its release tag in a trailing comment (e.g. actions/checkout@<commit>
+  # # v7.0.1), the form Dependabot reads and rewrites. "/" reads the workflows,
+  # and each composite action's directory is listed beside it, so the group
+  # below moves a pin in both trees in one pull request.
   #
-  # A pin that also appears in a composite action under .github/actions is not
-  # relied upon to be tracked there. Coverage reaches it through the workflow
-  # occurrence instead: scripts/check-action-pin-drift.mjs holds every composite
-  # pin identical to a workflow pin, so a release or advisory reported on the
-  # workflow pin covers the composite occurrence too, and the bump answering it
-  # cannot land on the workflow and leave the composite stale.
+  # scripts/check-action-pin-drift.mjs holds every composite pin identical to a
+  # workflow pin, so a bump cannot land on one tree and leave the other stale.
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/path-scope"
+      - "/.github/actions/setup"
+      - "/.github/actions/test-durations"
     target-branch: "staging"
     schedule:
       interval: weekly
@@ -240,3 +254,55 @@ updates:
         patterns:
           - "*"
         update-types: ["minor", "patch"]
+
+  # Tool versions a workflow input or a Dockerfile ARG names: the Cosign
+  # release the cosign-installer steps pass, the Python the re2js reference
+  # comparison sets up, and the development container's AWS CLI.
+  # .github/tool-versions/Dockerfile holds each as an image tag, since no
+  # Dependabot block reads those consumers; a bump here fails
+  # scripts/tool-versions.test.mjs until the same pull request moves the
+  # consumer by hand, and an AWS CLI bump also re-verifies the archive digests
+  # as .devcontainer/README.md describes.
+  - package-ecosystem: docker
+    directory: "/.github/tool-versions"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      # Only default-days is valid for the docker and github-actions
+      # ecosystems; the semver-*-days keys are supported for npm only.
+      default-days: 7
+    ignore:
+      # Python stays on its 3.12 line: a google-re2 release ships wheels for a
+      # fixed set of interpreters, and the comparison runs only on a re2js move,
+      # so a new minor would land unexercised. Moving it is a hand edit.
+      - dependency-name: "library/python"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+
+  # The google-re2 release the re2js reference comparison installs, read from
+  # scripts/re2-reference/requirements.txt by scripts/compare-regex-with-re2.mjs.
+  - package-ecosystem: pip
+    directory: "/scripts/re2-reference"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+
+  # The Cloudflare provider in infra/hosted/.terraform.lock.hcl. The opentofu
+  # ecosystem, not terraform: the lock file names the provider at
+  # registry.opentofu.org, which the terraform ecosystem does not read.
+  - package-ecosystem: opentofu
+    directory: "/infra/hosted"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7

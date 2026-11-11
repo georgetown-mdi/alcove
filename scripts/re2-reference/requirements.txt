@@ -1,0 +1,4 @@
+# The google-re2 release scripts/compare-regex-with-re2.mjs installs, which
+# bundles its C++ RE2. The pip entry for /scripts/re2-reference in
+# .github/dependabot.yml raises a bump here.
+google-re2==1.1.20251105

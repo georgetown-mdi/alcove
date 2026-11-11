@@ -13,8 +13,9 @@ name: re2js Reference Comparison
 #   node scripts/compare-regex-with-re2.mjs
 #
 # The reference is C++ RE2 itself, the engine docs/spec/PROTOCOL.md names,
-# through the google-re2 wheel at the version that script pins, which bundles
-# its RE2 build; Go's regexp is a reimplementation of RE2, not RE2.
+# through the google-re2 wheel at the version scripts/re2-reference/requirements.txt
+# pins, which bundles its RE2 build; Go's regexp is a reimplementation of RE2,
+# not RE2.
 on:
   pull_request:
     branches: [main, staging]
@@ -67,6 +68,8 @@ jobs:
       - name: Set up Python
         id: python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        # The python stage of .github/tool-versions/Dockerfile, which
+        # Dependabot moves; scripts/tool-versions.test.mjs holds the two equal.
         with:
           python-version: "3.12.10"
       - name: Compare re2js with RE2 over the golden cases

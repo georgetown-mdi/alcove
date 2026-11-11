@@ -45,8 +45,11 @@ pins, as surveyed on 2026-11-10, with the route that offers it for upgrade:
 
 - **automatic**: a block in `.github/dependabot.yml` reaches the pin and opens
   a pull request.
-- **scheduled**: a documented manual cadence moves the pin. Only the FIPS
-  image's Node runtime has one: each FIPS base pull request moves it.
+- **scheduled**: a documented manual cadence moves the pin. The dependency
+  step of the release checklist
+  ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)) bumps the
+  FIPS base, which moves the FIPS image's Node runtime with it, and re-checks
+  the other scheduled pins every release.
 - **planned**: an automatic or scheduled route for the pin is planned and not
   yet in place.
 - **none**: nothing offers an upgrade, and the pin moves only when someone
@@ -60,25 +63,25 @@ section each row links.
 | --- | --- | --- | --- | --- |
 | `@openmined/psi.js` | `lib/openmined-psi.js-2.0.6-alcove.1.tgz`, a `file:` dependency of `packages/core`, `apps/cli` and `apps/web` | Version in the file name, the sha256 sidecar, and the lockfile `integrity` | planned | The `npm` block at `/` ignores every version update of it. The planned route is a fork release workflow that opens the re-vendor pull request here. A rebuild follows [PREBUILD_REVENDOR.md](../PREBUILD_REVENDOR.md), and [The vendored @openmined/psi.js addon](#the-vendored-openminedpsijs-addon) states what it must keep. |
 | npm registry packages | Every workspace `package.json` and the root `package-lock.json` | Ranges in the manifests, versions and `integrity` in the lockfile | automatic | The `npm` block at `/`, weekly. The reviewed groups and the routine batch are in [How these packages are versioned](#how-these-packages-are-versioned). |
-| `vite` under `vitepress` | The root `package.json` `overrides` entry | The range `^6.4.5` | none | The range admits a later 6.x release, which lands by `npm update vite --package-lock-only` ([The project site's vite override](#the-project-sites-vite-override)). Whether a Dependabot pull request moves the nested copy is unmeasured. |
+| `vite` under `vitepress` | The root `package.json` `overrides` entry | The range `^6.4.5` | scheduled | The range admits a later 6.x release, which lands by `npm update vite --package-lock-only` ([The project site's vite override](#the-project-sites-vite-override)), run each release. A Dependabot pull request does not move it: measured 2026-11-10 with the Dependabot CLI 1.97.0, its `vite` bump leaves this entry and the nested copy as they were, with a later release in the range available. |
 | wrangler | `.github/wrangler/package.json` and its lockfile | The exact version `4.147.0` | automatic | The `npm` block at `/.github/wrangler`. The six `wranglerVersion` inputs move by hand in the same pull request ([The Pages deploy tool](#the-pages-deploy-tool)). |
-| `sharp` and `undici` under wrangler | The `.github/wrangler/package.json` `overrides` entry | The exact versions `0.35.5` and `7.30.2` | none | Each comes out when a wrangler bump resolves that release or a later one. Whether a Dependabot pull request moves either is unmeasured. |
+| `sharp` and `undici` under wrangler | The `.github/wrangler/package.json` `overrides` entry | The exact versions `0.35.5` and `7.30.2` | scheduled | Each comes out when the locked wrangler resolves that release or a later one, which is checked each release. A Dependabot pull request does not remove either: measured 2026-11-10 with the Dependabot CLI 1.97.0, its wrangler bump from 4.147.0 to 4.158.0 leaves both entries as written, though the `miniflare` that release locks declares `sharp` `0.35.5` itself. |
 | Default image base | `Dockerfile`, both stages | The `node:26-alpine` index digest | automatic | The `docker` block at `/`. The freeze literal and the attribution list move in the same diff ([Bumping the default base image](#bumping-the-default-base-image)). |
-| FIPS image base | `Dockerfile.fips` | The ECR Public `amazonlinux` index digest, `AL2023_RELEASEVER`, and the certified provider's NVR pins | automatic | The `docker` block at `/`, weekly, opens a pull request moving the digest. That pull request is taken through [Bumping the FIPS base image](#bumping-the-fips-base-image), which moves the other pins on it. |
-| FIPS image Node runtime | `Dockerfile.fips` | `ARG NODE_VERSION` (`v26.13.0`) and the two tarball sha256 values | scheduled | No Dependabot block reads it. Each FIPS base pull request moves it to the current Node 26 release ([Bumping the FIPS base image](#bumping-the-fips-base-image)), so a Node release waits for the next base rebuild. |
+| FIPS image base | `Dockerfile.fips` | The ECR Public `amazonlinux` index digest, `AL2023_RELEASEVER`, and the certified provider's NVR pins | scheduled | Bumped through [Bumping the FIPS base image](#bumping-the-fips-base-image) at each release, from the dependency step of the release checklist ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)), and when `image_smoke.yaml`'s weekly scan flags a base CVE with a fix. The `docker` block at `/` ignores its three names. |
+| FIPS image Node runtime | `Dockerfile.fips` | `ARG NODE_VERSION` (`v26.13.0`) and the two tarball sha256 values | scheduled | No Dependabot block reads it. Each FIPS base bump moves it to the current Node 26 release ([Bumping the FIPS base image](#bumping-the-fips-base-image)), so a Node release waits for the next base rebuild. |
 | SFTP relay image base | `packages/sftp-relay/Dockerfile`, both stages | The `node:26-alpine` index digest | automatic | The `docker` block at `/packages/sftp-relay`. |
 | TURN relay image | `infra/relay/Dockerfile` | The `coturn/coturn:4.18.0` index digest | automatic | The `docker` block at `/infra/relay`. |
 | Broker TLS front image | `infra/broker/Dockerfile` | The `nginx:1.31-alpine` index digest | automatic | The `docker` block at `/infra/broker`. |
 | Relay 443 front image | `infra/relay/front/Dockerfile` | The `nginx:1.31-alpine` index digest | automatic | The `docker` block at `/infra/relay/front`. |
 | BuildKit daemon image | The four `docker/setup-buildx-action` steps in `release.yaml` and `image_smoke.yaml` | The `moby/buildkit:v0.34.2` index digest in `driver-opts`, and in `.github/builder-images/Dockerfile` | automatic | No Dependabot block reads an action input, so the `docker` block at `/.github/builder-images` moves the Dockerfile's pin, and `scripts/dockerhub-login.test.mjs` fails until the same pull request moves the four inputs by hand. |
 | QEMU emulator image | The two `docker/setup-qemu-action` steps in `release.yaml` | The `tonistiigi/binfmt` index digest, and the `qemu-v10.2.3` tag with that digest in `.github/builder-images/Dockerfile` | automatic | The same block and test, for the two inputs. Whether Dependabot compares the `qemu-v` tags as versions is unmeasured until its first run on the block. |
-| Commit-pinned actions | Every remote action in `.github/workflows` and `.github/actions` | A commit, with its release tag in a trailing comment | automatic | The `github-actions` block at `/`, which has no ignore entry and groups every minor and patch action update into one weekly pull request, each major bump opening its own ([GitHub Action pins and the composite mirror](#github-action-pins-and-the-composite-mirror)). The composite occurrences follow the workflow pins ([The composite mirror](#the-composite-mirror)). No step passes `trivy-action` a `version` input, so the Trivy release it installs is the one the pinned commit selects. |
-| Cosign release | The `cosign-release` input of two steps in `pages_deploy.yaml` and three in `release.yaml` | `v3.1.4` | none | A Dependabot bump moves `sigstore/cosign-installer`'s commit and not this input. `broker_core_build.yaml` passes no `cosign-release`, so its Cosign is the release the pinned installer selects. |
-| Python | The `actions/setup-python` step in `re2js_reference.yaml` | `python-version` `3.12.10` | none | Edited by hand. |
-| google-re2 | `GOOGLE_RE2_VERSION` in `scripts/compare-regex-with-re2.mjs` | `1.1.20251105` | none | Edited by hand. No Dependabot block covers a Python package. |
-| Runner images | `runs-on` in `.github/workflows` | `ubuntu-26.04` on most jobs, `ubuntu-24.04` on seven | none | Edited by hand. |
-| AWS CLI | `.devcontainer/Dockerfile`, infrastructure profile | `AWSCLI_VERSION` (`2.36.38`) and the two archive sha256 values | none | Edited by hand and re-verified as `.devcontainer/README.md` describes. |
-| Cloudflare OpenTofu provider | `infra/hosted/.terraform.lock.hcl` | `5.25.0` with its hashes, under `~> 5.0` in `versions.tf` | none | `tofu init -upgrade` by hand. No Dependabot block covers `infra/hosted`. |
+| Commit-pinned actions | Every remote action in `.github/workflows` and `.github/actions` | A commit, with its release tag in a trailing comment | automatic | The `github-actions` block at `/` and each composite action's directory, which has no ignore entry and groups every minor and patch action update into one weekly pull request, each major bump opening its own ([GitHub Action pins and the composite mirror](#github-action-pins-and-the-composite-mirror)). The composite occurrences follow the workflow pins ([The composite mirror](#the-composite-mirror)). No step passes `trivy-action` a `version` input, so the Trivy release it installs is the one the pinned commit selects. |
+| Cosign release | The `cosign-release` input of two steps in `pages_deploy.yaml` and three in `release.yaml` | `v3.1.4`, and the `ghcr.io/sigstore/cosign/cosign` tag in `.github/tool-versions/Dockerfile` | automatic | No Dependabot block reads an action input, so the `docker` block at `/.github/tool-versions` moves the Dockerfile's tag, and `scripts/tool-versions.test.mjs` fails until the same pull request moves the five inputs by hand. `broker_core_build.yaml` passes no `cosign-release`, so its Cosign is the release the pinned installer selects. |
+| Python | The `actions/setup-python` step in `re2js_reference.yaml` | `python-version` `3.12.10`, and the `python` tag in `.github/tool-versions/Dockerfile` | automatic | The same block and test, for patch releases on the 3.12 line. The block's `ignore` entry holds out minor and major releases, which move by hand. The comparison runs only on a pull request moving re2js, so it does not exercise a bump here. |
+| google-re2 | `scripts/re2-reference/requirements.txt`, which `scripts/compare-regex-with-re2.mjs` installs from | `google-re2==1.1.20251105` | automatic | The `pip` block at `/scripts/re2-reference`. As with Python, the comparison does not run on its pull request. |
+| Runner images | `runs-on` in `.github/workflows` | `ubuntu-26.04` on most jobs, `ubuntu-24.04` on seven | scheduled | No Dependabot ecosystem reads a runner label, so each release compares them with the runner images GitHub offers. |
+| AWS CLI | `.devcontainer/Dockerfile`, infrastructure profile | `AWSCLI_VERSION` (`2.36.38`) and the two archive sha256 values, and the `amazon/aws-cli` tag in `.github/tool-versions/Dockerfile` | automatic | The `docker` block at `/.github/tool-versions` moves the Dockerfile's tag, and `scripts/tool-versions.test.mjs` fails until the same pull request moves `AWSCLI_VERSION`. The two sha256 values move by hand in that pull request, each taken from an archive whose signature verifies, as `.devcontainer/README.md` describes. |
+| Cloudflare OpenTofu provider | `infra/hosted/.terraform.lock.hcl` | `5.25.0` with its hashes, under `~> 5.0` in `versions.tf` | automatic | The `opentofu` block at `/infra/hosted`. Measured 2026-11-10 with the Dependabot CLI 1.97.0: the `opentofu` ecosystem rewrites this lock file's version and hashes (5.25.0 to 5.28.1), while the `terraform` ecosystem looks the provider up at `registry.terraform.io`, finds no locked version, and opens no pull request. |
 
 These resolve at build or run time, so they have no pin to route:
 
@@ -251,7 +254,7 @@ The fork has no release branch. A release is a dispatched `Native prebuilds` run
 
 **The fork's maintenance.** Dependabot opens the fork's npm and Actions updates weekly, after its cooldown. The fork's `DEPENDENCY_PINS.md` lists every other pinned build input -- Bazel, the Bazel modules, emsdk, the toolchains, `node.lib`, the Swift installer -- with its manual update route. `CI` runs on every push to `master` and weekly, and `Native prebuilds` runs weekly, so a broken default branch shows within a week even when nothing merges.
 
-Upstream `OpenMined/PSI` is checked at each fork release. What it has that the fork lacks is taken in a fork pull request that merges it, keeping the fork's pins and package version; the commands are in the fork's `DEPENDENCY_PINS.md`, Upstream OpenMined/PSI. An upstream merge is a rebuild, re-vendored here as above.
+Upstream `OpenMined/PSI` is checked at each Alcove release, in the release checklist ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)), and at each fork release. What it has that the fork lacks is taken in a fork pull request that merges it, keeping the fork's pins and package version; the commands are in the fork's `DEPENDENCY_PINS.md`, Upstream OpenMined/PSI. An upstream merge is a rebuild, re-vendored here as above.
 
 ## Inlined dependencies and their remediation path
 
@@ -387,10 +390,15 @@ one action has one ref across the workflows. The rule pins every organization
 alike, the steps that run beside the release signing identity
 (`id-token: write`) or the Docker Hub publish token included. The
 `github-actions` block in `.github/dependabot.yml` is configured against
-`.github/workflows` and has no `ignore` entry, so a within-major release opens a
+`.github/workflows` and each composite action's directory under
+`.github/actions`, and has no `ignore` entry, so a within-major release opens a
 pull request and moves the pin. One group holds every minor and patch action
 update, so a weekly run opens one pull request for them, and each major bump
 opens its own.
+Measured 2026-11-10 with the Dependabot CLI 1.97.0, with `actions/setup-node`
+rolled back in both trees: the block's grouped pull request moves the pin in the
+workflows and in `.github/actions/setup/action.yml`, while the block configured
+against `/` alone moves the workflows and leaves the composite behind.
 `scripts/signed-build-inputs.test.mjs` (run by `npm run test:scripts`, a CI
 static check) fails on a remote reference that is not a commit followed by its
 `# vX.Y.Z` tag.
@@ -404,8 +412,8 @@ by this document: the composite mirror below.
 ### The composite mirror
 
 The shared CI prologue composite (`.github/actions/setup/action.yml`) pins
-actions of its own, on a path this repo does not rely on being scanned. The
-invariant that covers it is a mirror rather than a second ecosystem block:
+actions of its own. The Dependabot block above lists its directory, and a
+mirror check holds it beside the workflows:
 
 **Every action pin under `.github/actions` is identical to a pin under
 `.github/workflows`.** A release or advisory then shows on the workflow
@@ -904,31 +912,25 @@ each of those pins is, and how the current values were resolved, is in
 [CONTAINER_IMAGES.md](CONTAINER_IMAGES.md#the-fips-variant-images-pins); what
 follows is the procedure that keeps them together.
 
-**The cadence and the arrival signal.** The `docker` block at `/` in
-`.github/dependabot.yml` (weekly on Monday, targeting `staging`) opens a pull
-request when it finds a newer digest for this base, as it does for the default
-image's. That pull request is the offer to upgrade, and it is taken through
-this procedure rather than merged as filed or closed unmerged.
+**The cadence.** This base is bumped through this procedure at two points:
 
-- **Weekly, because the block is shared.** Both `Dockerfile` and
-  `Dockerfile.fips` sit at the repository root, which that one block covers. A
-  monthly schedule for this base alone would take a second `docker` block at
-  `/` naming only it. Whether Dependabot accepts two blocks with the same
-  ecosystem, directory and target branch has not been driven, so the base takes
-  the shared block's schedule.
-- **No cooldown applies.** Dependabot's own pull requests for this base, #2539
-  and #2608, each warn that the cooldown could not be applied because the
-  registry gave no publication date. A pull request can therefore arrive in the
-  first weekly run after ECR Public publishes a rootfs.
-- **No name is ignored.** The block has no `ignore` entry under any of the
-  base's three names: `amazonlinux`, Docker Hub's name for the image, which no
-  `FROM` here spells; `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public
-  name `Dockerfile.fips` spells; and `amazonlinux/amazonlinux`, the name
-  Dependabot files the bump under (PRs #2539 and #2608).
-- **It arrives red.** Dependabot's commit moves the `FROM` digest alone
-  (PR #2608), so the `nodebase` stage's release assertion, the freeze test and
-  the attribution check fail until the rest of this procedure lands. Push that
-  work as commits onto the Dependabot branch, as PR #2539 landed.
+- **At each release.** The release checklist bumps it while the release is
+  prepared ([RELEASES.md](../RELEASES.md#4-review-and-audit-dependencies)).
+  The images publish only on release tags, so a bump between releases reaches
+  no user sooner.
+- **When the weekly scan flags a fixable base CVE.** `image_smoke.yaml`'s
+  scheduled run scans the built variant (below); a finding in the base with a
+  fix available is bumped then rather than at the next release.
+
+**Why Dependabot does not offer it.** The `docker` block at `/` in
+`.github/dependabot.yml` ignores this base under its three names:
+`amazonlinux`, Docker Hub's name for the image, which no `FROM` here spells;
+`public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public name `Dockerfile.fips`
+spells; and `amazonlinux/amazonlinux`, the name Dependabot files the bump under
+(PRs #2539 and #2608). Dependabot's commit for this base moved the `FROM` digest
+alone (PR #2608), so the `nodebase` stage's release assertion, the freeze test
+and the attribution check failed until the rest of this procedure landed on its
+branch.
 
 The default image's base arrives on the same block with no procedure beyond
 its literals ([Bumping the default base image](#bumping-the-default-base-image)).
@@ -951,7 +953,7 @@ triage and whose pull requests against `main` it handles in
 [A security update opened against
 main](../RELEASES.md#a-security-update-opened-against-main).
 
-**What else shows a base worth moving to**, between filed pull requests:
+**What else shows a base worth moving to**, between releases:
 
 - The Trivy scan the release workflow runs over the built variant,
   which gates every publish, so a snapshot with fixable high or critical

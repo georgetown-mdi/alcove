@@ -10,11 +10,11 @@
 //   node scripts/compare-regex-with-re2.mjs [--python <interpreter>]
 //
 // (`--python python3.12` where `python3` has no google-re2 wheel.) It installs
-// google-re2 at GOOGLE_RE2_VERSION into a virtual environment in a temporary
-// directory, runs re2-reference.py there, and prints each pattern whose
-// outcomes differ with both engines' outcomes in full. It exits 1 on a
-// difference re2-known-differences.json does not list, and on a pattern it
-// lists that no longer differs.
+// the google-re2 release re2-reference/requirements.txt names into a virtual
+// environment in a temporary directory, runs re2-reference.py there, and
+// prints each pattern whose outcomes differ with both engines' outcomes in
+// full. It exits 1 on a difference re2-known-differences.json does not list,
+// and on a pattern it lists that no longer differs.
 // re2js_reference.yaml runs it on a pull request that moves re2js's version.
 
 import { spawnSync } from "node:child_process";
@@ -27,11 +27,13 @@ import { RE2JS } from "re2js";
 
 import { goldenCases } from "../packages/core/test/utils/linearRegexGoldenCases.ts";
 
-/** The google-re2 release the comparison installs, which bundles its C++ RE2. */
-export const GOOGLE_RE2_VERSION = "1.1.20251105";
-
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const REFERENCE_PROGRAM = join(SCRIPTS, "re2-reference.py");
+const REFERENCE_REQUIREMENTS = join(
+  SCRIPTS,
+  "re2-reference",
+  "requirements.txt",
+);
 
 /** The patterns measured to differ from RE2, each with its cause. */
 export const KNOWN_DIFFERENCES_FILE = join(
@@ -263,7 +265,8 @@ function main(argv) {
       "--disable-pip-version-check",
       "--no-deps",
       "--only-binary=:all:",
-      `google-re2==${GOOGLE_RE2_VERSION}`,
+      "--requirement",
+      REFERENCE_REQUIREMENTS,
     ]);
     const cases = comparisonCases();
     const casesPath = join(scratch, "cases.json");
