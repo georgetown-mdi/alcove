@@ -59,6 +59,8 @@ import {
   NEWER_KEY_FILE_TITLE,
 } from "@console/mountedConfiguration";
 import {
+  SHARED_FOLDER_SYNC_STEP,
+  TEMPORARY_CONNECTION_PROBLEM,
   consoleFailureForCause,
   consoleSweptHandshakeTimeout,
 } from "@console/consoleFailureCause";
@@ -1106,10 +1108,9 @@ function failureContentFor(
     message:
       channel === "filedrop"
         ? "The exchange through the shared folder stopped before it " +
-          "finished. Check that the shared folder is in place and syncing, " +
-          "then try again."
-        : "The exchange could not be completed - usually a temporary " +
-          "connection problem rather than an issue with your data." +
+          `finished. ${SHARED_FOLDER_SYNC_STEP}`
+        : "The exchange could not be completed - usually " +
+          `${TEMPORARY_CONNECTION_PROBLEM}.` +
           (failedWithDefaultRelayOff(error)
             ? ` ${seat === "acceptor" ? ACCEPTOR_DEFAULT_RELAY_OFF_REMEDY : INVITER_DEFAULT_RELAY_OFF_REMEDY}`
             : ""),
