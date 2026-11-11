@@ -592,7 +592,7 @@ describe("a console run that failed on a catalog cause", () => {
     expect(swept.title).toBe("Your partner did not answer");
     expect(swept.message).toBe(
       `Your partner did not answer in time. ${BOTH_SWEPT} ` +
-        "Check that the shared folder is in place and syncing, then try again.",
+        "Otherwise, check that the shared folder is in place and syncing, then try again.",
     );
     expect(swept.reportedCause).toBeUndefined();
     const sweptSftp = timedOut({ channel: "sftp", sweepExchangeFiles: true });

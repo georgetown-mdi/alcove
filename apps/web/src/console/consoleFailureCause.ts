@@ -71,7 +71,7 @@ const BOTH_SWEPT_LINE =
   "may have removed the other's files. Both of you turn off " +
   `"${SWEEP_CONTROL_LABEL}" before the next run.`;
 
-/** The step a filedrop run that stopped after the rendezvous ends with. */
+/** The step the generic filedrop failure message ends with. */
 export const SHARED_FOLDER_SYNC_STEP =
   "Check that the shared folder is in place and syncing, then try again.";
 
@@ -268,7 +268,7 @@ export function consoleSweptHandshakeTimeout(
   // syncing or the connection, not the location.
   const step =
     channel === "filedrop"
-      ? SHARED_FOLDER_SYNC_STEP
+      ? "Otherwise, check that the shared folder is in place and syncing, then try again."
       : `Otherwise this is usually ${TEMPORARY_CONNECTION_PROBLEM}, so try again.`;
   return {
     title: "Your partner did not answer",
