@@ -353,6 +353,96 @@ describe("connect", () => {
     );
   });
 
+  test("refuses a second dial while the first is in flight, and allows a retry after a failure", async () => {
+    let attempts = 0;
+    let failFirst: (error: Error) => void = () => {};
+    const { transport, sftp } = harness({
+      dial: () => {
+        attempts += 1;
+        return attempts === 1
+          ? new Promise((_, reject) => (failFirst = reject))
+          : Promise.resolve({
+              channel: {} as BrowserSshSftpSession["channel"],
+              hostKey: HOST_KEY,
+              close: () => Promise.resolve(),
+              dispose: () => {},
+            });
+      },
+    });
+    const first = failure(transport.connect(CONNECT_OPTIONS));
+    await expect(transport.connect(CONNECT_OPTIONS)).rejects.toBeInstanceOf(
+      InternalConsistencyError,
+    );
+    expect(attempts).toBe(1);
+    failFirst(new Error("relay unreachable"));
+    expect(await first).toMatchObject({ message: "relay unreachable" });
+    await transport.connect(CONNECT_OPTIONS);
+    expect(attempts).toBe(2);
+    expect(await transport.exists("/x")).toBe(false);
+    expect(sftp.count("stat")).toBe(1);
+  });
+
+  test("end during the handshake aborts the dial at once and rejects connect", async () => {
+    let signal: AbortSignal | undefined;
+    const { transport } = harness({
+      dial: (options) => {
+        signal = options.signal;
+        return new Promise((_, reject) =>
+          options.signal?.addEventListener("abort", () =>
+            reject(options.signal?.reason as Error),
+          ),
+        );
+      },
+    });
+    const connecting = failure(transport.connect(CONNECT_OPTIONS));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signal?.aborted).toBe(false);
+    await transport.end();
+    expect(signal?.aborted).toBe(true);
+    expect(await connecting).toBeInstanceOf(SftpSessionClosedError);
+    await expect(transport.exists("/x")).rejects.toBeInstanceOf(
+      SftpSessionClosedError,
+    );
+  });
+
+  test("end after the dial but before SFTP starts disposes the session and rejects connect", async () => {
+    const opened = harness({ startSftp: never });
+    const connecting = failure(opened.transport.connect(CONNECT_OPTIONS));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(opened.disposed()).toBe(0);
+    await opened.transport.end();
+    expect(opened.disposed()).toBe(1);
+    expect(await connecting).toBeInstanceOf(SftpSessionClosedError);
+    expect(opened.disposed()).toBe(1);
+    await expect(opened.transport.exists("/x")).rejects.toBeInstanceOf(
+      SftpSessionClosedError,
+    );
+  });
+
+  test("end while the dial ignores the abort still disposes the session it returns", async () => {
+    let finish: () => void = () => {};
+    let disposals = 0;
+    const { transport } = harness({
+      dial: () =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve({
+              channel: {} as BrowserSshSftpSession["channel"],
+              hostKey: HOST_KEY,
+              close: () => Promise.resolve(),
+              dispose: () => {
+                disposals += 1;
+              },
+            });
+        }),
+    });
+    const connecting = failure(transport.connect(CONNECT_OPTIONS));
+    await transport.end();
+    finish();
+    expect(await connecting).toBeInstanceOf(SftpSessionClosedError);
+    expect(disposals).toBe(1);
+  });
+
   test.each([
     { readyTimeout: 12_000, bound: 12_000 },
     { readyTimeout: undefined, bound: DEFAULT_SERVER_CONNECT_TIMEOUT_MS },

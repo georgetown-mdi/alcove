@@ -96,6 +96,37 @@ export class BrowserSftpConnectTimeoutError extends TimeoutError {
   }
 }
 
+/** A `connect` in flight: what `end` must stop. */
+interface Dialing {
+  handshake: AbortController;
+  /** The SSH session once dialed, until it is handed to the transport. */
+  ssh?: BrowserSshSftpSession;
+}
+
+/** Dispose the session a dial opened, if `end` has not already. */
+function releaseDialed(dialing: Dialing): void {
+  dialing.ssh?.dispose();
+  dialing.ssh = undefined;
+}
+
+/** A rejection with `signal`'s reason once it aborts. */
+function abortedBy(signal: AbortSignal): {
+  rejection: Promise<never>;
+  stop: () => void;
+} {
+  let onAbort = () => {};
+  const rejection = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason as Error);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+  rejection.catch(() => {});
+  return {
+    rejection,
+    stop: () => signal.removeEventListener("abort", onAbort),
+  };
+}
+
 /** An exclusive create found the file already there. */
 class SftpFileExistsError extends Error {
   readonly code = "EEXIST";
@@ -251,6 +282,7 @@ export class BrowserSftpTransport implements FileTransportClient {
   private session:
     { ssh: BrowserSshSftpSession; sftp: SftpOperations } | undefined;
   private ended = false;
+  private dialing: Dialing | undefined;
   private readonly stallDeadlineMs: number;
   private readonly dial: NonNullable<BrowserSftpTransportOptions["dial"]>;
   private readonly startSftp: NonNullable<
@@ -272,10 +304,23 @@ export class BrowserSftpTransport implements FileTransportClient {
    * bounded by `options.readyTimeout`.
    */
   async connect(options: Record<string, unknown>): Promise<void> {
-    if (this.ended || this.session !== undefined)
+    if (this.ended || this.dialing !== undefined || this.session !== undefined)
       throw new InternalConsistencyError(
         "BrowserSftpTransport.connect: one session per transport; build a new one to dial again",
       );
+    const dialing: Dialing = { handshake: new AbortController() };
+    this.dialing = dialing;
+    try {
+      await this.establish(options, dialing);
+    } finally {
+      this.dialing = undefined;
+    }
+  }
+
+  private async establish(
+    options: Record<string, unknown>,
+    dialing: Dialing,
+  ): Promise<void> {
     const username = options["username"];
     if (typeof username !== "string" || username === "")
       throw new UsageError(
@@ -292,7 +337,7 @@ export class BrowserSftpTransport implements FileTransportClient {
     ) => void;
     const timeoutMs = connectTimeoutMs(options["readyTimeout"]);
 
-    const handshake = new AbortController();
+    const { handshake } = dialing;
     const timer = setTimeout(
       () =>
         handshake.abort(
@@ -313,20 +358,32 @@ export class BrowserSftpTransport implements FileTransportClient {
     } finally {
       clearTimeout(timer);
     }
-
-    let sftp: SftpOperations;
-    try {
-      sftp = await withTimeout(this.startSftp(ssh.channel), timeoutMs, "");
-    } catch (error) {
-      ssh.dispose();
-      throw error instanceof TimeoutError
-        ? new BrowserSftpConnectTimeoutError("protocol start", timeoutMs)
-        : error;
-    }
     if (this.endedDuringDial()) {
       ssh.dispose();
       throw new SftpSessionClosedError();
     }
+    dialing.ssh = ssh;
+
+    const closed = abortedBy(handshake.signal);
+    let sftp: SftpOperations;
+    try {
+      sftp = await Promise.race([
+        withTimeout(this.startSftp(ssh.channel), timeoutMs, ""),
+        closed.rejection,
+      ]);
+    } catch (error) {
+      releaseDialed(dialing);
+      throw error instanceof TimeoutError
+        ? new BrowserSftpConnectTimeoutError("protocol start", timeoutMs)
+        : error;
+    } finally {
+      closed.stop();
+    }
+    if (this.endedDuringDial()) {
+      releaseDialed(dialing);
+      throw new SftpSessionClosedError();
+    }
+    dialing.ssh = undefined;
     this.session = { ssh, sftp };
   }
 
@@ -337,10 +394,16 @@ export class BrowserSftpTransport implements FileTransportClient {
 
   /**
    * End the session at once, without waiting on the server: outstanding
-   * requests reject and the relay socket closes.
+   * requests reject and the relay socket closes. A dial in flight is aborted
+   * and a session it already opened is disposed, so its `connect` rejects.
    */
   end(): Promise<void> {
     this.ended = true;
+    const dialing = this.dialing;
+    if (dialing !== undefined) {
+      dialing.handshake.abort(new SftpSessionClosedError());
+      releaseDialed(dialing);
+    }
     const session = this.session;
     this.session = undefined;
     if (session !== undefined) {
@@ -575,8 +638,7 @@ export class BrowserSftpTransport implements FileTransportClient {
         if (present) throw new SftpFileExistsError(error);
         throw new Error(
           "The SFTP server could not create the lock file, and no file is " +
-            "there, so the cause is on the server rather than a race with the " +
-            "partner. Ask the server's administrator what the server logged " +
+            "there. Ask the server's administrator what the server logged " +
             "(for example a full disk or a quota), then try again.",
           { cause: error },
         );
