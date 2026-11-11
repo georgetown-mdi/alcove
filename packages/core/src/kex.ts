@@ -156,7 +156,7 @@ const KEY_AGREEMENT_LABEL = "alcove-kex-v2:key-agreement";
 const GENERIC_FAILURE = "key exchange authentication failed";
 /**
  * The message of the failure a handshake receive throws when the peer sends
- * nothing within its bound (docs/spec/PROTOCOL.md, "Failure handling"). The
+ * nothing within its bound (docs/spec/KEY_EXCHANGE.md, "Failure handling"). The
  * console recognizes a relayed failure by it.
  */
 export const KEX_HANDSHAKE_TIMEOUT_MESSAGE = "key exchange handshake timed out";
