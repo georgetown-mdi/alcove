@@ -59,8 +59,6 @@ export const MESSAGE_HEADER_BYTES = 10;
 export const messageTypeLabel = (type: number): string =>
   type === MESSAGE_TYPE_BINARY ? "Uint8Array" : "Object";
 
-const MAX_SEQ = 2n ** 64n - 1n;
-
 // Assigns every header byte, so an allocUnsafe target leaks none. A DataView
 // rather than Buffer's own BigInt writer, which the `buffer` package a page
 // runs on lacks before version 6.
@@ -70,9 +68,9 @@ const writeMessageHeader = (
   seq: number,
   version: number,
 ): void => {
-  if (!Number.isInteger(seq) || seq < 0 || BigInt(seq) > MAX_SEQ)
+  if (!Number.isSafeInteger(seq) || seq < 0)
     throw new InternalConsistencyError(
-      `message envelope sequence number ${seq} is not in 0..2^64-1`,
+      `message envelope sequence number ${seq} is not in 0..2^53-1`,
     );
   out[0] = version;
   out[1] = type;

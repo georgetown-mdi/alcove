@@ -32,7 +32,7 @@ test("header is exactly MESSAGE_HEADER_BYTES with version || type || seq layout"
   expect(header[9]).toBe(0x02);
 });
 
-test.each([-1, 2 ** 64, 1.5, Number.NaN])(
+test.each([-1, 2 ** 64, Number.MAX_SAFE_INTEGER + 1, 1.5, Number.NaN])(
   "the header writer refuses the sequence number %s",
   (seq) => {
     expect(() =>

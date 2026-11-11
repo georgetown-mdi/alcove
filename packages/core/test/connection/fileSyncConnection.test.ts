@@ -4908,9 +4908,11 @@ test("poll() terminal: a message envelope seq above MAX_SAFE_INTEGER is rejected
   const peerId = "peer-sender";
   conn.peerId = peerId;
 
-  const body = binaryMessage(
-    Uint8Array.from([1, 2, 3, 4]),
-    Number.MAX_SAFE_INTEGER + 1,
+  const body = binaryMessage(Uint8Array.from([1, 2, 3, 4]));
+  new DataView(body.buffer, body.byteOffset, body.byteLength).setBigUint64(
+    2,
+    BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+    false,
   );
   files.set(`/test/${peerId}-${body.length}.json`, body);
 
