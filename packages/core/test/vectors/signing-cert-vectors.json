@@ -1,8 +1,8 @@
 {
-  "description": "Cross-implementation vectors for the alcove-signing-cert/v3 certificate and alcove-signing-identity/v3 identity file: ECDSA over P-256 with SHA-256, the public key an RFC 7518 EC JWK, the signature the fixed-length raw r||s (IEEE P1363). Each vector fixes a private key and an identity. The public coordinates and the certificate fingerprint are known answers -- the fingerprint covers the body and never the signature, so it stays deterministic though ECDSA signing is not. The self-signature is NOT a known answer and is verify-only: it was produced by the openssl CLI (see externalAnchors), so a suite that parses these certificates accepts a signature made outside this codebase. Regenerate with generate-signing-cert-vectors.mjs.",
+  "description": "Cross-implementation vectors for the alcove-signing-cert/v1 certificate and alcove-signing-identity/v1 identity file: ECDSA over P-256 with SHA-256, the public key an RFC 7518 EC JWK, the signature the fixed-length raw r||s (IEEE P1363). Each vector fixes a private key and an identity. The public coordinates and the certificate fingerprint are known answers -- the fingerprint covers the body and never the signature, so it stays deterministic though ECDSA signing is not. The self-signature is NOT a known answer and is verify-only: it was produced by the openssl CLI (see externalAnchors), so a suite that parses these certificates accepts a signature made outside this codebase. Regenerate with generate-signing-cert-vectors.mjs.",
   "construction": {
-    "certificateVersion": "alcove-signing-cert/v3",
-    "identityVersion": "alcove-signing-identity/v3",
+    "certificateVersion": "alcove-signing-cert/v1",
+    "identityVersion": "alcove-signing-identity/v1",
     "algorithm": "ecdsa-p256-sha256",
     "signatureDomain": "alcove-signing-cert-signature/v2",
     "fingerprintDomain": "alcove-signing-cert-fingerprint/v2",

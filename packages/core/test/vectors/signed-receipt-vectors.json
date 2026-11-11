@@ -1,9 +1,9 @@
 {
-  "description": "Cross-implementation vectors for the alcove-signed-receipt/v4 step: ECDSA over P-256 with SHA-256 across the signer-bound receipt content. Each vector fixes a private key, an identity, a session key, a handshake role, and the shared content. The certificate fingerprint and the per-exchange binder are known answers. The signature is NOT -- ECDSA signing is randomized -- so it is verify-only and was produced by the openssl CLI (see externalAnchors) over signed bytes the generator assembles from the spec: a suite that accepts it is accepting a signature made outside this codebase, over a byte layout stated independently of the module under test. Regenerate with generate-signed-receipt-vectors.mjs.",
+  "description": "Cross-implementation vectors for the alcove-signed-receipt/v1 step: ECDSA over P-256 with SHA-256 across the signer-bound receipt content. Each vector fixes a private key, an identity, a session key, a handshake role, and the shared content. The certificate fingerprint and the per-exchange binder are known answers. The signature is NOT -- ECDSA signing is randomized -- so it is verify-only and was produced by the openssl CLI (see externalAnchors) over signed bytes the generator assembles from the spec: a suite that accepts it is accepting a signature made outside this codebase, over a byte layout stated independently of the module under test. Regenerate with generate-signed-receipt-vectors.mjs.",
   "construction": {
-    "recordVersion": "alcove-signed-receipt/v4",
+    "recordVersion": "alcove-signed-receipt/v1",
     "algorithm": "ecdsa-p256-sha256",
-    "contentDomain": "alcove-signed-receipt-content/v3",
+    "contentDomain": "alcove-signed-receipt-content/v1",
     "binderLabel": "alcove-signed-receipt-binder-v2:<role>",
     "signedBytes": "canonicalBytes({ domain: contentDomain, content: { termsHash, initiatorToResponderPayload, responderToInitiatorPayload, binder }, signer: { fingerprint, role } }) (RFC 8785)",
     "signatureEncoding": "64 bytes, r || s, each field element left-padded to 32 bytes. Not DER: a field of any other length is rejected rather than decoded."
