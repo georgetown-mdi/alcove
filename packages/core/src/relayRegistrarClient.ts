@@ -1,4 +1,4 @@
-// The client side of a relay registrar (infra/relay/README.md, The registrar),
+// The client side of a relay registrar (docs/spec/RELAY_REGISTRAR.md),
 // shared by the CLI and the web app: one registration request and how its
 // answer is classified, the signed registration of a rotated relay key with its
 // retries, and the enrollment made with the relay-owner token. Transport-neutral:
@@ -42,7 +42,7 @@ const MAX_REGISTRAR_REASON_LENGTH = 300;
  * The longest `Retry-After` wait read off an answer, in seconds; a longer one
  * is not read. An arbitrary working value, not derived, raised on request. The
  * registrar's own waits end by a row's 70-minute lifetime at the latest
- * (infra/relay/README.md, Enrollment without a token), well under it.
+ * (docs/spec/RELAY_REGISTRAR.md, Enrollment without a token), well under it.
  */
 export const MAX_REGISTRAR_RETRY_AFTER_SECONDS = 86_400;
 
@@ -73,7 +73,7 @@ const MALFORMED_LAPSE_REASON =
   "registration is not taken as confirmed";
 
 // The registrar writes `lapsesAt` as `YYYY-MM-DDTHH:MM:SSZ`
-// (infra/relay/README.md, The registrar).
+// (docs/spec/RELAY_REGISTRAR.md, The calls).
 const LAPSES_AT_SCHEMA = z.iso.datetime();
 
 function utf8Base64(value: string): string {
@@ -717,7 +717,7 @@ export async function registerRelayKey(
 
 /**
  * Enroll the exchange at a registrar that takes an enrollment without a token
- * (infra/relay/README.md, Enrollment without a token): a `POST` with no
+ * (docs/spec/RELAY_REGISTRAR.md, Enrollment without a token): a `POST` with no
  * `Authorization` header registering the relay key derived from
  * `sharedSecret` under the exchange id derived from it
  * ({@link deriveRelayExchangeId}), with `maxAgeDays` `null`, since the

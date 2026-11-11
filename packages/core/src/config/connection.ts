@@ -1697,7 +1697,7 @@ export const AllowedRelaySchema = z.string().transform((entry, ctx) => {
 
 /**
  * The registrar of the relay this party's own `turn` entries name
- * (infra/relay/README.md, The registrar): where a run registers the relay key
+ * (docs/spec/RELAY_REGISTRAR.md): where a run registers the relay key
  * derived from each rotated shared secret, and the exchange id the key is held
  * under. It holds no credential: the relay-owner token is asked for when the
  * exchange is enrolled and is never stored.

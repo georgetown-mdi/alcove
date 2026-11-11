@@ -461,7 +461,7 @@ address and relayed. What was weighed:
 
 **The client's address at the registrar.** Enrollment without a token is
 bounded by a rate limit for each client address
-([the registrar](../../infra/relay/README.md#enrollment-without-a-token)),
+([the registrar](../spec/RELAY_REGISTRAR.md#enrollment-without-a-token)),
 so the registrar needs the address the front sees. What was weighed:
 
 - **A limit in the front** (nginx's `limit_req`) is HTTP-level, and the
