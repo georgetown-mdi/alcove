@@ -580,7 +580,7 @@ function LocalFieldsEditor({
    * A cadence the operator did not touch is OMITTED rather than written back:
    * the schedule object also holds bookkeeping the unattended runner advances
    * under an open page -- `nextWindow` and `consecutiveMisses` (see
-   * docs/spec/MANAGED_EXCHANGE_RECORD.md, "The schedule object") -- and writing
+   * docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "The schedule object") -- and writing
    * back the object as the page mounted it would rewind that advance to a
    * window the runner has already accounted for.
    *

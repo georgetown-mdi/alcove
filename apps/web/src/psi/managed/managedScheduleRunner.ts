@@ -9,7 +9,7 @@
  * window is due, how the window is occupied, and what the window's disposition
  * writes back.
  *
- * Normative rules (docs/spec/MANAGED_EXCHANGE_RECORD.md, "The schedule object"
+ * Normative rules (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "The schedule object"
  * and "Catch-up on wake"; docs/MANAGED_EXCHANGE.md, "Retry and repeated
  * misses"):
  *
@@ -38,7 +38,7 @@
  *   miss count where it stood.
  *
  * Two properties of the loop are not visible from the criteria they serve
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Occupying a due window"):
+ * (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "Occupying a due window"):
  *
  * - The window's close is reached through each attempt's peer-WAIT budget,
  *   never through an abort: the abort probe the run path classifies on is the
@@ -109,7 +109,7 @@ import type { WaitingAppUpdateOutcome } from "./managedAppUpdate";
  * ends as a no-show and the next one starts. It is the same human-timescale
  * budget both one-shot roles wait on, by design: a window-long single wait
  * would put the whole window on one broker registration surviving that long
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Occupying a due window").
+ * (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "Occupying a due window").
  */
 export const ATTEMPT_PEER_WAIT_MS = DEFAULT_PEER_WAIT_TIMEOUT_MS;
 
@@ -257,7 +257,7 @@ export interface ManagedScheduleTickEntry {
  *
  * A stored entry the read could not parse is reported as its own `"unreadable"`
  * skip and passed over; every other record still runs
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Catch-up on wake").
+ * (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "Catch-up on wake").
  *
  * Records are ticked concurrently. A record whose previous tick is still
  * running is passed over rather than started a second time, since occupying a
@@ -684,7 +684,7 @@ async function occupyWindow(
  * Fold one window's attempts into its disposition: `"missed"` only when at
  * least one attempt found the partner absent and the attempt that ends the
  * window's occupancy does not prove the partner was met
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Occupying a due window", the
+ * (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "Occupying a due window", the
  * disposition table).
  *
  * The fold reads every attempt rather than the last, since one trailing
@@ -729,7 +729,7 @@ interface ManagedScheduleWindowVerdict {
 
 /**
  * Whether a failed attempt establishes that the two runners met in this window
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Occupying a due window").
+ * (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "Occupying a due window").
  *
  * A trust-boundary failure ({@link isTrustBoundaryFailure} of
  * {@link classifyFailure}) comes from the authenticated key exchange,
@@ -764,7 +764,7 @@ function attemptProvesContact(
 
 /**
  * Read a failed attempt as a window verdict
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Occupying a due window").
+ * (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "Occupying a due window").
  *
  * The single-writer lock being held elsewhere never reaches here: it is no
  * attempt at the window, and {@link occupyWindow} paces the next one.

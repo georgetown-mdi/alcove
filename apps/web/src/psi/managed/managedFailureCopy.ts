@@ -45,7 +45,7 @@ import type {
 /**
  * The consecutive-miss count at which a surface escalates from naming the last
  * run's outcome to the coordination prompt. Normative value and the reasoning
- * behind it: docs/spec/MANAGED_EXCHANGE_RECORD.md, the `consecutiveMisses` row,
+ * behind it: docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, the `consecutiveMisses` row,
  * and docs/MANAGED_EXCHANGE.md, "Retry and repeated misses".
  */
 export const REPEATED_MISS_ESCALATION = 2;

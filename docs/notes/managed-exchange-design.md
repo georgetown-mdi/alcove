@@ -81,13 +81,13 @@ The guide's [How a scheduled run happens](../MANAGED_EXCHANGE.md#how-a-scheduled
 **An unattended run takes two parties.**
 A WebRTC exchange is live: both parties' runners must be awake in an overlapping window, so the run schedule is partnership-level agreement, coordinated out-of-band as the terms are.
 A partner whose runner does not arrive in the agreed window is a benign retry-at-next-window outcome, never evidence of an attack.
-The record's closed field layout for the schedule and the retry bookkeeping is in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-schedule-object).
+The record's closed field layout for the schedule and the retry bookkeeping is in [MANAGED_EXCHANGE_SCHEDULE.md](../spec/MANAGED_EXCHANGE_SCHEDULE.md#the-schedule-object).
 
 ## Why the schedule is a local field
 
 The schedule is **not** written into the exchange-file document and **not** part of the invitation wire.
 The document is the shared terms-and-locator config, whose terms change only through a terms change both parties review.
-A reschedule is neither a terms change nor a credential, so the schedule is a local record field instead (the `schedule` object; see [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-schedule-object)).
+A reschedule is neither a terms change nor a credential, so the schedule is a local record field instead (the `schedule` object; see [MANAGED_EXCHANGE_SCHEDULE.md](../spec/MANAGED_EXCHANGE_SCHEDULE.md#the-schedule-object)).
 Nothing about the schedule is sent to a server or to the partner over the wire; there is no server-side coordination anywhere in the design.
 
 The cost of local-only entry is that each side types the same values by hand, so a mistyped cadence or window on one side produces windows that never overlap.
@@ -102,7 +102,7 @@ That bookkeeping is **one-sided by construction**.
 The escalating surface fires on the party that keeps showing up, the party positioned to reach out, while a persistently absent party's runtime may never be awake to see anything.
 The asymmetry is accepted because reconciliation needs only one side to raise it, over the channel where the schedule was agreed on.
 The absent side is not left permanently ignorant either.
-A runtime that wakes to find windows fully elapsed counts each one as a miss and lands on the next live window (the catch-up rule; see [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#catch-up-on-wake)), so its own repeated-miss surface fires at that wake.
+A runtime that wakes to find windows fully elapsed counts each one as a miss and lands on the next live window (the catch-up rule; see [MANAGED_EXCHANGE_SCHEDULE.md](../spec/MANAGED_EXCHANGE_SCHEDULE.md#catch-up-on-wake)), so its own repeated-miss surface fires at that wake.
 It learns late, but it does learn.
 
 The coordination prompt names a schedule that differs from the partner's as the likely cause, because each side enters the agreed window on its own clock and a hand conversion between time zones is the easiest way to get it wrong.
@@ -122,7 +122,7 @@ The design chooses **report-only, no auto-pause**, because for the no-IT persona
   A paused schedule stops trying with no visible signal, so a partnership that stopped attempting looks like a healthy one until the next in-person visit, which may be weeks away.
   A schedule paused without notice ends the partnership without notice.
 - **Continuing to attempt is cheap, and what it costs is bounded.**
-  A window against a partner who has gone away is a bounded series of attempts: the window's width divided by the per-attempt wait for the peer, up to a cap (see [Occupying a due window](../spec/MANAGED_EXCHANGE_RECORD.md#occupying-a-due-window)).
+  A window against a partner who has gone away is a bounded series of attempts: the window's width divided by the per-attempt wait for the peer, up to a cap (see [Occupying a due window](../spec/MANAGED_EXCHANGE_SCHEDULE.md#occupying-a-due-window)).
   Each attempt re-reads and column-checks the input file from the working folder, since the input guard runs ahead of the rendezvous.
   Each attempt also registers a peer at the coordination server under the rendezvous id derived from the record's current secret.
   A miss does not rotate that secret, so a partnership that has stopped meeting re-registers the *same* id at every attempt of every window.

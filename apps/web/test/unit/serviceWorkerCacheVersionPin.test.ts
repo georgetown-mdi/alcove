@@ -12,14 +12,14 @@ const TAKEOVER_CLAIM =
 
 const PARAGRAPH_LEAD = "- **The one exception to the holds.**";
 
-const REVISIT = `Revisit docs/spec/MANAGED_EXCHANGE_RECORD.md, the paragraph "The one exception to the holds": its claim that the takeover purges no cache rests on CACHE_VERSION being the same across deployments. Update the paragraph with the change, then update this test.`;
+const REVISIT = `Revisit docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, the paragraph "The one exception to the holds": its claim that the takeover purges no cache rests on CACHE_VERSION being the same across deployments. Update the paragraph with the change, then update this test.`;
 
 /** The paragraph starting at {@link PARAGRAPH_LEAD}, on one line. */
 function exceptionParagraph(): string {
   const spec = readFileSync(
     fileURLToPath(
       new URL(
-        "../../../../docs/spec/MANAGED_EXCHANGE_RECORD.md",
+        "../../../../docs/spec/MANAGED_EXCHANGE_SCHEDULE.md",
         import.meta.url,
       ),
     ),

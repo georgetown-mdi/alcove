@@ -9,7 +9,7 @@
  * turns the operator's wall-clock cadence into the stored UTC anchor once, here;
  * {@link localCadenceFromAnchor} reads it back when the form re-opens on a stored
  * schedule. Nothing downstream reads the zone again -- every window afterwards is
- * fixed-millisecond arithmetic off the anchor (docs/spec/MANAGED_EXCHANGE_RECORD.md,
+ * fixed-millisecond arithmetic off the anchor (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md,
  * "The schedule object").
  *
  * The bounds here are the record schema's, restated as field errors so an
@@ -49,7 +49,7 @@ const SECONDS_PER_HOUR = 3600;
 
 /** The narrowest window entry accepts, in hours. The schema's structural floor is
  * one second; this is the UX-level floor width's clock-skew mitigation requires
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Clock skew and the window width"). */
+ * (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, "Clock skew and the window width"). */
 export const MIN_SCHEDULE_WINDOW_HOURS = 1;
 
 /** The widest window entry accepts, in hours -- the record schema's own ceiling,
@@ -348,7 +348,7 @@ export function scheduleEntryFieldsFrom(
  * The planned window and consecutive-miss count belong to the runner, which
  * advances them under a page left open; such a save must neither rebuild the
  * cadence (resets both) nor write back the object the form opened on (rewinds
- * them) (docs/spec/MANAGED_EXCHANGE_RECORD.md, the `anchor` row).
+ * them) (docs/spec/MANAGED_EXCHANGE_SCHEDULE.md, the `anchor` row).
  */
 export function scheduleEntryUnchanged(
   fields: ScheduleEntryFields,

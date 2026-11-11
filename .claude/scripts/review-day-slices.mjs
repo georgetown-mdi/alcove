@@ -180,6 +180,7 @@ export const BOUNDARIES = [
       "CREDENTIAL_STORAGE",
       "EXCHANGE_RECORD",
       "MANAGED_EXCHANGE_RECORD",
+      "MANAGED_EXCHANGE_SCHEDULE",
     ].map(spec),
     assets:
       "Managed records in browser storage (keys, partner identity, schedules), the CLI key file, result and receipt files, accepted terms.",
