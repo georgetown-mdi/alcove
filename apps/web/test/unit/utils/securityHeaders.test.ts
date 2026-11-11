@@ -14,7 +14,7 @@ import { colorSchemeScriptSource } from "@utils/colorSchemeScript";
 // policy.
 const SHIPPED_POLICY =
   "frame-ancestors 'none'; " +
-  "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' " +
+  "script-src 'self' 'wasm-unsafe-eval' " +
   "'sha256-8ORoeP7ZoOX1k3ePKBnNzdoHYjwUvC86o4oRkUWMb9Y='; " +
   "object-src 'none'; base-uri 'none'";
 

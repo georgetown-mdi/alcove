@@ -1,3 +1,5 @@
+import "../../utils/zodJitless";
+
 import { computeFieldCoverage } from "./nonEmptyAggregate";
 
 import type {

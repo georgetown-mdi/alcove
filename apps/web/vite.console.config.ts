@@ -13,6 +13,7 @@ import {
   browserSshDedupe,
   browserSshDependencyAliases,
   srcAliasEntries,
+  zodJitlessChunkOutput,
 } from "./vite.config.ts";
 import { clientModuleGraphGuard } from "./hosted/moduleGraphGuard.ts";
 import { withColorSchemeScript } from "./src/utils/colorSchemeScript.ts";
@@ -90,5 +91,11 @@ export default defineConfig(({ isSsrBuild }) => ({
           },
         },
       }
-    : { build: { outDir: "dist/console", emptyOutDir: true } }),
+    : {
+        build: {
+          outDir: "dist/console",
+          emptyOutDir: true,
+          rollupOptions: { output: zodJitlessChunkOutput },
+        },
+      }),
 }));

@@ -535,7 +535,7 @@ function uncachedOfflineResponse() {
       "Referrer-Policy": "no-referrer",
       "X-Frame-Options": "DENY",
       "Content-Security-Policy":
-        "frame-ancestors 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-8ORoeP7ZoOX1k3ePKBnNzdoHYjwUvC86o4oRkUWMb9Y='; object-src 'none'; base-uri 'none'",
+        "frame-ancestors 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-8ORoeP7ZoOX1k3ePKBnNzdoHYjwUvC86o4oRkUWMb9Y='; object-src 'none'; base-uri 'none'",
       "X-Content-Type-Options": "nosniff",
     },
   });

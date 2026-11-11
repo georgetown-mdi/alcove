@@ -432,12 +432,12 @@ In the headless CLI and the console, what bounds dependency-originated egress is
 
 The web app and the console send a Content-Security-Policy with every response that limits which scripts run in the origin ([DEPLOYMENT.md](DEPLOYMENT.md#headers-caching-and-the-fallback-document) lists the headers):
 
-- **`script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'`, plus the hash of one inline script**, the one that sets the color scheme before the first paint. A script from another origin, any other inline script, and an inline event handler do not run.
+- **`script-src 'self' 'wasm-unsafe-eval'`, plus the hash of one inline script**, the one that sets the color scheme before the first paint. A script from another origin, any other inline script, and an inline event handler do not run, and no script turns a string into code (`eval`, `new Function`).
 - **`object-src 'none'` and `base-uri 'none'`.** No plugin content loads, and no `<base>` element can repoint the app's relative script URLs.
 
-`'unsafe-eval'` is there because the vendored PSI engine's Emscripten glue (`@openmined/psi.js`) builds its WebAssembly bindings with `new Function`, on the page and in the PSI worker; without it no exchange runs. It lets a script already running in the origin turn a string into code. It does not admit an injected `<script>` element, an inline handler, or a script from another host, which are the injection routes the policy closes. Removing it takes a rebuild of the PSI glue without generated functions. `'wasm-unsafe-eval'` adds nothing while `'unsafe-eval'` is present, and keeps WebAssembly compiling once it goes.
+`'wasm-unsafe-eval'` is there because the vendored PSI engine (`@openmined/psi.js`) compiles WebAssembly, on the page and in the PSI worker; without it no exchange runs. It admits WebAssembly compilation and nothing else. There is no `'unsafe-eval'`: the PSI engine is built with Emscripten's `DYNAMIC_EXECUTION=0`, so its glue builds its bindings without `new Function`, and every page and worker entry sets Zod's `jitless` mode before any schema is built, so Zod neither generates parsers nor probes whether it may.
 
-The policy is the strictest under which a production build completes an exchange with no violation reported, measured in Chromium. The candidates tried, what the browser reported for each, and what removing `'unsafe-eval'` takes are in [the measurement note](notes/content-security-policy.md). Under `npm run dev:console` the development server sends the policy without `script-src`, since it injects inline scripts of its own; no build serves that variant.
+The policy is the strictest under which a production build completes an exchange with no violation reported, measured in Chromium. The candidates tried and what the browser reported for each are in [the measurement note](notes/content-security-policy.md). Under `npm run dev:console` the development server sends the policy without `script-src`, since it injects inline scripts of its own; no build serves that variant.
 
 ## Receipt signing identities
 

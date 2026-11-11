@@ -1,3 +1,5 @@
+import "../../utils/zodJitless";
+
 import { loadCSVFile } from "@alcove/core";
 
 import { replyBatchRows } from "./csvParseController";

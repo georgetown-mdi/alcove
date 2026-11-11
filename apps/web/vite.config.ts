@@ -93,6 +93,23 @@ export const srcAliases = {
   "@": path.resolve(import.meta.dirname, "src"),
 };
 
+/**
+ * A page build's output options putting Zod and src/utils/zodJitless.ts in one
+ * chunk. A chunk's imports run before its own code, so a jitless call left in
+ * the entry chunk would run after every shared chunk had built its schemas and
+ * let Zod probe `new Function`; in Zod's chunk it runs before any of them.
+ */
+export const zodJitlessChunkOutput = {
+  codeSplitting: {
+    groups: [
+      {
+        name: "zod",
+        test: /[\\/]node_modules[\\/]zod[\\/]|[\\/]src[\\/]utils[\\/]zodJitless\.ts$/,
+      },
+    ],
+  },
+};
+
 // The WASM PSI worker engine. It is imported only by src/psi/workers/psiCrypto.worker.ts, a
 // `new Worker(new URL(...))` entry Vite's dependency scanner does not traverse, so it
 // is not discovered at startup. Without pre-bundling it in `optimizeDeps.include`, the

@@ -12,6 +12,7 @@ import {
   requireHostedSignalingServer,
   requireValidDefaultRelay,
   srcAliasEntries,
+  zodJitlessChunkOutput,
 } from "./vite.config.ts";
 import {
   gitHeadCommit,
@@ -73,7 +74,10 @@ const hostedConfig = {
     outDir: "dist/hosted",
     emptyOutDir: true,
     manifest: true,
-    rollupOptions: { input: path.join(appRoot, template) },
+    rollupOptions: {
+      input: path.join(appRoot, template),
+      output: zodJitlessChunkOutput,
+    },
   },
 };
 

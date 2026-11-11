@@ -268,7 +268,7 @@ const REFUSAL: ResponseShape = {
     ["content-length", "0"],
     [
       "content-security-policy",
-      "frame-ancestors 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' " +
+      "frame-ancestors 'none'; script-src 'self' 'wasm-unsafe-eval' " +
         "'sha256-8ORoeP7ZoOX1k3ePKBnNzdoHYjwUvC86o4oRkUWMb9Y='; " +
         "object-src 'none'; base-uri 'none'",
     ],
