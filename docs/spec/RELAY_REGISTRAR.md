@@ -9,7 +9,7 @@ It is the implementation-level complement to [The registrar](../../infra/relay/R
 It does not cover the proof's format and the key it is signed under (see [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-registrar-request-proof)), what a client does with an answer (see [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#registering-the-rotated-relay-key) and [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#enrolling-at-a-default-relay)), or the secrets table the registrar writes ([Per-exchange keys](../../infra/relay/README.md#per-exchange-keys)).
 Intended readers are implementors of a registrar client, whoever runs a relay, and security auditors.
 
-Every constant below is in `infra/relay/registrar.py` unless another file is named.
+Every constant below is in `infra/relay/registrar.py` unless another file is named, except coturn's `total-quota` and `max-allocate-lifetime`, which `infra/relay/turnserver.conf.tmpl` sets (`total-quota` from `ALCOVE_RELAY_TOTAL_QUOTA` in `relay.env`).
 A value called arbitrary is a working value, raised on request.
 
 ## What it is
@@ -107,7 +107,7 @@ The setting is read at start, and a value other than `on` or `off` stops the reg
 
 ## Tests
 
-- **The registrar as a process.** `scripts/relay-exchange-keys.test.mjs` starts `registrar.py` on a fixture table and drives the calls, the statuses, the bounds and each limit above: the token and proof routes, the compare-and-swap, the renewal, the verify prefix, the body and head bounds, the connection deadline and slot caps, the front's PROXY header, and enrollment without a token with its lapse, rate limit, cap on each client and ceiling.
+- **The registrar as a process.** `scripts/relay-exchange-keys.test.mjs` starts `registrar.py` on a fixture table and drives the calls, the statuses, the bounds and each limit above: the token and proof routes, the compare-and-swap, the renewal, the verify prefix, the body and head bounds, the connection deadline and slot caps, the front's PROXY header, and enrollment without a token with its lapse, rate limit, cap on each client and ceiling. No test drives the request-line bound.
 - **The authentication surface.** The same file reads `registrar.py` and holds `Authorization` to the one header authentication reads, and checks a preflight is answered without a credential and allows none.
 - **The proof.** `scripts/relay-exchange-keys.test.mjs` and `packages/core/test/relayRegistrarProof.test.ts` each derive the proof of [RELAY_CREDENTIALS.md](RELAY_CREDENTIALS.md#the-registrar-request-proof)'s vectors.
 - **The client.** `packages/core/test/relayRegistrarClient.test.ts` drives core's registrar client against recorded answers of the shapes above.
