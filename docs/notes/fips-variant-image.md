@@ -59,7 +59,7 @@ HKDF.
   Amazon Linux 2023 has no `node` account, the Node runtime here coming from a
   tarball rather than a package, so the variant creates one at the same uid and
   gid an operator is told to chown a bind mount to.
-- **The base's Dependabot bump is a starting point, not a complete change**,
+- **The base's bump is a procedure, not a mechanical digest change**,
   where the default image's is one: its digest, its release snapshot and the
   certified provider's NVR pins have to name one Amazon Linux release together,
   and a move obliges re-measurement -- neither of which a mechanical bump can
@@ -539,9 +539,9 @@ sufficient on its own:
 
 ## Why a Dependabot bump of the base is not merged as filed
 
-Dependabot files a digest bump for both images' bases from one weekly block,
-and the two pull requests need different amounts of work because of the
-coupling above. The default image's `node:26-alpine` digest is a single value:
+Dependabot files a digest bump for the default image's base from the weekly
+block at `/`, and holds the variant's base out with ignore entries, because the
+two bases need different amounts of work given the coupling above. The default image's `node:26-alpine` digest is a single value:
 a mechanical pull request moving it, with the freeze test's mirrored literal
 reconciled on the same branch, is a complete change and lands as one. The
 variant's Amazon Linux base is not a single value. Its digest, the release
@@ -549,16 +549,17 @@ snapshot every `dnf` transaction resolves against, and the certified provider's
 NVR pins have to name one release between them, and Dependabot's commit moves
 the digest alone.
 
-So the variant's pull request is the offer to upgrade, not the upgrade: it is
-taken through
+So the variant's base is bumped per release, from the release checklist, and
+when the weekly image scan flags a base CVE with a fix, through
 [the procedure in DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#bumping-the-fips-base-image),
-which moves the other pins on the same branch. Two things keep a filed bump
+which moves the other pins on the same branch. Two things keep a bump
 from landing half-done or unexamined, and a third is an obligation that follows
 the move:
 
 - **The pinning mechanism is the freeze, not the filing.** The digest freeze in
   `scripts/dockerfile-freeze.test.mjs` holds this base whether a pull request
-  arrives or not, and a filed bump fails it until the mirrored literal moves.
+  arrives or not, and a bump of the digest alone fails it until the mirrored
+  literal moves.
 - **The build refuses a digest moved on its own.** It reddens the `nodebase`
   stage's release assertion, and a package layer that drifted under the
   certificate pins reddens the `rpm -qf` and `openssl list` assertions. The
@@ -574,7 +575,7 @@ the move:
   bump. Which measurements a move disturbs, and when its package-list diff
   calls for a security review, is in the same procedure.
 
-Between filed bumps, `image_smoke.yaml`'s scheduled run scans the built variant
+Between bumps, `image_smoke.yaml`'s scheduled run scans the built variant
 and reports what it finds as code-scanning alerts. That scan gates, on the
 schedule and on a pull request alike, so a finding against a pin nothing has
 touched reddens the weekly run rather than waiting for a release to refuse it.

@@ -326,8 +326,8 @@ the same mounts plus one, and it adds:
   way rather than pasting a digest from the download. A bump arrives as a
   Dependabot pull request moving the `aws-cli` stage of
   `.github/tool-versions/Dockerfile`, which fails `scripts/tool-versions.test.mjs`
-  until the same pull request sets `AWSCLI_VERSION` and the two re-verified
-  digests.
+  until the same pull request sets `AWSCLI_VERSION`. The two digests move by
+  hand in that pull request, each re-verified as above.
 - **The Docker CLIENT only** (`docker-ce-cli`, from Docker's signed apt
   repository), for `docker -H ssh://user@host` against a remote daemon.
 - **A much wider allowlist on the proxy lane** the default profile already
