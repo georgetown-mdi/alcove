@@ -49,7 +49,7 @@ export interface AuthResult {
   /**
    * Which of its secrets each side completed the handshake under. A side that
    * completed under its previous secret, or whose partner did, is in a heal
-   * run, which both sides report (docs/spec/PROTOCOL.md, "Which secret a
+   * run, which both sides report (docs/spec/KEY_EXCHANGE.md, "Which secret a
    * handshake uses").
    */
   secretUsed: {
@@ -60,7 +60,7 @@ export interface AuthResult {
    * The version both hellos selected in each layer. The caller passes this
    * result to `EncryptedMessageConnection.create`, which keys the channel at
    * `envelope`; `nextSecretInputs` holds `protocol`, which the terms exchange
-   * reads from the run's rotation (docs/spec/PROTOCOL.md, "The version hello").
+   * reads from the run's rotation (docs/spec/KEY_EXCHANGE.md, "The version hello").
    */
   negotiated: NegotiatedVersions;
 }
@@ -71,7 +71,7 @@ export type HandshakeSecretKind = "current" | "previous";
 /**
  * What a side holds besides its current secret: the previous secret it keeps
  * until the partner confirms the next one, and its rotation history
- * (docs/spec/PROTOCOL.md, "Which secret a handshake uses", and
+ * (docs/spec/KEY_EXCHANGE.md, "Which secret a handshake uses", and
  * docs/spec/SHARED_SECRET_ROTATION.md, "The rotation history").
  */
 export interface RotationState {

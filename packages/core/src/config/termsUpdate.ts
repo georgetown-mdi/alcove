@@ -88,7 +88,7 @@ export const TERMS_UPDATE_NEWER_REMEDY =
 /**
  * The HKDF info strings a terms update derives from the shared secret, one
  * per use; a family in the domain-separation label space
- * (docs/spec/PROTOCOL.md). Frozen so the label set cannot widen at run time.
+ * (docs/spec/KEY_EXCHANGE.md). Frozen so the label set cannot widen at run time.
  */
 export const TERMS_UPDATE_DERIVATIONS = Object.freeze([
   "partnership",

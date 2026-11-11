@@ -8,7 +8,7 @@ import type {
  * Return `connection` holding `role`: `alcove invite` stamps `inviter` and
  * `alcove accept` stamps `acceptor`, independent of the PSI sender/receiver
  * roles. On WebRTC the persisted role is the CLI's half of the rendezvous
- * peer-id derivation (docs/spec/PROTOCOL.md, "WebRTC rendezvous peer-id
+ * peer-id derivation (docs/spec/KEY_EXCHANGE.md, "WebRTC rendezvous peer-id
  * derivation"). Any other channel's schema has no `role`, so its connection is
  * returned unchanged; a stamped WebRTC connection is a copy.
  */

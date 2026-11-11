@@ -2,7 +2,7 @@
 // the encryption layer over the connection when the responder's cleartext abort
 // arrives, so its transport refuses the abort unparsed as a `security` failure
 // and consumes it, and the responder's teardown does not wait out its drain
-// (docs/spec/PROTOCOL.md, "A failure of message 3").
+// (docs/spec/KEY_EXCHANGE.md, "A failure of message 3").
 
 import { setTimeout as delay } from "node:timers/promises";
 

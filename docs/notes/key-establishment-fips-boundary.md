@@ -12,7 +12,7 @@ and may not say about key establishment as a result. It extends the
 key-agreement decision in
 [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#key-agreement-design) rather than
 replacing it. The normative construction is specified in
-[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange); the
+[KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#p-256-authenticated-key-exchange); the
 provider measurements and certificate readings underneath the reasoning are in
 [fips-provider-surface.md](fips-provider-surface.md). See
 [docs/notes/README.md](README.md). The Ephemeral Unified Model build of
@@ -62,7 +62,7 @@ a named NIST key-derivation method rather than as a Noise schedule.
 
 This record is the decision and the reasoning behind it; the construction it
 produced is specified in
-[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange).
+[KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#p-256-authenticated-key-exchange).
 
 ## What this extends, and what it supersedes
 
@@ -104,7 +104,7 @@ Two things in that record are superseded:
 
 Nothing here is normative. The wire format, the mixing order, the labels, and
 the protocol-version tag are specified in
-[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), which is
+[KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#p-256-authenticated-key-exchange), which is
 the authority for every value this note describes in prose.
 
 ## Why the schedule stays
@@ -398,7 +398,7 @@ mode" (section 3.2.1, p. 11). Taking a hybrid ECDH and ML-KEM exchange is a
 wire-format change: the protocol-version tag changes, and peers on different
 tags fail closed rather than negotiate, as peers on the earlier `kex-v1` and
 `kex-v2` tags do
-([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange)). Two
+([KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#p-256-authenticated-key-exchange)). Two
 developments bear on the open decision below: an agency requirement for
 post-quantum or hybrid key establishment, and hybrid support maturing in both
 platforms' `crypto.subtle`, since reasons 1 and 5 above bind whatever primitive
@@ -473,7 +473,7 @@ not a finding.
   key, and every channel requests that wrap
   ([CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it)).
   The session key derives from a chaining key that includes the pre-shared
-  secret ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange)), so
+  secret ([KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#p-256-authenticated-key-exchange)), so
   under the bound above the recorder does not reach the PSI elements; the two
   limits of that bound apply.
 - **A quick exchange over SFTP.** It has no session key and no application-layer
@@ -649,7 +649,7 @@ Rev. 3 scheme and listed the gaps that follow; [The
 build](#the-build-2026-10-31) records what was built. This section weighs
 each scheme in that publication that could fit Alcove's two-party exchange
 against the handshake in
-[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange). Every
+[KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#p-256-authenticated-key-exchange). Every
 section and page cited from SP 800-56A Rev. 3, SP 800-56C Rev. 2, SP 800-57
 Part 1 Rev. 5 and the FIPS 140-3 implementation guidance was read from the
 publication; anything else is labeled unverified.
@@ -858,7 +858,7 @@ The maintainer ruled on 2026-10-29 to build the Ephemeral Unified Model with
 `Z` passed through one approved HKDF call that takes no pre-shared secret, its
 output split between the Noise `ee` input and the rotation, the schedule and
 the confirmation round unchanged. The construction is specified in
-[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange) (The
+[KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#p-256-authenticated-key-exchange) (The
 key-agreement derivation); this records how the three questions above were
 answered and what the build chose.
 
@@ -946,7 +946,7 @@ the rejected option's value turned out to be reachable.
 
 - [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#key-agreement-design) -- the
   key-agreement decision this record extends.
-- [PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange) -- the
+- [KEY_EXCHANGE.md](../spec/KEY_EXCHANGE.md#p-256-authenticated-key-exchange) -- the
   normative construction: wire format, mixing order, labels, and the
   protocol-version tag.
 - [fips-provider-surface.md](fips-provider-surface.md) -- what a FIPS provider

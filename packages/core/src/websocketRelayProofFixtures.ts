@@ -46,7 +46,7 @@ export interface WebSocketRelayProofFixtureOptions {
 
 const decoder = new TextDecoder();
 
-// Another member of the domain-separation label space (docs/spec/PROTOCOL.md),
+// Another member of the domain-separation label space (docs/spec/KEY_EXCHANGE.md),
 // in place of the relay proof's own label.
 const REGISTRAR_REQUEST_LABEL = "alcove-relay-registrar-v2:request";
 

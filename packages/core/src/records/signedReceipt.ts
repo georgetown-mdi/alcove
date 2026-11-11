@@ -78,7 +78,7 @@ const RECEIPT_CONTENT_DOMAIN = "alcove-signed-receipt-content/v3";
 
 // The two HKDF info labels the session-derived receipt values are taken
 // under -- this one and RECEIPT_BINDER_LABEL below -- sit in the disjoint
-// space docs/spec/PROTOCOL.md ("The domain-separation label space")
+// space docs/spec/KEY_EXCHANGE.md ("The domain-separation label space")
 // enumerates. Each takes a suffix from a fixed, non-empty set, which is what
 // keeps it prefix-free; neither is given a variable or optional one.
 const RECEIPT_PAYLOAD_MAC_LABEL = "alcove-signed-receipt-payload-v2";

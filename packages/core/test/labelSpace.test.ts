@@ -10,7 +10,7 @@ import { TERMS_UPDATE_DERIVATIONS } from "../src/config/termsUpdate";
 import { RENDEZVOUS_ROLES } from "../src/rendezvous";
 import { ROTATION_HISTORY_DERIVATIONS } from "../src/rotationHistory";
 
-// The domain-separation label space of docs/spec/PROTOCOL.md ("The
+// The domain-separation label space of docs/spec/KEY_EXCHANGE.md ("The
 // domain-separation label space"). The HKDF info strings are not
 // length-prefixed, so the space must be prefix-free; the three JSON-field
 // domains at the end are held to it as well.

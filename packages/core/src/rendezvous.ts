@@ -12,7 +12,7 @@ export type { RendezvousRole };
  * The handshake role a rendezvous side takes: the acceptor dials and sends
  * first (initiator), the inviter listens (responder). Every party, CLI or
  * browser, resolves its role through this one rule; the conformance vectors
- * pin it (docs/spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation).
+ * pin it (docs/spec/KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation).
  *
  * @throws {InternalConsistencyError} if `role` is not a known rendezvous role.
  */
@@ -34,7 +34,7 @@ const PEER_ID_BYTES = 16;
  * HKDF info prefix for the peer-id derivation, completed by the role. The whole
  * construction is a cross-implementation contract between the CLI and the web
  * app: change it in every implementation at once and bump the version
- * (docs/spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation).
+ * (docs/spec/KEY_EXCHANGE.md#webrtc-rendezvous-peer-id-derivation).
  */
 const PEER_ID_INFO_PREFIX = "alcove-webrtc-peerid-v2:";
 

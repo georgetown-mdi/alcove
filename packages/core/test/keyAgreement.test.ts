@@ -25,7 +25,7 @@ const SUITE = String(supportedVersions().kex[0]);
 import type { HandshakeRole } from "../src/types";
 
 // The key-agreement derivation: the one HKDF call over Z, its FixedInfo layout,
-// and what reaches it and what it reaches (docs/spec/PROTOCOL.md, "The
+// and what reaches it and what it reaches (docs/spec/KEY_EXCHANGE.md, "The
 // key-agreement derivation").
 
 const ECDH_P256 = { name: "ECDH", namedCurve: "P-256" } as const;

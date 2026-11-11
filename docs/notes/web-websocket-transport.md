@@ -119,7 +119,7 @@ The relay below is that shape with binary frames, pause-and-resume forwarding, p
 **One connection per party, paired by the exchange's relay key.**
 
 - A party opens `wss://<relay name>/<fixed path>` and sends one hello frame: its role (`inviter` or `acceptor`) and a credential.
-- The credential is a proof under a key derived from the exchange's relay key under a label of its own, in the [domain-separation label space](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), with an expiry in the signed message, as the registrar's proof is built ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-registrar-request-proof)).
+- The credential is a proof under a key derived from the exchange's relay key under a label of its own, in the [domain-separation label space](../spec/KEY_EXCHANGE.md#p-256-authenticated-key-exchange), with an expiry in the signed message, as the registrar's proof is built ([RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-registrar-request-proof)).
   A key of its own, rather than coturn's HMAC-SHA-1 credential reused, so a captured relay hello mints no TURN credential and a captured TURN credential opens no relay socket.
   The derivation and the proof are specified in [RELAY_CREDENTIALS.md](../spec/RELAY_CREDENTIALS.md#the-websocket-relay-proof).
 - The relay looks up the one key the hello names by exchange id, and verifies the proof against it -- the same SQLite table coturn reads, written by the same registrar ([infra/relay/README.md](../../infra/relay/README.md#per-exchange-keys)) -- and pairs the two sockets that verified under one key with opposite roles.
