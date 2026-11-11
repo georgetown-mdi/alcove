@@ -125,7 +125,7 @@ other repository-level coupling is the docker Dependabot entry for
    [the 443 front](#the-443-front) routes. Every script refuses to run without
    it; nothing defaults to a hostname.
 3. Put `/etc/alcove-relay/acme.env` from [`certs/env.example`](certs/env.example)
-   at mode 600, with the DNS provider's credential.
+   at mode 600, with the DNS provider's credential ([Certificates](#certificates)).
 4. Run `install.sh` as root. It adds [`/swapfile`](#os-updates) where it is not
    set up, installs a container runtime, builds the image,
    creates the data directory for the secrets table, obtains a certificate,
@@ -945,9 +945,62 @@ probe of that service fails on the name. Each forced renewal counts against Let'
 Encrypt's limit of five duplicate certificates a week.
 
 The provider is a variable, and the credential lives in `/etc/alcove-relay/acme.env`
-at mode 600. `certs/env.example` carries the Cloudflare shape (a token scoped to
-`Zone:DNS:Edit` on the one zone, not a global key); another provider is that
-provider's variables in the same file.
+at mode 600. `certs/env.example` has the Cloudflare shape; another provider is
+that provider's variables in the same file. The Cloudflare token's scope is in
+[`infra/hosted`](../hosted/README.md#state-and-credentials).
+
+**Delegated renewal.** A token that can edit the zone holding the relay's names
+can also repoint every other name in that zone, and Cloudflare scopes a DNS
+grant to a zone, not a record. So the challenge is written in a separate zone,
+on a domain registered for nothing else, and each name on a certificate the
+host renews -- the realm, the registrar's, the WebSocket relay's, and the
+broker's ([`infra/broker/README.md`](../broker/README.md)) -- has a CNAME from
+`_acme-challenge.<name>` to `_acme-challenge.<challenge domain>`. The project's
+CNAMEs are declared in [`infra/hosted`](../hosted/README.md#delegated-acme-challenges).
+The host's token then needs the challenge zone only.
+
+- **lego**: its documentation describes following the CNAME and writing the
+  challenge at its target, with no setting of its own. No lego run here has
+  shown it yet; the staging issuance below does.
+- **acme.sh** writes it there only when `ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN` in
+  `acme.env` names the challenge domain; `renew.sh` then passes it
+  `--challenge-alias`. No acme.sh run has driven the alias yet either.
+- **Without the CNAMEs**, leave `ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN` empty and
+  give the token the zone that holds the names: the challenge is written there.
+
+Switching a host over is one sitting, because a renewal between the two steps
+fails: apply the CNAMEs, and put the challenge-zone token, and for acme.sh the
+challenge domain, in `acme.env`. Then prove every name through the delegation
+with a forced issuance against Let's Encrypt's staging directory, as root,
+before revoking the old token. Run the command for the client
+`ALCOVE_RELAY_ACME_CLIENT` names in `acme.env` (lego when it is unset). Each
+keeps its account key and certificate in a scratch directory, removed
+afterwards, so none of it touches the host's certificates:
+
+```sh
+# lego
+( set -a; . /etc/alcove-relay/acme.env; set +a
+  lego run --accept-tos --email "$ALCOVE_RELAY_ACME_EMAIL" --dns cloudflare \
+    --server https://acme-staging-v02.api.letsencrypt.org/directory \
+    --path /root/acme-staging-proof --domains <realm> --domains <registrar name> \
+    --domains <WebSocket relay name> --domains <broker name> )
+rm -r /root/acme-staging-proof
+
+# acme.sh
+( set -a; . /etc/alcove-relay/acme.env; set +a
+  acme.sh --home /etc/alcove-relay/acme --config-home /root/acme-staging-proof \
+    --issue --staging --force --dns dns_cloudflare \
+    --accountemail "$ALCOVE_RELAY_ACME_EMAIL" \
+    -d <realm> --challenge-alias "$ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN" \
+    -d <registrar name> --challenge-alias "$ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN" \
+    -d <WebSocket relay name> --challenge-alias "$ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN" \
+    -d <broker name> --challenge-alias "$ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN" )
+rm -r /root/acme-staging-proof
+```
+
+The challenge domain's registration must not lapse: whoever registers it next
+can answer the challenge for every name delegated to it, and so obtain a
+certificate for each.
 
 Two services read the certificate: [the 443 front](#the-443-front), which
 terminates TLS for TURN and the WebSocket relay, and
@@ -1326,7 +1379,7 @@ given.
 | `/var/lib/alcove-relay/turndb` | The secrets table and the exchange mapping beside it, owned by the container's uid, in a mode-700 directory of that account's |
 | `/etc/alcove-relay/certs/` | The certificate and private key the ACME hook deploys. The key is mode 600 and owned by root |
 | `/etc/alcove-relay/relay.env` | The realm, the port range, the quotas, and the external-address helper. Copy [`relay.env.example`](relay.env.example) |
-| `/etc/alcove-relay/acme.env` | The ACME contact, client, provider, and the provider's credential. Copy [`certs/env.example`](certs/env.example) |
+| `/etc/alcove-relay/acme.env` | The ACME contact, client, provider, challenge domain, and the provider's credential ([Certificates](#certificates)). Copy [`certs/env.example`](certs/env.example) |
 | `aws/env` | The demo box's instance id, region, profile, and optional zone credential. Copy [`aws/env.example`](aws/env.example) |
 
 Not to be confused with [`hosted/`](../hosted/README.md), the OpenTofu root

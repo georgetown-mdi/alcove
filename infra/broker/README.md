@@ -185,6 +185,7 @@ Each costs availability only: it leaves a unit on older inputs, or stopped, unti
 Let's Encrypt over DNS-01 through lego v5, as for the relay ([`../relay/README.md`, Certificates](../relay/README.md#certificates)).
 `lego run --renew-days 30` issues the first certificate and after that renews only inside its window, so the daily timer is a no-op on most days and the front keeps running.
 The provider credential is exported only to lego's subshell.
+Where the name delegates its `_acme-challenge` to a challenge-only zone: [Delegated renewal](../relay/README.md#certificates).
 
 Two overrides exist for a run by hand: `ALCOVE_BROKER_RENEW_DAYS` widens the window (365 forces a renewal) and `ALCOVE_BROKER_LEGO_EXTRA` appends lego flags (`--no-random-sleep`).
 Each forced renewal counts against Let's Encrypt's limit of five duplicate certificates a week.

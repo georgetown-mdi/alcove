@@ -16,3 +16,7 @@ public_names = {
 }
 
 dns_only_names = ["<each DNS-only name in the zone>"]
+
+# Optional. Set only once the domain is registered and its zone added: it
+# declares an _acme-challenge CNAME into it on every DNS-only name.
+# acme_challenge_domain = "<the challenge-only domain>"

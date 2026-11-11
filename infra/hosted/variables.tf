@@ -48,5 +48,14 @@ variable "demo_name" {
 
 variable "dns_only_names" {
   type        = set(string)
-  description = "The names in the zone whose address records this root does not declare: the relay host's DNS-only names. Each gets the zone's no-mail records."
+  description = "The names in the zone whose address records this root does not declare: the relay host's DNS-only names, each one a name on a certificate the relay host renews. Each gets the zone's no-mail records, and an _acme-challenge CNAME into the challenge zone once acme_challenge_domain is set."
+}
+
+# Empty by default, so a plan works before the domain is registered. A CNAME
+# into an unregistered domain lets whoever registers it obtain certificates for
+# the delegated names, so no record exists until this is set.
+variable "acme_challenge_domain" {
+  type        = string
+  default     = ""
+  description = "The registered domain whose Cloudflare zone holds the relay host's ACME DNS-01 challenge records, and nothing else. Empty declares no _acme-challenge CNAME. Set it only after the domain is registered and its zone added."
 }

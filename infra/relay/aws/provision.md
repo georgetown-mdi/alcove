@@ -40,6 +40,15 @@ name serves as the TURN realm, the certificate subject, and the host in the
 routes -- the registrar's, the broker's -- gets an A record for the same
 address.
 
+**An `_acme-challenge` CNAME for each of those names**, into a challenge-only
+zone on a domain registered for nothing else, so the host's DNS token can edit
+that zone alone and no record that serves a name ([Certificates,
+Delegated renewal](../README.md#certificates)). Register the domain and add
+its zone before creating the CNAMEs, which otherwise point at a name anyone can
+register. The project's are declared in
+[`infra/hosted`](../../hosted/README.md#delegated-acme-challenges). Without
+them, the token needs the zone that holds the names.
+
 ## Ports
 
 Inbound, in the instance's security group:
@@ -152,6 +161,7 @@ install -m 600 /dev/stdin /etc/alcove-relay/acme.env <<'ACME'
 ALCOVE_RELAY_ACME_EMAIL=relay-admin@example.org
 ALCOVE_RELAY_ACME_CLIENT=lego
 ALCOVE_RELAY_DNS_PROVIDER=cloudflare
+ALCOVE_RELAY_ACME_CHALLENGE_DOMAIN=challenge.example.net
 CLOUDFLARE_DNS_API_TOKEN=REPLACE_WITH_YOUR_DNS_TOKEN
 ACME
 /opt/alcove-src/infra/relay/install.sh
