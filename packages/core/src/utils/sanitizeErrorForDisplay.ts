@@ -429,18 +429,39 @@ function firstPartyLineBreakText(link: unknown): string | undefined {
  * changes nothing.
  */
 function renderFirstPartyLineBreaks(text: string): string {
-  const lines = redactPrivateKeyMaterial(text).split("\n");
+  return sanitizeKeepingLineBreaks(
+    redactPrivateKeyMaterial(text)
+      .split("\n")
+      .map(refuseCauseSeparatorOpening)
+      .join("\n"),
+    COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
+  );
+}
+
+/**
+ * `text` escaped by {@link sanitizeForDisplay} line by line and rejoined with
+ * its line breaks, under one budget of `maxLength`: each line is charged its
+ * escaped length plus one for the break behind it, and lines dropped for want
+ * of room are marked on the last line kept. Every control character inside a
+ * line is escaped, so only a break `text` already holds survives.
+ *
+ * For text whose raw breaks are first-party: a link or a next step
+ * {@link sanitizeErrorForDisplay}'s output holds, where every partner byte was
+ * escaped or control-replaced before the breaks were placed.
+ */
+export function sanitizeKeepingLineBreaks(
+  text: string,
+  maxLength: number,
+): string {
   const rendered: string[] = [];
   let spent = 0;
-  for (const line of lines) {
-    const room = COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH - spent;
+  for (const line of text.split("\n")) {
+    const room = maxLength - spent;
     if (room <= 0) {
       rendered[rendered.length - 1] += DISPLAY_TRUNCATION_MARKER;
       break;
     }
-    const escaped = sanitizeForDisplay(refuseCauseSeparatorOpening(line), {
-      maxLength: room,
-    });
+    const escaped = sanitizeForDisplay(line, { maxLength: room });
     rendered.push(escaped);
     // The escape truncated and marked this line; no room is left for the rest.
     if (escaped.length > room) break;
@@ -678,8 +699,12 @@ export function sanitizeErrorForDisplayWithStep(
  * link's recovery step from being cut off.
  *
  * The split on {@link ERROR_CAUSE_SEPARATOR} is exact. Each link is escaped
- * whole, so a break kept through {@link keepFirstPartyLineBreaks} arrives as
- * `\x0a`: the mark lives on the error object, which rendered text has not.
+ * line by line ({@link sanitizeKeepingLineBreaks}), so a break kept through
+ * {@link keepFirstPartyLineBreaks} stays a line break: the renderer escaped or
+ * control-replaced every byte of a link before placing its breaks, so a raw
+ * break in its output is the renderer's own. Text a subverted source composed
+ * can hold a raw break anywhere, and gains extra lines in a link still escaped
+ * and capped, as it gains extra links by spelling the separator.
  *
  * A chain arriving with {@link CAUSE_DEPTH_ELISION_MARKER} leaves with it: it
  * is lifted off the last link before the escape and appended after, so a cut
@@ -696,10 +721,8 @@ export function sanitizeErrorChainLinks(rendered: string): Array<string> {
   const arrivedElided = kept[last].endsWith(ELISION_SUFFIX);
   if (arrivedElided) kept[last] = kept[last].slice(0, -ELISION_SUFFIX.length);
   const escaped = kept.map((link) =>
-    sanitizeForDisplay(link, {
-      maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
-    }),
-  ) as Array<string>;
+    sanitizeKeepingLineBreaks(link, COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH),
+  );
   // Appended after the escape and the cap, as the renderer does.
   if (arrivedElided || links.length > MAX_ERROR_CAUSE_DEPTH)
     escaped[last] = `${escaped[last]}${ELISION_SUFFIX}`;

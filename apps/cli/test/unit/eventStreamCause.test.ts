@@ -5,6 +5,7 @@ import {
   failureCauseFromUntrusted,
   failureCauseSentence,
   markFailureCause,
+  sanitizeErrorForDisplay,
   sanitizeForDisplay,
 } from "@alcove/core";
 import { FAILURE_CAUSE_KINDS } from "@alcove/core/testing";
@@ -35,6 +36,44 @@ test("a catalog cause is emitted as its kind and facts, marked as stating its st
     `${failureCauseSentence(cause)}\n${remedyForCause(cause)}`,
   );
   expect(event.message).toBe(renderFailureForOperator(causeError(cause)));
+  expect(event.nextStep).toBe(remedyForCause(cause));
+});
+
+test("the next step is its own field, and the message is the report, a line break and that step", () => {
+  const countFailure =
+    "Map maximum size exceeded\nwhile counting the second key";
+  const err = markFailureCause(
+    new Error(
+      failureCauseSentence({
+        kind: "set-over-limit",
+        stage: "before-contact",
+        limit: "uncounted",
+      }),
+      { cause: new Error(countFailure) },
+    ),
+    { kind: "set-over-limit", stage: "before-contact", limit: "uncounted" },
+  );
+  const event = buildErrorEvent(err, "prepare");
+  expect(event.nextStep).toBe(
+    remedyForCause({
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "uncounted",
+    }),
+  );
+  expect(event.message).toBe(
+    `${sanitizeErrorForDisplay(err)}\n${event.nextStep}`,
+  );
+});
+
+test("a failure with no next step has no nextStep field", () => {
+  const event = buildErrorEvent(
+    new ConnectionError("read ECONNRESET", "transport"),
+    "run",
+  );
+  expect(event.nextStep).toBeUndefined();
+  expect(event.recoveryHint).toBeUndefined();
+  expect("nextStep" in event).toBe(false);
 });
 
 test("a no-show with a file of this side's name emits the shared-name fact and the peer_id remedy", () => {
@@ -282,6 +321,7 @@ test("every emitted cause passes the allowlist a consumer checks it against", ()
     { kind: "message-write-unconfirmed", failure: "write-incomplete" },
     { kind: "message-write-unconfirmed", failure: "sequence-spent", seq: 4 },
     { kind: "shared-name-at-entry" },
+    { kind: "key-exchange-timed-out" },
   ];
   expect(new Set(emitted.map((cause) => cause.kind))).toEqual(
     new Set(FAILURE_CAUSE_KINDS),

@@ -1012,10 +1012,9 @@ test("the handshake times out if the peer never responds", async () => {
   // Tagged as a peer-wait timeout so a consumer that also knows the run swept
   // the shared folder at entry can offer that as the likely cause.
   expect(isPeerWaitTimeout(err)).toBe(true);
-  // The console recognizes this failure by its message, having no catalog
-  // cause to read (docs/notes/failure-cause-catalog.md).
+  // A consumer recognizes this failure by its catalog cause, not its message.
   expect((err as Error).message).toBe(KEX_HANDSHAKE_TIMEOUT_MESSAGE);
-  expect(failureCauseOf(err)).toBeUndefined();
+  expect(failureCauseOf(err)).toEqual({ kind: "key-exchange-timed-out" });
 });
 
 test("a transport refusal during the handshake is reported as itself, not as a timeout", async () => {

@@ -34,13 +34,18 @@ const causeError = (cause: FailureCause): Error =>
 
 describe("a representative cause of each kind", () => {
   test.each(Object.values(REPRESENTATIVE_FAILURE_CAUSES))(
-    "$kind states core's sentence, then the CLI's remedy, at the command boundary and on the terminal event",
+    "$kind states core's sentence, then the CLI's remedy where it has one, at the command boundary and on the terminal event",
     (cause) => {
-      const expected = `${failureCauseSentence(cause)}\n${remedyForCause(cause)}`;
+      const remedy = remedyForCause(cause);
+      const expected =
+        remedy === undefined
+          ? failureCauseSentence(cause)
+          : `${failureCauseSentence(cause)}\n${remedy}`;
       expect(renderFailureForOperator(causeError(cause))).toBe(expected);
       const event = buildErrorEvent(causeError(cause), "run");
       expect(event.message).toBe(expected);
-      expect(event.recoveryHint).toBe(true);
+      expect(event.nextStep).toBe(remedy);
+      expect(event.recoveryHint).toBe(remedy === undefined ? undefined : true);
       // The cause as a supervisor reads it off the stream.
       expect(
         failureCauseFromUntrusted(JSON.parse(JSON.stringify(event.cause))),

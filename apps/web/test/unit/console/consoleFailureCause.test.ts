@@ -3,10 +3,11 @@ import { describe, expect, test } from "vitest";
 import {
   KEX_HANDSHAKE_TIMEOUT_MESSAGE,
   PeerAbortError,
+  errorWithPartnerCauseLinks,
   failureCauseFromUntrusted,
   failureCauseSentence,
-  joinErrorCauseChain,
-  sanitizeErrorChainLinks,
+  keepFirstPartyLineBreaks,
+  partnerOriginText,
   sanitizeErrorForDisplay,
   setOverLimitError,
   setOverLimitRemedy,
@@ -29,8 +30,10 @@ import {
 import {
   RelayedSelfExplainingError,
   RelayedTerminalError,
+  relayedTerminalErrorOf,
 } from "@psi/jobClient/serverJobExchangeDriver";
 import { failureFor } from "@exchange/useInviterExchange";
+import { validateAndSanitizeEvent } from "@jobs/cliDriver";
 
 import type {
   FailureCause,
@@ -155,7 +158,16 @@ const SAMPLES: {
     { kind: "message-write-unconfirmed", failure: "sequence-spent", seq: 4 },
   ],
   "shared-name-at-entry": [{ kind: "shared-name-at-entry" }],
+  "key-exchange-timed-out": [{ kind: "key-exchange-timed-out" }],
 };
+
+// The kinds the console states in copy outside its remedy map.
+const KINDS_WITHOUT_CONSOLE_REMEDY: ReadonlyArray<FailureCauseKind> = [
+  "key-exchange-timed-out",
+];
+
+const hasConsoleRemedy = (cause: FailureCause): boolean =>
+  !KINDS_WITHOUT_CONSOLE_REMEDY.includes(cause.kind);
 
 /** A relayed failure as the job client builds it off the CLI's event. */
 function relayed(
@@ -166,6 +178,44 @@ function relayed(
   error.failureCause = fields.failureCause;
   error.exitCode = fields.exitCode;
   return error;
+}
+
+/**
+ * The failure the seat raises for the CLI's terminal `error` event, through
+ * the relay's validation and the seat's read of what the relay sent. `report`
+ * and `nextStep` are the CLI's message without its step and the step, which
+ * the CLI emits as `message` and `nextStep`.
+ */
+function relayedFromCli({
+  report,
+  nextStep,
+  cause,
+  exitCode,
+  recoveryHint = nextStep !== undefined,
+  internalFault = false,
+  sendNextStep = true,
+}: {
+  report: string;
+  nextStep?: string;
+  cause?: FailureCause;
+  exitCode: number;
+  recoveryHint?: boolean;
+  internalFault?: boolean;
+  sendNextStep?: boolean;
+}): RelayedTerminalError {
+  const event = validateAndSanitizeEvent({
+    v: 1,
+    type: "error",
+    category: "exchange",
+    message: nextStep === undefined ? report : `${report}\n${nextStep}`,
+    ...(nextStep !== undefined && sendNextStep ? { nextStep } : {}),
+    ...(recoveryHint ? { recoveryHint: true } : {}),
+    ...(internalFault ? { internalFault: true } : {}),
+    exitCode,
+    ...(cause !== undefined ? { cause } : {}),
+  });
+  if (event === null) throw new Error("the relay refused the event");
+  return relayedTerminalErrorOf(event);
 }
 
 const BOTH_SWEPT =
@@ -182,6 +232,7 @@ describe("a console run that failed on a catalog cause", () => {
   test.each(
     Object.values(SAMPLES)
       .flat()
+      .filter(hasConsoleRemedy)
       .map((cause) => [JSON.stringify(cause), cause] as const),
   )("%s shows core's sentence and the console's remedy", (_, cause) => {
     const failure = failureFor(
@@ -269,8 +320,8 @@ describe("a console run that failed on a catalog cause", () => {
     expect(failure.sharedName).toBe(true);
   });
 
-  // The CLI writes its remedy beneath the chain, and the relay escapes that
-  // break into the last link: the report ends before it.
+  // The CLI writes its remedy beneath the chain and states it in its own
+  // field, so the relay splits the chain from the report alone.
   test.each([
     [
       "an unconfirmed write",
@@ -294,14 +345,14 @@ describe("a console run that failed on a catalog cause", () => {
   ] as const)(
     "%s, relayed as the CLI reports it, keeps the chain and shows no escaped break",
     (_, cause, link, cliRemedy) => {
-      const cliMessage = `${failureCauseSentence(cause)}\ncaused by: ${link}\n${cliRemedy}`;
-      const relayedMessage = joinErrorCauseChain(
-        sanitizeErrorChainLinks(cliMessage),
-      );
-      expect(relayedMessage).toContain("\\x0a");
       const failure = failureFor(
         "exchange",
-        relayed(relayedMessage, { failureCause: cause, exitCode: 64 }),
+        relayedFromCli({
+          report: `${failureCauseSentence(cause)}\ncaused by: ${link}`,
+          nextStep: cliRemedy,
+          cause,
+          exitCode: 64,
+        }),
       );
       expect(failure.reportedCause).toBe(link);
       expect(`${failure.message}\n${failure.reportedCause}`).not.toContain(
@@ -315,22 +366,24 @@ describe("a console run that failed on a catalog cause", () => {
     "different peer_id on one side.";
 
   function sharedNameReport(names: ReadonlyArray<string>): {
-    relayedMessage: string;
+    relayedLink: string;
     reportedCause: string | undefined;
   } {
     const cause = { kind: "shared-name-at-entry" } as const;
     const link = `${names.length + 1} unexpected protocol file(s) in /x: ${names.join(", ")}, and 1 more`;
-    const cliMessage = sanitizeErrorForDisplay(
-      new Error(failureCauseSentence(cause), { cause: new Error(link) }),
-    );
-    const relayedMessage = joinErrorCauseChain(
-      sanitizeErrorChainLinks(`${cliMessage}\n${SHARED_NAME_REMEDY}`),
-    );
-    const failure = failureFor(
-      "exchange",
-      relayed(relayedMessage, { failureCause: cause, exitCode: 64 }),
-    );
-    return { relayedMessage, reportedCause: failure.reportedCause };
+    const error = relayedFromCli({
+      report: sanitizeErrorForDisplay(
+        new Error(failureCauseSentence(cause), { cause: new Error(link) }),
+      ),
+      nextStep: SHARED_NAME_REMEDY,
+      cause,
+      exitCode: 64,
+    });
+    const failure = failureFor("exchange", error);
+    return {
+      relayedLink: error.message.split("\ncaused by: ")[1],
+      reportedCause: failure.reportedCause,
+    };
   }
 
   test.each([
@@ -340,11 +393,7 @@ describe("a console run that failed on a catalog cause", () => {
   ])(
     "a file name holding %s keeps every name and the count in the report",
     (_, name) => {
-      const { relayedMessage, reportedCause } = sharedNameReport([
-        name,
-        "site-b.json",
-      ]);
-      expect(relayedMessage).toContain(SHARED_NAME_REMEDY);
+      const { reportedCause } = sharedNameReport([name, "site-b.json"]);
       expect(reportedCause).toContain("site-b.json, and 1 more");
       expect(reportedCause).not.toContain(SHARED_NAME_REMEDY);
       // eslint-disable-next-line no-control-regex
@@ -353,19 +402,20 @@ describe("a console run that failed on a catalog cause", () => {
   );
 
   test("a file name holding an escape byte shows as the relay sent it", () => {
-    const { relayedMessage, reportedCause } = sharedNameReport([
+    const { relayedLink, reportedCause } = sharedNameReport([
       "site-\x1b[31m.json",
     ]);
-    const relayedLink = relayedMessage.split("\ncaused by: ")[1];
     expect(relayedLink).toContain("\\x1b");
-    expect(reportedCause).toBe(relayedLink.split("\\x0a")[0]);
+    expect(reportedCause).toBe(relayedLink);
     // eslint-disable-next-line no-control-regex
     expect(reportedCause).not.toMatch(/[\x00-\x1f\x7f]/);
   });
 
   // The CLI's suite drives the same causes (runEndingRemedy.test.ts) and holds
   // its message to core's sentence first, so the two state the cause alike.
-  test.each(Object.values(REPRESENTATIVE_FAILURE_CAUSES))(
+  test.each(
+    Object.values(REPRESENTATIVE_FAILURE_CAUSES).filter(hasConsoleRemedy),
+  )(
     "the representative $kind, read off the CLI's event, leads with core's sentence",
     (cause) => {
       const streamed = failureCauseFromUntrusted(
@@ -577,15 +627,16 @@ describe("a console run that failed on a catalog cause", () => {
 
   test("the first entrant's handshake timeout after a delete-mode sweep shows the both-swept line, then the channel's step", () => {
     // The CLI's report for this failure, as apps/cli's protocol.test.ts pins
-    // its first line: no cause, no recoveryHint, exit 69.
-    const handshakeTimeout = () => {
-      const error = new RelayedTerminalError(
-        `${KEX_HANDSHAKE_TIMEOUT_MESSAGE}\ncaused by: no message arrived ` +
-          "within 30000 ms; run again with a longer --inactivity-timeout.",
-      );
-      error.exitCode = 69;
-      return error;
-    };
+    // it: the key-exchange cause, no next step, no recoveryHint, exit 69.
+    const handshakeReport =
+      `${KEX_HANDSHAKE_TIMEOUT_MESSAGE}\ncaused by: no message arrived ` +
+      "within 30000 ms; run again with a longer --inactivity-timeout.";
+    const handshakeTimeout = () =>
+      relayedFromCli({
+        report: handshakeReport,
+        cause: { kind: "key-exchange-timed-out" },
+        exitCode: 69,
+      });
     const timedOut = (context: FailureContext) =>
       failureFor("exchange", handshakeTimeout(), context);
     const swept = timedOut({ channel: "filedrop", sweepExchangeFiles: true });
@@ -603,6 +654,10 @@ describe("a console run that failed on a catalog cause", () => {
         "than an issue with your data, so try again.",
     );
     expect(sweptSftp.reportedCause).toBeUndefined();
+    // The CLI's report is left out: without a next step it still names the
+    // flag that sets the inactivity limit.
+    expect(handshakeTimeout().nextStep).toBeUndefined();
+    expect(handshakeTimeout().message).toContain("--inactivity-timeout");
     // The partner had reached the shared location, and the wait setting does
     // not bound the key exchange.
     for (const { message } of [swept, sweptSftp]) {
@@ -618,6 +673,7 @@ describe("a console run that failed on a catalog cause", () => {
     expect(plain.filedrop.title).toBe("Exchange failed");
     expect(plain.filedrop.message).not.toContain(BOTH_SWEPT);
     expect(plain.sftp.message).not.toContain(BOTH_SWEPT);
+    expect(plain.filedrop.reportedCause).toBe(handshakeReport);
     for (const context of [
       { channel: "filedrop", sweepExchangeFiles: false },
       { channel: "filedrop", sweepExchangeFiles: true, retainFiles: true },
@@ -627,16 +683,22 @@ describe("a console run that failed on a catalog cause", () => {
     ] satisfies Array<FailureContext & { channel: keyof typeof plain }>) {
       expect(timedOut(context)).toEqual(plain[context.channel]);
     }
-    // Only the handshake timeout's own first line is recognized.
-    const otherFailure = new RelayedTerminalError(
-      `the exchange stopped\ncaused by: ${KEX_HANDSHAKE_TIMEOUT_MESSAGE}`,
-    );
-    expect(
-      failureFor("exchange", otherFailure, {
-        channel: "filedrop",
-        sweepExchangeFiles: true,
-      }).message,
-    ).not.toContain(BOTH_SWEPT);
+    // The cause is what is recognized, not the report's text: the same report
+    // without it, or another cause beside it, takes other copy.
+    for (const error of [
+      relayedFromCli({ report: handshakeReport, exitCode: 69 }),
+      relayedFromCli({
+        report: handshakeReport,
+        cause: { kind: "partner-stopped-responding", silentMs: 30_000 },
+        exitCode: 69,
+      }),
+    ])
+      expect(
+        failureFor("exchange", error, {
+          channel: "filedrop",
+          sweepExchangeFiles: true,
+        }).message,
+      ).not.toContain(BOTH_SWEPT);
   });
 
   test("a missing shared folder names the mount, not a flag", () => {
@@ -802,13 +864,14 @@ describe("a console run that failed on a catalog cause", () => {
           ? { cause: new RangeError("Map maximum size exceeded") }
           : undefined;
       const err = setOverLimitError(cause, countFailure);
-      const cliMessage = `${sanitizeErrorForDisplay(err)}\n${setOverLimitRemedy(cause)}`;
-      const relayedMessage = joinErrorCauseChain(
-        sanitizeErrorChainLinks(cliMessage),
-      );
       const failure = failureFor(
         "exchange",
-        relayed(relayedMessage, { failureCause: cause, exitCode: 64 }),
+        relayedFromCli({
+          report: sanitizeErrorForDisplay(err),
+          nextStep: setOverLimitRemedy(cause),
+          cause,
+          exitCode: 64,
+        }),
       );
       const shown = `${failure.message}\n${failure.reportedCause ?? ""}`;
       const times = (part: string): number => shown.split(part).length - 1;
@@ -835,14 +898,12 @@ describe("a console run that failed on a catalog cause", () => {
       const err = setOverLimitError(cause, {
         cause: new RangeError(countFailure),
       });
-      const cliMessage = `${sanitizeErrorForDisplay(err)}\n${setOverLimitRemedy(cause)}`;
-      const relayedLinks = sanitizeErrorChainLinks(cliMessage);
-      // The relay's cap cuts the last link inside the remedy or before it.
-      expect(relayedLinks.at(-1)).not.toContain(setOverLimitRemedy(cause));
       const failure = failureFor(
         "exchange",
-        relayed(joinErrorCauseChain(relayedLinks), {
-          failureCause: cause,
+        relayedFromCli({
+          report: sanitizeErrorForDisplay(err),
+          nextStep: setOverLimitRemedy(cause),
+          cause,
           exitCode: 64,
         }),
       );
@@ -856,22 +917,196 @@ describe("a console run that failed on a catalog cause", () => {
     },
   );
 
+  test("an uncounted set whose count failure spans lines shows it whole", () => {
+    const cause = {
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "uncounted",
+    } as const;
+    const lines = [
+      "Map maximum size exceeded",
+      "while counting the second linkage key",
+    ];
+    const err = setOverLimitError(cause, {
+      cause: keepFirstPartyLineBreaks(new RangeError(lines.join("\n")), lines),
+    });
+    const report = sanitizeErrorForDisplay(err);
+    expect(report).toContain(lines.join("\n"));
+    const failure = failureFor(
+      "exchange",
+      relayedFromCli({
+        report,
+        nextStep: setOverLimitRemedy(cause),
+        cause,
+        exitCode: 64,
+      }),
+    );
+    expect(failure.reportedCause).toBe(lines.join("\n"));
+    expect(failure.reportedCause).not.toContain("x0a");
+    expect(failure.reportedCause).not.toContain(setOverLimitRemedy(cause));
+  });
+
+  test("a partner's value holding a line break opens no line of the report", () => {
+    const cause = {
+      kind: "set-over-limit",
+      stage: "before-contact",
+      limit: "uncounted",
+    } as const;
+    const err = setOverLimitError(cause, {
+      cause: errorWithPartnerCauseLinks(
+        "Map maximum size exceeded",
+        "partner value: ",
+        partnerOriginText("email\nINJECTED line"),
+      ),
+    });
+    const failure = failureFor(
+      "exchange",
+      relayedFromCli({
+        report: sanitizeErrorForDisplay(err),
+        nextStep: setOverLimitRemedy(cause),
+        cause,
+        exitCode: 64,
+      }),
+    );
+    const shown = failure.reportedCause?.split("\n") ?? [];
+    expect(shown).toContain("Map maximum size exceeded");
+    const partnerLine = shown.find((line) => line.includes("INJECTED line"));
+    // Control-replaced by core before the CLI placed its breaks.
+    expect(partnerLine).toBe(
+      "caused by: partner value: email<0a>INJECTED line",
+    );
+    expect(shown.some((line) => line.startsWith("INJECTED"))).toBe(false);
+  });
+
   test("an uncounted set whose report holds no chain shows no report", () => {
     const cause = {
       kind: "set-over-limit",
       stage: "before-contact",
       limit: "uncounted",
     } as const;
-    const relayedMessage = joinErrorCauseChain(
-      sanitizeErrorChainLinks(
-        `${failureCauseSentence(cause)}\n${setOverLimitRemedy(cause)}`,
-      ),
-    );
     const failure = failureFor(
       "exchange",
-      relayed(relayedMessage, { failureCause: cause, exitCode: 64 }),
+      relayedFromCli({
+        report: failureCauseSentence(cause),
+        nextStep: setOverLimitRemedy(cause),
+        cause,
+        exitCode: 64,
+      }),
     );
     expect(failure.reportedCause).toBeUndefined();
+  });
+});
+
+describe("the CLI's next step, relayed in its own field", () => {
+  const report = "the exchange stopped\ncaused by: the partner refused";
+
+  test("crosses apart from the report, which the relay splits alone", () => {
+    const error = relayedFromCli({
+      report,
+      nextStep: "Contact your partner before running again.",
+      exitCode: 69,
+    });
+    expect(error.message).toBe(report);
+    expect(error.nextStep).toBe("Contact your partner before running again.");
+  });
+
+  test("absent, leaves the whole message as the report", () => {
+    const error = relayedFromCli({
+      report,
+      nextStep: "Contact your partner before running again.",
+      exitCode: 69,
+      sendNextStep: false,
+    });
+    expect(error.nextStep).toBeUndefined();
+    expect(error.message).toBe(
+      "the exchange stopped\ncaused by: the partner refused\nContact " +
+        "your partner before running again.",
+    );
+  });
+
+  test("keeps a line break inside the step", () => {
+    const termsStep =
+      "Agree on the linkage terms with your partner, then run again.\n" +
+      'Your file\'s column "email" (email) is matched on.';
+    const failure = failureFor(
+      "exchange",
+      relayedFromCli({ report, nextStep: termsStep, exitCode: 69 }),
+      { channel: "filedrop" },
+    );
+    expect(failure.reportedCause).toBe(`${report}\n${termsStep}`);
+    expect(failure.reportedCause).not.toContain("x0a");
+  });
+
+  test("leaves the partner refusal's report without the step, which the console's copy states", () => {
+    const partnerStep =
+      "Contact your partner before running again: the partner or the agreed " +
+      "terms refused this exchange, and retrying unchanged will fail the " +
+      "same way.";
+    const failure = failureFor(
+      "exchange",
+      relayedFromCli({
+        report: "the peer authentically signaled that it aborted the exchange",
+        nextStep: partnerStep,
+        exitCode: PARTNER_REFUSED_EXIT_CODE,
+      }),
+      { channel: "filedrop" },
+    );
+    expect(failure.title).toBe("Your partner refused this exchange");
+    expect(failure.reportedCause).toBe(
+      "the peer authentically signaled that it aborted the exchange",
+    );
+    expect(failure.message).not.toContain("x0a");
+  });
+
+  test("follows an internal fault's report on a line of its own", () => {
+    const faultStep =
+      "This is a fault in Alcove itself: report it with this message. " +
+      "Retrying will not help.";
+    const failure = failureFor(
+      "exchange",
+      relayedFromCli({
+        report,
+        nextStep: faultStep,
+        exitCode: 70,
+        internalFault: true,
+      }),
+      { channel: "sftp" },
+    );
+    expect(failure.title).toBe("Exchange failed");
+    expect(failure.message).toBe(
+      "The exchange stopped. Its report below states the cause and what to " +
+        "do next.",
+    );
+    expect(failure.reportedCause).toBe(`${report}\n${faultStep}`);
+    expect(failure.retry).toBe("withheld");
+  });
+
+  test("follows a self-explaining report on a line of its own", () => {
+    const termsStep =
+      "Agree on the linkage terms with your partner, then run the same " +
+      "command again.";
+    const failure = failureFor(
+      "exchange",
+      relayedFromCli({ report, nextStep: termsStep, exitCode: 69 }),
+      { channel: "filedrop" },
+    );
+    expect(failure.reportedCause).toBe(`${report}\n${termsStep}`);
+    expect(failure.reportedCause).not.toContain("x0a");
+  });
+
+  test("is dropped where the message does not end with it", () => {
+    const event = validateAndSanitizeEvent({
+      v: 1,
+      type: "error",
+      category: "exchange",
+      message: report,
+      nextStep: "a step the message does not state",
+      exitCode: 69,
+    });
+    expect(event?.nextStep).toBeUndefined();
+    const error = relayedTerminalErrorOf(event!);
+    expect(error.message).toBe(report);
+    expect(error.nextStep).toBeUndefined();
   });
 });
 

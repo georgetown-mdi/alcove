@@ -352,6 +352,7 @@ export {
   sanitizeErrorForDisplay,
   sanitizeErrorForDisplayWithStep,
   sanitizeErrorChainLinks,
+  sanitizeKeepingLineBreaks,
   joinErrorCauseChain,
   keepFirstPartyLineBreaks,
   keepFirstPartyLinesWithOperatorText,

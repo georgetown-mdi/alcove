@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 import {
+  COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   DEFAULT_MAX_DISPLAY_LENGTH,
   TEARDOWN_LEFTOVER_FILES_CLAUSE,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -14,6 +15,7 @@ import {
   redactAndFitUnescaped,
   sanitizeErrorChainLinks,
   sanitizeForDisplay,
+  sanitizeKeepingLineBreaks,
 } from "@alcove/core";
 
 import {
@@ -24,7 +26,10 @@ import {
   unknownEventNotice,
 } from "@alcove/cli-contract";
 
-import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
+import {
+  ERROR_MESSAGE_CHAIN_FIELD,
+  ERROR_NEXT_STEP_FIELD,
+} from "@psi/relayErrorChain";
 
 import { PAYLOAD_RECEIVE_TAKEN_SOURCE } from "./payloadReceiveTakenNotice";
 
@@ -582,6 +587,10 @@ function unknownCliEventNotice(value: unknown): string {
  * the source is dropped, then reassigned from this pass's own derivation, so no
  * source ever hands the seat a whole chain directly.
  *
+ * Where the event's `nextStep` is the text its `message` ends with after a line
+ * break, the chain is split from the report before that break and the step
+ * crosses on its own ({@link relayedErrorReport}).
+ *
  * A terminal `error` event's `cause` and `termsChange` are rebuilt from their
  * known fields only ({@link relayedFailureCause}, {@link relayedTermsChange}),
  * and dropped whole where they are not the shape the CLI emits -- a cause whose
@@ -607,6 +616,7 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
     // derivation below is the only writer of that field. The ESCAPED key decides
     // this, since that is the key that would land.
     if (outKey === ERROR_MESSAGE_CHAIN_FIELD) continue;
+    if (type === "error" && outKey === ERROR_NEXT_STEP_FIELD) continue;
     if (type === "error" && key === "termsChange") {
       const termsChange = relayedTermsChange(field);
       if (termsChange !== undefined) sanitized[outKey] = termsChange;
@@ -644,16 +654,37 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
   // Unconditional for an error event, so the field's provenance does not vary
   // with what the source sent: no string `message` is no chain to split, and an
   // empty one is inert at the seat, which then reads its flat-field fallback.
-  const chain =
-    type === "error"
-      ? {
-          [ERROR_MESSAGE_CHAIN_FIELD]:
-            typeof record.message === "string"
-              ? sanitizeErrorChainLinks(record.message)
-              : [],
-        }
-      : {};
+  const chain = type === "error" ? relayedErrorReport(record) : {};
   return { ...sanitized, ...chain, v: 1, type };
+}
+
+/**
+ * The relayed `error` event's chain field, split from the report its `message`
+ * states, and its `nextStep`, each escaped line by line at the composed-message
+ * cap with the CLI's own line breaks kept: the step
+ * crosses only where `message` is the report, a line break and that step
+ * (docs/spec/CLI_EVENTS.md, the `error` event), and the chain is then split
+ * from the report alone. Otherwise the whole `message` is split and no step
+ * crosses.
+ */
+function relayedErrorReport(
+  record: Record<string, unknown>,
+): Record<string, unknown> {
+  const { message, nextStep } = record;
+  if (typeof message !== "string") return { [ERROR_MESSAGE_CHAIN_FIELD]: [] };
+  const step =
+    typeof nextStep === "string" && nextStep.length > 0 ? nextStep : undefined;
+  if (step === undefined || !message.endsWith(`\n${step}`))
+    return { [ERROR_MESSAGE_CHAIN_FIELD]: sanitizeErrorChainLinks(message) };
+  return {
+    [ERROR_MESSAGE_CHAIN_FIELD]: sanitizeErrorChainLinks(
+      message.slice(0, message.length - step.length - 1),
+    ),
+    [ERROR_NEXT_STEP_FIELD]: sanitizeKeepingLineBreaks(
+      step,
+      COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
+    ),
+  };
 }
 
 /**

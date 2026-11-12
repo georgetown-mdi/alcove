@@ -49,6 +49,8 @@ const WEB_FAILURE_REMEDIES: {
   "partner-stopped-at-matching": () => PARTNER_STOPPED_AT_MATCHING_REMEDY,
   "message-write-unconfirmed": undefined,
   "shared-name-at-entry": undefined,
+  // A handshake timeout is stated by this app's connection copy.
+  "key-exchange-timed-out": undefined,
 };
 
 /** The web app's remedy for `cause`, else `undefined`. */

@@ -220,6 +220,12 @@ export interface ErrorEvent extends EventBase {
   /** Display-safe error text, as stderr receives it. */
   message: string;
   /**
+   * The next step the CLI wrote beneath the report: present exactly when
+   * {@link message} ends with a line break and this text, so the report
+   * without the step is {@link message} before that break.
+   */
+  nextStep?: string;
+  /**
    * `true` when {@link message} states its own next step, so a supervisor
    * shows it in place of its own copy. Never emitted `false`.
    */

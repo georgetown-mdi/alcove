@@ -7,7 +7,6 @@
 
 import {
   CLEAN_DIRECTORY_RESTART_REMEDY,
-  KEX_HANDSHAKE_TIMEOUT_MESSAGE,
   MATCHES_OVER_LIMIT_REMEDY,
   PARTNER_STOPPED_AT_MATCHING_REMEDY,
   PARTNER_STOPPED_RESPONDING_REMEDY,
@@ -153,13 +152,16 @@ const partnerNeverArrived = (
 };
 
 /**
- * The title and remedy for each cause kind.
+ * The title and remedy for each cause kind; `undefined` binds a kind whose
+ * failure the console states in other copy of its own.
  */
 const CONSOLE_FAILURE_REMEDIES: {
-  readonly [K in FailureCauseKind]: (
-    cause: FailureCauseOfKind<K>,
-    context: ConsoleRunContext,
-  ) => ConsoleFailureRemedy;
+  readonly [K in FailureCauseKind]:
+    | ((
+        cause: FailureCauseOfKind<K>,
+        context: ConsoleRunContext,
+      ) => ConsoleFailureRemedy)
+    | undefined;
 } = {
   "partner-never-arrived": partnerNeverArrived,
   "folder-missing": ({ code }) => ({
@@ -219,37 +221,41 @@ const CONSOLE_FAILURE_REMEDIES: {
     title: SHARED_NAME_TITLE,
     remedy: SHARED_NAME_AT_ENTRY_REMEDY,
   }),
+  // The swept case is consoleSweptHandshakeTimeout's; any other run takes the
+  // generic failure copy with the CLI's report.
+  "key-exchange-timed-out": undefined,
 };
 
 /**
  * The console's account of a run that failed on `cause`: core's sentence
- * stating what happened, followed by the console's remedy.
+ * stating what happened, followed by the console's remedy; `undefined` for a
+ * kind {@link CONSOLE_FAILURE_REMEDIES} binds to none.
  */
 export function consoleFailureForCause(
   cause: FailureCause,
   context: ConsoleRunContext = {},
-): {
-  title: string;
-  message: string;
-} {
-  const { title, remedy } = (
-    CONSOLE_FAILURE_REMEDIES[cause.kind] as (
-      c: FailureCause,
-      ctx: ConsoleRunContext,
-    ) => ConsoleFailureRemedy
-  )(cause, context);
+):
+  | {
+      title: string;
+      message: string;
+    }
+  | undefined {
+  const remedyFor = CONSOLE_FAILURE_REMEDIES[cause.kind] as
+    | ((c: FailureCause, ctx: ConsoleRunContext) => ConsoleFailureRemedy)
+    | undefined;
+  if (remedyFor === undefined) return undefined;
+  const { title, remedy } = remedyFor(cause, context);
   return { title, message: `${failureCauseSentence(cause)} ${remedy}` };
 }
 
 /**
  * The console's account of a key-exchange handshake timeout on a filedrop or
- * SFTP run that cleared leftover files in delete mode, recognized by the first
- * line of the CLI's report, `failureText`; undefined for any other failure or
- * run. The handshake timeout states no catalog cause, so the side that entered
- * first in a both-swept collision gets the line here.
+ * SFTP run that cleared leftover files in delete mode, recognized by the
+ * event's catalog cause, `cause`; undefined for any other failure or run. The
+ * side that entered first in a both-swept collision gets the line here.
  */
 export function consoleSweptHandshakeTimeout(
-  failureText: string,
+  cause: FailureCause | undefined,
   {
     channel,
     deleteModeSweep,
@@ -261,7 +267,7 @@ export function consoleSweptHandshakeTimeout(
   if (
     !deleteModeSweep ||
     (channel !== "filedrop" && channel !== "sftp") ||
-    failureText.split("\n")[0] !== KEX_HANDSHAKE_TIMEOUT_MESSAGE
+    cause?.kind !== "key-exchange-timed-out"
   )
     return undefined;
   // The partner had already reached the shared location, so the step names

@@ -66,4 +66,5 @@ export const REPRESENTATIVE_FAILURE_CAUSES: {
     seq: 4,
   },
   "shared-name-at-entry": { kind: "shared-name-at-entry" },
+  "key-exchange-timed-out": { kind: "key-exchange-timed-out" },
 };

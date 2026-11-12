@@ -21,6 +21,7 @@ import {
   PartnerCopyBehindError,
   markPeerWaitTimeout,
 } from "./errors.js";
+import { markFailureCause } from "./failureCause.js";
 import {
   drawRotationValue,
   unwrapRotationValue,
@@ -156,8 +157,8 @@ const KEY_AGREEMENT_LABEL = "alcove-kex-v2:key-agreement";
 const GENERIC_FAILURE = "key exchange authentication failed";
 /**
  * The message of the failure a handshake receive throws when the peer sends
- * nothing within its bound (docs/spec/KEY_EXCHANGE.md, "Failure handling"). The
- * console recognizes a relayed failure by it.
+ * nothing within its bound (docs/spec/KEY_EXCHANGE.md, "Failure handling"),
+ * tagged with the `key-exchange-timed-out` cause.
  */
 export const KEX_HANDSHAKE_TIMEOUT_MESSAGE = "key exchange handshake timed out";
 
@@ -705,8 +706,11 @@ async function receiveHandshake(conn: MessageConnection): Promise<unknown> {
     return await conn.receive(handshakeReceiveTimeoutMs(conn));
   } catch (e) {
     if (isReceiveDeadlineFailure(e))
-      throw markPeerWaitTimeout(
-        new Error(KEX_HANDSHAKE_TIMEOUT_MESSAGE, { cause: e }),
+      throw markFailureCause(
+        markPeerWaitTimeout(
+          new Error(KEX_HANDSHAKE_TIMEOUT_MESSAGE, { cause: e }),
+        ),
+        { kind: "key-exchange-timed-out" },
       );
     throw e;
   }

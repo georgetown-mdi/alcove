@@ -37,7 +37,10 @@ import { jobRecordDownloads } from "@psi/jobClient/jobExchangeRecord";
 import { refusedColumnNames } from "@psi/columnNames";
 import { whenDiagnostic } from "@utils/diagnostics";
 
-import { ERROR_MESSAGE_CHAIN_FIELD } from "../relayErrorChain";
+import {
+  ERROR_MESSAGE_CHAIN_FIELD,
+  ERROR_NEXT_STEP_FIELD,
+} from "../relayErrorChain";
 
 import type {
   EntityClusterShape,
@@ -325,7 +328,9 @@ export class JobIntentColumnNameError extends Error {
 
 /** The failure a relayed terminal `error` event raises. Its `message` is the
  * cause chain {@link errorMessageOf} rejoins on the renderer's framing from
- * the links {@link ERROR_MESSAGE_CHAIN_FIELD} holds, or the flat field: escaped
+ * the links {@link ERROR_MESSAGE_CHAIN_FIELD} holds, which leave out the CLI's
+ * next step where {@link RelayedTerminalError.nextStep} holds it, or the flat
+ * field: escaped
  * by the relay where the CLI emitted the terminal, raw where the job manager
  * synthesized it (`diagnosedTerminal` in `@jobs/jobManager`). The seat escapes
  * it once, link by link (`sanitizedFailureMessage` in
@@ -344,6 +349,10 @@ export class RelayedTerminalError extends Error {
   failureCause: FailureCause | undefined = undefined;
   /** The code the CLI exits with, where the event states a whole number. */
   exitCode: number | undefined = undefined;
+  /** The CLI's next step, apart from the report {@link message} then holds
+   * ({@link ERROR_NEXT_STEP_FIELD}): escaped by the relay, and escaped again
+   * where the seat shows it. */
+  nextStep: string | undefined = undefined;
 
   constructor(
     message: string,
@@ -1235,21 +1244,44 @@ export const EMPTY_CHAIN_LINK = "[no message]";
  * no text renders as {@link EMPTY_CHAIN_LINK}, keeping the rebuilt chain the
  * length the relay sent. The flat field is the fallback, used when the relay
  * derived no chain at all. */
-function errorMessageOf(event: RelayEvent): string {
+function errorMessageOf(event: RelayEvent): {
+  message: string;
+  fromChain: boolean;
+} {
   const chain = event[ERROR_MESSAGE_CHAIN_FIELD];
   if (
     Array.isArray(chain) &&
     chain.some((link) => typeof link === "string" && link.length > 0)
   )
-    return joinErrorCauseChain(
-      chain.map((link) =>
-        typeof link === "string" && link.length > 0 ? link : EMPTY_CHAIN_LINK,
+    return {
+      message: joinErrorCauseChain(
+        chain.map((link) =>
+          typeof link === "string" && link.length > 0 ? link : EMPTY_CHAIN_LINK,
+        ),
       ),
-    );
+      fromChain: true,
+    };
   const message = event.message;
-  return typeof message === "string" && message.length > 0
-    ? message
-    : "the exchange failed";
+  return {
+    message:
+      typeof message === "string" && message.length > 0
+        ? message
+        : "the exchange failed",
+    fromChain: false,
+  };
+}
+
+/** The relayed event's next step ({@link ERROR_NEXT_STEP_FIELD}), where it is
+ * text and the message came from the chain: the flat field already ends with
+ * the step. */
+function errorNextStepOf(
+  event: RelayEvent,
+  fromChain: boolean,
+): string | undefined {
+  const nextStep = event[ERROR_NEXT_STEP_FIELD];
+  return fromChain && typeof nextStep === "string" && nextStep.length > 0
+    ? nextStep
+    : undefined;
 }
 
 /**
@@ -1259,14 +1291,19 @@ function errorMessageOf(event: RelayEvent): string {
  * the literal `true` the CLI emits counts -- so anything else takes the class
  * that shows fixed copy, and a failure that keeps its retry. Its `cause` and
  * `exitCode` are read as strictly: a cause the catalog names, a whole number.
+ *
+ * @internal exported for testing
  */
-function relayedTerminalErrorOf(event: RelayEvent): RelayedTerminalError {
-  const message = errorMessageOf(event);
+export function relayedTerminalErrorOf(
+  event: RelayEvent,
+): RelayedTerminalError {
+  const { message, fromChain } = errorMessageOf(event);
   const internalFault = event.internalFault === true;
   const error =
     event.recoveryHint === true
       ? new RelayedSelfExplainingError(message, internalFault)
       : new RelayedTerminalError(message, internalFault);
+  error.nextStep = errorNextStepOf(event, fromChain);
   error.termsChange = relayedTermsChangeOf(event);
   error.failureCause = failureCauseFromUntrusted(event.cause);
   if (Number.isSafeInteger(event.exitCode))
