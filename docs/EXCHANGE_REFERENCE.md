@@ -101,6 +101,7 @@ A key on one field is one whose fields read one input column under the default b
 
 - Matching keys and the acceptance screen in the web app and the console, the CLI's acceptance and `alcove apply` displays, and the expert key editor show a one-line warning under each such key, including a key just added in the editor. The CLI prints how to leave such keys out once under the key list, labeled `keys on one field:`, or in the less certain explanation when every such key is also less certain. A lone first name, last name, or date of birth is also marked `(less certain)`.
 - A key whose fields your own `standardization` binds to different columns still shows the warning.
+- A key whose fields of different types your own `standardization` reads from one column does not show it.
 - The warning never stops an exchange, and no run checks the size of either input.
 - An accepting party asks its partner for an invitation without the key, and does not apply a terms update that contains it.
 

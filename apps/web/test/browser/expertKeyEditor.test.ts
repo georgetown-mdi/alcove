@@ -44,16 +44,21 @@ const ALL_COLUMNS = ["ssn", "ssn4", "first_name", "last_name", "dob"];
 
 const app = createAppMount();
 
-function render() {
-  const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
+// The editor's field props for a draft whose keys all use locally declared fields.
+function editorFields(draft: AdvancedInviteDraft) {
   const declaredFields = authoredLinkageFields(
     draft.metadata,
     draft.standardization,
   );
+  return { declaredFields, keyFields: declaredFields };
+}
+
+function render() {
+  const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
   app.render(
     createElement(ExpertKeyEditor, {
       draft,
-      declaredFields,
+      ...editorFields(draft),
       keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
       onChange: () => undefined,
       announce: () => undefined,
@@ -119,10 +124,7 @@ describe("ExpertKeyEditor: Remove all keys", () => {
     const [draft, setDraft] = useState(initial);
     return createElement(ExpertKeyEditor, {
       draft,
-      declaredFields: authoredLinkageFields(
-        draft.metadata,
-        draft.standardization,
-      ),
+      ...editorFields(draft),
       keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
       onChange: setDraft,
       announce: (message: string) => announced.push(message),
@@ -242,10 +244,7 @@ describe("ExpertKeyEditor: a key element's split", () => {
     const [draft, setDraft] = useState(initial);
     return createElement(ExpertKeyEditor, {
       draft,
-      declaredFields: authoredLinkageFields(
-        draft.metadata,
-        draft.standardization,
-      ),
+      ...editorFields(draft),
       keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
       onChange: (next: AdvancedInviteDraft) => {
         setDraft(next);
@@ -358,10 +357,7 @@ describe("ExpertKeyEditor: the per-key badges", () => {
     app.render(
       createElement(ExpertKeyEditor, {
         draft,
-        declaredFields: authoredLinkageFields(
-          draft.metadata,
-          draft.standardization,
-        ),
+        ...editorFields(draft),
         keyVerdict: (index: number): KeyVerdict =>
           verdicts[index] ?? { fitness: "satisfiable" },
         onChange: () => undefined,
@@ -400,10 +396,7 @@ describe("ExpertKeyEditor: a key on one field", () => {
     const [draft, setDraft] = useState(initial);
     return createElement(ExpertKeyEditor, {
       draft,
-      declaredFields: authoredLinkageFields(
-        draft.metadata,
-        draft.standardization,
-      ),
+      ...editorFields(draft),
       keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
       onChange: setDraft,
       announce: () => undefined,
@@ -466,6 +459,42 @@ describe("ExpertKeyEditor: a key on one field", () => {
     await expect.poll(() => warnings().length).toBe(0);
     expect(toggle.hasAttribute("aria-describedby")).toBe(false);
   });
+
+  test("shows the warning on an imported key whose two same-typed fields the locally declared fields lack", async () => {
+    const { draft: seeded } = seedAdvancedInvite(
+      "County Health Dept",
+      ALL_COLUMNS,
+    );
+    const draft = updateKeyAt(seeded, 0, (key) => ({
+      ...key,
+      elements: [{ field: "dob" }, { field: "DOB" }],
+    }));
+    const declaredFields = authoredLinkageFields(
+      draft.metadata,
+      draft.standardization,
+    );
+    const declaredNames = declaredFields.map((field) => field.name);
+    expect(declaredNames).not.toContain("dob");
+    expect(declaredNames).not.toContain("DOB");
+    app.render(
+      createElement(ExpertKeyEditor, {
+        draft,
+        declaredFields,
+        keyFields: [
+          ...declaredFields,
+          { name: "dob", type: "date_of_birth" as const },
+          { name: "DOB", type: "date_of_birth" as const },
+        ],
+        keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
+        onChange: () => undefined,
+        announce: () => undefined,
+      }),
+    );
+    await expect
+      .element(page.getByText(ONE_FIELD_KEY_COPY.keyLine, { exact: true }))
+      .toBeVisible();
+    expect(warnings()).toHaveLength(1);
+  });
 });
 
 describe("ExpertKeyEditor: the missing-field control's description", () => {
@@ -479,10 +508,7 @@ describe("ExpertKeyEditor: the missing-field control's description", () => {
       app.render(
         createElement(ExpertKeyEditor, {
           draft: { ...draft, algorithm },
-          declaredFields: authoredLinkageFields(
-            draft.metadata,
-            draft.standardization,
-          ),
+          ...editorFields(draft),
           keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
           onChange: () => undefined,
           announce: () => undefined,

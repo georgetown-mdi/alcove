@@ -430,6 +430,7 @@ export function KeysTab({
         <ExpertKeyEditor
           draft={editor.draft}
           declaredFields={declaredFields}
+          keyFields={keyFields}
           keyVerdict={keyVerdict}
           onChange={onAuthoredDraft}
           announce={announce}
