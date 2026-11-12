@@ -15,6 +15,7 @@ import {
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
   missingFieldConditionStatement,
+  ONE_FIELD_KEY_COPY,
   PROPOSED_NOT_APPLIED_NOTES,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
@@ -55,6 +56,7 @@ import {
   invitationRelayRegistrarLine,
   LESS_CERTAIN_REMEDY,
   logDecisionFacts,
+  ONE_FIELD_NOTE_LABEL,
 } from "../../src/invitationDisplay";
 import {
   FUTURE,
@@ -2208,6 +2210,119 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
       `    ${LESS_CERTAIN_KEY_COPY.explanation} ${LESS_CERTAIN_REMEDY.update}`,
     );
     expect(lines.join("\n")).not.toContain(LESS_CERTAIN_REMEDY.invitation);
+  });
+
+  function oneFieldToken(
+    linkageKeys: Array<{ name: string; elements: Array<{ field: string }> }>,
+  ) {
+    const token = lessCertainToken();
+    return {
+      ...token,
+      linkageTerms: { ...token.linkageTerms, linkageKeys },
+    };
+  }
+
+  const SSN_ALONE = { name: "ssn alone", elements: [{ field: "tax_id" }] };
+  const DOB_ALONE = { name: "dob alone", elements: [{ field: "born" }] };
+  const SSN_AND_DOB = {
+    name: "authored with ssn",
+    elements: [{ field: "tax_id" }, { field: "born" }],
+  };
+
+  test("displayInvitation: warns under each one-field key and gives the remedy once after the list", () => {
+    const log = getLogger("accept-display-one-field-test");
+    log.setLevel("silent");
+    const lines = renderDisplayInvitation(
+      log,
+      oneFieldToken([SSN_ALONE, SSN_AND_DOB, { ...SSN_ALONE, name: "again" }]),
+    ).split("\n");
+
+    const warning = `      ${ONE_FIELD_KEY_COPY.keyLine}`;
+    const keyAt = (keyName: string) => lines.indexOf(`    - ${keyName}`);
+    expect(lines[keyAt("ssn alone") + 1]).toBe("      matches on: SSN");
+    expect(lines[keyAt("ssn alone") + 2]).toBe(warning);
+    expect(lines[keyAt("again") + 2]).toBe(warning);
+    expect(lines[keyAt("authored with ssn") + 2]).toBe("      elements:");
+    expect(lines.filter((line) => line === warning)).toHaveLength(2);
+
+    const remedy = `    ${LESS_CERTAIN_REMEDY.invitation}`;
+    expect(lines.filter((line) => line === remedy)).toHaveLength(1);
+    expect(lines[lines.indexOf(remedy) - 1]).toBe(`  ${ONE_FIELD_NOTE_LABEL}:`);
+    expect(lines.indexOf(remedy)).toBeGreaterThan(keyAt("again"));
+    expect(lines.join("\n")).not.toContain(LESS_CERTAIN_KEY_COPY.explanation);
+  });
+
+  test("displayInvitation: a key both less certain and on one field takes the remedy from the less certain note alone", () => {
+    const log = getLogger("accept-display-one-field-less-certain-test");
+    log.setLevel("silent");
+    const lines = renderDisplayInvitation(
+      log,
+      oneFieldToken([DOB_ALONE, SSN_AND_DOB]),
+    ).split("\n");
+
+    const keyAt = lines.indexOf("    - dob alone");
+    expect(lines[keyAt + 1]).toBe(
+      "      matches on: date of birth (less certain)",
+    );
+    expect(lines[keyAt + 2]).toBe(`      ${ONE_FIELD_KEY_COPY.keyLine}`);
+    const shown = lines.join("\n");
+    expect(shown.split(LESS_CERTAIN_REMEDY.invitation)).toHaveLength(2);
+    expect(lines).toContain(
+      `    ${LESS_CERTAIN_KEY_COPY.explanation} ${LESS_CERTAIN_REMEDY.invitation}`,
+    );
+    expect(lines).not.toContain(`  ${ONE_FIELD_NOTE_LABEL}:`);
+  });
+
+  test("displayInvitation: a terms update gives the update's remedy for keys on one field", () => {
+    const lines: string[] = [];
+    displayInvitation({
+      token: oneFieldToken([SSN_ALONE, SSN_AND_DOB]),
+      ownOutboundSend: undefined,
+      emit: (line) => {
+        lines.push(line);
+      },
+      promptFollows: true,
+      surface: "update",
+    });
+    expect(lines).toContain(`      ${ONE_FIELD_KEY_COPY.keyLine}`);
+    expect(lines[lines.indexOf(`  ${ONE_FIELD_NOTE_LABEL}:`) + 1]).toBe(
+      `    ${LESS_CERTAIN_REMEDY.update}`,
+    );
+    expect(lines.join("\n")).not.toContain(LESS_CERTAIN_REMEDY.invitation);
+  });
+
+  test("displayInvitation: warns under a partner key of two field names of one type", () => {
+    const log = getLogger("accept-display-one-field-same-type-test");
+    log.setLevel("silent");
+    const token = oneFieldToken([
+      { name: "two ssns", elements: [{ field: "tax_id" }, { field: "ssn" }] },
+      SSN_AND_DOB,
+    ]);
+    const lines = renderDisplayInvitation(log, {
+      ...token,
+      linkageTerms: {
+        ...token.linkageTerms,
+        linkageFields: [
+          ...token.linkageTerms.linkageFields,
+          { name: "ssn", type: "ssn" as const },
+        ],
+      },
+    }).split("\n");
+
+    const keyAt = lines.indexOf("    - two ssns");
+    expect(lines[keyAt + 2]).toBe(`      ${ONE_FIELD_KEY_COPY.keyLine}`);
+    expect(
+      lines.filter((line) => line === `      ${ONE_FIELD_KEY_COPY.keyLine}`),
+    ).toHaveLength(1);
+    expect(lines).toContain(`  ${ONE_FIELD_NOTE_LABEL}:`);
+  });
+
+  test("displayInvitation: prints no one-field warning where every key reads two fields", () => {
+    const log = getLogger("accept-display-no-one-field-test");
+    log.setLevel("silent");
+    const out = renderDisplayInvitation(log, lessCertainToken());
+    expect(out).not.toContain(ONE_FIELD_KEY_COPY.keyLine);
+    expect(out).not.toContain(`  ${ONE_FIELD_NOTE_LABEL}:`);
   });
 
   test("displayInvitation: prints no less certain note where no key is marked", () => {

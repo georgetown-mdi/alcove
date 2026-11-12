@@ -525,6 +525,7 @@ export type {
   PrecisionFloorSelection,
 } from "./defaults/builtInLinkageTerms";
 export { linkageKeyIsLessCertain } from "./consent/lessCertainKey";
+export { linkageKeyUsesOneField } from "./consent/oneFieldKey";
 export {
   admitsMissingFieldConditionType,
   keyConditionRefusal,
@@ -838,6 +839,7 @@ export {
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
   LESS_CERTAIN_KEY_COPY,
+  ONE_FIELD_KEY_COPY,
   builtInRuleChoiceStatement,
   missingFieldConditionStatement,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,

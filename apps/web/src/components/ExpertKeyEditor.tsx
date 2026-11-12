@@ -24,7 +24,11 @@ import {
 } from "@tabler/icons-react";
 import { useReducedMotion } from "@mantine/hooks";
 
-import { sanitizeForDisplay } from "@alcove/core";
+import {
+  ONE_FIELD_KEY_COPY,
+  linkageKeyUsesOneField,
+  sanitizeForDisplay,
+} from "@alcove/core";
 
 import {
   KEY_CONDITION_CONTROL,
@@ -148,6 +152,7 @@ function elementIdentifier(element: LinkageKeyElement): string {
 export function ExpertKeyEditor({
   draft,
   declaredFields,
+  keyFields,
   keyVerdict,
   onChange,
   announce,
@@ -155,6 +160,8 @@ export function ExpertKeyEditor({
   draft: AdvancedInviteDraft;
   /** The fields a key element may reference, in offer order (metadata-derived). */
   declaredFields: Array<LinkageField>;
+  /** The fields the keys' marks read, as KeysTab merges them. */
+  keyFields: ReadonlyArray<Pick<LinkageField, "name" | "type">>;
   /** The per-key badge verdict at this index ({@link KeyVerdict}): satisfiable,
    * unsatisfiable (a missing field), or dead (a self-defeating transform). */
   keyVerdict: (keyIndex: number) => KeyVerdict;
@@ -312,6 +319,8 @@ export function ExpertKeyEditor({
           const keyId = idFor(keyIds.current, key);
           const keyOpen = expandedKeys.has(keyId);
           const keyBodyId = `key-body-${keyId}`;
+          const keyUsesOneField = linkageKeyUsesOneField(key, keyFields);
+          const keyOneFieldId = `key-one-field-${keyId}`;
           // One swap option per element, keyed by its identifier, deduplicated by
           // value: two elements can transiently share an identifier mid-edit (e.g.
           // an alias clears to a name another element already uses). Mantine's
@@ -336,6 +345,9 @@ export function ExpertKeyEditor({
                     onClick={() => toggleKeyExpanded(keyId)}
                     aria-expanded={keyOpen}
                     aria-controls={keyBodyId}
+                    aria-describedby={
+                      keyUsesOneField ? keyOneFieldId : undefined
+                    }
                     style={{ flex: 1, minWidth: 0 }}
                   >
                     <Group gap={4} wrap="nowrap">
@@ -396,6 +408,13 @@ export function ExpertKeyEditor({
                     </ActionIcon>
                   </Group>
                 </Group>
+                {/* Under the header rather than in its no-wrap group, and
+                    outside the collapsed body, so it shows on a collapsed key. */}
+                {keyUsesOneField && (
+                  <Text id={keyOneFieldId} size="xs" c="warn">
+                    {ONE_FIELD_KEY_COPY.keyLine}
+                  </Text>
+                )}
 
                 <div id={keyBodyId}>
                   <Collapse expanded={keyOpen}>

@@ -974,6 +974,23 @@ export const LESS_CERTAIN_KEY_COPY = {
 } as const;
 
 /**
+ * The copy every surface shows for a key `linkageKeyUsesOneField` marks
+ * (`consent/oneFieldKey.ts`): `keyLine` with the key, and `termsLine` once
+ * outside a collapsed key list. The terms review and the CLI terms display
+ * follow the warning with a remedy; the key editors show it alone, beside
+ * the key being edited.
+ */
+export const ONE_FIELD_KEY_COPY = {
+  keyLine:
+    "Uses one field, so your partner could guess values and learn which are " +
+    "in your file.",
+  termsLine:
+    "Some of the matching keys use one field, so your partner could guess " +
+    "values and learn which are in your file. Open Matching strategies to " +
+    "see which keys use one field.",
+} as const;
+
+/**
  * The one line every terms review and consent surface shows for a key with a
  * missing-field condition, whichever of its two rounds a match comes from:
  * which pairs the key matches and what the rounds disclose. Under `psi`, a

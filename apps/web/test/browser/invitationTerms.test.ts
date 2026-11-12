@@ -19,6 +19,7 @@ import {
   LESS_CERTAIN_KEY_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
+  ONE_FIELD_KEY_COPY,
   PROPOSED_NOT_APPLIED_NOTES,
   UNRECOGNIZED_TRANSFORM_NOTE,
   builtInRuleChoiceStatement,
@@ -719,6 +720,81 @@ describe("InvitationTerms: a key on a name and a date of birth alone is marked l
       page.getByRole("button", { name: /less certain/ }).query(),
     ).toBeNull();
     expect(app.container.textContent).not.toContain("less certain");
+  });
+});
+
+describe("InvitationTerms: a key on one field", () => {
+  const oneFieldTerms: LinkageTerms = {
+    ...terms,
+    linkageKeys: [
+      ...terms.linkageKeys,
+      { name: "SSN alone", elements: [{ field: "ssn" }] },
+      { name: "DOB alone", elements: [{ field: "dob" }] },
+    ],
+  };
+
+  /** The key's row in the opened key list. */
+  function keyRow(name: string): HTMLElement {
+    const row = toggle(name)
+      .element()
+      .closest<HTMLElement>('[role="listitem"]');
+    expect(row).not.toBeNull();
+    return row!;
+  }
+
+  test("warns under each one-field key, and once outside the collapsed key list with the acceptor's remedy", async () => {
+    await renderTerms(oneFieldTerms, { perspective: "review" });
+    await expect
+      .element(toggle("Matching strategies"))
+      .toHaveAttribute("aria-expanded", "false");
+    await expect
+      .element(
+        page.getByText(
+          `${ONE_FIELD_KEY_COPY.termsLine} ${LESS_CERTAIN_KEY_COPY.acceptorRemedy}`,
+          { exact: true },
+        ),
+      )
+      .toBeVisible();
+
+    await userEvent.click(toggle("Matching strategies"));
+    await expect.element(toggle("SSN alone")).toBeInTheDocument();
+    const lineIn = (name: string) =>
+      Array.from(keyRow(name).querySelectorAll("p")).some(
+        (el) => el.textContent === ONE_FIELD_KEY_COPY.keyLine,
+      );
+    expect(lineIn("SSN alone")).toBe(true);
+    // A lone date of birth is both less certain and on one field.
+    expect(lineIn("DOB alone")).toBe(true);
+    expect(lineIn("SSN + LN + DOB")).toBe(false);
+    expect(lineIn("SSN + FN1")).toBe(false);
+  });
+
+  test("reads the warning with the key", async () => {
+    await renderTerms(oneFieldTerms, { perspective: "review" });
+    await userEvent.click(toggle("Matching strategies"));
+    await expect
+      .element(toggle("SSN alone"))
+      .toHaveAccessibleDescription(
+        `Matches on SSN ${ONE_FIELD_KEY_COPY.keyLine}`,
+      );
+    await expect
+      .element(toggle("DOB alone"))
+      .toHaveAccessibleDescription(
+        `Matches on date of birth (less certain) ${ONE_FIELD_KEY_COPY.keyLine}`,
+      );
+    await expect
+      .element(toggle("SSN + FN1"))
+      .toHaveAccessibleDescription(/^Matches on [^.]*$/);
+  });
+
+  test("keys reading two or more fields show no warning", async () => {
+    await renderTerms(terms, { perspective: "review" });
+    await userEvent.click(toggle("Matching strategies"));
+    await expect.element(toggle("SSN + FN1")).toBeInTheDocument();
+    expect(app.container.textContent).not.toContain(
+      ONE_FIELD_KEY_COPY.termsLine,
+    );
+    expect(app.container.textContent).not.toContain(ONE_FIELD_KEY_COPY.keyLine);
   });
 });
 

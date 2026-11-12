@@ -8,6 +8,7 @@ import {
   Input,
   Radio,
   Switch,
+  Text,
 } from "@mantine/core";
 import { IconArrowDown, IconArrowUp } from "@tabler/icons-react";
 
@@ -17,8 +18,10 @@ import {
   DEFAULT_PRECISION_FLOOR_SELECTION,
   LESS_CERTAIN_KEY_COPY,
   LinkageStrategySchema,
+  ONE_FIELD_KEY_COPY,
   PRECISION_FLOORS,
   linkageKeyIsLessCertain,
+  linkageKeyUsesOneField,
   precisionFloorLabel,
   runsSinglePassLink,
   sanitizeForDisplay,
@@ -211,6 +214,7 @@ export function KeysTab({
   const builtInRulesName = useId();
   const countOnly = editor.draft.algorithm === "psi-c";
   const countOnlyStatementId = useId();
+  const oneFieldIdPrefix = useId();
   const keyCount = editor.draft.keys.length;
   const showsSharedValueKey = useMemo(() => {
     const typeOf = new Map(
@@ -335,9 +339,15 @@ export function KeysTab({
         {editor.draft.keys.map((entry, index) => {
           const displayName = sanitizeForDisplay(entry.key.name);
           const lessCertain = linkageKeyIsLessCertain(entry.key, keyFields);
+          const oneField = linkageKeyUsesOneField(entry.key, keyFields);
+          const oneFieldId = `${oneFieldIdPrefix}-${index}`;
           const checkbox = (explanationId?: string) => (
             <Checkbox
-              aria-describedby={explanationId}
+              aria-describedby={
+                [explanationId, oneField ? oneFieldId : undefined]
+                  .filter((id) => id !== undefined)
+                  .join(" ") || undefined
+              }
               checked={entry.enabled}
               onChange={(event) =>
                 onKeyEnabled(index, event.currentTarget.checked)
@@ -353,20 +363,27 @@ export function KeysTab({
           );
           return (
             <li key={entry.key.name}>
-              {lessCertain ? (
-                <LessCertainInfo
-                  keyName={displayName}
-                  remedy={
-                    keysFromOpenedConfiguration
-                      ? MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration
-                      : MATCHING_KEYS_LESS_CERTAIN_REMEDY.checkbox
-                  }
-                >
-                  {checkbox}
-                </LessCertainInfo>
-              ) : (
-                checkbox()
-              )}
+              <div>
+                {lessCertain ? (
+                  <LessCertainInfo
+                    keyName={displayName}
+                    remedy={
+                      keysFromOpenedConfiguration
+                        ? MATCHING_KEYS_LESS_CERTAIN_REMEDY.openedConfiguration
+                        : MATCHING_KEYS_LESS_CERTAIN_REMEDY.checkbox
+                    }
+                  >
+                    {checkbox}
+                  </LessCertainInfo>
+                ) : (
+                  checkbox()
+                )}
+                {oneField && (
+                  <Text id={oneFieldId} size="xs" c="warn">
+                    {ONE_FIELD_KEY_COPY.keyLine}
+                  </Text>
+                )}
+              </div>
               <span className={styles.movers}>
                 <ActionIcon
                   variant="default"
@@ -413,6 +430,7 @@ export function KeysTab({
         <ExpertKeyEditor
           draft={editor.draft}
           declaredFields={declaredFields}
+          keyFields={keyFields}
           keyVerdict={keyVerdict}
           onChange={onAuthoredDraft}
           announce={announce}

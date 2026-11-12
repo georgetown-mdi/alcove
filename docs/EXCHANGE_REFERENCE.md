@@ -95,6 +95,16 @@ Three of the rules broader matching adds match on a name and a date of birth wit
   - In a configuration `alcove init` wrote, delete them from `linkage_keys` before an invitation is made from it. Once the configuration serves a partnership, delete them, run `alcove update`, and have your partner run `alcove apply` on what it prints ([Changing the terms of an established partnership](CLI.md#changing-the-terms-of-an-established-partnership)).
   - An accepting party takes the invitation's keys whole, so it asks its partner for an invitation without them, and does not apply a terms update that contains them.
 
+#### Keys on one field
+
+A key on one field is one whose fields read one input column under the default binding, the column each field reads when no `standardization` names one. That is the same field (one element, or one field repeated under an alias with different cleaning), two fields of one type, such as two `date_of_birth` fields, or a field and one derived from its type, such as `ssn` and `ssn4`. Such a key lets a partner fill its input with guessed values of that column, such as every date of birth in a range, and learn which of them your file holds ([Threat model](SECURITY_DESIGN.md#threat-model)). No built-in rule uses one field; a key written by hand can.
+
+- Matching keys and the acceptance screen in the web app and the console, the CLI's acceptance and `alcove apply` displays, and the expert key editor show a one-line warning under each such key, including a key just added in the editor. The CLI prints how to leave such keys out once under the key list, labeled `keys on one field:`, or in the less certain explanation when every such key is also less certain. A lone first name, last name, or date of birth is also marked `(less certain)`.
+- A key whose fields your own `standardization` binds to different columns still shows the warning.
+- A key whose fields only your own `standardization` binds to one column does not show it.
+- The warning never stops an exchange, and no run checks the size of either input.
+- An accepting party asks its partner for an invitation without the key, and does not apply a terms update that contains it.
+
 A `zip` column must hold the ZIP code of the person's own address. A site's or agency's ZIP code, and likewise a staff or agency phone number, matches unrelated people served at that site. Give such a column `role: ignored` in `metadata`; in a quick exchange, which has no `metadata` block, remove it from the file: a renamed header is sent to your partner.
 
 The built-in keys' validation, the criticisms recorded against them, and what a quick exchange rests on are in [default-linkage-rule-set.md](notes/default-linkage-rule-set.md).

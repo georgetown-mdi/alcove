@@ -25,7 +25,6 @@ No work is listed as required before the 1.0 release.
 Captured in [DESIGN.md#possible-extensions](DESIGN.md#possible-extensions). These are research directions rather than committed work:
 
 - Threshold and weighted scoring via secure multi-party computation
-- Brute-force protection through input-size controls
 - Post-quantum hybrid key establishment and dual signing, an open decision recorded only in [key-establishment-fips-boundary.md](notes/key-establishment-fips-boundary.md#post-quantum-horizon), not in DESIGN.md
 - Electron desktop distribution of the web application. The progressive-web-app half is built: the hosted application is installable and its shell renders offline (see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md#installing-the-app))
 

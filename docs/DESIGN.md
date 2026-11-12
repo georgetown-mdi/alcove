@@ -79,10 +79,6 @@ The deterministic cascade requires that each linkage key be precise enough to pr
 
 Threshold and weighted scoring approaches could be supported without this privacy cost using secure multi-party computation (MPC) to evaluate match scores over encrypted data, never exposing intermediate per-key match results. This would substantially increase protocol complexity and is left as a potential future extension.
 
-## Brute force protection
-
-As mentioned in the threat model, brute-force attacks are possible for simple keys. At some point, controls may be implemented that prevent the algorithm from running if the input is a relatively large portion of the potential universe of possible values.
-
 ## SSH as a replacement for SFTP
 
 Communication over SFTP requires polling for messages, which adds latency. Where both parties can reach a shared SSH server, SSH channels - bidirectional byte streams that need no polling - could replace it: the parties would establish order through the server's SFTP subsystem, or through a shell primitive such as `mkdir` where remote commands are permitted, then pass messages over SSH channels. Such a transport must satisfy the message-delivery contract in [COMMUNICATION.md](COMMUNICATION.md#message-delivery-and-teardown).

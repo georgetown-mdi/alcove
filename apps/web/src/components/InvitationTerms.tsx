@@ -28,6 +28,7 @@ import {
   LEGAL_AGREEMENT_FIELD_NOT_STATED,
   LESS_CERTAIN_KEY_COPY,
   MAX_DECLARED_NAMES_SHOWN,
+  ONE_FIELD_KEY_COPY,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,
   PROPOSED_NOT_APPLIED_NOTES,
   UNRECOGNIZED_TRANSFORM_NOTE,
@@ -316,7 +317,8 @@ function MissingFieldConditionBlock({
  * assistive tech and the tab order while closed. The toggle's accessible name is
  * the key name alone; the field one-liner is its description (aria-describedby)
  * rather than folded into the name, so the less certain mark on it is announced
- * with the key, and the button explaining the mark follows the line.
+ * with the key, and the button explaining the mark follows the line. The
+ * one-field warning, when shown, is part of the description too.
  */
 function MatchKeyDisclosure({
   summary,
@@ -331,6 +333,7 @@ function MatchKeyDisclosure({
   // inside a map).
   const panelId = useId();
   const sublineId = useId();
+  const oneFieldId = useId();
   const reduceMotion = useReducedMotion();
   // Always-visible, AT-associated breadth signal. The "Matches on " lead-in
   // and the markers are fixed copy, and each field entry is a fixed compact
@@ -348,7 +351,9 @@ function MatchKeyDisclosure({
         onClick={() => setOpen((isOpen) => !isOpen)}
         aria-expanded={open}
         aria-controls={panelId}
-        aria-describedby={sublineId}
+        aria-describedby={
+          summary.oneField ? `${sublineId} ${oneFieldId}` : sublineId
+        }
       >
         <Group gap={4}>
           <IconChevronRight
@@ -370,6 +375,11 @@ function MatchKeyDisclosure({
         </LessCertainInfo>
       ) : (
         subline
+      )}
+      {summary.oneField && (
+        <Text id={oneFieldId} size="xs" c="warn">
+          {ONE_FIELD_KEY_COPY.keyLine}
+        </Text>
       )}
       {/* What a match through this key discloses, so it stays visible with the
           key rather than inside the collapsed detail. Core's fixed copy. */}
@@ -599,9 +609,10 @@ export function InvitationTerms({
    * cannot drop it by leaving the prop out. */
   allowedRelays: ReadonlyArray<string> | undefined;
   /** What the reader of this screen does to leave out a key marked less
-   * certain, shown after the reason for the mark: by default the accepting
-   * party's, who takes the invitation's keys whole. The console's quick
-   * exchange confirm passes its own. Fixed copy, never partner text. */
+   * certain or one on one field, shown after the reason for the mark: by
+   * default the accepting party's, who takes the invitation's keys whole.
+   * The console's quick exchange confirm passes its own. Fixed copy, never
+   * partner text. */
   lessCertainRemedy?: string;
 }) {
   const summary = summarizeInvitation({
@@ -1301,6 +1312,11 @@ export function InvitationTerms({
             <LessCertainInfo remedy={lessCertainRemedy}>
               <Text size="sm">{LESS_CERTAIN_TERMS_LINE}</Text>
             </LessCertainInfo>
+          )}
+          {summary.linkageKeys.some((key) => key.oneField) && (
+            <Text size="sm" c="warn">
+              {`${ONE_FIELD_KEY_COPY.termsLine} ${lessCertainRemedy}`}
+            </Text>
           )}
           {/* Outside the collapse as well: what a match through a key with a
               missing-field condition discloses, once per condition. Keyed by
