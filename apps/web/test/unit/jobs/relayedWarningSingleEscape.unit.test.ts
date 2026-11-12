@@ -403,6 +403,33 @@ describe("no relayed field reaches a seat unescaped", () => {
   });
 });
 
+describe("a hostile source's next step", () => {
+  const HOSTILE_STEP =
+    `run \u0007again \u001b[31m\u202e\u0085${PARTNER_VALUE}\u2028\r\n` +
+    "then check\nthe last line\u0000";
+
+  test("is relayed escaped once per line, its line breaks kept and no other raw control character", () => {
+    const event = validateAndSanitizeEvent({
+      v: 1,
+      type: "error",
+      category: "exchange",
+      message: `the report\n${HOSTILE_STEP}`,
+      nextStep: HOSTILE_STEP,
+    });
+    const step = event?.nextStep as string;
+    expect(step).toBe(
+      HOSTILE_STEP.split("\n")
+        .map((line) => sanitizeForDisplay(line))
+        .join("\n"),
+    );
+    expect(step).toContain(ESCAPED_ONCE);
+    for (const tell of ESCAPED_TWICE_TELLS) expect(step).not.toContain(tell);
+    expect(step.split("\n")).toHaveLength(HOSTILE_STEP.split("\n").length);
+    expect(step).toMatch(/^[\x20-\x7e\n]*$/);
+    expect(event?.[ERROR_MESSAGE_CHAIN_FIELD]).toEqual(["the report"]);
+  });
+});
+
 describe("the relay's bound on the unescaped warning text", () => {
   test("fits an oversize text to what the seat's escape renders within the budget", () => {
     const event = validateAndSanitizeEvent({

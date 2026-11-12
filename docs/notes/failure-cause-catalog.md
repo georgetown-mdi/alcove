@@ -107,7 +107,7 @@ The parts:
   - `message-write-unconfirmed`, the three write refusals in `connection/fileSyncMessageLoop.ts`, with `CLEAN_DIRECTORY_RESTART_REMEDY`.
   - `shared-name-at-entry`, the start-up refusal of a hello with this side's name (`connection/fileSyncRendezvous.ts`). The CLI's remedy and its no-show remedy for the shared-name fact share one step, so no copy of the sentence remains; the console names its name control and its sweep control.
 
-  The copy follows the catalog's rules. Each sentence is capitalized; the malformed-secret sentence drops the list of allowed final characters, which the key-file schema's own refusal still states, since no catalog sentence holds brackets; and the shared-name sentence says "this side's name" for `peer_id`, as the no-show sentence does. The console shows the CLI's cause chain for the write and entry refusals (the transport's error, the files found), without the CLI's next step, which the `error` event carries in its own `nextStep` field.
+  The copy follows the catalog's rules. Each sentence is capitalized; the malformed-secret sentence drops the list of allowed final characters, which the key-file schema's own refusal still states, since no catalog sentence holds brackets; and the shared-name sentence says "this side's name" for `peer_id`, as the no-show sentence does. The console shows the CLI's cause chain for the write and entry refusals (the transport's error, the files found), without the CLI's next step, which the `error` event states in its own `nextStep` field.
 
 Left as they are:
 
