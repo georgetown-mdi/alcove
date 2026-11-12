@@ -64,7 +64,7 @@
     "@types/luxon": "^3.7.6",
     "@types/papaparse": "^5.3.16",
     "rimraf": "^6.1.4",
-    "rollup": "^4.67.4",
+    "rollup": "^4.67.5",
     "rollup-plugin-dts": "^6.5.1",
     "tslib": "^2.9.1",
     "tsx": "^4.23.13",
