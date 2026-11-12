@@ -1930,7 +1930,7 @@ therefore its own store, which also keeps it out of the export artifact
 structurally, exactly as the four local siblings above are kept out.
 
 **Shape.** One object per exchange: a `version`
-(`alcove-disclosure-accounting/v2`, its own literal) and `entries`, the exchange
+(`alcove-disclosure-accounting/v3`, its own literal) and `entries`, the exchange
 records oldest first. A stored value that fails validation -- a version no step
 leads from, a failed migration, an unknown key, or an entry that is not a valid
 exchange record -- rejects the whole read rather than loading the entries that
@@ -1947,7 +1947,11 @@ stored entries exactly as they sit at rest, never their migrated reading, so a
 past exchange record is never rewritten (see
 [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#record-fields)). A failed migration of
 the envelope or of an entry leaves the accounting unreadable, and that state
-shows the refusal. Neither table has a step yet.
+shows the refusal. The envelope's table has one step, from
+`alcove-disclosure-accounting/v2`, which moves the version alone (see [What an
+exchange-record version bump does to a stored
+accounting](#what-an-exchange-record-version-bump-does-to-a-stored-accounting));
+the exchange record's table has none.
 
 **When an entry is written.** A run appends its record once that record is owed
 -- from the moment this party's payload crosses (see
@@ -2101,9 +2105,29 @@ must itself state: bump the accounting `version`, which routes the new envelope
 through this direction split, or accept that pages of this build offer the
 reset over the value it writes.
 
+**An accounting filed before the exchange-record reset.** Release 0.9.0-beta.1,
+the first prerelease of 0.9.0, reset the exchange-record format to
+`alcove-exchange-record/v1`. An entry a hosted build before that prerelease filed
+names `v2` through `v12`, ordinals a later build reuses for other formats, so an
+entry's ordinal alone cannot tell an earlier build's entry from a later build's.
+The accounting's own `version` moved to `alcove-disclosure-accounting/v3` in the
+same prerelease, so every such entry sits
+in an envelope at `v2` or earlier, and no later build writes one there.
+
+- An envelope before `v3` is *unreadable*, whatever its entries name, and never
+  *stale-page*: its entries were filed by an earlier release, and no build reads
+  them.
+- The envelope step from `v2` moves the version alone, so the envelope-only parse
+  still returns the stored entries and the export arm has them to hand over. An
+  envelope holding no entry reads as an empty accounting.
+- The surface states that the records are from an earlier version of Alcove that
+  this version cannot read, and offers the export, then the reset.
+- An envelope at `v3` or later keeps the direction split above.
+
 **The recovery offered is export then reset**, in that order, from the unreadable
-state -- a failed migration or a damaged value, never an accounting a migration
-reads -- and it never removes the exchange:
+state -- a failed migration, a damaged value, or an accounting filed before the
+exchange-record reset, never an accounting a migration reads -- and it never
+removes the exchange:
 
 | Arm | What it does | What it does not do |
 | --- | --- | --- |
@@ -2154,7 +2178,7 @@ holds no accounting: `lastRun` and `recentRuns` are timestamps and closed enums
 with no free-text field, and they keep only the last ten runs.
 
 **Shape.** One object per exchange: a `version`
-(`alcove-unfiled-disclosure/v2`, its own literal) and
+(`alcove-unfiled-disclosure/v3`, its own literal) and
 `entries`, oldest first. An entry holds `at`, the ISO 8601 instant the shortfall
 was noted, which falls inside the run it stands for; and, where the run built a
 record the reader admits, `record`, that run's exchange record retained verbatim.
@@ -2169,7 +2193,12 @@ read. A step moves the note and never a retained record, which a filing appends
 to the accounting as retained. A note whose migration fails is a note this build
 cannot read, below, and that state shows the refusal. A note at a later version
 than this build's is a stale page instead, whose surface states the reload. The
-table has no step yet.
+table has one step, from `alcove-unfiled-disclosure/v2`, which moves the version
+alone: a note at `v2` was written before the exchange-record reset at release
+0.9.0-beta.1, so each record it retained is one this build refuses, and the note reads
+as runs whose records cannot be filed.
+
+A later run that leaves a note merges into a note an earlier build wrote at `alcove-unfiled-disclosure/v2` and writes it back at v3, with that note's pre-reset records inside, so a v3 note can hold records from before the reset. A later exchange-record version bump that reuses the record-format ordinal of one of those pre-reset records reads such a record against its own schema.
 
 **When an entry is written.** Whenever a run that disclosed does not file --
 either arm above -- and on the same terms the append itself takes: best-effort,

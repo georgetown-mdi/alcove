@@ -1583,6 +1583,44 @@ describe("a refused accounting is classified by which side is behind", () => {
   });
 });
 
+/**
+ * An accounting an earlier hosted build filed, before the exchange-record format
+ * reset to v1 at release 0.9.0: its entries name ordinals above this build's,
+ * and the envelope version is what keeps them off the stale page.
+ */
+describe("an accounting a release before 0.9.0 filed", () => {
+  test("reaches the export and the reset, never the stale page", async () => {
+    const created = await createRunnableExchange(newExchange());
+    const record = await disclosureRecord();
+    const entries = [
+      { ...record, version: "alcove-exchange-record/v11" },
+      { ...record, version: "alcove-exchange-record/v12" },
+    ];
+    await putRawDisclosureStored(created.id, {
+      version: "alcove-disclosure-accounting/v2",
+      entries,
+    });
+
+    expect(await readDisclosureAccounting(created.id)).toEqual({
+      kind: "unreadable",
+      stored: { version: "alcove-disclosure-accounting/v2", entries },
+      fromEarlierRelease: true,
+    });
+    const next = await disclosureRecord();
+    await expect(
+      appendDisclosureRecordToStore(created.id, next),
+    ).rejects.toThrow();
+
+    await resetDisclosureAccounting(created.id);
+    await appendDisclosureRecordToStore(created.id, next);
+
+    expect(await rawDisclosureStored(created.id)).toEqual({
+      version: DISCLOSURE_ACCOUNTING_VERSION,
+      entries: [next],
+    });
+  });
+});
+
 describe("a scheduled run's results wait for the next visit", () => {
   test("a parked run round-trips its results, readable by a later visit", async () => {
     const created = await createRunnableExchange(newExchange());

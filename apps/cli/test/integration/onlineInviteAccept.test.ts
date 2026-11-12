@@ -451,7 +451,7 @@ async function runOnlineRoundTrip(params: {
       localIdentity?: unknown;
       partnerIdentity?: unknown;
     };
-    expect(record.version).toBe("alcove-exchange-record/v12");
+    expect(record.version).toBe("alcove-exchange-record/v1");
     expect(record.localIdentity).toBe(party.local);
     expect(record.partnerIdentity).toBe(party.partner);
   }

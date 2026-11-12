@@ -692,6 +692,21 @@ describe("the stored accounting as a recovery file", () => {
     });
   });
 
+  test("names the envelope version the browser stored, not this build's", () => {
+    const stored = "alcove-disclosure-accounting/v2";
+
+    const document = storedDisclosureAccountingDocument({
+      version: stored,
+      entries: storedEntries,
+    });
+
+    expect(JSON.parse(document)).toEqual({
+      version: stored,
+      entries: storedEntries,
+    });
+    expect(stored).not.toBe(DISCLOSURE_ACCOUNTING_VERSION);
+  });
+
   test("has no reading of the entries, only the stored shape", () => {
     const document = storedDisclosureAccountingDocument({
       version: DISCLOSURE_ACCOUNTING_VERSION,

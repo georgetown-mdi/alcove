@@ -180,7 +180,7 @@ describe("the stored note", () => {
   test("a value under another version is refused", () => {
     expect(() =>
       parseStoredUnfiledDisclosures({
-        version: "alcove-unfiled-disclosure/v3",
+        version: nextVersionOf(UNFILED_DISCLOSURE_VERSION),
         entries: [],
       }),
     ).toThrow();
@@ -284,5 +284,47 @@ describe("whether a stored note is ahead of this build", () => {
       "alcove-disclosure-accounting/v9",
     ])
       expect(storedNoteAheadOfThisBuild({ version, entries: [] })).toBe(false);
+  });
+});
+
+/**
+ * The exchange-record format reset to v1 at release 0.9.0, so a record an
+ * earlier hosted build retained names an ordinal above this build's, the same
+ * ordinals a later build will reuse. The note's own version is what tells the
+ * two apart.
+ */
+describe("a note a release before 0.9.0 wrote", () => {
+  test.each(
+    Array.from(
+      { length: 11 },
+      (_, index) => `alcove-exchange-record/v${index + 2}`,
+    ),
+  )(
+    "holding a record at %s reads as a run whose record cannot be filed, never a stale page",
+    async (version) => {
+      const raw = {
+        version: "alcove-unfiled-disclosure/v2",
+        entries: [
+          { at: NOTED_AT, record: { ...(await disclosureRecord()), version } },
+        ],
+      };
+
+      expect(storedNoteAheadOfThisBuild(raw)).toBe(false);
+      const stored = parseStoredUnfiledDisclosures(raw);
+      expect(stored.version).toBe(UNFILED_DISCLOSURE_VERSION);
+      expect(unfiledDisclosuresOf(stored)).toEqual([
+        { at: NOTED_AT, unreadableRecordRetained: true },
+      ]);
+    },
+  );
+
+  test("a note a later build writes, at a later note version, is a stale page", () => {
+    const raw = {
+      version: nextVersionOf(UNFILED_DISCLOSURE_VERSION),
+      entries: [{ at: NOTED_AT }],
+    };
+
+    expect(() => parseStoredUnfiledDisclosures(raw)).toThrow();
+    expect(storedNoteAheadOfThisBuild(raw)).toBe(true);
   });
 });

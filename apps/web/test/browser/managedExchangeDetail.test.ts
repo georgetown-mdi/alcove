@@ -2648,6 +2648,36 @@ describe("recovering an accounting this version cannot read", () => {
     }
   });
 
+  test("the export of an accounting an earlier build filed names the version it was stored at", async () => {
+    const entries = await strandedEntries();
+    const downloads = captureDownloads();
+    try {
+      app.render(
+        managedDetail({
+          record: record("inviter"),
+          accountingRead: {
+            kind: "unreadable",
+            stored: { version: "alcove-disclosure-accounting/v2", entries },
+            fromEarlierRelease: true,
+          },
+        }),
+      );
+
+      await page
+        .getByRole("button", { name: /Download the stored records/ })
+        .click();
+
+      await downloads.settled();
+      expect(downloads.captured).toHaveLength(1);
+      expect(JSON.parse(downloads.captured[0].text)).toEqual({
+        version: "alcove-disclosure-accounting/v2",
+        entries,
+      });
+    } finally {
+      downloads.restore();
+    }
+  });
+
   test("the reset destroys nothing until the confirm is taken, and says what it destroys and keeps", async () => {
     const onResetAccounting = vi.fn(() => Promise.resolve());
     app.render(
@@ -2975,6 +3005,46 @@ describe("why an accounting or its note could not be read", () => {
     expect(
       page.getByText("could not convert them", { exact: false }).query(),
     ).toBeNull();
+  });
+
+  test("an accounting an earlier release filed names that release and offers the download, then the reset", async () => {
+    const filed = await disclosureRecord();
+    renderReads(
+      {
+        kind: "unreadable",
+        stored: {
+          version: DISCLOSURE_ACCOUNTING_VERSION,
+          entries: [{ ...filed, version: "alcove-exchange-record/v12" }],
+        },
+        fromEarlierRelease: true,
+      },
+      { kind: "none" },
+    );
+
+    await expect
+      .element(
+        page.getByText(
+          "are from an earlier version of Alcove, and this version cannot read them",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByRole("button", {
+          name: "Download the stored records (JSON)",
+        }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Start a fresh accounting" }))
+      .toBeInTheDocument();
+    for (const text of [
+      "running an older version of Alcove",
+      "Reload this page",
+      "They are damaged",
+    ])
+      expect(page.getByText(text, { exact: false }).query()).toBeNull();
   });
 
   test("a note a newer version wrote asks for a reload", async () => {

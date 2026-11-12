@@ -139,7 +139,7 @@ import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
 import type { ManagedRunHolder } from "./managedRunHolder";
 import type { ManagedRunSurfaceHost } from "./useManagedRunSurface";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
-import type { StoredDisclosureAccounting } from "@psi/disclosureAccounting";
+import type { RecoveredDisclosureAccounting } from "@psi/disclosureAccounting";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
 
 /**
@@ -1396,6 +1396,7 @@ function DisclosureAccountingView({
         <UnreadableAccountingRecovery
           stored={read.stored}
           migrationFailure={read.migrationFailure}
+          fromEarlierRelease={read.fromEarlierRelease === true}
           onReset={onReset}
         />
       ) : entries.length === 0 ? (
@@ -1769,7 +1770,7 @@ function UnavailableAccountingNotice({
 /** Hand the stored accounting back as the file it is stored as. Shared by the two
  * states that hold a stored value, so what an operator downloads does not depend
  * on which one they reached it from. */
-function downloadStoredAccounting(stored: StoredDisclosureAccounting): void {
+function downloadStoredAccounting(stored: RecoveredDisclosureAccounting): void {
   triggerBlobDownload(
     storedDisclosureAccountingFileName(new Date()),
     storedDisclosureAccountingDocument(stored),
@@ -1805,7 +1806,7 @@ function downloadStoredAccounting(stored: StoredDisclosureAccounting): void {
 function StalePageAccountingNotice({
   stored,
 }: {
-  stored: StoredDisclosureAccounting | undefined;
+  stored: RecoveredDisclosureAccounting | undefined;
 }) {
   return (
     <>
@@ -1872,15 +1873,19 @@ function StalePageAccountingNotice({
  * that state says so. The reset is offered either way -- it is what restores
  * appendability -- but only behind an explicit confirm naming what is
  * destroyed and what is kept. A failed migration's refusal is shown beside
- * the explanation, escaped here, so the operator sees which one this is.
+ * the explanation, escaped here, so the operator sees which one this is. An
+ * accounting a release before the exchange-record reset filed is named as
+ * that instead of as damage.
  */
 function UnreadableAccountingRecovery({
   stored,
   migrationFailure,
+  fromEarlierRelease,
   onReset,
 }: {
-  stored: StoredDisclosureAccounting | undefined;
+  stored: RecoveredDisclosureAccounting | undefined;
   migrationFailure: FormatMigrationError | undefined;
+  fromEarlierRelease: boolean;
   onReset: () => Promise<void>;
 }) {
   // Whether the download was TAKEN here, not whether the file landed: the browser
@@ -1901,12 +1906,20 @@ function UnreadableAccountingRecovery({
         color="error"
         title="This accounting could not be read"
       >
-        <p>
-          The disclosure records stored for this exchange could not be read, so
-          they are not shown. This does not mean nothing was disclosed. They are
-          damaged, or this version of the app could not convert them from the
-          format an earlier version stored them in.
-        </p>
+        {fromEarlierRelease ? (
+          <p>
+            The disclosure records stored for this exchange are from an earlier
+            version of Alcove, and this version cannot read them, so they are
+            not shown. This does not mean nothing was disclosed.
+          </p>
+        ) : (
+          <p>
+            The disclosure records stored for this exchange could not be read,
+            so they are not shown. This does not mean nothing was disclosed.
+            They are damaged, or this version of the app could not convert them
+            from the format an earlier version stored them in.
+          </p>
+        )}
         {migrationFailure !== undefined && (
           <p>{sanitizeErrorForDisplay(migrationFailure)}</p>
         )}

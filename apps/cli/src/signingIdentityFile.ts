@@ -77,8 +77,8 @@ const IDENTITY_VERSION_FAMILY = SIGNING_IDENTITY_VERSION.slice(
 const VERSION_LABEL = /^v(0|[1-9][0-9]{0,8})$/;
 
 /**
- * The format number of an identity format version (`3` for
- * `alcove-signing-identity/v3`), or `undefined` for any value outside that
+ * The format number of an identity format version (`1` for
+ * `alcove-signing-identity/v1`), or `undefined` for any value outside that
  * family.
  * @internal exported for testing
  */

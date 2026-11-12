@@ -39,8 +39,8 @@ import {
 } from "../../dist/core.esm.js";
 import { canonicalBytes } from "../../dist/testing.esm.js";
 
-const CERTIFICATE_VERSION = "alcove-signing-cert/v3";
-const IDENTITY_VERSION = "alcove-signing-identity/v3";
+const CERTIFICATE_VERSION = "alcove-signing-cert/v1";
+const IDENTITY_VERSION = "alcove-signing-identity/v1";
 const ALGORITHM = "ecdsa-p256-sha256";
 const SIGNATURE_DOMAIN = "alcove-signing-cert-signature/v2";
 

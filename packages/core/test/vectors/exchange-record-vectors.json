@@ -127,7 +127,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -176,7 +176,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
           "partnerPayloadReceived": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
@@ -269,7 +269,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -302,7 +302,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "ERERERERERERERERERERERERERERERERERERERERERE",
           "partnerPayloadReceived": "EhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhI",
@@ -408,7 +408,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -444,7 +444,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "ISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISE",
           "partnerPayloadReceived": "IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiI"
@@ -554,7 +554,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -591,7 +591,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE",
           "partnerPayloadReceived": "MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjI",
@@ -728,7 +728,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -773,7 +773,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE",
           "partnerPayloadReceived": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI"
@@ -905,7 +905,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -948,7 +948,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE",
           "partnerPayloadReceived": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI"
@@ -1084,7 +1084,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1129,7 +1129,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE",
           "partnerPayloadReceived": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI"
@@ -1263,7 +1263,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1312,7 +1312,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
           "partnerPayloadReceived": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
@@ -1404,7 +1404,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1436,7 +1436,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "FRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRU",
           "partnerPayloadReceived": "FhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhY",
@@ -1571,7 +1571,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:06.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": false,
@@ -1620,7 +1620,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "UVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVE",
           "partnerPayloadReceived": "UlJSUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlI",
@@ -1755,7 +1755,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-01-02T03:04:07.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": true,
@@ -1804,7 +1804,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "gYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYE",
           "partnerPayloadReceived": "goKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoI",
@@ -1952,7 +1952,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-02-03T14:20:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -2004,7 +2004,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE",
           "partnerPayloadReceived": "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmI",
@@ -2152,7 +2152,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-02-03T14:20:01.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -2204,7 +2204,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "cXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXE",
           "partnerPayloadReceived": "cnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnI",
@@ -2352,7 +2352,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v12",
+        "version": "alcove-exchange-record/v1",
         "createdAt": "2026-02-04T08:45:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -2404,7 +2404,7 @@
         }
       },
       "keys": {
-        "version": "alcove-exchange-keys/v2",
+        "version": "alcove-exchange-keys/v1",
         "salts": {
           "localPayloadSent": "gYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYE",
           "partnerPayloadReceived": "goKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoI",

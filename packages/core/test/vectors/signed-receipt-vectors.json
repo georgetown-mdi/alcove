@@ -1,9 +1,9 @@
 {
-  "description": "Cross-implementation vectors for the alcove-signed-receipt/v4 step: ECDSA over P-256 with SHA-256 across the signer-bound receipt content. Each vector fixes a private key, an identity, a session key, a handshake role, and the shared content. The certificate fingerprint and the per-exchange binder are known answers. The signature is NOT -- ECDSA signing is randomized -- so it is verify-only and was produced by the openssl CLI (see externalAnchors) over signed bytes the generator assembles from the spec: a suite that accepts it is accepting a signature made outside this codebase, over a byte layout stated independently of the module under test. Regenerate with generate-signed-receipt-vectors.mjs.",
+  "description": "Cross-implementation vectors for the alcove-signed-receipt/v1 step: ECDSA over P-256 with SHA-256 across the signer-bound receipt content. Each vector fixes a private key, an identity, a session key, a handshake role, and the shared content. The certificate fingerprint and the per-exchange binder are known answers. The signature is NOT -- ECDSA signing is randomized -- so it is verify-only and was produced by the openssl CLI (see externalAnchors) over signed bytes the generator assembles from the spec: a suite that accepts it is accepting a signature made outside this codebase, over a byte layout stated independently of the module under test. Regenerate with generate-signed-receipt-vectors.mjs.",
   "construction": {
-    "recordVersion": "alcove-signed-receipt/v4",
+    "recordVersion": "alcove-signed-receipt/v1",
     "algorithm": "ecdsa-p256-sha256",
-    "contentDomain": "alcove-signed-receipt-content/v3",
+    "contentDomain": "alcove-signed-receipt-content/v1",
     "binderLabel": "alcove-signed-receipt-binder-v2:<role>",
     "signedBytes": "canonicalBytes({ domain: contentDomain, content: { termsHash, initiatorToResponderPayload, responderToInitiatorPayload, binder }, signer: { fingerprint, role } }) (RFC 8785)",
     "signatureEncoding": "64 bytes, r || s, each field element left-padded to 32 bytes. Not DER: a field of any other length is rejected rather than decoded."
@@ -30,8 +30,8 @@
       },
       "expected": {
         "binder": "vh4E_Jyls4CbRGTMUGyNFGNDlCpVRt-ruU_-JwZIwDM",
-        "fingerprint": "XLVt1REG2cgeneYftvQ9senu45hEFQ0JKD-2BoMoyRQ",
-        "signature": "ZH-4skTaRnUFuIsa_038eIOaiGPPVoPbcBtAl_IwL6WOToLamPxpihmrl_g00Xn-WfZfysjU0uEHw_v391rZdA"
+        "fingerprint": "kcUS6LKZ7A3k-fhBcoKhnrYWiF3qonQ6Rh9sAexI01Q",
+        "signature": "thW15LxKnx-Gkz3imsKoZHJlKV2BW9WNbI3tbxzIdIvzHqERPkwJpdJc5Q4TeTfWxSf2fNt_m0-yCALZHI3YxA"
       }
     },
     {
@@ -55,21 +55,21 @@
       },
       "expected": {
         "binder": "n2Ak2GuaCKmHaK_0VdNopb5DpTGYAQ82OXm54AmqrOE",
-        "fingerprint": "uZisH4oFjTA4f99L2nKQNa2XSQTngX911_Jwj1E5OUA",
-        "signature": "k5r2jdGXyNPkDHMN4-cVu2WvJ3-sQRWqLQ29Fx9mxfhgKJ4TdPSG7TauKvo8YIkXMcvmVeSimOyQzgsxFlsqUA"
+        "fingerprint": "4cgDNgs9Tx2itJbBL5vfl2nA2yKWTXAc9uxxOrMcjLU",
+        "signature": "jmKhH2K3B44ZmnIpq6vrOBIG129q3dOdDPqbFY-eA0p0wXSzsJCoMLG95wVzuNQeRGIgAGvFT0JCv1PV7f5jMA"
       }
     }
   ],
   "bundle": {
     "description": "A complete dual-signed record assembled from the two vectors above: both parties sign ONE shared content carrying the initiator-role binder, as a live exchange does. Every signature in it -- each certificate's self-signature and each party's receipt signature -- was produced by the openssl CLI (see externalAnchors), so an implementation that verifies this record is verifying a bundle no part of which it signed. The two fingerprints are the deterministic anchors a verifier pins against.",
     "expected": {
-      "initiatorFingerprint": "XLVt1REG2cgeneYftvQ9senu45hEFQ0JKD-2BoMoyRQ",
-      "responderFingerprint": "uZisH4oFjTA4f99L2nKQNa2XSQTngX911_Jwj1E5OUA",
+      "initiatorFingerprint": "kcUS6LKZ7A3k-fhBcoKhnrYWiF3qonQ6Rh9sAexI01Q",
+      "responderFingerprint": "4cgDNgs9Tx2itJbBL5vfl2nA2yKWTXAc9uxxOrMcjLU",
       "initiatorIdentity": "Party A, Agency A\napartyA@agency-a.gov",
       "responderIdentity": "Party B, Agency B"
     },
     "record": {
-      "version": "alcove-signed-receipt/v4",
+      "version": "alcove-signed-receipt/v1",
       "content": {
         "termsHash": "dGVybXNIYXNoVmVjdG9y",
         "initiatorToResponderPayload": "aTJyUGF5bG9hZERpZ2VzdA",
@@ -78,7 +78,7 @@
       },
       "initiator": {
         "certificate": {
-          "version": "alcove-signing-cert/v3",
+          "version": "alcove-signing-cert/v1",
           "algorithm": "ecdsa-p256-sha256",
           "identity": "Party A, Agency A\napartyA@agency-a.gov",
           "publicKey": {
@@ -87,13 +87,13 @@
             "x": "HxQBRr-xslH4T03b4NTNz9d6_ZhKlSDjV5QCH4MSu54",
             "y": "7JlaCLH6dwTfPcwLUKlmUmP7dxH5X5-KRJxQluR8iSs"
           },
-          "signature": "vFTDqJvOpQ_r61ruc5G45X_IsQMoWrS8ACDglmF0C6ioMs8k7_0TCnZFfV3k-ExLPNdnFp14w8tp6hrq7I31_Q"
+          "signature": "1M_xR1C_Rx6yNP4gAkr3uBw5IayXZ5BIjMdkANgT3cWrIFPq8hFm6MVQ9FnV_g9yo-Rv4dheIom-tVncf3FKaQ"
         },
-        "signature": "Y_YRmF3iiih6POfCEzfEalKWD0XDuKpL4CyFaY2ZX3Sr4ZVKgBksFDKJHI1VrzOq-zUdhrSRncXqW9QbaHcalg"
+        "signature": "naDv4JJ09RcWhQMocfz9UeQfG8iWS1uxPegDj5Ky6Dfu0jdmWrVx-y5s1lwulkTvWVXHVc5kh4IdfIclsldp8A"
       },
       "responder": {
         "certificate": {
-          "version": "alcove-signing-cert/v3",
+          "version": "alcove-signing-cert/v1",
           "algorithm": "ecdsa-p256-sha256",
           "identity": "Party B, Agency B",
           "publicKey": {
@@ -102,14 +102,14 @@
             "x": "QoqCTqfPVq0qZO02i3ExXYDO6EYAfP8dLuosPw-SFTc",
             "y": "MErlmPmN0Q0fECgRpOLRYcP9i7sZPUslvulQrIOcD50"
           },
-          "signature": "2QIhWr6PAeGAGVKgiUhYArJAeP891cmSFvFTWPka59ZFf8vrQiD70za4Y1y7mNAXlNQ09bdYgpfysxsZjnhCNw"
+          "signature": "3AyziHScQy1b6IWS27aTIftjTwLnWpr2XS2AoDMFJ13As4XlQdlySSqghrq46E7NPKDldNZ5ZzTQeGSQau_fsg"
         },
-        "signature": "KHIQP_Evzsh6ZrsAerqxtOjV884HCD2hRfgsfdGrOQuivNUrL45mc-kDr_8cfXuocwJZZct_atYqAAWXCqPJlQ"
+        "signature": "Huwkj6x3nkhD0kNJnCK8lVX2a9Mdb1l8v_LVW8BWszmYu0pWWYCumIA_OXIf_pmmTFee7KTxOXaqVqYIudyirQ"
       }
     }
   },
   "externalAnchors": {
-    "signatureProducer": "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)",
+    "signatureProducer": "OpenSSL 4.1.0 23 Oct 2026 (Library: OpenSSL 4.1.0 23 Oct 2026)",
     "note": "Every checked-in signature was produced by the openssl CLI named above (openssl dgst -sha256 -sign, DER read back through openssl asn1parse and re-encoded as the fixed-length raw r||s), over signed bytes this generator assembles from docs/spec/EXCHANGE_RECORD.md. A suite that verifies them is therefore accepting a signature produced outside this codebase, over a byte layout stated independently of signedReceipt.ts. The same holds for every signature in the assembled bundle."
   }
 }
