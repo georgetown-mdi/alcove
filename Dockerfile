@@ -2,7 +2,7 @@
 # resolve one exact image; a base bump for a node or musl patch is a deliberate
 # digest update, not an automatic float. See docs/spec/CONTAINER_IMAGES.md; the
 # bump procedure is in docs/spec/DEPENDENCY_PINS.md.
-FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS builder
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS builder
 
 WORKDIR /build
 
@@ -103,7 +103,7 @@ RUN --mount=type=cache,target=/root/.npm \
   rm -rf node_modules \
   && npm ci --omit=dev --omit=optional -w packages/core -w apps/cli
 
-FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 
 # Metadata the package page on ghcr.io shows. For an organization package the
 # source label links and grants nothing: repository write access is set under
