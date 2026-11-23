@@ -16,4 +16,4 @@
 # from a pinned coturn source tag -- a builder stage fetching that tag's release
 # tarball under a committed checksum and configuring it against the distribution
 # OpenSSL -- rather than floating onto another publisher's image.
-FROM docker.io/coturn/coturn:4.18.0@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3
+FROM docker.io/coturn/coturn:4.19.1@sha256:81f69dc7cb672eb73ab3414afbb199637c37ab8069919d1c6caaed96ff16fb88
