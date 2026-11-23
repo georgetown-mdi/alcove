@@ -5,7 +5,7 @@
 # Base pinned to node:26-alpine's multi-arch index digest in both stages, the
 # digest the default image pins (Dockerfile); the docker ecosystem entry for
 # /packages/sftp-relay in .github/dependabot.yml raises a bump of this copy.
-FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS builder
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS builder
 
 WORKDIR /build
 
@@ -35,7 +35,7 @@ COPY packages/sftp-relay/src packages/sftp-relay/src/
 RUN npm run build -w packages/core \
   && npm run build -w packages/sftp-relay
 
-FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 
 LABEL org.opencontainers.image.source="https://github.com/georgetown-mdi/alcove" \
       org.opencontainers.image.description="Alcove SFTP relay: forwards each WebSocket from an allowed browser origin to one SFTP server" \
